@@ -1,26 +1,27 @@
-﻿using System;
+﻿using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Shaders;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.BinaryConverters.Shaders;
+using LegendaryExplorerCore.Unreal.Classes;
+using SharpDX.Direct3D11;
+using System;
 using System.Collections.Generic;
 using System.Numerics;
-using LegendaryExplorerCore.Helpers;
-using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Unreal.BinaryConverters;
-using LegendaryExplorerCore.Unreal;
-using LegendaryExplorerCore.Unreal.Classes;
-using LegendaryExplorerCore.Shaders;
-using LegendaryExplorerCore.Unreal.BinaryConverters.Shaders;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 {
+    using PixelShaderType = TBasePassPixelShader<FNullPolicy>;
     //update the name strings too
     using VertexShaderType = TBasePassVertexShader<FNullPolicy, FNullPolicy>;
-    using PixelShaderType = TBasePassPixelShader<FNullPolicy>;
-    public class MaterialRenderProxy(ExportEntry export, PackageCache assetCache = null)
-        : MaterialInstanceConstant(export, assetCache, true)
+    public class MaterialRenderProxy : MaterialInstanceConstant
     {
         private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
         private const string LIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicySkyLight";
         private const string UNLIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight";
 
+        public MEGame Game;
         public EBlendMode BlendMode;
         public bool UseHairPass;
         public bool IsUnlit;
@@ -39,12 +40,31 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         private readonly List<PreviewTextureCache.TextureEntry> CachedTexture2DParameters = [];
         private readonly List<PreviewTextureCache.TextureEntry> CachedCubeTextureParameters = [];
 
-        public VertexShaderType VertexShader;
-        public PixelShaderType PixelShader;
+        public VertexShaderType UnrealVertexShader;
+        public PixelShaderType UnrealPixelShader;
+
+        public PixelShader PixelShader;
+        public VertexShader VertexShader;
+        public InputLayout InputLayout;
+
+        public MaterialRenderProxy(MeshRenderContext context, ExportEntry export) : base(export, context.PackageCache, true)
+        {
+            Game = export.Game;
+            if (UnrealPixelShader is not null)
+            {
+                PixelShader = context.GetCachedPixelShader(UnrealPixelShader.Guid, UnrealPixelShader.ShaderByteCode);
+            }
+            if (UnrealVertexShader is not null)
+            {
+                (VertexShader, InputLayout) = context.GetCachedVertexShader(UnrealVertexShader.Guid, UnrealVertexShader.ShaderByteCode);
+            }
+        }
 
         protected override void ReadBaseMaterial(ExportEntry mat, PackageCache assetCache, Material parsedMaterial)
         {
             base.ReadBaseMaterial(mat, assetCache, parsedMaterial);
+
+            if (!Game.IsLEGame()) return;
 
             var props = mat.GetProperties(packageCache: assetCache);
             Enum.TryParse(props.GetProp<EnumProperty>("BlendMode")?.Value ?? "BLEND_Opaque", out BlendMode);
@@ -103,13 +123,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         {
             (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(mat, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
 
-            VertexShader = (VertexShaderType)shaders[0];
-            PixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
+            UnrealVertexShader = (VertexShaderType)shaders[0];
+            UnrealPixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
         }
 
         protected override void ReadMaterialInstanceConstant(ExportEntry matInst, PropertyCollection props)
         {
             base.ReadMaterialInstanceConstant(matInst, props);
+
+            if (!Game.IsLEGame()) return;
+
             if (props.GetProp<ArrayProperty<StructProperty>>("ScalarParameterValues") is { } scalarValues)
             {
                 foreach (StructProperty scalarValue in scalarValues)
@@ -156,8 +179,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         public void UpdateShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, MeshElement mesh)
         {
-            VertexShader?.WriteValues(vertexConstantBuffer, context, mesh, this);
-            PixelShader?.WriteValues(pixelConstantBuffer, context, mesh, this);
+            UnrealVertexShader?.WriteValues(vertexConstantBuffer, context, mesh, this);
+            UnrealPixelShader?.WriteValues(pixelConstantBuffer, context, mesh, this);
         }
 
         public (List<Vector4> scalar, List<Vector4> vector) GetCachedVertexParameters(MeshRenderContext context)

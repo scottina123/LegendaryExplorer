@@ -30,17 +30,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             {
                 localToWorld = value;
                 TransformedBounds = BaseBounds.TransformBy(localToWorld);
+                Matrix4x4.Invert(LocalToWorld, out Matrix4x4 wtl);
+                worldToLocal = new SharpDX.Matrix3x3(wtl.M11, wtl.M12, wtl.M13, wtl.M21, wtl.M22, wtl.M23, wtl.M31, wtl.M32, wtl.M33);
             }
         }
 
-        public SharpDX.Matrix3x3 WorldToLocal
-        {
-            get
-            {
-                Matrix4x4.Invert(LocalToWorld, out Matrix4x4 wtl);
-                return new SharpDX.Matrix3x3(wtl.M11, wtl.M12, wtl.M13, wtl.M21, wtl.M22, wtl.M23, wtl.M31, wtl.M32, wtl.M33);
-            }
-        }
+        private SharpDX.Matrix3x3 worldToLocal;
+        public SharpDX.Matrix3x3 WorldToLocal => worldToLocal;
 
 
         // Creates a new blank mesh.

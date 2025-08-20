@@ -35,6 +35,7 @@ using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.ClassViewer;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.ScriptDebugger;
+using LegendaryExplorer.Tools.LevelEditor;
 
 namespace LegendaryExplorer
 {
@@ -724,6 +725,19 @@ namespace LegendaryExplorer
                 category = "Audio Tools",
                 description = "Wwise Graph Editor currently has no editing functionality. " +
                 "It can be used to help visualize the relationships between HIRC objects as well as their connection to WwiseEvent and WwiseStream Exports."
+            });
+            set.Add(new Tool
+            {
+                name = "Level Editor",
+                type = typeof(LevelEditor),
+                icon = Application.Current.FindResource(ICON_COMING_SOON_RES_NAME) as ImageSource,
+                open = () =>
+                {
+                    (new LevelEditor()).Show();
+                },
+                tags = new List<string> { "user", "developer", "me1", "me2", "me3" },
+                category = "Core Editors",
+                description = "Level Editor is a minimalist level editor, capable only of displaying and editing the positions, rotations, and scale of Actors.",
             });
             #endregion
 

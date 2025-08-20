@@ -53,11 +53,8 @@ public unsafe class LEEffect : IDisposable
         context.PixelShader.SetConstantBuffer(2, PixelShaderConstants);
     }
 
-    public void RenderObject(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, MeshElement mesh, int indexstart, int indexcount)
+    public void RenderObject(DeviceContext context, MeshElement mesh, int indexstart, int indexcount)
     {
-        // Push new data into the shaders' constant buffers
-        context.UpdateSubresource(ref vsSharedConstants, VertexShaderConstants);
-        context.UpdateSubresource(ref psSharedConstants, PixelShaderConstants);
         //TODO: copy only the portion that is used
         context.UpdateSubresource(VertexShaderGlobals, 0, null, (IntPtr)VertexShaderConstantBufferAlloc, 0, 0);
         context.UpdateSubresource(PixelShaderGlobals, 0, null, (IntPtr)PixelShaderConstantBufferAlloc, 0, 0);
@@ -68,6 +65,13 @@ public unsafe class LEEffect : IDisposable
 
         // Draw!!!
         context.DrawIndexed(indexcount, indexstart, 0);
+    }
+
+    public void UpdateCameraConstants(DeviceContext context, ref LEVSConstants vsSharedConstants, ref LEPSConstants psSharedConstants)
+    {
+        // Push new data into the shaders' constant buffers
+        context.UpdateSubresource(ref vsSharedConstants, VertexShaderConstants);
+        context.UpdateSubresource(ref psSharedConstants, PixelShaderConstants);
     }
 
     private void Dispose(bool disposing)

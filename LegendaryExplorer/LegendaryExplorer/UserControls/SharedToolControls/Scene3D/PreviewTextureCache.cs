@@ -112,6 +112,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
         {
+            string ifp = textureEntry.InstancedFullPath;
             if (textureEntry is ImportEntry import)
             {
                 textureEntry = EntryImporter.ResolveImport(import, packageCache);
@@ -134,7 +135,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                     //just do the error path below
                 }
             }
-            Debug.WriteLine($"Unable to resolve texture: {textureEntry.InstancedFullPath}");
+            Debug.WriteLine($"Unable to resolve texture: {ifp}");
             return null;
         }
     }

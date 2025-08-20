@@ -196,9 +196,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         public static void WriteValues(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
         {
-            buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
-            buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
-            buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
+                buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+                buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
+                buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
         }
 
         private static unsafe void WriteVal<T>(this Span<byte> buff, FShaderParameter param, T val) where T : unmanaged

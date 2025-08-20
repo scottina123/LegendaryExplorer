@@ -41,8 +41,8 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
 
     private bool _rotating = Settings.Meshplorer_ViewRotating;
     private bool _renderWireframe;
-    private bool _renderSolid;
-    private bool _renderGameShader = true;
+    private bool _renderSolid = true;
+    private bool _renderGameShader;
     private bool _firstperson;
 
     public bool Rotating
@@ -236,6 +236,10 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
     private void SceneContext_RenderScene(object sender, EventArgs e)
     {
         if (CurrentLOD < 0) { CurrentLOD = 0; }
+        if (RenderGameShader)
+        {
+            MeshContext.UpdateLECameraConstants();
+        }
         foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
         {
             if (MeshPreview is not null && CurrentLOD < MeshPreview.LODs.Count)

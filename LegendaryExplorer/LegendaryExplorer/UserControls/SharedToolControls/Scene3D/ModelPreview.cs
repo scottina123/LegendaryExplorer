@@ -99,7 +99,7 @@ public enum RenderPass
 /// </summary>
 public class ModelPreviewMaterial : IDisposable
 {
-    private readonly RenderTargetBlendDescription BlendDescription;
+    private readonly BlendState BlendState;
 
     public RenderPass Pass;
 
@@ -123,17 +123,15 @@ public class ModelPreviewMaterial : IDisposable
     /// <summary>
     /// Creates a ModelPreviewMaterial that renders as close to what the given <see cref="MaterialInstanceConstant"/> looks like as possible. 
     /// </summary>
-    /// <param name="mat">The material that this ModelPreviewMaterial will try to look like.</param>
-    public ModelPreviewMaterial(MaterialRenderProxy mat, ExportEntry export, MeshRenderContext renderContext)
+    public ModelPreviewMaterial(MeshRenderContext renderContext, ExportEntry export)
     {
-        if (mat == null) return;
-        Material = mat;
+        Material = new MaterialRenderProxy(renderContext, export);
         if (export.Parent != null)
         {
             matPackage = export.Parent.InstancedFullPath.ToLower();
         }
         Properties.Add("Name", export.ObjectName.Instanced);
-        foreach (IEntry textureEntry in mat.Textures)
+        foreach (IEntry textureEntry in Material.Textures)
         {
             if (!TextureMap.ContainsKey(textureEntry.FullPath))
             {
@@ -145,105 +143,91 @@ public class ModelPreviewMaterial : IDisposable
             }
         }
 
-        mat.TextureMap = TextureMap;
-        Pass = mat.UseHairPass ? RenderPass.Hair : default;
-        switch (mat.BlendMode)
+        Material.TextureMap = TextureMap;
+        Pass = Material.UseHairPass ? RenderPass.Hair : default;
+        var blendDesc = Material.BlendMode switch
         {
-            case EBlendMode.BLEND_Opaque:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.One,
-                    DestinationBlend = BlendOption.Zero,
-                    SourceAlphaBlend = BlendOption.One,
-                    DestinationAlphaBlend = BlendOption.Zero,
-                    IsBlendEnabled = false
-                };
-                break;
-            case EBlendMode.BLEND_Masked:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.One,
-                    DestinationBlend = BlendOption.Zero,
-                    SourceAlphaBlend = BlendOption.One,
-                    DestinationAlphaBlend = BlendOption.Zero,
-                    IsBlendEnabled = false
-                };
-                break;
-            case EBlendMode.BLEND_Translucent:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.SourceAlpha,
-                    DestinationBlend = BlendOption.InverseSourceAlpha,
-                    SourceAlphaBlend = BlendOption.SourceAlphaSaturate,
-                    DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
-                    IsBlendEnabled = true
-                };
-                break;
+            EBlendMode.BLEND_Opaque => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.One,
+                DestinationBlend = BlendOption.Zero,
+                SourceAlphaBlend = BlendOption.One,
+                DestinationAlphaBlend = BlendOption.Zero,
+                IsBlendEnabled = false
+            },
+            EBlendMode.BLEND_Masked => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.One,
+                DestinationBlend = BlendOption.Zero,
+                SourceAlphaBlend = BlendOption.One,
+                DestinationAlphaBlend = BlendOption.Zero,
+                IsBlendEnabled = false
+            },
+            EBlendMode.BLEND_Translucent => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.SourceAlpha,
+                DestinationBlend = BlendOption.InverseSourceAlpha,
+                SourceAlphaBlend = BlendOption.SourceAlphaSaturate,
+                DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
+                IsBlendEnabled = true
+            },
             //TODO: the ones above this comment seem to work properly, but the rest need verifying
-            case EBlendMode.BLEND_Additive:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.One,
-                    DestinationBlend = BlendOption.One,
-                    SourceAlphaBlend = BlendOption.Zero,
-                    DestinationAlphaBlend = BlendOption.One,
-                    IsBlendEnabled = true
-                };
-                break;
-            case EBlendMode.BLEND_Modulate:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.DestinationColor,
-                    DestinationBlend = BlendOption.Zero,
-                    SourceAlphaBlend = BlendOption.Zero,
-                    DestinationAlphaBlend = BlendOption.One,
-                    IsBlendEnabled = true
-                };
-                break;
-            case EBlendMode.BLEND_SoftMasked:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.SourceAlpha,
-                    DestinationBlend = BlendOption.InverseSourceAlpha,
-                    SourceAlphaBlend = BlendOption.Zero,
-                    DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
-                    IsBlendEnabled = true
-                };
-                break;
-            case EBlendMode.BLEND_AlphaComposite:
-                BlendDescription = new RenderTargetBlendDescription
-                {
-                    RenderTargetWriteMask = ColorWriteMaskFlags.All,
-                    BlendOperation = BlendOperation.Add,
-                    AlphaBlendOperation = BlendOperation.Add,
-                    SourceBlend = BlendOption.One,
-                    DestinationBlend = BlendOption.InverseSourceAlpha,
-                    SourceAlphaBlend = BlendOption.One,
-                    DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
-                    IsBlendEnabled = false
-                };
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
+            EBlendMode.BLEND_Additive => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.One,
+                DestinationBlend = BlendOption.One,
+                SourceAlphaBlend = BlendOption.Zero,
+                DestinationAlphaBlend = BlendOption.One,
+                IsBlendEnabled = true
+            },
+            EBlendMode.BLEND_Modulate => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.DestinationColor,
+                DestinationBlend = BlendOption.Zero,
+                SourceAlphaBlend = BlendOption.Zero,
+                DestinationAlphaBlend = BlendOption.One,
+                IsBlendEnabled = true
+            },
+            EBlendMode.BLEND_SoftMasked => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.SourceAlpha,
+                DestinationBlend = BlendOption.InverseSourceAlpha,
+                SourceAlphaBlend = BlendOption.Zero,
+                DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
+                IsBlendEnabled = true
+            },
+            EBlendMode.BLEND_AlphaComposite => new RenderTargetBlendDescription
+            {
+                RenderTargetWriteMask = ColorWriteMaskFlags.All,
+                BlendOperation = BlendOperation.Add,
+                AlphaBlendOperation = BlendOperation.Add,
+                SourceBlend = BlendOption.One,
+                DestinationBlend = BlendOption.InverseSourceAlpha,
+                SourceAlphaBlend = BlendOption.One,
+                DestinationAlphaBlend = BlendOption.InverseSourceAlpha,
+                IsBlendEnabled = false
+            },
+            _ => throw new ArgumentOutOfRangeException(),
+        };
+        BlendState = renderContext.GetCachedBlendState(blendDesc);
     }
 
     private void FindDiffuse()
@@ -339,37 +323,15 @@ public class ModelPreviewMaterial : IDisposable
     public void RenderSection(ModelPreviewLOD lod, ModelPreviewSection s, MeshRenderContext context)
     {
         MeshElement mesh = lod.Mesh;
-        SceneCamera camera = context.Camera;
         var material = Material;
         LEEffect effect = context.LEEffect;
-        PixelShader ps = context.GetCachedPixelShader(material.PixelShader.Guid, material.PixelShader.ShaderByteCode);
-        (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.VertexShader.Guid, material.VertexShader.ShaderByteCode);
-        effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));
-
-        Matrix4x4 viewMatrix = camera.ViewMatrix;
-        var vsConstants = new LEVSConstants
-        {
-            ViewProjectionMatrix = viewMatrix * camera.ProjectionMatrix,
-            CameraPosition = new Vector4(camera.Position, 1),
-            PreViewTranslation = Vector4.Zero,
-        };
-        float depthMul = camera.ProjectionMatrix[2, 2];
-        float depthAdd = camera.ProjectionMatrix[3, 2];
-        if (false) //TODO: check if Z is inverted, if so this should be true
-        {
-            depthMul = 1f - depthMul;
-            depthAdd = -depthAdd;
-        }
-        var psConstants = new LEPSConstants
-        {
-            ScreenPositionScaleBias = new Vector4(1f / 2f, 1f / -2f, (context.Height / 2f + 0.5f) / context.Height, (context.Width / 2f + 0.5f) / context.Width),
-            MinZ_MaxZRatio = new Vector4(depthAdd, depthMul, 1f / depthAdd, depthMul / depthAdd),
-            DynamicScale = Vector4.One,
-        };
+        VertexShader vs = material.VertexShader;
+        PixelShader ps = material.PixelShader;
+        effect.PrepDraw(context.ImmediateContext, vs, ps, material.InputLayout, BlendState);
 
         material.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
 
-        effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+        effect.RenderObject(context.ImmediateContext, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
     }
 
     public void Dispose()
