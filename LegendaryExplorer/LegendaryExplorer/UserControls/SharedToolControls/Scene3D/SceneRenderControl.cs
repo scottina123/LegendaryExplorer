@@ -161,7 +161,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                         float x = vertex.GetProp<FloatProperty>("X").Value;
                         float y = vertex.GetProp<FloatProperty>("Y").Value;
                         float z = vertex.GetProp<FloatProperty>("Z").Value;
-                        vertices.Add(new LEVertex(new Vector3(-x, z, y), Vector3.Zero, Vector2.Zero));
+                        vertices.Add(new LEVertex(new Vector3(x, y, z), Vector3.Zero, Vector2.Zero));
                         ++vertTotal;
                     }
                 }
@@ -175,6 +175,27 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
     public abstract class RenderContext
     {
+        [Flags]
+        public enum ShaderFlags : int
+        {
+            None = 0,
+            /// <summary>
+            /// If normals should have the third color channel populated
+            /// </summary>
+            ReconstructNormalZ = 1 << 0,
+            /// <summary>
+            /// If alpha channel should be set to black, so textures can properly be viewed
+            /// </summary>
+            AlphaAsBlack = 1 << 1,
+            EnableRedChannel = 1 << 2,
+            EnableGreenChannel = 1 << 3,
+            EnableBlueChannel = 1 << 4,
+            EnableAlphaChannel = 1 << 5,
+
+            //level editor flags
+            PrimitiveRendering = 1 << 31,
+        }
+
         public int Width { get; private set; } = 0;
         public int Height { get; private set; } = 0;
         public Device Device { get; private set; }
@@ -392,6 +413,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
                 CompositionTarget.Rendering += CompositionTarget_Rendering;
                 InitiallyLoaded = true;
+                D3DImage.SetPixelSize(RenderWidth, RenderHeight);
             }
             else
             {

@@ -11,7 +11,7 @@ using System.Numerics;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
-public class ActorProxy : NotifyPropertyChangedBase, IDisposable
+public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
     public Matrix4x4 LocalToWorld;
 
@@ -84,15 +84,6 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable
 
     protected virtual void UpdateLocalToWorld()
     {
-        //LocalToWorld = Matrix4x4.CreateScale(drawScale * drawScale3D) * Matrix4x4.CreateTranslation(location) * Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll);
-        //LocalToWorld = Matrix4x4.CreateScale(drawScale * drawScale3D) * Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll) * Matrix4x4.CreateTranslation(location);
-
-        //LocalToWorld = Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll) * Matrix4x4.CreateScale(drawScale * drawScale3D) * Matrix4x4.CreateTranslation(location);
-        //LocalToWorld = Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll) * Matrix4x4.CreateTranslation(location) * Matrix4x4.CreateScale(drawScale * drawScale3D);
-
-        //LocalToWorld = Matrix4x4.CreateTranslation(location) * Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll) * Matrix4x4.CreateScale(drawScale * drawScale3D);
-        //LocalToWorld = Matrix4x4.CreateTranslation(location) * Matrix4x4.CreateScale(drawScale * drawScale3D) * Matrix4x4.CreateFromYawPitchRoll(rotation.Yaw, rotation.Pitch, rotation.Roll);
-        
         LocalToWorld = ActorUtils.ComposeLocalToWorld(location, rotation, drawScale * drawScale3D, prePivot);
         foreach (var cmp in Components)
         {
@@ -152,6 +143,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable
         }
         return bounds;
     }
+
+    public int HitID { get; set; }
+
+    public bool IsUI => false;
 
     #region IDisposable
     private bool disposedValue;

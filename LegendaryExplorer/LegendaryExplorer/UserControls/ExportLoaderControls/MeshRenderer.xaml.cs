@@ -131,11 +131,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _setAlphaToBlack, value);
             if (value)
             {
-                this.MeshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.AlphaAsBlack;
+                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.AlphaAsBlack;
             }
             else
             {
-                this.MeshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.AlphaAsBlack;
+                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.AlphaAsBlack;
             }
         }
     }
@@ -149,11 +149,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showRedChannel, value);
             if (value)
             {
-                this.MeshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableRedChannel;
+                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableRedChannel;
             }
             else
             {
-                this.MeshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableRedChannel;
+                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableRedChannel;
             }
         }
     }
@@ -167,11 +167,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showGreenChannel, value);
             if (value)
             {
-                this.MeshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableGreenChannel;
+                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableGreenChannel;
             }
             else
             {
-                this.MeshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableGreenChannel;
+                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableGreenChannel;
             }
         }
     }
@@ -185,11 +185,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showBlueChannel, value);
             if (value)
             {
-                this.MeshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableBlueChannel;
+                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableBlueChannel;
             }
             else
             {
-                this.MeshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableBlueChannel;
+                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableBlueChannel;
             }
         }
     }
@@ -203,11 +203,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showAlphaChannel, value);
             if (value)
             {
-                this.MeshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
+                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableAlphaChannel;
             }
             else
             {
-                this.MeshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
+                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableAlphaChannel;
             }
         }
     }
@@ -786,7 +786,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
         foreach (var vertex in model.VertexBuffer)
         {
             // We don't know the normal vectors yet
-            vertexList.Add(new LEVertex(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), Vector3.Zero, new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y)));
+            vertexList.Add(new LEVertex(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), Vector3.Zero, new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y)));
         }
         Span<LEVertex> vertsSpan = CollectionsMarshal.AsSpan(vertexList);
 
@@ -828,7 +828,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
 
         foreach (var point in parentModel.Points)
         {
-            vertices.Add(new LEVertex(new Vector3(-point.X, point.Z, point.Y), Vector3.Zero, Vector2.Zero));
+            vertices.Add(new LEVertex(new Vector3(point.X, point.Y, point.Z), Vector3.Zero, Vector2.Zero));
         }
 
         var triangles = new List<Triangle>();

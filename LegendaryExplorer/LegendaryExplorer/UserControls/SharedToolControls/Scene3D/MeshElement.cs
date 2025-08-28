@@ -103,19 +103,19 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
     public struct LEVertex
     {
         public Vector4 position;
-        public Vector3 tangent;
+        public Vector3 tangent_or_hitTestID; //tangent for game shaders, sometimes used as hittest id for the level editor
         public Vector4 normal;
         public Vector4 color;
         //actual number of UVs used by FLocalVertexFactory vertex shaders varies between 1 float2, and 3 float4s + 1 float2.
         //however, it's perfectly fine for the vertex buffer stride to be longer than the parameters for a vertex shader
         //and for the InputLayout to be bigger. So for simplicity, all vertexes are the maximum size regardless of shader
         private Fixed4<Vector4> uvs;
-        public Vector3 Position => new(position.X, position.Y, position.Z);
+        public readonly Vector3 Position => new(position.X, position.Y, position.Z);
 
         private LEVertex(Vector4 position, Vector3 tangent, Vector4 normal, Vector4 color, Fixed4<Vector4> uvs)
         {
             this.position = position;
-            this.tangent = tangent;
+            this.tangent_or_hitTestID = tangent;
             this.normal = normal;
             this.color = color;
             this.uvs = uvs;
@@ -126,6 +126,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             this.position = new Vector4(position, 1);
             this.normal = new Vector4(normal, 1);
             this.uvs[0] = new Vector4(uv, 1, 1);
+        }
+
+        //for use by the level editors primitives
+        public LEVertex(Vector3 position, Vector4 color, Vector3 hitTestId)
+        {
+            this.position = new Vector4(position, 1);
+            this.color = color;
+            this.tangent_or_hitTestID = hitTestId;
         }
 
         public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);

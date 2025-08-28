@@ -1,4 +1,7 @@
 ﻿using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Numerics;
 
@@ -33,7 +36,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             get => yaw;
             set
             {
-                yaw = value;
+                yaw = value.Wrap(0, MathF.PI * 2);
                 CalcViewMatrix();
             }
         }
@@ -44,11 +47,51 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         public float ZNear = 0.1f;
         public float ZFar = 400_000f;
         public bool FirstPerson = false;
-        public Vector3 CameraUp => Vector3.Transform(Vector3.UnitY, Matrix4x4.CreateRotationX(Pitch) * Matrix4x4.CreateRotationY(Yaw)) * new Vector3(1, 1, -1);
+        public Vector3 CameraUp
+        {
+            get
+            {
+                float sr = MathF.Sin(0/*Roll*/);
+                float sp = MathF.Sin(Pitch);
+                float sy = MathF.Sin(Yaw);
+                float cr = MathF.Cos(0/*Roll*/);
+                float cp = MathF.Cos(Pitch);
+                float cy = MathF.Cos(Yaw);
 
-        public Vector3 CameraLeft => Vector3.Transform(-Vector3.UnitX, Matrix4x4.CreateRotationY(-Yaw));
+                return new Vector3(-(cr * sp * cy + sr * sy), cy * sr - cr * sp * sy, cr * cp).Normal();
 
-        public Vector3 CameraForward => Vector3.Transform(Vector3.UnitZ, Matrix4x4.CreateRotationX(-Pitch) * Matrix4x4.CreateRotationY(-Yaw));
+                //return Vector3.Transform(Vector3.UnitY, Matrix4x4.CreateRotationX(Pitch) * Matrix4x4.CreateRotationY(Yaw)) * new Vector3(1, 1, -1);
+            }
+        }
+
+        public Vector3 CameraRight
+        {
+            get
+            {
+                float sr = MathF.Sin(0/*Roll*/);
+                float sp = MathF.Sin(Pitch);
+                float sy = MathF.Sin(Yaw);
+                float cr = MathF.Cos(0/*Roll*/);
+                float cp = MathF.Cos(Pitch);
+                float cy = MathF.Cos(Yaw);
+
+                return new Vector3(sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp).Normal();
+
+                //return Vector3.Transform(Vector3.UnitX, Matrix4x4.CreateRotationZ(Yaw));
+            }
+        }
+
+        public Vector3 CameraForward
+        {
+            get
+            {
+                var cp = MathF.Cos(Pitch);
+                var cy = MathF.Cos(Yaw);
+                var sp = MathF.Sin(Pitch);
+                var sy = MathF.Sin(Yaw);
+                return new Vector3(cp * cy, cp * sy, sp).Normal();
+            }
+        }
 
         public SceneCamera()
         {
@@ -63,9 +106,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         public void OrientTowards(Vector3 point)
         {
-            Vector3 direction = (point - Position).Normal();
-            Pitch = MathF.Asin(-direction.Y);
-            Yaw = MathF.Atan2(direction.X, direction.Z);
+            Vector3 dirVec = (point - Position).Normal();
+            float x = dirVec.X;
+            float y = dirVec.Y;
+            float z = dirVec.Z;
+            Pitch = MathF.Atan2(z, MathF.Sqrt(MathF.Pow(x, 2) + MathF.Pow(y, 2)));
+            Yaw = MathF.Atan2(y, x);
         }
 
         private Matrix4x4 firstPersonViewMatrix;
@@ -86,27 +132,18 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         private void CalcViewMatrix()
         {
-            firstPersonViewMatrix = Matrix4x4.CreateTranslation(-Position) * Matrix4x4.CreateRotationY(Yaw) * Matrix4x4.CreateRotationX(Pitch);
+            firstPersonViewMatrix = Matrix4x4.CreateLookToLeftHanded(Position, CameraForward, Vector3.UnitZ);
         }
 
         public Matrix4x4 ProjectionMatrix
         {
             get
             {
-                // This creates a left handed FoV matrix - code ported from SharpDX
-
-                var matrix = new Matrix4x4();
-                float yScale = (float)(1.0f / Math.Tan(FOV * 0.5f));
-                float q = ZFar / (ZFar - ZNear);
-
-                matrix.M11 = yScale / aspect;
-                matrix.M22 = yScale;
-                matrix.M33 = q;
-                matrix.M34 = 1.0f;
-                matrix.M43 = -q * ZNear;
-                return matrix;
+                return Matrix4x4.CreatePerspectiveFieldOfViewLeftHanded(FOV, aspect, ZNear, ZFar);
             }
         }
 
+
+        public Matrix4x4 ViewProjectionMatrix => ViewMatrix * ProjectionMatrix;
     }
 }

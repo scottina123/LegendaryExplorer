@@ -1,4 +1,5 @@
-﻿using LegendaryExplorer.Misc;
+﻿using BCnEncoder.Shared.ImageFiles;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
@@ -29,9 +30,9 @@ namespace LegendaryExplorer.Tools.LevelEditor
     /// </summary>
     public partial class LevelEditor : WPFBase, IRecents
     {
-        private readonly MeshRenderContext RenderContext;
+        private readonly LevelEditorRenderContext RenderContext;
 
-        public ObservableCollectionExtended<ActorProxy> Actors { get; } = new();
+        public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
 
         private ActorProxy selectedActor;
         public ActorProxy SelectedActor
@@ -55,11 +56,7 @@ namespace LegendaryExplorer.Tools.LevelEditor
             InitializeComponent();
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
-            RenderContext = new MeshRenderContext
-            {
-                BackgroundColor = System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99)
-            };
-            RenderContext.Camera.FirstPerson = true;
+            RenderContext = new LevelEditorRenderContext();
             SceneViewer.Context = RenderContext;
         }
 
@@ -70,7 +67,6 @@ namespace LegendaryExplorer.Tools.LevelEditor
 
         private void RenderScene(object sender, EventArgs e)
         {
-            RenderContext.UpdateLECameraConstants();
             DoRenderPass(RenderPass.Base);
             DoRenderPass(RenderPass.Hair);
 
@@ -78,14 +74,23 @@ namespace LegendaryExplorer.Tools.LevelEditor
             {
                 DoRenderPass(RenderPass.Collision);
             }
-
-            void DoRenderPass(RenderPass pass)
+            RenderContext.DrawUI();
+        }
+        void DoRenderPass(RenderPass pass)
+        {
+            for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
             {
-                foreach (var actor in Actors)
-                {
-                    actor.Render(RenderContext, pass);
-                }
+                ActorProxy actor = RenderContext.DrawList_3D[i];
+                RenderContext.CurrentHitTestId = new Vector3((i & 0xFF) / 255f, ((i >> 8) & 0xFF) / 255f, ((i >> 16) & 0xFF) / 255f);
+                actor.Render(RenderContext, pass);
             }
+        }
+
+        private void ViewportActorSelect(ActorProxy actor)
+        {
+            //don't set the property normally, as we don't want to trigger FocusOnBounds
+            SetProperty(ref selectedActor, actor, nameof(SelectedActor));
+            MeshExportsList.ScrollIntoView(selectedActor);
         }
 
         private void CenterView()
@@ -113,7 +118,7 @@ namespace LegendaryExplorer.Tools.LevelEditor
             Vector3 origin = fullBounds.Origin;
             float hyp = fullBounds.SphereRadius;
             (float sin, float cos) = MathF.SinCos(MathF.PI / 6);
-            RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Y + cos * hyp);
+            RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
             RenderContext.Camera.OrientTowards(origin);
         }
 
@@ -162,6 +167,7 @@ namespace LegendaryExplorer.Tools.LevelEditor
             }).ContinueWithOnUIThread(prevTask =>
             {
                 Actors.AddRange(prevTask.Result);
+                RenderContext.LoadLevel(Actors);
                 CenterView();
 
                 SceneViewer.SetShouldRender(true);
@@ -208,8 +214,8 @@ namespace LegendaryExplorer.Tools.LevelEditor
 
         public void UnloadLevel()
         {
-            RenderContext.EmptyCaches();
-            Actors.DisposeAndClear();
+            RenderContext.UnloadLevel();
+            Actors.Clear();
         }
 
         public ICommand OpenFileCommand { get; set; }
@@ -321,6 +327,7 @@ namespace LegendaryExplorer.Tools.LevelEditor
 
             RenderContext.UpdateScene -= UpdateScene;
             RenderContext.RenderScene -= RenderScene;
+            RenderContext.SelectActor -= ViewportActorSelect;
 
             UnloadLevel();
             SceneViewer.Dispose();
@@ -336,6 +343,7 @@ namespace LegendaryExplorer.Tools.LevelEditor
         {
             RenderContext.UpdateScene += UpdateScene;
             RenderContext.RenderScene += RenderScene;
+            RenderContext.SelectActor += ViewportActorSelect;
         }
     }
 }

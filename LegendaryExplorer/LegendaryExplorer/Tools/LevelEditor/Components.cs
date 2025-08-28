@@ -228,7 +228,10 @@ public class StaticMeshComponentProxy : MeshComponentProxy
     {
         if (pass is RenderPass.Collision)
         {
-            context.RenderMeshAsWireframe(CollisionMesh);
+            if (CollisionMesh is not null)
+            {
+                context.RenderMeshAsWireframe(CollisionMesh);
+            }
             return;
         }
         StaticMesh?.RenderFallback(pass, context, LOD);

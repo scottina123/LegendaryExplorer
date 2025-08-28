@@ -1,4 +1,5 @@
-﻿using LegendaryExplorerCore.Gammtek;
+﻿using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
+using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
@@ -289,13 +290,7 @@ public class ModelPreviewMaterial : IDisposable
     /// <param name="s">Which faces to render.</param>
     public void RenderFallback(ModelPreviewLOD lod, ModelPreviewSection s, MeshRenderContext context)
     {
-        SceneCamera camera = context.Camera;
-        context.FallbackEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState);
-        var worldConstants = new MeshRenderContext.WorldConstants(
-            Matrix4x4.Transpose(camera.ProjectionMatrix),
-            Matrix4x4.Transpose(camera.ViewMatrix),
-            Matrix4x4.Transpose(lod.Mesh.LocalToWorld),
-            context.CurrentTextureViewFlags);
+        context.FallbackEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, context.GetWorldConstants(lod.Mesh.LocalToWorld));
 
         if (DiffuseTextureFullName is null)
         {
@@ -307,7 +302,6 @@ public class ModelPreviewMaterial : IDisposable
 
         context.FallbackEffect.RenderObject(
             context.ImmediateContext,
-            worldConstants,
             lod.Mesh,
             (int)s.StartIndex,
             (int)s.TriangleCount * 3,
@@ -408,7 +402,7 @@ public class ModelPreview : IDisposable
                     uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
                 }
             }
-            vertices.Add(LEVertex.Create(new Vector3(-position.X, position.Z, position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+            vertices.Add(LEVertex.Create(new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
         }
 
         //OLD CODE
@@ -495,7 +489,7 @@ public class ModelPreview : IDisposable
                 foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
                 {
                     uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add(LEVertex.Create(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    vertices.Add(LEVertex.Create(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
                 }
             }
             else
@@ -503,7 +497,7 @@ public class ModelPreview : IDisposable
                 foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
                 {
                     uvs[0] = new Vector4(vertex.UV, 0, 0);
-                    vertices.Add(LEVertex.Create(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                    vertices.Add(LEVertex.Create(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
                 }
             }
             // Triangles

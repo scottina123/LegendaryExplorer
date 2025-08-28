@@ -71,10 +71,15 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             return new Vector3((cp * cy), (cp * sy), sp);
         }
 
-        public bool IsZero => Pitch == 0 && Yaw == 0 && Roll == 0; 
+        public bool IsZero => Pitch == 0 && Yaw == 0 && Roll == 0;
         public override string ToString()
         {
             return $"Pitch:{Pitch} Yaw:{Yaw} Roll:{Roll}";
+        }
+
+        public static Rotator operator +(Rotator a, Rotator b)
+        {
+            return new Rotator(a.Pitch + b.Pitch, a.Yaw + b.Yaw, a.Roll + b.Roll);
         }
     }
 

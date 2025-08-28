@@ -5,6 +5,7 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.SharpDX;
 using SharpDX.D3DCompiler;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
@@ -15,9 +16,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
+using Color = System.Windows.Media.Color;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
@@ -32,25 +35,24 @@ public class MeshRenderContext : RenderContext
     /// <summary>
     /// The current flags for rendering textures. This renderer does not support 'SetAlphaAsBlack' or 'ReconstructZ'
     /// </summary>
-    public TextureRenderContext.TextureViewFlags CurrentTextureViewFlags = TextureRenderContext.TextureViewFlags.EnableRedChannel | TextureRenderContext.TextureViewFlags.EnableGreenChannel | TextureRenderContext.TextureViewFlags.EnableBlueChannel | TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
+    public TextureRenderContext.ShaderFlags RenderFlags = TextureRenderContext.ShaderFlags.EnableRedChannel | TextureRenderContext.ShaderFlags.EnableGreenChannel | TextureRenderContext.ShaderFlags.EnableBlueChannel | TextureRenderContext.ShaderFlags.EnableAlphaChannel;
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct WorldConstants
     {
         public Matrix4x4 Projection;
         public Matrix4x4 View;
         public Matrix4x4 Model;
-        public TextureRenderContext.TextureViewFlags Flags;
-        public int Padding1;
-        public int Padding2;
-        public int Padding3; // Aligns on 16 byte boundary
+        public Vector3 HitTestID;
+        public TextureRenderContext.ShaderFlags Flags;
 
-        public WorldConstants(Matrix4x4 Projection, Matrix4x4 View, Matrix4x4 Model, TextureRenderContext.TextureViewFlags flags)
+        public WorldConstants(Matrix4x4 Projection, Matrix4x4 View, Matrix4x4 Model, TextureRenderContext.ShaderFlags flags, Vector3 hitTestId)
         {
             this.Projection = Projection;
             this.View = View;
             this.Model = Model;
             this.Flags = flags;
-            Padding1 = Padding2 = Padding3 = 0;
+            this.HitTestID = hitTestId;
         }
     }
 
@@ -72,8 +74,10 @@ public class MeshRenderContext : RenderContext
     public RenderTargetView BackbufferView { get; private set; }
     public Texture2D DepthBuffer { get; private set; } // also called Depth-Stencil, but we don't use stencil at the moment.
     public DepthStencilView DepthBufferView { get; private set; }
+    protected Texture2D HitBuffer;
+    protected RenderTargetView HitBufferView;
 
-    private D2D.RenderTarget renderTarget2D;
+    protected D2D.RenderTarget RenderTarget2D;
     private DW.TextFormat statsTextFormat;
     private DW.TextFormat errorTextFormat;
     private D2D.SolidColorBrush statsTextBrush;
@@ -115,6 +119,8 @@ public class MeshRenderContext : RenderContext
     private float lastFPSFrame;
     string ErrorText;
 
+    public Vector3 CurrentHitTestId;
+
     public event EventHandler<float> UpdateScene;
     public event EventHandler RenderScene;
 
@@ -154,23 +160,23 @@ public class MeshRenderContext : RenderContext
             }
             if (PressedKeys.HasFlag(KeyStates.S))
             {
-                Camera.Position += -Camera.CameraForward * timestep * CameraSpeed;
+                Camera.Position -= Camera.CameraForward * timestep * CameraSpeed;
             }
             if (PressedKeys.HasFlag(KeyStates.A))
             {
-                Camera.Position += Camera.CameraLeft * timestep * CameraSpeed;
+                Camera.Position -= Camera.CameraRight * timestep * CameraSpeed;
             }
             if (PressedKeys.HasFlag(KeyStates.D))
             {
-                Camera.Position += -Camera.CameraLeft * timestep * CameraSpeed;
+                Camera.Position += Camera.CameraRight * timestep * CameraSpeed;
             }
             if (PressedKeys.HasFlag(KeyStates.Q))
             {
-                Camera.Position += -Vector3.UnitY * timestep * CameraSpeed;
+                Camera.Position -= Vector3.UnitZ * timestep * CameraSpeed;
             }
             if (PressedKeys.HasFlag(KeyStates.E))
             {
-                Camera.Position += Vector3.UnitY * timestep * CameraSpeed;
+                Camera.Position += Vector3.UnitZ * timestep * CameraSpeed;
             }
         }
 
@@ -181,19 +187,20 @@ public class MeshRenderContext : RenderContext
     {
         NumFrames++;
         // Clear the color and depth buffers
-        if (DepthBufferView != null && BackbufferView != null)
+        if (BackbufferView != null)
         {
-            ImmediateContext.ClearDepthStencilView(DepthBufferView, DepthStencilClearFlags.Depth, 1.0f, 0);
+            ClearDepthBuffer();
             ImmediateContext.ClearRenderTargetView(BackbufferView, new RawColor4(BackgroundColor.R / 255.0f, BackgroundColor.G / 255.0f, BackgroundColor.B / 255.0f, BackgroundColor.A / 255.0f));
+            if (HitBufferView is not null) ImmediateContext.ClearRenderTargetView(HitBufferView, new RawColor4(1f, 1f, 1f, 1f));
 
             if (ErrorText is not null)
             {
-                renderTarget2D.BeginDraw();
+                RenderTarget2D.BeginDraw();
                 {
-                    var size = renderTarget2D.Size;
-                    renderTarget2D.DrawText($"{ErrorText}", errorTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), errorTextBrush);
+                    var size = RenderTarget2D.Size;
+                    RenderTarget2D.DrawText($"{ErrorText}", errorTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), errorTextBrush);
                 }
-                renderTarget2D.EndDraw();
+                RenderTarget2D.EndDraw();
             }
             else
             {
@@ -210,16 +217,24 @@ public class MeshRenderContext : RenderContext
             if (App.IsDebug)
             {
                 //render D2D overlay
-                renderTarget2D.BeginDraw();
+                RenderTarget2D.BeginDraw();
                 {
-                    var size = renderTarget2D.Size;
-                    renderTarget2D.DrawText($"{FPS} fps\n{Camera.Position}", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
+                    var size = RenderTarget2D.Size;
+                    RenderTarget2D.DrawText($"{FPS} fps\n{Camera.Position}\nPitch: {Camera.Pitch.RadiansToDegrees()}, Yaw: {Camera.Yaw.RadiansToDegrees()}", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
                 }
-                renderTarget2D.EndDraw();
+                RenderTarget2D.EndDraw();
             }
         }
 
         base.Render();
+    }
+
+    public void ClearDepthBuffer()
+    {
+        if (DepthBufferView != null)
+        {
+            ImmediateContext.ClearDepthStencilView(DepthBufferView, DepthStencilClearFlags.Depth, 1.0f, 0);
+        }
     }
 
     public void UpdateLECameraConstants()
@@ -327,18 +342,31 @@ public class MeshRenderContext : RenderContext
         });
         DepthBufferView = new DepthStencilView(Device, DepthBuffer);
 
-        // Set the output-merger pipeline state to write to the created back buffer and depth buffer
-        ImmediateContext.OutputMerger.SetRenderTargets(DepthBufferView, BackbufferView);
+        HitBuffer = new Texture2D(Device, new Texture2DDescription
+        {
+            ArraySize = 1,
+            BindFlags = BindFlags.RenderTarget | BindFlags.ShaderResource,
+            CpuAccessFlags = CpuAccessFlags.None,
+            Format = Format.B8G8R8A8_UNorm,
+            Height = Height,
+            Width = Width,
+            MipLevels = 1,
+            OptionFlags = ResourceOptionFlags.None,
+            SampleDescription = new SampleDescription(1, 0),
+            Usage = ResourceUsage.Default
+        });
+        HitBufferView = new RenderTargetView(Device, HitBuffer);
+
+        ImmediateContext.OutputMerger.SetRenderTargets(DepthBufferView, BackbufferView, HitBufferView);
         ImmediateContext.Rasterizer.SetViewport(0, 0, Width, Height);
-        ImmediateContext.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
 
         Camera.aspect = (float)Width / Height;
 
 
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
-        renderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
-        statsTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
-        errorTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        RenderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
+        statsTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        errorTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
         using var dwFactory = new DW.Factory(DW.FactoryType.Shared);
         statsTextFormat = new DW.TextFormat(dwFactory, "Verdana", 12)
         {
@@ -356,9 +384,16 @@ public class MeshRenderContext : RenderContext
     {
         ImmediateContext.OutputMerger.SetRenderTargets((RenderTargetView)null);
         BackbufferView.Dispose();
+        BackbufferView = null;
         DepthBufferView.Dispose();
+        DepthBufferView = null;
         DepthBuffer.Dispose();
-        renderTarget2D.Dispose();
+        DepthBuffer = null;
+        HitBufferView?.Dispose();
+        HitBufferView = null;
+        HitBuffer?.Dispose();
+        HitBuffer = null;
+        RenderTarget2D.Dispose();
         statsTextFormat.Dispose();
         errorTextFormat.Dispose();
         statsTextBrush.Dispose();
@@ -391,10 +426,14 @@ public class MeshRenderContext : RenderContext
     {
         bool wireframeBackup = Wireframe;
         Wireframe = true;
-        var viewConstants = new WorldConstants(Matrix4x4.Transpose(Camera.ProjectionMatrix), Matrix4x4.Transpose(Camera.ViewMatrix), mesh.LocalToWorld, CurrentTextureViewFlags);
-        FallbackEffect.PrepDraw(ImmediateContext, AlphaBlendState);
-        FallbackEffect.RenderObject(ImmediateContext, viewConstants, mesh, null);
+        FallbackEffect.PrepDraw(ImmediateContext, AlphaBlendState, GetWorldConstants(mesh.LocalToWorld));
+        FallbackEffect.RenderObject(ImmediateContext, mesh, null);
         Wireframe = wireframeBackup;
+    }
+
+    public WorldConstants GetWorldConstants(Matrix4x4 localToWorld)
+    {
+        return new WorldConstants(Matrix4x4.Transpose(Camera.ProjectionMatrix), Matrix4x4.Transpose(Camera.ViewMatrix), Matrix4x4.Transpose(localToWorld), RenderFlags, CurrentHitTestId);
     }
 
     public BlendState GetCachedBlendState(RenderTargetBlendDescription renderTargetBlendDesc)
@@ -490,10 +529,12 @@ public class MeshRenderContext : RenderContext
         PixelShaderCache.DisposeValuesAndClear();
     }
 
+    private System.Drawing.Point mouseDownPos;
     public override bool MouseDown(MouseButtons button, int x, int y)
     {
         if (PressedMouseButton is MouseButtons.None)
         {
+            mouseDownPos = new System.Drawing.Point(x, y);
             PressedMouseButton = button;
         }
         return false;
@@ -501,11 +542,10 @@ public class MeshRenderContext : RenderContext
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
-        bool handled = PressedMouseButton is not MouseButtons.None;
-
         PressedMouseButton = MouseButtons.None;
 
-        return handled;
+        //if it moved any significant amount, we count it as a drag
+        return Math.Abs(x - mouseDownPos.X) > 3 || Math.Abs(y - mouseDownPos.Y) > 3;
     }
 
     private System.Drawing.Point lastMouse;
@@ -519,17 +559,20 @@ public class MeshRenderContext : RenderContext
             switch (PressedMouseButton)
             {
                 case MouseButtons.Left:
-                    Debug.WriteLine($"Before {Camera.Position}");
-                    var camFwd = (Camera.CameraForward with { Y = 0 }).Normal();
-                    Camera.Position += camFwd * -yDiff;
-                    Camera.Yaw += xDiff * -0.01f;
-                    Debug.WriteLine($"after {Camera.Position}");
+                    var camFwd = (Camera.CameraForward with { Z = 0 }).Normal();
+                    Camera.Position += camFwd * -yDiff * (CameraSpeed / FPS);
+                    Camera.Yaw += xDiff * 0.01f;
+                    handled = true;
                     break;
                 case MouseButtons.Middle:
+                    Camera.Position += Camera.CameraRight * -xDiff * (CameraSpeed / FPS);
+                    Camera.Position += Camera.CameraUp * yDiff * (CameraSpeed / FPS);
+                    handled = true;
                     break;
                 case MouseButtons.Right:
-                    Camera.Yaw += xDiff * -0.01f;
-                    Camera.Pitch = (Camera.Pitch + yDiff * -0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+                    Camera.Yaw += xDiff * 0.01f;
+                    Camera.Pitch = (Camera.Pitch - yDiff * 0.01f).Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+                    handled = true;
                     break;
             }
         }
@@ -545,7 +588,7 @@ public class MeshRenderContext : RenderContext
                     break;
                 //panning
                 case MouseButtons.Middle:
-                    Camera.Position += Camera.CameraLeft * xDiff * Camera.FocusDepth * 0.004f;
+                    Camera.Position += Camera.CameraRight * xDiff * Camera.FocusDepth * 0.004f;
                     Camera.Position += Camera.CameraUp * yDiff * Camera.FocusDepth * 0.004f;
                     handled = true;
                     break;
@@ -565,7 +608,7 @@ public class MeshRenderContext : RenderContext
     {
         if (Camera.FirstPerson)
         {
-            Camera.Position += Camera.CameraForward * (CameraSpeed / 100 ) * delta;
+            Camera.Position += Camera.CameraForward * (CameraSpeed / FPS ) * (delta / 10f);
         }
         else
         {
@@ -655,6 +698,26 @@ public class MeshRenderContext : RenderContext
 
         return handled;
     }
+
+    public Vector4 WorldToScreen(Vector3 point)
+    {
+        return Vector4.Transform(point, Camera.ViewProjectionMatrix);
+    }
+
+    public bool ScreenToPixel(Vector4 point, out Vector2 pixel)
+    {
+        if (point.W <= 0f)
+        {
+            pixel = Vector2.Zero;
+            return false;
+        }
+
+        float invW = 1f / point.W;
+        pixel = new Vector2((0.5f + point.X * 0.5f * invW) * Width, (0.5f - point.Y * 0.5f * invW) * Height);
+        return true;
+    }
+
+    public bool WorldToPixel(Vector3 point, out Vector2 pixel) => ScreenToPixel(WorldToScreen(point), out pixel);
 }
 
 file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>
