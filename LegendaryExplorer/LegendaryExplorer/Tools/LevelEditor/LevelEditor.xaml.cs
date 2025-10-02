@@ -27,9 +27,10 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 /// </summary>
 public partial class LevelEditor : WPFBase, IRecents
 {
-    private readonly LevelEditorRenderContext RenderContext;
+    public readonly LevelEditorRenderContext RenderContext;
 
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
+    private ExportEntry LevelExport;
 
     private ActorProxy selectedActor;
     public ActorProxy SelectedActor
@@ -43,6 +44,13 @@ public partial class LevelEditor : WPFBase, IRecents
                 RenderContext.TransformWidget.Attach = selectedActor;
             }
         }
+    }
+
+    private bool isDirty;
+    public bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
     }
 
     private bool _showCollision;
@@ -146,13 +154,24 @@ public partial class LevelEditor : WPFBase, IRecents
         RenderContext.Camera.OrientTowards(origin);
     }
 
-    private void LoadLevel(Level level)
+    private void LoadLevel(Level level, bool isReload = false)
     {
+        (Vector3, float, float) savedCamPOV = default;
+        Vector3 savedActorPos = default;
+        if (isReload && SelectedActor is not null)
+        {
+            savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
+            savedActorPos = SelectedActor.Location;
+            ExportQueuedForFocusing = SelectedActor.Export.UIndex;
+        }
+        UnloadLevel();
+
         IsBusy = true;
         BusyText = "Loading level...";
         SceneViewer.SetShouldRender(false);
         Task.Run(() =>
         {
+            LevelExport = level.Export;
             var actorExports = level.Actors.Where(Pcc.IsUExport).Select(Pcc.GetUExport);
             var actors = new List<ActorProxy>();
             foreach (var actorExport in actorExports)
@@ -165,7 +184,7 @@ public partial class LevelEditor : WPFBase, IRecents
                     {
                         if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                         {
-                            var smcActor = new StaticMeshComponentActorProxy(RenderContext, smcExport, smca, i);
+                            var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
                             actors.Add(smcActor);
                         }
                     }
@@ -181,7 +200,7 @@ public partial class LevelEditor : WPFBase, IRecents
                     //    }
                     //}
                 }
-                else if (ActorProxy.Create(RenderContext, actorExport) is { } actorProxy)
+                else if (ActorProxy.Create(this, actorExport) is { } actorProxy)
                 {
                     actors.Add(actorProxy);
                 }
@@ -192,7 +211,10 @@ public partial class LevelEditor : WPFBase, IRecents
         {
             Actors.AddRange(prevTask.Result);
             RenderContext.LoadLevel(Actors);
-            CenterView();
+            if (!isReload)
+            {
+                CenterView();
+            }
 
             SceneViewer.SetShouldRender(true);
             IsBusy = false;
@@ -204,6 +226,11 @@ public partial class LevelEditor : WPFBase, IRecents
                     SelectedActor = proxy;
                 }
                 ExportQueuedForFocusing = 0;
+                if (isReload)
+                {
+                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw) 
+                    = (savedCamPOV.Item1 + SelectedActor.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                }
             }
         });
     }
@@ -249,6 +276,8 @@ public partial class LevelEditor : WPFBase, IRecents
     {
         RenderContext.UnloadLevel();
         Actors.Clear();
+        LevelExport = null;
+        IsDirty = false;
     }
 
     public ICommand OpenFileCommand { get; set; }
@@ -269,6 +298,7 @@ public partial class LevelEditor : WPFBase, IRecents
         ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale, PackageIsLoaded);
         CommitChangesCommand = new GenericCommand(CommitChanges, PackageIsLoaded);
     }
+
     private void Goto_TextBox_KeyUp(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Return && !e.IsRepeat)
@@ -294,6 +324,10 @@ public partial class LevelEditor : WPFBase, IRecents
 
         foreach (ActorProxy actor in Actors)
         {
+            if (!actor.IsDirty)
+            {
+                continue;
+            }
             if (actor is CollectionActorComponentProxy cacp)
             {
                 if (!collectionActorMap.TryGetValue(cacp.CollectionActorExport.UIndex, out var collectionActor))
@@ -313,11 +347,96 @@ public partial class LevelEditor : WPFBase, IRecents
         {
             collectionActor.Export.WriteBinary(collectionActor);
         }
+        IsDirty = false;
     }
 
     public override void HandleUpdate(List<PackageUpdate> updates)
     {
-        //TODO
+        if (LevelExport is null)
+        {
+            return; //nothing is loaded
+        }
+
+        IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
+        HashSet<int> updatedExports = relevantUpdates.Select(x => x.Index).ToHashSet();
+        if (LevelExport is not null && updatedExports.Contains(LevelExport.UIndex))
+        {
+            LoadLevel(LevelExport.GetBinaryData<Level>(), true);
+        }
+        else
+        {
+            bool updated = false;
+            int reselectUIndex = 0;
+            (Vector3, float, float) savedCamPOV = default;
+            Vector3 savedActorPos = default;
+            List<ExportEntry> collectionActorsToUpdate = [];
+            for (int i = Actors.Count - 1; i >= 0; i--)
+            {
+                ActorProxy alteredActor = Actors[i];
+                if (alteredActor.TestUIndexes(updatedExports))
+                {
+                    updated = true;
+                    if (alteredActor == SelectedActor)
+                    {
+                        reselectUIndex = alteredActor.Export.UIndex;
+                        savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
+                        savedActorPos = SelectedActor.Location;
+                    }
+                    if (alteredActor is CollectionActorComponentProxy cacp)
+                    {
+                        collectionActorsToUpdate.Add(cacp.Export);
+                        continue;
+                    }
+                    Actors.RemoveAt(i);
+                    if (Pcc.GetEntry(alteredActor.Export.UIndex) is ExportEntry actorExport 
+                        && ActorProxy.Create(this, actorExport) is { } actorProxy)
+                    {
+                        Actors.Add(actorProxy);
+                    }
+                }
+            }
+            foreach (var collectionActor in collectionActorsToUpdate)
+            {
+                for (int i = Actors.Count - 1; i >= 0; i++)
+                {
+                    if (Actors[i] is CollectionActorComponentProxy)
+                    {
+                        Actors.RemoveAt(i);
+                    }
+                }
+                if (Pcc.GetEntry(collectionActor.UIndex) is ExportEntry newCollectionActor)
+                {
+                    string className = newCollectionActor.ClassName;
+                    if (className is "StaticMeshCollectionActor")
+                    {
+                        var smca = newCollectionActor.GetBinaryData<StaticMeshCollectionActor>();
+                        for (int i = 0; i < smca.Components.Count; i++)
+                        {
+                            if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
+                            {
+                                var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                                Actors.Add(smcActor);
+                            }
+                        }
+                    }
+                    else if (className is "StaticLightCollectionActor")
+                    {
+
+                    }
+                }
+            }
+            if (updated)
+            {
+                Actors.Sort(a => a.Export.UIndex);
+                IsDirty = Actors.Any(a => a.IsDirty);
+            }
+            if (reselectUIndex is not 0)
+            {
+                SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex);
+                (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
+                = (savedCamPOV.Item1 + SelectedActor.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+            }
+        }
     }
 
     private bool PackageIsLoaded() => Pcc != null;

@@ -13,13 +13,28 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
+    protected LevelEditor Editor;
+
     public Matrix4x4 LocalToWorld;
 
     public List<PrimitiveComponentProxy> Components = [];
 
-    public PropertyCollection Properties;
+    protected PropertyCollection Properties;
 
     public ExportEntry Export { get; }
+
+    private bool isDirty;
+    public bool IsDirty
+    {
+        get => isDirty;
+        protected set
+        {
+            if (SetProperty(ref isDirty, value) && isDirty)
+            {
+                Editor.IsDirty = true;
+            }
+        }
+    }
 
     protected Rotator rotation;
     protected Vector3 location;
@@ -40,6 +55,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
                 if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
                 UpdateLocalToWorld();
+                IsDirty = true;
             }
         }
     }
@@ -60,6 +76,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
                 UpdateLocalToWorld();
+                IsDirty = true;
             }
         }
     }
@@ -81,6 +98,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
                 UpdateLocalToWorld();
+                IsDirty = true;
             }
         }
     }
@@ -90,7 +108,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public float DrawScale
     {
         get => drawScale;
-        set { if (SetProperty(ref drawScale, value)) UpdateLocalToWorld(); }
+        set 
+        { 
+            if (SetProperty(ref drawScale, value))
+            {
+                UpdateLocalToWorld();
+                IsDirty = true;
+            }
+        }
     }
     public Vector3 PrePivot
     {
@@ -100,12 +125,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
+                IsDirty = true;
             }
         }
     }
 
-    protected ActorProxy(MeshRenderContext context, ExportEntry actorExport)
+    protected ActorProxy(LevelEditor context, ExportEntry actorExport)
     {
+        Editor = context;
         Export = actorExport;
         Properties = actorExport.GetCondensedProperties();
         PropertyCollection props = Properties;
@@ -143,7 +170,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
-    public static ActorProxy Create(MeshRenderContext context, ExportEntry actorExport)
+    public static ActorProxy Create(LevelEditor context, ExportEntry actorExport)
     {
         string className = actorExport.ClassName;
         switch (className)
@@ -239,7 +266,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public virtual void CommitChanges(PackageCache packageCache = null)
     {
-        var props = Export.GetProperties(packageCache: packageCache);
+        var props = Properties;
 
         string locationPropName = Export.Game.IsGame3() ? "location" : "Location";
         if (props.ContainsNamedProp(locationPropName) || Location != Vector3.Zero)
@@ -262,6 +289,23 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         {
             props.AddOrReplaceProp(CommonStructs.Vector3Prop(PrePivot, "PrePivot"));
         }
+        Export.WriteProperties(props);
+    }
+
+    public virtual bool TestUIndexes(HashSet<int> uIndexes)
+    {
+        if (uIndexes.Contains(Export.UIndex))
+        {
+            return true;
+        }
+        foreach (var cmp in Components)
+        {
+            if (uIndexes.Contains(cmp.Export.UIndex))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     #region IDisposable
@@ -303,56 +347,56 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
 file class StaticMeshActorProxy : ActorProxy
 {
-    public StaticMeshActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public StaticMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "StaticMeshComponent");
+        AddComponents(context.RenderContext, "StaticMeshComponent");
     }
 }
 
 file class SkeletalMeshActorProxy : ActorProxy
 {
-    public SkeletalMeshActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public SkeletalMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "SkeletalMeshComponent");
+        AddComponents(context.RenderContext, "SkeletalMeshComponent");
     }
 }
 
 //interpactor, placeables
 file class DynamicSMActorProxy : ActorProxy
 {
-    public DynamicSMActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public DynamicSMActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "StaticMeshComponent");
+        AddComponents(context.RenderContext, "StaticMeshComponent");
     }
 }
 
 //volumes
 file class BrushProxy : ActorProxy
 {
-    public BrushProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public BrushProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "BrushComponent");
+        AddComponents(context.RenderContext, "BrushComponent");
     }
 }
 file class SFXStuntActorProxy : ActorProxy
 {
-    public SFXStuntActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public SFXStuntActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "BodyMesh", "HeadMesh", "HairMesh", "HeadGearMesh");
+        AddComponents(context.RenderContext, "BodyMesh", "HeadMesh", "HairMesh", "HeadGearMesh");
     }
 }
 file class PawnProxy : ActorProxy
 {
-    public PawnProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public PawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "Mesh");
+        AddComponents(context.RenderContext, "Mesh");
     }
 }
 file class BioPawnProxy : PawnProxy
 {
-    public BioPawnProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    public BioPawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context, "HeadMesh", "m_oHairMesh", "m_oHeadGearMesh", "m_oVisorMesh", "m_oFacePlateMesh", "m_aoAccessories");
+        AddComponents(context.RenderContext, "HeadMesh", "m_oHairMesh", "m_oHeadGearMesh", "m_oVisorMesh", "m_oFacePlateMesh", "m_aoAccessories");
     }
 }
 
@@ -360,8 +404,9 @@ public abstract class CollectionActorComponentProxy : ActorProxy
 {
     public ExportEntry CollectionActorExport { get; }
 
-    public CollectionActorComponentProxy(StaticCollectionActor collectionActor, ExportEntry componentActor, int index) : base(componentActor)
+    public CollectionActorComponentProxy(LevelEditor context, StaticCollectionActor collectionActor, ExportEntry componentActor, int index) : base(componentActor)
     {
+        Editor = context;
         CollectionActorExport = collectionActor.Export;
 
         LocalToWorld = collectionActor.LocalToWorldTransforms[index];
@@ -387,13 +432,18 @@ public abstract class CollectionActorComponentProxy : ActorProxy
         Matrix4x4 m = ActorUtils.ComposeLocalToWorld(Location, Rotation, DrawScale * DrawScale3D, PrePivot);
         collectionActor.LocalToWorldTransforms[idx] = m;
     }
+
+    public override bool TestUIndexes(HashSet<int> uIndexes)
+    {
+        return base.TestUIndexes(uIndexes) || uIndexes.Contains(CollectionActorExport.UIndex);
+    }
 }
 
 public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
 {
-    public StaticMeshComponentActorProxy(MeshRenderContext context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(smca, smcExport, smcaIndex)
+    public StaticMeshComponentActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
     {
-        var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context, smcExport, this);
+        var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
     }
 }

@@ -18,7 +18,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
     public PropertyCollection Properties;
 
-    protected ExportEntry Export;
+    public ExportEntry Export { get; protected set; }
 
     public ActorProxy Actor;
 

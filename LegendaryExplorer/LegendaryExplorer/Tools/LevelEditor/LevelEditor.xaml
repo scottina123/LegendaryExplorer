@@ -81,7 +81,17 @@
             </Menu>
             <WrapPanel DockPanel.Dock="Top">
                 <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
-                    <Button ToolTip="Commit hex changes to the export" Content="Commit Changes" Command="{Binding CommitChangesCommand}" Foreground="{Binding HasUncommittedChanges, Converter={StaticResource UnsavedChangesForegroundConverter}}"/>
+                    <Button ToolTip="Commit hex changes to the export" Content="Commit Changes" Command="{Binding CommitChangesCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDirty}" Value="true">
+                                        <Setter Property="Background" Value="Yellow"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <RadioButton GroupName="WidgetMode" ToolTip="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True">
                         Translate
@@ -238,13 +248,13 @@
 
                 <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"
                             Background="#FFBFBFBF">
-                    <TextBlock Margin="5" Text="Welcome to Mesh Explorer" FontWeight="Bold" TextWrapping="Wrap"/>
+                    <TextBlock Margin="5" Text="Welcome to Level Editor" FontWeight="Bold" TextWrapping="Wrap"/>
                     <TextBlock Margin="5" TextWrapping="Wrap">
-
+                This is a work in progress, and only displays some of the actors in a level.
                 If you have issues with Level Editor, please report them to one of the following places:
                 <LineBreak/>
             - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
-                <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
+                <Run Text="The ME3Tweaks Discord (#Legendary_Explorer channel)"/>
             </Hyperlink>                                <LineBreak/>
                  - The issues list on GitHub at 
                 <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
