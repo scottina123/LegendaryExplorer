@@ -1,6 +1,5 @@
 ﻿using LegendaryExplorer.Misc;
 using LegendaryExplorer.Resources;
-using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
@@ -35,7 +34,7 @@ public class MeshRenderContext : RenderContext
     /// <summary>
     /// The current flags for rendering textures. This renderer does not support 'SetAlphaAsBlack' or 'ReconstructZ'
     /// </summary>
-    public TextureRenderContext.ShaderFlags RenderFlags = TextureRenderContext.ShaderFlags.EnableRedChannel | TextureRenderContext.ShaderFlags.EnableGreenChannel | TextureRenderContext.ShaderFlags.EnableBlueChannel | TextureRenderContext.ShaderFlags.EnableAlphaChannel;
+    public ShaderFlags RenderFlags = ShaderFlags.EnableRedChannel | ShaderFlags.EnableGreenChannel | ShaderFlags.EnableBlueChannel | ShaderFlags.EnableAlphaChannel;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct WorldConstants
@@ -44,9 +43,9 @@ public class MeshRenderContext : RenderContext
         public Matrix4x4 View;
         public Matrix4x4 Model;
         public Vector3 HitTestID;
-        public TextureRenderContext.ShaderFlags Flags;
+        public ShaderFlags Flags;
 
-        public WorldConstants(Matrix4x4 Projection, Matrix4x4 View, Matrix4x4 Model, TextureRenderContext.ShaderFlags flags, Vector3 hitTestId)
+        public WorldConstants(Matrix4x4 Projection, Matrix4x4 View, Matrix4x4 Model, ShaderFlags flags, Vector3 hitTestId)
         {
             this.Projection = Projection;
             this.View = View;

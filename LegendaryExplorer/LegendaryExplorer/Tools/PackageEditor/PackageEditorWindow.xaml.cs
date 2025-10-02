@@ -1081,7 +1081,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             w.Show();
                         }
                         break;
-
+                    case "LevelEditor":
+                        new LevelEditor.LevelEditor(exp).Show();
+                        break;
                 }
             }
         }
@@ -1108,6 +1110,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         return exp.ClassName == "InterpData";
                     case "WwiseEditor":
                         return exp.ClassName == "WwiseBank";
+                    case "LevelEditor":
+                        return exp.ClassName is "Level" or "World" || exp.IsA("Actor") || (exp.ClassName is "StaticMeshComponent" && exp.Parent?.ClassName is "StaticMeshCollectionActor");
                 }
             }
 

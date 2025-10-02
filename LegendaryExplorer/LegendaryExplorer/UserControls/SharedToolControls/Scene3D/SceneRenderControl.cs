@@ -193,6 +193,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             EnableAlphaChannel = 1 << 5,
 
             //level editor flags
+            Selected = 1 << 30,
             PrimitiveRendering = 1 << 31,
         }
 

@@ -106,7 +106,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         public void OrientTowards(Vector3 point)
         {
-            Vector3 dirVec = (point - Position).Normal();
+            Vector3 dirVec = point - Position;
+            if (dirVec == Vector3.Zero)
+            {
+                return;
+            }
+            dirVec = dirVec.Normal();
             float x = dirVec.X;
             float y = dirVec.Y;
             float z = dirVec.Z;

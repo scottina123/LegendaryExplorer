@@ -39,7 +39,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    public readonly struct Rotator(int pitch, int yaw, int roll)
+    public readonly struct Rotator(int pitch, int yaw, int roll) : IEquatable<Rotator>
     {
         public readonly int Pitch = pitch;
         public readonly int Yaw = yaw;
@@ -62,6 +62,11 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             return new Rotator(pitch.RadiansToUnrealRotationUnits(), yaw.RadiansToUnrealRotationUnits(), 0);
         }
 
+        public static Rotator FromQuaternion(Quaternion quat)
+        {
+            return Matrix4x4.CreateFromQuaternion(quat).GetRotator();
+        }
+
         public Vector3 GetDirectionalVector()
         {
             var cp = MathF.Cos(Pitch.UnrealRotationUnitsToRadians());
@@ -72,15 +77,31 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         }
 
         public bool IsZero => Pitch == 0 && Yaw == 0 && Roll == 0;
-        public override string ToString()
-        {
-            return $"Pitch:{Pitch} Yaw:{Yaw} Roll:{Roll}";
-        }
 
         public static Rotator operator +(Rotator a, Rotator b)
         {
             return new Rotator(a.Pitch + b.Pitch, a.Yaw + b.Yaw, a.Roll + b.Roll);
         }
+        public override string ToString()
+        {
+            return $"Pitch:{Pitch} Yaw:{Yaw} Roll:{Roll}";
+        }
+
+        public bool Equals(Rotator other)
+        {
+            return Pitch == other.Pitch && Yaw == other.Yaw && Roll == other.Roll;
+        }
+
+        public static bool operator ==(Rotator a, Rotator b) => a.Equals(b);
+
+        public static bool operator !=(Rotator a, Rotator b) => !a.Equals(b);
+
+        public override bool Equals(object obj)
+        {
+            return obj is Rotator rotator && Equals(rotator);
+        }
+
+        public override int GetHashCode() => HashCode.Combine(Pitch, Yaw, Roll);
     }
 
     [StructLayout(LayoutKind.Sequential)]

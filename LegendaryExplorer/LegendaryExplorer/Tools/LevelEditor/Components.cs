@@ -90,9 +90,18 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     public static PrimitiveComponentProxy Create(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)
     {
         string className = componentExport.ClassName;
+        switch (className)
+        {
+            case "BrushComponent":
+                return new BrushComponentProxy(context, componentExport, parent);
+        }
         if (GlobalUnrealObjectInfo.IsA(className, "StaticMeshComponent", componentExport.Game))
         {
             return new StaticMeshComponentProxy(context, componentExport, parent);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SkeletalMeshComponent", componentExport.Game))
+        {
+            return new SkeletalMeshComponentProxy(context, componentExport, parent);
         }
 
         return new PrimitiveComponentProxy(context, componentExport, parent);
@@ -186,8 +195,9 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     #endregion
 }
 
-public abstract class MeshComponentProxy : PrimitiveComponentProxy
+file abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
+    protected ModelPreview Mesh;
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
 
@@ -198,11 +208,25 @@ public abstract class MeshComponentProxy : PrimitiveComponentProxy
             MaterialOverrides.AddRange(mats.Select(x => x.Value != 0 ? x.ResolveToEntry(Export.FileRef) : null));
         }
     }
+
+    public override BoxSphereBounds GetBounds()
+    {
+        if (Mesh is null or { LODs.Count: 0 })
+        {
+            return base.GetBounds();
+        }
+        return Mesh.LODs[0].Mesh.TransformedBounds;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        Mesh?.Dispose();
+        base.Dispose(disposing);
+    }
 }
 
-public class StaticMeshComponentProxy : MeshComponentProxy
+file class StaticMeshComponentProxy : MeshComponentProxy
 {
-    private ModelPreview StaticMesh;
     private MeshElement CollisionMesh;
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
@@ -212,12 +236,12 @@ public class StaticMeshComponentProxy : MeshComponentProxy
 
     public override void LoadMeshData(MeshRenderContext context)
     {
-        if (Properties.GetProp<ObjectProperty>("StaticMesh")?.ResolveToEntry(Export.FileRef) is ExportEntry meshExport)
+        if (Properties.GetProp<ObjectProperty>("StaticMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
         {
             StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
             if (stm.LODModels.Length > 0)
             {
-                StaticMesh = new ModelPreview(context, stm, 0);
+                Mesh = new ModelPreview(context, stm, 0);
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
             UpdateSelfLocalToWorld();
@@ -234,7 +258,7 @@ public class StaticMeshComponentProxy : MeshComponentProxy
             }
             return;
         }
-        StaticMesh?.RenderFallback(pass, context, LOD);
+        Mesh?.RenderFallback(pass, context, LOD);
     }
 
     public override void UpdateLocalToWorld()
@@ -249,25 +273,96 @@ public class StaticMeshComponentProxy : MeshComponentProxy
         {
             CollisionMesh.LocalToWorld = LocalToWorld;
         }
-        if (StaticMesh is not null)
+        if (Mesh is not null)
         {
-            StaticMesh.UpdateLocalToWorld(LocalToWorld);
+            Mesh.UpdateLocalToWorld(LocalToWorld);
         }
-    }
-
-    public override BoxSphereBounds GetBounds()
-    {
-        if (StaticMesh is null or { LODs.Count: 0 })
-        {
-            return base.GetBounds();
-        }
-        return StaticMesh.LODs[0].Mesh.TransformedBounds;
     }
 
     protected override void Dispose(bool disposing)
     {
-        StaticMesh?.Dispose();
         CollisionMesh?.Dispose();
+        base.Dispose(disposing);
+    }
+}
+
+file class SkeletalMeshComponentProxy : MeshComponentProxy
+{
+    public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
+    {
+        LoadMeshData(context);
+    }
+
+    public override void LoadMeshData(MeshRenderContext context)
+    {
+        if (Properties.GetProp<ObjectProperty>("SkeletalMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
+        {
+            SkeletalMesh skm = meshExport.GetBinaryData<SkeletalMesh>();
+            if (skm.LODModels.Length > 0)
+            {
+                Mesh = new ModelPreview(context, skm);
+            }
+            UpdateSelfLocalToWorld();
+        }
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        Mesh?.RenderFallback(pass, context, LOD);
+    }
+
+    public override void UpdateLocalToWorld()
+    {
+        base.UpdateLocalToWorld();
+        UpdateSelfLocalToWorld();
+    }
+
+    private void UpdateSelfLocalToWorld()
+    {
+        Mesh?.UpdateLocalToWorld(LocalToWorld);
+    }
+}
+
+file class BrushComponentProxy : PrimitiveComponentProxy
+{
+    private MeshElement Brush;
+
+    public BrushComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
+    {
+        LoadMeshData(context);
+    }
+
+    public override void LoadMeshData(MeshRenderContext context)
+    {
+        Brush = context.GetMeshFromAggGeom(Properties.GetProp<StructProperty>("BrushAggGeom"));
+        UpdateSelfLocalToWorld();
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        if (Brush is not null)
+        {
+            context.RenderMeshAsWireframe(Brush);
+        }
+    }
+
+    public override void UpdateLocalToWorld()
+    {
+        base.UpdateLocalToWorld();
+        UpdateSelfLocalToWorld();
+    }
+
+    private void UpdateSelfLocalToWorld()
+    {
+        if (Brush is not null)
+        {
+            Brush.LocalToWorld = LocalToWorld;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        Brush?.Dispose();
         base.Dispose(disposing);
     }
 }

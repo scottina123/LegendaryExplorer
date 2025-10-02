@@ -15,7 +15,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using TerraFX.Interop.Windows;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 
@@ -33,7 +32,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private USparseArray<IHitProxy> HitProxies = [];
 
-    private readonly Widget TransformWidget;
+    public readonly Widget TransformWidget;
 
     public readonly BatchedPrimitives Primitives = new();
 
@@ -111,7 +110,7 @@ public class LevelEditorRenderContext : MeshRenderContext
                 TransformWidget.EndDrag();
                 return true;
             }
-            TransformWidget.Drag(x, y);
+            TransformWidget.Drag(this, x, y);
             return true;
         }
         if (base.MouseMove(x, y)) return true;

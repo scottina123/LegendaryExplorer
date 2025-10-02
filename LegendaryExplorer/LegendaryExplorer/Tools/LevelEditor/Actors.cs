@@ -1,6 +1,6 @@
-﻿using DocumentFormat.OpenXml.Drawing;
-using LegendaryExplorer.Misc;
+﻿using LegendaryExplorer.Misc;
 using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -29,18 +29,64 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public Rotator Rotation
     {
         get => rotation;
-        set { if (SetProperty(ref rotation, value)) UpdateLocalToWorld(); }
+        set
+        {
+            var oldValue = rotation;
+            if (rotation != value)
+            {
+                rotation = value;
+                OnPropertyChanged(nameof(Rotation));
+                if (value.Pitch != oldValue.Pitch) OnPropertyChanged(nameof(PitchDegrees));
+                if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
+                if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
+                UpdateLocalToWorld();
+            }
+        }
     }
+    public float PitchDegrees { get => rotation.Pitch.UnrealRotationUnitsToDegrees(); set => Rotation = new Rotator(value.DegreesToUnrealRotationUnits(), rotation.Yaw, rotation.Roll); }
+    public float YawDegrees { get => rotation.Yaw.UnrealRotationUnitsToDegrees(); set => Rotation = new Rotator(rotation.Pitch, value.DegreesToUnrealRotationUnits(), rotation.Roll); }
+    public float RollDegrees { get => rotation.Roll.UnrealRotationUnitsToDegrees(); set => Rotation = new Rotator(rotation.Pitch, rotation.Yaw, value.DegreesToUnrealRotationUnits()); }
     public Vector3 Location
     {
         get => location;
-        set { if (SetProperty(ref location, value)) UpdateLocalToWorld(); }
+        set 
+        {
+            var oldValue = location;
+            if (location != value)
+            {
+                location = value;
+                OnPropertyChanged(nameof(Location));
+                if (value.X != oldValue.X) OnPropertyChanged(nameof(XPos));
+                if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
+                if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
+                UpdateLocalToWorld();
+            }
+        }
     }
+    public float XPos { get => location.X; set => Location = location with { X = value }; }
+    public float YPos { get => location.Y; set => Location = location with { Y = value }; }
+    public float ZPos { get => location.Z; set => Location = location with { Z = value }; }
+
     public Vector3 DrawScale3D
     {
         get => drawScale3D;
-        set { if (SetProperty(ref drawScale3D, value)) UpdateLocalToWorld(); }
+        set
+        {
+            var oldValue = drawScale3D;
+            if (drawScale3D != value)
+            {
+                drawScale3D = value;
+                OnPropertyChanged(nameof(DrawScale3D));
+                if (value.X != oldValue.X) OnPropertyChanged(nameof(XScale));
+                if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
+                if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
+                UpdateLocalToWorld();
+            }
+        }
     }
+    public float XScale { get => drawScale3D.X; set => DrawScale3D = drawScale3D with { X = value }; }
+    public float YScale { get => drawScale3D.Y; set => DrawScale3D = drawScale3D with { Y = value }; }
+    public float ZScale { get => drawScale3D.Z; set => DrawScale3D = drawScale3D with { Z = value }; }
     public float DrawScale
     {
         get => drawScale;
@@ -49,7 +95,13 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public Vector3 PrePivot
     {
         get => prePivot;
-        set { if (SetProperty(ref prePivot, value)) UpdateLocalToWorld(); }
+        set 
+        { 
+            if (SetProperty(ref prePivot, value))
+            {
+                UpdateLocalToWorld();
+            }
+        }
     }
 
     protected ActorProxy(MeshRenderContext context, ExportEntry actorExport)
@@ -101,6 +153,30 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         {
             return new StaticMeshActorProxy(context, actorExport);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "SkeletalMeshActor", actorExport.Game))
+        {
+            return new SkeletalMeshActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "DynamicSMActor", actorExport.Game))
+        {
+            return new DynamicSMActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "Brush", actorExport.Game))
+        {
+            return new BrushProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SFXStuntActor", actorExport.Game))
+        {
+            return new SFXStuntActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "BioPawn", actorExport.Game))
+        {
+            return new BioPawnProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "Pawn", actorExport.Game))
+        {
+            return new PawnProxy(context, actorExport);
+        }
         return null;
         //return new ActorProxy(context, actorExport);
     }
@@ -114,6 +190,19 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (PrimitiveComponentProxy.Create(context, componentExport, this) is { } cmpProxy)
                 {
                     Components.Add(cmpProxy);
+                }
+            }
+            else if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
+            {
+                foreach (ObjectProperty prop in componentArray)
+                {
+                    if (prop?.ResolveToEntry(Export.FileRef) is ExportEntry cmpExport)
+                    {
+                        if (PrimitiveComponentProxy.Create(context, cmpExport, this) is { } cmpProxy)
+                        {
+                            Components.Add(cmpProxy);
+                        }
+                    }
                 }
             }
         }
@@ -146,7 +235,34 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public int HitID { get; set; }
 
-    public bool IsUI => false;
+    bool IHitProxy.IsUI => false;
+
+    public virtual void CommitChanges(PackageCache packageCache = null)
+    {
+        var props = Export.GetProperties(packageCache: packageCache);
+
+        string locationPropName = Export.Game.IsGame3() ? "location" : "Location";
+        if (props.ContainsNamedProp(locationPropName) || Location != Vector3.Zero)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(Location, locationPropName));
+        }
+        if (props.ContainsNamedProp("DrawScale") || DrawScale != 1f)
+        {
+            props.AddOrReplaceProp(new FloatProperty(DrawScale, "DrawScale"));
+        }
+        if (props.ContainsNamedProp("DrawScale3D") || DrawScale3D != Vector3.One)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(DrawScale3D, "DrawScale3D"));
+        }
+        if (props.ContainsNamedProp("Rotation") || !Rotation.IsZero)
+        {
+            props.AddOrReplaceProp(CommonStructs.RotatorProp(Rotation, "Rotation"));
+        }
+        if (props.ContainsNamedProp("PrePivot") || PrePivot != Vector3.Zero)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(PrePivot, "PrePivot"));
+        }
+    }
 
     #region IDisposable
     private bool disposedValue;
@@ -193,12 +309,90 @@ file class StaticMeshActorProxy : ActorProxy
     }
 }
 
-public class StaticMeshComponentActorProxy : ActorProxy
+file class SkeletalMeshActorProxy : ActorProxy
 {
-    public StaticMeshComponentActorProxy(MeshRenderContext context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(smcExport)
+    public SkeletalMeshActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
     {
-        LocalToWorld = smca.LocalToWorldTransforms[smcaIndex];
-        (location, drawScale3D, rotation) = smca.GetDecomposedTransformationForIndex(smcaIndex);
+        AddComponents(context, "SkeletalMeshComponent");
+    }
+}
+
+//interpactor, placeables
+file class DynamicSMActorProxy : ActorProxy
+{
+    public DynamicSMActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context, "StaticMeshComponent");
+    }
+}
+
+//volumes
+file class BrushProxy : ActorProxy
+{
+    public BrushProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context, "BrushComponent");
+    }
+}
+file class SFXStuntActorProxy : ActorProxy
+{
+    public SFXStuntActorProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context, "BodyMesh", "HeadMesh", "HairMesh", "HeadGearMesh");
+    }
+}
+file class PawnProxy : ActorProxy
+{
+    public PawnProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context, "Mesh");
+    }
+}
+file class BioPawnProxy : PawnProxy
+{
+    public BioPawnProxy(MeshRenderContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context, "HeadMesh", "m_oHairMesh", "m_oHeadGearMesh", "m_oVisorMesh", "m_oFacePlateMesh", "m_aoAccessories");
+    }
+}
+
+public abstract class CollectionActorComponentProxy : ActorProxy
+{
+    public ExportEntry CollectionActorExport { get; }
+
+    public CollectionActorComponentProxy(StaticCollectionActor collectionActor, ExportEntry componentActor, int index) : base(componentActor)
+    {
+        CollectionActorExport = collectionActor.Export;
+
+        LocalToWorld = collectionActor.LocalToWorldTransforms[index];
+        (location, drawScale3D, rotation) = collectionActor.GetDecomposedTransformationForIndex(index);
+        if (drawScale3D.X == drawScale3D.Y && drawScale3D.X == drawScale3D.Z)
+        {
+            drawScale = drawScale3D.X;
+            drawScale3D = Vector3.One;
+        }
+    }
+
+    public override void CommitChanges(PackageCache packageCache = null)
+    {
+        throw new InvalidOperationException($"Cannot be called on a {nameof(CollectionActorComponentProxy)}.");
+    }
+
+    public void CommitChanges(StaticCollectionActor collectionActor)
+    {
+        if (!(collectionActor.Components.FindIndex(uIdx => uIdx == Export.UIndex) is int idx and >= 0))
+        {
+            throw new ArgumentException("Does not contain this component", nameof(collectionActor));
+        }
+        Matrix4x4 m = ActorUtils.ComposeLocalToWorld(Location, Rotation, DrawScale * DrawScale3D, PrePivot);
+        collectionActor.LocalToWorldTransforms[idx] = m;
+    }
+}
+
+public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
+{
+    public StaticMeshComponentActorProxy(MeshRenderContext context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(smca, smcExport, smcaIndex)
+    {
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context, smcExport, this);
         Components.Add(staticMeshComponentProxy);
     }

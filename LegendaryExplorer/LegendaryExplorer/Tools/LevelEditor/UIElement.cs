@@ -1,7 +1,9 @@
 ﻿using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Collections;
 using System;
 using System.Numerics;
+using Rotator = LegendaryExplorerCore.Unreal.BinaryConverters.Rotator;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -37,10 +39,11 @@ public enum EWidgetMode
 
 public class Widget : UIElement
 {
-
     public ActorProxy Attach;
 
-    public EWidgetMode Mode = EWidgetMode.Rotate;
+    public EWidgetMode Mode = EWidgetMode.Translate;
+    public bool UseLocalCoords = true;
+    Matrix4x4 LocalRotation;
 
     public EWidgetAxis CurrentAxis;
     public bool IsDragging;
@@ -48,6 +51,11 @@ public class Widget : UIElement
     private Vector2 PrevDragPos;
 
     Vector2 Origin, XAxisEnd, YAxisEnd, ZAxisEnd;
+
+    Matrix4x4 XMatrix;
+    Matrix4x4 YMatrix;
+    Matrix4x4 ZMatrix;
+
     private readonly int[] AxisHitIds = new int[8];
 
     static readonly Vector4 XColor = new Vector4(1, 0, 0, 1);
@@ -64,33 +72,89 @@ public class Widget : UIElement
 
         context.WorldToPixel(origin, out Origin);
 
-        float scale = context.WorldToScreen(origin).W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
-
-        var xColor = CurrentAxis.HasFlag(EWidgetAxis.X) ? SelectedColor : XColor;
-        var yColor = CurrentAxis.HasFlag(EWidgetAxis.Y) ? SelectedColor : YColor;
-        var zColor = CurrentAxis.HasFlag(EWidgetAxis.Z) ? SelectedColor : ZColor;
-
-        var xMatrix = Matrix4x4.CreateTranslation(origin);
-        var yMatrix = Matrix4x4.CreateRotationZ(MathF.PI / 2) * Matrix4x4.CreateTranslation(origin);
-        var zMatrix = Matrix4x4.CreateRotationY(-MathF.PI / 2) * Matrix4x4.CreateTranslation(origin);
+        LocalRotation = UseLocalCoords || Mode is EWidgetMode.Scale ? ActorUtils.ComposeLocalToWorld(Vector3.Zero, Attach.Rotation, Vector3.One) : Matrix4x4.Identity;
 
         if (Mode is EWidgetMode.Rotate)
         {
-            XAxisEnd = DrawQuarterCircle(context, scale, xMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X]);
-            YAxisEnd = DrawQuarterCircle(context, scale, yMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y]);
-            ZAxisEnd = DrawQuarterCircle(context, scale, zMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z]);
+            DrawRotator(context, ltw, origin);
         }
         else
         {
+            XMatrix = LocalRotation * Matrix4x4.CreateTranslation(origin);
+            YMatrix = Matrix4x4.CreateRotationZ(MathF.PI / 2) * LocalRotation * Matrix4x4.CreateTranslation(origin);
+            ZMatrix = Matrix4x4.CreateRotationY(-MathF.PI / 2) * LocalRotation * Matrix4x4.CreateTranslation(origin);
+
+            (Vector4 xColor, Vector4 yColor, Vector4 zColor) = GetAxisColors();
             bool useConeGrabber = Mode is EWidgetMode.Translate;
             if (Mode is EWidgetMode.UniformScale)
             {
                 yColor = zColor = xColor = CurrentAxis == EWidgetAxis.None ? XColor : SelectedColor;
             }
 
-            XAxisEnd = DrawAxis(context, scale, xMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X], useConeGrabber);
-            YAxisEnd = DrawAxis(context, scale, yMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y], useConeGrabber);
-            ZAxisEnd = DrawAxis(context, scale, zMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z], useConeGrabber);
+            float scale = GetScale(context, origin);
+            XAxisEnd = DrawAxis(context, scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X], useConeGrabber);
+            YAxisEnd = DrawAxis(context, scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y], useConeGrabber);
+            ZAxisEnd = DrawAxis(context, scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z], useConeGrabber);
+        }
+    }
+
+    private static float GetScale(LevelEditorRenderContext context, Vector3 origin)
+    {
+        const float scaleFactor = 4f;
+        return context.WorldToScreen(origin).W * (scaleFactor / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+    }
+
+    private (Vector4 xColor, Vector4 yColor, Vector4 zColor) GetAxisColors()
+    {
+        return (CurrentAxis.HasFlag(EWidgetAxis.X) ? SelectedColor : XColor,
+               CurrentAxis.HasFlag(EWidgetAxis.Y) ? SelectedColor : YColor,
+               CurrentAxis.HasFlag(EWidgetAxis.Z) ? SelectedColor : ZColor);
+    }
+
+    private void DrawRotator(LevelEditorRenderContext context, Matrix4x4 ltw, Vector3 origin)
+    {
+        float scale = GetScale(context, origin);
+
+        Vector3 camPos = context.Camera.Position;
+        Vector3 camDir;
+        if (UseLocalCoords)
+        {
+            Matrix4x4.Invert(ltw, out var wtl);
+            camDir = Vector3.Transform(camPos, wtl);
+        }
+        else
+        {
+            camDir = camPos - origin;
+        }
+        bool xSign = camDir.X > 0;
+        bool ySign = camDir.Y > 0;
+        bool zSign = camDir.Z > 0;
+        const float halfpi = MathF.PI / 2;
+        const float pi = MathF.PI;
+        //there's probably some formula to do this properly...
+        (float xAngle, float yAngle, float zAngle) = (xSign, ySign, zSign) switch
+        {
+            (true, true, true) => (0, halfpi, 0),
+            (true, true, false) => (-halfpi, pi, 0),
+            (true, false, true) => (halfpi, halfpi, -halfpi),
+            (true, false, false) => (pi, pi, -halfpi),
+            (false, false, false) => (pi, -halfpi, pi),
+            (false, false, true) => (halfpi, 0, pi),
+            (false, true, false) => (-halfpi, -halfpi, halfpi),
+            (false, true, true) => (0, 0, halfpi),
+        };
+        XMatrix = Matrix4x4.CreateRotationX(xAngle) * LocalRotation * Matrix4x4.CreateTranslation(origin);
+        YMatrix = Matrix4x4.CreateRotationZ(MathF.PI / 2) * Matrix4x4.CreateRotationY(yAngle) * LocalRotation * Matrix4x4.CreateTranslation(origin);
+        ZMatrix = Matrix4x4.CreateRotationY(MathF.PI / 2) * Matrix4x4.CreateRotationZ(zAngle) * LocalRotation * Matrix4x4.CreateTranslation(origin);
+
+        (Vector4 xColor, Vector4 yColor, Vector4 zColor) = GetAxisColors();
+        XAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.X), scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X]);
+        YAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Y), scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y]);
+        ZAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Z), scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z]);
+
+        float SweptAngle(EWidgetAxis axis)
+        {
+            return IsDragging && CurrentAxis == axis ? MathF.PI * 2 : MathF.PI / 2;
         }
     }
 
@@ -167,14 +231,14 @@ public class Widget : UIElement
         return axisEnd;
     }
 
-    private static Vector2 DrawQuarterCircle(LevelEditorRenderContext context, float scale, Matrix4x4 matrix, Vector4 color, int hitId)
+    private static Vector2 DrawRingSegment(LevelEditorRenderContext context, float sweptAngle, float scale, Matrix4x4 matrix, Vector4 color, int hitId)
     {
-        const int numRingSegments = 24; 
+        int numRingSegments = (int)(48 / (MathF.PI / sweptAngle)); 
         Span<float> radii = [70f, 60f];
 
         var ltw = Matrix4x4.CreateScale(scale) * matrix;
 
-        var mesh = context.Primitives.BuildMesh(color with { W = 0.5f }, hitId, ltw);
+        var mesh = context.Primitives.BuildMesh(color with { W = color.W / 2 }, hitId, ltw);
 
         Vector3 prevPoint = default;
 
@@ -182,7 +246,7 @@ public class Widget : UIElement
         {
             for (int j = 0; j < numRingSegments; j++)
             {
-                float theta = (MathF.PI / 2f) / (numRingSegments - 1) * j;
+                float theta = sweptAngle / (numRingSegments - 1) * j;
                 var point = new Vector3(0, radii[i] * MathF.Sin(theta) * 0.5f, radii[i] * MathF.Cos(theta) * 0.5f);
                 mesh.AddVertex(point);
                 if (j > 0)
@@ -211,9 +275,10 @@ public class Widget : UIElement
         }
     }
 
-    public void Drag(int x, int y)
+    public void Drag(LevelEditorRenderContext context, int x, int y)
     {
-        if (Attach is null) return;
+        if (Attach is null || CurrentAxis is EWidgetAxis.None) return;
+
         Vector2 mousePos = new(x, y);
         Vector2 dragDiff = PrevDragPos - mousePos;
 
@@ -221,65 +286,86 @@ public class Widget : UIElement
         {
             Vector2 startDir = Vector2.Normalize(PrevDragPos - Origin);
             Vector2 mouseDir = Vector2.Normalize(mousePos - Origin);
-            float theta = MathF.Acos(Vector2.Dot(startDir, mouseDir));
-            switch (CurrentAxis)
+            float theta = MathF.Atan2(startDir.X * mouseDir.Y - startDir.Y * mouseDir.X, Vector2.Dot(startDir, mouseDir));
+
+            if (UseLocalCoords)
             {
-                case EWidgetAxis.X:
+                switch (CurrentAxis)
+                {
+                    case EWidgetAxis.X:
+                        Attach.Rotation += new Rotator(0, 0, -theta.RadiansToUnrealRotationUnits());
+                        break;
+                    case EWidgetAxis.Y:
+                        Attach.Rotation += new Rotator(-theta.RadiansToUnrealRotationUnits(), 0, 0);
+                        break;
+                    case EWidgetAxis.Z:
+                        Attach.Rotation += new Rotator(0, theta.RadiansToUnrealRotationUnits(), 0);
+                        break;
+                }
+            }
+            else
+            {
+                var axis = LocalRotation.TransformNormal(CurrentAxis switch
+                {
+                    EWidgetAxis.X => Vector3.UnitX,
+                    EWidgetAxis.Y => Vector3.UnitY,
+                    EWidgetAxis.Z => Vector3.UnitZ,
+                });
+                Attach.Rotation += Rotator.FromQuaternion(Quaternion.CreateFromAxisAngle(axis, theta));
+            }
+        }
+        else
+        {
+            float multiplier = (context.Camera.Position - Attach.Location).Length() / 256;
+
+            Vector2 axisEnd = CurrentAxis switch
+            {
+                EWidgetAxis.X => XAxisEnd,
+                EWidgetAxis.Y => YAxisEnd,
+                EWidgetAxis.Z => ZAxisEnd,
+                EWidgetAxis.XY => dragDiff.X != 0 ? XAxisEnd : YAxisEnd,
+                EWidgetAxis.XZ => dragDiff.X != 0 ? XAxisEnd : ZAxisEnd,
+                EWidgetAxis.YZ => dragDiff.X != 0 ? YAxisEnd : ZAxisEnd,
+                EWidgetAxis.XYZ => dragDiff.X != 0 ? YAxisEnd : ZAxisEnd,
+                _ => XAxisEnd
+            };
+
+
+            //dragDiff.Y *= -1;
+            Vector2 axisDir = Vector2.Normalize(axisEnd - Origin);
+
+            float dragAmount = Vector2.Dot(dragDiff, axisDir);
+
+            switch (Mode)
+            {
+                case EWidgetMode.Translate:
+                case EWidgetMode.Scale:
+                    Vector3 vecDiff = CurrentAxis switch
+                    {
+                        EWidgetAxis.X => new Vector3(dragAmount, 0, 0),
+                        EWidgetAxis.Y => new Vector3(0, dragAmount, 0),
+                        EWidgetAxis.Z => new Vector3(0, 0, dragAmount),
+                        EWidgetAxis.XY => throw new NotImplementedException(),
+                        EWidgetAxis.XZ => throw new NotImplementedException(),
+                        EWidgetAxis.YZ => throw new NotImplementedException(),
+                        EWidgetAxis.XYZ => throw new NotImplementedException(),
+                    };
+                    if (Mode is EWidgetMode.Translate)
+                    {
+                        vecDiff = Vector3.Transform(vecDiff, LocalRotation);
+                        Attach.Location -= vecDiff;
+                    }
+                    else
+                    {
+                        Attach.DrawScale3D -= vecDiff / 100;
+                    }
                     break;
-                case EWidgetAxis.Y:
-                    break;
-                case EWidgetAxis.Z:
-                    Attach.Rotation += new LegendaryExplorerCore.Unreal.BinaryConverters.Rotator(0, theta.RadiansToUnrealRotationUnits(), 0);
+                case EWidgetMode.UniformScale:
+                    Attach.DrawScale -= dragAmount / 100;
                     break;
             }
-            return;
         }
 
-        Vector2 axisEnd = CurrentAxis switch
-        {
-            EWidgetAxis.X => XAxisEnd,
-            EWidgetAxis.Y => YAxisEnd,
-            EWidgetAxis.Z => ZAxisEnd,
-            EWidgetAxis.XY => dragDiff.X != 0 ? XAxisEnd : YAxisEnd,
-            EWidgetAxis.XZ => dragDiff.X != 0 ? XAxisEnd : ZAxisEnd,
-            EWidgetAxis.YZ => dragDiff.X != 0 ? YAxisEnd : ZAxisEnd,
-            EWidgetAxis.XYZ => dragDiff.X != 0 ? YAxisEnd : ZAxisEnd,
-            _ => XAxisEnd
-        };
-
-
-        //dragDiff.Y *= -1;
-        Vector2 axisDir = Vector2.Normalize(axisEnd - Origin);
-
-        float dragAmount = Vector2.Dot(dragDiff, axisDir);
-
-        switch (Mode)
-        {
-            case EWidgetMode.Translate:
-            case EWidgetMode.Scale:
-                Vector3 vecDiff = CurrentAxis switch
-                {
-                    EWidgetAxis.X => new Vector3(dragAmount, 0, 0),
-                    EWidgetAxis.Y => new Vector3(0, dragAmount, 0),
-                    EWidgetAxis.Z => new Vector3(0, 0, dragAmount),
-                    EWidgetAxis.XY => throw new NotImplementedException(),
-                    EWidgetAxis.XZ => throw new NotImplementedException(),
-                    EWidgetAxis.YZ => throw new NotImplementedException(),
-                    EWidgetAxis.XYZ => throw new NotImplementedException(),
-                };
-                if (Mode is EWidgetMode.Translate)
-                {
-                    Attach.Location -= vecDiff;
-                }
-                else
-                {
-                    Attach.DrawScale3D -= vecDiff / 10;
-                }
-                break;
-            case EWidgetMode.UniformScale:
-                Attach.DrawScale -= dragAmount / 10;
-                break;
-        }
         PrevDragPos = new Vector2(x, y);
     }
 

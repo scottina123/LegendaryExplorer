@@ -63,6 +63,7 @@ VS_OUT VSMain(VS_IN input) {
 #define FLAG_ENABLEALPHACHANNEL (1 << 5)
 
 //level editor flags
+#define FLAG_SELECTED (1 << 30)
 #define FLAG_PRIMITIVE (1 << 31)
 
 PS_OUT PSMain(PS_IN input) {
@@ -104,6 +105,11 @@ PS_OUT PSMain(PS_IN input) {
 	
 	// use the input normal (negative values are clamped to zero (black))
 	//result.color = float4(input.normal, 1.0);
+	
+    if ((Flags & FLAG_SELECTED) == FLAG_SELECTED)
+    {
+        result.color.b *= 2;
+    }
 	
 	//the second render target is used for hit testing (clicking)
     result.hitTestID = float4(HitTestID, 1.0f);
