@@ -1972,7 +1972,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 //Add ensured properties
                 foreach (Property prop in ensuredProperties)
                 {
-                    if (!nodeProperties.ContainsNamedProp(prop.Name))
+                    if (!nodeProperties.ContainsNamedProp(prop.Name, prop.StaticArrayIndex))
                     {
                         nodeProperties.Add(prop);
                     }

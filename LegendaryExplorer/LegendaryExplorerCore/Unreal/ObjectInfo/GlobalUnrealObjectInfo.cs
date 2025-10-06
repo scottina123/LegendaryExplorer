@@ -258,7 +258,7 @@ namespace LegendaryExplorerCore.Unreal.ObjectInfo
 
                             foreach (var prop in defaults.GetProperties())
                             {
-                                if (!props.ContainsNamedProp(prop.Name))
+                                if (!props.ContainsNamedProp(prop.Name, prop.StaticArrayIndex))
                                 {
                                     props.Add(prop);
                                 }

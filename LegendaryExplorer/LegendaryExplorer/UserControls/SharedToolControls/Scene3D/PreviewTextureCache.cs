@@ -1,9 +1,12 @@
-﻿using LegendaryExplorerCore.Misc;
+﻿using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D11;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 
@@ -292,13 +295,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         public void ExpungeStaleCacheItems()
         {
-            for (int i = AssetCache.Count - 1; i > 0; i--)
+            TimeSpan oneMinute = TimeSpan.FromMinutes(1);
+            foreach (var (key, entry) in AssetCache)
             {
-                if (DateTime.Now - AssetCache[i].LastUsageTime > TimeSpan.FromMinutes(1))
+                if (DateTime.Now - entry.LastUsageTime > oneMinute)
                 {
-                    Debug.WriteLine($"Expunging PreviewTextureCache stale item: {AssetCache[i].InstanceFullPath}");
-                    AssetCache[i].Dispose();
-                    AssetCache.RemoveAt(i);
+                    entry.Dispose();
+                    //Remove does not actually invalidate the enumerator
+                    AssetCache.Remove(key);
                 }
             }
         }
@@ -308,42 +312,44 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         public void Dispose()
         {
-            foreach (TextureEntry e in AssetCache)
-            {
-                e.Dispose();
-            }
-            AssetCache.Clear();
+            AssetCache.DisposeValuesAndClear();
         }
 
         /// <summary>
         /// Stores loaded textures by their full name.
         /// </summary>
-        public ObservableCollectionExtended<TextureEntry> AssetCache { get; } = new();
+        private Dictionary<string, TextureEntry> AssetCache { get; } = new();
 
         /// <summary>
         /// Queues a texture for eventual loading.
         /// </summary>
-        public TextureEntry LoadTexture(ExportEntry export)
+        public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
         {
-            foreach (TextureEntry e in AssetCache)
+            string ifp = textureEntry.InstancedFullPath;
+            if (textureEntry is ImportEntry import)
             {
-                // Same full paths are assumed to be identical. Leaving this here in case this needs changing for some reason.
-                if (/*e.TextureExport.FileRef.FilePath == export.FileRef.FilePath && */e.InstanceFullPath == export.InstancedFullPath)
+                textureEntry = EntryImporter.ResolveImport(import, packageCache);
+            }
+            if (textureEntry is ExportEntry textureExport)
+            {
+                if (AssetCache.TryGetValue(textureExport.InstancedFullPath, out TextureEntry entry))
                 {
-                    e.LastUsageTime = DateTime.Now;
-                    return e;
+                    entry.LastUsageTime = DateTime.Now;
+                    return entry;
+                }
+                try
+                {
+                    entry = new TextureEntry(RenderContext, textureExport);
+                    AssetCache.Add(entry.InstanceFullPath, entry);
+                    return entry;
+                }
+                catch
+                {
+                    //just do the error path below
                 }
             }
-            try
-            {
-                var entry = export.ClassName == "TextureFlipBook" ? new FlipBookTextureEntry(RenderContext, export) : new TextureEntry(RenderContext, export);
-                AssetCache.Add(entry);
-                return entry;
-            }
-            catch
-            {
-                return null;
-            }
+            Debug.WriteLine($"Unable to resolve texture: {ifp}");
+            return null;
         }
     }
 }

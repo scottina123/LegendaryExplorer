@@ -1,10 +1,10 @@
-﻿using System;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Windows.Documents;
-using SharpDX;
+﻿using SharpDX;
+using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
+using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Vector4 = System.Numerics.Vector4;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
@@ -54,11 +54,8 @@ public unsafe class LEEffect : IDisposable
         context.PixelShader.SetConstantBuffer(2, PixelShaderConstants);
     }
 
-    public void RenderObject(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, Mesh<LEVertex> mesh, int indexstart, int indexcount)
+    public void RenderObject(DeviceContext context, MeshElement mesh, int indexstart, int indexcount)
     {
-        // Push new data into the shaders' constant buffers
-        context.UpdateSubresource(ref vsSharedConstants, VertexShaderConstants);
-        context.UpdateSubresource(ref psSharedConstants, PixelShaderConstants);
         //TODO: copy only the portion that is used
         context.UpdateSubresource(VertexShaderGlobals, 0, null, (IntPtr)VertexShaderConstantBufferAlloc, 0, 0);
         context.UpdateSubresource(PixelShaderGlobals, 0, null, (IntPtr)PixelShaderConstantBufferAlloc, 0, 0);
@@ -66,9 +63,17 @@ public unsafe class LEEffect : IDisposable
         // Setup buffers for rendering
         context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, LEVertex.Stride, 0));
         context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
+        context.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
 
         // Draw!!!
         context.DrawIndexed(indexcount, indexstart, 0);
+    }
+
+    public void UpdateCameraConstants(DeviceContext context, ref LEVSConstants vsSharedConstants, ref LEPSConstants psSharedConstants)
+    {
+        // Push new data into the shaders' constant buffers
+        context.UpdateSubresource(ref vsSharedConstants, VertexShaderConstants);
+        context.UpdateSubresource(ref psSharedConstants, PixelShaderConstants);
     }
 
     private void Dispose(bool disposing)

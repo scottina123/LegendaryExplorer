@@ -147,7 +147,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters.Shaders
         public FShaderParameter QuarterResOffset;
     }
 
-    public struct FMaterialVertexShaderParameters
+    public struct FMaterialShaderParameters
     {
         public FShaderParameter CameraWorldPosition;
         public FShaderParameter ObjectWorldPositionAndRadius;
@@ -155,17 +155,17 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters.Shaders
         public FShaderParameter WindDirectionAndSpeed;
         public FShaderParameter FoliageImpulseDirection;
         public FShaderParameter FoliageNormalizedRotationAxisAndAngle;
+    }
+
+    public struct FMaterialVertexShaderParameters
+    {
+        public FMaterialShaderParameters MaterialShaderParameters;
         public TUniformParameter<FShaderParameter>[] UniformVertexScalarShaderParameters;
         public TUniformParameter<FShaderParameter>[] UniformVertexVectorShaderParameters;
 
         public void Serialize(SerializingContainer sc)
         {
-            sc.SerializeUnmanaged(ref CameraWorldPosition);
-            sc.SerializeUnmanaged(ref ObjectWorldPositionAndRadius);
-            sc.SerializeUnmanaged(ref ObjectOrientation);
-            sc.SerializeUnmanaged(ref WindDirectionAndSpeed);
-            sc.SerializeUnmanaged(ref FoliageImpulseDirection);
-            sc.SerializeUnmanaged(ref FoliageNormalizedRotationAxisAndAngle);
+            sc.SerializeUnmanaged(ref MaterialShaderParameters);
             sc.SerializeUniformParameters(ref UniformVertexScalarShaderParameters, FShaderParameter.PixelScalarId,
                 ref UniformVertexVectorShaderParameters, FShaderParameter.PixelVectorId);
         }
@@ -173,12 +173,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters.Shaders
 
     public struct FMaterialPixelShaderParameters
     {
-        public FShaderParameter CameraWorldPosition;
-        public FShaderParameter ObjectWorldPositionAndRadius;
-        public FShaderParameter ObjectOrientation;
-        public FShaderParameter WindDirectionAndSpeed;
-        public FShaderParameter FoliageImpulseDirection;
-        public FShaderParameter FoliageNormalizedRotationAxisAndAngle;
+        public FMaterialShaderParameters MaterialShaderParameters;
         public TUniformParameter<FShaderParameter>[] UniformPixelScalarShaderParameters;
         public TUniformParameter<FShaderParameter>[] UniformPixelVectorShaderParameters;
         public TUniformParameter<FShaderResourceParameter>[] UniformPixel2DShaderResourceParameters;
@@ -210,12 +205,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters.Shaders
         public void Serialize(SerializingContainer sc)
         {
             // MaterialShaderParameters
-            sc.SerializeUnmanaged(ref CameraWorldPosition);
-            sc.SerializeUnmanaged(ref ObjectWorldPositionAndRadius);
-            sc.SerializeUnmanaged(ref ObjectOrientation);
-            sc.SerializeUnmanaged(ref WindDirectionAndSpeed);
-            sc.SerializeUnmanaged(ref FoliageImpulseDirection);
-            sc.SerializeUnmanaged(ref FoliageNormalizedRotationAxisAndAngle);
+            sc.SerializeUnmanaged(ref MaterialShaderParameters);
             sc.SerializeUniformParameters(ref UniformPixelScalarShaderParameters, FShaderParameter.PixelScalarId,
                 ref UniformPixelVectorShaderParameters, FShaderParameter.PixelVectorId);
             sc.SerializeUniformParameters(ref UniformPixel2DShaderResourceParameters, FShaderResourceParameter.Pixel2DId, 

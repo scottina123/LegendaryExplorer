@@ -1,0 +1,587 @@
+﻿using LegendaryExplorer.Misc;
+using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls;
+using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Misc;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
+using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Threading;
+
+namespace LegendaryExplorer.Tools.LevelEditor;
+
+/// <summary>
+/// Interaction logic for LevelEditor.xaml
+/// </summary>
+public partial class LevelEditor : WPFBase, IRecents
+{
+    public readonly LevelEditorRenderContext RenderContext;
+
+    public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
+    private ExportEntry LevelExport;
+
+    private ActorProxy selectedActor;
+    public ActorProxy SelectedActor
+    {
+        get => selectedActor;
+        set
+        {
+            if (SetProperty(ref selectedActor, value) && selectedActor is not null)
+            {
+                FocusOnBounds(selectedActor.GetBounds());
+                RenderContext.TransformWidget.Attach = selectedActor;
+            }
+        }
+    }
+
+    private bool isDirty;
+    public bool IsDirty
+    {
+        get => isDirty;
+        set => SetProperty(ref isDirty, value);
+    }
+
+    private bool _showCollision;
+    public bool ShowCollision
+    {
+        get => _showCollision;
+        set => SetProperty(ref _showCollision, value);
+    }
+
+    public bool UseLocalCoordsForWidget
+    {
+        get => RenderContext.TransformWidget.UseLocalCoords; 
+        set => SetProperty(ref RenderContext.TransformWidget.UseLocalCoords, value);
+    }
+
+    public string Toolname => "LevelEditor";
+    public LevelEditor() : base("LevelEditor")
+    {
+        RenderContext = new LevelEditorRenderContext();
+
+        LoadCommands();
+        InitializeComponent();
+        RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+
+        SceneViewer.Context = RenderContext;
+    }
+
+    private string FileQueuedForLoad;
+    private int ExportQueuedForFocusing;
+
+    public LevelEditor(ExportEntry exportToLoad) : this()
+    {
+        FileQueuedForLoad = exportToLoad.FileRef.FilePath;
+        ExportQueuedForFocusing = exportToLoad.UIndex;
+    }
+
+    private void UpdateScene(object sender, float e)
+    {
+
+    }
+
+    private void RenderScene(object sender, EventArgs e)
+    {
+        DoRenderPass(RenderPass.Base);
+        DoRenderPass(RenderPass.Hair);
+
+        if (ShowCollision)
+        {
+            DoRenderPass(RenderPass.Collision);
+        }
+        RenderContext.DrawUI();
+    }
+    void DoRenderPass(RenderPass pass)
+    {
+        for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
+        {
+            ActorProxy actor = RenderContext.DrawList_3D[i];
+            RenderContext.CurrentHitTestId = new Vector3((i & 0xFF) / 255f, ((i >> 8) & 0xFF) / 255f, ((i >> 16) & 0xFF) / 255f);
+            if (actor == selectedActor)
+            {
+                RenderContext.RenderFlags |= UserControls.SharedToolControls.Scene3D.RenderContext.ShaderFlags.Selected;
+            }
+            actor.Render(RenderContext, pass);
+            RenderContext.RenderFlags &= ~UserControls.SharedToolControls.Scene3D.RenderContext.ShaderFlags.Selected;
+        }
+    }
+
+    private void ViewportActorSelect(ActorProxy actor)
+    {
+        //don't set the property normally, as we don't want to trigger FocusOnBounds
+        SetProperty(ref selectedActor, actor, nameof(SelectedActor));
+        MeshExportsList.ScrollIntoView(selectedActor);
+    }
+
+    private void CenterView()
+    {
+        if (Actors.Count > 0)
+        {
+            //place camera at the edge of the bounding sphere containing all actors, 30 degrees up, facing the midpoint 
+            BoxSphereBounds fullBounds = Actors[0].GetBounds();
+            for (int i = 1; i < Actors.Count; i++)
+            {
+                fullBounds = fullBounds.Union(Actors[i].GetBounds());
+            }
+            FocusOnBounds(fullBounds);
+        }
+        else
+        {
+            RenderContext.Camera.Position = Vector3.Zero;
+            RenderContext.Camera.Pitch = -MathF.PI / 5.0f;
+            RenderContext.Camera.Yaw = MathF.PI / 4.0f;
+        }
+    }
+
+    private void FocusOnBounds(BoxSphereBounds fullBounds)
+    {
+        Vector3 origin = fullBounds.Origin;
+        float hyp = fullBounds.SphereRadius.Clamp(10, float.MaxValue) * 2;
+        (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
+        RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
+        RenderContext.Camera.OrientTowards(origin);
+    }
+
+    private void LoadLevel(Level level, bool isReload = false)
+    {
+        (Vector3, float, float) savedCamPOV = default;
+        Vector3 savedActorPos = default;
+        if (isReload && SelectedActor is not null)
+        {
+            savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
+            savedActorPos = SelectedActor.Location;
+            ExportQueuedForFocusing = SelectedActor.Export.UIndex;
+        }
+        UnloadLevel();
+
+        IsBusy = true;
+        BusyText = "Loading level...";
+        SceneViewer.SetShouldRender(false);
+        Task.Run(() =>
+        {
+            LevelExport = level.Export;
+            var actorExports = level.Actors.Where(Pcc.IsUExport).Select(Pcc.GetUExport);
+            var actors = new List<ActorProxy>();
+            foreach (var actorExport in actorExports)
+            {
+                var className = actorExport.ClassName;
+                if (className is "StaticMeshCollectionActor")
+                {
+                    var smca = actorExport.GetBinaryData<StaticMeshCollectionActor>();
+                    for (int i = 0; i < smca.Components.Count; i++)
+                    {
+                        if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
+                        {
+                            var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                            actors.Add(smcActor);
+                        }
+                    }
+                }
+                else if (className is "StaticLightCollectionActor")
+                {
+                    //var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
+                    //for (int i = 0; i < slca.Components.Count; i++)
+                    //{
+                    //    if (Pcc.TryGetUExport(slca.Components[i], out ExportEntry lightComponentExport))
+                    //    {
+
+                    //    }
+                    //}
+                }
+                else if (ActorProxy.Create(this, actorExport) is { } actorProxy)
+                {
+                    actors.Add(actorProxy);
+                }
+            }
+            return actors.OrderBy(actor => actor.Export.UIndex);
+
+        }).ContinueWithOnUIThread(prevTask =>
+        {
+            Actors.AddRange(prevTask.Result);
+            RenderContext.LoadLevel(Actors);
+            if (!isReload)
+            {
+                CenterView();
+            }
+
+            SceneViewer.SetShouldRender(true);
+            IsBusy = false;
+
+            if (ExportQueuedForFocusing > 0)
+            {
+                if (Actors.FirstOrDefault(a => a.Export.UIndex == ExportQueuedForFocusing) is { } proxy)
+                {
+                    SelectedActor = proxy;
+                }
+                ExportQueuedForFocusing = 0;
+                if (isReload)
+                {
+                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw) 
+                    = (savedCamPOV.Item1 + SelectedActor.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                }
+            }
+        });
+    }
+
+    public void LoadFile(string s)
+    {
+        try
+        {
+            UnloadLevel();
+            Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
+            LoadMEPackage(s);
+
+            StatusBar_LeftMostText.Text = Path.GetFileName(s);
+            Title = $"Level Editor - {s}";
+
+            RecentsController.AddRecent(s, false, Pcc?.Game);
+            RecentsController.SaveRecentList(true);
+
+            if (Pcc.Exports.FirstOrDefault(exp => exp.ClassName == "Level") is { } levelExport)
+            {
+                Level levelBin = levelExport.GetBinaryData<Level>();
+                LoadLevel(levelBin);
+            }
+            else
+            {
+                MessageBox.Show(this, "This is not a level file!");
+                UnloadLevel();
+                UnLoadMEPackage();
+            }
+
+        }
+        catch (Exception e)
+        {
+            StatusBar_LeftMostText.Text = "Failed to load " + Path.GetFileName(s);
+            MessageBox.Show($"Error loading {Path.GetFileName(s)}:\n{e.Message}");
+            IsBusy = false;
+            IsBusyTaskbar = false;
+            //throw e;
+        }
+    }
+
+    public void UnloadLevel()
+    {
+        RenderContext.UnloadLevel();
+        Actors.Clear();
+        LevelExport = null;
+        IsDirty = false;
+    }
+
+    public ICommand OpenFileCommand { get; set; }
+    public ICommand SaveFileCommand { get; set; }
+    public ICommand SaveAsCommand { get; set; }
+    public ICommand ToggleTranslateCommand { get; set; }
+    public ICommand ToggleRotateCommand { get; set; }
+    public ICommand ToggleScaleCommand { get; set; }
+    public ICommand ToggleUniformScaleCommand { get; set; }
+    public ICommand CommitChangesCommand { get; set; }
+    private void LoadCommands()
+    {
+        OpenFileCommand = new GenericCommand(OpenFile);
+        SaveFileCommand = new GenericCommand(SaveFile, PackageIsLoaded);
+        ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate, PackageIsLoaded);
+        ToggleRotateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Rotate, PackageIsLoaded);
+        ToggleScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Scale, PackageIsLoaded);
+        ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale, PackageIsLoaded);
+        CommitChangesCommand = new GenericCommand(CommitChanges, PackageIsLoaded);
+    }
+
+    private void Goto_TextBox_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return && !e.IsRepeat)
+        {
+            GotoButton_Clicked(null, null);
+        }
+    }
+
+    private void GotoButton_Clicked(object sender, RoutedEventArgs e)
+    {
+        if (int.TryParse(Goto_TextBox.Text, out int uIdx) 
+            && Actors.FirstOrDefault(a => a.Export.UIndex == uIdx) is ActorProxy actor)
+        {
+            SelectedActor = actor;
+        }
+    }
+
+    private void CommitChanges()
+    {
+        if (!PackageIsLoaded() || Actors.Count is 0) return;
+
+        Dictionary<int, StaticCollectionActor> collectionActorMap = [];
+
+        foreach (ActorProxy actor in Actors)
+        {
+            if (!actor.IsDirty)
+            {
+                continue;
+            }
+            if (actor is CollectionActorComponentProxy cacp)
+            {
+                if (!collectionActorMap.TryGetValue(cacp.CollectionActorExport.UIndex, out var collectionActor))
+                {
+                    collectionActor = (StaticCollectionActor)ObjectBinary.From(cacp.CollectionActorExport);
+                    collectionActorMap.Add(cacp.CollectionActorExport.UIndex, collectionActor);
+                }
+                cacp.CommitChanges(collectionActor);
+            }
+            else
+            {
+                actor.CommitChanges();
+            }
+        }
+
+        foreach (var collectionActor in collectionActorMap.Values)
+        {
+            collectionActor.Export.WriteBinary(collectionActor);
+        }
+        IsDirty = false;
+    }
+
+    public override void HandleUpdate(List<PackageUpdate> updates)
+    {
+        if (LevelExport is null)
+        {
+            return; //nothing is loaded
+        }
+
+        IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
+        HashSet<int> updatedExports = relevantUpdates.Select(x => x.Index).ToHashSet();
+        if (LevelExport is not null && updatedExports.Contains(LevelExport.UIndex))
+        {
+            LoadLevel(LevelExport.GetBinaryData<Level>(), true);
+        }
+        else
+        {
+            bool updated = false;
+            int reselectUIndex = 0;
+            (Vector3, float, float) savedCamPOV = default;
+            Vector3 savedActorPos = default;
+            List<ExportEntry> collectionActorsToUpdate = [];
+            for (int i = Actors.Count - 1; i >= 0; i--)
+            {
+                ActorProxy alteredActor = Actors[i];
+                if (alteredActor.TestUIndexes(updatedExports))
+                {
+                    updated = true;
+                    if (alteredActor == SelectedActor)
+                    {
+                        reselectUIndex = alteredActor.Export.UIndex;
+                        savedCamPOV = (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw);
+                        savedActorPos = SelectedActor.Location;
+                    }
+                    if (alteredActor is CollectionActorComponentProxy cacp)
+                    {
+                        collectionActorsToUpdate.Add(cacp.Export);
+                        continue;
+                    }
+                    Actors.RemoveAt(i);
+                    if (Pcc.GetEntry(alteredActor.Export.UIndex) is ExportEntry actorExport 
+                        && ActorProxy.Create(this, actorExport) is { } actorProxy)
+                    {
+                        Actors.Add(actorProxy);
+                    }
+                }
+            }
+            foreach (var collectionActor in collectionActorsToUpdate)
+            {
+                for (int i = Actors.Count - 1; i >= 0; i++)
+                {
+                    if (Actors[i] is CollectionActorComponentProxy)
+                    {
+                        Actors.RemoveAt(i);
+                    }
+                }
+                if (Pcc.GetEntry(collectionActor.UIndex) is ExportEntry newCollectionActor)
+                {
+                    string className = newCollectionActor.ClassName;
+                    if (className is "StaticMeshCollectionActor")
+                    {
+                        var smca = newCollectionActor.GetBinaryData<StaticMeshCollectionActor>();
+                        for (int i = 0; i < smca.Components.Count; i++)
+                        {
+                            if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
+                            {
+                                var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                                Actors.Add(smcActor);
+                            }
+                        }
+                    }
+                    else if (className is "StaticLightCollectionActor")
+                    {
+
+                    }
+                }
+            }
+            if (updated)
+            {
+                Actors.Sort(a => a.Export.UIndex);
+                IsDirty = Actors.Any(a => a.IsDirty);
+            }
+            if (reselectUIndex is not 0)
+            {
+                SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex);
+                (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
+                = (savedCamPOV.Item1 + SelectedActor.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+            }
+        }
+    }
+
+    private bool PackageIsLoaded() => Pcc != null;
+
+    private async void SaveFile()
+    {
+        await Pcc.SaveAsync();
+    }
+
+    private async void SaveFileAs()
+    {
+        string fileFilter;
+        switch (Pcc.Game)
+        {
+            case MEGame.ME1:
+                fileFilter = GameFileFilters.ME1SaveFileFilter;
+                break;
+            case MEGame.ME2:
+            case MEGame.ME3:
+                fileFilter = GameFileFilters.ME3ME2SaveFileFilter;
+                break;
+            default:
+                string extension = Path.GetExtension(Pcc.FilePath);
+                fileFilter = $"*{extension}|*{extension}";
+                break;
+        }
+        var d = new SaveFileDialog { Filter = fileFilter };
+        if (d.ShowDialog() == true)
+        {
+            IsBusy = true;
+            BusyText = "Saving...";
+            await Pcc.SaveAsync(d.FileName);
+            IsBusy = false;
+        }
+    }
+
+    private void OpenFile()
+    {
+        var d = AppDirectories.GetOpenPackageDialog();
+        if (d.ShowDialog() == true)
+        {
+#if !DEBUG
+            try
+            {
+#endif
+            LoadFile(d.FileName);
+#if !DEBUG
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Unable to open file:\n" + ex.Message);
+            }
+#endif
+        }
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            // Note that you can have more than one file.
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            string ext = Path.GetExtension(files[0]).ToLower();
+            if (ext != ".upk" && ext != ".pcc" && ext != ".sfm")
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+            }
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+        }
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            // Note that you can have more than one file.
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            string ext = Path.GetExtension(files[0]).ToLower();
+            if (ext is ".upk" or ".pcc" or ".sfm")
+            {
+                LoadFile(files[0]);
+            }
+        }
+    }
+    private void LevelEditor_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (e.Cancel)
+            return;
+
+        RenderContext.UpdateScene -= UpdateScene;
+        RenderContext.RenderScene -= RenderScene;
+        RenderContext.SelectActor -= ViewportActorSelect;
+
+        UnloadLevel();
+        SceneViewer.Dispose();
+        RecentsController?.Dispose();
+        UnLoadMEPackage();
+    }
+    public void PropogateRecentsChange(string propogationSource, IEnumerable<RecentsControl.RecentItem> newRecents)
+    {
+        RecentsController.PropogateRecentsChange(false, newRecents);
+    }
+
+    private void LevelEditor_Loaded(object sender, RoutedEventArgs e)
+    {
+        RenderContext.UpdateScene += UpdateScene;
+        RenderContext.RenderScene += RenderScene;
+        RenderContext.SelectActor += ViewportActorSelect;
+
+        if (!string.IsNullOrEmpty(FileQueuedForLoad))
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                //Wait for all children to finish loading
+                LoadFile(FileQueuedForLoad);
+                FileQueuedForLoad = null;
+
+                Activate();
+            }));
+        }
+    }
+
+    private float _posIncrement = 10f;
+    public float PosIncrement
+    {
+        get => _posIncrement;
+        set => SetProperty(ref _posIncrement, value);
+    }
+
+    private float _rotIncrement = 5f;
+    public float RotIncrement
+    {
+        get => _rotIncrement;
+        set => SetProperty(ref _rotIncrement, value);
+    }
+
+    private float _scaleIncrement = 0.1f;
+    public float ScaleIncrement
+    {
+        get => _scaleIncrement;
+        set => SetProperty(ref _scaleIncrement, value);
+    }
+}

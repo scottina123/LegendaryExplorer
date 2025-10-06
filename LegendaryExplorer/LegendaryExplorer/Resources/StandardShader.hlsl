@@ -1,34 +1,39 @@
-﻿// This has to match the data in the vertex buffer.
-struct VS_IN {
-	float3 pos : POSITION;
-	float3 normal : NORMAL;
-	float2 uv : TEXCOORD0;
+﻿struct VS_IN {
+    float4 pos : POSITION0;
+    float3 hitTestID : TANGENT0;
+    float4 normal : NORMAL0;
+    float4 color : COLOR1;
+    float2 uv : TEXCOORD0;
 };
 
 struct VS_OUT {
-	float4 pos : SV_POSITION;
+    float4 pos : SV_POSITION;
+    float4 color : COLOR1;
 	float3 normal : NORMAL;
-	float2 uv : TEXCOORD0;
+    float2 uv : TEXCOORD0;
+    float3 hitTestID : COLOR2;
 };
 
 struct PS_IN {
-	float4 pos : SV_POSITION;
+    float4 pos : SV_POSITION;
+    float4 color : COLOR1;
 	float3 normal : NORMAL;
-	float2 uv : TEXCOORD0;
+    float2 uv : TEXCOORD0;
+    float3 hitTestID : COLOR2;
 };
 
 struct PS_OUT {
-	float4 color : SV_TARGET;
+	float4 color : SV_TARGET0;
+    float4 hitTestID : SV_Target1;
 };
 
+//reminder: Constant buffers must be a multiple of 16 bytes long
 cbuffer constants {
 	float4x4 projection;
 	float4x4 view;
 	float4x4 model;
-	int Flags; // 196 len
-	int4 padding1; // Constant buffers must be a multiple of 16 bytes long
-	int4 padding2; // Constant buffers must be a multiple of 16 bytes long
-	int4 padding3; // Constant buffers must be a multiple of 16 bytes long
+    float3 HitTestID;
+	int Flags;
 };
 
 Texture2D tex : register(t0);
@@ -38,16 +43,16 @@ VS_OUT VSMain(VS_IN input) {
 	VS_OUT result = (VS_OUT)0;
 
 	// Transform the input object-space position into a screen-space position
-	result.pos = mul(float4(input.pos, 1), model);
+	result.pos = mul(float4(input.pos.xyz, 1), model);
 	result.pos = mul(result.pos, view);
 	result.pos = mul(result.pos, projection);
 
-	// Pass through the normal
-	result.normal = input.normal;
-
-	// Pass through the uv coordinate
+	// Pass through
+    result.normal = input.normal.xyz;
 	result.uv = input.uv;
-
+    result.color = input.color;
+    result.hitTestID = input.hitTestID;
+	
 	return result;
 }
 
@@ -56,6 +61,10 @@ VS_OUT VSMain(VS_IN input) {
 #define FLAG_ENABLEGREENCHANNEL (1 << 3)
 #define FLAG_ENABLEBLUECHANNEL (1 << 4)
 #define FLAG_ENABLEALPHACHANNEL (1 << 5)
+
+//level editor flags
+#define FLAG_SELECTED (1 << 30)
+#define FLAG_PRIMITIVE (1 << 31)
 
 PS_OUT PSMain(PS_IN input) {
 	PS_OUT result = (PS_OUT)0;
@@ -96,6 +105,21 @@ PS_OUT PSMain(PS_IN input) {
 	
 	// use the input normal (negative values are clamped to zero (black))
 	//result.color = float4(input.normal, 1.0);
-
+	
+    if ((Flags & FLAG_SELECTED) == FLAG_SELECTED)
+    {
+        result.color.b *= 2;
+    }
+	
+	//the second render target is used for hit testing (clicking)
+    result.hitTestID = float4(HitTestID, 1.0f);
+	
+	//ignore all that, and use vertex info
+    if ((Flags & FLAG_PRIMITIVE) == FLAG_PRIMITIVE)
+    {
+        result.color = input.color;
+        result.hitTestID = float4(input.hitTestID, 1.0f);
+    }
+	
 	return result;
 }
