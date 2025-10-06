@@ -196,6 +196,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         {
             return new SFXStuntActorProxy(context, actorExport);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "BioArtPlaceable", actorExport.Game))
+        {
+            return new BioArtPlaceableProxy(context, actorExport);
+        }
         if (GlobalUnrealObjectInfo.IsA(className, "BioPawn", actorExport.Game))
         {
             return new BioPawnProxy(context, actorExport);
@@ -383,6 +387,17 @@ file class SFXStuntActorProxy : ActorProxy
     public SFXStuntActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponents(context.RenderContext, "BodyMesh", "HeadMesh", "HairMesh", "HeadGearMesh");
+    }
+}
+file class BioArtPlaceableProxy : ActorProxy
+{
+    public BioArtPlaceableProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponents(context.RenderContext, "PlaceableMesh");
+        if (Components.Count is 0)
+        {
+            AddComponents(context.RenderContext, "DestroyedMesh");
+        }
     }
 }
 file class PawnProxy : ActorProxy

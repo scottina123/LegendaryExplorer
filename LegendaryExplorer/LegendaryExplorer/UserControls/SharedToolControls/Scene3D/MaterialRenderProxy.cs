@@ -165,6 +165,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
         public void UpdateShaderParams(Span<byte> vertexConstantBuffer, Span<byte> pixelConstantBuffer, MeshRenderContext context, MeshElement mesh)
         {
+            vertexConstantBuffer.Clear();
+            pixelConstantBuffer.Clear();
             UnrealVertexShader?.WriteValues(vertexConstantBuffer, context, mesh, this);
             UnrealPixelShader?.WriteValues(pixelConstantBuffer, context, mesh, this);
         }

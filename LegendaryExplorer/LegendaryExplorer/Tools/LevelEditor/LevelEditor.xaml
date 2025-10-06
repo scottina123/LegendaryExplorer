@@ -81,7 +81,7 @@
             </Menu>
             <WrapPanel DockPanel.Dock="Top">
                 <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
-                    <Button ToolTip="Commit hex changes to the export" Content="Commit Changes" Command="{Binding CommitChangesCommand}">
+                    <Button Content="Commit Changes" ToolTip="Commit changes made in Level Editor (does not save the file to disk!)" Command="{Binding CommitChangesCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Style.Triggers>
@@ -92,6 +92,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
+                    <Button Content="Reset" ToolTip="Reset uncommitted changes" Click="ResetUncommittedChanges_Click" IsEnabled="{Binding IsDirty, Converter={StaticResource BoolEnabledConverter}}"/>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <RadioButton GroupName="WidgetMode" ToolTip="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True">
                         Translate
@@ -143,8 +144,10 @@
                         <xctk:WatermarkTextBox Watermark="UIndex" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0"/>
                     </StackPanel>
+                    
+                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding TextBelowActors}" TextWrapping="Wrap"/>
 
-                    <ListBox ItemsSource="{Binding Actors}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch">
+                    <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding Actors}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch">
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type local:ActorProxy}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">

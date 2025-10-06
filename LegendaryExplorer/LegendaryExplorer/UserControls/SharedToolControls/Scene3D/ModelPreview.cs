@@ -1,18 +1,16 @@
 ﻿
+using LegendaryExplorerCore.Gammtek;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.Classes;
+using SharpDX.Direct3D11;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System.Numerics;
-using LegendaryExplorerCore.Gammtek;
-using SharpDX.Direct3D11;
-using StaticMesh = LegendaryExplorerCore.Unreal.BinaryConverters.StaticMesh;
-using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
-using LegendaryExplorerCore.Unreal;
-using LegendaryExplorerCore.Unreal.Classes;
 using Vector3 = System.Numerics.Vector3;
 using Vector4 = System.Numerics.Vector4;
 
@@ -332,9 +330,31 @@ public class ModelPreviewMaterial : IDisposable
 
         effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDesc));
 
+        SceneCamera camera = context.Camera;
+        Matrix4x4 viewMatrix = camera.ViewMatrix;
+        var vsConstants = new LEVSConstants
+        {
+            ViewProjectionMatrix = viewMatrix * camera.ProjectionMatrix,
+            CameraPosition = new Vector4(camera.Position, 1),
+            PreViewTranslation = Vector4.Zero,
+        };
+        float depthMul = camera.ProjectionMatrix[2, 2];
+        float depthAdd = camera.ProjectionMatrix[3, 2];
+        if (false) //TODO: check if Z is inverted, if so this should be true
+        {
+            depthMul = 1f - depthMul;
+            depthAdd = -depthAdd;
+        }
+        var psConstants = new LEPSConstants
+        {
+            ScreenPositionScaleBias = new Vector4(1f / 2f, 1f / -2f, (context.Height / 2f + 0.5f) / context.Height, (context.Width / 2f + 0.5f) / context.Width),
+            MinZ_MaxZRatio = new Vector4(depthAdd, depthMul, 1f / depthAdd, depthMul / depthAdd),
+            DynamicScale = Vector4.One,
+        };
+
         mat.UpdateShaderParams(effect.VertexShaderConstantBuffer, effect.PixelShaderConstantBuffer, context, mesh);
 
-        effect.RenderObject(context.ImmediateContext, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
+        effect.RenderObject(context.ImmediateContext, vsConstants, psConstants, mesh, (int)s.StartIndex, (int)s.TriangleCount * 3);
     }
 
     public void Dispose()
@@ -413,13 +433,6 @@ public class ModelPreview : IDisposable
             }
             vertices.Add(LEVertex.Create(new Vector3(position.X, position.Y, position.Z), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
         }
-
-        //OLD CODE
-        //for (int i = 0; i < m.L.Vertices.Points.Count; i++)
-        //{
-        //    // Note the reversal of the Z and Y coordinates. Unreal seems to think that Z should be up.
-        //    vertices.Add(new Scene3D.WorldVertex(new SharpDX.Vector3(-m.Mesh.Vertices.Points[i].X, m.Mesh.Vertices.Points[i].Z, m.Mesh.Vertices.Points[i].Y), SharpDX.Vector3.Zero, new SharpDX.Vector2(m.Mesh.Edges.UVSet[i].UVs[0].X, m.Mesh.Edges.UVSet[i].UVs[0].Y)));
-        //}
 
         // Sometimes there might not be an index buffer.
         // If there is one, use that. 

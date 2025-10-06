@@ -174,6 +174,7 @@ public partial class LevelEditor : WPFBase, IRecents
             LevelExport = level.Export;
             var actorExports = level.Actors.Where(Pcc.IsUExport).Select(Pcc.GetUExport);
             var actors = new List<ActorProxy>();
+            HashSet<string> ignoredActorClasses = [];
             foreach (var actorExport in actorExports)
             {
                 var className = actorExport.ClassName;
@@ -189,27 +190,32 @@ public partial class LevelEditor : WPFBase, IRecents
                         }
                     }
                 }
-                else if (className is "StaticLightCollectionActor")
-                {
-                    //var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
-                    //for (int i = 0; i < slca.Components.Count; i++)
-                    //{
-                    //    if (Pcc.TryGetUExport(slca.Components[i], out ExportEntry lightComponentExport))
-                    //    {
+                //else if (className is "StaticLightCollectionActor")
+                //{
+                //    var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
+                //    for (int i = 0; i < slca.Components.Count; i++)
+                //    {
+                //        if (Pcc.TryGetUExport(slca.Components[i], out ExportEntry lightComponentExport))
+                //        {
 
-                    //    }
-                    //}
-                }
+                //        }
+                //    }
+                //}
                 else if (ActorProxy.Create(this, actorExport) is { } actorProxy)
                 {
                     actors.Add(actorProxy);
                 }
+                else if (className is not "BioWorldInfo")
+                {
+                    ignoredActorClasses.Add(className);
+                }
             }
-            return actors.OrderBy(actor => actor.Export.UIndex);
+            return (actors.OrderBy(actor => actor.Export.UIndex), ignoredActorClasses);
 
         }).ContinueWithOnUIThread(prevTask =>
         {
-            Actors.AddRange(prevTask.Result);
+            var (actors, ignoredClasses) = prevTask.Result;
+            Actors.AddRange(actors);
             RenderContext.LoadLevel(Actors);
             if (!isReload)
             {
@@ -218,6 +224,11 @@ public partial class LevelEditor : WPFBase, IRecents
 
             SceneViewer.SetShouldRender(true);
             IsBusy = false;
+
+            if (ignoredClasses.Count > 0)
+            {
+                TextBelowActors = $"Unrendered Actor types:\n{string.Join(", ", ignoredClasses)}";
+            }
 
             if (ExportQueuedForFocusing > 0)
             {
@@ -276,6 +287,7 @@ public partial class LevelEditor : WPFBase, IRecents
     {
         RenderContext.UnloadLevel();
         Actors.Clear();
+        TextBelowActors = "";
         LevelExport = null;
         IsDirty = false;
     }
@@ -361,7 +373,7 @@ public partial class LevelEditor : WPFBase, IRecents
         HashSet<int> updatedExports = relevantUpdates.Select(x => x.Index).ToHashSet();
         if (LevelExport is not null && updatedExports.Contains(LevelExport.UIndex))
         {
-            LoadLevel(LevelExport.GetBinaryData<Level>(), true);
+            ReloadLevel();
         }
         else
         {
@@ -443,6 +455,21 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private async void SaveFile()
     {
+        if (IsDirty)
+        {
+            switch (MessageBox.Show("Do you want to commit your Level Editor changes before saving this file?", "Uncommitted changes", MessageBoxButton.YesNoCancel))
+            {
+                case MessageBoxResult.Yes:
+                    CommitChanges();
+                    break;
+                case MessageBoxResult.No:
+                    //continue on
+                    break;
+                case MessageBoxResult.Cancel:
+                default:
+                    return;
+            }
+        }
         await Pcc.SaveAsync();
     }
 
@@ -583,5 +610,21 @@ public partial class LevelEditor : WPFBase, IRecents
     {
         get => _scaleIncrement;
         set => SetProperty(ref _scaleIncrement, value);
+    }
+
+    private string textBelowActors;
+    public string TextBelowActors { get => textBelowActors; set => SetProperty(ref textBelowActors, value); }
+
+    private void ResetUncommittedChanges_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsDirty && MessageBox.Show("Are you sure you want to reset uncommitted changes?", "Reset confirmation", MessageBoxButton.YesNo) is MessageBoxResult.Yes)
+        {
+            ReloadLevel();
+        }
+    }
+
+    private void ReloadLevel()
+    {
+        LoadLevel(LevelExport.GetBinaryData<Level>(), true);
     }
 }

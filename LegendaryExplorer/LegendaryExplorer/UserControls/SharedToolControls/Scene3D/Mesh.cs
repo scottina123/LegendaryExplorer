@@ -103,7 +103,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
     public struct LEVertex
     {
         public Vector4 position;
-        public Vector3 tangent_or_hitTestID; //tangent for game shaders, sometimes used as hittest id for the level editor
+        public Vector3 tangent_or_hitTestID; //tangent for game shaders, used as hittest id for the level editor
         public Vector4 normal;
         public Vector4 color;
         //actual number of UVs used by FLocalVertexFactory vertex shaders varies between 1 float2, and 3 float4s + 1 float2.

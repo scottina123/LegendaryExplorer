@@ -204,7 +204,6 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters.Shaders
         public FShaderParameter WrapLightingParameters;
         public void Serialize(SerializingContainer sc)
         {
-            // MaterialShaderParameters
             sc.SerializeUnmanaged(ref MaterialShaderParameters);
             sc.SerializeUniformParameters(ref UniformPixelScalarShaderParameters, FShaderParameter.PixelScalarId,
                 ref UniformPixelVectorShaderParameters, FShaderParameter.PixelVectorId);

@@ -236,33 +236,6 @@ public class MeshRenderContext : RenderContext
         }
     }
 
-    public void UpdateLECameraConstants()
-    {
-        SceneCamera camera = Camera;
-        Matrix4x4 viewMatrix = camera.ViewMatrix;
-        var vsConstants = new LEVSConstants
-        {
-            ViewProjectionMatrix = viewMatrix * camera.ProjectionMatrix,
-            CameraPosition = new Vector4(camera.Position, 1),
-            PreViewTranslation = Vector4.Zero,
-        };
-        float depthMul = camera.ProjectionMatrix[2, 2];
-        float depthAdd = camera.ProjectionMatrix[3, 2];
-        if (false) //TODO: check if Z is inverted, if so this should be true
-        {
-            depthMul = 1f - depthMul;
-            depthAdd = -depthAdd;
-        }
-        var psConstants = new LEPSConstants
-        {
-            ScreenPositionScaleBias = new Vector4(1f / 2f, 1f / -2f, (Height / 2f + 0.5f) / Height, (Width / 2f + 0.5f) / Width),
-            MinZ_MaxZRatio = new Vector4(depthAdd, depthMul, 1f / depthAdd, depthMul / depthAdd),
-            DynamicScale = Vector4.One,
-        };
-
-        LEEffect.UpdateCameraConstants(ImmediateContext, ref vsConstants, ref psConstants);
-    }
-
     public override void CreateResources()
     {
         base.CreateResources();

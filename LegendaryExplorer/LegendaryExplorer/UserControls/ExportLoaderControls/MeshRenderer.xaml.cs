@@ -244,30 +244,27 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
     private void SceneContext_RenderScene(object sender, EventArgs e)
     {
         if (CurrentLOD < 0) { CurrentLOD = 0; }
-        if (RenderGameShader)
+
+        if (MeshPreview is not null && CurrentLOD < MeshPreview.LODs.Count)
         {
-            MeshContext.UpdateLECameraConstants();
-        }
-        foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
-        {
-            if (MeshPreview is not null && CurrentLOD < MeshPreview.LODs.Count)
+            if (RenderSolid)
             {
-                if (RenderSolid)
+                MeshContext.Wireframe = false;
+                MeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
+            }
+            if (RenderGameShader)
+            {
+                MeshContext.Wireframe = false;
+                foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
                 {
-                    MeshContext.Wireframe = false;
-                    MeshPreview.Render(renderPass, MeshContext, CurrentLOD);
-                }
-                if (RenderGameShader)
-                {
-                    MeshContext.Wireframe = false;
                     MeshPreview.RenderWithGameShader(renderPass, MeshContext, CurrentLOD);
                 }
             }
-        }
-        if (RenderWireframe && MeshPreview is not null && CurrentLOD < MeshPreview.LODs.Count)
-        {
-            MeshContext.Wireframe = true;
-            MeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
+            if (RenderWireframe)
+            {
+                MeshContext.Wireframe = true;
+                MeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
+            }
         }
         if (IsStaticMesh && ShowCollisionMesh && STMCollisionMesh != null)
         {
