@@ -12,18 +12,18 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class BatchedPrimitives
 {
-    private readonly List<LEVertex> LineVerts = [];
+    private readonly List<WorldVertex> LineVerts = [];
 
     private readonly List<int> MeshStarts = [];
-    private readonly List<LEVertex> MeshVerts = [];
+    private readonly List<WorldVertex> MeshVerts = [];
     private readonly List<int> MeshIndices = [];
 
 
     public void AddLine(Vector3 start, Vector3 end, Vector4 color, int hitId)
     {
         var hitVec = GetHitVec(hitId);
-        LineVerts.Add(new LEVertex(start, color, hitVec));
-        LineVerts.Add(new LEVertex(end, color, hitVec));
+        LineVerts.Add(new WorldVertex(start, color, hitVec));
+        LineVerts.Add(new WorldVertex(end, color, hitVec));
     }
 
     //public void AddMesh(Vector4 color, int hitId, params Span<Vector3> verts)
@@ -32,7 +32,7 @@ public class BatchedPrimitives
     //    MeshStarts.Add(MeshVerts.Count);
     //    foreach (Vector3 point in verts)
     //    {
-    //        MeshVerts.Add(new LEVertex(point, color, hitVec));
+    //        MeshVerts.Add(new WorldVertex(point, color, hitVec));
     //    }
     //}
 
@@ -104,7 +104,7 @@ public class BatchedPrimitives
 
         public void AddVertex(Vector3 point)
         {
-            batcher.MeshVerts.Add(new LEVertex(Vector3.Transform(point, LocalToWorld), Color, HitVec));
+            batcher.MeshVerts.Add(new WorldVertex(Vector3.Transform(point, LocalToWorld), Color, HitVec));
         }
 
         public void AddVertex(float x, float y, float z) => AddVertex(new Vector3(x, y, z));

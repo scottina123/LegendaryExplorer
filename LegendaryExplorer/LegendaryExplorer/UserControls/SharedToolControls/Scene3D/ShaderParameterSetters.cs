@@ -17,7 +17,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
     internal static class ShaderParameterSetters
     {
         public static void WriteValues<LightMapPolicy, DensityPolicy>(this TBasePassVertexShader<LightMapPolicy, DensityPolicy> shader, 
-            Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat) 
+            Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat) 
             where LightMapPolicy : struct, IVertexParametersType where DensityPolicy : struct, IVertexShaderParametersType
         {
             if (shader.VertexFactoryParameters.Parameters is not FLocalVertexFactoryShaderParameters vertexFactoryParams)
@@ -31,7 +31,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             //TODO: DensityPolicy params
         }
         public static void WriteValues<LightMapPolicy>(this TBasePassPixelShader<LightMapPolicy> shader, 
-            Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat) 
+            Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat) 
             where LightMapPolicy : struct, IPixelParametersType 
         {
             //TODO: LightMapPolicy params
@@ -57,7 +57,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
         }
 
-        public static void WriteValues(this ref FMaterialShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this ref FMaterialShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
             buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.TransformedBounds.Origin, mesh.TransformedBounds.SphereRadius));
@@ -67,7 +67,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             buffer.WriteVal(p.FoliageNormalizedRotationAxisAndAngle, Vector4.UnitZ);
         }
 
-        public static void WriteValues(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             p.MaterialShaderParameters.WriteValues(buffer, context, mesh, mat);
 
@@ -81,7 +81,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 buffer.WriteVal(vectorParam.Param, vectorParamValues[vectorParam.Index]);
             }
         }
-        public static void WriteValues(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             p.MaterialShaderParameters.WriteValues(buffer, context, mesh, mat);
 
@@ -150,7 +150,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
         }
 
-        public static void WriteValues(this ref FSceneTextureShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this ref FSceneTextureShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             if (p.SceneColorTexture.IsBound())
             {
@@ -181,7 +181,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
         }
 
-        public static void WriteValues(this ref FHeightFogVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this ref FHeightFogVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             //these values disable fog
             buffer.WriteVal(p.FogExtinctionDistance, new Vector4(float.MaxValue));
@@ -197,7 +197,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             buffer.WriteVal(p.FogStartDistance, Vector4.Zero);
         }
 
-        public static void WriteValues(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, MeshElement mesh, MaterialRenderProxy mat)
+        public static void WriteValues(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
                 buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
                 buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);

@@ -2,13 +2,6 @@
 using SharpDX;
 using SharpDX.DXGI;
 using SharpDX.Direct3D11;
-using System.Runtime.InteropServices;
-using Matrix3x3 = SharpDX.Matrix3x3;
-using float3x3 = SharpDX.Matrix3x3;
-using float4x4 = System.Numerics.Matrix4x4;
-using float2 = System.Numerics.Vector2;
-using float3 = System.Numerics.Vector3;
-using float4 = System.Numerics.Vector4;
 using Buffer = SharpDX.Direct3D11.Buffer;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
@@ -46,7 +39,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
             // Create input layout. This tells the input-assembler stage how to map items from our vertex structures into vertices for the vertex shader.
             // It is validated against the vertex shader bytecode because it needs to match properly.
-            InputLayout = new InputLayout(device, vsb, LEVertex.InputElements);
+            InputLayout = new InputLayout(device, vsb, WorldVertex.InputElements);
             vsb.Dispose();
         }
 
@@ -68,11 +61,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             context.UpdateSubresource(ref constantData, ConstantBuffer);
         }
 
-        public void RenderObject(DeviceContext context, MeshElement mesh, int indexstart, int indexcount, params Span<ShaderResourceView> textures)
+        public void RenderObject(DeviceContext context, Mesh<WorldVertex> mesh, int indexstart, int indexcount, params Span<ShaderResourceView> textures)
         {
 
             // Setup buffers for rendering
-            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, LEVertex.Stride, 0));
+            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, WorldVertex.Stride, 0));
             context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
             context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
 
@@ -86,7 +79,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             context.DrawIndexed(indexcount, indexstart, 0);
         }
 
-        public void RenderObject(DeviceContext context, MeshElement mesh, params Span<ShaderResourceView> textures)
+        public void RenderObject(DeviceContext context, Mesh<WorldVertex> mesh, params Span<ShaderResourceView> textures)
         {
             RenderObject(context, mesh, 0, mesh.Triangles.Count * 3, textures);
         }
@@ -96,17 +89,17 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         private Buffer DynamicVertexBuffer;
         private Buffer DynamicIndexBuffer;
 
-        public unsafe void PrepPrimitiveBuffers(RenderContext context, Span<LEVertex> lineVerts, Span<LEVertex> meshVerts, Span<int> meshIndices)
+        public unsafe void PrepPrimitiveBuffers(RenderContext context, Span<WorldVertex> lineVerts, Span<WorldVertex> meshVerts, Span<int> meshIndices)
         {
             if (lineVerts.Length > 0 || meshVerts.Length > 0)
             {
-                int vertBufferLength = (lineVerts.Length + meshVerts.Length) * LEVertex.Stride;
-                int floatsPerVertex = LEVertex.Stride / 4;
+                int vertBufferLength = (lineVerts.Length + meshVerts.Length) * WorldVertex.Stride;
+                int floatsPerVertex = WorldVertex.Stride / 4;
 
                 if (DynamicVertexBuffer is null || DynamicVertexBuffer.Description.SizeInBytes < vertBufferLength)
                 {
                     DynamicVertexBuffer?.Dispose();
-                    DynamicVertexBuffer = new Buffer(context.Device, new BufferDescription(vertBufferLength, ResourceUsage.Dynamic, BindFlags.VertexBuffer, CpuAccessFlags.Write, ResourceOptionFlags.None, LEVertex.Stride));
+                    DynamicVertexBuffer = new Buffer(context.Device, new BufferDescription(vertBufferLength, ResourceUsage.Dynamic, BindFlags.VertexBuffer, CpuAccessFlags.Write, ResourceOptionFlags.None, WorldVertex.Stride));
                 }
 
                 var vertBuffer = new Span<float>((void*)context.ImmediateContext.MapSubresource(DynamicVertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None).DataPointer, vertBufferLength / 4);
@@ -121,7 +114,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 }
 
                 context.ImmediateContext.UnmapSubresource(DynamicVertexBuffer, 0);
-                context.ImmediateContext.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(DynamicVertexBuffer, LEVertex.Stride, 0));
+                context.ImmediateContext.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(DynamicVertexBuffer, WorldVertex.Stride, 0));
             }
 
             if (meshIndices.Length > 0)

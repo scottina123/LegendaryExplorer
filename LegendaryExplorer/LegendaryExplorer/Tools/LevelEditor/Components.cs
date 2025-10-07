@@ -10,6 +10,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 
+//change this to switch between game and LEX shaders for LevelEditor
+using VertexType = LegendaryExplorer.UserControls.SharedToolControls.Scene3D.WorldVertex;
+
 namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
@@ -197,7 +200,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
 file abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
-    protected ModelPreview Mesh;
+    protected ModelPreview<VertexType> Mesh;
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
 
@@ -227,7 +230,7 @@ file abstract class MeshComponentProxy : PrimitiveComponentProxy
 
 file class StaticMeshComponentProxy : MeshComponentProxy
 {
-    private MeshElement CollisionMesh;
+    private WorldMesh CollisionMesh;
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -241,7 +244,7 @@ file class StaticMeshComponentProxy : MeshComponentProxy
             StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
             if (stm.LODModels.Length > 0)
             {
-                Mesh = new ModelPreview(context, stm, 0);
+                Mesh = new ModelPreview<VertexType>(context, stm, 0);
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
             UpdateSelfLocalToWorld();
@@ -300,7 +303,7 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
             SkeletalMesh skm = meshExport.GetBinaryData<SkeletalMesh>();
             if (skm.LODModels.Length > 0)
             {
-                Mesh = new ModelPreview(context, skm);
+                Mesh = new ModelPreview<VertexType>(context, skm);
             }
             UpdateSelfLocalToWorld();
         }
@@ -325,7 +328,7 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
 
 file class BrushComponentProxy : PrimitiveComponentProxy
 {
-    private MeshElement Brush;
+    private WorldMesh Brush;
 
     public BrushComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {

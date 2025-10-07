@@ -141,11 +141,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTextureCube(size, format, pixelData);
         }
 
-        public static MeshElement GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
+        public static WorldMesh GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
         {
             if (aggGeom?.GetProp<ArrayProperty<StructProperty>>("ConvexElems") is ArrayProperty<StructProperty> convexElems)
             {
-                var vertices = new List<LEVertex>();
+                var vertices = new List<WorldVertex>();
                 var triangles = new List<Triangle>();
                 int vertTotal = 0;
                 foreach (StructProperty convexElem in convexElems)
@@ -162,12 +162,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                         float x = vertex.GetProp<FloatProperty>("X").Value;
                         float y = vertex.GetProp<FloatProperty>("Y").Value;
                         float z = vertex.GetProp<FloatProperty>("Z").Value;
-                        vertices.Add(new LEVertex(new Vector3(-x, z, y), Vector3.Zero, Vector2.Zero));
+                        vertices.Add(new WorldVertex(new Vector3(-x, z, y), Vector4.Zero, Vector2.Zero));
                         ++vertTotal;
                     }
                 }
 
-                return new MeshElement(renderContext.Device, triangles, vertices);
+                return new WorldMesh(renderContext.Device, triangles, vertices);
             }
 
             return null;

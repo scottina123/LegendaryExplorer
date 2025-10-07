@@ -1,38 +1,29 @@
-﻿using System;
+﻿using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Misc;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Shaders;
+using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Threading;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using LegendaryExplorer.Misc;
-using LegendaryExplorer.Misc.AppSettings;
-using LegendaryExplorer.SharedUI;
-using LegendaryExplorer.UnrealExtensions.Classes;
-using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
-using LegendaryExplorerCore.Helpers;
-using LegendaryExplorerCore.Misc;
-using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
-using LegendaryExplorerCore.Unreal;
-using LegendaryExplorerCore.Unreal.BinaryConverters;
-using LegendaryExplorerCore.Unreal.Classes;
-using LegendaryExplorerCore.Unreal.ObjectInfo;
-using LegendaryExplorerCore.SharpDX;
-using Microsoft.WindowsAPICodePack.Dialogs;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
-using LegendaryExplorer.UserControls.Interfaces;
-using LegendaryExplorerCore.Gammtek;
-using LegendaryExplorerCore.Shaders;
 using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
-using Color = LegendaryExplorerCore.SharpDX.Color;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
@@ -87,6 +78,10 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             if (SetProperty(ref _renderGameShader, value) && _renderGameShader)
             {
                 RenderSolid = false;
+                if (GameShaderMeshPreview is null)
+                {
+                    LoadExport(CurrentLoadedExport);
+                }
             }
         }
     }
@@ -127,7 +122,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             }
         }
     }
-    public ObservableCollectionExtended<string> LODPicker { get; } = new();
+    public ObservableCollectionExtended<string> LODPicker { get; } = [];
 
     #region DISPLAY OPTIONS
     private bool _setAlphaToBlack = true;
@@ -139,11 +134,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _setAlphaToBlack, value);
             if (value)
             {
-                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.AlphaAsBlack;
+                this.MeshContext.RenderFlags |= RenderContext.ShaderFlags.AlphaAsBlack;
             }
             else
             {
-                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.AlphaAsBlack;
+                this.MeshContext.RenderFlags &= ~RenderContext.ShaderFlags.AlphaAsBlack;
             }
         }
     }
@@ -157,11 +152,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showRedChannel, value);
             if (value)
             {
-                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableRedChannel;
+                this.MeshContext.RenderFlags |= RenderContext.ShaderFlags.EnableRedChannel;
             }
             else
             {
-                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableRedChannel;
+                this.MeshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableRedChannel;
             }
         }
     }
@@ -175,11 +170,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showGreenChannel, value);
             if (value)
             {
-                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableGreenChannel;
+                this.MeshContext.RenderFlags |= RenderContext.ShaderFlags.EnableGreenChannel;
             }
             else
             {
-                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableGreenChannel;
+                this.MeshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableGreenChannel;
             }
         }
     }
@@ -193,11 +188,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showBlueChannel, value);
             if (value)
             {
-                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableBlueChannel;
+                this.MeshContext.RenderFlags |= RenderContext.ShaderFlags.EnableBlueChannel;
             }
             else
             {
-                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableBlueChannel;
+                this.MeshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableBlueChannel;
             }
         }
     }
@@ -211,11 +206,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             SetProperty(ref _showAlphaChannel, value);
             if (value)
             {
-                this.MeshContext.RenderFlags |= TextureRenderContext.ShaderFlags.EnableAlphaChannel;
+                this.MeshContext.RenderFlags |= RenderContext.ShaderFlags.EnableAlphaChannel;
             }
             else
             {
-                this.MeshContext.RenderFlags &= ~TextureRenderContext.ShaderFlags.EnableAlphaChannel;
+                this.MeshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableAlphaChannel;
             }
         }
     }
@@ -232,38 +227,39 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
     }
     #endregion
 
-    private ModelPreview MeshPreview;
+    private ModelPreview<LEVertex> GameShaderMeshPreview;
+    private ModelPreview<WorldVertex> LEXShaderMeshPreview;
 
     /// <summary>
     /// Value is true after _Loaded is called. False after _Unloaded (which if in tab control, is called when different tab is selected)
     /// </summary>
     private bool ControlIsLoaded;
-    private MeshElement STMCollisionMesh;
+    private WorldMesh STMCollisionMesh;
     private Action ViewportLoadAction = null;
 
     private void SceneContext_RenderScene(object sender, EventArgs e)
     {
         if (CurrentLOD < 0) { CurrentLOD = 0; }
 
-        if (MeshPreview is not null && CurrentLOD < MeshPreview.LODs.Count)
+        if (RenderGameShader && GameShaderMeshPreview is not null && CurrentLOD < GameShaderMeshPreview.LODs.Count)
+        {
+            MeshContext.Wireframe = false;
+            foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
+            {
+                GameShaderMeshPreview.Render(renderPass, MeshContext, CurrentLOD);
+            }
+        }
+        if (LEXShaderMeshPreview is not null && CurrentLOD < LEXShaderMeshPreview.LODs.Count)
         {
             if (RenderSolid)
             {
                 MeshContext.Wireframe = false;
-                MeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
-            }
-            if (RenderGameShader)
-            {
-                MeshContext.Wireframe = false;
-                foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
-                {
-                    MeshPreview.RenderWithGameShader(renderPass, MeshContext, CurrentLOD);
-                }
+                LEXShaderMeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
             }
             if (RenderWireframe)
             {
                 MeshContext.Wireframe = true;
-                MeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
+                LEXShaderMeshPreview.Render(RenderPass.ANY, MeshContext, CurrentLOD);
             }
         }
         if (IsStaticMesh && ShowCollisionMesh && STMCollisionMesh != null)
@@ -276,14 +272,18 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
     {
         if (CurrentLOD >= 0)
         {
-            MeshElement mesh = null;
-            if (MeshPreview != null && MeshPreview.LODs.Count > CurrentLOD)
+            Vector3? origin = null;
+            if (GameShaderMeshPreview != null && GameShaderMeshPreview.LODs.Count > CurrentLOD)
             {
-                mesh = MeshPreview.LODs[CurrentLOD].Mesh;
+                origin = GameShaderMeshPreview.LODs[CurrentLOD].Mesh.BaseBounds.Origin;
             }
-            if (mesh is not null)
+            else if (LEXShaderMeshPreview != null && LEXShaderMeshPreview.LODs.Count > CurrentLOD)
             {
-                MeshContext.Camera.Position = mesh.BaseBounds.Origin;
+                origin = LEXShaderMeshPreview.LODs[CurrentLOD].Mesh.BaseBounds.Origin;
+            }
+            if (origin is not null)
+            {
+                MeshContext.Camera.Position = origin.Value;
                 MeshContext.Camera.Pitch = -MathF.PI / 7.0f;
                 if (MeshContext.Camera.FirstPerson)
                 {
@@ -604,11 +604,6 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                 }
         }
 
-        MeshPreview?.Dispose();
-        MeshPreview = null;
-        STMCollisionMesh?.Dispose();
-        STMCollisionMesh = null;
-
         Task.Run(() =>
         {
             if (CanUseGameShaders && RenderGameShader && !RefShaderCacheReader.IsShaderOffsetsDictInitialized(Pcc.Game))
@@ -618,8 +613,9 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             }
             string className = CurrentLoadedExport.ClassName;
             PreloadedModelData pmd = null;
-            MeshElement stmCollisionMesh = null;
-            ModelPreview model = null;
+            WorldMesh stmCollisionMesh = null;
+            ModelPreview<WorldVertex> lexModel = null;
+            ModelPreview<LEVertex> gameModel = null;
             switch (className)
             {
                 case "StaticMesh" or "FracturedStaticMesh":
@@ -630,13 +626,17 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                         OverlayMaterials = null;
                     }
                     stmCollisionMesh = MeshContext.GetMeshFromAggGeom(statM.GetCollisionMeshProperty(Pcc));
-                    model = new ModelPreview(MeshContext, statM, CurrentLOD);
+                    if (RenderGameShader)
+                    {
+                        gameModel = new ModelPreview<LEVertex>(MeshContext, statM, CurrentLOD);
+                    }
+                    lexModel = new ModelPreview<WorldVertex>(MeshContext, statM, CurrentLOD);
                     break;
                 case "BrushComponent":
                     var structProp = CurrentLoadedExport.GetProperty<StructProperty>("BrushAggGeom");
                     if (structProp is not null)
                     {
-                        model = new ModelPreview(MeshContext, MeshContext.GetMeshFromAggGeom(structProp));
+                        lexModel = new ModelPreview<WorldVertex>(MeshContext, MeshContext.GetMeshFromAggGeom(structProp));
                     }
                     break;
                 case "ModelComponent":
@@ -654,7 +654,11 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                             skm.SetMaterials(OverlayMaterials, true);
                             OverlayMaterials = null;
                         }
-                        model = new ModelPreview(MeshContext, skm);
+                        if (RenderGameShader)
+                        {
+                            gameModel = new ModelPreview<LEVertex>(MeshContext, skm);
+                        }
+                        lexModel = new ModelPreview<WorldVertex>(MeshContext, skm);
                         break;
                     }
                     throw new Exception($"Cannot render a '{className}'");
@@ -665,17 +669,17 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                 switch (pmd.meshObject)
                 {
                     case ModelComponent mc:
-                        model = new ModelPreview(MeshContext, GetMeshFromModelComponent(mc), pmd);
+                        lexModel = new ModelPreview<WorldVertex>(MeshContext, GetMeshFromModelComponent(mc), pmd);
                         break;
                     case Model m:
                         var sections = new List<ModelPreviewSection>();
-                        MeshElement mesh = GetMeshFromModelSubcomponents(m, sections);
+                        WorldMesh mesh = GetMeshFromModelSubcomponents(m, sections);
                         pmd.sections = sections;
-                        model = new ModelPreview(MeshContext, mesh, pmd);
+                        lexModel = new ModelPreview<WorldVertex>(MeshContext, mesh, pmd);
                         break;
                 }
             }
-            return (stmCollisionMesh, model);
+            return (stmCollisionMesh, lexModel, gameModel);
         }).ContinueWithOnUIThread(prevTask =>
         {
             IsBusy = false;
@@ -684,25 +688,35 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                 //in the time since the previous task was started, the export has been unloaded
                 return;
             }
-            if (prevTask.Result.model is not null)
+            var (stmCollisionMesh, lexModel, gameModel) = prevTask.Result;
+            if (lexModel is not null || gameModel is not null)
             {
-                Action loadPreviewAction = () =>
+                void loadPreviewAction()
                 {
                     STMCollisionMesh = prevTask.Result.stmCollisionMesh;
-                    MeshPreview = prevTask.Result.model;
+                    LEXShaderMeshPreview = lexModel;
+                    GameShaderMeshPreview = gameModel;
 
                     assetCache.ReleasePackages();
                     LODPicker.ClearEx();
-                    if (MeshPreview.LODs?.Count > 0)
+                    if (GameShaderMeshPreview?.LODs?.Count > 0)
                     {
-                        MeshContext.Camera.FocusDepth = MeshPreview.LODs[0].Mesh.BaseBounds.SphereRadius * 1.5f;
-                        for (int i = 0; i < MeshPreview.LODs.Count; i++)
+                        MeshContext.Camera.FocusDepth = GameShaderMeshPreview.LODs[0].Mesh.BaseBounds.SphereRadius * 1.5f;
+                        for (int i = 0; i < GameShaderMeshPreview.LODs.Count; i++)
+                        {
+                            LODPicker.Add($"LOD{i}");
+                        }
+                    }
+                    else if (LEXShaderMeshPreview?.LODs?.Count > 0)
+                    {
+                        MeshContext.Camera.FocusDepth = LEXShaderMeshPreview.LODs[0].Mesh.BaseBounds.SphereRadius * 1.5f;
+                        for (int i = 0; i < LEXShaderMeshPreview.LODs.Count; i++)
                         {
                             LODPicker.Add($"LOD{i}");
                         }
                     }
                     CenterView();
-                };
+                }
 
                 LODPicker.ClearEx();
                 //clearing the LODPicker will set CurrentLOD to -1
@@ -712,7 +726,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                 // We can't call graphics methods until the render control has been loaded by WPF - only then will it have initialized D3D.
                 if (this.MeshContext.IsReady)
                 {
-                    loadPreviewAction.Invoke();
+                    loadPreviewAction();
                 }
                 else
                 {
@@ -783,17 +797,17 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             );
     }
 
-    private MeshElement GetMeshFromModelSubcomponents(Model model, List<ModelPreviewSection> sections)
+    private WorldMesh GetMeshFromModelSubcomponents(Model model, List<ModelPreviewSection> sections)
     {
-        var vertexList = new List<LEVertex>();
+        var vertexList = new List<WorldVertex>();
         var triangles = new List<Triangle>();
 
         foreach (var vertex in model.VertexBuffer)
         {
             // We don't know the normal vectors yet
-            vertexList.Add(new LEVertex(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), Vector3.Zero, new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y)));
+            vertexList.Add(new WorldVertex(new Vector3(vertex.Position.X, vertex.Position.Y, vertex.Position.Z), Vector4.Zero, new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y)));
         }
-        Span<LEVertex> vertsSpan = CollectionsMarshal.AsSpan(vertexList);
+        Span<WorldVertex> vertsSpan = CollectionsMarshal.AsSpan(vertexList);
 
         foreach (var mcExp in model.Export.FileRef.Exports.Where(x => x.ClassName == "ModelComponent" && !x.IsDefaultObject))
         {
@@ -816,24 +830,24 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                         Vector3 normal = model.Vectors[model.Surfs[matchingNode.iSurf].vNormal];
                         for (int i = 0; i < matchingNode.NumVertices; i++)
                         {
-                            vertsSpan[matchingNode.iVertexIndex + i].normal = new Vector4(-normal.X, normal.Z, normal.Y, 1);
+                            vertsSpan[matchingNode.iVertexIndex + i].Normal = new Vector4(-normal.X, normal.Z, normal.Y, 1);
                         }
                     }
                 }
             }
         }
 
-        return new MeshElement(SceneViewer.Context.Device, triangles, vertexList);
+        return new WorldMesh(SceneViewer.Context.Device, triangles, vertexList);
     }
 
-    private MeshElement GetMeshFromModelComponent(ModelComponent mc)
+    private WorldMesh GetMeshFromModelComponent(ModelComponent mc)
     {
         var parentModel = ObjectBinary.From<Model>(mc.Export.FileRef.GetUExport(mc.Model));
-        var vertices = new List<LEVertex>();
+        var vertices = new List<WorldVertex>();
 
         foreach (var point in parentModel.Points)
         {
-            vertices.Add(new LEVertex(new Vector3(point.X, point.Y, point.Z), Vector3.Zero, Vector2.Zero));
+            vertices.Add(new WorldVertex(new Vector3(point.X, point.Y, point.Z), Vector4.Zero, Vector2.Zero));
         }
 
         var triangles = new List<Triangle>();
@@ -856,7 +870,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             }
         }
 
-        return new MeshElement(SceneViewer.Context.Device, triangles, vertices);
+        return new WorldMesh(SceneViewer.Context.Device, triangles, vertices);
     }
 
     private void MeshRenderer_Unloaded(object sender, RoutedEventArgs e)
@@ -943,8 +957,10 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
         CurrentLoadedExport = null;
         STMCollisionMesh?.Dispose();
         STMCollisionMesh = null;
-        MeshPreview?.Dispose();
-        MeshPreview = null;
+        GameShaderMeshPreview?.Dispose();
+        GameShaderMeshPreview = null;
+        LEXShaderMeshPreview?.Dispose();
+        LEXShaderMeshPreview = null;
         SceneViewer?.Context?.EmptyCaches();
     }
 
@@ -966,10 +982,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
         {
             tc.SelectionChanged -= MeshRendererWPF_HostingTabSelectionChanged;
         }
-        STMCollisionMesh?.Dispose();
-        STMCollisionMesh = null;
-        MeshPreview?.Dispose();
-        MeshPreview = null;
+        UnloadExport();
         if (SceneViewer is { Context: not null })
         {
             MeshContext.RenderScene -= SceneContext_RenderScene;

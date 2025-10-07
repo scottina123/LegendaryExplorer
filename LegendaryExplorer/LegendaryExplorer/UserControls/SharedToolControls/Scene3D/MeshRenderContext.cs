@@ -127,7 +127,6 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<Guid, VertexShader> VertexShaderCache = [];
     private readonly Dictionary<Guid, InputLayout> InputLayoutCache = [];
     private readonly Dictionary<Guid, PixelShader> PixelShaderCache = [];
-    private readonly Dictionary<string, ModelPreviewMaterial> MaterialCache = [];
     public readonly PreviewTextureCache TextureCache;
     public readonly PackageCache PackageCache;
 
@@ -394,7 +393,7 @@ public class MeshRenderContext : RenderContext
         base.DisposeResources();
     }
 
-    public void RenderMeshAsWireframe(MeshElement mesh)
+    public void RenderMeshAsWireframe(WorldMesh mesh)
     {
         bool wireframeBackup = Wireframe;
         Wireframe = true;
@@ -468,33 +467,10 @@ public class MeshRenderContext : RenderContext
         return shader;
     }
 
-    public ModelPreviewMaterial GetCachedMaterial(IEntry matEntry)
-    {
-        string ifp = matEntry.InstancedFullPath;
-        if (MaterialCache.TryGetValue(ifp, out var mat))
-        {
-            return mat;
-        }
-        if (matEntry is not ExportEntry matExport)
-        {
-            matExport = EntryImporter.ResolveImport((ImportEntry)matEntry, PackageCache);
-            if (matExport is null)
-            {
-                Debug.WriteLine("Could not find import material.");
-                Debug.WriteLine($"Import material: '{ifp}' from '{matEntry.FileRef.FilePath}'");
-                return null;
-            }
-        }
-        mat = new ModelPreviewMaterial(this, matExport);
-        MaterialCache.Add(ifp, mat);
-        return mat;
-    }
-
     public override void EmptyCaches()
     {
         PackageCache?.ReleasePackages();
         TextureCache?.ExpungeStaleCacheItems();
-        MaterialCache.DisposeValuesAndClear();
         BlendStateCache.DisposeValuesAndClear();
         VertexShaderCache.DisposeValuesAndClear();
         InputLayoutCache.DisposeValuesAndClear();

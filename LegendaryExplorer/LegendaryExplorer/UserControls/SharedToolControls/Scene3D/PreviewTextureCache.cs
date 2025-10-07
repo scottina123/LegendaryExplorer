@@ -31,12 +31,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             /// <summary>
             /// The Direct3D ShaderResourceView for binding to shaders.
             /// </summary>
-            public readonly ShaderResourceView TextureView;
+            public ShaderResourceView TextureView { get; private set; }
 
             /// <summary>
             /// The Direct3D texture for ShaderResourceView creation.
             /// </summary>
-            public readonly Texture2D Texture;
+            public Texture2D Texture { get; private set; }
 
             /// <summary>
             /// The time this object was last accessed.
@@ -64,7 +64,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             public void Dispose()
             {
                 TextureView?.Dispose();
+                TextureView = null;
                 Texture?.Dispose();
+                Texture = null;
             }
         }
 
@@ -339,7 +341,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 }
                 try
                 {
-                    entry = new TextureEntry(RenderContext, textureExport);
+                    entry = textureExport.ClassName is "FlipBookTextureEntry" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
                     AssetCache.Add(entry.InstanceFullPath, entry);
                     return entry;
                 }

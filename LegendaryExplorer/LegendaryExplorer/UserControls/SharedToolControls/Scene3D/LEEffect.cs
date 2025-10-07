@@ -54,7 +54,7 @@ public unsafe class LEEffect : IDisposable
         context.PixelShader.SetConstantBuffer(2, PixelShaderConstants);
     }
 
-    public void RenderObject(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, MeshElement mesh, int indexstart, int indexcount)
+    public void RenderObject(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, Mesh<LEVertex> mesh, int indexstart, int indexcount)
     {
         // Push new data into the shaders' constant buffers
         context.UpdateSubresource(ref vsSharedConstants, VertexShaderConstants);
