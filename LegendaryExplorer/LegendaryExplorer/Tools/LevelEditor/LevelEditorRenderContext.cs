@@ -15,17 +15,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using D2D = SharpDX.Direct2D1;
-using DW = SharpDX.DirectWrite;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class LevelEditorRenderContext : MeshRenderContext
 {
-    #region Size-Dependent Resources
-    private readonly Dictionary<SharpDX.Color, D2D.Brush> D2DBrushCache = [];
-    #endregion
-
     public event Action<ActorProxy> SelectActor;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_2D = [];
@@ -143,14 +137,12 @@ public class LevelEditorRenderContext : MeshRenderContext
 
         IHitProxy selected = null;
 
-        for (int i = indexes.Length / 2, shift = 1; i >= 0 && i < indexes.Length; i += shift)
+        for (int i = 0; i < indexes.Length; i += 1)
         {
-            if (HitProxies.TryGetAt(indexes[i], out IHitProxy hitProxy) && (selected is null || (!selected.IsUI && hitProxy.IsUI)))
+            if (HitProxies.TryGetAt(indexes[i], out IHitProxy hitProxy) && (selected is null || selected.HitPriority < hitProxy.HitPriority))
             {
                 selected = hitProxy;
             }
-            shift += shift > 0 ? 1 : -1;
-            shift *= -1;
         }
 
         return selected;
@@ -197,16 +189,6 @@ public class LevelEditorRenderContext : MeshRenderContext
         return data;
     }
 
-    private D2D.Brush Get2DBrush(SharpDX.Color color)
-    {
-        ref D2D.Brush brush = ref CollectionsMarshal.GetValueRefOrAddDefault(D2DBrushCache, color, out bool exists);
-        if (!exists)
-        {
-            brush = new D2D.SolidColorBrush(RenderTarget2D, color, new D2D.BrushProperties { Opacity = 1 });
-        }
-        return brush;
-    }
-
     public void DrawUI()
     {
         foreach (UIElement uiElem in DrawList_2D)
@@ -243,7 +225,6 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public override void DisposeSizeDependentResources()
     {
-        D2DBrushCache.DisposeValuesAndClear();
         base.DisposeSizeDependentResources();
     }
 }

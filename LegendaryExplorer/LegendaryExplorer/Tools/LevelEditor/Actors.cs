@@ -13,7 +13,7 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 
 public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
-    protected LevelEditor Editor;
+    public LevelEditor Editor;
 
     public Matrix4x4 LocalToWorld;
 
@@ -29,7 +29,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => isDirty;
         protected set
         {
-            if (SetProperty(ref isDirty, value) && isDirty)
+            if (SetProperty(ref isDirty, value) && isDirty && Editor is not null)
             {
                 Editor.IsDirty = true;
             }
@@ -208,6 +208,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         {
             return new PawnProxy(context, actorExport);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "PrefabInstance", actorExport.Game))
+        {
+            return new PrefabInstanceProxy(context, actorExport);
+        }
         return null;
         //return new ActorProxy(context, actorExport);
     }
@@ -266,7 +270,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public int HitID { get; set; }
 
-    bool IHitProxy.IsUI => false;
+    public virtual int HitPriority => IHitProxy.StandardPriority;
 
     public virtual void CommitChanges(PackageCache packageCache = null)
     {
@@ -304,7 +308,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
         foreach (var cmp in Components)
         {
-            if (uIndexes.Contains(cmp.Export.UIndex))
+            if (cmp.TestUIndexes(uIndexes))
             {
                 return true;
             }
@@ -313,11 +317,11 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     }
 
     #region IDisposable
-    private bool disposedValue;
+    protected bool isDisposed;
 
     protected virtual void Dispose(bool disposing)
     {
-        if (!disposedValue)
+        if (!isDisposed)
         {
             if (disposing)
             {
@@ -329,7 +333,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
             // TODO: free unmanaged resources (unmanaged objects) and override finalizer
             // TODO: set large fields to null
-            disposedValue = true;
+            isDisposed = true;
         }
     }
 
@@ -381,6 +385,7 @@ file class BrushProxy : ActorProxy
     {
         AddComponents(context.RenderContext, "BrushComponent");
     }
+    public override int HitPriority => IHitProxy.WireFramePriority;
 }
 file class SFXStuntActorProxy : ActorProxy
 {
@@ -460,5 +465,118 @@ public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
     {
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
+    }
+}
+
+file class PrefabInstanceProxy : ActorProxy
+{
+    private readonly List<ActorProxy> Actors = [];
+    private readonly List<Matrix4x4> RelativeMatrices = [];
+
+    public PrefabInstanceProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        PackageCache packageCache = context.RenderContext.PackageCache;
+        if (Properties.GetProp<ObjectProperty>("TemplatePrefab")?
+            .ResolveToExport(actorExport.FileRef, packageCache) is ExportEntry prefab
+            && prefab.GetProperty<ArrayProperty<ObjectProperty>>("PrefabArchetypes") is { } prefabActors)
+        {
+
+            foreach (var objProp in prefabActors)
+            {
+                if (objProp.TryResolveExport(prefab.FileRef, packageCache, out ExportEntry prefabActor)
+                    && Create(context, prefabActor) is ActorProxy prefabActorProxy)
+                {
+                    
+                    prefabActorProxy.Editor = null; // prevent IsDirty being marked
+
+                    var actorRelative = ActorUtils.ComposeLocalToWorld(prefabActorProxy.Location, prefabActorProxy.Rotation, Vector3.One);
+                    (prefabActorProxy.Location, _, prefabActorProxy.Rotation) = (actorRelative * LocalToWorld).UnrealDecompose();
+                    Actors.Add(prefabActorProxy);
+                    RelativeMatrices.Add(actorRelative);
+                }
+            }
+        }
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        foreach (var actor in Actors)
+        {
+            actor.Render(context, pass);
+        }
+    }
+
+    protected override void UpdateLocalToWorld()
+    {
+        //Unreal appears to ignore scaling on a prefab
+        LocalToWorld = ActorUtils.ComposeLocalToWorld(Location, Rotation, Vector3.One);
+        for (int i = 0; i < Actors.Count; i++)
+        {
+            ActorProxy actor = Actors[i];
+            (actor.Location, _, actor.Rotation) = (RelativeMatrices[i] * LocalToWorld).UnrealDecompose();
+        }
+    }
+
+    public override BoxSphereBounds GetBounds()
+    {
+        if (Actors.Count is 0)
+        {
+            return new BoxSphereBounds
+            {
+                Origin = LocalToWorld.Translation
+            };
+        }
+        var bounds = Actors[0].GetBounds();
+        for (int i = 1; i < Actors.Count; i++)
+        {
+            bounds = bounds.Union(Actors[i].GetBounds());
+        }
+        return bounds;
+    }
+
+    public override void CommitChanges(PackageCache packageCache = null)
+    {
+        var props = Properties;
+
+        string locationPropName = Export.Game.IsGame3() ? "location" : "Location";
+        if (props.ContainsNamedProp(locationPropName) || Location != Vector3.Zero)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(Location, locationPropName));
+        }
+        if (props.ContainsNamedProp("Rotation") || !Rotation.IsZero)
+        {
+            props.AddOrReplaceProp(CommonStructs.RotatorProp(Rotation, "Rotation"));
+        }
+        Export.WriteProperties(props);
+    }
+
+    public override bool TestUIndexes(HashSet<int> uIndexes)
+    {
+        if (uIndexes.Contains(Export.UIndex))
+        {
+            return true;
+        }
+        foreach (var actor in Actors)
+        {
+            if (actor.TestUIndexes(uIndexes))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (!isDisposed)
+        {
+            if (disposing)
+            {
+                foreach (var actor in Actors)
+                {
+                    actor.Dispose();
+                }
+            }
+            isDisposed = true;
+        }
     }
 }

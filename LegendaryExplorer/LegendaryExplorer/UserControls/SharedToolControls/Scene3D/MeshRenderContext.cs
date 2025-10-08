@@ -3,22 +3,18 @@ using LegendaryExplorer.Resources;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
 using SharpDX.D3DCompiler;
-using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Windows.Input;
-using System.Windows.Media;
 using Color = System.Windows.Media.Color;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
@@ -103,7 +99,16 @@ public class MeshRenderContext : RenderContext
             wireframe = value;
             if (Device != null)
             {
-                ImmediateContext.Rasterizer.State = wireframe ? WireframeRasterizerState : FillRasterizerState;
+                if (wireframe)
+                {
+                    ImmediateContext.Rasterizer.State = WireframeRasterizerState;
+                    RenderFlags |= ShaderFlags.Wireframe;
+                }
+                else
+                {
+                    ImmediateContext.Rasterizer.State = FillRasterizerState;
+                    RenderFlags &= ~ShaderFlags.Wireframe;
+                }
             }
         }
     }

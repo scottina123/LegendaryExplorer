@@ -63,6 +63,7 @@ VS_OUT VSMain(VS_IN input) {
 #define FLAG_ENABLEALPHACHANNEL (1 << 5)
 
 //level editor flags
+#define FLAG_WIREFRAME (1 << 29)
 #define FLAG_SELECTED (1 << 30)
 #define FLAG_PRIMITIVE (1 << 31)
 
@@ -109,6 +110,10 @@ PS_OUT PSMain(PS_IN input) {
     if ((Flags & FLAG_SELECTED) == FLAG_SELECTED)
     {
         result.color.b *= 2;
+        if ((Flags & FLAG_WIREFRAME) == FLAG_WIREFRAME)
+        {
+            result.color.rgba = float4(1.0, 1.0, 0, 1.0);
+        }
     }
 	
 	//the second render target is used for hit testing (clicking)

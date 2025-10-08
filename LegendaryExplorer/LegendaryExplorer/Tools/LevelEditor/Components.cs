@@ -109,15 +109,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
         return new PrimitiveComponentProxy(context, componentExport, parent);
     }
-    public virtual void LoadMeshData(MeshRenderContext context)
-    {
 
-    }
-
-    public virtual void Render(MeshRenderContext context, RenderPass pass)
-    {
-
-    }
+    public virtual void Render(MeshRenderContext context, RenderPass pass) { }
 
     private void UpdateSelfLocalToWorld()
     {
@@ -163,6 +156,14 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         {
             Origin = LocalToWorld.Translation
         };
+    }
+    public virtual bool TestUIndexes(HashSet<int> uIndexes)
+    {
+        if (uIndexes.Contains(Export.UIndex))
+        {
+            return true;
+        }
+        return false;
     }
 
     #region IDisposeable
@@ -230,20 +231,17 @@ file abstract class MeshComponentProxy : PrimitiveComponentProxy
 
 file class StaticMeshComponentProxy : MeshComponentProxy
 {
-    private WorldMesh CollisionMesh;
+    private readonly WorldMesh CollisionMesh;
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
-    {
-        LoadMeshData(context);
-    }
-
-    public override void LoadMeshData(MeshRenderContext context)
     {
         if (Properties.GetProp<ObjectProperty>("StaticMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
         {
             StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
             if (stm.LODModels.Length > 0)
             {
+                stm.SetMaterials(MaterialOverrides, true);
+                MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, stm, 0);
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
@@ -293,16 +291,13 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
 {
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
-        LoadMeshData(context);
-    }
-
-    public override void LoadMeshData(MeshRenderContext context)
-    {
         if (Properties.GetProp<ObjectProperty>("SkeletalMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
         {
             SkeletalMesh skm = meshExport.GetBinaryData<SkeletalMesh>();
             if (skm.LODModels.Length > 0)
             {
+                skm.SetMaterials(MaterialOverrides, true);
+                MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, skm);
             }
             UpdateSelfLocalToWorld();
@@ -328,14 +323,9 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
 
 file class BrushComponentProxy : PrimitiveComponentProxy
 {
-    private WorldMesh Brush;
+    private readonly WorldMesh Brush;
 
     public BrushComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
-    {
-        LoadMeshData(context);
-    }
-
-    public override void LoadMeshData(MeshRenderContext context)
     {
         Brush = context.GetMeshFromAggGeom(Properties.GetProp<StructProperty>("BrushAggGeom"));
         UpdateSelfLocalToWorld();
