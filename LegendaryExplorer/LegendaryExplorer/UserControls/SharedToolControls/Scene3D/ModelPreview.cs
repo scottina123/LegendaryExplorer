@@ -593,7 +593,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
 
         foreach (ModelPreviewSection section in LODs[lod].Sections)
         {
-            if (Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<TVertex> material)
+            if (section.MaterialName is not null && Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<TVertex> material)
                 && (material.Pass == renderPass || renderPass is RenderPass.ANY))
             {
                 material.RenderSection(LODs[lod], section, view);

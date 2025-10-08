@@ -1,4 +1,5 @@
-﻿using LegendaryExplorer.Misc;
+﻿using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UserControls.Interfaces;
@@ -606,80 +607,88 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
 
         Task.Run(() =>
         {
-            if (CanUseGameShaders && RenderGameShader && !RefShaderCacheReader.IsShaderOffsetsDictInitialized(Pcc.Game))
-            {
-                BusyText = "Reading Shader Cache (~5s)";
-                RefShaderCacheReader.PopulateOffsets(Pcc.Game);
-            }
-            string className = CurrentLoadedExport.ClassName;
-            PreloadedModelData pmd = null;
             WorldMesh stmCollisionMesh = null;
             ModelPreview<WorldVertex> lexModel = null;
             ModelPreview<LEVertex> gameModel = null;
-            switch (className)
+            Exception error = null;
+            try
             {
-                case "StaticMesh" or "FracturedStaticMesh":
-                    var statM = ObjectBinary.From<StaticMesh>(CurrentLoadedExport);
-                    if (OverlayMaterials != null)
-                    {
-                        statM.SetMaterials(OverlayMaterials, true);
-                        OverlayMaterials = null;
-                    }
-                    stmCollisionMesh = MeshContext.GetMeshFromAggGeom(statM.GetCollisionMeshProperty(Pcc));
-                    if (RenderGameShader)
-                    {
-                        gameModel = new ModelPreview<LEVertex>(MeshContext, statM, CurrentLOD);
-                    }
-                    lexModel = new ModelPreview<WorldVertex>(MeshContext, statM, CurrentLOD);
-                    break;
-                case "BrushComponent":
-                    var structProp = CurrentLoadedExport.GetProperty<StructProperty>("BrushAggGeom");
-                    if (structProp is not null)
-                    {
-                        lexModel = new ModelPreview<WorldVertex>(MeshContext, MeshContext.GetMeshFromAggGeom(structProp));
-                    }
-                    break;
-                case "ModelComponent":
-                    pmd = PreloadedModelData.LoadModelComponent(CurrentLoadedExport, assetCache);
-                    break;
-                case "Model":
-                    pmd = PreloadedModelData.LoadModel(CurrentLoadedExport, assetCache);
-                    break;
-                default:
-                    if (CurrentLoadedExport.IsA("SkeletalMesh"))
-                    {
-                        var skm = ObjectBinary.From<SkeletalMesh>(CurrentLoadedExport);
+                if (CanUseGameShaders && RenderGameShader && !RefShaderCacheReader.IsShaderOffsetsDictInitialized(Pcc.Game))
+                {
+                    BusyText = "Reading Shader Cache (~5s)";
+                    RefShaderCacheReader.PopulateOffsets(Pcc.Game);
+                }
+                string className = CurrentLoadedExport.ClassName;
+                PreloadedModelData pmd = null;
+                switch (className)
+                {
+                    case "StaticMesh" or "FracturedStaticMesh":
+                        var statM = ObjectBinary.From<StaticMesh>(CurrentLoadedExport);
                         if (OverlayMaterials != null)
                         {
-                            skm.SetMaterials(OverlayMaterials, true);
+                            statM.SetMaterials(OverlayMaterials, true);
                             OverlayMaterials = null;
                         }
+                        stmCollisionMesh = MeshContext.GetMeshFromAggGeom(statM.GetCollisionMeshProperty(Pcc));
                         if (RenderGameShader)
                         {
-                            gameModel = new ModelPreview<LEVertex>(MeshContext, skm);
+                            gameModel = new ModelPreview<LEVertex>(MeshContext, statM, CurrentLOD);
                         }
-                        lexModel = new ModelPreview<WorldVertex>(MeshContext, skm);
+                        lexModel = new ModelPreview<WorldVertex>(MeshContext, statM, CurrentLOD);
                         break;
-                    }
-                    throw new Exception($"Cannot render a '{className}'");
-            }
+                    case "BrushComponent":
+                        var structProp = CurrentLoadedExport.GetProperty<StructProperty>("BrushAggGeom");
+                        if (structProp is not null)
+                        {
+                            lexModel = new ModelPreview<WorldVertex>(MeshContext, MeshContext.GetMeshFromAggGeom(structProp));
+                        }
+                        break;
+                    case "ModelComponent":
+                        pmd = PreloadedModelData.LoadModelComponent(CurrentLoadedExport, assetCache);
+                        break;
+                    case "Model":
+                        pmd = PreloadedModelData.LoadModel(CurrentLoadedExport, assetCache);
+                        break;
+                    default:
+                        if (CurrentLoadedExport.IsA("SkeletalMesh"))
+                        {
+                            var skm = ObjectBinary.From<SkeletalMesh>(CurrentLoadedExport);
+                            if (OverlayMaterials != null)
+                            {
+                                skm.SetMaterials(OverlayMaterials, true);
+                                OverlayMaterials = null;
+                            }
+                            if (RenderGameShader)
+                            {
+                                gameModel = new ModelPreview<LEVertex>(MeshContext, skm);
+                            }
+                            lexModel = new ModelPreview<WorldVertex>(MeshContext, skm);
+                            break;
+                        }
+                        throw new Exception($"Cannot render a '{className}'");
+                }
 
-            if (pmd is not null)
-            {
-                switch (pmd.meshObject)
+                if (pmd is not null)
                 {
-                    case ModelComponent mc:
-                        lexModel = new ModelPreview<WorldVertex>(MeshContext, GetMeshFromModelComponent(mc), pmd);
-                        break;
-                    case Model m:
-                        var sections = new List<ModelPreviewSection>();
-                        WorldMesh mesh = GetMeshFromModelSubcomponents(m, sections);
-                        pmd.sections = sections;
-                        lexModel = new ModelPreview<WorldVertex>(MeshContext, mesh, pmd);
-                        break;
+                    switch (pmd.meshObject)
+                    {
+                        case ModelComponent mc:
+                            lexModel = new ModelPreview<WorldVertex>(MeshContext, GetMeshFromModelComponent(mc), pmd);
+                            break;
+                        case Model m:
+                            var sections = new List<ModelPreviewSection>();
+                            WorldMesh mesh = GetMeshFromModelSubcomponents(m, sections);
+                            pmd.sections = sections;
+                            lexModel = new ModelPreview<WorldVertex>(MeshContext, mesh, pmd);
+                            break;
+                    }
                 }
             }
-            return (stmCollisionMesh, lexModel, gameModel);
+            catch (Exception e)
+            {
+                error = e;
+            }
+            return (stmCollisionMesh, lexModel, gameModel, error);
         }).ContinueWithOnUIThread(prevTask =>
         {
             IsBusy = false;
@@ -688,7 +697,12 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                 //in the time since the previous task was started, the export has been unloaded
                 return;
             }
-            var (stmCollisionMesh, lexModel, gameModel) = prevTask.Result;
+            var (stmCollisionMesh, lexModel, gameModel, error) = prevTask.Result;
+            if (error is not null)
+            {
+                new ExceptionHandlerDialog(error).Show();
+                return;
+            }
             if (lexModel is not null || gameModel is not null)
             {
                 void loadPreviewAction()
