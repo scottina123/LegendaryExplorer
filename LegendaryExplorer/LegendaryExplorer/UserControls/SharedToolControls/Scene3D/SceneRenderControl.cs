@@ -141,7 +141,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTextureCube(size, format, pixelData);
         }
 
-        public static WorldMesh GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
+        public static Mesh<WorldVertex> GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
         {
             if (aggGeom?.GetProp<ArrayProperty<StructProperty>>("ConvexElems") is ArrayProperty<StructProperty> convexElems)
             {
@@ -167,7 +167,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                     }
                 }
 
-                return new WorldMesh(renderContext.Device, triangles, vertices);
+                return new Mesh<WorldVertex>(renderContext.Device, triangles, vertices);
             }
 
             return null;

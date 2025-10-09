@@ -398,12 +398,21 @@ public class MeshRenderContext : RenderContext
         base.DisposeResources();
     }
 
-    public void RenderMeshAsWireframe(WorldMesh mesh)
+    public void RenderMeshAsWireframe(Mesh<WorldVertex> mesh)
     {
         bool wireframeBackup = Wireframe;
         Wireframe = true;
         DefaultEffect.PrepDraw(ImmediateContext, AlphaBlendState, GetWorldConstants(mesh.LocalToWorld));
         DefaultEffect.RenderObject(ImmediateContext, mesh, null);
+        Wireframe = wireframeBackup;
+    }
+
+    public void RenderMeshAsWireframe(Mesh<WorldVertex> mesh, ModelPreviewSection section)
+    {
+        bool wireframeBackup = Wireframe;
+        Wireframe = true;
+        DefaultEffect.PrepDraw(ImmediateContext, AlphaBlendState, GetWorldConstants(mesh.LocalToWorld));
+        DefaultEffect.RenderObject(ImmediateContext, mesh, (int)section.StartIndex, (int)section.TriangleCount * 3, null);
         Wireframe = wireframeBackup;
     }
 

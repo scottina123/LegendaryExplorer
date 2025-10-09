@@ -231,7 +231,7 @@ file abstract class MeshComponentProxy : PrimitiveComponentProxy
 
 file class StaticMeshComponentProxy : MeshComponentProxy
 {
-    private readonly WorldMesh CollisionMesh;
+    private readonly Mesh<WorldVertex> CollisionMesh;
 
     public StaticMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -323,7 +323,7 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
 
 file class BrushComponentProxy : PrimitiveComponentProxy
 {
-    private readonly WorldMesh Brush;
+    private readonly Mesh<WorldVertex> Brush;
 
     public BrushComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {

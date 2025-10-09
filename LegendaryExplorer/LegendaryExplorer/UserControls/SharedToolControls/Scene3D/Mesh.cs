@@ -12,14 +12,6 @@ using Device = SharpDX.Direct3D11.Device;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 {
-    // This class exists because typing Mesh<WorldVertex> is a pain.
-    public class WorldMesh : Mesh<WorldVertex>
-    {
-        public WorldMesh(Device device, List<Triangle> triangles, List<WorldVertex> vertices) : base(device, triangles, vertices)
-        {
-        }
-    }
-
     public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     {
         public readonly List<Triangle> Triangles;

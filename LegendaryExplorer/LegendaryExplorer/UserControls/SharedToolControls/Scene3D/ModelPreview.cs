@@ -482,7 +482,11 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
         var sections = new List<ModelPreviewSection>();
         foreach (var element in lodModel.Elements)
         {
-            if (element.Material is not 0)
+            if (element.Material is 0)
+            {
+                sections.Add(new ModelPreviewSection(null, element.FirstIndex, element.NumTriangles));
+            }
+            else
             {
                 IEntry matEntry = m.Export.FileRef.GetEntry(element.Material);
                 AddMaterial(renderContext, matEntry);
@@ -593,7 +597,14 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
 
         foreach (ModelPreviewSection section in LODs[lod].Sections)
         {
-            if (section.MaterialName is not null && Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<TVertex> material)
+            if (section.MaterialName is null)
+            {
+                if (view.Wireframe && LODs[lod].Mesh is Mesh<WorldVertex> mesh && renderPass is RenderPass.Base or RenderPass.ANY)
+                {
+                    view.RenderMeshAsWireframe(mesh, section);
+                }
+            }
+            else if (Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<TVertex> material)
                 && (material.Pass == renderPass || renderPass is RenderPass.ANY))
             {
                 material.RenderSection(LODs[lod], section, view);

@@ -235,7 +235,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
     /// Value is true after _Loaded is called. False after _Unloaded (which if in tab control, is called when different tab is selected)
     /// </summary>
     private bool ControlIsLoaded;
-    private WorldMesh STMCollisionMesh;
+    private Mesh<WorldVertex> STMCollisionMesh;
     private Action ViewportLoadAction = null;
 
     private void SceneContext_RenderScene(object sender, EventArgs e)
@@ -607,7 +607,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
 
         Task.Run(() =>
         {
-            WorldMesh stmCollisionMesh = null;
+            Mesh<WorldVertex> stmCollisionMesh = null;
             ModelPreview<WorldVertex> lexModel = null;
             ModelPreview<LEVertex> gameModel = null;
             Exception error = null;
@@ -615,7 +615,6 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             {
                 if (CanUseGameShaders && RenderGameShader && !RefShaderCacheReader.IsShaderOffsetsDictInitialized(Pcc.Game))
                 {
-                    BusyText = "Reading Shader Cache (~5s)";
                     RefShaderCacheReader.PopulateOffsets(Pcc.Game);
                 }
                 string className = CurrentLoadedExport.ClassName;
@@ -677,7 +676,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
                             break;
                         case Model m:
                             var sections = new List<ModelPreviewSection>();
-                            WorldMesh mesh = GetMeshFromModelSubcomponents(m, sections);
+                            Mesh<WorldVertex> mesh = GetMeshFromModelSubcomponents(m, sections);
                             pmd.sections = sections;
                             lexModel = new ModelPreview<WorldVertex>(MeshContext, mesh, pmd);
                             break;
@@ -811,7 +810,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             );
     }
 
-    private WorldMesh GetMeshFromModelSubcomponents(Model model, List<ModelPreviewSection> sections)
+    private Mesh<WorldVertex> GetMeshFromModelSubcomponents(Model model, List<ModelPreviewSection> sections)
     {
         var vertexList = new List<WorldVertex>();
         var triangles = new List<Triangle>();
@@ -851,10 +850,10 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             }
         }
 
-        return new WorldMesh(SceneViewer.Context.Device, triangles, vertexList);
+        return new Mesh<WorldVertex>(SceneViewer.Context.Device, triangles, vertexList);
     }
 
-    private WorldMesh GetMeshFromModelComponent(ModelComponent mc)
+    private Mesh<WorldVertex> GetMeshFromModelComponent(ModelComponent mc)
     {
         var parentModel = ObjectBinary.From<Model>(mc.Export.FileRef.GetUExport(mc.Model));
         var vertices = new List<WorldVertex>();
@@ -884,7 +883,7 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
             }
         }
 
-        return new WorldMesh(SceneViewer.Context.Device, triangles, vertices);
+        return new Mesh<WorldVertex>(SceneViewer.Context.Device, triangles, vertices);
     }
 
     private void MeshRenderer_Unloaded(object sender, RoutedEventArgs e)
