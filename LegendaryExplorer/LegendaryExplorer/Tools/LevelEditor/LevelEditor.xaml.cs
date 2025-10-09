@@ -4,6 +4,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -15,6 +16,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -46,6 +48,9 @@ public partial class LevelEditor : WPFBase, IRecents
         }
     }
 
+    private readonly List<(IMEPackage, ExportEntry)> OverlayLevels = [];
+    private readonly List<ActorProxy> OverlayActors = [];
+
     private bool isDirty;
     public bool IsDirty
     {
@@ -58,6 +63,20 @@ public partial class LevelEditor : WPFBase, IRecents
     {
         get => _showCollision;
         set => SetProperty(ref _showCollision, value);
+    }
+
+    private bool _showVolumes = true;
+    public bool ShowVolumes
+    {
+        get => _showVolumes;
+        set => SetProperty(ref _showVolumes, value);
+    }
+
+    private bool _showLevelsOverlay;
+    public bool ShowLevelsOverlay
+    {
+        get => _showLevelsOverlay;
+        set => SetProperty(ref _showLevelsOverlay, value);
     }
 
     public bool UseLocalCoordsForWidget
@@ -94,13 +113,25 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private void RenderScene(object sender, EventArgs e)
     {
-        DoRenderPass(RenderPass.Base);
-        DoRenderPass(RenderPass.Hair);
+        Span<RenderPass> passes = ShowCollision 
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision] 
+            : [RenderPass.Base, RenderPass.Hair];
+        
 
-        if (ShowCollision)
+        foreach (RenderPass pass in passes)
         {
-            DoRenderPass(RenderPass.Collision);
+            if (ShowLevelsOverlay)
+            {
+                RenderContext.CurrentHitTestId = Vector3.Zero;
+                foreach (ActorProxy actor in OverlayActors)
+                {
+                    if (actor.IsVolume && !ShowVolumes) continue;
+                    actor.Render(RenderContext, pass);
+                }
+            }
+            DoRenderPass(pass);
         }
+
         RenderContext.DrawUI();
     }
     void DoRenderPass(RenderPass pass)
@@ -108,13 +139,14 @@ public partial class LevelEditor : WPFBase, IRecents
         for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
         {
             ActorProxy actor = RenderContext.DrawList_3D[i];
+            if (actor.IsVolume && !ShowVolumes) continue;
             RenderContext.CurrentHitTestId = new Vector3((i & 0xFF) / 255f, ((i >> 8) & 0xFF) / 255f, ((i >> 16) & 0xFF) / 255f);
             if (actor == selectedActor)
             {
-                RenderContext.RenderFlags |= UserControls.SharedToolControls.Scene3D.RenderContext.ShaderFlags.Selected;
+                RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Selected;
             }
             actor.Render(RenderContext, pass);
-            RenderContext.RenderFlags &= ~UserControls.SharedToolControls.Scene3D.RenderContext.ShaderFlags.Selected;
+            RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Selected;
         }
     }
 
@@ -164,58 +196,15 @@ public partial class LevelEditor : WPFBase, IRecents
             savedActorPos = SelectedActor.Location;
             ExportQueuedForFocusing = SelectedActor.Export.UIndex;
         }
-        UnloadLevel();
 
         IsBusy = true;
         BusyText = "Loading level...";
-        SceneViewer.SetShouldRender(false);
-        Task.Run(() =>
-        {
-            LevelExport = level.Export;
-            var actorExports = level.Actors.Where(Pcc.IsUExport).Select(Pcc.GetUExport);
-            var actors = new List<ActorProxy>();
-            HashSet<string> ignoredActorClasses = [];
-            foreach (var actorExport in actorExports)
-            {
-                var className = actorExport.ClassName;
-                if (className is "StaticMeshCollectionActor")
-                {
-                    var smca = actorExport.GetBinaryData<StaticMeshCollectionActor>();
-                    for (int i = 0; i < smca.Components.Count; i++)
-                    {
-                        if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
-                        {
-                            var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
-                            actors.Add(smcActor);
-                        }
-                    }
-                }
-                //else if (className is "StaticLightCollectionActor")
-                //{
-                //    var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
-                //    for (int i = 0; i < slca.Components.Count; i++)
-                //    {
-                //        if (Pcc.TryGetUExport(slca.Components[i], out ExportEntry lightComponentExport))
-                //        {
-
-                //        }
-                //    }
-                //}
-                else if (ActorProxy.Create(this, actorExport) is { } actorProxy)
-                {
-                    actors.Add(actorProxy);
-                }
-                else if (className is not "BioWorldInfo")
-                {
-                    ignoredActorClasses.Add(className);
-                }
-            }
-            return (actors.OrderBy(actor => actor.Export.UIndex), ignoredActorClasses);
-
-        }).ContinueWithOnUIThread(prevTask =>
+        UnloadLevel();
+        LevelExport = level.Export;
+        Task.Run(() => LoadActors(level)).ContinueWithOnUIThread(prevTask =>
         {
             var (actors, ignoredClasses) = prevTask.Result;
-            Actors.AddRange(actors);
+            Actors.AddRange(actors.OrderBy(actor => actor.Export.UIndex));
             RenderContext.LoadLevel(Actors);
             if (!isReload)
             {
@@ -246,6 +235,49 @@ public partial class LevelEditor : WPFBase, IRecents
         });
     }
 
+    private (List<ActorProxy>, HashSet<string> ignoredActorClasses) LoadActors(Level level)
+    {
+        var actorExports = level.Actors.Where(level.Export.FileRef.IsUExport).Select(level.Export.FileRef.GetUExport);
+        var actors = new List<ActorProxy>();
+        HashSet<string> ignoredActorClasses = [];
+        foreach (var actorExport in actorExports)
+        {
+            var className = actorExport.ClassName;
+            if (className is "StaticMeshCollectionActor")
+            {
+                var smca = actorExport.GetBinaryData<StaticMeshCollectionActor>();
+                for (int i = 0; i < smca.Components.Count; i++)
+                {
+                    if (level.Export.FileRef.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
+                    {
+                        var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                        actors.Add(smcActor);
+                    }
+                }
+            }
+            //else if (className is "StaticLightCollectionActor")
+            //{
+            //    var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
+            //    for (int i = 0; i < slca.Components.Count; i++)
+            //    {
+            //        if (Pcc.TryGetUExport(slca.Components[i], out ExportEntry lightComponentExport))
+            //        {
+
+            //        }
+            //    }
+            //}
+            else if (ActorProxy.Create(this, actorExport) is { } actorProxy)
+            {
+                actors.Add(actorProxy);
+            }
+            else if (className is not "BioWorldInfo")
+            {
+                ignoredActorClasses.Add(className);
+            }
+        }
+        return (actors, ignoredActorClasses);
+    }
+
     public void LoadFile(string s)
     {
         try
@@ -268,7 +300,6 @@ public partial class LevelEditor : WPFBase, IRecents
             else
             {
                 MessageBox.Show(this, "This is not a level file!");
-                UnloadLevel();
                 UnLoadMEPackage();
             }
 
@@ -285,7 +316,9 @@ public partial class LevelEditor : WPFBase, IRecents
 
     public void UnloadLevel()
     {
+        SceneViewer.SetShouldRender(false);
         RenderContext.UnloadLevel();
+        ClearOverlay();
         Actors.Clear();
         TextBelowActors = "";
         LevelExport = null;
@@ -300,15 +333,80 @@ public partial class LevelEditor : WPFBase, IRecents
     public ICommand ToggleScaleCommand { get; set; }
     public ICommand ToggleUniformScaleCommand { get; set; }
     public ICommand CommitChangesCommand { get; set; }
+    public ICommand LoadRelatedLevelsCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
         SaveFileCommand = new GenericCommand(SaveFile, PackageIsLoaded);
+        SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
         ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate, PackageIsLoaded);
         ToggleRotateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Rotate, PackageIsLoaded);
         ToggleScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Scale, PackageIsLoaded);
         ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale, PackageIsLoaded);
         CommitChangesCommand = new GenericCommand(CommitChanges, PackageIsLoaded);
+        LoadRelatedLevelsCommand = new GenericCommand(LoadRelatedLevels, PackageIsLoaded);
+    }
+
+    private void LoadRelatedLevels()
+    {
+        if (Pcc is null) return;
+
+        ClearOverlay();
+
+        string rootFilename = Path.GetFileName(Pcc.FilePath);
+        if (rootFilename.StartsWith("Bio") && rootFilename.Length > 3
+            && rootFilename[3] is 'P' or 'D' or 'A' or 'S'
+            && rootFilename.Split('_') is [_, string levelIdent, ..]
+            && levelIdent.Split('.') is [string realLevelIdent, ..])
+        {
+            List<string> paths = [];
+            var regex = new Regex($"^Bio[PDA]_{realLevelIdent}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            foreach ((string filename, string path) in MELoadedFiles.GetFilesLoadedInGame(Pcc.Game))
+            {
+                if (regex.IsMatch(filename) && !filename.Contains("_LOC_", StringComparison.OrdinalIgnoreCase) && filename != rootFilename)
+                {
+                    paths.Add(path);
+                }
+            }
+            if (paths.Count is 0) return;
+
+            BusyText = "Loading levels...";
+            SceneViewer.SetShouldRender(false);
+            IsBusy = true;
+            Task.Run(() =>
+            {
+                foreach (string path in paths)
+                {
+                    IMEPackage pcc = MEPackageHandler.OpenMEPackage(path);
+                    if (pcc.Exports.FirstOrDefault(exp => exp.ClassName == "Level") is { } levelExport)
+                    {
+                        OverlayLevels.Add((pcc, levelExport));
+                        Level levelBin = levelExport.GetBinaryData<Level>();
+                        (var actors, _) = LoadActors(levelBin);
+                        OverlayActors.AddRange(actors);
+                    }
+                }
+                foreach (var actor in OverlayActors)
+                {
+                    actor.Editor = null;
+                }
+            }).ContinueWithOnUIThread(prevTask =>
+            {
+                IsBusy = false;
+                SceneViewer.SetShouldRender(true);
+                ShowLevelsOverlay = true;
+            });
+        }
+    }
+
+    private void ClearOverlay()
+    {
+        foreach ((IMEPackage pcc, _) in OverlayLevels)
+        {
+            pcc?.Dispose();
+        }
+        OverlayLevels.Clear();
+        OverlayActors.DisposeAndClear();
     }
 
     private void Goto_TextBox_KeyUp(object sender, KeyEventArgs e)
@@ -475,6 +573,21 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private async void SaveFileAs()
     {
+        if (IsDirty)
+        {
+            switch (MessageBox.Show("Do you want to commit your Level Editor changes before saving this file?", "Uncommitted changes", MessageBoxButton.YesNoCancel))
+            {
+                case MessageBoxResult.Yes:
+                    CommitChanges();
+                    break;
+                case MessageBoxResult.No:
+                    //continue on
+                    break;
+                case MessageBoxResult.Cancel:
+                default:
+                    return;
+            }
+        }
         string fileFilter;
         switch (Pcc.Game)
         {
@@ -558,11 +671,12 @@ public partial class LevelEditor : WPFBase, IRecents
         if (e.Cancel)
             return;
 
+        UnloadLevel();
+
         RenderContext.UpdateScene -= UpdateScene;
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectActor -= ViewportActorSelect;
 
-        UnloadLevel();
         SceneViewer.Dispose();
         RecentsController?.Dispose();
         UnLoadMEPackage();

@@ -245,7 +245,8 @@ public partial class MeshRenderer : ExportLoaderControl, ISceneRenderContextConf
         if (RenderGameShader && GameShaderMeshPreview is not null && CurrentLOD < GameShaderMeshPreview.LODs.Count)
         {
             MeshContext.Wireframe = false;
-            foreach (RenderPass renderPass in Enum.GetValues<RenderPass>().AsSpan(..^1)) //exclude RenderPass.ANY
+            Span<RenderPass> passes = [RenderPass.Base, RenderPass.Hair];
+            foreach (RenderPass renderPass in passes)
             {
                 GameShaderMeshPreview.Render(renderPass, MeshContext, CurrentLOD);
             }

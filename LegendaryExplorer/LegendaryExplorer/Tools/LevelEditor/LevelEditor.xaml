@@ -75,9 +75,9 @@
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
                 </MenuItem>
 
-                <MenuItem Header="Tools" Padding="4">
-
-                </MenuItem>
+                <!--<MenuItem Header="Tools" Padding="4">
+                    <MenuItem Header="Load related levels overlay" Command="{Binding LoadRelatedLevelsCommand}"/>
+                </MenuItem>-->
             </Menu>
             <WrapPanel DockPanel.Dock="Top">
                 <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
@@ -111,6 +111,8 @@
 
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <ToggleButton Content="Show Collision" ToolTip="Show collision meshes" IsChecked="{Binding ShowCollision}"/>
+                    <ToggleButton Content="Show Volumes" ToolTip="Show collision meshes" IsChecked="{Binding ShowVolumes}"/>
+                    <!--<ToggleButton Content="Show Levels Overlay" ToolTip="Show collision meshes" IsChecked="{Binding ShowLevelsOverlay}"/>-->
                 </ToolBar>
             </WrapPanel>
             

@@ -48,7 +48,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             /// <summary>
             /// Creates a new cache entry for the given texture.
             /// </summary>
-            public TextureEntry(RenderContext renderContext, ExportEntry export)
+            public TextureEntry(MeshRenderContext renderContext, ExportEntry export)
             {
                 MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
                 InstanceFullPath = export.InstancedFullPath;
@@ -98,7 +98,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             int CurrentColumn;
             float LastFrameTime;
 
-            public FlipBookTextureEntry(RenderContext renderContext, ExportEntry export) : base(renderContext, export)
+            public FlipBookTextureEntry(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
             {
                 var props = export.GetProperties();
                 FrameRate = props.GetProp<FloatProperty>("FrameRate")?.Value ?? 4f;
@@ -281,13 +281,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
         }
 
-        public RenderContext RenderContext { get; }
+        public MeshRenderContext RenderContext { get; }
 
         /// <summary>
         /// Creates a new PreviewTextureCache.
         /// </summary>
         /// <param name="renderContext">The <see cref="RenderContext"/> to create texture and views for.</param>
-        public PreviewTextureCache(RenderContext renderContext)
+        public PreviewTextureCache(MeshRenderContext renderContext)
         {
             this.RenderContext = renderContext;
         }

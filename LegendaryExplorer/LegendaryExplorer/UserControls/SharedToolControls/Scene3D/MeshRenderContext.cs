@@ -4,6 +4,7 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal;
 using SharpDX.D3DCompiler;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
@@ -19,6 +20,7 @@ using Color = System.Windows.Media.Color;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
+using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
 
@@ -680,6 +682,45 @@ public class MeshRenderContext : RenderContext
     }
 
     public bool WorldToPixel(Vector3 point, out Vector2 pixel) => ScreenToPixel(WorldToScreen(point), out pixel);
+
+    public Texture2D LoadUnrealTexture(ExportEntry texture2DExport)
+    {
+        if (texture2DExport.ClassName is "TextureRenderTarget2D" or "TextureMovie")
+        {
+            return WhiteTex;
+        }
+        var unrealTexture = new LECTexture2D(texture2DExport);
+        return this.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
+    }
+
+    public Texture2D LoadUnrealTextureCube(ExportEntry textureCubeExport, PackageCache packageCache = null)
+    {
+        if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
+
+        var props = textureCubeExport.GetProperties();
+        var faceTextures = new Fixed6<LECTexture2D>();
+        Span<string> facePropNames = ["FacePosX", "FaceNegX", "FacePosY", "FaceNegY", "FacePosZ", "FaceNegZ"];
+        for (int i = 0; i < 6; i++)
+        {
+            ObjectProperty faceProp = props.GetProp<ObjectProperty>(facePropNames[i]);
+            if (faceProp is null)
+            {
+                return WhiteTextureCube;
+            }
+            faceTextures[i] = new(faceProp.ResolveToExport(textureCubeExport.FileRef, packageCache));
+        }
+        var pixelData = new Fixed6<byte[]>();
+
+        //should be the same for all textures
+        uint size = (uint)faceTextures[0].GetTopMip().width;
+        var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
+            LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
+        for (int i = 0; i < 6; i++)
+        {
+            pixelData[i] = LECTexture2D.GetTextureData(faceTextures[i].GetTopMip(), textureCubeExport.Game);
+        }
+        return this.LoadTextureCube(size, format, pixelData);
+    }
 }
 
 file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>

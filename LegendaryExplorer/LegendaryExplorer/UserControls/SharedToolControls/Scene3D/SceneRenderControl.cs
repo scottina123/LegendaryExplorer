@@ -111,36 +111,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTexture(mipWidth, mipHeight, mipFormat, imagebytes);
         }
 
-        public static Texture2D LoadUnrealTexture(this RenderContext renderContext, ExportEntry texture2DExport)
-        {
-            var unrealTexture = new LECTexture2D(texture2DExport);
-            return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
-        }
-
-        public static Texture2D LoadUnrealTextureCube(this RenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)
-        {
-            if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
-
-            var props = textureCubeExport.GetProperties();
-            var faceTextures = new Fixed6<LECTexture2D>();
-            Span<string> facePropNames = ["FacePosX", "FaceNegX", "FacePosY", "FaceNegY", "FacePosZ", "FaceNegZ"];
-            for (int i = 0; i < 6; i++)
-            {
-                faceTextures[i] = new(props.GetProp<ObjectProperty>(facePropNames[i]).ResolveToExport(textureCubeExport.FileRef, packageCache));
-            }
-            var pixelData = new Fixed6<byte[]>();
-
-            //should be the same for all textures
-            uint size = (uint)faceTextures[0].GetTopMip().width;
-            var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
-                LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
-            for (int i = 0; i < 6; i++)
-            {
-                pixelData[i] = LECTexture2D.GetTextureData(faceTextures[i].GetTopMip(), textureCubeExport.Game);
-            }
-            return renderContext.LoadTextureCube(size, format, pixelData);
-        }
-
         public static Mesh<WorldVertex> GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
         {
             if (aggGeom?.GetProp<ArrayProperty<StructProperty>>("ConvexElems") is ArrayProperty<StructProperty> convexElems)

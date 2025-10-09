@@ -109,8 +109,6 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
     /// </summary>
     public readonly Dictionary<string, string> Properties = [];
 
-    public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = [];
-
     /// <summary>
     /// Creates a ModelPreviewMaterial that renders as close to what the given <see cref="MaterialInstanceConstant"/> looks like as possible. 
     /// </summary>
@@ -118,17 +116,6 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
     {
         Material = CreateMaterial(renderContext, export);
         Pass = RenderPass.Base;
-        foreach (IEntry textureEntry in Material.Textures)
-        {
-            if (!TextureMap.ContainsKey(textureEntry.FullPath))
-            {
-                PreviewTextureCache.TextureEntry texture = renderContext.TextureCache.LoadTexture(textureEntry, renderContext.PackageCache);
-                if (texture is not null)
-                {
-                    TextureMap.Add(textureEntry.FullPath, texture);
-                }
-            }
-        }
     }
 
     /// <summary>
@@ -144,26 +131,32 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
 
 public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
 {
-
-    /// <summary>
-    /// The IFP of the best guess at the diffuse texture
-    /// </summary>
-    public string DiffuseTextureFullName = null;
+    private readonly PreviewTextureCache.TextureEntry DiffTexture;
 
     public TexturedPreviewMaterial(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
     {
         string matPackage = export.Parent?.InstancedFullPath.ToLower();
         MaterialInstanceConstant mat = Material;
         Properties.Add("Name", export.ObjectName.Instanced);
+        string diffuseIFP = FindDiffuse(matPackage, mat);
+        if (diffuseIFP is not null && Material.Textures.FirstOrDefault(entry => entry.InstancedFullPath == diffuseIFP) is IEntry diffEntry)
+        {
+            DiffTexture = renderContext.TextureCache.LoadTexture(diffEntry, renderContext.PackageCache);
+        }
+    }
+
+    private string FindDiffuse(string matPackage, MaterialInstanceConstant mat)
+    {
+        string diffuseIFP;
         foreach (var textureEntry in mat.Textures)
         {
             var texObjectName = textureEntry.InstancedFullPath.ToLower();
             if ((matPackage == null || texObjectName.StartsWith(matPackage)) && texObjectName.Contains("diff"))
             {
                 // we have found the diffuse texture!
-                DiffuseTextureFullName = textureEntry.InstancedFullPath;
-                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + DiffuseTextureFullName);
-                return;
+                diffuseIFP = textureEntry.InstancedFullPath;
+                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
+                return diffuseIFP;
             }
         }
 
@@ -173,9 +166,9 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             if (texObjectName.Contains("diff") || texObjectName.Contains("tex"))
             {
                 // we have found the diffuse texture!
-                DiffuseTextureFullName = textureEntry.InstancedFullPath;
-                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + DiffuseTextureFullName);
-                return;
+                diffuseIFP = textureEntry.InstancedFullPath;
+                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
+                return diffuseIFP;
             }
         }
         foreach (var texparam in mat.Textures)
@@ -185,9 +178,9 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             if (texObjectName.Contains("detail"))
             {
                 // I guess a detail texture is good enough if we didn't return for a diffuse texture earlier...
-                DiffuseTextureFullName = texparam.InstancedFullPath;
-                Debug.WriteLine("Diffuse (Detail) texture of new material <" + Properties["Name"] + "> is " + DiffuseTextureFullName);
-                return;
+                diffuseIFP = texparam.InstancedFullPath;
+                Debug.WriteLine("Diffuse (Detail) texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
+                return diffuseIFP;
             }
         }
         foreach (var texparam in mat.Textures)
@@ -196,12 +189,12 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             if (!texObjectName.Contains("norm") && !texObjectName.Contains("opac"))
             {
                 //Anything is better than nothing I suppose
-                DiffuseTextureFullName = texparam.InstancedFullPath;
-                Debug.WriteLine("Using first found texture (last resort)  of new material <" + Properties["Name"] + "> as diffuse: " + DiffuseTextureFullName);
-                return;
+                diffuseIFP = texparam.InstancedFullPath;
+                Debug.WriteLine("Using first found texture (last resort)  of new material <" + Properties["Name"] + "> as diffuse: " + diffuseIFP);
+                return diffuseIFP;
             }
         }
-        DiffuseTextureFullName = "";
+        return null;
     }
 
     /// <summary>
@@ -213,8 +206,7 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
     {
         context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, context.GetWorldConstants(lod.Mesh.LocalToWorld));
 
-        TextureMap.TryGetValue(DiffuseTextureFullName, out PreviewTextureCache.TextureEntry diffTexture);
-        ShaderResourceView diffTextureView = diffTexture?.TextureView ?? context.DefaultTextureView;
+        ShaderResourceView diffTextureView = DiffTexture?.TextureView ?? context.DefaultTextureView;
 
         context.DefaultEffect.RenderObject(
             context.ImmediateContext,
@@ -234,8 +226,21 @@ file class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 {
     private readonly RenderTargetBlendDescription BlendDescription;
 
+    public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = [];
+
     public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
     {
+        foreach (IEntry textureEntry in Material.Textures)
+        {
+            if (!TextureMap.ContainsKey(textureEntry.FullPath))
+            {
+                PreviewTextureCache.TextureEntry texture = renderContext.TextureCache.LoadTexture(textureEntry, renderContext.PackageCache);
+                if (texture is not null)
+                {
+                    TextureMap.Add(textureEntry.FullPath, texture);
+                }
+            }
+        }
         var mat = (MaterialRenderProxy)Material;
         mat.TextureMap = TextureMap;
         Pass = mat.UseHairPass ? RenderPass.Hair : default;

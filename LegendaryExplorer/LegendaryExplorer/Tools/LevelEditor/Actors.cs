@@ -130,6 +130,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
+    public virtual bool IsVolume => false;
+
     protected ActorProxy(LevelEditor context, ExportEntry actorExport)
     {
         Editor = context;
@@ -381,6 +383,8 @@ file class DynamicSMActorProxy : ActorProxy
 //volumes
 file class BrushProxy : ActorProxy
 {
+    public override bool IsVolume => true;
+
     public BrushProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponents(context.RenderContext, "BrushComponent");
