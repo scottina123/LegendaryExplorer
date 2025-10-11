@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+﻿using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using SharpDX.Direct3D11;
 using System;
 using System.Collections.Generic;

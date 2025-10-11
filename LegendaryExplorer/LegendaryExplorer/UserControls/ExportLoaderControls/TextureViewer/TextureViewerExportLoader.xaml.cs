@@ -74,11 +74,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SetProperty(ref _setAlphaToBlack, value);
                 if (value)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.AlphaAsBlack;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.AlphaAsBlack;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.AlphaAsBlack;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.AlphaAsBlack;
                 }
                 RequestRender();
             }
@@ -93,11 +93,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SetProperty(ref _showRedChannel, value);
                 if (value)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.EnableRedChannel;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.EnableRedChannel;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.EnableRedChannel;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.EnableRedChannel;
                 }
                 RequestRender();
             }
@@ -112,11 +112,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SetProperty(ref _showGreenChannel, value);
                 if (value)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.EnableGreenChannel;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.EnableGreenChannel;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.EnableGreenChannel;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.EnableGreenChannel;
                 }
                 RequestRender();
             }
@@ -131,11 +131,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SetProperty(ref _showBlueChannel, value);
                 if (value)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.EnableBlueChannel;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.EnableBlueChannel;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.EnableBlueChannel;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.EnableBlueChannel;
                 }
                 RequestRender();
             }
@@ -150,11 +150,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SetProperty(ref _showAlphaChannel, value);
                 if (value)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.EnableAlphaChannel;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.EnableAlphaChannel;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
                 }
                 RequestRender();
             }
@@ -616,11 +616,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     or LegendaryExplorerCore.Textures.PixelFormat.V8U8;
                 if (needsReconstruction)
                 {
-                    this.TextureContext.Constants.Flags |= TextureRenderContext.ShaderFlags.ReconstructNormalZ;
+                    this.TextureContext.Constants.Flags |= TextureRenderContext.TextureViewFlags.ReconstructNormalZ;
                 }
                 else
                 {
-                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.ShaderFlags.ReconstructNormalZ;
+                    this.TextureContext.Constants.Flags &= ~TextureRenderContext.TextureViewFlags.ReconstructNormalZ;
                 }
                 CannotShowTextureTextVisibility = Visibility.Collapsed;
             }

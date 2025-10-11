@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+﻿using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.SharpDX;

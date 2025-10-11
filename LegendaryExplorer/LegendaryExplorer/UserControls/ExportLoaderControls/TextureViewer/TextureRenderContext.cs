@@ -11,13 +11,31 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer
 {
     public class TextureRenderContext : RenderContext
     {
+        [Flags]
+        public enum TextureViewFlags : int
+        {
+            None = 0,
+            /// <summary>
+            /// If normals should have the third color channel populated
+            /// </summary>
+            ReconstructNormalZ = 1 << 0,
+            /// <summary>
+            /// If alpha channel should be set to black, so textures can properly be viewed
+            /// </summary>
+            AlphaAsBlack = 1 << 1,
+            EnableRedChannel = 1 << 2,
+            EnableGreenChannel = 1 << 3,
+            EnableBlueChannel = 1 << 4,
+            EnableAlphaChannel = 1 << 5,
+        }
+
         // WARNING: Constant buffers must be a multiple of 16 bytes long
         public struct TextureViewConstants
         {
             public Matrix4x4 Projection;
             public Matrix4x4 View;
             public int Mip;
-            public ShaderFlags Flags;
+            public TextureViewFlags Flags;
             public int TextureWidth;
             public int TextureHeight;
         }
@@ -27,7 +45,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer
         private VertexShader TextureVertexShader = null;
         private PixelShader TexturePixelShader = null;
         private ShaderResourceView TextureRTV = null;
-        public TextureViewConstants Constants = new TextureViewConstants() { Flags = ShaderFlags.EnableRedChannel | ShaderFlags.EnableGreenChannel | ShaderFlags.EnableBlueChannel | ShaderFlags.EnableAlphaChannel };
+        public TextureViewConstants Constants = new TextureViewConstants() { Flags = TextureViewFlags.EnableRedChannel | TextureViewFlags.EnableGreenChannel | TextureViewFlags.EnableBlueChannel | TextureViewFlags.EnableAlphaChannel };
         private SharpDX.Direct3D11.Buffer ConstantBuffer = null;
 
         private SharpDX.Direct3D11.Texture2D _texture = null;

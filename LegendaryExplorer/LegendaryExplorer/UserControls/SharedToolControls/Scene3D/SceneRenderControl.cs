@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Controls;
 using System.Windows.Input;
 using FontAwesome5;
+using SharpDX;
 using SharpDX.Direct3D11;
 using SharpDX.Direct3D;
 using LegendaryExplorerCore.Unreal;
@@ -19,7 +20,6 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LegendaryExplorer.Dialogs;
-using System.Numerics;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 {
@@ -27,10 +27,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
     public enum MouseButtons
     {
-        None,
         Left,
         Middle,
-        Right
+        Right,
     }
 
     public static class RenderContextExtensions
@@ -40,7 +39,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             Texture2DDescription texture2DDescription = GetTextureDescription(width, height, format, false, out int pitch);
             fixed (byte* pixelDataPointer = pixelData)
             {
-                return new Texture2D(renderContext.Device, texture2DDescription, new SharpDX.DataRectangle((IntPtr)pixelDataPointer, pitch));
+                return new Texture2D(renderContext.Device, texture2DDescription, new DataRectangle((IntPtr)pixelDataPointer, pitch));
             }
         }
 
@@ -88,7 +87,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return tex;
         }
 
-        public static unsafe Texture2D LoadTextureFromFile(this RenderContext renderContext, string filename)
+        public static unsafe Texture2D LoadFile(this RenderContext renderContext, string filename)
         {
             var pixelFormat = LegendaryExplorerCore.Textures.PixelFormat.ARGB;
             byte[] pixelData = LegendaryExplorerCore.Textures.TexConverter.LoadTexture(filename, out uint width, out uint height, ref pixelFormat); // NEEDS WAY TO HAVE ALPHA AS BLACK!
@@ -111,64 +110,39 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTexture(mipWidth, mipHeight, mipFormat, imagebytes);
         }
 
-        public static Mesh<WorldVertex> GetMeshFromAggGeom(this RenderContext renderContext, StructProperty aggGeom)
+        public static Texture2D LoadUnrealTexture(this RenderContext renderContext, ExportEntry texture2DExport)
         {
-            if (aggGeom?.GetProp<ArrayProperty<StructProperty>>("ConvexElems") is ArrayProperty<StructProperty> convexElems)
+            var unrealTexture = new LECTexture2D(texture2DExport);
+            return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
+        }
+
+        public static Texture2D LoadUnrealTextureCube(this RenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)
+        {
+            if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
+
+            var props = textureCubeExport.GetProperties();
+            var faceTextures = new Fixed6<LECTexture2D>();
+            Span<string> facePropNames = ["FacePosX", "FaceNegX", "FacePosY", "FaceNegY", "FacePosZ", "FaceNegZ"];
+            for (int i = 0; i < 6; i++)
             {
-                var vertices = new List<WorldVertex>();
-                var triangles = new List<Triangle>();
-                int vertTotal = 0;
-                foreach (StructProperty convexElem in convexElems)
-                {
-                    var faceTriData = convexElem.GetProp<ArrayProperty<IntProperty>>("FaceTriData");
-                    for (int i = 0; i < faceTriData.Count; i += 3)
-                    {
-                        triangles.Add(new Triangle((uint)(faceTriData[i].Value + vertTotal), (uint)(faceTriData[i + 1].Value + vertTotal), (uint)(faceTriData[i + 2].Value + vertTotal)));
-                    }
-
-                    var vertexData = convexElem.GetProp<ArrayProperty<StructProperty>>("VertexData");
-                    foreach (StructProperty vertex in vertexData)
-                    {
-                        float x = vertex.GetProp<FloatProperty>("X").Value;
-                        float y = vertex.GetProp<FloatProperty>("Y").Value;
-                        float z = vertex.GetProp<FloatProperty>("Z").Value;
-                        vertices.Add(new WorldVertex(new Vector3(-x, z, y), Vector4.Zero, Vector2.Zero));
-                        ++vertTotal;
-                    }
-                }
-
-                return new Mesh<WorldVertex>(renderContext.Device, triangles, vertices);
+                faceTextures[i] = new(props.GetProp<ObjectProperty>(facePropNames[i]).ResolveToExport(textureCubeExport.FileRef, packageCache));
             }
+            var pixelData = new Fixed6<byte[]>();
 
-            return null;
+            //should be the same for all textures
+            uint size = (uint)faceTextures[0].GetTopMip().width;
+            var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
+                LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
+            for (int i = 0; i < 6; i++)
+            {
+                pixelData[i] = LECTexture2D.GetTextureData(faceTextures[i].GetTopMip(), textureCubeExport.Game);
+            }
+            return renderContext.LoadTextureCube(size, format, pixelData);
         }
     }
 
     public abstract class RenderContext
     {
-        [Flags]
-        public enum ShaderFlags : int
-        {
-            None = 0,
-            /// <summary>
-            /// If normals should have the third color channel populated
-            /// </summary>
-            ReconstructNormalZ = 1 << 0,
-            /// <summary>
-            /// If alpha channel should be set to black, so textures can properly be viewed
-            /// </summary>
-            AlphaAsBlack = 1 << 1,
-            EnableRedChannel = 1 << 2,
-            EnableGreenChannel = 1 << 3,
-            EnableBlueChannel = 1 << 4,
-            EnableAlphaChannel = 1 << 5,
-
-            //level editor flags
-            Wireframe = 1 << 29,
-            Selected = 1 << 30,
-            PrimitiveRendering = 1 << 31,
-        }
-
         public int Width { get; private set; } = 0;
         public int Height { get; private set; } = 0;
         public Device Device { get; private set; }
@@ -263,16 +237,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         }
 
         public virtual bool KeyUp(Key key)
-        {
-            return false;
-        }
-
-        public virtual bool LostKeyboardFocus()
-        {
-            return false;
-        }
-
-        public virtual bool LostMouseFocus()
         {
             return false;
         }
@@ -398,8 +362,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             PreviewMouseWheel += SceneRenderControlWPF_PreviewMouseWheel;
             KeyDown += OnKeyDown;
             KeyUp += OnKeyUp;
-            LostKeyboardFocus += SceneRenderControl_LostKeyboardFocus;
-            LostMouseCapture += SceneRenderControl_LostMouseCapture;
             SizeChanged += SceneRenderControlWPF_SizeChanged;
         }
 
@@ -412,8 +374,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             PreviewMouseWheel -= SceneRenderControlWPF_PreviewMouseWheel;
             KeyUp -= OnKeyUp;
             KeyDown -= OnKeyDown;
-            LostKeyboardFocus -= SceneRenderControl_LostKeyboardFocus;
-            LostMouseCapture -= SceneRenderControl_LostMouseCapture;
             SizeChanged -= SceneRenderControlWPF_SizeChanged;
         }
 
@@ -465,7 +425,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             if (_shouldRender && Context is { IsReady: true })
             {
                 //Debug.WriteLine("Rendering");
-                D3DImage?.RequestRender();
+                D3DImage.RequestRender();
             }
         }
 
@@ -480,7 +440,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 }
 
                 // Yikes - from https://github.com/microsoft/WPFDXInterop/blob/master/samples/D3D11Image/D3D11Visualization/D3DVisualization.cpp#L384
-                var res = SharpDX.CppObject.FromPointer<SharpDX.ComObject>(surface);
+                var res = CppObject.FromPointer<ComObject>(surface);
                 var resource = res.QueryInterface<SharpDX.DXGI.Resource>();
                 IntPtr sharedHandle = resource.SharedHandle;
                 resource.Dispose();
@@ -598,16 +558,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         public void OnKeyUp(object sender, KeyEventArgs e)
         {
             e.Handled = Context.KeyUp(e.Key);
-        }
-
-        private void SceneRenderControl_LostMouseCapture(object sender, MouseEventArgs e)
-        {
-            e.Handled = Context.LostMouseFocus();
-        }
-
-        private void SceneRenderControl_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-        {
-            e.Handled = Context.LostKeyboardFocus();
         }
         #endregion
 

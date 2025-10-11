@@ -1,13 +1,13 @@
-﻿using System;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Windows.Documents;
-using SharpDX;
+﻿using SharpDX;
+using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
+using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Vector4 = System.Numerics.Vector4;
 
-namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
 public unsafe class LEEffect : IDisposable
 {
@@ -64,6 +64,7 @@ public unsafe class LEEffect : IDisposable
         context.UpdateSubresource(PixelShaderGlobals, 0, null, (IntPtr)PixelShaderConstantBufferAlloc, 0, 0);
 
         // Setup buffers for rendering
+        context.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
         context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, LEVertex.Stride, 0));
         context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
 

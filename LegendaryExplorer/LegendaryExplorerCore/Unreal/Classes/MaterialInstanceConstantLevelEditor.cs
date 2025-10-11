@@ -7,15 +7,17 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorerCore.Unreal.Classes
 {
-    public class MaterialInstanceConstant
+    public class MaterialInstanceConstantLevelEditor
     {
-        public readonly ExportEntry Export;
+        public MEGame Game;
+        public string InstancedFullPath;
         public readonly HashSet<IEntry> Textures = [];
 
 
-        public MaterialInstanceConstant(ExportEntry export, PackageCache assetCache = null, bool resolveImports = true)
+        public MaterialInstanceConstantLevelEditor(ExportEntry export, PackageCache assetCache = null, bool resolveImports = true)
         {
-            Export = export;
+            Game = export.Game;
+            InstancedFullPath = export.InstancedFullPath;
             ReadMaterial(export, assetCache, resolveImports);
         }
 
@@ -129,12 +131,6 @@ namespace LegendaryExplorerCore.Unreal.Classes
                     }
                 }
             }
-        }
-
-        public static IEnumerable<IEntry> GetTextures(ExportEntry export, PackageCache assetCache = null, bool resolveImports = true)
-        {
-            var mic = new MaterialInstanceConstant(export, assetCache, resolveImports);
-            return mic.Textures.Where(entry => entry.ClassName == "Texture2D"); //no texturecubes
         }
     }
 }

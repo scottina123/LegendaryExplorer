@@ -1,12 +1,9 @@
-﻿using LegendaryExplorerCore.Helpers;
-using LegendaryExplorerCore.Misc;
+﻿using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D11;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 
@@ -31,12 +28,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             /// <summary>
             /// The Direct3D ShaderResourceView for binding to shaders.
             /// </summary>
-            public ShaderResourceView TextureView { get; private set; }
+            public readonly ShaderResourceView TextureView;
 
             /// <summary>
             /// The Direct3D texture for ShaderResourceView creation.
             /// </summary>
-            public Texture2D Texture { get; private set; }
+            public readonly Texture2D Texture;
 
             /// <summary>
             /// The time this object was last accessed.
@@ -48,7 +45,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             /// <summary>
             /// Creates a new cache entry for the given texture.
             /// </summary>
-            public TextureEntry(MeshRenderContext renderContext, ExportEntry export)
+            public TextureEntry(RenderContext renderContext, ExportEntry export)
             {
                 MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
                 InstanceFullPath = export.InstancedFullPath;
@@ -64,9 +61,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             public void Dispose()
             {
                 TextureView?.Dispose();
-                TextureView = null;
                 Texture?.Dispose();
-                Texture = null;
             }
         }
 
@@ -98,7 +93,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             int CurrentColumn;
             float LastFrameTime;
 
-            public FlipBookTextureEntry(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
+            public FlipBookTextureEntry(RenderContext renderContext, ExportEntry export) : base(renderContext, export)
             {
                 var props = export.GetProperties();
                 FrameRate = props.GetProp<FloatProperty>("FrameRate")?.Value ?? 4f;
@@ -281,13 +276,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
         }
 
-        public MeshRenderContext RenderContext { get; }
+        public RenderContext RenderContext { get; }
 
         /// <summary>
         /// Creates a new PreviewTextureCache.
         /// </summary>
         /// <param name="renderContext">The <see cref="RenderContext"/> to create texture and views for.</param>
-        public PreviewTextureCache(MeshRenderContext renderContext)
+        public PreviewTextureCache(RenderContext renderContext)
         {
             this.RenderContext = renderContext;
         }
@@ -297,14 +292,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         public void ExpungeStaleCacheItems()
         {
-            TimeSpan oneMinute = TimeSpan.FromMinutes(1);
-            foreach (var (key, entry) in AssetCache)
+            for (int i = AssetCache.Count - 1; i > 0; i--)
             {
-                if (DateTime.Now - entry.LastUsageTime > oneMinute)
+                if (DateTime.Now - AssetCache[i].LastUsageTime > TimeSpan.FromMinutes(1))
                 {
-                    entry.Dispose();
-                    //Remove does not actually invalidate the enumerator
-                    AssetCache.Remove(key);
+                    Debug.WriteLine($"Expunging PreviewTextureCache stale item: {AssetCache[i].InstanceFullPath}");
+                    AssetCache[i].Dispose();
+                    AssetCache.RemoveAt(i);
                 }
             }
         }
@@ -314,44 +308,42 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         public void Dispose()
         {
-            AssetCache.DisposeValuesAndClear();
+            foreach (TextureEntry e in AssetCache)
+            {
+                e.Dispose();
+            }
+            AssetCache.Clear();
         }
 
         /// <summary>
         /// Stores loaded textures by their full name.
         /// </summary>
-        private Dictionary<string, TextureEntry> AssetCache { get; } = new();
+        public ObservableCollectionExtended<TextureEntry> AssetCache { get; } = new();
 
         /// <summary>
         /// Queues a texture for eventual loading.
         /// </summary>
-        public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
+        public TextureEntry LoadTexture(ExportEntry export)
         {
-            string ifp = textureEntry.InstancedFullPath;
-            if (textureEntry is ImportEntry import)
+            foreach (TextureEntry e in AssetCache)
             {
-                textureEntry = EntryImporter.ResolveImport(import, packageCache);
-            }
-            if (textureEntry is ExportEntry textureExport)
-            {
-                if (AssetCache.TryGetValue(textureExport.InstancedFullPath, out TextureEntry entry))
+                // Same full paths are assumed to be identical. Leaving this here in case this needs changing for some reason.
+                if (/*e.TextureExport.FileRef.FilePath == export.FileRef.FilePath && */e.InstanceFullPath == export.InstancedFullPath)
                 {
-                    entry.LastUsageTime = DateTime.Now;
-                    return entry;
-                }
-                try
-                {
-                    entry = textureExport.ClassName is "FlipBookTextureEntry" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
-                    AssetCache.Add(entry.InstanceFullPath, entry);
-                    return entry;
-                }
-                catch
-                {
-                    //just do the error path below
+                    e.LastUsageTime = DateTime.Now;
+                    return e;
                 }
             }
-            Debug.WriteLine($"Unable to resolve texture: {ifp}");
-            return null;
+            try
+            {
+                var entry = export.ClassName == "TextureFlipBook" ? new FlipBookTextureEntry(RenderContext, export) : new TextureEntry(RenderContext, export);
+                AssetCache.Add(entry);
+                return entry;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

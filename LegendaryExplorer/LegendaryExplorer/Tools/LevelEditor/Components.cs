@@ -1,5 +1,5 @@
 ﻿using LegendaryExplorer.Misc;
-using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -11,7 +11,7 @@ using System.Linq;
 using System.Numerics;
 
 //change this to switch between game and LEX shaders for LevelEditor
-using VertexType = LegendaryExplorer.UserControls.SharedToolControls.Scene3D.WorldVertex;
+using VertexType = LegendaryExplorer.Tools.LevelEditor.Scene3D.WorldVertex;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 

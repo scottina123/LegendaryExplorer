@@ -2,7 +2,13 @@
 using SharpDX;
 using SharpDX.DXGI;
 using SharpDX.Direct3D11;
-using Buffer = SharpDX.Direct3D11.Buffer;
+using System.Runtime.InteropServices;
+using Matrix3x3 = SharpDX.Matrix3x3;
+using float3x3 = SharpDX.Matrix3x3;
+using float4x4 = System.Numerics.Matrix4x4;
+using float2 = System.Numerics.Vector2;
+using float3 = System.Numerics.Vector3;
+using float4 = System.Numerics.Vector4;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 {
@@ -11,14 +17,15 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
     /// An Effect contains a Pixel Shader, Vertex Shader, Constant Buffer, and and Input Layout for rendering objects with Direct3D.
     /// </summary>
     /// <typeparam name="ConstantBufferData">The structure that will hold the data in the only constant buffer.</typeparam>
+    /// <typeparam name="Vertex"></typeparam>
     // I may have gone slightly overboard with the generics here, but hey, it's very flexible!
-    public sealed class GenericEffect<ConstantBufferData> : IDisposable where ConstantBufferData : struct
+    public class GenericEffect<ConstantBufferData, Vertex> : IDisposable where ConstantBufferData : struct where Vertex : IVertexBase
     {
         private const string VERTEX_SHADER_ENTRYPOINT = "VSMain";
         private const string PIXEL_SHADER_ENTRYPOINT = "PSMain";
         public VertexShader VertexShader { get; }
         public PixelShader PixelShader { get; }
-        public Buffer ConstantBuffer { get; }
+        public SharpDX.Direct3D11.Buffer ConstantBuffer { get; }
         public InputLayout InputLayout { get; }
 
         public GenericEffect(SharpDX.Direct3D11.Device device, string shaderCode)
@@ -39,7 +46,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
             // Create input layout. This tells the input-assembler stage how to map items from our vertex structures into vertices for the vertex shader.
             // It is validated against the vertex shader bytecode because it needs to match properly.
-            InputLayout = new InputLayout(device, vsb, WorldVertex.InputElements);
+            InputLayout = new InputLayout(device, vsb, Vertex.InputElements);
             vsb.Dispose();
         }
 
@@ -48,7 +55,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         /// </summary>
         /// <param name="context"></param>
         /// <param name="blendState"></param>
-        public void PrepDraw(DeviceContext context, BlendState blendState, ConstantBufferData constantData)
+        public void PrepDraw(DeviceContext context, BlendState blendState)
         {
             context.OutputMerger.SetBlendState(blendState);
             context.InputAssembler.InputLayout = InputLayout;
@@ -56,18 +63,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             context.VertexShader.SetConstantBuffer(0, ConstantBuffer);
             context.PixelShader.Set(PixelShader);
             context.PixelShader.SetConstantBuffer(0, ConstantBuffer);
-
-            // Push new data into the shaders' constant buffer
-            context.UpdateSubresource(ref constantData, ConstantBuffer);
         }
 
-        public void RenderObject(DeviceContext context, Mesh<WorldVertex> mesh, int indexstart, int indexcount, params Span<ShaderResourceView> textures)
+        public void RenderObject(DeviceContext context, ConstantBufferData constantData, Mesh<Vertex> mesh, int indexstart, int indexcount, params ShaderResourceView[] textures)
         {
+            // Push new data into the shaders' constant buffer
+            context.UpdateSubresource(ref constantData, ConstantBuffer);
 
             // Setup buffers for rendering
-            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, WorldVertex.Stride, 0));
+            context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, Vertex.Stride, 0));
             context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
-            context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
 
             // Set the textures
             for (int i = 0; i < textures.Length; i++)
@@ -79,73 +84,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             context.DrawIndexed(indexcount, indexstart, 0);
         }
 
-        public void RenderObject(DeviceContext context, Mesh<WorldVertex> mesh, params Span<ShaderResourceView> textures)
+        public void RenderObject(DeviceContext context, ConstantBufferData constantData, Mesh<Vertex> mesh, params ShaderResourceView[] textures)
         {
-            RenderObject(context, mesh, 0, mesh.Triangles.Count * 3, textures);
-        }
-
-
-
-        private Buffer DynamicVertexBuffer;
-        private Buffer DynamicIndexBuffer;
-
-        public unsafe void PrepPrimitiveBuffers(RenderContext context, Span<WorldVertex> lineVerts, Span<WorldVertex> meshVerts, Span<int> meshIndices)
-        {
-            if (lineVerts.Length > 0 || meshVerts.Length > 0)
-            {
-                int vertBufferLength = (lineVerts.Length + meshVerts.Length) * WorldVertex.Stride;
-                int floatsPerVertex = WorldVertex.Stride / 4;
-
-                if (DynamicVertexBuffer is null || DynamicVertexBuffer.Description.SizeInBytes < vertBufferLength)
-                {
-                    DynamicVertexBuffer?.Dispose();
-                    DynamicVertexBuffer = new Buffer(context.Device, new BufferDescription(vertBufferLength, ResourceUsage.Dynamic, BindFlags.VertexBuffer, CpuAccessFlags.Write, ResourceOptionFlags.None, WorldVertex.Stride));
-                }
-
-                var vertBuffer = new Span<float>((void*)context.ImmediateContext.MapSubresource(DynamicVertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None).DataPointer, vertBufferLength / 4);
-                int floatIdx = 0;
-                for (int vertIdx = 0; vertIdx < lineVerts.Length; vertIdx++, floatIdx += floatsPerVertex)
-                {
-                    lineVerts[vertIdx].ToFloats(vertBuffer[floatIdx..]);
-                }
-                for (int vertIdx = 0; vertIdx < meshVerts.Length; vertIdx++, floatIdx += floatsPerVertex)
-                {
-                    meshVerts[vertIdx].ToFloats(vertBuffer[floatIdx..]);
-                }
-
-                context.ImmediateContext.UnmapSubresource(DynamicVertexBuffer, 0);
-                context.ImmediateContext.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(DynamicVertexBuffer, WorldVertex.Stride, 0));
-            }
-
-            if (meshIndices.Length > 0)
-            {
-                int indexBufferLength = meshIndices.Length * 4;
-
-                if (DynamicIndexBuffer is null || DynamicIndexBuffer.Description.SizeInBytes < indexBufferLength)
-                {
-                    DynamicIndexBuffer?.Dispose();
-                    DynamicIndexBuffer = new Buffer(context.Device, new BufferDescription(indexBufferLength, ResourceUsage.Dynamic, BindFlags.IndexBuffer, CpuAccessFlags.Write, ResourceOptionFlags.None, 4));
-                }
-
-                var indexBuffer = new Span<int>((void*)context.ImmediateContext.MapSubresource(DynamicIndexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None).DataPointer, indexBufferLength / 4);
-
-                meshIndices.CopyTo(indexBuffer);
-
-                context.ImmediateContext.UnmapSubresource(DynamicIndexBuffer, 0);
-                context.ImmediateContext.InputAssembler.SetIndexBuffer(DynamicIndexBuffer, Format.R32_UInt, 0);
-            }
-        }
-
-        public void RenderPrimitives(RenderContext context, SharpDX.Direct3D.PrimitiveTopology topology, int vertOffset, int vertCount)
-        {
-            context.ImmediateContext.InputAssembler.PrimitiveTopology = topology;
-            context.ImmediateContext.Draw(vertCount, vertOffset);
-        }
-
-        public void RenderPrimitives(RenderContext context, SharpDX.Direct3D.PrimitiveTopology topology, int indexStart, int indexCount, int vertOffset)
-        {
-            context.ImmediateContext.InputAssembler.PrimitiveTopology = topology;
-            context.ImmediateContext.DrawIndexed(indexCount, indexStart, vertOffset);
+            RenderObject(context, constantData, mesh, 0, mesh.Triangles.Count * 3, textures);
         }
 
         public void Dispose()
@@ -154,8 +95,6 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             PixelShader.Dispose();
             InputLayout.Dispose();
             ConstantBuffer.Dispose();
-            DynamicVertexBuffer?.Dispose();
-            DynamicIndexBuffer?.Dispose();
         }
     }
 }
