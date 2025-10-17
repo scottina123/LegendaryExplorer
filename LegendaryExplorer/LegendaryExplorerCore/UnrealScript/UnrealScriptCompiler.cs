@@ -724,7 +724,7 @@ namespace LegendaryExplorerCore.UnrealScript
             return (null, log);
         }
 
-        public static (ASTNode astNode, MessageLog log) CompileDefaultProperties(ExportEntry export, string scriptText, FileLib lib, UnrealScriptOptionsPackage usop)
+        public static (ASTNode astNode, MessageLog log) CompileDefaultProperties(ExportEntry export, string scriptText, FileLib lib, UnrealScriptOptionsPackage usop, bool noCompile = false)
         {
             if (!ReferenceEquals(lib.Pcc, export.FileRef))
             {
@@ -751,6 +751,10 @@ namespace LegendaryExplorerCore.UnrealScript
                     if (astNode is null || log.HasErrors)
                     {
                         log.LogError("Parse failed!");
+                        return (astNode, log);
+                    }
+                    if (noCompile)
+                    {
                         return (astNode, log);
                     }
                 }

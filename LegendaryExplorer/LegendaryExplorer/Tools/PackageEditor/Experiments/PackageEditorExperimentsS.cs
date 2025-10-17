@@ -1244,7 +1244,7 @@ import java.util.*;"
                         }
                         foreach (string filePath in EnumerateOfficialFiles(game))
                         {
-                            ReserializeShaderCaches(filePath);
+                            //ReserializeShaderCaches(filePath);
                             //ScanShaderCache(filePath);
                             //ScanMaterials(filePath);
                             //ScanStaticMeshComponents(filePath);
@@ -1256,7 +1256,7 @@ import java.util.*;"
                             //RecompileAllFunctions(filePath);
                             //RecompileAllStates(filePath);
                             //RecompileAllDefaults(filePath, packageCache);
-                            //RecompileAllPropsOfNonScriptExports(filePath, packageCache);
+                            RecompileAllPropsOfNonScriptExports(filePath, packageCache);
                             //RecompileAllStructs(filePath, packageCache);
                             //RecompileAllEnums(filePath, packageCache);
                             //RecompileAllClasses(filePath, packageCache);
