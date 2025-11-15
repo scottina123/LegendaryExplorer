@@ -2199,9 +2199,10 @@ import java.util.*;"
             }
         }
 
-        public static void DumpAllShaders(IMEPackage Pcc)
+        public static void DumpGlobalShaders(PackageEditorWindow pew)
         {
-            if (Pcc.Exports.FirstOrDefault(exp => exp.ClassName == "ShaderCache") is ExportEntry shaderCacheExport)
+            if (InputComboBoxDialog.GetValue(pew, "Choose game:", "Game to dump GlobalShaderCache for", new[] { "LE1", "LE2", "LE3" }, "LE1") is string gameStr &&
+                Enum.TryParse(gameStr, out MEGame game))
             {
                 var dlg = new CommonOpenFileDialog("Pick a folder to save Shaders to.")
                 {
@@ -2210,20 +2211,63 @@ import java.util.*;"
                 };
                 if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
                 {
-                    var shaderCache = ObjectBinary.From<ShaderCache>(shaderCacheExport);
-                    foreach (Shader shader in shaderCache.Shaders.Values)
-                    {
-                        string shaderType = shader.ShaderType;
-                        string pathWithoutInvalids = Path.Combine(dlg.FileName,
-                            $"{shaderType.GetPathWithoutInvalids()} - {shader.Guid}.txt");
-                        File.WriteAllText(pathWithoutInvalids,
-                            ShaderBytecode.FromStream(new MemoryStream(shader.ShaderByteCode))
-                                .Disassemble());
-                    }
-
-                    MessageBox.Show("Done!");
+                    pew.IsBusy = true;
+                    var fileName = Path.Combine(MEDirectories.GetCookedPath(game), "GlobalShaderCache-PC-D3D-SM5.bin");
+                    using var input = new MemoryStream(File.ReadAllBytes(fileName));
+                    var shaderCache = GlobalShaderCache.ReadGlobalShaderCache(input, game);
+                    dumpShadersCore(pew, dlg.FileName, shaderCache);
                 }
             }
+        }
+
+        public static void DumpAllShaders(PackageEditorWindow pew)
+        {
+            IMEPackage pcc = pew.Pcc;
+            if (pcc is null || !pcc.Game.IsLEGame())
+            {
+                MessageBox.Show("Must have a legendary edition file open!");
+                return;
+            }
+            if (pcc.Exports.FirstOrDefault(exp => exp.ClassName == "ShaderCache") is not ExportEntry shaderCacheExport)
+            {
+                MessageBox.Show("No Shader Cache found in file!");
+                return;
+            }
+            var dlg = new CommonOpenFileDialog("Pick a folder to save Shaders to.")
+            {
+                IsFolderPicker = true,
+                EnsurePathExists = true
+            };
+            if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
+            {
+                pew.IsBusy = true;
+                var shaderCache = ObjectBinary.From<ShaderCache>(shaderCacheExport);
+                dumpShadersCore(pew, dlg.FileName, shaderCache);
+            }
+        }
+
+        private static void dumpShadersCore(PackageEditorWindow pew, string folder, ShaderCache shaderCache)
+        {
+            Task.Run(() =>
+            {
+                ICollection<Shader> shaders = shaderCache.Shaders.Values;
+                int total = shaders.Count;
+                int done = 0;
+                foreach (Shader shader in shaders)
+                {
+                    string shaderType = shader.ShaderType;
+                    string pathWithoutInvalids = Path.Combine(folder,
+                        $"{shaderType.GetPathWithoutInvalids()} - {shader.Guid}.txt");
+                    File.WriteAllText(pathWithoutInvalids,
+                        ShaderBytecode.FromStream(new MemoryStream(shader.ShaderByteCode))
+                            .Disassemble());
+                    pew.BusyText = $"{++done}/{total}";
+                }
+            }).ContinueWithOnUIThread(prevTask =>
+            {
+                pew.IsBusy = false;
+                MessageBox.Show("Done!");
+            });
         }
 
         public static void DumpMaterialShaders(ExportEntry matExport)

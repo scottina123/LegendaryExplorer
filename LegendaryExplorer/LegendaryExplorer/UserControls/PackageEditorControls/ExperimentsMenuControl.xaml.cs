@@ -819,7 +819,12 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         private void DumpAllShaders_Click(object sender, RoutedEventArgs e)
         {
             if (GetPEWindow().Pcc == null) return;
-            PackageEditorExperimentsS.DumpAllShaders(GetPEWindow().Pcc);
+            PackageEditorExperimentsS.DumpAllShaders(GetPEWindow());
+        }
+
+        private void DumpGlobalShaders_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsS.DumpGlobalShaders(GetPEWindow());
         }
 
         private void DumpMaterialShaders_Click(object sender, RoutedEventArgs e)
