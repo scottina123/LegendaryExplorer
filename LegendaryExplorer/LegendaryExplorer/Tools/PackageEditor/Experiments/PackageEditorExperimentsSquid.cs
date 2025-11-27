@@ -13,7 +13,6 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.UnrealScript;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using Microsoft.Win32;
-using Microsoft.WindowsAPICodePack.Dialogs;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Tga;
 using SixLabors.ImageSharp.PixelFormats;
@@ -704,10 +703,15 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 case "SkeletalMesh":
                     // export the skeletal mesh as a psk
-                    var d = new SaveFileDialog { Filter = "PSKX|*.pskx" };
+                    var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
                     if (d.ShowDialog() == true)
                     {
-                        PSK.CreateFromSkeletalMesh(((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>(), 0, true).ToFile(d.FileName);
+                        var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>();
+                        PSK.CreateFromSkeletalMesh(meshBin, 0, true).ToFile(d.FileName);
+                        for (int i = 1; i < meshBin.LODModels.Length; i++)
+                        {
+                            PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^4]}_LOD{i}.pskx");
+                        }
                     }
                     return;
                 case "AnimSet":
@@ -778,27 +782,40 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return;
             }
 
-            var d = new SaveFileDialog { Filter = "PSKX|*.pskx" };
+            var d = new SaveFileDialog { Filter = "PSKX|*.pskx" , FileName = bmf.ObjectNameString};
             if (d.ShowDialog() == true)
             {
 
                 var baseHeadMesh = pew.Pcc.GetEntry(bmf.GetProperty<ObjectProperty>("m_oBaseHead").Value) as ExportEntry;
                 var baseMeshBin = baseHeadMesh.GetBinaryData<SkeletalMesh>();
-
-                // make most of the psk from the base head mesh
-                var psk = PSK.CreateFromSkeletalMesh(baseHeadMesh.GetBinaryData<SkeletalMesh>(), 0, true);
-
                 var bmfBin = bmf.GetBinaryData<BioMorphFace>();
 
-                for (var i = 0; i < psk.Points.Count && i < bmfBin.LODs[0].Length; i++)
+                void ExportLOD(int lod)
                 {
-                    // modify each point in the psk with the points from the bmf
-                    var bmfPoint = bmfBin.LODs[0][i];
-                    psk.Points[i] = bmfPoint with { Y = -bmfPoint.Y };
+                    var psk = PSK.CreateFromSkeletalMesh(baseMeshBin, lod, true);
+
+                    for (var i = 0; i < psk.Points.Count && i < bmfBin.LODs[lod].Length; i++)
+                    {
+                        // modify each point in the psk with the points from the bmf
+                        var bmfPoint = bmfBin.LODs[lod][i];
+                        psk.Points[i] = bmfPoint with { Y = -bmfPoint.Y };
+                    }
+
+                    if (lod == 0)
+                    {
+                        psk.ToFile(d.FileName);
+                    }
+                    else
+                    {
+                        psk.ToFile($"{d.FileName[..^4]}_LOD{lod}.pskx");
+                    }
                 }
 
-                psk.ToFile(d.FileName);
-
+                // make most of the psk from the base head mesh
+                for (int i = 0; i < baseMeshBin.LODModels.Length && i < bmfBin.LODs.Length; i++)
+                {
+                    ExportLOD(i);
+                }
 
                 // now, output the psa file and config file
                 var config = new StringBuilder();
@@ -2662,36 +2679,55 @@ defaultproperties
             var baseMeshBin = baseMesh.GetBinaryData<SkeletalMesh>();
             var targets = morphTargetSet.GetProperty<ArrayProperty<ObjectProperty>>("Targets");
 
-            var d = new SaveFileDialog { Filter = "PSKX|*.pskx" };
+            var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = morphTargetSet.ObjectNameString };
             if (d.ShowDialog() == true)
             {
-                // output the special psk into a file with the name of the base head
-                // make most of the psk from the base skeletal mesh
-                var psk = PSK.CreateFromSkeletalMesh(baseMeshBin, 0, true);
-
-                foreach (var target in targets)
+                void OutputLOD(int lod)
                 {
-                    var targetExport = SharedMethods.ResolveEntryToExport(pew.Pcc.GetEntry(target.Value), new PackageCache());
-                    var targetBin = targetExport.GetBinaryData<MorphTarget>();
-                    psk.Morphs.Add(new PSK.MorphInfo
-                    {
-                        Name = targetExport.ObjectNameString,
-                        VertexCount = targetBin.MorphLODModels[0].Vertices.Length
-                    });
+                    // output the special psk into a file with the name of the base head
+                    // make most of the psk from the base skeletal mesh
+                    var psk = PSK.CreateFromSkeletalMesh(baseMeshBin, lod, true);
 
-                    foreach (var vertex in targetBin.MorphLODModels[0].Vertices)
+                    foreach (var target in targets)
                     {
-                        psk.MorphData.Add(new PSK.MorphDelta
+                        var targetExport = SharedMethods.ResolveEntryToExport(pew.Pcc.GetEntry(target.Value), new PackageCache());
+                        var targetBin = targetExport.GetBinaryData<MorphTarget>();
+                        if (targetBin.MorphLODModels.Length > lod)
                         {
-                            PointIndex = vertex.SourceIdx,
-                            PositionDelta = vertex.PositionDelta,
-                            // this gets ignored on import to Blender anyway
-                            //TangentZDelta = vertex.TangentZDelta
-                        });
+                            psk.Morphs.Add(new PSK.MorphInfo
+                            {
+                                Name = targetExport.ObjectNameString,
+                                VertexCount = targetBin.MorphLODModels[lod].Vertices.Length
+                            });
+
+                            foreach (var vertex in targetBin.MorphLODModels[lod].Vertices)
+                            {
+                                psk.MorphData.Add(new PSK.MorphDelta
+                                {
+                                    PointIndex = vertex.SourceIdx,
+                                    PositionDelta = vertex.PositionDelta,
+                                    // this gets ignored on import to Blender anyway
+                                    //TangentZDelta = vertex.TangentZDelta
+                                });
+                            }
+                        }
+                    }
+
+                    if (lod == 0)
+                    {
+                        psk.ToFile(d.FileName);
+                    }
+                    else
+                    {
+                        psk.ToFile($"{d.FileName[..^4]}_LOD{lod}.pskx");
                     }
                 }
 
-                psk.ToFile(d.FileName);
+                // make most of the psk from the base head mesh
+                for (int i = 0; i < baseMeshBin.LODModels.Length; i++)
+                {
+                    OutputLOD(i);
+                }
 
                 // now, output the psa file and config file
                 var config = new StringBuilder();
