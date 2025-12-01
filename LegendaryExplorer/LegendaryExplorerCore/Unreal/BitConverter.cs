@@ -588,7 +588,7 @@ namespace LegendaryExplorerCore.Unreal
             else
             {
                 var bytes = new byte[value.Length];
-                value.CopyTo(bytes);
+                value.CopyTo(bytes.AsSpan());
                 bytes.Reverse();
                 return System.BitConverter.ToString(bytes);
             }
@@ -712,7 +712,7 @@ namespace LegendaryExplorerCore.Unreal
             else
             {
                 var bytes = new byte[sizeof(ushort)];
-                value.CopyTo(bytes);
+                value.CopyTo(bytes.AsSpan());
                 bytes.Reverse();
                 return System.BitConverter.ToUInt16(bytes, value.Length - sizeof(ushort) - startIndex);
             }
@@ -752,7 +752,7 @@ namespace LegendaryExplorerCore.Unreal
             else
             {
                 var bytes = new byte[sizeof(uint)];
-                value.CopyTo(bytes);
+                value.CopyTo(bytes.AsSpan());
                 bytes.Reverse();
                 return System.BitConverter.ToUInt32(bytes, value.Length - sizeof(uint) - startIndex);
             }
