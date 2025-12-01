@@ -794,7 +794,7 @@ namespace LegendaryExplorerCore.Packages
         }
 
         //NEVER DIRECTLY SET THIS OUTSIDE OF CONSTRUCTOR!
-        private byte[] _data;
+        private byte[] _data; // (also used by MEPackage.UnloadExport. do not change field name without updating that method)
 
         /// <summary>
         /// Returns a ReadOnlySpan of Data. This is much more efficient than cloning with Data.

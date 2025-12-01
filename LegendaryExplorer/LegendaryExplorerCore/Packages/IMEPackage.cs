@@ -1,14 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using LegendaryExplorerCore.Gammtek.Collections.Specialized;
+﻿using LegendaryExplorerCore.Gammtek.Collections.Specialized;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 
 namespace LegendaryExplorerCore.Packages
@@ -351,5 +351,29 @@ namespace LegendaryExplorerCore.Packages
         /// </summary>
         /// <returns></returns>
         public bool HasDuplicateObjects();
+    }
+
+    public interface ILazyLoadPackage : IMEPackage
+    {
+        public ExportEntry LoadExport(int uIndex)
+        {
+            if (!TryGetUExport(uIndex, out ExportEntry export))
+            {
+                throw new InvalidOperationException("The specified UIndex is not an export.");
+            }
+            return LoadExport(export);
+        }
+        public ExportEntry LoadExport(ExportEntry exportEntry);
+
+        void UnloadExport(int uIndex)
+        {
+            if (!TryGetUExport(uIndex, out ExportEntry export))
+            {
+                throw new InvalidOperationException("The specified UIndex is not an export.");
+            }
+            UnloadExport(export);
+        }
+
+        public void UnloadExport(ExportEntry exportEntry);
     }
 }
