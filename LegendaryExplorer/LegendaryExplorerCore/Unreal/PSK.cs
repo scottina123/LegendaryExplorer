@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorerCore.Unreal
@@ -176,6 +177,19 @@ namespace LegendaryExplorerCore.Unreal
             };
             int numTriangles = 0;
             var matIndices = new byte[numVertices];
+            int[] materialMapping = Enumerable.Range(0, skelMesh.Materials.Length).ToArray();
+            if (skelMesh.Export != null)
+            {
+                var LODInfo =  skelMesh.Export.GetProperty<ArrayProperty<StructProperty>>("LODInfo");
+                if (LODInfo != null && LODInfo.Count > lodIdx)
+                {
+                    var matMap = LODInfo[lodIdx].GetProp<ArrayProperty<IntProperty>>("LODMaterialMap");
+                    if (matMap != null && matMap.Count > 0)
+                    {
+                        materialMapping = matMap.Select(x => x.Value).ToArray();
+                    }
+                }
+            }
             foreach (SkelMeshSection section in lod.Sections)
             {
                 numTriangles += section.NumTriangles;
@@ -185,7 +199,7 @@ namespace LegendaryExplorerCore.Unreal
                     int i1 = lod.IndexBuffer[baseIndex + t * 3];
                     int i2 = lod.IndexBuffer[baseIndex + t * 3 + 1];
                     int i3 = lod.IndexBuffer[baseIndex + t * 3 + 2];
-                    byte materialIndex = (byte)section.MaterialIndex;
+                    byte materialIndex = (byte)materialMapping[section.MaterialIndex];
                     matIndices[i1] = materialIndex;
                     matIndices[i2] = materialIndex;
                     matIndices[i3] = materialIndex;
