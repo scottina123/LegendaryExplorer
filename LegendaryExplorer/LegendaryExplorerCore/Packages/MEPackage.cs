@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Threading.Tasks;
-using LegendaryExplorerCore.Compression;
+﻿using LegendaryExplorerCore.Compression;
 using LegendaryExplorerCore.DebugTools;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
@@ -15,6 +7,15 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 #if AZURE
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -24,7 +25,7 @@ namespace LegendaryExplorerCore.Packages
 {
     [DebuggerDisplay("MEPackage {FilePath} | {Game}")]
 
-    public sealed class MEPackage : UnrealPackageFile, IMEPackage, IDisposable
+    public sealed class MEPackage : UnrealPackageFile, IMEPackage, ILazyLoadPackage, IDisposable
     {
         /// <summary>
         /// MEM writes this to every single package file it modifies
@@ -155,7 +156,16 @@ namespace LegendaryExplorerCore.Packages
             return (f, g) => new MEPackage(g, f);
         }
 
-        public static Func<Stream, string, bool, Func<ExportEntry, bool>, MEPackage> RegisterStreamLoader()
+        public struct PackageLoadParameters
+        {
+            public Stream Stream;
+            public string AssociatedFilePath;
+            public bool OnlyHeader;
+            public Func<ExportEntry, bool> DataLoadPredicate;
+            public bool LazyLoad;
+        }
+
+        public static Func<PackageLoadParameters, MEPackage> RegisterStreamLoader()
         {
             if (_isStreamLoaderRegistered)
             {
@@ -163,7 +173,7 @@ namespace LegendaryExplorerCore.Packages
             }
 
             _isStreamLoaderRegistered = true;
-            return (s, associatedFilePath, onlyheader, dataLoadPredicate) => new MEPackage(s, associatedFilePath, onlyheader, dataLoadPredicate);
+            return (PackageLoadParameters parmeters) => new MEPackage(parmeters);
         }
 
         /// <summary>
@@ -208,9 +218,11 @@ namespace LegendaryExplorerCore.Packages
         /// <param name="filePath"></param>
         /// <param name="onlyHeader">Only read header data. Do not load the tables or decompress</param>
         /// <param name="dataLoadPredicate">If provided, export data will only be read for exports that match the predicate</param>
-        private MEPackage(Stream fs, string filePath = null, bool onlyHeader = false, Func<ExportEntry, bool> dataLoadPredicate = null) : base(filePath != null ? File.Exists(filePath) ? Path.GetFullPath(filePath) : filePath : null)
+        private MEPackage(PackageLoadParameters parameters) 
+            : base(parameters.AssociatedFilePath != null ? File.Exists(parameters.AssociatedFilePath) ? Path.GetFullPath(parameters.AssociatedFilePath) : parameters.AssociatedFilePath : null)
         {
-            //MemoryStream fs = new MemoryStream(File.ReadAllBytes(filePath));
+            Stream fs = parameters.Stream;
+            string filePath = parameters.AssociatedFilePath;
             //Debug.WriteLine($"Reading MEPackage from stream starting at position 0x{fs.Position:X8}");
             #region Header
 
@@ -462,7 +474,7 @@ namespace LegendaryExplorerCore.Packages
                 }
             }
 
-            if (onlyHeader) return; // That's all we need to parse. 
+            if (parameters.OnlyHeader) return; // That's all we need to parse. 
             #endregion
 
             #region Decompression of package data
@@ -574,16 +586,23 @@ namespace LegendaryExplorerCore.Packages
                 }
             }
 
-            foreach (ExportEntry export in dataLoadPredicate is null ? exports : exports.Where(dataLoadPredicate))
+            if (parameters.LazyLoad)
             {
-                inStream.JumpTo(export.DataOffset);
-                var data = new byte[export.DataSize];
-                int bytesRead = inStream.Read(data.AsSpan());
-                if (bytesRead != data.Length)
+                decompressionStream = inStream;
+            }
+            else
+            {
+                foreach (ExportEntry export in parameters.DataLoadPredicate is null ? exports : exports.Where(parameters.DataLoadPredicate))
                 {
-                    throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+                    inStream.JumpTo(export.DataOffset);
+                    var data = new byte[export.DataSize];
+                    int bytesRead = inStream.Read(data.AsSpan());
+                    if (bytesRead != data.Length)
+                    {
+                        throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+                    }
+                    export.Data = data;
                 }
-                export.Data = data;
             }
 
             if (Game.IsLEGame())
@@ -1493,6 +1512,49 @@ namespace LegendaryExplorerCore.Packages
         internal void setPlatform(GamePlatform newPlatform)
         {
             Platform = newPlatform;
+        }
+
+        //is only set when lazy loading
+        private readonly Stream decompressionStream;
+
+        ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export, bool loadParents)
+        {
+            if (decompressionStream is null)
+            {
+                throw new InvalidOperationException("Cannot lazy load export data: Decompression stream is null");
+            }
+            decompressionStream.JumpTo(export.DataOffset);
+            var data = new byte[export.DataSize];
+            int bytesRead = decompressionStream.Read(data.AsSpan());
+            if (bytesRead != data.Length)
+            {
+                throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+            }
+            export.Data = data;
+
+            if (loadParents && export.Parent is ExportEntry exp)
+            {
+                (this as ILazyLoadPackage).LoadExport(exp, true);
+            }
+
+            return export;
+        }
+
+        void ILazyLoadPackage.UnloadExport(ExportEntry export, bool unloadParents)
+        {
+            if (decompressionStream is null)
+            {
+                throw new InvalidOperationException("Cannot unload export data: Not a lazy-loaded package");
+            }
+            DataRef(export) = null;
+
+            [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_data")]
+            extern static ref byte[] DataRef(ExportEntry export);
+
+            if (unloadParents && export.Parent is ExportEntry exp)
+            {
+                (this as ILazyLoadPackage).UnloadExport(exp, true);
+            }
         }
     }
 }

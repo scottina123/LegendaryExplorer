@@ -755,7 +755,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             // Get Disassembly
                             string dissasembledShader = ShaderBytecode.FromStream(new MemoryStream(newShaderFile)).Disassemble();
                             // Get last line that contains instruction counts
-                            string result = string.Join("", dissasembledShader.Split('\n').Reverse().Take(2).ToArray());
+                            string result = string.Join("", Enumerable.Reverse(dissasembledShader.Split('\n')).Take(2).ToArray());
                             // Get digits from the result
                             string digits = string.Join("", new String(result.Where(char.IsDigit).ToArray()));
                             int instructions = int.Parse(digits);
