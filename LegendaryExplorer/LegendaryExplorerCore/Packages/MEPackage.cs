@@ -1517,7 +1517,7 @@ namespace LegendaryExplorerCore.Packages
         //is only set when lazy loading
         private readonly Stream decompressionStream;
 
-        ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export)
+        ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export, bool loadParents)
         {
             if (decompressionStream is null)
             {
@@ -1531,10 +1531,16 @@ namespace LegendaryExplorerCore.Packages
                 throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
             }
             export.Data = data;
+
+            if (loadParents && export.Parent is ExportEntry exp)
+            {
+                (this as ILazyLoadPackage).LoadExport(exp, true);
+            }
+
             return export;
         }
 
-        void ILazyLoadPackage.UnloadExport(ExportEntry export)
+        void ILazyLoadPackage.UnloadExport(ExportEntry export, bool unloadParents)
         {
             if (decompressionStream is null)
             {
@@ -1544,6 +1550,11 @@ namespace LegendaryExplorerCore.Packages
 
             [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_data")]
             extern static ref byte[] DataRef(ExportEntry export);
+
+            if (unloadParents && export.Parent is ExportEntry exp)
+            {
+                (this as ILazyLoadPackage).UnloadExport(exp, true);
+            }
         }
     }
 }
