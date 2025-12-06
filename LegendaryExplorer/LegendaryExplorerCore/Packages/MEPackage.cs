@@ -656,9 +656,10 @@ namespace LegendaryExplorerCore.Packages
                 }
             }
 
-            if (wasOriginallyCompressed)
+            if (wasOriginallyCompressed && !parameters.LazyLoad)
             {
                 // Do not dispose if the package was compressed as it will close the input stream
+                // Also do not dispose on lazy load as we need the underlying stream to be available.
                 packageReader.Dispose();
             }
 
