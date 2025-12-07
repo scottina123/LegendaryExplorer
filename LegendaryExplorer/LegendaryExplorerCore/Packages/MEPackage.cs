@@ -656,9 +656,10 @@ namespace LegendaryExplorerCore.Packages
                 }
             }
 
-            if (wasOriginallyCompressed)
+            if (wasOriginallyCompressed && !parameters.LazyLoad)
             {
                 // Do not dispose if the package was compressed as it will close the input stream
+                // Also do not dispose on lazy load as we need the underlying stream to be available.
                 packageReader.Dispose();
             }
 
@@ -1517,24 +1518,34 @@ namespace LegendaryExplorerCore.Packages
         //is only set when lazy loading
         private readonly Stream decompressionStream;
 
-        ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export)
+        ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export, bool loadParents)
         {
-            if (decompressionStream is null)
+            // If the export is already loaded do not load it again
+            if (!export.IsDataLoaded())
             {
-                throw new InvalidOperationException("Cannot lazy load export data: Decompression stream is null");
+                if (decompressionStream is null)
+                {
+                    throw new InvalidOperationException("Cannot lazy load export data: Decompression stream is null");
+                }
+                decompressionStream.JumpTo(export.DataOffset);
+                var data = new byte[export.DataSize];
+                int bytesRead = decompressionStream.Read(data.AsSpan());
+                if (bytesRead != data.Length)
+                {
+                    throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+                }
+                export.Data = data;
             }
-            decompressionStream.JumpTo(export.DataOffset);
-            var data = new byte[export.DataSize];
-            int bytesRead = decompressionStream.Read(data.AsSpan());
-            if (bytesRead != data.Length)
+
+            if (loadParents && export.Parent is ExportEntry exp)
             {
-                throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+                (this as ILazyLoadPackage).LoadExport(exp, true);
             }
-            export.Data = data;
+
             return export;
         }
 
-        void ILazyLoadPackage.UnloadExport(ExportEntry export)
+        void ILazyLoadPackage.UnloadExport(ExportEntry export, bool unloadParents)
         {
             if (decompressionStream is null)
             {
@@ -1544,6 +1555,11 @@ namespace LegendaryExplorerCore.Packages
 
             [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_data")]
             extern static ref byte[] DataRef(ExportEntry export);
+
+            if (unloadParents && export.Parent is ExportEntry exp)
+            {
+                (this as ILazyLoadPackage).UnloadExport(exp, true);
+            }
         }
     }
 }
