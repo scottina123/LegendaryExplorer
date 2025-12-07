@@ -1520,18 +1520,22 @@ namespace LegendaryExplorerCore.Packages
 
         ExportEntry ILazyLoadPackage.LoadExport(ExportEntry export, bool loadParents)
         {
-            if (decompressionStream is null)
+            // If the export is already loaded do not load it again
+            if (!export.IsDataLoaded())
             {
-                throw new InvalidOperationException("Cannot lazy load export data: Decompression stream is null");
+                if (decompressionStream is null)
+                {
+                    throw new InvalidOperationException("Cannot lazy load export data: Decompression stream is null");
+                }
+                decompressionStream.JumpTo(export.DataOffset);
+                var data = new byte[export.DataSize];
+                int bytesRead = decompressionStream.Read(data.AsSpan());
+                if (bytesRead != data.Length)
+                {
+                    throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
+                }
+                export.Data = data;
             }
-            decompressionStream.JumpTo(export.DataOffset);
-            var data = new byte[export.DataSize];
-            int bytesRead = decompressionStream.Read(data.AsSpan());
-            if (bytesRead != data.Length)
-            {
-                throw new EndOfStreamException("Attempted to read export data past the end of the stream!");
-            }
-            export.Data = data;
 
             if (loadParents && export.Parent is ExportEntry exp)
             {
