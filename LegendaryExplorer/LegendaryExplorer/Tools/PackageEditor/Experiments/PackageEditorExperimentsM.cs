@@ -2381,6 +2381,69 @@ defaultproperties
                 }
             }
 
+        public static void FixForcedExport(PackageEditorWindow pe)
+        {
+            if (pe.Pcc == null)
+            {
+                return;
+            }
+
+            List<ExportEntry> leaves = new();
+            foreach(var exp in pe.Pcc.Exports)
+            {
+                var children = exp.GetChildren();
+                if (!children.Any())
+                {
+                    leaves.Add(exp);
+                }
+            }
+
+
+            bool hasValidChain(ExportEntry exp, bool isExpectingFE)
+            {
+                var parent = exp.Parent;
+                if (parent == null)
+                    return true; // Nothing left to check
+                if (parent is ImportEntry imp)
+                {
+                    // Exports under imports must ALWAYS be forced exports
+                    // how could they possibly originate here?
+                    return isExpectingFE; // If we expect FE, this is valid
+                }
+
+                var parentE = parent as ExportEntry;
+                if (parentE.IsForcedExport ^ isExpectingFE)
+                {
+                    // It differs
+                    return false;
+                }
+
+                return hasValidChain(parentE, isExpectingFE);
+            }
+
+            List<EntryStringPair> badLeaves = new();
+            foreach (var leaf in leaves)
+            {
+                var originalValue = (leaf.ExportFlags & UnrealFlags.EExportFlags.ForcedExport) != 0;
+                var isValidChain = hasValidChain(leaf, originalValue);
+                if (!isValidChain)
+                {
+                    badLeaves.Add(new EntryStringPair(leaf, $"Inconsistent forced export on {leaf.InstancedFullPath}, should be forced: {(leaf.GetRoot() is ExportEntry root ? root.IsForcedExport : false)}"));
+                }
+            }
+
+            if (badLeaves.Count == 0)
+            {
+                MessageBox.Show("No bad forced export leaves found.");
+                return;
+            } else
+            {
+                var dialog = new ListDialog(badLeaves, "Bad Forced Export Leaves Found", "The following leaves have inconsistent forced export chains.", pe);
+                dialog.DoubleClickEntryHandler = pe.GetEntryDoubleClickAction();
+                dialog.Show();
+            }
+        }
+
         public static void MScanner(PackageEditorWindow pe)
         {
             if (pe.TryGetSelectedExport(out var sExp))

@@ -406,6 +406,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         {
             new CustomFilesManagerWindow().Show();
         }
+        
+        private void DetectInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.FixForcedExport(GetPEWindow());
+        }
 
         private void GenerateTextureToInstancesMap_Click(object sender, RoutedEventArgs e)
         {
