@@ -506,6 +506,10 @@ namespace LegendaryExplorerCore.Packages
                         throw new Exception("Cannot set import link to itself, this will cause infinite recursion");
                     }
                     _commonHeaderFields._idxLink = value;
+                    if (Parent is ExportEntry parent)
+                    {
+                        _commonHeaderFields._exportFlags = parent._commonHeaderFields._exportFlags;
+                    }
                     HeaderChanged = true;
                     _fileRef.IsModified = true;
                     _fileRef.InvalidateLookupTable();
