@@ -33,7 +33,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
     {
         // the Mass Effect binary mesh format enforces there be a maximum of 4 bone influences per vertex
         const int MaxBoneInfluences = 4;
-
         public static void ImportAnimSet(PackageEditorWindow pew)
         {
             if (GetPsaFromFile(pew, out var psa, out var filePath))
@@ -119,9 +118,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 ShowError("This experiment does not support UDK files;");
             }
-            if (GetPskFromFile(pew, out var psk, out var path))
+            if (GetPskFromFile(out var psks, out var path))
             {
-                if (!psk.Bones.Any())
+                if (!psks[0].Bones.Any())
                 {
                     throw new NotImplementedException("You can't make a static mesh yet");
                 }
@@ -129,67 +128,27 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 var meshExport = ExportCreator.CreateExport(pew.Pcc, Path.GetFileNameWithoutExtension(path), "SkeletalMesh");
                 var meshBin = SkeletalMesh.Create();
 
-                SetupSkeleton(psk, meshBin);
-                SetupBounds(psk, meshBin);
-                SetupMaterials(pew, psk, meshBin);
-                CalculateNormalsIfNeeded(psk);
+                // TODO make sure the skeleton matches between all LODs
+                SetupSkeleton(psks[0], meshBin);
+                SetupBounds(psks[0], meshBin);
 
-                GetAllVertices(psk, out List<TempVertex> vertsInWedgeOrder, out TempVertex[] finalVerts);
-                CalcualteTangents(psk, vertsInWedgeOrder);
-
-                StaticLODModel LOD;
-                List<MeshChunk> chunks;
-                SetupSectionsAndChunks(psk, meshBin, vertsInWedgeOrder, finalVerts, out LOD, out chunks);
-
-                #region the rest of the LOD data
-                LOD.ActiveBoneIndices = [.. Enumerable.Range(0, psk.Bones.Count).Select(x => (ushort)x)];
-
-                // finally, write out the vertex data!
-                LOD.NumVertices = (uint)finalVerts.Length;
-
-                LOD.VertexBufferGPUSkin = new SkeletalMeshVertexBuffer
+                // so, I need to make a slot for all materials, deduplicated from across the LODs
+                List<string> materials = [];
+                foreach (var psk in psks)
                 {
-                    VertexData = new GPUSkinVertex[finalVerts.Length],
-                    MeshExtension = new Vector3(1, 1, 1)
-                };
-
-                for (int chunkIndex = 0; chunkIndex < LOD.Chunks.Length; chunkIndex++)
-                {
-                    var LODChunk = LOD.Chunks[chunkIndex];
-                    var chunk = chunks[chunkIndex];
-                    for (var i = chunk.VertIndexStart; i <= chunk.VertIndexEnd; i++)
+                    foreach (var mat in psk.Materials)
                     {
-                        var tempVert = finalVerts[i];
-                        var newVert = new GPUSkinVertex
+                        if (!materials.Contains(mat.Name))
                         {
-                            UV = new Vector2DHalf(tempVert.U, tempVert.V),
-                            Position = tempVert.Position with { Y = tempVert.Position.Y * -1 }
-                        };
-
-                        var vertNorm = tempVert.Normal with { Y = -tempVert.Normal.Y };
-                        var packedNorm = (PackedNormal)Vector3.Normalize(vertNorm);
-                        // the w component of the normal is stores the bitangent sign, indicating whether the UV mapping is mirorred here
-                        var normalW = tempVert.BiTangentSign > 0 ? (byte)255 : (byte)0;
-                        newVert.TangentZ = new PackedNormal(packedNorm.X, packedNorm.Y, packedNorm.Z, normalW);
-
-                        var vertTangent = tempVert.Tangent with { Y = -tempVert.Tangent.Y };
-                        var packedTangent = (PackedNormal)Vector3.Normalize(vertTangent);
-                        newVert.TangentX = packedTangent;
-
-                        // add in the bone influences
-                        byte GetMappedBoneIndex(PSK.PSKWeight influence)
-                        {
-                            var boneName = psk.Bones[influence.Bone].Name;
-                            var meshBoneIndex = meshBin.RefSkeleton.FindIndex(x => x.Name == boneName);
-                            return (byte)LODChunk.BoneMap.IndexOf((ushort)meshBoneIndex);
+                            materials.Add(mat.Name);
                         }
-
-                        (newVert.InfluenceBones, newVert.InfluenceWeights) = DistributeWeights(tempVert.Weights.Select(x => (GetMappedBoneIndex(x), x.Weight)));
-
-                        LOD.VertexBufferGPUSkin.VertexData[i] = newVert;
                     }
                 }
-                #endregion
+                SetupMaterials(pew, materials, meshBin);
+
+                meshBin.LODModels = [.. psks.Select(x => SetupLOD(x, meshBin))];
+
+                meshExport.WriteBinary(meshBin);
 
                 /* things I have not implemented: 
                  * net Index (probably not important unless you are doing ME3MP modding, and you can set it manually easily enough)
@@ -198,11 +157,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                  * PerPolyBoneKDOPS (no idea what this is, it's mostly empty in vanilla)
                  * importing to OT1 (the format is slightly different in ways I don't care to implement), you can probably use debug build to port into OT1 if you must
                  * */
-
-                // just write one LOD. we could extend this to multiple in the future if needed, but no one I know of is actually generating multiple LODs
-                meshBin.LODModels = [LOD];
-
-                meshExport.WriteBinary(meshBin);
 
                 // copy the sockets from the selected mesh onto the new one
                 if (GetSelectedItem(pew, "SkeletalMesh", out var selectedMesh))
@@ -220,6 +174,37 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         meshExport.WriteProperty(newSocketsProp);
                     }
                 }
+
+                var lodInfoarray = new ArrayProperty<StructProperty>("LODInfo");
+                float[] displayFactors = [1.0f, 0.25f, 0.1f];
+                for (int i = 0; i < psks.Length; i++)
+                {
+                    var currentLod = psks[i];
+                    var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
+                    var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), currentLod.Materials.Count), "bEnableShadowCasting");
+                    var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", pew.Pcc.Game), currentLod.Materials.Count), "TriangleSorting");
+
+                    var matMap = new List<int>(currentLod.Materials.Count);
+                    // to match vanilla, LOD0 has an empty array
+                    if (i != 0)
+                    {
+                        foreach (var mat in currentLod.Materials)
+                        {
+                            matMap.Add(materials.IndexOf(mat.Name));
+                        }
+                    }
+
+                    var LODMaterialMapProp = new ArrayProperty<IntProperty>(matMap.Select(x => new IntProperty(x)), "LODMaterialMap");
+                    var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
+                        displayFactorProp,
+                        new FloatProperty(0.2f, "LODHysteresis"),
+                        LODMaterialMapProp,
+                        bEnableShadowCastingProp,
+                        TriangleSortingProp);
+                    lodInfoarray.Add(lodInfo);
+                }
+
+                meshExport.WriteProperty(lodInfoarray);
             }
 
             static (Influences bones, Influences influences) DistributeWeights(IEnumerable<(byte bone, float weight)> weights)
@@ -355,16 +340,16 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 };
             }
 
-            static void SetupMaterials(PackageEditorWindow pew, PSK psk, SkeletalMesh meshBin)
+            static void SetupMaterials(PackageEditorWindow pew, IList<string> materials, SkeletalMesh meshBin)
             {
-                SetNumMaterialSlots(meshBin, psk.Materials.Count);
-                for (int i = 0; i < psk.Materials.Count; i++)
+                SetNumMaterialSlots(meshBin, materials.Count);
+                for (int i = 0; i < materials.Count; i++)
                 {
                     // Does not work because it is looking for the full instanced path; can I export using that?
-                    var entry = pew.Pcc.FindEntry(psk.Materials[i].Name);
+                    var entry = pew.Pcc.FindEntry(materials[i]);
                     // a good enough heuristic for now
-                    entry ??= pew.Pcc.Exports.FirstOrDefault(x => x.ObjectName == psk.Materials[i].Name && x.ClassName.Contains("Material"));
-                    entry ??= pew.Pcc.Imports.FirstOrDefault(x => x.ObjectName == psk.Materials[i].Name && x.ClassName.Contains("Material"));
+                    entry ??= pew.Pcc.Exports.FirstOrDefault(x => x.ObjectName == materials[i] && x.ClassName.Contains("Material"));
+                    entry ??= pew.Pcc.Imports.FirstOrDefault(x => x.ObjectName == materials[i] && x.ClassName.Contains("Material"));
                     if (entry != null)
                     {
                         meshBin.Materials[i] = entry.UIndex;
@@ -678,6 +663,65 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     BoneMap = [.. x.InfluenceBones.Select(GetMeshBoneIndex).Order()]
                 })];
             }
+
+            static StaticLODModel SetupLOD(PSK psk, SkeletalMesh meshBin)
+            {
+                CalculateNormalsIfNeeded(psk);
+                GetAllVertices(psk, out List<TempVertex> vertsInWedgeOrder, out TempVertex[] finalVerts);
+                CalcualteTangents(psk, vertsInWedgeOrder);
+
+                SetupSectionsAndChunks(psk, meshBin, vertsInWedgeOrder, finalVerts, out StaticLODModel LOD, out List<MeshChunk> chunks);
+
+                LOD.ActiveBoneIndices = [.. Enumerable.Range(0, psk.Bones.Count).Select(x => (ushort)x)];
+
+                // finally, write out the vertex data!
+                LOD.NumVertices = (uint)finalVerts.Length;
+
+                LOD.VertexBufferGPUSkin = new SkeletalMeshVertexBuffer
+                {
+                    VertexData = new GPUSkinVertex[finalVerts.Length],
+                    MeshExtension = new Vector3(1, 1, 1)
+                };
+
+                for (int chunkIndex = 0; chunkIndex < LOD.Chunks.Length; chunkIndex++)
+                {
+                    var LODChunk = LOD.Chunks[chunkIndex];
+                    var chunk = chunks[chunkIndex];
+                    for (var i = chunk.VertIndexStart; i <= chunk.VertIndexEnd; i++)
+                    {
+                        var tempVert = finalVerts[i];
+                        var newVert = new GPUSkinVertex
+                        {
+                            UV = new Vector2DHalf(tempVert.U, tempVert.V),
+                            Position = tempVert.Position with { Y = tempVert.Position.Y * -1 }
+                        };
+
+                        var vertNorm = tempVert.Normal with { Y = -tempVert.Normal.Y };
+                        var packedNorm = (PackedNormal)Vector3.Normalize(vertNorm);
+                        // the w component of the normal is stores the bitangent sign, indicating whether the UV mapping is mirorred here
+                        var normalW = tempVert.BiTangentSign > 0 ? (byte)255 : (byte)0;
+                        newVert.TangentZ = new PackedNormal(packedNorm.X, packedNorm.Y, packedNorm.Z, normalW);
+
+                        var vertTangent = tempVert.Tangent with { Y = -tempVert.Tangent.Y };
+                        var packedTangent = (PackedNormal)Vector3.Normalize(vertTangent);
+                        newVert.TangentX = packedTangent;
+
+                        // add in the bone influences
+                        byte GetMappedBoneIndex(PSK.PSKWeight influence)
+                        {
+                            var boneName = psk.Bones[influence.Bone].Name;
+                            var meshBoneIndex = meshBin.RefSkeleton.FindIndex(x => x.Name == boneName);
+                            return (byte)LODChunk.BoneMap.IndexOf((ushort)meshBoneIndex);
+                        }
+
+                        (newVert.InfluenceBones, newVert.InfluenceWeights) = DistributeWeights(tempVert.Weights.Select(x => (GetMappedBoneIndex(x), x.Weight)));
+
+                        LOD.VertexBufferGPUSkin.VertexData[i] = newVert;
+                    }
+                }
+
+                return LOD;
+            }
         }
 
         private class TempVertex
@@ -710,7 +754,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         PSK.CreateFromSkeletalMesh(meshBin, 0, true).ToFile(d.FileName);
                         for (int i = 1; i < meshBin.LODModels.Length; i++)
                         {
-                            PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^4]}_LOD{i}.pskx");
+                            PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^5]}_LOD{i}.pskx");
                         }
                     }
                     return;
@@ -807,7 +851,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     }
                     else
                     {
-                        psk.ToFile($"{d.FileName[..^4]}_LOD{lod}.pskx");
+                        psk.ToFile($"{d.FileName[..^5]}_LOD{lod}.pskx");
                     }
                 }
 
@@ -2119,7 +2163,7 @@ defaultproperties
             return false;
         }
 
-        private static bool GetPskFromFile(PackageEditorWindow pew, out PSK psk, out string filePath)
+        private static bool GetPskFromFile(out PSK[] psks, out string filePath)
         {
             var d = new OpenFileDialog
             {
@@ -2128,12 +2172,28 @@ defaultproperties
             };
             if (d.ShowDialog() == true)
             {
-                psk = PSK.FromFile(d.FileName);
                 filePath = d.FileName;
-                return psk != null;
+                var folder = Path.GetDirectoryName(filePath);
+                var extension = Path.GetExtension(filePath);
+                var baseName = Path.GetFileNameWithoutExtension(filePath);
+                var LOD0 = PSK.FromFile(filePath);
+                List<PSK> lods = [LOD0];
+                var lod = 1;
+                do
+                {
+                    var path = Path.Combine(folder, $"{baseName}_LOD{lod++}{extension}");
+                    if (!File.Exists(path))
+                    {
+                        break;
+                    }
+                    var lodPsk = PSK.FromFile(path);
+                    lods.Add(lodPsk);
+                } while (true);
+                psks = [.. lods];
+                return LOD0 != null;
             }
 
-            psk = null;
+            psks = [];
             filePath = null;
             return false;
         }
@@ -2191,15 +2251,15 @@ defaultproperties
         {
             if (GetSelectedItem(pew, "BioMorphFace", out var bmfExport))
             {
-                if (GetPskFromFile(pew, out var psk, out _))
+                if (GetPskFromFile(out var psks, out _))
                 {
                     var bmfBin = bmfExport.GetBinaryData<BioMorphFace>();
 
-                    Vector3[] vertexPos = new Vector3[psk.Points.Count];
+                    Vector3[] vertexPos = new Vector3[psks[0].Points.Count];
 
-                    for (int i = 0; i < psk.Points.Count; i++)
+                    for (int i = 0; i < psks[0].Points.Count; i++)
                     {
-                        vertexPos[i] = psk.Points[i] with { Y = -psk.Points[i].Y };
+                        vertexPos[i] = psks[0].Points[i] with { Y = -psks[0].Points[i].Y };
                     }
 
                     bmfBin.LODs = [[.. vertexPos]];
@@ -2399,12 +2459,12 @@ defaultproperties
         {
             if (GetHeadmorphFromFile(out var headMorph, out var ronFilePath))
             {
-                if (GetPskFromFile(pew, out var psk, out _))
+                if (GetPskFromFile(out var psks, out _))
                 {
-                    headMorph.Lod0Vertices = new List<Vector3>(psk.Points.Count);
-                    for (int i = 0; i < psk.Points.Count; i++)
+                    headMorph.Lod0Vertices = new List<Vector3>(psks[0].Points.Count);
+                    for (int i = 0; i < psks[0].Points.Count; i++)
                     {
-                        headMorph.Lod0Vertices.Add(psk.Points[i] with { Y = -psk.Points[i].Y });
+                        headMorph.Lod0Vertices.Add(psks[0].Points[i] with { Y = -psks[0].Points[i].Y });
                     }
                 }
                 if (GetPsaFromFile(pew, out var psa, out _))
@@ -2563,7 +2623,7 @@ defaultproperties
             var baseMeshBinary = baseMesh.GetBinaryData<SkeletalMesh>();
 
             // using bitwise | so it evaluates the second even if the first evaluates to true
-            if (GetPskFromFile(pew, out var psk, out var pskName) | GetPsaFromFile(pew, out var psa, out var psaName))
+            if (GetPskFromFile(out var psks, out var pskName) | GetPsaFromFile(pew, out var psa, out var psaName))
             {
                 var morphTargetName = Path.GetFileNameWithoutExtension(pskName ?? psaName);
 
@@ -2580,22 +2640,22 @@ defaultproperties
                     {
                         MorphLODModels = [new MorphTarget.MorphLODModel()]
                     };
-                    morphTargetBin.MorphLODModels[0].NumBaseMeshVerts = psk.Points.Count;
+                    morphTargetBin.MorphLODModels[0].NumBaseMeshVerts = psks[0].Points.Count;
 
                     // add it to the morph target set
                     targets.Add(new ObjectProperty(morphTarget.UIndex));
                     morphTargetSet.WriteProperty(targets);
                 }
 
-                if (psk != null)
+                if (psks != null)
                 {
-                    if (psk.Points.Count != baseMeshBinary.LODModels[0].NumVertices)
+                    if (psks[0].Points.Count != baseMeshBinary.LODModels[0].NumVertices)
                     {
                         ShowError("the number of vertices in the base mesh (LOD 0) and the psk must match.");
                         return;
                     }
 
-                    if (psk.Points.Count != psk.Wedges.Count)
+                    if (psks[0].Points.Count != psks[0].Wedges.Count)
                     {
                         ShowError("Can't use this psk; number of points and wedges differ.");
                         return;
@@ -2603,18 +2663,18 @@ defaultproperties
 
                     List<MorphTarget.MorphVertex> vertDeltas = [];
 
-                    for (int i = 0; i < psk.Points.Count; i++)
+                    for (int i = 0; i < psks[0].Points.Count; i++)
                     {
                         // gotta flip the y part of the position
-                        psk.Points[i] = new Vector3(psk.Points[i].X, psk.Points[i].Y * -1, psk.Points[i].Z);
+                        psks[0].Points[i] = new Vector3(psks[0].Points[i].X, psks[0].Points[i].Y * -1, psks[0].Points[i].Z);
 
                         // TODO I could more simply represent this with a distance call and comparison
-                        if (!ApproximatelyEqual(baseMeshBinary.LODModels[0].VertexBufferGPUSkin.VertexData[i].Position, psk.Points[i]))
+                        if (!ApproximatelyEqual(baseMeshBinary.LODModels[0].VertexBufferGPUSkin.VertexData[i].Position, psks[0].Points[i]))
                         {
                             vertDeltas.Add(new MorphTarget.MorphVertex()
                             {
                                 SourceIdx = (ushort)i,
-                                PositionDelta = psk.Points[i] - baseMeshBinary.LODModels[0].VertexBufferGPUSkin.VertexData[i].Position
+                                PositionDelta = psks[0].Points[i] - baseMeshBinary.LODModels[0].VertexBufferGPUSkin.VertexData[i].Position
                             });
                         }
 
@@ -2719,7 +2779,7 @@ defaultproperties
                     }
                     else
                     {
-                        psk.ToFile($"{d.FileName[..^4]}_LOD{lod}.pskx");
+                        psk.ToFile($"{d.FileName[..^5]}_LOD{lod}.pskx");
                     }
                 }
 
