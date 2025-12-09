@@ -1355,6 +1355,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsSquid.RonFileToPskx(GetPEWindow());
         }
 
+        private void ImportPskOverMesh_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ImportPskOverMesh(GetPEWindow());
+        }
+
         // import a mesh like object
         private void ImportPskAsNewMesh_Click(object sender, RoutedEventArgs e)
         {

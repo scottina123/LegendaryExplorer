@@ -108,104 +108,70 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void ImportPskAsNewMesh(PackageEditorWindow pew)
+
+        private static SkeletalMesh CreateSkeletalMeshFromPsks(PackageEditorWindow pew, PSK[] psks, out ArrayProperty<StructProperty> lodInfoProp)
         {
-            if (pew.Pcc.Game == MEGame.ME1)
+            var meshBin = SkeletalMesh.Create();
+
+            // TODO make sure the skeleton matches between all LODs
+            SetupSkeleton(psks[0], meshBin);
+            SetupBounds(psks[0], meshBin);
+
+            // so, I need to make a slot for all materials, deduplicated from across the LODs
+            List<string> materials = [];
+            foreach (var psk in psks)
             {
-                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
-            }
-            if (pew.Pcc.Game == MEGame.UDK)
-            {
-                ShowError("This experiment does not support UDK files;");
-            }
-            if (GetPskFromFile(out var psks, out var path))
-            {
-                if (!psks[0].Bones.Any())
+                foreach (var mat in psk.Materials)
                 {
-                    throw new NotImplementedException("You can't make a static mesh yet");
-                }
-
-                var meshExport = ExportCreator.CreateExport(pew.Pcc, Path.GetFileNameWithoutExtension(path), "SkeletalMesh");
-                var meshBin = SkeletalMesh.Create();
-
-                // TODO make sure the skeleton matches between all LODs
-                SetupSkeleton(psks[0], meshBin);
-                SetupBounds(psks[0], meshBin);
-
-                // so, I need to make a slot for all materials, deduplicated from across the LODs
-                List<string> materials = [];
-                foreach (var psk in psks)
-                {
-                    foreach (var mat in psk.Materials)
+                    if (!materials.Contains(mat.Name))
                     {
-                        if (!materials.Contains(mat.Name))
-                        {
-                            materials.Add(mat.Name);
-                        }
+                        materials.Add(mat.Name);
                     }
                 }
-                SetupMaterials(pew, materials, meshBin);
+            }
+            SetupMaterials(pew, materials, meshBin);
 
-                meshBin.LODModels = [.. psks.Select(x => SetupLOD(x, meshBin))];
+            meshBin.LODModels = [.. psks.Select(x => SetupLOD(x, meshBin))];
 
-                meshExport.WriteBinary(meshBin);
+            /* things I have not implemented: 
+             * net Index (probably not important unless you are doing ME3MP modding, and you can set it manually easily enough)
+             * Clothing Assets (all null anyway in vanilla)
+             * LOD size (doesn't seem to be important; UDK imports have it set to 0, and I don't know how it is calculated)
+             * PerPolyBoneKDOPS (no idea what this is, it's mostly empty in vanilla)
+             * importing to OT1 (the format is slightly different in ways I don't care to implement), you can probably use debug build to port into OT1 if you must
+             * */
 
-                /* things I have not implemented: 
-                 * net Index (probably not important unless you are doing ME3MP modding, and you can set it manually easily enough)
-                 * Clothing Assets (all null anyway in vanilla)
-                 * LOD size (doesn't seem to be important; UDK imports have it set to 0, and I don't know how it is calculated)
-                 * PerPolyBoneKDOPS (no idea what this is, it's mostly empty in vanilla)
-                 * importing to OT1 (the format is slightly different in ways I don't care to implement), you can probably use debug build to port into OT1 if you must
-                 * */
+            lodInfoProp = new ArrayProperty<StructProperty>("LODInfo");
+            float[] displayFactors = [1.0f, 0.25f, 0.1f];
+            for (int i = 0; i < psks.Length; i++)
+            {
+                var currentLod = psks[i];
+                var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
+                var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), currentLod.Materials.Count), "bEnableShadowCasting");
+                var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", pew.Pcc.Game), currentLod.Materials.Count), "TriangleSorting");
 
-                // copy the sockets from the selected mesh onto the new one
-                if (GetSelectedItem(pew, "SkeletalMesh", out var selectedMesh))
+                var matMap = new List<int>(currentLod.Materials.Count);
+                // to match vanilla, LOD0 has an empty array
+                if (i != 0)
                 {
-                    var oldSocketsProp = selectedMesh.GetProperty<ArrayProperty<ObjectProperty>>("Sockets");
-                    if (oldSocketsProp != null)
+                    foreach (var mat in currentLod.Materials)
                     {
-                        var newSocketsProp = new ArrayProperty<ObjectProperty>("Sockets");
-                        foreach (var socket in oldSocketsProp)
-                        {
-                            var newEntry = EntryCloner.CloneEntry(socket.ResolveToEntry(pew.Pcc), incrementIndex: false);
-                            newEntry.Parent = meshExport;
-                            newSocketsProp.Add(new ObjectProperty(newEntry));
-                        }
-                        meshExport.WriteProperty(newSocketsProp);
+                        matMap.Add(materials.IndexOf(mat.Name));
                     }
                 }
 
-                var lodInfoarray = new ArrayProperty<StructProperty>("LODInfo");
-                float[] displayFactors = [1.0f, 0.25f, 0.1f];
-                for (int i = 0; i < psks.Length; i++)
-                {
-                    var currentLod = psks[i];
-                    var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
-                    var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), currentLod.Materials.Count), "bEnableShadowCasting");
-                    var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", pew.Pcc.Game), currentLod.Materials.Count), "TriangleSorting");
-
-                    var matMap = new List<int>(currentLod.Materials.Count);
-                    // to match vanilla, LOD0 has an empty array
-                    if (i != 0)
-                    {
-                        foreach (var mat in currentLod.Materials)
-                        {
-                            matMap.Add(materials.IndexOf(mat.Name));
-                        }
-                    }
-
-                    var LODMaterialMapProp = new ArrayProperty<IntProperty>(matMap.Select(x => new IntProperty(x)), "LODMaterialMap");
-                    var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
-                        displayFactorProp,
-                        new FloatProperty(0.2f, "LODHysteresis"),
-                        LODMaterialMapProp,
-                        bEnableShadowCastingProp,
-                        TriangleSortingProp);
-                    lodInfoarray.Add(lodInfo);
-                }
-
-                meshExport.WriteProperty(lodInfoarray);
+                var LODMaterialMapProp = new ArrayProperty<IntProperty>(matMap.Select(x => new IntProperty(x)), "LODMaterialMap");
+                var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
+                    displayFactorProp,
+                    new FloatProperty(0.2f, "LODHysteresis"),
+                    LODMaterialMapProp,
+                    bEnableShadowCastingProp,
+                    TriangleSortingProp);
+                lodInfoProp.Add(lodInfo);
             }
+
+            return meshBin;
+
 
             static (Influences bones, Influences influences) DistributeWeights(IEnumerable<(byte bone, float weight)> weights)
             {
@@ -721,6 +687,91 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
 
                 return LOD;
+            }
+        }
+
+        public static void ImportPskAsNewMesh(PackageEditorWindow pew)
+        {
+            if (pew.Pcc.Game == MEGame.ME1)
+            {
+                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
+            }
+            if (pew.Pcc.Game == MEGame.UDK)
+            {
+                ShowError("This experiment does not support UDK files;");
+            }
+            if (GetPskFromFile(out var psks, out var path))
+            {
+                if (!psks[0].Bones.Any())
+                {
+                    throw new NotImplementedException("You can't make a static mesh yet");
+                }
+
+                var meshBin = CreateSkeletalMeshFromPsks(pew, psks, out var lodInfoProp);
+
+                var meshExport = ExportCreator.CreateExport(pew.Pcc, Path.GetFileNameWithoutExtension(path), "SkeletalMesh");
+
+                meshExport.WriteBinary(meshBin);
+
+                // copy the sockets from the selected mesh onto the new one
+                if (GetSelectedItem(pew, "SkeletalMesh", out var selectedMesh))
+                {
+                    var oldSocketsProp = selectedMesh.GetProperty<ArrayProperty<ObjectProperty>>("Sockets");
+                    if (oldSocketsProp != null)
+                    {
+                        var newSocketsProp = new ArrayProperty<ObjectProperty>("Sockets");
+                        foreach (var socket in oldSocketsProp)
+                        {
+                            var newEntry = EntryCloner.CloneEntry(socket.ResolveToEntry(pew.Pcc), incrementIndex: false);
+                            newEntry.Parent = meshExport;
+                            newSocketsProp.Add(new ObjectProperty(newEntry));
+                        }
+                        meshExport.WriteProperty(newSocketsProp);
+                    }
+                }
+
+                meshExport.WriteProperty(lodInfoProp);
+            }
+
+        }
+
+        public static void ImportPskOverMesh(PackageEditorWindow pew)
+        {
+            if (pew.Pcc.Game == MEGame.ME1)
+            {
+                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
+            }
+            if (pew.Pcc.Game == MEGame.UDK)
+            {
+                ShowError("This experiment does not support UDK files;");
+            }
+            if (GetSelectedItem(pew, "SkeletalMesh", out var selectedMesh))
+            {
+                if (GetPskFromFile(out var psks, out var path))
+                {
+                    if (!psks[0].Bones.Any())
+                    {
+                        throw new NotImplementedException("You can't make a static mesh yet");
+                    }
+
+                    var meshBin = CreateSkeletalMeshFromPsks(pew, psks, out var lodInfoProp);
+                    selectedMesh.WriteBinary(meshBin);
+
+                    var newProps = new PropertyCollection();
+                    var oldSocketsProp = selectedMesh.GetProperty<ArrayProperty<ObjectProperty>>("Sockets");
+                    if (oldSocketsProp != null)
+                    {
+                        newProps.Add(oldSocketsProp);
+                    }
+
+                    newProps.Add(lodInfoProp);
+
+                    selectedMesh.WriteProperties(newProps);
+                }
+            }
+            else
+            {
+                ShowError("You must select an existing SkelelalMesh to replace");
             }
         }
 
