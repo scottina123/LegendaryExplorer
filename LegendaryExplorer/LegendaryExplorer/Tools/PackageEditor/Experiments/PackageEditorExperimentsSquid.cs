@@ -10,6 +10,7 @@ using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Save;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.UnrealScript;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using Microsoft.Win32;
@@ -107,7 +108,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
         }
-
 
         private static SkeletalMesh CreateSkeletalMeshFromPsks(PackageEditorWindow pew, PSK[] psks, out ArrayProperty<StructProperty> lodInfoProp)
         {
@@ -775,6 +775,154 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
+        public static void ExportTexturesFromMaterial(PackageEditorWindow pew)
+        {
+            if (GetSelectedItem(pew, ["MaterialInstanceConstant", "BioMaterialInstanceConstant", "Material", "RvrEffectsMaterialUser"], out var materialExport))
+            {
+                var saveFolderDialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Select destination folder",
+                    UseDescriptionForTitle = true
+                };
+                if (saveFolderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    var saveFolder = saveFolderDialog.SelectedPath;
+                    ExportMaterialTextures(materialExport, saveFolder);
+                }
+            }
+            else
+            {
+                ShowError("You must select a MaterialInstanceConstant, BioMaterialInstanceConstant, Material, or RvrEffectsMaterialUser");
+            }
+        }
+
+        private static void ExportMaterialTextures(ExportEntry materialExport, string exportDirectory, Dictionary<string, ExportEntry> textureExports = null)
+        {
+            textureExports ??= [];
+            List<ExportEntry> baseTextures = [];
+            var cache = new PackageCache();
+
+            delegateByType(materialExport);
+
+            foreach (var tex in baseTextures)
+            {
+                if (!tex.IsA("Texture2D"))
+                {
+                    continue;
+                }
+                var texture = new Texture2D(tex);
+                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
+                if (!File.Exists(exportPath))
+                {
+                    texture.ExportToPNG(exportPath);
+                }
+            }
+
+            foreach (var tex in textureExports.Values)
+            {
+                if (!tex.IsA("Texture2D"))
+                {
+                    continue;
+                }
+                var texture = new Texture2D(tex);
+                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
+                if (!File.Exists(exportPath))
+                {
+                    texture.ExportToPNG(exportPath);
+                }
+            }
+
+            void delegateByType(ExportEntry materialEntry)
+            {
+                var selectedEntryClass = materialEntry.ClassName;
+                if (materialEntry.ClassName == "Material")
+                {
+                    ExportBaseMaterialTextures(materialEntry);
+                }
+                else if (materialEntry.IsA("MaterialInstanceConstant"))
+                {
+                    ExportMICTextures(materialEntry);
+                }
+                else if (materialEntry.IsA("RvrEffectsMaterialUser"))
+                {
+                    ExportEffectMatUserTextures(materialEntry);
+
+                }
+                else
+                {
+                    return;
+                }
+            }
+
+            void ExportEffectMatUserTextures(ExportEntry effectsMatEntry)
+            {
+                // for this, just get the base material stuff
+                if (effectsMatEntry.GetProperty<ObjectProperty>("m_pBaseMaterial", cache).TryResolveExport(effectsMatEntry.FileRef, cache, out var baseMat))
+                {
+                    delegateByType(baseMat);
+                }
+            }
+
+            void ExportMICTextures(ExportEntry micExport)
+            {
+                // get anything from the texture Parameters
+                var texParamsProp = micExport.GetProperty<ArrayProperty<StructProperty>>("TextureParameterValues", cache);
+                if (texParamsProp != null)
+                {
+                    foreach (var texParam in texParamsProp)
+                    {
+                        var paramName = texParam.GetProp<NameProperty>("ParameterName").Value.Instanced;
+                        if (!textureExports.ContainsKey(paramName) && texParam.GetProp<ObjectProperty>("ParameterValue").TryResolveExport(micExport.FileRef, cache, out var value))
+                        {
+                            textureExports.Add(paramName, value);
+                        }
+                    }
+                }
+                // then go to the parent, if it exists
+                if (micExport.GetProperty<ObjectProperty>("Parent", cache).TryResolveExport(micExport.FileRef, cache, out var parent))
+                {
+                    delegateByType(parent);
+                }
+            }
+
+            void ExportBaseMaterialTextures(ExportEntry baseMatEntry)
+            {
+                var expressions = baseMatEntry.GetProperty<ArrayProperty<ObjectProperty>>("Expressions");
+                if (expressions == null)
+                {
+                    return;
+                }
+
+                var matBin = ObjectBinary.From<Material>(baseMatEntry);
+                if (matBin.SM3MaterialResource.UniformExpressionTextures != null)
+                {
+                    foreach (var texIdx in matBin.SM3MaterialResource.UniformExpressionTextures)
+                    {
+                        if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
+                        {
+                            // skip the really dumb textures
+                            if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
+                            {
+                                continue;
+                            }
+                            baseTextures.Add(tex);
+                        }
+                    }
+                }
+
+                // Read default expressions
+                foreach (var expr in expressions.Select(x => x.ResolveToEntry(baseMatEntry.FileRef)).Where(x => x != null && x.IsA("MaterialExpressionTextureSampleParameter")).OfType<ExportEntry>())
+                {
+                    var paramName = expr.GetProperty<NameProperty>("ParameterName")?.Value.Instanced ?? "None";
+
+                    if (!textureExports.ContainsKey(paramName) && expr.GetProperty<ObjectProperty>("Texture").TryResolveExport(baseMatEntry.FileRef, cache, out var value))
+                    {
+                        textureExports.Add(paramName, value);
+                    }
+                }
+            }
+        }
+        
         private class TempVertex
         {
             public ushort Index { get; set; }
@@ -806,6 +954,18 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         for (int i = 1; i < meshBin.LODModels.Length; i++)
                         {
                             PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^5]}_LOD{i}.pskx");
+                        }
+                        // export the textures as well
+                        var textureDirectory = $"{d.FileName[..^5]}_Textures";
+                        Directory.CreateDirectory(textureDirectory);
+                        foreach (var matIdx in meshBin.Materials)
+                        {
+                            var entry = pew.Pcc.GetEntry(matIdx);
+                            if (entry != null)
+                            {
+                                var matExport = SharedMethods.ResolveEntryToExport(entry, new PackageCache());
+                                ExportMaterialTextures(matExport, textureDirectory);
+                            }
                         }
                     }
                     return;

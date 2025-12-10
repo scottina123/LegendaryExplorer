@@ -1350,6 +1350,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsSquid.ExportSelectedToPsx(GetPEWindow());
         }
 
+        private void ExportSelectedMaterial_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ExportTexturesFromMaterial(GetPEWindow());
+        }
+
         private void ExportRonToPsx_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.RonFileToPskx(GetPEWindow());
