@@ -43,6 +43,7 @@ using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.UDK;
 using LegendaryExplorerCore.UnrealScript.Documentation;
 using LegendaryExplorer.SharedUI.Controls;
+using LegendaryExplorerCore.Diagnostics;
 
 //using ImageMagick;
 
@@ -1448,90 +1449,90 @@ return;
 
         public static ExportEntry GenerateMaterialInstanceConstantFromMaterial(ExportEntry matExp, string suffix = "_matInst")
         {
-                var matExpProps = matExp.GetProperties();
+            var matExpProps = matExp.GetProperties();
 
-                // Create the export
+            // Create the export
             var matInstConst = ExportCreator.CreateExport(matExp.FileRef, matExp.ObjectName.Name + suffix, "MaterialInstanceConstant", matExp.Parent);
-                matInstConst.indexValue--; // Decrement it by one so it starts at 0
+            matInstConst.indexValue--; // Decrement it by one so it starts at 0
 
-                var matInstConstProps = matInstConst.GetProperties();
-                var lightingParent = matExpProps.GetProp<StructProperty>("LightingGuid");
-                if (lightingParent != null)
-                {
-                    lightingParent.Name = "ParentLightingGuid"; // we aren't writing to parent so this is fine
-                    matInstConstProps.AddOrReplaceProp(lightingParent);
-                }
+            var matInstConstProps = matInstConst.GetProperties();
+            var lightingParent = matExpProps.GetProp<StructProperty>("LightingGuid");
+            if (lightingParent != null)
+            {
+                lightingParent.Name = "ParentLightingGuid"; // we aren't writing to parent so this is fine
+                matInstConstProps.AddOrReplaceProp(lightingParent);
+            }
 
-                matInstConstProps.AddOrReplaceProp(new ObjectProperty(matExp.UIndex, "Parent"));
+            matInstConstProps.AddOrReplaceProp(new ObjectProperty(matExp.UIndex, "Parent"));
             matInstConstProps.AddOrReplaceProp(CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid")); // IDK if this is used but we're gonna do it anyways
 
-                ArrayProperty<StructProperty> vectorParameters =
-                    new ArrayProperty<StructProperty>("VectorParameterValues");
-                ArrayProperty<StructProperty> scalarParameters =
-                    new ArrayProperty<StructProperty>("ScalarParameterValues");
-                ArrayProperty<StructProperty> textureParameters =
-                    new ArrayProperty<StructProperty>("TextureParameterValues");
+            ArrayProperty<StructProperty> vectorParameters =
+                new ArrayProperty<StructProperty>("VectorParameterValues");
+            ArrayProperty<StructProperty> scalarParameters =
+                new ArrayProperty<StructProperty>("ScalarParameterValues");
+            ArrayProperty<StructProperty> textureParameters =
+                new ArrayProperty<StructProperty>("TextureParameterValues");
 
-                var expressions = matExpProps.GetProp<ArrayProperty<ObjectProperty>>("Expressions");
-                if (expressions != null)
+            var expressions = matExpProps.GetProp<ArrayProperty<ObjectProperty>>("Expressions");
+            if (expressions != null)
+            {
+                foreach (var expressionOP in expressions)
                 {
-                    foreach (var expressionOP in expressions)
-                    {
-                        if (expressionOP.Value <= 0)
-                            continue; // It's null
+                    if (expressionOP.Value <= 0)
+                        continue; // It's null
                     var expression = expressionOP.ResolveToEntry(matExp.FileRef) as ExportEntry;
-                        switch (expression.ClassName)
-                        {
-                            case "MaterialExpressionScalarParameter":
+                    switch (expression.ClassName)
+                    {
+                        case "MaterialExpressionScalarParameter":
+                            {
+                                var spvP = expression.GetProperties();
+                                var paramValue = spvP.GetProp<FloatProperty>("DefaultValue");
+                                if (paramValue == null)
                                 {
-                                    var spvP = expression.GetProperties();
-                                    var paramValue = spvP.GetProp<FloatProperty>("DefaultValue");
-                                    if (paramValue == null)
-                                    {
-                                        spvP.Add(new FloatProperty(0, "ParameterValue"));
-                                    }
-                                    else
-                                    {
-                                        paramValue.Name = "ParameterValue";
-                                        spvP.RemoveAt(0);
-                                        spvP.AddOrReplaceProp(paramValue); // This value goes on the end
-                                    }
-
-                                    scalarParameters.Add(new StructProperty("ScalarParameterValue", spvP));
+                                    spvP.Add(new FloatProperty(0, "ParameterValue"));
                                 }
-                                break;
-                            case "MaterialExpressionVectorParameter":
+                                else
                                 {
-                                    var vpvP = expression.GetProperties();
-                                    var paramValue = vpvP.GetProp<StructProperty>("DefaultValue");
-                                    if (paramValue == null)
-                                    {
-                                        vectorParameters.Add(CommonStructs.Vector3Prop(0, 0, 0, "DefaultValue"));
-                                    }
-                                    else
-                                    {
-                                        paramValue.Name = "ParameterValue";
-                                        vectorParameters.Add(new StructProperty("VectorParameterValue", vpvP));
-                                    }
-                                }
-                                break;
-                            case "MaterialExpressionTextureSampleParameter2D":
-                                {
-                                    var tpvP = expression.GetProperties();
-                                    var paramValue = tpvP.GetProp<ObjectProperty>("Texture");
                                     paramValue.Name = "ParameterValue";
-                                    textureParameters.Add(new StructProperty("TextureParameterValue", tpvP));
+                                    spvP.RemoveAt(0);
+                                    spvP.AddOrReplaceProp(paramValue); // This value goes on the end
                                 }
-                                break;
-                        }
+
+                                scalarParameters.Add(new StructProperty("ScalarParameterValue", spvP));
+                            }
+                            break;
+                        case "MaterialExpressionVectorParameter":
+                            {
+                                var vpvP = expression.GetProperties();
+                                var paramValue = vpvP.GetProp<StructProperty>("DefaultValue");
+                                if (paramValue == null)
+                                {
+                                    vectorParameters.Add(CommonStructs.Vector3Prop(0, 0, 0, "DefaultValue"));
+                                }
+                                else
+                                {
+                                    paramValue.Name = "ParameterValue";
+                                    vectorParameters.Add(new StructProperty("VectorParameterValue", vpvP));
+                                }
+                            }
+                            break;
+                        case "MaterialExpressionTextureSampleParameter2D":
+                            {
+                                var tpvP = expression.GetProperties();
+                                var paramValue = tpvP.GetProp<ObjectProperty>("Texture");
+                                paramValue.Name = "ParameterValue";
+                                textureParameters.Add(new StructProperty("TextureParameterValue", tpvP));
+                            }
+                            break;
                     }
                 }
+            }
 
-                if (vectorParameters.Any()) matInstConstProps.AddOrReplaceProp(vectorParameters);
-                if (scalarParameters.Any()) matInstConstProps.AddOrReplaceProp(scalarParameters);
-                if (textureParameters.Any()) matInstConstProps.AddOrReplaceProp(textureParameters);
+            if (vectorParameters.Any()) matInstConstProps.AddOrReplaceProp(vectorParameters);
+            if (scalarParameters.Any()) matInstConstProps.AddOrReplaceProp(scalarParameters);
+            if (textureParameters.Any()) matInstConstProps.AddOrReplaceProp(textureParameters);
 
-                matInstConst.WriteProperties(matInstConstProps);
+            matInstConst.WriteProperties(matInstConstProps);
             return matInstConst;
         }
 
@@ -2372,71 +2373,73 @@ defaultproperties
         {
             var linker = entry.GetLinker();
 
-                var itemsToIgnore = new List<ExportEntry>();
+            var itemsToIgnore = new List<ExportEntry>();
             itemsToIgnore.AddRange(entry.FileRef.Exports.Where(x => x.GetLinker() != linker));
 
             foreach (var exp in itemsToIgnore)
-                {
-                    EntryImporter.ConvertExportToImport(exp);
-                }
+            {
+                EntryImporter.ConvertExportToImport(exp);
+            }
+        }
+
+        private static void FixFEChain(ExportEntry exp)
+        {
+            var root = exp.GetRoot();
+            if (root == exp)
+                return; // No chain
+
+            var shouldBeFE = root is ExportEntry rExp ? rExp.IsForcedExport : true;
+            if (shouldBeFE)
+            {
+                exp.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
+            }
+            else
+            {
+                exp.ExportFlags &= ~UnrealFlags.EExportFlags.ForcedExport;
             }
 
-        public static void FixForcedExport(PackageEditorWindow pe)
+            if (exp.Parent is ExportEntry pExp)
+            {
+                FixFEChain(pExp);
+            }
+        }
+
+        public static void FixBadForcedExport(PackageEditorWindow pe)
         {
             if (pe.Pcc == null)
             {
                 return;
             }
 
-            List<ExportEntry> leaves = new();
-            foreach(var exp in pe.Pcc.Exports)
+            var proceed = MessageBox.Show(pe, "This will automatically fix all bad forced export chains in the package. Do you want to proceed?", "Fix Bad Forced Exports", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (proceed != MessageBoxResult.Yes)
             {
-                var children = exp.GetChildren();
-                if (!children.Any())
-                {
-                    leaves.Add(exp);
-                }
+                return;
+            }
+            var badLeaves = PackageDiags.GetBadForcedExportLeaves(pe.Pcc);
+
+            foreach (var leaf in badLeaves)
+            {
+                FixFEChain(leaf.Entry as ExportEntry);
+            }
+            MessageBox.Show(@"Done.");
+        }
+
+        public static void FindBadForcedExport(PackageEditorWindow pe)
+        {
+            if (pe.Pcc == null)
+            {
+                return;
             }
 
-
-            bool hasValidChain(ExportEntry exp, bool isExpectingFE)
-            {
-                var parent = exp.Parent;
-                if (parent == null)
-                    return true; // Nothing left to check
-                if (parent is ImportEntry imp)
-                {
-                    // Exports under imports must ALWAYS be forced exports
-                    // how could they possibly originate here?
-                    return isExpectingFE; // If we expect FE, this is valid
-                }
-
-                var parentE = parent as ExportEntry;
-                if (parentE.IsForcedExport ^ isExpectingFE)
-                {
-                    // It differs
-                    return false;
-                }
-
-                return hasValidChain(parentE, isExpectingFE);
-            }
-
-            List<EntryStringPair> badLeaves = new();
-            foreach (var leaf in leaves)
-            {
-                var originalValue = (leaf.ExportFlags & UnrealFlags.EExportFlags.ForcedExport) != 0;
-                var isValidChain = hasValidChain(leaf, originalValue);
-                if (!isValidChain)
-                {
-                    badLeaves.Add(new EntryStringPair(leaf, $"Inconsistent forced export on {leaf.InstancedFullPath}, should be forced: {(leaf.GetRoot() is ExportEntry root ? root.IsForcedExport : false)}"));
-                }
-            }
+            var badLeaves = PackageDiags.GetBadForcedExportLeaves(pe.Pcc);
 
             if (badLeaves.Count == 0)
             {
                 MessageBox.Show("No bad forced export leaves found.");
                 return;
-            } else
+            }
+            else
             {
                 var dialog = new ListDialog(badLeaves, "Bad Forced Export Leaves Found", "The following leaves have inconsistent forced export chains.", pe);
                 dialog.DoubleClickEntryHandler = pe.GetEntryDoubleClickAction();
@@ -2448,7 +2451,7 @@ defaultproperties
         {
             if (pe.TryGetSelectedExport(out var sExp))
             {
-                var outDir = @"Redacted"; 
+                var outDir = @"Redacted";
                 var fileName = sExp.InstancedFullPath + ".pcc";
                 EntryExporter.ExportExportToFile(sExp, Path.Combine(outDir, fileName), out var newEntry);
                 var newExp = newEntry as ExportEntry;
@@ -3091,34 +3094,34 @@ defaultproperties
             var packageToObjList = new CaseInsensitiveDictionary<CaseInsensitiveDictionary<string>>();
 
             var backupPath = ME3TweaksBackups.GetGameBackupPath(MEGame.LE3);
-                foreach (var packageF in Directory.GetFiles(backupPath, "*.pcc", SearchOption.AllDirectories))
+            foreach (var packageF in Directory.GetFiles(backupPath, "*.pcc", SearchOption.AllDirectories))
+            {
+                var package = MEPackageHandler.UnsafePartialLoad(packageF, x => false);
+                List<ExportEntry> objects = null;
+                if (!isA)
                 {
-                    var package = MEPackageHandler.UnsafePartialLoad(packageF, x => false);
-                    List<ExportEntry> objects = null;
-                    if (!isA)
+                    objects = package.Exports.Where(x => !x.IsDefaultObject && !x.IsArchetype && x.ClassName == objectType && x.GetRoot().ObjectName != "TheWorld").ToList();
+                }
+                else
+                {
+                    objects = package.Exports.Where(x => !x.IsDefaultObject && !x.IsArchetype && (x.Parent == null || x.Parent.ClassName == "Package") && x.IsA(objectType) && x.GetRoot().ObjectName != "TheWorld").ToList();
+                }
+
+
+                foreach (var obj in objects) // This might need changed later.
+                {
+                    var linker = obj.GetLinker();
+                    if (!packageToObjList.TryGetValue(linker, out var objs))
                     {
-                        objects = package.Exports.Where(x => !x.IsDefaultObject && !x.IsArchetype && x.ClassName == objectType && x.GetRoot().ObjectName != "TheWorld").ToList();
+                        objs = packageToObjList[linker] = new CaseInsensitiveDictionary<string>();
                     }
-                    else
+
+                    if (!objs.TryGetValue(obj.MemoryFullPath, out _))
                     {
-                        objects = package.Exports.Where(x => !x.IsDefaultObject && !x.IsArchetype && (x.Parent == null || x.Parent.ClassName == "Package") && x.IsA(objectType) && x.GetRoot().ObjectName != "TheWorld").ToList();
-                    }
-
-
-                    foreach (var obj in objects) // This might need changed later.
-                    {
-                        var linker = obj.GetLinker();
-                        if (!packageToObjList.TryGetValue(linker, out var objs))
-                        {
-                            objs = packageToObjList[linker] = new CaseInsensitiveDictionary<string>();
-                        }
-
-                        if (!objs.TryGetValue(obj.MemoryFullPath, out _))
-                        {
-                            objs[obj.MemoryFullPath] = package.FilePath;
-                        }
+                        objs[obj.MemoryFullPath] = package.FilePath;
                     }
                 }
+            }
 
             var outJ = JsonConvert.SerializeObject(packageToObjList);
             File.WriteAllText($@"S:\Milan\UDK\PackageMappingFor{objectType}.json", outJ);

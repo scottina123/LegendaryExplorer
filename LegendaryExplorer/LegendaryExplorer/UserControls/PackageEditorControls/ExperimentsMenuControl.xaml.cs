@@ -409,7 +409,12 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         
         private void DetectInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
         {
-            PackageEditorExperimentsM.FixForcedExport(GetPEWindow());
+            PackageEditorExperimentsM.FindBadForcedExport(GetPEWindow());
+        }
+
+        private void FixInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.FixBadForcedExport(GetPEWindow());
         }
 
         private void GenerateTextureToInstancesMap_Click(object sender, RoutedEventArgs e)
