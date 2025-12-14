@@ -464,6 +464,23 @@ namespace LegendaryExplorerCore.Helpers
             return false;
         }
 
+        /// <summary>
+        /// Given a filepath, determine the name of the DLC folder. This looks for 'BIOGame'
+        /// </summary>
+        /// <param name="path">A filepath, either to a folder or file.</param>
+        /// <returns>The folder path after 'DLC', otherwise null.</returns>
+        public static string DetermineDLCNameFromPath(this string path)
+        {
+            var parts = path.Split(Path.DirectorySeparatorChar);
+            var dlcIndex = parts.IndexOf("DLC"); // We purposely do not do case insensitive here
+            if (dlcIndex != -1 && parts.Length > dlcIndex + 1)
+            {
+                return parts[dlcIndex + 1];
+            }
+            return null;
+        }
+
+
         public static bool IsNumericallyEqual(this string first, string second)
         {
             return double.TryParse(first, out double a)
