@@ -212,6 +212,102 @@ namespace LegendaryExplorerCore.Packages
         }
 
         /// <summary>
+        /// Parses out game information given an endian, unreal version, and licensee version. Throws an exception if it doesn't match any values.
+        /// </summary>
+        /// <param name="endian"></param>
+        /// <param name="unrealVersion"></param>
+        /// <param name="licenseeVersion"></param>
+        /// <param name="platformOverride"></param>
+        /// <param name="Game"></param>
+        /// <param name="Platform"></param>
+        /// <param name="platformNeedsResolved"></param>
+        /// <exception cref="FormatException"></exception>
+        public static void GetGameFromHeader(Endian endian, uint unrealVersion, uint licenseeVersion, GamePlatform platformOverride, out MEGame Game, out GamePlatform Platform, out bool platformNeedsResolved)
+        {
+            platformNeedsResolved = false;
+
+            switch (unrealVersion)
+            {
+                case ME1UnrealVersion when licenseeVersion == ME1LicenseeVersion:
+                    Game = MEGame.ME1;
+                    Platform = GamePlatform.PC;
+                    return;
+                case ME1XboxUnrealVersion when licenseeVersion == ME1XboxLicenseeVersion:
+                    Game = MEGame.ME1;
+                    Platform = GamePlatform.Xenon;
+                    return;
+                case ME1PS3UnrealVersion when licenseeVersion == ME1PS3LicenseeVersion:
+                    Game = MEGame.ME1;
+                    Platform = GamePlatform.PS3;
+                    return;
+                case ME2UnrealVersion when licenseeVersion == ME2LicenseeVersion && endian == Endian.Little:
+                case ME2DemoUnrealVersion when licenseeVersion == ME2LicenseeVersion:
+                    Game = MEGame.ME2;
+                    Platform = GamePlatform.PC;
+                    return;
+                case ME2UnrealVersion when licenseeVersion == ME2LicenseeVersion && endian == Endian.Big:
+                    Game = MEGame.ME2;
+                    Platform = GamePlatform.Xenon;
+                    return;
+                case ME2PS3UnrealVersion when licenseeVersion == ME2PS3LicenseeVersion:
+                    Game = MEGame.ME2;
+                    Platform = GamePlatform.PS3;
+                    return;
+                case ME3WiiUUnrealVersion when licenseeVersion == ME3LicenseeVersion:
+                    Game = MEGame.ME3;
+                    Platform = GamePlatform.WiiU;
+                    return;
+                case ME3UnrealVersion when licenseeVersion == ME3LicenseeVersion:
+                    Game = MEGame.ME3;
+                    if (endian == Endian.Little)
+                    {
+                        Platform = GamePlatform.PC;
+                    }
+                    else
+                    {
+                        // If the package is not compressed or fully compressed we cannot determine if this is PS3 or Xenon.
+                        // PS3 and Xbox use same engine versions on the ME3 game (ME1/2 use same one but has slight differences for some reason)
+
+                        // Code above determines platform if it's fully compressed, and code below determines platform based on compression type
+                        // However if neither exist we don't have an easy way to differentiate files (such as files from SFAR)
+
+                        // We attempt to resolve the platfrom later using SeekFreeShaderCache which is present
+                        // in every single console file (vs PC's DLC only).
+                        // Not 100% sure it's in every file. But hopefully it is.
+                        if (platformOverride == GamePlatform.Unknown)
+                        {
+                            //Debug.WriteLine("Cannot differentiate PS3 vs Xenon ME3 files. Assuming PS3, this may be wrong assumption!");
+                            platformNeedsResolved = true;
+                            Platform = GamePlatform.PS3; //This is placeholder as Xenon and PS3 use same header format
+                        }
+                        else
+                        {
+                            Platform = platformOverride; // Used for fully compressed packages
+                        }
+                    }
+                    return;
+                case ME3UnrealVersion when licenseeVersion == ME3Xenon2011DemoLicenseeVersion:
+                    Game = MEGame.ME3;
+                    Platform = GamePlatform.Xenon;
+                    return;
+                case LE1UnrealVersion when licenseeVersion == LE1LicenseeVersion:
+                    Game = MEGame.LE1;
+                    Platform = GamePlatform.PC;
+                    return;
+                case LE2UnrealVersion when licenseeVersion == LE2LicenseeVersion:
+                    Game = MEGame.LE2;
+                    Platform = GamePlatform.PC;
+                    return;
+                case LE3UnrealVersion when licenseeVersion == LE3LicenseeVersion:
+                    Game = MEGame.LE3;
+                    Platform = GamePlatform.PC;
+                    return;
+                default:
+                    throw new FormatException("Not a Mass Effect Package!");
+            }
+        }
+
+        /// <summary>
         /// Opens an ME package from the stream. If this file is from a disk, the filePath should be set to support saving and other lookups.
         /// </summary>
         /// <param name="fs"></param>
@@ -269,86 +365,8 @@ namespace LegendaryExplorerCore.Packages
 
             var unrealVersion = (ushort)(versionLicenseePacked & 0xFFFF);
             var licenseeVersion = (ushort)(versionLicenseePacked >> 16);
-            bool platformNeedsResolved = false;
-            switch (unrealVersion)
-            {
-                case ME1UnrealVersion when licenseeVersion == ME1LicenseeVersion:
-                    Game = MEGame.ME1;
-                    Platform = GamePlatform.PC;
-                    break;
-                case ME1XboxUnrealVersion when licenseeVersion == ME1XboxLicenseeVersion:
-                    Game = MEGame.ME1;
-                    Platform = GamePlatform.Xenon;
-                    break;
-                case ME1PS3UnrealVersion when licenseeVersion == ME1PS3LicenseeVersion:
-                    Game = MEGame.ME1;
-                    Platform = GamePlatform.PS3;
-                    break;
-                case ME2UnrealVersion when licenseeVersion == ME2LicenseeVersion && Endian == Endian.Little:
-                case ME2DemoUnrealVersion when licenseeVersion == ME2LicenseeVersion:
-                    Game = MEGame.ME2;
-                    Platform = GamePlatform.PC;
-                    break;
-                case ME2UnrealVersion when licenseeVersion == ME2LicenseeVersion && Endian == Endian.Big:
-                    Game = MEGame.ME2;
-                    Platform = GamePlatform.Xenon;
-                    break;
-                case ME2PS3UnrealVersion when licenseeVersion == ME2PS3LicenseeVersion:
-                    Game = MEGame.ME2;
-                    Platform = GamePlatform.PS3;
-                    break;
-                case ME3WiiUUnrealVersion when licenseeVersion == ME3LicenseeVersion:
-                    Game = MEGame.ME3;
-                    Platform = GamePlatform.WiiU;
-                    break;
-                case ME3UnrealVersion when licenseeVersion == ME3LicenseeVersion:
-                    Game = MEGame.ME3;
-                    if (Endian == Endian.Little)
-                    {
-                        Platform = GamePlatform.PC;
-                    }
-                    else
-                    {
-                        // If the package is not compressed or fully compressed we cannot determine if this is PS3 or Xenon.
-                        // PS3 and Xbox use same engine versions on the ME3 game (ME1/2 use same one but has slight differences for some reason)
 
-                        // Code above determines platform if it's fully compressed, and code below determines platform based on compression type
-                        // However if neither exist we don't have an easy way to differentiate files (such as files from SFAR)
-
-                        // We attempt to resolve the platfrom later using SeekFreeShaderCache which is present
-                        // in every single console file (vs PC's DLC only).
-                        // Not 100% sure it's in every file. But hopefully it is.
-                        if (platformOverride == GamePlatform.Unknown)
-                        {
-                            //Debug.WriteLine("Cannot differentiate PS3 vs Xenon ME3 files. Assuming PS3, this may be wrong assumption!");
-                            platformNeedsResolved = true;
-                            Platform = GamePlatform.PS3; //This is placeholder as Xenon and PS3 use same header format
-                        }
-                        else
-                        {
-                            Platform = platformOverride; // Used for fully compressed packages
-                        }
-                    }
-                    break;
-                case ME3UnrealVersion when licenseeVersion == ME3Xenon2011DemoLicenseeVersion:
-                    Game = MEGame.ME3;
-                    Platform = GamePlatform.Xenon;
-                    break;
-                case LE1UnrealVersion when licenseeVersion == LE1LicenseeVersion:
-                    Game = MEGame.LE1;
-                    Platform = GamePlatform.PC;
-                    break;
-                case LE2UnrealVersion when licenseeVersion == LE2LicenseeVersion:
-                    Game = MEGame.LE2;
-                    Platform = GamePlatform.PC;
-                    break;
-                case LE3UnrealVersion when licenseeVersion == LE3LicenseeVersion:
-                    Game = MEGame.LE3;
-                    Platform = GamePlatform.PC;
-                    break;
-                default:
-                    throw new FormatException("Not a Mass Effect Package!");
-            }
+            MEPackage.GetGameFromHeader(Endian, unrealVersion, licenseeVersion, platformOverride, out var detectedGame, out var detectedPlatform, out var platformNeedsResolved);
 
             if (Game.IsLEGame() && filePath != null && Path.GetExtension(filePath) == ".xxx")
             {
