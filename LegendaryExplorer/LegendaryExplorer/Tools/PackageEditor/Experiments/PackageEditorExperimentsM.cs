@@ -4637,5 +4637,11 @@ defaultproperties
             LightingImportSetup setup = new LightingImportSetup();
             StaticLightingImporter.ImportStaticLighting(peWindow.Pcc, setup);
         }
+
+        internal static void OpenHostedExportLoader(FileExportLoaderControl loader)
+        {
+            var hosted = new ExportLoaderHostedWindow(loader);
+            hosted.Show();
+        }
     }
 }
