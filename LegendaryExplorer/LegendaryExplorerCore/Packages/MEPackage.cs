@@ -367,6 +367,8 @@ namespace LegendaryExplorerCore.Packages
             var licenseeVersion = (ushort)(versionLicenseePacked >> 16);
 
             MEPackage.GetGameFromHeader(Endian, unrealVersion, licenseeVersion, platformOverride, out var detectedGame, out var detectedPlatform, out var platformNeedsResolved);
+            Game = detectedGame;
+            Platform = detectedPlatform;
 
             if (Game.IsLEGame() && filePath != null && Path.GetExtension(filePath) == ".xxx")
             {
