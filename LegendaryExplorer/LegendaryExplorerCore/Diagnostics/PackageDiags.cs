@@ -2,6 +2,7 @@
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,6 +13,50 @@ namespace LegendaryExplorerCore.Diagnostics
 {
     public static class PackageDiags
     {
+
+        /// <summary>
+        /// Fixes forced export chain for the given export entry
+        /// </summary>
+        /// <param name="exp"></param>
+        private static void FixFEChain(ExportEntry exp)
+        {
+            var root = exp.GetRoot();
+            if (root == exp)
+                return; // No chain
+
+            var shouldBeFE = root is ExportEntry rExp ? rExp.IsForcedExport : true;
+            if (shouldBeFE)
+            {
+                exp.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
+            }
+            else
+            {
+                exp.ExportFlags &= ~UnrealFlags.EExportFlags.ForcedExport;
+            }
+
+            if (exp.Parent is ExportEntry pExp)
+            {
+                FixFEChain(pExp);
+            }
+        }
+
+        /// <summary>
+        /// Scans the specified package and automatically repairs all invalid forced export chains.
+        /// </summary>
+        /// <remarks>This method displays a confirmation dialog before making any changes. After
+        /// completion, a message box indicates that the operation is done. No action is taken if the package is not
+        /// loaded or the user cancels the operation.</remarks>
+        /// <param name="package">The package to scan and repair. Cannot be null.</param>
+        public static void FixBadForcedExport(IMEPackage package)
+        {
+            var badLeaves = PackageDiags.GetBadForcedExportLeaves(package);
+
+            foreach (var leaf in badLeaves)
+            {
+                FixFEChain(leaf.Entry as ExportEntry);
+            }
+        }
+
         private static bool hasValidFEChain(ExportEntry exp, bool isExpectingFE)
         {
             var parent = exp.Parent;

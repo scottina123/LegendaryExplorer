@@ -2382,28 +2382,6 @@ defaultproperties
             }
         }
 
-        private static void FixFEChain(ExportEntry exp)
-        {
-            var root = exp.GetRoot();
-            if (root == exp)
-                return; // No chain
-
-            var shouldBeFE = root is ExportEntry rExp ? rExp.IsForcedExport : true;
-            if (shouldBeFE)
-            {
-                exp.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
-            }
-            else
-            {
-                exp.ExportFlags &= ~UnrealFlags.EExportFlags.ForcedExport;
-            }
-
-            if (exp.Parent is ExportEntry pExp)
-            {
-                FixFEChain(pExp);
-            }
-        }
-
         public static void FixBadForcedExport(PackageEditorWindow pe)
         {
             if (pe.Pcc == null)
@@ -2416,12 +2394,8 @@ defaultproperties
             {
                 return;
             }
-            var badLeaves = PackageDiags.GetBadForcedExportLeaves(pe.Pcc);
 
-            foreach (var leaf in badLeaves)
-            {
-                FixFEChain(leaf.Entry as ExportEntry);
-            }
+            PackageDiags.FixBadForcedExport(pe.Pcc);
             MessageBox.Show(@"Done.");
         }
 
