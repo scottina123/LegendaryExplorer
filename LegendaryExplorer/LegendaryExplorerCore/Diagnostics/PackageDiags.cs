@@ -105,6 +105,13 @@ namespace LegendaryExplorerCore.Diagnostics
                 var isValidChain = hasValidFEChain(leaf, originalValue);
                 if (!isValidChain)
                 {
+                    var rootObj = leaf.GetRoot();
+                    if (rootObj.IsTrash())
+                    {
+                        // Technically these should be fixed too (should be ForcedExport to minimize memory usage), but we're not going to consider them
+                        // as bad leaves
+                        continue;
+                    }
                     badLeaves.Add(new EntryStringPair(leaf, $"Inconsistent forced export on {leaf.InstancedFullPath}, should be forced: {(leaf.GetRoot() is ExportEntry root ? root.IsForcedExport : false)}"));
                 }
             }
