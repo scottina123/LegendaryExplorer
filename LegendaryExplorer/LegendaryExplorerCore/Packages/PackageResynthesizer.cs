@@ -220,7 +220,7 @@ namespace LegendaryExplorerCore.Packages
                         {
                             destExp.Class = null; // Change from Package to Class
                         }
-
+                        
                         EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.ReplaceSingular,
                             ordering.Entry, newPackage, destExp, false, // no relink
                             new RelinkerOptionsPackage() { RelinkAllowDifferingClassesInRelink = true }, out _);
