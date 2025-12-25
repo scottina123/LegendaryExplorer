@@ -202,7 +202,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 portingCache = ShaderCacheManipulator.GetLocalShadersForMaterials(rop.CrossPackageMap.Keys.OfType<ExportEntry>().ToList(), rop.GamePathOverride);
             }
 
-            if (!allowedToPortShaders)
+            if (!rop.ForceAllowMaterialPorting && !allowedToPortShaders)
             {   
                 rop.ErrorOccurredCallback?.Invoke($"You cannot port Materials from {sourcePcc.Game} into {destPcc.Game}");
             }
