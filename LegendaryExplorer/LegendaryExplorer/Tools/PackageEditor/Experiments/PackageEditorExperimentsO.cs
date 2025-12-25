@@ -2844,7 +2844,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         /// <param name="set"></param>
         public static void SetForcedExportFlag(ExportEntry exp, bool set)
         {
-
             List<IEntry> entries = exp.GetAllDescendants();
             entries.Add(exp);
 
@@ -2854,16 +2853,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                 if (export.ClassName == "ObjectReferencer") { continue; }
 
-                if (set)
-                {
-                    // Set
-                    export.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
-                }
-                else
-                {
-                    // Strip
-                    export.ExportFlags &= ~UnrealFlags.EExportFlags.ForcedExport;
-                }
+                export.SetForcedExportFlag(set);
             }
         }
 

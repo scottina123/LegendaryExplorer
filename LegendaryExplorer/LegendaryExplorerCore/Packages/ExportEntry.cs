@@ -1,10 +1,4 @@
-﻿using System;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using LegendaryExplorerCore.Gammtek.IO;
+﻿using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Memory;
 using LegendaryExplorerCore.Misc;
@@ -13,6 +7,12 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Collections;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using PropertyChanged;
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 
 namespace LegendaryExplorerCore.Packages
@@ -1223,6 +1223,24 @@ namespace LegendaryExplorerCore.Packages
                 if (Parent is ExportEntry exp) return exp.IsForcedExport;
                 // Need to handle ImportEntry parents, I think? Are all downlevel children marked in vanilla?
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Sets/unsets forced export flag on the export
+        /// </summary>
+        /// <param name="set">True for forced export, false for not</param>
+        public void SetForcedExportFlag( bool set)
+        {
+            if (set)
+            {
+                // Set
+                ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
+            }
+            else
+            {
+                // Strip
+                ExportFlags &= ~UnrealFlags.EExportFlags.ForcedExport;
             }
         }
 
