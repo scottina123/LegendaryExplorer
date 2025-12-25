@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using LegendaryExplorerCore.DebugTools;
+using LegendaryExplorerCore.Diagnostics;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -115,6 +116,9 @@ namespace LegendaryExplorerCore.Packages
             PortOrdering(ordering, newPackage, null, ESynthesisMode.Synth_Resolving);
             PortOrdering(ordering, newPackage, null, ESynthesisMode.Synth_Transferring);
             newPackage.SetInternalFilepath(package.FilePath);
+
+            //12/24/2025 - Fix bad forced export
+            PackageDiags.FixBadForcedExport(package);
             return newPackage;
         }
 
