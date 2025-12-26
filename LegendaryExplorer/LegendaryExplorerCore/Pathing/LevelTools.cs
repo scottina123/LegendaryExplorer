@@ -345,6 +345,18 @@ namespace LegendaryExplorerCore.Pathing
             }
         }
 
+        public static void SetRotation(ExportEntry export, int pitch, int yaw, int roll)
+        {
+            if (export.ClassName.Contains("Component"))
+            {
+                SetCollectionActorRotation(export, pitch, yaw, roll);
+            }
+            else
+            {
+                export.WriteProperty(CommonStructs.RotatorProp(pitch, yaw, roll, "Rotation"));
+            }
+        }
+
         public static void SetLocation(ExportEntry export, Point3D point)
         {
             if (export.ClassName.Contains("Component"))
@@ -391,7 +403,33 @@ namespace LegendaryExplorerCore.Pathing
             }
         }
 
+        public static void SetCollectionActorRotation(ExportEntry component, int pitch, int yaw, int roll, List<ExportEntry> collectionitems = null, ExportEntry collectionactor = null)
+        {
+            if (collectionactor == null)
+            {
+                if (!(component.HasParent && component.Parent.ClassName.Contains("CollectionActor")))
+                    return;
+                collectionactor = (ExportEntry)component.Parent;
+            }
 
+            collectionitems ??= GetCollectionItems(collectionactor);
+
+            if (collectionitems?.Count > 0)
+            {
+                var idx = collectionitems.FindIndex(o => o != null && o.UIndex == component.UIndex);
+                if (idx >= 0)
+                {
+                    var binData = (StaticCollectionActor)ObjectBinary.From(collectionactor);
+
+                    Matrix4x4 m = binData.LocalToWorldTransforms[idx];
+                    var dsd = m.UnrealDecompose();
+                    dsd.rotation = new Rotator(pitch, yaw, roll);
+                    binData.LocalToWorldTransforms[idx] = ActorUtils.ComposeLocalToWorld(dsd);
+
+                    collectionactor.WriteBinary(binData);
+                }
+            }
+        }
 
 
 
