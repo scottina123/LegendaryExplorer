@@ -864,8 +864,15 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             using var res = new EndianReader(MemoryManager.GetMemoryStream()) { Endian = targetExport.FileRef.Endian };
             if (incomingExport.HasStack)
             {
-                res.Writer.Write(incomingExport.DataReadOnly.Slice(0, 8));
-                res.Writer.WriteFromBuffer(GetStackDummy(targetExport.Game));
+                // Seems like this doesn't work, maybe stack has already been written
+                // or is overwritten somewhere.
+                // 12/30/2025 - Use StateFrame to copy stack over
+                var stateFrame = StateFrame.FromExport(incomingExport);
+                var stateFrameBytes = stateFrame.ToBytes(targetExport.FileRef);
+                res.Writer.Write(stateFrameBytes);
+                res.Writer.Write(incomingExport.NetIndex); // Write NetIndex
+                // res.Writer.Write(incomingExport.DataReadOnly.Slice(0, 8));
+                // res.Writer.WriteFromBuffer(GetStackDummy(targetExport.Game));
             }
             else
             {

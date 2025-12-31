@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using LegendaryExplorerCore.DebugTools;
 using LegendaryExplorerCore.Diagnostics;
@@ -169,7 +168,6 @@ namespace LegendaryExplorerCore.Packages
             {
                 meNewPackage.AdditionalPackagesToCook.AddRange(mePackage.AdditionalPackagesToCook);
             }
-            // Todo: Generations?
         }
 
         private static void PortOrdering(EntryOrdering ordering, IMEPackage newPackage, IEntry parent, ESynthesisMode mode, List<ImportEntry> importsToConvert = null)
@@ -269,6 +267,15 @@ namespace LegendaryExplorerCore.Packages
                         EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.ReplaceSingular,
                             ordering.Entry, newPackage, destExp, true,
                             new RelinkerOptionsPackage() { RelinkAllowDifferingClassesInRelink = true, ImportExportDependencies = false }, out _);
+
+
+                        // Restore NetIndex and LatentAction
+                        //destExp.NetIndex = oExp.NetIndex;
+                        //if (destExp.HasStack)
+                        //{
+                        //    StateFrame oStack = StateFrame.FromExport(oExp);
+                        //    destExp.WritePrePropsAndProperties(oStack, destExp.GetProperties());
+                        //}
                     }
                 }
             }

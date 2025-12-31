@@ -945,6 +945,23 @@ namespace LegendaryExplorerCore.Packages
             Data = m.ToArray();
         }
 
+        ///// <summary>
+        ///// Used for writing StateFrame pre-prop binary.
+        ///// </summary>
+        ///// <param name="bin"></param>
+        ///// <param name="props"></param>
+        ///// <param name="binStart"></param>
+        //public void WritePrePropsAndProperties(ObjectBinary bin, PropertyCollection props, int binStart = -1)
+        //{
+        //    MemoryStream ms = MemoryManager.GetMemoryStream(_data.Length);
+        //    var m = new EndianReader(ms) { Endian = _fileRef.Endian };
+        //    bin.WriteTo(m.Writer, _fileRef);
+        //    props.WriteTo(m.Writer, _fileRef);
+        //    binStart = binStart == -1 ? propsEnd() : binStart; // this allows us to precompute the starting position, which can avoid issues during relink as props may not have resolved yet
+        //    m.Writer.Write(_data, binStart, _data.Length - binStart);
+        //    Data = m.ToArray();
+        //}
+
         public int GetPropertyStart()
         {
             if (HasStack)
