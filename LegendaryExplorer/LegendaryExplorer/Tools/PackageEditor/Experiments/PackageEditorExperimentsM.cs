@@ -4139,13 +4139,20 @@ defaultproperties
 
         public static void ResynthesizePackage(PackageEditorWindow peWindow)
         {
-            var result = MessageBox.Show("WARNING: This will save the package to disk and may break it!! Continue?",
+            var result = MessageBox.Show("WARNING: This will save the package to disk and may break it!! It will also close this window and re-open it. Continue?",
                 "Destructive operation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (result == MessageBoxResult.Yes)
             {
                 var p = PackageResynthesizer.ResynthesizePackage(peWindow.Pcc, new PackageCache(), true);
                 p.Save();
+                peWindow.Close();
+
+                PackageEditorWindow peWpf = new PackageEditorWindow();
+                peWpf.LoadFile(p.FilePath); // Reload file from disk
+                peWpf.ShowActivated = true;
+                peWpf.Show();
+                MessageBox.Show("Package has been resynthesized. If the package was open in multiple windows, the new window may not reflect the changes.");
             }
         }
 

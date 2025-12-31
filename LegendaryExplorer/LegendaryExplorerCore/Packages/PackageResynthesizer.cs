@@ -121,7 +121,7 @@ namespace LegendaryExplorerCore.Packages
             return newPackage;
         }
 
-        private static IMEPackage DumpUnreferencedObjects(IMEPackage package, PackageCache cache)
+        public static IMEPackage DumpUnreferencedObjects(IMEPackage package, PackageCache cache)
         {
             // Package must be inventoried before dumping objects because otherwise we will try to resolve array types
             // when package may not yet be fully setup, which causes problems.
@@ -269,13 +269,6 @@ namespace LegendaryExplorerCore.Packages
                             new RelinkerOptionsPackage() { RelinkAllowDifferingClassesInRelink = true, ImportExportDependencies = false }, out _);
 
 
-                        // Restore NetIndex and LatentAction
-                        //destExp.NetIndex = oExp.NetIndex;
-                        //if (destExp.HasStack)
-                        //{
-                        //    StateFrame oStack = StateFrame.FromExport(oExp);
-                        //    destExp.WritePrePropsAndProperties(oStack, destExp.GetProperties());
-                        //}
                     }
                 }
             }
