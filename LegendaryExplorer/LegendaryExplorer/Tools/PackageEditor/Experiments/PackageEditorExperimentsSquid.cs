@@ -945,54 +945,32 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             switch (selectedEntryClass)
             {
                 case "SkeletalMesh":
-                    // export the skeletal mesh as a psk
-                    var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
-                    if (d.ShowDialog() == true)
-                    {
-                        var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>();
-                        PSK.CreateFromSkeletalMesh(meshBin, 0, true).ToFile(d.FileName);
-                        for (int i = 1; i < meshBin.LODModels.Length; i++)
-                        {
-                            PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^5]}_LOD{i}.pskx");
-                        }
-                        // export the textures as well
-                        var textureDirectory = $"{d.FileName[..^5]}_Textures";
-                        Directory.CreateDirectory(textureDirectory);
-                        foreach (var matIdx in meshBin.Materials)
-                        {
-                            var entry = pew.Pcc.GetEntry(matIdx);
-                            if (entry != null)
-                            {
-                                var matExport = SharedMethods.ResolveEntryToExport(entry, new PackageCache());
-                                ExportMaterialTextures(matExport, textureDirectory);
-                            }
-                        }
-                    }
+                    ExportSkeletalMeshToPskx(pew);
                     return;
                 case "AnimSet":
                 case "BioDynamicAnimSet":
-                    ExportAnimSet(pew);
+                    ExportAnimSetToPsa(pew);
                     return;
                 case "AnimSequence":
-                    ExportAnimSequence(pew);
+                    ExportAnimSequenceToPsa(pew);
                     return;
-                //case "StaticMesh":
-                //    ExportStaticMeshToPSKX(pew);
-                //    return;
+                case "StaticMesh":
+                    ExportStaticMeshToPskx(pew);
+                    return;
                 case "BioMorphFace":
                     BioMorphFaceToPskxAndPsa(pew);
                     return;
                 case "MorphTargetSet":
-                    ExportMorphTargetSet(pew);
+                    ExportMorphTargetSetToPskxAndPsa(pew);
                     return;
-                // TODO support StaticMesh, BrushComponent, FracturedStaticMesh, etc. There are a few other mesh like objects it might be nice to be able to edit, but very low priority?
+                // TODO support BrushComponent, FracturedStaticMesh, etc. There are a few other mesh like objects it might be nice to be able to edit, but very low priority?
                 default:
-                    ShowError("You must open a pcc file and select a SkeletalMesh, BioMorphFace, MorphTargetSet, AnimSet, or AnimSequence for this experiment");
+                    ShowError("You must open a pcc file and select a SkeletalMesh, StaticMesh, BioMorphFace, MorphTargetSet, AnimSet, or AnimSequence for this experiment");
                     return;
             }
         }
 
-        private static void ExportAnimSequence(PackageEditorWindow pew)
+        private static void ExportAnimSequenceToPsa(PackageEditorWindow pew)
         {
             if (GetSelectedItem(pew, "AnimSequence", out var animSeqExport))
             {
@@ -1006,7 +984,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static void ExportAnimSet(PackageEditorWindow pew)
+        private static void ExportAnimSetToPsa(PackageEditorWindow pew)
         {
             if (GetSelectedItem(pew, ["AnimSet", "BioDynamicAnimSet"], out var animSetExport))
             {
@@ -1022,11 +1000,66 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        //private static void ExportStaticMeshToPSKX(PackageEditorWindow pew)
-        //{
-        //    // TODO implement this
-        //    throw new NotImplementedException("I haven't implemented exporting static meshes yet.");
-        //}
+        private static void ExportSkeletalMeshToPskx(PackageEditorWindow pew)
+        {
+            var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
+            if (d.ShowDialog() == true)
+            {
+                var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>();
+                PSK.CreateFromSkeletalMesh(meshBin, 0, true).ToFile(d.FileName);
+                for (int i = 1; i < meshBin.LODModels.Length; i++)
+                {
+                    PSK.CreateFromSkeletalMesh(meshBin, i, true).ToFile($"{d.FileName[..^5]}_LOD{i}.pskx");
+                }
+                // export the textures as well
+                var textureDirectory = $"{d.FileName[..^5]}_Textures";
+                Directory.CreateDirectory(textureDirectory);
+                foreach (var matIdx in meshBin.Materials)
+                {
+                    var entry = pew.Pcc.GetEntry(matIdx);
+                    if (entry != null)
+                    {
+                        var matExport = SharedMethods.ResolveEntryToExport(entry, new PackageCache());
+                        ExportMaterialTextures(matExport, textureDirectory);
+                    }
+                }
+            }
+        }
+
+        private static void ExportStaticMeshToPskx(PackageEditorWindow pew)
+        {
+            // for now, only support ME3 and LE. ME1 and ME2 have a different static mesh format.
+            if (!(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
+            {
+                ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
+            }
+
+            var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
+            if (d.ShowDialog() == true)
+            {
+                var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<StaticMesh>();
+                PSK.CreateFromStaticMesh(meshBin, 0).ToFile(d.FileName);
+                for (int i = 1; i < meshBin.LODModels.Length; i++)
+                {
+                    PSK.CreateFromStaticMesh(meshBin, i).ToFile($"{d.FileName[..^5]}_LOD{i}.pskx");
+                }
+                // TODO export the collision mesh, if present
+                // export the textures as well
+                var textureDirectory = $"{d.FileName[..^5]}_Textures";
+                Directory.CreateDirectory(textureDirectory);
+                // get all the material indices across all LODs
+                var materials = meshBin.LODModels.SelectMany(x => x.Elements.Select(y => y.Material)).Distinct();
+                foreach (var matIdx in materials)
+                {
+                    var entry = pew.Pcc.GetEntry(matIdx);
+                    if (entry != null)
+                    {
+                        var matExport = SharedMethods.ResolveEntryToExport(entry, new PackageCache());
+                        ExportMaterialTextures(matExport, textureDirectory);
+                    }
+                }
+            }
+        }
 
         private static void BioMorphFaceToPskxAndPsa(PackageEditorWindow pew)
         {
@@ -2931,7 +2964,7 @@ defaultproperties
             return false;
         }
 
-        private static void ExportMorphTargetSet(PackageEditorWindow pew)
+        private static void ExportMorphTargetSetToPskxAndPsa(PackageEditorWindow pew)
         {
             if (!GetSelectedItem(pew, "MorphTargetSet", out var morphTargetSet))
             {
