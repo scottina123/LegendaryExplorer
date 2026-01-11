@@ -59,6 +59,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand DeleteStringCommand { get; set; }
         public ICommand SearchCommand { get; set; }
         public ICommand AddStringCommand { get; set; }
+        public ICommand AddStringRangeCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -69,6 +70,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             SearchCommand = new GenericCommand(TextSearch, HasTLKLoaded);
             AddStringCommand = new GenericCommand(AddString, HasTLKLoaded);
+            AddStringRangeCommand = new GenericCommand(AddStringRange, HasTLKLoaded);
 
             ExportXmlCommand = new GenericCommand(ExportToXml, HasTLKLoaded);
             ImportXmlCommand = new GenericCommand(ImportFromXml, HasTLKLoaded);
@@ -231,6 +233,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             DisplayedString_ListBox.ScrollIntoView(DisplayedString_ListBox.SelectedItem); //Scroll to last item
             SetNewID();
             FileModified = true;
+        }
+
+        private void AddStringRange()
+        {
+            // Get list of existing string IDs
+            var existingIDs = LoadedStrings.Select(x => x.StringID).ToList();
+
+            // Show dialog
+            var dialog = new AddStringRangeDialog(existingIDs)
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                int startID = dialog.StartStringID;
+                int endID = dialog.EndStringID;
+
+                // Add strings in the range
+                for (int id = startID; id <= endID; id++)
+                {
+                    var blankstringref = new TLKStringRef(id, "", 1);
+                    LoadedStrings.Add(blankstringref);
+                    CleanedStrings.Add(blankstringref);
+                }
+
+                // Select the first added string
+                var firstAdded = CleanedStrings.FirstOrDefault(x => x.StringID == startID);
+                if (firstAdded != null)
+                {
+                    DisplayedString_ListBox.SelectedItem = firstAdded;
+                    DisplayedString_ListBox.ScrollIntoView(firstAdded);
+                }
+
+                FileModified = true;
+            }
         }
 
         private void ExportToXml()
