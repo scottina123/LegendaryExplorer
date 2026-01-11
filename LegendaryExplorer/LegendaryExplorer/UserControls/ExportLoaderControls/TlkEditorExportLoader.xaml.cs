@@ -237,8 +237,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void AddStringRange()
         {
-            // Get list of existing string IDs
-            var existingIDs = LoadedStrings.Select(x => x.StringID).ToList();
+            // Get set of existing string IDs for efficient duplicate checking
+            var existingIDs = LoadedStrings.Select(x => x.StringID).ToHashSet();
 
             // Show dialog
             var dialog = new AddStringRangeDialog(existingIDs)

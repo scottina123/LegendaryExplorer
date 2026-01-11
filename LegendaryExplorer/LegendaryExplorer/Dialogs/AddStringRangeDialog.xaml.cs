@@ -16,12 +16,12 @@ namespace LegendaryExplorer.Dialogs
         /// <summary>
         /// Validation function that checks if the range is valid.
         /// </summary>
-        private Func<int, int, List<int>, string> validationFunc;
+        private Func<int, int, HashSet<int>, string> validationFunc;
 
         /// <summary>
-        /// List of existing string IDs to check for conflicts.
+        /// Set of existing string IDs to check for conflicts.
         /// </summary>
-        private List<int> existingStringIDs;
+        private HashSet<int> existingStringIDs;
 
         /// <summary>
         /// Command executed when the OK button is clicked.
@@ -39,8 +39,8 @@ namespace LegendaryExplorer.Dialogs
         /// <summary>
         /// Creates a new AddStringRangeDialog with existing string IDs for validation.
         /// </summary>
-        /// <param name="existingIDs">List of existing string IDs to check for conflicts.</param>
-        public AddStringRangeDialog(List<int> existingIDs)
+        /// <param name="existingIDs">Set of existing string IDs to check for conflicts.</param>
+        public AddStringRangeDialog(HashSet<int> existingIDs)
         {
             LoadCommands();
             InitializeComponent();
@@ -97,9 +97,9 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         /// <param name="startID">The start String ID.</param>
         /// <param name="endID">The end String ID.</param>
-        /// <param name="existingIDs">List of existing String IDs.</param>
+        /// <param name="existingIDs">Set of existing String IDs.</param>
         /// <returns>Error message if validation fails; null or empty if valid.</returns>
-        private string ValidateRange(int startID, int endID, List<int> existingIDs)
+        private string ValidateRange(int startID, int endID, HashSet<int> existingIDs)
         {
             if (startID > endID)
             {
