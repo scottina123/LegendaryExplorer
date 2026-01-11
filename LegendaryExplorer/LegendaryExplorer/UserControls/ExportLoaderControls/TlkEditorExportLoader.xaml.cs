@@ -252,20 +252,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int endID = dialog.EndStringID;
 
                 // Add strings in the range
+                var newStrings = new List<TLKStringRef>();
                 for (int id = startID; id <= endID; id++)
                 {
                     var blankstringref = new TLKStringRef(id, "", 1);
-                    LoadedStrings.Add(blankstringref);
-                    CleanedStrings.Add(blankstringref);
+                    newStrings.Add(blankstringref);
                 }
 
+                // Add all strings at once for better performance
+                LoadedStrings.AddRange(newStrings);
+                CleanedStrings.AddRange(newStrings);
+
                 // Select the first added string
-                var firstAdded = CleanedStrings.FirstOrDefault(x => x.StringID == startID);
-                if (firstAdded != null)
-                {
-                    DisplayedString_ListBox.SelectedItem = firstAdded;
-                    DisplayedString_ListBox.ScrollIntoView(firstAdded);
-                }
+                DisplayedString_ListBox.SelectedItem = newStrings[0];
+                DisplayedString_ListBox.ScrollIntoView(newStrings[0]);
 
                 FileModified = true;
             }

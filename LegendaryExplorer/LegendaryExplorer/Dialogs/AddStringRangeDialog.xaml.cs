@@ -106,7 +106,7 @@ namespace LegendaryExplorer.Dialogs
                 return "Start String ID must be less than or equal to End String ID.";
             }
 
-            if (endID - startID > 1000)
+            if (endID - startID + 1 > 1000)
             {
                 return "Range is too large. Maximum of 1000 strings can be added at once.";
             }
