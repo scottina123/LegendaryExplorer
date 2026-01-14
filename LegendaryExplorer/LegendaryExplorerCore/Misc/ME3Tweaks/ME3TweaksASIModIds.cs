@@ -26,6 +26,7 @@ namespace LegendaryExplorerCore.Misc.ME3Tweaks
         public const int LE1_DEBUGLOGGER_DEV = 70;
         public const int LE1_LEX_INTEROP = 42;
         public const int LE1_SCRIPT_DEBUGGER = 82;
+        public const int LE1_TEXTURE_OVERRIDE = 88;
 
         // LE2 ============================================
         public const int LE2_AUTOTOC = 30;
@@ -33,11 +34,13 @@ namespace LegendaryExplorerCore.Misc.ME3Tweaks
         public const int LE2_HOT_RELOAD = 78;
         public const int LE2_LEX_INTEROP = 79;
         public const int LE2_SCRIPT_DEBUGGER = 81;
+        public const int LE2_TEXTURE_OVERRIDE = 89;
 
         // LE3 ============================================
         public const int LE3_AUTOTOC = 31;
         public const int LE3_DEBUGLOGGER_DEV = 72;
         public const int LE3_LEX_INTEROP = 80;
         public const int LE3_SCRIPT_DEBUGGER = 86;
+        public const int LE3_TEXTURE_OVERRIDE = 87;
     }
 }
