@@ -3460,8 +3460,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             ConversationExtended conversation = new(bioConversation);
             int totalStrings = talkfile.StringRefs?.Count ?? 0;
             int processedCount = 0;
-
-
             if (totalStrings > 20)
             {
                 bool proceed = PromptForBool(
@@ -3484,12 +3482,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     ShowSuccess($"Operation cancelled. {processedCount} strings were added.");
                     return;
                 }
-
-
                 bool isReply = choice == MessageBoxResult.Yes;
-
                 string structType = isReply ? "BioDialogReplyNode" : "BioDialogEntryNode";
-          
                 string listPropName = isReply ? "m_ReplyList" : "m_EntryList";
                 PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, structType, true, pcc);
                 newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", pcc.Game, "eGUIStyle"));
@@ -3519,7 +3513,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 processedCount++;
             }
             conversation.Export.WriteProperties(conversation.BioConvo);
-            ShowSuccess($"Added all the tlk strings for {conversation.ConvName}");
+            ShowSuccess($"Added {processedCount} strings to {conversation.ConvName}");
         }
 
         public static void CreateConversationExperiment(PackageEditorWindow pew)
