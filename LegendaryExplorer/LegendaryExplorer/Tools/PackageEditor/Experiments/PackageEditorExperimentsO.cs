@@ -9,8 +9,10 @@ using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -3446,6 +3448,85 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             StreamFile(pew.Pcc, filename, conditionalFile);
 
             ShowSuccess($"Added loading and streaming for {filename} wherever {conditionalFile} is present");
+        }
+        /// <summary>
+        /// Add all the strings in a tlk file as entries/replies in a BioConversation.
+        /// </summary>
+        /// <param name="pcc">Package to operate on.</param>
+        ///  <param name="talkfile">BioTlkFile export.</param>
+        /// <param name="bioConversation">Conversation to be edited..</param>
+        public static void CreateConversation(ME1TalkFile talkfile, IMEPackage pcc, ExportEntry bioConversation)
+        {
+            ConversationExtended conversation = new(bioConversation);
+            foreach (var stringref in talkfile.StringRefs)
+            {
+                bool isReply = PromptForBool($"Is this a reply node: {stringref.Data}?", "?");
+
+                string structType = isReply ? "BioDialogReplyNode" : "BioDialogEntryNode";
+                string listPropName = isReply ? "m_ReplyList" : "m_EntryList";
+                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, structType, true, pcc);
+                newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", pcc.Game, "eGUIStyle"));
+                if (isReply)
+                {
+                    newprop.GetProp<IntProperty>("nListenerIndex").Value = -1;
+                    newprop.GetProp<EnumProperty>("ReplyType").Value = "REPLY_STANDARD";
+                }
+                else
+                {
+                    newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
+                    newprop.GetProp<IntProperty>("nListenerIndex").Value = -2;
+                    newprop.GetProp<BoolProperty>("bSkippable").Value = true;
+                }
+                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
+                newprop.GetProp<StringRefProperty>("srText").Value = stringref.StringID;
+                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
+                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
+                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
+                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
+                var props = conversation.BioConvo.GetProp<ArrayProperty<StructProperty>>(listPropName) ??
+                            new ArrayProperty<StructProperty>(listPropName);
+                props.Add(new StructProperty(structType, newprop));
+                conversation.BioConvo.AddOrReplaceProp(props);
+            }
+            conversation.Export.WriteProperties(conversation.BioConvo);
+            ShowSuccess($"Added all the tlk strings for {conversation.ConvName}");
+        }
+
+        public static void CreateConversationExperiment(PackageEditorWindow pew)
+        {
+            ExportEntry TLKExport;
+            IEntry BioTLKFileClass = pew.Pcc.GetEntryOrAddImport("SFXGame.BioTLKFile", "Class", "Core");
+            IEntry BioConversationClass = pew.Pcc.GetEntryOrAddImport("SFXGame.BioConversation", "Class", "Core");
+            PackageCache cache = new PackageCache();
+            var convoExport = ResolveEntryToExport(pew.SelectedItem?.Entry, cache);
+
+            if (convoExport.Game != MEGame.LE1)
+            {
+                ShowError("This experiment is only for ME1 conversations currently.");
+                return;
+            }
+            if (convoExport.Class != BioConversationClass)
+            {
+                ShowError("Selected export is not a BioConversation");
+                return;
+            }
+            int tlkfileID = PromptForInt("Index of the BioTLKFile", "Not a valid ID.");
+
+            if (!pew.Pcc.TryGetUExport(tlkfileID, out TLKExport))
+            {
+                return;
+            }
+            if (TLKExport.Class != BioTLKFileClass)
+            {
+                ShowError("Not a valid BioTLKFile Index.");
+                return;
+
+            }
+            var talkfile = new ME1TalkFile(pew.Pcc, TLKExport.UIndex);
+            CreateConversation(talkfile, pew.Pcc, convoExport);
+
         }
 
         // HELPER FUNCTIONS
