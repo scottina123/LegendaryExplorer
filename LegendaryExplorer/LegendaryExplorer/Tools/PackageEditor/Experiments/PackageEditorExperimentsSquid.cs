@@ -1073,8 +1073,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             var d = new SaveFileDialog { Filter = "PSKX|*.pskx" , FileName = bmf.ObjectNameString};
             if (d.ShowDialog() == true)
             {
-
-                var baseHeadMesh = pew.Pcc.GetEntry(bmf.GetProperty<ObjectProperty>("m_oBaseHead").Value) as ExportEntry;
+                var baseHeadMesh = SharedMethods.ResolveEntryToExport(pew.Pcc.GetEntry(bmf.GetProperty<ObjectProperty>("m_oBaseHead").Value), new PackageCache());
                 var baseMeshBin = baseHeadMesh.GetBinaryData<SkeletalMesh>();
                 var bmfBin = bmf.GetBinaryData<BioMorphFace>();
 
