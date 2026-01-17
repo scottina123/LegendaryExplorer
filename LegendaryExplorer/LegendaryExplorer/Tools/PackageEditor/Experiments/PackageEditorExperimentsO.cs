@@ -3519,7 +3519,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static void CreateConversationExperiment(PackageEditorWindow pew)
         {
             ExportEntry TLKExport;
-            IEntry BioTLKFileClass = pew.Pcc.GetEntryOrAddImport("SFXGame.BioTLKFile", "Class", "Core");
             IEntry BioConversationClass = pew.Pcc.GetEntryOrAddImport("SFXGame.BioConversation", "Class", "Core");
             PackageCache cache = new PackageCache();
             var convoExport = ResolveEntryToExport(pew.SelectedItem?.Entry, cache);
@@ -3537,18 +3536,13 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 ShowError("Selected export is not a BioConversation");
                 return;
             }
-            int tlkfileID = PromptForInt("Index of the BioTLKFile", "Not a valid ID.", -1);
+            TLKExport = EntrySelector.GetEntry<ExportEntry>(pew, pew.Pcc, "Select BioTlkFile export", 
+                exp => exp.ClassName == "BioTlkFile");
 
-            if (!pew.Pcc.TryGetUExport(tlkfileID, out TLKExport))
+            if (TLKExport == null)
             {
-                ShowError("Could not find export with the given index.");
+                // User cancelled or no valid BioTlkFile found
                 return;
-            }
-            if (TLKExport.Class != BioTLKFileClass)
-            {
-                ShowError("Not a valid BioTLKFile Index.");
-                return;
-
             }
             var talkfile = new ME1TalkFile(pew.Pcc, TLKExport.UIndex);
             CreateConversation(talkfile, pew.Pcc, convoExport);
