@@ -3460,6 +3460,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             ConversationExtended conversation = new(bioConversation);
             int totalStrings = talkfile.StringRefs?.Count ?? 0;
             int processedCount = 0;
+
+            // If more than 20 strings, tell the user there's gonna be a lot of dialogs
             if (totalStrings > 20)
             {
                 bool proceed = PromptForBool(
@@ -3471,6 +3473,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     return;
                 }
             }
+
+            // Enumerate all strings in the TLK export and ask the user if they are reply nodes or entry nodes,
+            // then add them to the conversation accordingly
             foreach (var stringref in talkfile.StringRefs)
             {
                 string message = $"Is this a reply node?\n\n{stringref.Data}";
@@ -3482,6 +3487,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     ShowSuccess($"Operation cancelled. {processedCount} strings were added.");
                     return;
                 }
+
+                // Build reply/entry properties
                 bool isReply = choice == MessageBoxResult.Yes;
                 string structType = isReply ? "BioDialogReplyNode" : "BioDialogEntryNode";
                 string listPropName = isReply ? "m_ReplyList" : "m_EntryList";
@@ -3516,27 +3523,38 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             ShowSuccess($"Added {processedCount} strings to {conversation.ConvName}");
         }
 
+        /// <summary>
+        /// Populates a conversation object with replies/entries based on a TLK export in the specified package editor
+        /// window.
+        /// </summary>
+        /// <remarks>This method is intended for use with LE1 conversation exports
+        /// only. The selected export must be of the BioConversation class, and a valid BioTlkFile export must be
+        /// selected as a source. If these conditions are not met, the method will display an error and return without making
+        /// changes.</remarks>
+        /// <param name="pew">The package editor window containing the package and selected export to use for the conversation experiment.
+        /// Cannot be null.</param>
         public static void CreateConversationExperiment(PackageEditorWindow pew)
         {
-            ExportEntry TLKExport;
-            IEntry BioConversationClass = pew.Pcc.GetEntryOrAddImport("SFXGame.BioConversation", "Class", "Core");
-            PackageCache cache = new PackageCache();
-            var convoExport = ResolveEntryToExport(pew.SelectedItem?.Entry, cache);
-            if (pew.Pcc == null || pew.SelectedItem?.Entry == null) 
-            { 
+            if (pew.Pcc == null || pew.SelectedItem?.Entry == null)
+            {
                 return;
             }
-            if (convoExport.Game != MEGame.LE1)
+            if (pew.Pcc.Game != MEGame.LE1)
             {
                 ShowError("This experiment is only for LE1 conversations currently.");
                 return;
             }
-            if (convoExport.Class != BioConversationClass)
+            var selectedEntry = pew.SelectedItem.Entry;
+            if (selectedEntry.ClassName != "BioConversation")
             {
-                ShowError("Selected export is not a BioConversation");
+                ShowError("Selected entry is not a BioConversation");
                 return;
             }
-            TLKExport = EntrySelector.GetEntry<ExportEntry>(pew, pew.Pcc, "Select BioTlkFile export", 
+
+            PackageCache cache = new PackageCache();
+            var convoExport = ResolveEntryToExport(selectedEntry, cache);
+
+            ExportEntry TLKExport = EntrySelector.GetEntry<ExportEntry>(pew, pew.Pcc, "Select BioTlkFile export", 
                 exp => exp.ClassName == "BioTlkFile");
 
             if (TLKExport == null)
@@ -3544,9 +3562,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 // User cancelled or no valid BioTlkFile found
                 return;
             }
+         
             var talkfile = new ME1TalkFile(pew.Pcc, TLKExport.UIndex);
             CreateConversation(talkfile, pew.Pcc, convoExport);
-
         }
 
         // HELPER FUNCTIONS
