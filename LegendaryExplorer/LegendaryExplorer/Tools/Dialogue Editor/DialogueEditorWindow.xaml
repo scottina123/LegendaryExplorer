@@ -1223,6 +1223,12 @@
                                 <MenuItem Header="Delete Speaker" Command="{Binding DeleteSpeakerCommand}" />
                                 <MenuItem Header="Rename" Command="{Binding ChangeNameCommand}"
                                           ToolTip="Rename the speaker's tag" />
+                                <Separator />
+                                <MenuItem Header="Extract All Audio for Speaker" Command="{Binding ExtractSpeakerAudioCommand}">
+                                    <MenuItem.Icon>
+                                        <fa:ImageAwesome Icon="Solid_FileAudio" Width="16" Height="16" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </ListBox.ContextMenu>
                     </ListBox>
