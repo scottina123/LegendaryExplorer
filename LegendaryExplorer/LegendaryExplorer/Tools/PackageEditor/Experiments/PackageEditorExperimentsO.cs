@@ -9,8 +9,10 @@ using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -3446,6 +3448,123 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             StreamFile(pew.Pcc, filename, conditionalFile);
 
             ShowSuccess($"Added loading and streaming for {filename} wherever {conditionalFile} is present");
+        }
+        /// <summary>
+        /// Add all the strings in a tlk file as entries/replies in a BioConversation.
+        /// </summary>
+        /// <param name="pcc">Package to operate on.</param>
+        /// <param name="talkfile">BioTlkFile export.</param>
+        /// <param name="bioConversation">Conversation to be edited.</param>
+        public static void CreateConversation(ME1TalkFile talkfile, IMEPackage pcc, ExportEntry bioConversation)
+        {
+            ConversationExtended conversation = new(bioConversation);
+            int totalStrings = talkfile.StringRefs?.Count ?? 0;
+            int processedCount = 0;
+
+            // If more than 20 strings, tell the user there's gonna be a lot of dialogs
+            if (totalStrings > 20)
+            {
+                bool proceed = PromptForBool(
+                    $"This TLK contains {totalStrings} strings. You will be prompted once for each string to determine whether it is a reply node. Do you want to continue?",
+                    "Warning");
+                if (!proceed)
+                {
+                    ShowError("Operation cancelled.");
+                    return;
+                }
+            }
+
+            // Enumerate all strings in the TLK export and ask the user if they are reply nodes or entry nodes,
+            // then add them to the conversation accordingly
+            foreach (var stringref in talkfile.StringRefs)
+            {
+                string message = $"Is this a reply node?\n\n{stringref.Data}";
+                MessageBoxResult choice = MessageBox.Show(message, "Select node type", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+
+                if (choice == MessageBoxResult.Cancel)
+                {
+                    conversation.Export.WriteProperties(conversation.BioConvo);
+                    ShowSuccess($"Operation cancelled. {processedCount} strings were added.");
+                    return;
+                }
+
+                // Build reply/entry properties
+                bool isReply = choice == MessageBoxResult.Yes;
+                string structType = isReply ? "BioDialogReplyNode" : "BioDialogEntryNode";
+                string listPropName = isReply ? "m_ReplyList" : "m_EntryList";
+                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, structType, true, pcc);
+                newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", pcc.Game, "eGUIStyle"));
+                if (isReply)
+                {
+                    newprop.GetProp<IntProperty>("nListenerIndex").Value = -1;
+                    newprop.GetProp<EnumProperty>("ReplyType").Value = "REPLY_STANDARD";
+                }
+                else
+                {
+                    newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
+                    newprop.GetProp<IntProperty>("nListenerIndex").Value = -2;
+                    newprop.GetProp<BoolProperty>("bSkippable").Value = true;
+                }
+                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
+                newprop.GetProp<StringRefProperty>("srText").Value = stringref.StringID;
+                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
+                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
+                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
+                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
+                var props = conversation.BioConvo.GetProp<ArrayProperty<StructProperty>>(listPropName) ??
+                            new ArrayProperty<StructProperty>(listPropName);
+                props.Add(new StructProperty(structType, newprop));
+                conversation.BioConvo.AddOrReplaceProp(props);
+                processedCount++;
+            }
+            conversation.Export.WriteProperties(conversation.BioConvo);
+            ShowSuccess($"Added {processedCount} strings to {conversation.ConvName}");
+        }
+
+        /// <summary>
+        /// Populates a conversation object with replies/entries based on a TLK export in the specified package editor
+        /// window.
+        /// </summary>
+        /// <remarks>This method is intended for use with LE1 conversation exports
+        /// only. The selected export must be of the BioConversation class, and a valid BioTlkFile export must be
+        /// selected as a source. If these conditions are not met, the method will display an error and return without making
+        /// changes.</remarks>
+        /// <param name="pew">The package editor window containing the package and selected export to use for the conversation experiment.
+        /// Cannot be null.</param>
+        public static void CreateConversationExperiment(PackageEditorWindow pew)
+        {
+            if (pew.Pcc == null || pew.SelectedItem?.Entry == null)
+            {
+                return;
+            }
+            if (pew.Pcc.Game != MEGame.LE1)
+            {
+                ShowError("This experiment is only for LE1 conversations currently.");
+                return;
+            }
+            var selectedEntry = pew.SelectedItem.Entry;
+            if (selectedEntry.ClassName != "BioConversation")
+            {
+                ShowError("Selected entry is not a BioConversation");
+                return;
+            }
+
+            PackageCache cache = new PackageCache();
+            var convoExport = ResolveEntryToExport(selectedEntry, cache);
+
+            ExportEntry TLKExport = EntrySelector.GetEntry<ExportEntry>(pew, pew.Pcc, "Select BioTlkFile export", 
+                exp => exp.ClassName == "BioTlkFile");
+
+            if (TLKExport == null)
+            {
+                // User cancelled or no valid BioTlkFile found
+                return;
+            }
+         
+            var talkfile = new ME1TalkFile(pew.Pcc, TLKExport.UIndex);
+            CreateConversation(talkfile, pew.Pcc, convoExport);
         }
 
         // HELPER FUNCTIONS
