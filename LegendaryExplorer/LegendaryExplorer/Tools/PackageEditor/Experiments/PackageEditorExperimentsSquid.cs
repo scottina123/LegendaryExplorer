@@ -732,7 +732,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                 meshExport.WriteProperty(lodInfoProp);
             }
-
         }
 
         public static void ImportPskOverMesh(PackageEditorWindow pew)
@@ -885,29 +884,48 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
 
-            void ExportBaseMaterialTextures(ExportEntry baseMatEntry)
+            void ExportBaseMaterialTextures(ExportEntry baseMatEntry, bool includeUniformExpressionTextures = true)
             {
+                if (includeUniformExpressionTextures)
+                {
+                    var matBin = ObjectBinary.From<Material>(baseMatEntry);
+                    if (matBin.SM2MaterialResource.UniformExpressionTextures != null)
+                    {
+                        foreach (var texIdx in matBin.SM2MaterialResource.UniformExpressionTextures)
+                        {
+                            if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
+                            {
+                                // skip the really dumb textures
+                                if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
+                                {
+                                    continue;
+                                }
+                                baseTextures.Add(tex);
+                            }
+                        }
+                    }
+
+                    if (matBin.SM3MaterialResource.UniformExpressionTextures != null)
+                    {
+                        foreach (var texIdx in matBin.SM3MaterialResource.UniformExpressionTextures)
+                        {
+                            if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
+                            {
+                                // skip the really dumb textures
+                                if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
+                                {
+                                    continue;
+                                }
+                                baseTextures.Add(tex);
+                            }
+                        }
+                    }
+                }
+
                 var expressions = baseMatEntry.GetProperty<ArrayProperty<ObjectProperty>>("Expressions");
                 if (expressions == null)
                 {
                     return;
-                }
-
-                var matBin = ObjectBinary.From<Material>(baseMatEntry);
-                if (matBin.SM3MaterialResource.UniformExpressionTextures != null)
-                {
-                    foreach (var texIdx in matBin.SM3MaterialResource.UniformExpressionTextures)
-                    {
-                        if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
-                        {
-                            // skip the really dumb textures
-                            if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
-                            {
-                                continue;
-                            }
-                            baseTextures.Add(tex);
-                        }
-                    }
                 }
 
                 // Read default expressions
@@ -922,7 +940,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
         }
-        
+
         private class TempVertex
         {
             public ushort Index { get; set; }
