@@ -1328,6 +1328,16 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         // EXPERIMENTS: DropTheSquid
         #region DropTheSquid's Experiments
+
+        private void ExportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            SquidGltf.ExportSkeletetalMeshToGltf(GetPEWindow());
+        }
+        private void ImportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            SquidGltf.ImportGltf(GetPEWindow());
+        }
+
         private void ImportAnimSet_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportAnimSet(GetPEWindow());
