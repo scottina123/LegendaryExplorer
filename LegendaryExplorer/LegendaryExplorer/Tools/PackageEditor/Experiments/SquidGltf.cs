@@ -163,43 +163,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return intermediateLod;
         }
 
-        /// <summary>
-        /// glTF uses y up axis conventions. Convert this to the unreal conventions of z up and proper y direction
-        /// </summary>
-        private static Vector3 Yup2Zup(Vector3 input)
-        {
-            return new Vector3(input.X, input.Z, input.Y);
-        }
-
-        private static Vector3 ScaleForGltf(Vector3 input)
-        {
-            return input / 100;
-        }
-
-        private static Vector3 ScaleForME(Vector3 input)
-        {
-            return input * 100;
-        }
-
-        private static Quaternion Yup2Zup(Quaternion input)
-        {
-            var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
-            return Quaternion.Normalize(input * transformQuat);
-        }
-
-
-        private static Vector3 Zup2Yup(Vector3 input)
-        {
-            return new Vector3(input.X, input.Z, input.Y);
-        }
-
-        private static Quaternion Zup2Yup(Quaternion input)
-        {
-            // TODO check this works
-            var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
-            return Quaternion.Normalize(input / transformQuat);
-        }
-
         private static ModelRoot ToGltf(params IntermediateMesh[] meshes)
         {
             var scene = new SceneBuilder();
@@ -227,14 +190,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     if (bone.ParentIndex == -1 || bone.ParentIndex == i)
                     {
                         // this is a root bone; change the local transform to account for the coordiante system differences
-                        nb.WithLocalTranslation(ScaleForGltf(Zup2Yup(bone.Position)))
-                          .WithLocalRotation(Zup2Yup(bone.Rotation));
+                        nb.WithLocalTranslation(TransformPosition(bone.Position))
+                          .WithLocalRotation(TransformRotation(Quaternion.Conjugate(bone.Rotation)));
                         baseSkeletonNode.AddNode(nb);
                     }
                     else
                     {
-                        nb.WithLocalTranslation(ScaleForGltf(bone.Position))
-                          .WithLocalRotation(bone.Rotation);
+                        nb.WithLocalTranslation(TransformPosition(bone.Position))
+                          .WithLocalRotation(TransformRotation(bone.Rotation));
                     }
                     skeletonNodes[i] = nb;
                 }
@@ -271,7 +234,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             {
                                 var intermediateVert = section.Vertices[i];
                                 return new VertexBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>()
-                                    .WithGeometry(ScaleForGltf(Zup2Yup(intermediateVert.Position)), Zup2Yup(intermediateVert.Normal.Value))
+                                    .WithGeometry(TransformPosition(intermediateVert.Position), TransformDirection(intermediateVert.Normal.Value))
                                     .WithMaterial([..intermediateVert.UVs])
                                     .WithSkinning(intermediateVert.Influences);
                             }
@@ -802,5 +765,47 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             filePath = null;
             return false;
         }
+
+
+        #region from glTF
+        private static Vector3 Yup2Zup(Vector3 input)
+        {
+            return new Vector3(input.X, input.Z, input.Y);
+        }
+
+        private static Quaternion Yup2Zup(Quaternion input)
+        {
+            var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
+            return Quaternion.Normalize(input * transformQuat);
+        }
+
+        private static Vector3 ScaleForME(Vector3 input)
+        {
+            return input * 100;
+        }
+        #endregion
+
+        #region to glTF
+        private static Vector3 TransformPosition(Vector3 input)
+        {
+            return new Vector3(input.X, input.Z, input.Y) / 100;
+        }
+
+        private static Vector3 TransformDirection(Vector3 input)
+        {
+            return new Vector3(input.X, input.Z, input.Y);
+        }
+
+        private static Quaternion TransformRotation(Quaternion input)
+        {
+            var result = new Quaternion(input.X, input.Z, input.Y, -input.W);
+            if (result.X == 0f && result.Y == 0f && result.Z == 0f && result.W == 1f)
+            {
+                return new Quaternion(-0f, -0f, 0f, -1f);
+            }
+
+            return result;
+        }
+        #endregion
     }
 }
