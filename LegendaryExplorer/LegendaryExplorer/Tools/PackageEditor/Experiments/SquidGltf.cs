@@ -1,4 +1,5 @@
-﻿using LegendaryExplorerCore.Gammtek.Extensions;
+﻿using DocumentFormat.OpenXml.Presentation;
+using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -17,6 +18,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
     public class SquidGltf
     {
+        // TODO restore this to 100 like it should be
+        private const float ScaleFactor = 1;
         public static void ImportGltf(PackageEditorWindow pew)
         {
             if (GetGltfFromFile(out var gltf, out string _))
@@ -190,14 +193,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     if (bone.ParentIndex == -1 || bone.ParentIndex == i)
                     {
                         // this is a root bone; change the local transform to account for the coordiante system differences
-                        nb.WithLocalTranslation(TransformPosition(bone.Position))
-                          .WithLocalRotation(TransformRotation(Quaternion.Conjugate(bone.Rotation)));
+                        nb.WithLocalTranslation(TransformRootBonePosition(bone.Position))
+                            .WithLocalRotation(TransformRootBoneRotation(bone.Rotation));
                         baseSkeletonNode.AddNode(nb);
                     }
                     else
                     {
-                        nb.WithLocalTranslation(TransformPosition(bone.Position))
-                          .WithLocalRotation(TransformRotation(bone.Rotation));
+                        nb.WithLocalTranslation(TransformBonePosition(bone.Position))
+                          .WithLocalRotation(TransformBoneRotation(bone.Rotation));
                     }
                     skeletonNodes[i] = nb;
                 }
@@ -781,14 +784,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Vector3 ScaleForME(Vector3 input)
         {
-            return input * 100;
+            return input * ScaleFactor;
         }
         #endregion
 
         #region to glTF
         private static Vector3 TransformPosition(Vector3 input)
         {
-            return new Vector3(input.X, input.Z, input.Y) / 100;
+            return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
         }
 
         private static Vector3 TransformDirection(Vector3 input)
@@ -798,13 +801,49 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Quaternion TransformRotation(Quaternion input)
         {
-            var result = new Quaternion(input.X, input.Z, input.Y, -input.W);
-            if (result.X == 0f && result.Y == 0f && result.Z == 0f && result.W == 1f)
-            {
-                return new Quaternion(-0f, -0f, 0f, -1f);
-            }
+            return new Quaternion(input.X, input.Z, input.Y, -input.W);
+        }
 
-            return result;
+        private static Vector3 TransformBonePosition(Vector3 input)
+        {
+            //var temp = new Vector3(input.X, input.Y, input.Z) / ScaleFactor;
+            //temp = Vector3.Transform(temp, new Quaternion(QuatHalf, 0, 0, -QuatHalf));
+            //return temp;
+            var temp = new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
+            return temp; // new Vector3(temp.X, temp.Z, temp.Y);
+        }
+
+        private static readonly float QuatHalf = (float)(Math.Sqrt(2) / 2);
+
+
+        private static Quaternion TransformRootBoneRotation(Quaternion input)
+        {
+            // add a 90 degree rotation around the x axis
+            var transform = new Quaternion(QuatHalf, 0, 0, -QuatHalf);
+
+            // rotate the input by this amount
+            //var result = transform * input;
+
+            //// translate to the new coordinate system
+            //result = new Quaternion(result.X, result.Z, result.Y, -result.W);
+
+            return transform * input;
+        }
+
+        private static Vector3 TransformRootBonePosition(Vector3 input)
+        {
+            return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
+        }
+
+        private static Quaternion TransformBoneRotation(Quaternion input)
+        {
+            // first, get it into the form glTF expects due to the swapped axes
+            var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
+            // next, we undo the rotation introduced by the parent
+            temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
+            // finally, we rotate the child in its local axes
+            temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
+            return Quaternion.Normalize(temp);
         }
         #endregion
     }
