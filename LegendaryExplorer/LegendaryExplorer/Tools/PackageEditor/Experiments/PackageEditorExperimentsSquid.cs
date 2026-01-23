@@ -795,48 +795,23 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static void ExportMaterialTextures(ExportEntry materialExport, string exportDirectory, Dictionary<string, ExportEntry> textureExports = null)
+        public static void GetMaterialTextures(ExportEntry materialExport, out Dictionary<string, ExportEntry> textureExports, out List<ExportEntry> baseTextures, bool includeUniformExpressionTextures = true)
         {
-            textureExports ??= [];
-            List<ExportEntry> baseTextures = [];
+            Dictionary<string, ExportEntry> tempTextureExports = [];
+            List<ExportEntry> tempBaseTextures = [];
             var cache = new PackageCache();
 
             delegateByType(materialExport);
 
-            foreach (var tex in baseTextures)
-            {
-                if (!tex.IsA("Texture2D"))
-                {
-                    continue;
-                }
-                var texture = new Texture2D(tex);
-                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
-                if (!File.Exists(exportPath))
-                {
-                    texture.ExportToPNG(exportPath);
-                }
-            }
-
-            foreach (var tex in textureExports.Values)
-            {
-                if (!tex.IsA("Texture2D"))
-                {
-                    continue;
-                }
-                var texture = new Texture2D(tex);
-                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
-                if (!File.Exists(exportPath))
-                {
-                    texture.ExportToPNG(exportPath);
-                }
-            }
+            textureExports = tempTextureExports;
+            baseTextures = tempBaseTextures;
 
             void delegateByType(ExportEntry materialEntry)
             {
                 var selectedEntryClass = materialEntry.ClassName;
                 if (materialEntry.ClassName == "Material")
                 {
-                    ExportBaseMaterialTextures(materialEntry);
+                    ExportBaseMaterialTextures(materialEntry, includeUniformExpressionTextures);
                 }
                 else if (materialEntry.IsA("MaterialInstanceConstant"))
                 {
@@ -871,9 +846,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     foreach (var texParam in texParamsProp)
                     {
                         var paramName = texParam.GetProp<NameProperty>("ParameterName").Value.Instanced;
-                        if (!textureExports.ContainsKey(paramName) && texParam.GetProp<ObjectProperty>("ParameterValue").TryResolveExport(micExport.FileRef, cache, out var value))
+                        if (!tempTextureExports.ContainsKey(paramName) && texParam.GetProp<ObjectProperty>("ParameterValue").TryResolveExport(micExport.FileRef, cache, out var value))
                         {
-                            textureExports.Add(paramName, value);
+                            if (value.IsA("Texture2D"))
+                            {
+                                tempTextureExports.Add(paramName, value);
+                            }
                         }
                     }
                 }
@@ -900,7 +878,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                                 {
                                     continue;
                                 }
-                                baseTextures.Add(tex);
+                                if (tex.IsA("Texture2D"))
+                                {
+                                    tempBaseTextures.Add(tex);
+                                }
                             }
                         }
                     }
@@ -916,7 +897,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                                 {
                                     continue;
                                 }
-                                baseTextures.Add(tex);
+                                if (tex.IsA("Texture2D"))
+                                {
+                                    tempBaseTextures.Add(tex);
+                                }
                             }
                         }
                     }
@@ -933,10 +917,42 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 {
                     var paramName = expr.GetProperty<NameProperty>("ParameterName")?.Value.Instanced ?? "None";
 
-                    if (!textureExports.ContainsKey(paramName) && expr.GetProperty<ObjectProperty>("Texture").TryResolveExport(baseMatEntry.FileRef, cache, out var value))
+                    if (!tempTextureExports.ContainsKey(paramName) && expr.GetProperty<ObjectProperty>("Texture").TryResolveExport(baseMatEntry.FileRef, cache, out var value))
                     {
-                        textureExports.Add(paramName, value);
+                        tempTextureExports.Add(paramName, value);
                     }
+                }
+            }
+        }
+        public static void ExportMaterialTextures(ExportEntry materialExport, string exportDirectory)
+        {
+            GetMaterialTextures(materialExport, out var textureExports, out var baseTextures, true);
+
+            foreach (var tex in baseTextures)
+            {
+                if (!tex.IsA("Texture2D"))
+                {
+                    continue;
+                }
+                var texture = new Texture2D(tex);
+                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
+                if (!File.Exists(exportPath))
+                {
+                    texture.ExportToPNG(exportPath);
+                }
+            }
+
+            foreach (var tex in textureExports.Values)
+            {
+                if (!tex.IsA("Texture2D"))
+                {
+                    continue;
+                }
+                var texture = new Texture2D(tex);
+                var exportPath = Path.Combine(exportDirectory, $"{tex.ObjectNameString}.png");
+                if (!File.Exists(exportPath))
+                {
+                    texture.ExportToPNG(exportPath);
                 }
             }
         }
