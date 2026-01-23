@@ -3692,43 +3692,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             try
             {
-                int extractedCount = 0;
-                string speakerName = Regex.Replace(SelectedSpeaker.SpeakerName, @"[<>:""/\\|?*]", "_");
-
-                foreach (var entry in speakerEntries)
-                {
-                    string baseFileName = $"{speakerName}_E{entry.NodeCount}_SR{entry.LineStrRef}";
-
-                    // Add dialogue text if requested
-                    if (includeDialogueText && !string.IsNullOrWhiteSpace(entry.Line))
-                    {
-                        // Truncate to 40 characters and sanitize for filename
-                        string dialogueText = entry.Line.Length > 40 ? entry.Line.Substring(0, 40) : entry.Line;
-                        dialogueText = Regex.Replace(dialogueText, @"[<>:""/\\|?*]", "_");
-                        dialogueText = dialogueText.Replace('\n', ' ').Replace('\r', ' ').Trim();
-                        baseFileName += $"_{dialogueText}";
-                    }
-
-                    // Extract male audio
-                    if (entry.WwiseStream_Male != null)
-                    {
-                        string maleFileName = Path.Combine(folderDialog.SelectedPath, $"{baseFileName}_M.wav");
-                        if (ExtractWwiseAudio(entry.WwiseStream_Male, maleFileName))
-                        {
-                            extractedCount++;
-                        }
-                    }
-
-                    // Extract female audio
-                    if (entry.WwiseStream_Female != null)
-                    {
-                        string femaleFileName = Path.Combine(folderDialog.SelectedPath, $"{baseFileName}_F.wav");
-                        if (ExtractWwiseAudio(entry.WwiseStream_Female, femaleFileName))
-                        {
-                            extractedCount++;
-                        }
-                    }
-                }
+                var extractedCount = ExtractAudioFilesForSpeaker(speakerEntries, SelectedSpeaker.SpeakerName, includeDialogueText, folderDialog.SelectedPath);
 
                 MessageBox.Show($"Successfully extracted {extractedCount} audio file(s) for speaker '{SelectedSpeaker.SpeakerName}'.", "Dialogue Editor");
 
@@ -3746,14 +3710,66 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private bool ExtractWwiseAudio(ExportEntry wwiseStream, string outputPath)
+        /// <summary>
+        /// Extracts audio files for a given speaker's dialogue entries and saves them to the specified output folder. 
+        /// Filenames are generated based on the speaker name, entry number, string reference, and optionally 
+        /// include a shortened version of the dialogue text.
+        /// </summary>
+        /// <param name="speakerEntries"></param>
+        /// <param name="includeDialogueText"></param>
+        /// <param name="outputFolder"></param>
+        /// <returns></returns>
+        public static int ExtractAudioFilesForSpeaker(List<DialogueNodeExtended> speakerEntries, string tag, bool includeDialogueText, string outputFolder)
+        {
+            int extractedCount = 0;
+            string speakerName = Regex.Replace(tag, @"[<>:""/\\|?*]", "_");
+
+            foreach (var entry in speakerEntries)
+            {
+                string baseFileName = $"{speakerName}_E{entry.NodeCount}_SR{entry.LineStrRef}";
+
+                // Add dialogue text if requested
+                if (includeDialogueText && !string.IsNullOrWhiteSpace(entry.Line))
+                {
+                    // Truncate to 40 characters and sanitize for filename
+                    string dialogueText = entry.Line.Length > 40 ? entry.Line.Substring(0, 40) : entry.Line;
+                    dialogueText = Regex.Replace(dialogueText, @"[<>:""/\\|?*]", "_");
+                    dialogueText = dialogueText.Replace('\n', ' ').Replace('\r', ' ').Trim();
+                    baseFileName += $"_{dialogueText}";
+                }
+
+                // Extract male audio
+                if (entry.WwiseStream_Male != null)
+                {
+                    string maleFileName = Path.Combine(outputFolder, $"{baseFileName}_M.wav");
+                    if (ExtractWwiseAudio(entry.WwiseStream_Male, maleFileName))
+                    {
+                        extractedCount++;
+                    }
+                }
+
+                // Extract female audio
+                if (entry.WwiseStream_Female != null)
+                {
+                    string femaleFileName = Path.Combine(outputFolder, $"{baseFileName}_F.wav");
+                    if (ExtractWwiseAudio(entry.WwiseStream_Female, femaleFileName))
+                    {
+                        extractedCount++;
+                    }
+                }
+            }
+
+            return extractedCount;
+        }
+
+        private static bool ExtractWwiseAudio(ExportEntry wwiseStream, string outputPath)
         {
             try
             {
                 // Get the WwiseStream binary data and use CreateWave() to generate WAV file
                 var wwiseStreamData = wwiseStream.GetBinaryData<WwiseStream>();
                 string tempWavPath = wwiseStreamData.CreateWave();
-                
+
                 if (tempWavPath != null && File.Exists(tempWavPath))
                 {
                     File.Copy(tempWavPath, outputPath, true);
