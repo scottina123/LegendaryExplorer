@@ -231,7 +231,12 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
 
             var compiledFunctions = new List<UFunction>();
             classObj.LocalFunctionMap.Clear();
-            foreach (Function function in classAST.Functions)
+
+            var fullFuncList = new List<Function>();
+            fullFuncList.AddRange(classAST.Functions);
+            fullFuncList.AddRange(classAST.Functions.SelectMany(f => f.Lambdas));
+            fullFuncList.AddRange(classAST.States.SelectMany(s => s.Functions.SelectMany(f => f.Lambdas)));
+            foreach (Function function in fullFuncList)
             {
                 existingFunctions.Remove(function.Name, out UFunction uFunction);
                 childrenHaveBeenAdded |= uFunction is null;
@@ -370,6 +375,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
 
         private static void CompileState(State stateAST, IEntry parent, ref UState stateObj, UnrealScriptOptionsPackage usop)
         {
+            bool hasLambdas = stateAST.Functions.Any(f => f.Lambdas.Count > 0);
             var finishStateCompilation = CreateStateStub(stateAST, parent, ref stateObj, usop);
             finishStateCompilation(usop);
         }
@@ -463,6 +469,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
 
         private static void CompileFunction(Function funcAST, IEntry parent, ref UFunction funcObj, UnrealScriptOptionsPackage usop)
         {
+            bool hasLambdas = funcAST.Lambdas.Count > 0;
             Action<UnrealScriptOptionsPackage> finishFunctionCompilation = CreateFunctionStub(funcAST, parent, ref funcObj, usop);
             finishFunctionCompilation(usop);
         }

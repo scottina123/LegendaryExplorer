@@ -398,6 +398,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                         (_, log) = UnrealScriptCompiler.CompileClass(Pcc, scriptText, CurrentFileLib, usop, CurrentLoadedExport, CurrentLoadedExport.Parent);
                         break;
                     case "Function":
+                        if (CurrentLoadedExport.ObjectName.Name.StartsWith("__lambda__", StringComparison.OrdinalIgnoreCase))
+                        {
+                            OutputListBox.ItemsSource = new[] { "Lambdas cannot be edited on their own. You can edit them in the function they are defined in." };
+                            return;
+                        }
                         (_, log) = UnrealScriptCompiler.CompileFunction(CurrentLoadedExport, scriptText, CurrentFileLib, usop);
                         break;
                     case "State":
@@ -434,7 +439,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                         (_, log) = UnrealScriptCompiler.CompileDefaultProperties(CurrentLoadedExport, scriptText, CurrentFileLib, usop);
                         break;
                 }
-                OutputListBox.ItemsSource = log?.Content;
+                OutputListBox.ItemsSource = log?.ErrorsThenWarnings;
             }
         }
 
@@ -559,7 +564,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                 {
                     _definitionLinkGenerator.Reset();
                 }
-                OutputListBox.ItemsSource = log.Content;
+                OutputListBox.ItemsSource = log.ErrorsThenWarnings;
             }
         }
 
@@ -796,7 +801,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                     textEditor.SyntaxHighlighting = syntaxInfo;
                 }
 
-                OutputListBox.ItemsSource = log.Content;
+                OutputListBox.ItemsSource = log.ErrorsThenWarnings;
             }
         }
 

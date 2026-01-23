@@ -18,6 +18,8 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling.Errors
         private readonly List<LogMessage> content = [];
         public IReadOnlyList<LogMessage> Content => content.AsReadOnly();
 
+        public IReadOnlyList<LogMessage> ErrorsThenWarnings => content.Where(m => m is Error or LineError).Concat(content.Where(m => m is Warning or LineWarning)).ToList();
+
         public IReadOnlyList<LogMessage> AllErrors => content.Where(m => m is Error or LineError).ToList();
         public IReadOnlyList<LogMessage> AllWarnings => content.Where(m => m is Warning or LineWarning).ToList();
 
