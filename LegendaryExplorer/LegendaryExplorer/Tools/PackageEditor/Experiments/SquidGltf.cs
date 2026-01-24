@@ -1,6 +1,7 @@
 ﻿using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Classes;
@@ -48,24 +49,21 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             foreach (var mat in mesh.Materials)
             {
                 var intermediateMat = new IntermediateMaterial();
-                string name;
                 if (mat == 0)
                 {
-                    name = "null";
+                    intermediateMat.Name = "null";
                 }
                 else
                 {
                     var materialEntry = mesh.Export.FileRef.GetEntry(mat);
-                    name = materialEntry.MemoryFullPath;
-                    //if (materialEntry is ImportEntry imp)
-                    //{
-                    //    materialEntry = EntryImporter.ResolveImport(imp, new PackageCache());
-                    //}
-                    //var textureDirectory = $"{d.FileName[..^5]}_Textures";
-                    //PackageEditorExperimentsSquid.ExportMaterialTextures(materialEntry as ExportEntry, textureDirectory);
-
+                    intermediateMat.Name = materialEntry.MemoryFullPath;
+                    if (materialEntry is ImportEntry imp)
+                    {
+                        materialEntry = EntryImporter.ResolveImport(imp, new PackageCache());
+                    }
+                    FindBestDiffAndNormForMaterial(intermediateMat, materialEntry as ExportEntry);
                 }
-                intermediateMesh.Materials.Add(new IntermediateMaterial(name));
+                intermediateMesh.Materials.Add(intermediateMat);
             }
 
             // skeleton
@@ -177,8 +175,13 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 List<MaterialBuilder> mats = [];
                 foreach (var intermediateMat in mesh.Materials)
                 {
-                    var mat = new MaterialBuilder(intermediateMat.Name)
-                        .WithBaseColor(new Vector4(.5f, .5f, .5f, 1));
+                    var mat = new MaterialBuilder(intermediateMat.Name);
+                    if (intermediateMat.DiffTexture != null)
+                    {
+                        var imageBytes = intermediateMat.DiffTexture.GetPNG(intermediateMat.DiffTexture.GetTopMip());
+                        var diffImage = ImageBuilder.From(imageBytes, intermediateMat.DiffTexture.Export.ObjectNameString);
+                        mat.WithBaseColor(diffImage);
+                    }
                     // TODO support diff, norm, etc here
                     mats.Add(mat);
                 }
@@ -871,6 +874,34 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         #endregion
 
+        private static void FindBestDiffAndNormForMaterial(IntermediateMaterial mat, ExportEntry matEntry)
+        {
+            // TODO hardcode in what params to look for for specific known materials to avoid the stupid gold bars texture, among other things. 
+            PackageEditorExperimentsSquid.GetMaterialTextures(matEntry, out var textures, out var baseTextures);
+            foreach (var (param, tex) in textures)
+            {
+                // don't look at the params, it'll pull in things like teeth diff for the scalp which are not what you want
+                if (/*param.Contains("Diff", StringComparison.InvariantCultureIgnoreCase) || */tex.ObjectName.ToString().Contains("Diff", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    mat.DiffTexture ??= new Texture2D(tex);
+                }
+                else if (/*param.Contains("Norm", StringComparison.InvariantCultureIgnoreCase) ||*/ tex.ObjectName.ToString().Contains("Norm", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    mat.NormalTexture ??= new Texture2D(tex);
+                }
+            }
+            foreach (var tex in baseTextures)
+            {
+                if (tex.ObjectName.ToString().Contains("Diff", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    mat.DiffTexture ??= new Texture2D(tex);
+                }
+                else if (tex.ObjectName.ToString().Contains("Norm", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    mat.NormalTexture ??= new Texture2D(tex);
+                }
+            }
+        }
 
         // TODO this is probably broadly useful and could live somewhere else as an extension method
         public static IEntry FindEntryByMemeroryFullPath(IMEPackage pachage, string memoryFullPath, string className = null)

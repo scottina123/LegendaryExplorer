@@ -848,6 +848,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         var paramName = texParam.GetProp<NameProperty>("ParameterName").Value.Instanced;
                         if (!tempTextureExports.ContainsKey(paramName) && texParam.GetProp<ObjectProperty>("ParameterValue").TryResolveExport(micExport.FileRef, cache, out var value))
                         {
+                            // skip the really dumb textures
+                            if (value.ObjectNameString.StartsWith("GBL_ARM_ALL"))
+                            {
+                                continue;
+                            }
                             if (value.IsA("Texture2D"))
                             {
                                 tempTextureExports.Add(paramName, value);
