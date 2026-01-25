@@ -12,10 +12,16 @@ using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
 using SharpGLTF.Scenes;
 using SharpGLTF.Schema2;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Processing.Processors.Filters;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using IsImage = SixLabors.ImageSharp.Image;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
@@ -176,13 +182,39 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 foreach (var intermediateMat in mesh.Materials)
                 {
                     var mat = new MaterialBuilder(intermediateMat.Name);
+                    if (intermediateMat.TwoSided)
+                    {
+                        mat.WithDoubleSide(true);
+                    }
                     if (intermediateMat.DiffTexture != null)
                     {
                         var imageBytes = intermediateMat.DiffTexture.GetPNG(intermediateMat.DiffTexture.GetTopMip());
                         var diffImage = ImageBuilder.From(imageBytes, intermediateMat.DiffTexture.Export.ObjectNameString);
+                        diffImage.AlternateWriteFileName = $"{intermediateMat.DiffTexture.Export.ObjectNameString}.*";
                         mat.WithBaseColor(diffImage);
                     }
-                    // TODO support diff, norm, etc here
+                    if (intermediateMat.NormalTexture != null)
+                    {
+                        var normalMapBytes = intermediateMat.NormalTexture.GetPNG(intermediateMat.NormalTexture.GetTopMip());
+                        // flip the green channel to match the convention glTF uses
+                        var img = IsImage.Load<Rgba32>(normalMapBytes);
+                        var colorMatrix = new ColorMatrix(
+                            1, 0, 0, 0,
+                            0, -1, 0, 0,
+                            0, 0, 1, 0,
+                            0, 0, 0, 1,
+                            0, 1, 0, 0
+                        );
+                        img.Mutate(x => x.ApplyProcessor(new FilterProcessor(colorMatrix)));
+                        using (var ms = new MemoryStream())
+                        {
+                            img.SaveAsPng(ms);
+                            normalMapBytes = ms.ToArray();
+                        }
+                        var normImage = ImageBuilder.From(normalMapBytes, $"{intermediateMat.NormalTexture.Export.ObjectNameString}_flipped");
+                        normImage.AlternateWriteFileName = $"{intermediateMat.NormalTexture.Export.ObjectNameString}_flipped.*";
+                        mat.WithNormal(normImage);
+                    }
                     mats.Add(mat);
                 }
 
@@ -807,6 +839,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // export only
             public Texture2D DiffTexture;
             public Texture2D NormalTexture;
+            public bool TwoSided;
         }
 
         private class IntermediateMeshSection
