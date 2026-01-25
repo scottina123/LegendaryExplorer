@@ -88,6 +88,51 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 });
             }
 
+            // Sockets
+            var socketProp = mesh.Export.GetProperty<ArrayProperty<ObjectProperty>>("Sockets");
+            if (socketProp != null)
+            {
+                foreach (var socket in socketProp)
+                {
+                    var socketObject = socket.ResolveToExport(mesh.Export.FileRef, new PackageCache());
+                    var intermediateSocket = new IntermediateSocket()
+                    {
+                        Name = socketObject.GetProperty<NameProperty>("SocketName").Value.Instanced,
+                        Bone = socketObject.GetProperty<NameProperty>("BoneName").Value.Instanced,
+                        RelativeLocation = Vector3.Zero,
+                        RelativeRotation = Quaternion.Identity
+                    };
+                    var locationProp = socketObject.GetProperty<StructProperty>("RelativeLocation");
+                    if (locationProp != null)
+                    {
+                        intermediateSocket.RelativeLocation = new Vector3(locationProp.GetProp<FloatProperty>("X"), locationProp.GetProp<FloatProperty>("Y"), locationProp.GetProp<FloatProperty>("Z"));
+                    }
+                    var rotationProp = socketObject.GetProperty<StructProperty>("RelativeRotation");
+                    if (rotationProp != null)
+                    {
+                        static Quaternion FromYawPitchRoll(int yaw, int pitch, int roll)
+                        {
+                            var rot = Quaternion.Identity;
+                            var yawRad = (yaw % 65536) / 65536f * Math.PI * 2;
+                            var pitchRad = (pitch % 65536) / 65536f * Math.PI * 2;
+                            var rollRad = (roll % 65536) / 65536f * Math.PI * 2;
+                            // apply yaw
+                            rot = rot * new Quaternion(0, (float)Math.Sin(yawRad / 2), 0, -(float)Math.Cos(yawRad / 2));
+                            // apply pitch
+                            rot = rot * new Quaternion(0, 0, (float)Math.Sin(pitchRad / 2), (float)Math.Cos(pitchRad / 2));
+                            // apply roll
+                            rot = rot * new Quaternion((float)Math.Sin(rollRad / 2), 0, 0, (float)Math.Cos(rollRad / 2));
+                            return Quaternion.Normalize(rot);
+                        }
+                        intermediateSocket.RelativeRotation = FromYawPitchRoll(
+                            rotationProp.GetProp<IntProperty>("Yaw").Value,
+                            rotationProp.GetProp<IntProperty>("Pitch").Value,
+                            rotationProp.GetProp<IntProperty>("Roll").Value);
+                    }
+                    intermediateMesh.Sockets.Add(intermediateSocket);
+                }
+            }
+
             // LODs
             for (int i = 0; i < mesh.LODModels.Length; i++)
             {
@@ -182,10 +227,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 foreach (var intermediateMat in mesh.Materials)
                 {
                     var mat = new MaterialBuilder(intermediateMat.Name);
-                    if (intermediateMat.TwoSided)
-                    {
-                        mat.WithDoubleSide(true);
-                    }
+                    mat.WithDoubleSide(intermediateMat.TwoSided);
                     if (intermediateMat.DiffTexture != null)
                     {
                         var imageBytes = intermediateMat.DiffTexture.GetPNG(intermediateMat.DiffTexture.GetTopMip());
@@ -222,7 +264,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 var baseSkeletonNode = new NodeBuilder(mesh.Name);
                 scene.AddNode(baseSkeletonNode);
                 var skeletonNodes = new NodeBuilder[mesh.Skeleton.Count];
-                // one pass to create all the nodes without the hirarchy
+                // one pass to create all the nodes without the hierarchy
                 for (int i = 0; i < mesh.Skeleton.Count; i++)
                 {
                     var bone = mesh.Skeleton[i];
@@ -237,7 +279,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     else
                     {
                         nb.WithLocalTranslation(TransformBonePosition(bone.Position))
-                          .WithLocalRotation(TransformBoneRotation(bone.Rotation));
+                            .WithLocalRotation(TransformBoneRotation(bone.Rotation));
                     }
                     skeletonNodes[i] = nb;
                 }
@@ -273,7 +315,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             {
                                 var intermediateVert = section.Vertices[i];
                                 return new VertexBuilder<VertexPositionNormal, VertexTexture1, VertexJoints4>()
-                                    .WithGeometry(TransformPosition(intermediateVert.Position), TransformDirection(intermediateVert.Normal.Value))
+                                    .WithGeometry(TransformVertexPosition(intermediateVert.Position), TransformDirection(intermediateVert.Normal.Value), new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
                                     .WithMaterial([.. intermediateVert.UVs])
                                     .WithSkinning(intermediateVert.Influences);
                             }
@@ -281,9 +323,23 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
                         }
                     }
-
                     var skinnedMesh = scene.AddSkinnedMesh(mb, Matrix4x4.Identity, skeletonNodes);
                     skinnedMesh.WithName(name);
+                }
+
+                // finish sockets by creating nodes under the bones they are attached to
+                for (int i = 0; i < mesh.Skeleton.Count; i++)
+                {
+                    var nb = skeletonNodes[i];
+                    var sockets = mesh.Sockets.FindAll(x => x.Bone == nb.Name);
+                    foreach (var socket in sockets)
+                    {
+                        var socketBuilder = new NodeBuilder(socket.Name)
+                            .WithLocalTranslation(TransformBonePosition(socket.RelativeLocation))
+                            .WithLocalRotation(TransformSocketRotation(socket.RelativeRotation));
+                        // TODO support relative scale here
+                        nb.AddNode(socketBuilder);
+                    }
                 }
             }
 
@@ -294,7 +350,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return gltf;
         }
 
-        private static Vector3 TransformPosition(Vector3 input)
+        private static Vector3 TransformVertexPosition(Vector3 input)
         {
             return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
         }
@@ -315,7 +371,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Quaternion TransformRootBoneRotation(Quaternion input)
         {
-            // add a 90 degree rotation around the x axis
+            // add a -90 degree rotation around the x axis
             var transform = new Quaternion(QuatHalf, 0, 0, -QuatHalf);
             return Quaternion.Normalize(transform * input);
         }
@@ -323,6 +379,21 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private static Vector3 TransformRootBonePosition(Vector3 input)
         {
             return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
+        }
+
+        private static Quaternion TransformSocketRotation(Quaternion input)
+        {
+            //// first, get it into the form glTF expects due to the swapped axes
+            //var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
+            //// next, we undo the rotation introduced by the parent
+            //temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
+            //// finally, we rotate the child in its local axes
+            //temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
+            //return Quaternion.Normalize(temp);
+
+            // add a 90 degree rotation around the x axis
+            var transform = new Quaternion(QuatHalf, 0, 0, QuatHalf);
+            return Quaternion.Normalize(transform * input);
         }
 
         private static Quaternion TransformBoneRotation(Quaternion input)
@@ -822,6 +893,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             public List<IntermediateBone> Skeleton;
             public List<IntermediateLOD> LODs = [];
             // TODO collision mesh(es)?
+            public List<IntermediateSocket> Sockets = [];
 
             public IntermediateMesh()
             {
@@ -903,6 +975,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             public int ParentIndex;
             public Vector3 Position;
             public Quaternion Rotation;
+        }
+
+        private class IntermediateSocket
+        {
+            public string Name;
+            public string Bone;
+            public Vector3 RelativeLocation;
+            public Quaternion RelativeRotation;
         }
 
         #endregion
