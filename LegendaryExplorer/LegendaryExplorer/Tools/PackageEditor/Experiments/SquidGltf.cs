@@ -98,9 +98,47 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 intermediateMesh.LODs.Add(ToIntermediateLod(mesh.LODModels[i], i, materialMap));
             }
 
-            // TODO collision mesh
+            // Collision mesh
+            var collisionMeshGeometry = mesh.GetCollisionMeshProperty(mesh.Export.FileRef);
 
+            if (collisionMeshGeometry != null) {
+                intermediateMesh.CollisionMeshElements = [];
+                if (collisionMeshGeometry?.GetProp<ArrayProperty<StructProperty>>("ConvexElems") is ArrayProperty<StructProperty> convexElems)
+                {
+                    foreach (StructProperty convexElem in convexElems)
+                    {
+                        intermediateMesh.CollisionMeshElements.Add(ToIntermediateCollision(convexElem));
+                    }
+                }
+            }
             return intermediateMesh;
+        }
+
+        private static IntermediateCollisionElement ToIntermediateCollision(StructProperty convexElem)
+        {
+            var intermediateCollision = new IntermediateCollisionElement();
+
+            var faceTriData = convexElem.GetProp<ArrayProperty<IntProperty>>("FaceTriData");
+            for (int i = 0; i < faceTriData.Count; i += 3)
+            {
+                intermediateCollision.Triangles.Add(new IntermediateTriangle()
+                {
+                    VertIndex1 = faceTriData[i].Value,
+                    VertIndex2 = faceTriData[i + 1].Value,
+                    VertIndex3 = faceTriData[i + 2].Value
+                });
+            }
+
+            var vertexData = convexElem.GetProp<ArrayProperty<StructProperty>>("VertexData");
+            foreach (StructProperty vertex in vertexData)
+            {
+                float x = vertex.GetProp<FloatProperty>("X").Value;
+                float y = vertex.GetProp<FloatProperty>("Y").Value;
+                float z = vertex.GetProp<FloatProperty>("Z").Value;
+                intermediateCollision.Vertices.Add(new Vector3(x, z, y));
+            }
+
+            return intermediateCollision;
         }
 
         private static IntermediateLOD ToIntermediateLod(StaticMeshRenderData lod, int index, IEnumerable<int> materialMapping)
@@ -484,8 +522,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             }
                         }
                         // TODO parent all the LODs to the same node?
-                        var skinnedMesh = scene.AddRigidMesh(mb, Matrix4x4.Identity);
-                        skinnedMesh.WithName(name);
+                        var rigidMesh = scene.AddRigidMesh(mb, Matrix4x4.Identity);
+                        rigidMesh.WithName(name);
                     }
                 }
 
@@ -507,7 +545,36 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     }
                 }
 
-                // TODO collision mesh?
+                if (mesh.CollisionMeshElements != null)
+                {
+                    var collisionMat = new MaterialBuilder();
+
+                    for (int i = 0; i < mesh.CollisionMeshElements.Count; i++)
+                    {
+                        var name = $"{mesh.Name}_Collision_{i}";
+                        var collisionElement = mesh.CollisionMeshElements[i];
+
+                        var mb = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>(name);
+                        var primitive = mb.UsePrimitive(collisionMat);
+
+                        foreach (var tri in collisionElement.Triangles)
+                        {
+                            VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty> GetVert(int i)
+                            {
+                                var intermediateVert = collisionElement.Vertices[i];
+                                var position = new Vector3(intermediateVert.X, intermediateVert.Y, intermediateVert.Z) / ScaleFactor;
+                                var vb = new VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty>()
+                                    .WithGeometry(position);
+                                return vb;
+                            }
+                            primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
+                        }
+
+                        // TODO parent it to the same node as the static mesh?
+                        var rigidMesh = scene.AddRigidMesh(mb, Matrix4x4.Identity);
+                        rigidMesh.WithName(name);
+                    }
+                }
             }
 
             var gltf = scene.ToGltf2();
@@ -1033,12 +1100,20 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // will be null for static meshes
             public List<IntermediateBone> Skeleton;
             public List<IntermediateLOD> LODs = [];
-            // TODO collision mesh(es)?
             public List<IntermediateSocket> Sockets = [];
+            public List<IntermediateCollisionElement> CollisionMeshElements;
 
             public IntermediateMesh()
             {
             }
+        }
+
+        // a collision mesh is made up of one or more convex elements
+        // they have vertices and triangles, but no LODs, materials, UVs, etc
+        private class IntermediateCollisionElement
+        {
+            public List<Vector3> Vertices = [];
+            public List<IntermediateTriangle> Triangles = [];
         }
 
         private class IntermediateMaterial
