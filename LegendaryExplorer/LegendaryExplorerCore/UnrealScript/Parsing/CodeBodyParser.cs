@@ -2673,6 +2673,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
         {
             var startPos = CurrentPosition;
             var args = new List<ScriptToken>();
+            bool isStatic = Matches(STATIC, EF.Keyword);
             if (Matches(TokenType.LeftParenth))
             {
                 if (!Matches(TokenType.RightParenth))
@@ -2708,6 +2709,10 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             {
                 throw ParseError("Lambdas are only supported in Function code", CurrentPosition);
             }
+            if (TopFunc.Outer is State)
+            {
+                throw ParseError("Lambdas are not yet supported in State functions", CurrentPosition);
+            }
             var refFunc = delegateType.DefaultFunction;
             if (args.Count != refFunc.Parameters.Count)
             {
@@ -2722,12 +2727,16 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 ScriptToken argToken = args[i];
                 parms.Add(new FunctionParameter(refParm.VarType, refParm.Flags, argToken.Value, refParm.ArrayLength, argToken.StartPos, argToken.EndPos));
             }
-            var flags = EFunctionFlags.Private | EFunctionFlags.Final | EFunctionFlags.Static | EFunctionFlags.Defined;
+            var flags = EFunctionFlags.Private | EFunctionFlags.Final | EFunctionFlags.Defined;
             if (refFunc.Flags.Has(EFunctionFlags.HasOutParms))
             {
                 flags |= EFunctionFlags.HasOutParms;
             }
-            string lambdaName = $"__lambda__{Self.Name}{(TopFunc.Outer is State state ? $"__{state.Name}" : "")}__{TopFunc.Name}_{TopFunc.Lambdas.Count}";
+            if (isStatic)
+            {
+                flags |= EFunctionFlags.Static;
+            }
+            string lambdaName = $"__lambda__{Self.Name}__{TopFunc.Name}_{TopFunc.Lambdas.Count}";
             var func = new Function(lambdaName, flags, returnDecl, funcBody, parms, startPos)
             {
                 IsLambda = true,

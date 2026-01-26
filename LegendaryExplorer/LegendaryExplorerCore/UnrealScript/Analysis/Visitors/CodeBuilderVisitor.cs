@@ -46,7 +46,7 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
         public static TOutput GetFunctionSignature(Function func)
         {
             var builder = new CodeBuilderVisitor<TFormatter, TOutput>();
-            builder.AppendReturnTypeAndParameters(func);
+            builder.AppendFunctionSignature(func, true);
             return builder.GetOutput();
         }
         public static TOutput GetVariableDeclarationSignature(VariableDeclaration varDecl)
@@ -512,6 +512,41 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
             // [specifiers] function [returntype] functionname ( [parameter declarations] ) body_or_semicolon
             AppendToNewLine();
 
+            AppendFunctionSignature(node);
+
+            if (node.Flags.Has(EFunctionFlags.Defined) && node.Body.Statements != null)
+            {
+                AppendFunctionBody(node);
+            }
+            else
+            {
+                Append(";");
+                AppendToNewLine();
+            }
+
+            return true;
+        }
+
+        private void AppendFunctionBody(Function node)
+        {
+            var tmp = LabelNest;
+            LabelNest = NestingLevel;
+            AppendToNewLine("{");
+            NestingLevel++;
+            if (node.Locals.Count > 0)
+            {
+                foreach (VariableDeclaration v in node.Locals)
+                    v.AcceptVisitor(this);
+                AppendToNewLine();
+            }
+            node.Body.AcceptVisitor(this);
+            NestingLevel--;
+            AppendToNewLine("}");
+            LabelNest = tmp;
+        }
+
+        public void AppendFunctionSignature(Function node, bool withScope = false)
+        {
             var specs = new List<string>();
             EFunctionFlags flags = node.Flags;
 
@@ -623,41 +658,6 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
             }
 
             Space();
-            AppendReturnTypeAndParameters(node);
-
-            if (flags.Has(EFunctionFlags.Defined) && node.Body.Statements != null)
-            {
-                AppendFunctionBody(node);
-            }
-            else
-            {
-                Append(";");
-                AppendToNewLine();
-            }
-
-            return true;
-        }
-
-        private void AppendFunctionBody(Function node)
-        {
-            var tmp = LabelNest;
-            LabelNest = NestingLevel;
-            AppendToNewLine("{");
-            NestingLevel++;
-            if (node.Locals.Count > 0)
-            {
-                foreach (VariableDeclaration v in node.Locals)
-                    v.AcceptVisitor(this);
-                AppendToNewLine();
-            }
-            node.Body.AcceptVisitor(this);
-            NestingLevel--;
-            AppendToNewLine("}");
-            LabelNest = tmp;
-        }
-
-        public void AppendReturnTypeAndParameters(Function node)
-        {
             if (node.ReturnType != null)
             {
                 if (node.CoerceReturn)
@@ -675,6 +675,26 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
             }
             else
             {
+                if (withScope)
+                {
+                    var outer = node.Outer;
+                    State state = null;
+                    if (outer is State s)
+                    {
+                        outer = s.Outer;
+                        state = s;
+                    }
+                    if (outer is Class containingClass)
+                    {
+                        Append(containingClass.Name, EF.Class);
+                        Append(".");
+                    }
+                    if (state is not null)
+                    {
+                        Append(state.Name, EF.State);
+                        Append(".");
+                    }
+                }
                 Append(node.Name, EF.Function);
             }
             Append("(");
