@@ -1,6 +1,11 @@
 ﻿// This is direct copy of the file from the ME3TweaksCore repo
 // Origin Date: 06/06/2022
 // Only change is the namespace to prevent issues of same namespace in M3C
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+
 namespace LegendaryExplorerCore.Misc.ME3Tweaks
 {
     /// <summary>
@@ -42,5 +47,59 @@ namespace LegendaryExplorerCore.Misc.ME3Tweaks
         public const int LE3_LEX_INTEROP = 80;
         public const int LE3_SCRIPT_DEBUGGER = 86;
         public const int LE3_TEXTURE_OVERRIDE = 87;
+
+        /// <summary>
+        /// Returns if the given ASI is installed in the given game directory. This only detects 
+        /// ASIs built after 01/25/2026 that embed their ASI Mod ID in the binary metadata.
+        /// </summary>
+        /// <param name="asiModId">ID to find</param>
+        /// <param name="binaryPath">Path to the game binary</param>
+        /// <returns></returns>
+        public static bool IsASIInstalled(int asiModId, string binaryPath)
+        {
+            return GetInstalledASIModIds(binaryPath).Contains(asiModId);
+        }
+
+        /// <summary>
+        /// Gets a list of installed ASI update groups (mod ids)
+        /// </summary>
+        /// <param name="binaryPath"></param>
+        /// <returns></returns>
+        public static IEnumerable<int> GetInstalledASIModIds(string binaryPath)
+        {
+            var asiPath = Path.Combine(binaryPath, "ASI");
+            if (!Directory.Exists(asiPath))
+            {
+                yield break;
+            }
+
+            var asiFiles = Directory.GetFiles(asiPath, "*.asi");
+            
+            foreach (var asiFile in asiFiles)
+            {
+                int? asiModId = null;
+                try
+                {
+                    var versionInfo = FileVersionInfo.GetVersionInfo(asiFile);
+                    if (!string.IsNullOrEmpty(versionInfo.ProductVersion))
+                    {
+                        var versionParts = versionInfo.ProductVersion.Split('.');
+                        if (versionParts.Length >= 4 && int.TryParse(versionParts[3], out int parsedId))
+                        {
+                            asiModId = parsedId;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip files that can't be read or don't have valid version info
+                }
+
+                if (asiModId.HasValue)
+                {
+                    yield return asiModId.Value;
+                }
+            }
+        }
     }
 }
