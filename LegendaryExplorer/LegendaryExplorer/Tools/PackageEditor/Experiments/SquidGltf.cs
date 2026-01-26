@@ -6,7 +6,6 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Classes;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
-using Microsoft.Win32;
 using SharpGLTF.Geometry;
 using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
@@ -31,18 +30,66 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         const float weightUnpackScale = 1f / 255;
 
         #region export
-        public static void ExportSkeletetalMeshToGltf(PackageEditorWindow pew)
+        public static void ConvertSkeletalMeshToGltf(SkeletalMesh mesh, string filePath, string versionInfo = null)
         {
-            var d = new SaveFileDialog { Filter = "glTF|*.glTF", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
-            if (d.ShowDialog() == true)
+            var intermediateMesh = ToIntermediateMesh(mesh);
+            var gltf = ToGltf([intermediateMesh], versionInfo);
+            // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
+            // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
+            if (".glb".CaseInsensitiveEquals(Path.GetExtension(filePath)))
             {
-                // TODO check that the selected item is a skeletal mesh
-                var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>();
-                var intermediateMesh = ToIntermediateMesh(meshBin);
-                var gltf = ToGltf(intermediateMesh);
-                gltf.SaveGLTF(d.FileName);
+                gltf.SaveGLB(filePath);
+            }
+            else
+            {
+                gltf.SaveGLTF(filePath);
             }
         }
+
+        //public static void ConvertStaticMeshToGltf(StaticMesh mesh, string filePath, string versionInfo = null)
+        //{
+        //    var intermediateMesh = ToIntermediateMesh(mesh);
+        //    var gltf = ToGltf([intermediateMesh], versionInfo);
+        //    // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
+        //    // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
+        //    if (".glb".CaseInsensitiveEquals(Path.GetExtension(filePath)))
+        //    {
+        //        gltf.SaveGLB(filePath);
+        //    }
+        //    else
+        //    {
+        //        gltf.SaveGLTF(filePath);
+        //    }
+        //}
+
+        //private static IntermediateMesh ToIntermediateMesh(StaticMesh mesh)
+        //{
+        //    var intermediateMesh = new IntermediateMesh()
+        //    {
+        //        Name = mesh.Export.ObjectName.Instanced
+        //    };
+
+        //    // materials
+        //    foreach (var mat in mesh.Materials)
+        //    {
+        //        var intermediateMat = new IntermediateMaterial();
+        //        if (mat == 0)
+        //        {
+        //            intermediateMat.Name = "null";
+        //        }
+        //        else
+        //        {
+        //            var materialEntry = mesh.Export.FileRef.GetEntry(mat);
+        //            intermediateMat.Name = materialEntry.MemoryFullPath;
+        //            if (materialEntry is ImportEntry imp)
+        //            {
+        //                materialEntry = EntryImporter.ResolveImport(imp, new PackageCache());
+        //            }
+        //            FindBestDiffAndNormForMaterial(intermediateMat, materialEntry as ExportEntry);
+        //        }
+        //        intermediateMesh.Materials.Add(intermediateMat);
+        //    }
+        //}
 
         private static IntermediateMesh ToIntermediateMesh(SkeletalMesh mesh)
         {
@@ -100,7 +147,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         Name = socketObject.GetProperty<NameProperty>("SocketName").Value.Instanced,
                         Bone = socketObject.GetProperty<NameProperty>("BoneName").Value.Instanced,
                         RelativeLocation = Vector3.Zero,
-                        RelativeRotation = Quaternion.Identity
+                        RelativeRotation = Quaternion.Identity,
+                        RelativeScale = Vector3.One
                     };
                     var locationProp = socketObject.GetProperty<StructProperty>("RelativeLocation");
                     if (locationProp != null)
@@ -128,6 +176,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             rotationProp.GetProp<IntProperty>("Yaw").Value,
                             rotationProp.GetProp<IntProperty>("Pitch").Value,
                             rotationProp.GetProp<IntProperty>("Roll").Value);
+                    }
+                    var scaleProp = socketObject.GetProperty<StructProperty>("RelativeScale");
+                    if (scaleProp != null)
+                    {
+                        intermediateSocket.RelativeScale = new Vector3(scaleProp.GetProp<FloatProperty>("X"), scaleProp.GetProp<FloatProperty>("Y"), scaleProp.GetProp<FloatProperty>("Z"));
                     }
                     intermediateMesh.Sockets.Add(intermediateSocket);
                 }
@@ -217,7 +270,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return intermediateLod;
         }
 
-        private static ModelRoot ToGltf(params IntermediateMesh[] meshes)
+        private static ModelRoot ToGltf(IntermediateMesh[] meshes, string versionInfo = null)
         {
             var scene = new SceneBuilder();
 
@@ -319,7 +372,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                                     .WithMaterial([.. intermediateVert.UVs])
                                     .WithSkinning(intermediateVert.Influences);
                             }
-                            // TODO check order
                             primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
                         }
                     }
@@ -336,16 +388,15 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     {
                         var socketBuilder = new NodeBuilder(socket.Name)
                             .WithLocalTranslation(TransformBonePosition(socket.RelativeLocation))
-                            .WithLocalRotation(TransformSocketRotation(socket.RelativeRotation));
-                        // TODO support relative scale here
+                            .WithLocalRotation(TransformSocketRotation(socket.RelativeRotation))
+                            .WithLocalScale(TransformScale(socket.RelativeScale));
                         nb.AddNode(socketBuilder);
                     }
                 }
             }
 
             var gltf = scene.ToGltf2();
-            // TODO add version info?
-            gltf.Asset.Generator = "Legendary Explorer";
+            gltf.Asset.Generator = $"{versionInfo ?? "Legendary Explorer Core"}";
 
             return gltf;
         }
@@ -381,16 +432,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
         }
 
+        private static Vector3 TransformScale(Vector3 input)
+        {
+            // TODO check if this is actually the right transform
+            return new Vector3(input.X, input.Z, input.Y);
+        }
+
         private static Quaternion TransformSocketRotation(Quaternion input)
         {
-            //// first, get it into the form glTF expects due to the swapped axes
-            //var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
-            //// next, we undo the rotation introduced by the parent
-            //temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
-            //// finally, we rotate the child in its local axes
-            //temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
-            //return Quaternion.Normalize(temp);
-
             // add a 90 degree rotation around the x axis
             var transform = new Quaternion(QuatHalf, 0, 0, QuatHalf);
             return Quaternion.Normalize(transform * input);
@@ -409,24 +458,22 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         #endregion
 
         #region import
-        public static void ImportGltf(PackageEditorWindow pew)
+        
+        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc)
         {
-            if (GetGltfFromFile(out var gltf, out string _))
+            foreach (var node in gltf.LogicalNodes)
             {
-                foreach (var node in gltf.LogicalNodes)
+                // TODO sort meshes to group them into LODs
+                if (!node.Mesh.IsNull())
                 {
-                    // TODO sort meshes to group them into LODs
-                    if (!node.Mesh.IsNull())
+                    var intermediateMesh = ToIntermediateMesh(node);
+                    if (node.Skin.IsNull())
                     {
-                        var intermediateMesh = ToIntermediateMesh(node);
-                        if (node.Skin.IsNull())
-                        {
-                            //ImportStaticMesh(node);
-                        }
-                        else
-                        {
-                            ImportSkeletalMesh(intermediateMesh, pew.Pcc);
-                        }
+                        //ImportStaticMesh(node);
+                    }
+                    else
+                    {
+                        ImportSkeletalMesh(intermediateMesh, pcc);
                     }
                 }
             }
@@ -577,7 +624,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         {
                             if (column != null)
                             {
-                                // TODO any signs to deal with?
                                 vert.UVs.Add(column[i]);
                             }
                         }
@@ -684,7 +730,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         Name = currentBone.Name,
                         NumChildren = currentBone.NumChildren,
                         BoneColor = new LegendaryExplorerCore.SharpDX.Color(new Vector4(1, 1, 1, 1)),
-                        // TODO do I need anything here?
                         Flags = 0,
                         ParentIndex = currentBone.ParentIndex,
                         Position = new Vector3(currentBone.Position.X, currentBone.Position.Y * -1, currentBone.Position.Z),
@@ -848,25 +893,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static bool GetGltfFromFile(out ModelRoot gltf, out string filePath)
-        {
-            var d = new OpenFileDialog
-            {
-                Filter = "gLTF|*.gltf;*.glb",
-                Title = "Select a gLTF or glb file"
-            };
-            if (d.ShowDialog() == true)
-            {
-                filePath = d.FileName;
-                gltf = ModelRoot.Load(filePath);
-                return true;
-            }
-
-            gltf = null;
-            filePath = null;
-            return false;
-        }
-
         private static Vector3 Yup2Zup(Vector3 input)
         {
             return new Vector3(input.X, input.Z, input.Y);
@@ -983,6 +1009,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             public string Bone;
             public Vector3 RelativeLocation;
             public Quaternion RelativeRotation;
+            public Vector3 RelativeScale;
         }
 
         #endregion

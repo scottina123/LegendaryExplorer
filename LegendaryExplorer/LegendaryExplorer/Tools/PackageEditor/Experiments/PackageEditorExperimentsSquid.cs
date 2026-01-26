@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.HighPerformance;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.ExperimentsTools;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
@@ -107,6 +108,60 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     }
                 }
             }
+        }
+
+        public static void ExportSkeletetalMeshToGltf(PackageEditorWindow pew)
+        {
+            if (pew.Pcc.Game == MEGame.ME1)
+            {
+                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
+            }
+            if (pew.Pcc.Game == MEGame.UDK)
+            {
+                ShowError("This experiment does not support UDK files;");
+            }
+            if (GetSelectedMeshBinary(pew, out var _, out var meshBin))
+            {
+                var d = new SaveFileDialog { Filter = "glTF|*.glTF,*.glb", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}"};
+                if (d.ShowDialog() == true)
+                {
+                    SquidGltf.ConvertSkeletalMeshToGltf(meshBin, d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                }
+            }
+        }
+
+        public static void ImportGltf(PackageEditorWindow pew)
+        {
+            if (pew.Pcc.Game == MEGame.ME1)
+            {
+                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
+            }
+            if (pew.Pcc.Game == MEGame.UDK)
+            {
+                ShowError("This experiment does not support UDK files;");
+            }
+            if (GetGltfFromFile(out var gltf, out string _))
+            {
+                SquidGltf.ConvertGltfToMesh(gltf, pew.Pcc);
+            }
+        }
+        private static bool GetGltfFromFile(out SharpGLTF.Schema2.ModelRoot gltf, out string filePath)
+        {
+            var d = new OpenFileDialog
+            {
+                Filter = "gLTF|*.gltf;*.glb",
+                Title = "Select a gLTF or glb file"
+            };
+            if (d.ShowDialog() == true)
+            {
+                filePath = d.FileName;
+                gltf = SharpGLTF.Schema2.ModelRoot.Load(filePath);
+                return true;
+            }
+
+            gltf = null;
+            filePath = null;
+            return false;
         }
 
         private static SkeletalMesh CreateSkeletalMeshFromPsks(PackageEditorWindow pew, PSK[] psks, out ArrayProperty<StructProperty> lodInfoProp)
