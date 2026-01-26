@@ -1347,7 +1347,7 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         // export mesh
         private void ExportGltf_Click(object sender, RoutedEventArgs args)
         {
-            PackageEditorExperimentsSquid.ExportSkeletetalMeshToGltf(GetPEWindow());
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow());
         }
         private void ExportSelectedToPsx_Click(object sender, RoutedEventArgs e)
         {

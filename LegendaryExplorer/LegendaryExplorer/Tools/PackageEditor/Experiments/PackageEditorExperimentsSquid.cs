@@ -110,7 +110,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void ExportSkeletetalMeshToGltf(PackageEditorWindow pew)
+        public static void ExportMeshToGltf(PackageEditorWindow pew)
         {
             if (pew.Pcc.Game == MEGame.ME1)
             {
@@ -120,13 +120,29 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 ShowError("This experiment does not support UDK files;");
             }
-            if (GetSelectedMeshBinary(pew, out var _, out var meshBin))
+            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out var export))
             {
-                var d = new SaveFileDialog { Filter = "glTF|*.glTF,*.glb", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}"};
+                var d = new SaveFileDialog { Filter = "glTF|*.glTF,*.glb", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
                 if (d.ShowDialog() == true)
                 {
-                    SquidGltf.ConvertSkeletalMeshToGltf(meshBin, d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                    if (export.ClassName == "SkeletalMesh")
+                    {
+                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                    }
+                    // TODO support other closely related types?
+                    else if (export.ClassName == "StaticMesh")
+                    {
+                        if (!(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
+                        {
+                            ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
+                        }
+                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                    }
                 }
+            }
+            else
+            {
+                ShowError("You must select a skeletal mesh or static mesh");
             }
         }
 

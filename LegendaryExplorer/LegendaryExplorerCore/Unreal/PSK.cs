@@ -222,7 +222,7 @@ namespace LegendaryExplorerCore.Unreal
                 numTriangles += (int)element.NumTriangles;
                 for (uint t = 0; t < element.NumTriangles; t++)
                 {
-                    // TODO first index vs minVertexIndex? seem to match in all cases I have seen
+                    // FirstIndex is the index within the index buffer. divide by three to get the triangle number
                     uint baseIndex = element.FirstIndex;
                     // TODO sometimes the index buffer might not be there (according to other comments in LEX) in which case we have to look at triangles in KDOPS
                     int i1 = lod.IndexBuffer[baseIndex + t * 3];
