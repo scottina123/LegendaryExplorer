@@ -112,9 +112,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         public static void ExportMeshToGltf(PackageEditorWindow pew)
         {
+            // TODO handle no open pcc
             if (pew.Pcc.Game == MEGame.ME1)
             {
-                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
+                ShowError("This experiment does not yet support OT1; if you must do this, port it to another game first");
             }
             if (pew.Pcc.Game == MEGame.UDK)
             {
@@ -127,7 +128,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 {
                     if (export.ClassName == "SkeletalMesh")
                     {
-                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.DisplayedVersion}");
+                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, SquidGltf.MaterialExportLevel.NameOnly, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                     // TODO support other closely related types?
                     else if (export.ClassName == "StaticMesh")
@@ -136,7 +137,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         {
                             ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
                         }
-                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.DisplayedVersion}");
+                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, SquidGltf.MaterialExportLevel.NameOnly, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                 }
             }

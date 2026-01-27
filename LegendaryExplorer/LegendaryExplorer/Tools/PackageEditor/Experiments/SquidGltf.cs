@@ -1,5 +1,4 @@
-﻿using LegendaryExplorerCore.Gammtek.Extensions;
-using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
+﻿using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -32,9 +31,20 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         const float weightUnpackScale = 1f / 255;
 
         #region export
-        public static void ConvertSkeletalMeshToGltf(SkeletalMesh mesh, string filePath, string versionInfo = null)
+        public enum MaterialExportLevel
         {
-            var intermediateMesh = ToIntermediateMesh(mesh);
+            // export with only the name of the material. It will export faster and have much smaller file sizes. useful if you plan to roll your own materials in Blender or don't care about the materials
+            NameOnly,
+            // makes a best effort to identify the diff and norm of the material and attach the textures to the export so they can be imported directly into Blender. Exports will be much larger, and this can be very slow if there are a lot of materials. 
+            Basic,
+            // TODO take a crack at implementing this
+            // for supported materials, export using diff, norm and spec, ready to be hooked up in Blender to diff, norm, roughness, metallic, emissive. A good start for renders. May be VERY slow to export. 
+            // for unsupported materials, falls back to basic
+            //Enhanced
+        }
+        public static void ConvertSkeletalMeshToGltf(SkeletalMesh mesh, string filePath, MaterialExportLevel materialSetting = MaterialExportLevel.Basic, string versionInfo = null)
+        {
+            var intermediateMesh = ToIntermediateMesh(mesh, materialSetting);
             var gltf = ToGltf(intermediateMesh, versionInfo);
             // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
             // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
@@ -48,9 +58,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void ConvertStaticMeshToGltf(StaticMesh mesh, string filePath, string versionInfo = null)
+        public static void ConvertStaticMeshToGltf(StaticMesh mesh, string filePath, MaterialExportLevel materialSetting = MaterialExportLevel.Basic, string versionInfo = null)
         {
-            var intermediateMesh = ToIntermediateMesh(mesh);
+            var intermediateMesh = ToIntermediateMesh(mesh, materialSetting);
             var gltf = ToGltf(intermediateMesh, versionInfo);
             // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
             // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
@@ -64,7 +74,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static IntermediateMesh ToIntermediateMesh(StaticMesh mesh)
+        private static IntermediateMesh ToIntermediateMesh(StaticMesh mesh, MaterialExportLevel materialSetting)
         {
             var intermediateMesh = new IntermediateMesh()
             {
@@ -88,7 +98,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
             foreach (var mat in materialMap)
             {
-                var intermediateMat = ToIntermediateMaterial(mesh.Export.FileRef.GetEntry(mat));
+                var intermediateMat = ToIntermediateMaterial(mesh.Export.FileRef.GetEntry(mat), materialSetting);
                 intermediateMesh.Materials.Add(intermediateMat);
             }
 
@@ -202,7 +212,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return intermediateLod;
         }
 
-        private static IntermediateMaterial ToIntermediateMaterial(IEntry material)
+        private static IntermediateMaterial ToIntermediateMaterial(IEntry material, MaterialExportLevel materialSetting)
         {
             var intermediateMat = new IntermediateMaterial();
             if (material == null)
@@ -212,16 +222,19 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             else
             {
                 intermediateMat.Name = material.MemoryFullPath;
-                if (material is ImportEntry imp)
+                if (materialSetting == MaterialExportLevel.Basic)
                 {
-                    material = EntryImporter.ResolveImport(imp, new PackageCache());
+                    if (material is ImportEntry imp)
+                    {
+                        material = EntryImporter.ResolveImport(imp, new PackageCache());
+                    }
+                    FindBestDiffAndNormForMaterial(intermediateMat, material as ExportEntry);
                 }
-                FindBestDiffAndNormForMaterial(intermediateMat, material as ExportEntry);
             }
             return intermediateMat;
         }
 
-        private static IntermediateMesh ToIntermediateMesh(SkeletalMesh mesh)
+        private static IntermediateMesh ToIntermediateMesh(SkeletalMesh mesh, MaterialExportLevel materialSetting)
         {
             var intermediateMesh = new IntermediateMesh()
             {
@@ -231,7 +244,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // materials
             foreach (var mat in mesh.Materials)
             {
-                var intermediateMat = ToIntermediateMaterial(mesh.Export.FileRef.GetEntry(mat));
+                var intermediateMat = ToIntermediateMaterial(mesh.Export.FileRef.GetEntry(mat), materialSetting);
                 intermediateMesh.Materials.Add(intermediateMat);
             }
 
@@ -440,24 +453,28 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 if (mesh.Skeleton != null)
                 {
                     var mb = new MeshBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>(name);
-
                     foreach (var section in lod.Sections)
                     {
                         var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
+                        var vertexBuilders = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>?[section.Vertices.Count];
                         foreach (var tri in section.Triangles)
                         {
                             VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4> GetVert(int i)
                             {
-                                var intermediateVert = section.Vertices[i];
-                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>()
-                                    .WithGeometry(
-                                        TransformVertexPosition(intermediateVert.Position),
-                                        TransformDirection(intermediateVert.Normal.Value),
-                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
-                                    .WithMaterial([.. intermediateVert.UVs])
-                                    .WithSkinning(intermediateVert.Influences);
-                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
-                                return vb;
+                                if (!vertexBuilders[i].HasValue)
+                                {
+                                    var intermediateVert = section.Vertices[i];
+                                    var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>()
+                                        .WithGeometry(
+                                            TransformVertexPositionToGltf(intermediateVert.Position),
+                                            TransformDirectionToGltf(intermediateVert.Normal.Value),
+                                            new Vector4(TransformDirectionToGltf(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
+                                        .WithMaterial([.. intermediateVert.UVs])
+                                        .WithSkinning(intermediateVert.Influences);
+                                    vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
+                                    vertexBuilders[i] = vb;
+                                }
+                                return vertexBuilders[i].Value;
                             }
                             primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
                         }
@@ -475,19 +492,24 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     foreach (var section in lod.Sections)
                     {
                         var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
+                        var vertexBuilders = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>?[section.Vertices.Count];
                         foreach (var tri in section.Triangles)
                         {
                             VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty> GetVert(int i)
                             {
-                                var intermediateVert = section.Vertices[i];
-                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>()
-                                    .WithGeometry(
-                                        TransformVertexPosition(intermediateVert.Position),
-                                        TransformDirection(intermediateVert.Normal.Value),
-                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
-                                    .WithMaterial([.. intermediateVert.UVs]);
-                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
-                                return vb;
+                                if (!vertexBuilders[i].HasValue)
+                                {
+                                    var intermediateVert = section.Vertices[i];
+                                    var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>()
+                                        .WithGeometry(
+                                            TransformVertexPositionToGltf(intermediateVert.Position),
+                                            TransformDirectionToGltf(intermediateVert.Normal.Value),
+                                            new Vector4(TransformDirectionToGltf(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
+                                        .WithMaterial([.. intermediateVert.UVs]);
+                                    vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
+                                    vertexBuilders[i] = vb;
+                                }
+                                return vertexBuilders[i].Value;
                             }
                             primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
                         }
@@ -544,14 +566,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     if (bone.ParentIndex == -1 || bone.ParentIndex == i)
                     {
                         // this is a root bone; change the local transform to account for the coordiante system differences
-                        nb.WithLocalTranslation(TransformRootBonePosition(bone.Position))
-                            .WithLocalRotation(TransformRootBoneRotation(bone.Rotation));
+                        nb.WithLocalTranslation(TransformRootBonePositionToGltf(bone.Position))
+                            .WithLocalRotation(TransformRootBoneRotationToGltf(bone.Rotation));
                         containerNode.AddNode(nb);
                     }
                     else
                     {
-                        nb.WithLocalTranslation(TransformBonePosition(bone.Position))
-                            .WithLocalRotation(TransformBoneRotation(bone.Rotation));
+                        nb.WithLocalTranslation(TransformBonePositionToGltf(bone.Position))
+                            .WithLocalRotation(TransformBoneRotationToGltf(bone.Rotation));
                     }
                     skeletonNodes[i] = nb;
                 }
@@ -579,9 +601,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     foreach (var socket in sockets)
                     {
                         var socketBuilder = new NodeBuilder(socket.Name)
-                            .WithLocalTranslation(TransformBonePosition(socket.RelativeLocation))
-                            .WithLocalRotation(TransformSocketRotation(socket.RelativeRotation))
-                            .WithLocalScale(TransformScale(socket.RelativeScale));
+                            .WithLocalTranslation(TransformBonePositionToGltf(socket.RelativeLocation))
+                            .WithLocalRotation(TransformSocketRotationToGltf(socket.RelativeRotation))
+                            .WithLocalScale(TransformScaleToGltf(socket.RelativeScale));
                         nb.AddNode(socketBuilder);
                     }
                 }
@@ -610,17 +632,17 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return gltf;
         }
 
-        private static Vector3 TransformVertexPosition(Vector3 input)
+        private static Vector3 TransformVertexPositionToGltf(Vector3 input)
         {
             return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
         }
 
-        private static Vector3 TransformDirection(Vector3 input)
+        private static Vector3 TransformDirectionToGltf(Vector3 input)
         {
             return Vector3.Normalize(new Vector3(input.X, input.Z, input.Y));
         }
 
-        private static Vector3 TransformBonePosition(Vector3 input)
+        private static Vector3 TransformBonePositionToGltf(Vector3 input)
         {
             return new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
         }
@@ -629,32 +651,32 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private static readonly float QuatHalf = (float)(Math.Sqrt(2) / 2);
 
 
-        private static Quaternion TransformRootBoneRotation(Quaternion input)
+        private static Quaternion TransformRootBoneRotationToGltf(Quaternion input)
         {
             // add a -90 degree rotation around the x axis
             var transform = new Quaternion(QuatHalf, 0, 0, -QuatHalf);
             return Quaternion.Normalize(transform * input);
         }
 
-        private static Vector3 TransformRootBonePosition(Vector3 input)
+        private static Vector3 TransformRootBonePositionToGltf(Vector3 input)
         {
             return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
         }
 
-        private static Vector3 TransformScale(Vector3 input)
+        private static Vector3 TransformScaleToGltf(Vector3 input)
         {
             // TODO check if this is actually the right transform
             return new Vector3(input.X, input.Z, input.Y);
         }
 
-        private static Quaternion TransformSocketRotation(Quaternion input)
+        private static Quaternion TransformSocketRotationToGltf(Quaternion input)
         {
             // add a 90 degree rotation around the x axis
             var transform = new Quaternion(QuatHalf, 0, 0, QuatHalf);
             return Quaternion.Normalize(transform * input);
         }
 
-        private static Quaternion TransformBoneRotation(Quaternion input)
+        private static Quaternion TransformBoneRotationToGltf(Quaternion input)
         {
             // first, get it into the form glTF expects due to the swapped axes
             var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
@@ -667,35 +689,153 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         #endregion
 
         #region import
-
         public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc)
         {
-            foreach (var node in gltf.LogicalNodes)
+            CollectMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
+            int totalMeshes = skeletalMeshes.Count + staticMeshes.Count;
+            if (totalMeshes == 0)
             {
-                // TODO sort meshes to group them into LODs
-                if (!node.Mesh.IsNull())
-                {
-                    var intermediateMesh = ToIntermediateMesh(node);
-                    if (node.Skin.IsNull())
-                    {
-                        //ImportStaticMesh(node);
-                    }
-                    else
-                    {
-                        ImportSkeletalMesh(intermediateMesh, pcc);
-                    }
-                }
+                // TODO show a warning or something
+                return;
+            }
+            if (totalMeshes > 1)
+            {
+                // TODO add support for this?
+                throw new NotImplementedException("I can't import where there is more than one mesh per file yet");
+            }
+            foreach (var skelMesh in skeletalMeshes)
+            {
+                var intermediateMesh = ToIntermediateMesh(skelMesh.Item1, skelMesh.Item2);
+                CleanUpIntermediateMesh(intermediateMesh);
+                // TODO to SkeletalMesh!
+            }
+            foreach (var statMesh in staticMeshes)
+            {
+                var intermediateMesh = ToIntermediateMesh(statMesh.Item1, statMesh.Item2);
+                CleanUpIntermediateMesh(intermediateMesh);
+                // TODO to Static Mesh!
             }
         }
 
-        private static IntermediateMesh ToIntermediateMesh(params Node[] nodes)
+        private static IntermediateMesh CleanUpIntermediateMesh(IntermediateMesh mesh)
+        {
+            foreach (var lod in mesh.LODs)
+            {
+                ReconstructVertexOrder(lod);
+            }
+            // TODO generate tangents, normals if not present
+            return mesh;
+        }
+
+        private static bool ReconstructVertexOrder(IntermediateLOD lod)
+        {
+            // make sure this uses shared vertices. This is a requirement to reconstruct vertex order
+            // having only one section also satisfies this
+            var vertices = lod.Sections[0].Vertices;
+            if (lod.Sections.Count > 1)
+            {
+                if (!lod.Sections.All(x => x.Vertices == vertices))
+                {
+                    // they do not have shared verts, so we can't reconstruct the original order
+                    return false;
+                }
+            }
+            // now that we know there is only one vert array, check to see if the indices got messed up during editing
+            // group the vertices by original index
+            var groupedVerts = vertices.GroupBy(x => x.OriginalIndex);
+            // if there are any duplicates, we cannot reconstitute the the original order
+            // this will happen primarily due to topology edits, especially merging vertices
+            // this will also fail if they did not export the original indices from blender, as they will all be 0, which is fine
+            if (groupedVerts.Any(x => x.Count() != 1))
+            {
+                // I'm not sure why it is splitting them. The normals appear to be ever so slightly different maybe?
+                // I bet I could dedpue them based on slight normal differences
+                // debug
+                var eval = groupedVerts.Where(x => x.Count() != 1).Select(x => x.ToArray()).ToList();
+                return false;
+            }
+            // put them in their original order
+            var verticesOriginalOrder = vertices.OrderBy(x => x.OriginalIndex).ToList();
+            // make sure we actually have 0-n, not skipping any
+            for (int i = 0; i < verticesOriginalOrder.Count; i++)
+            {
+                if (verticesOriginalOrder[i].OriginalIndex != i)
+                {
+                    return false;
+                }
+            }
+
+            // TODO do I have any way to check how many vertices it originally had? technically I could delete vertices from the end of the list and this would still pass
+            // I can look into storing some metadata about the original vertex count
+
+            // assume at this point it is fine. replace the verts on each section, replace the triangles with new ones that point to the original indices
+            foreach (var section in lod.Sections)
+            {
+                section.Vertices = verticesOriginalOrder;
+                section.Triangles = [.. section.Triangles.Select(x => new IntermediateTriangle()
+                {
+                    VertIndex1 = vertices[x.VertIndex1].OriginalIndex,
+                    VertIndex2 = vertices[x.VertIndex2].OriginalIndex,
+                    VertIndex3 = vertices[x.VertIndex3].OriginalIndex
+                })];
+            }
+
+            // at this point, we have restored the vertex order to the original, and the triangle order should also be the same as it is in Blender, which will match exported if you haven't messed with things
+
+            return true;
+        }
+
+        private static void CollectMeshes(ModelRoot modelRoot, out List<(string, Node[])> skeletalMeshes, out List<(string, Node[])> staticMeshes)
+        {
+            var meshes = modelRoot.LogicalNodes.Where(node => node.Mesh != null).GroupBy(node => node.VisualParent);
+            // TODO make sure they all have the same skin?
+            skeletalMeshes = [..meshes.Where(x => x.All(node => node.Skin != null)).Select(group => (group.Key.Name, group.ToArray()))];
+            // TODO what if they are at the root? What if there is more than one at the root?
+            staticMeshes = [.. meshes.Where(x => x.All(node => node.Skin == null)).Select(group => (group.Key.Name, group.ToArray()))];
+        }
+
+        private static bool DoesMeshUseSharedVertexAccessors(Mesh mesh)
+        {
+            if (mesh.Primitives.Count == 1)
+            {
+                // no way to have separate accessors when there is only one primative
+                return true;
+            }
+            bool IsAttributeShared(string attribute)
+            {
+                if (mesh.Primitives[0].VertexAccessors.ContainsKey(attribute))
+                {
+                    var accessor = mesh.Primitives[0].VertexAccessors[attribute];
+                    return mesh.Primitives.All(x => x.VertexAccessors[attribute] == accessor);
+                }
+                else
+                {
+                    return mesh.Primitives.All(x => !x.VertexAccessors.ContainsKey(attribute));
+                }
+            }
+            // make sure all these accessors are shared, meaning they are reading the same underlying data
+            return IsAttributeShared("POSITION")
+                 && IsAttributeShared("NORMAL")
+                 && IsAttributeShared("TANGENT")
+                 && IsAttributeShared("TEXCOORD_0")
+                 && IsAttributeShared("TEXCOORD_0")
+                 && IsAttributeShared("TEXCOORD_0")
+                 && IsAttributeShared("TEXCOORD_0")
+                 && IsAttributeShared("JOINTS_0")
+                 && IsAttributeShared("JOINTS_0")
+                 && IsAttributeShared("WEIGHTS_0")
+                 && IsAttributeShared("WEIGHTS_0")
+                 && IsAttributeShared(VertexTextureNOriginalIndex.OriginalIndexAttributeName);
+        }
+        private static IntermediateMesh ToIntermediateMesh(string meshName, Node[] nodes)
         {
             if (nodes.Length == 0)
             {
-                throw new ArgumentException();
+                throw new ArgumentException(nameof(nodes));
             }
+            // TODO sort this into groups of LODs vs collision components
+            var skeletalMesh = nodes[0].Skin != null;
             int vertIndex = 0;
-            int triangleIndex = 0;
             int lodIndex = 0;
             int boneIndex = 0;
             // maps from material index within the gltf file to materials within this mesh (in the array order)
@@ -706,7 +846,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
             var intermediateMesh = new IntermediateMesh();
 
-            if (nodes[0].Skin != null)
+            // skeleton
+            if (skeletalMesh)
             {
                 intermediateMesh.Skeleton = [];
                 foreach (var joint in nodes[0].Skin.Joints)
@@ -716,10 +857,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     {
                         Index = boneIndex++,
                         Name = joint.Name,
-                        // position is relative to the parent bone in both storage systems, so we only need to flip y to account for the different y direction convention
-                        Position = joint.LocalTransform.Translation with { Y = -joint.LocalTransform.Translation.Y },
-                        // rotation is also relative to the parent, and not messed up by the y axis difference, so we need to leave it alone
-                        Rotation = joint.LocalTransform.Rotation,
                     });
                 }
                 // reconstruct the hierarchy of bones from the node hierarchy. There can be other nodes in between joints, so we have to check all ancestors
@@ -746,17 +883,17 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     if (parent == null)
                     {
                         rootJoints.Add(intermediateJointIndex);
-                        // for root bones, we need to adjust the rotation and position to account for the coordinate system differences
                         intermediateMesh.Skeleton[intermediateJointIndex].ParentIndex = -1;
-                        intermediateMesh.Skeleton[intermediateJointIndex].Position = ScaleForME(Yup2Zup(joint.LocalTransform.Translation));
-                        // we need to rotate the root node's rotation to account for the difference in coordinate systems between ME and glTF (glTF uses y up) 
-                        intermediateMesh.Skeleton[intermediateJointIndex].Rotation = Yup2Zup(joint.LocalTransform.Rotation);
+                        intermediateMesh.Skeleton[intermediateJointIndex].Position = TransformRootBonePositionFromGltf(joint.LocalTransform.Translation);
+                        intermediateMesh.Skeleton[intermediateJointIndex].Rotation = TransformRootBoneRotationFromGltf(joint.LocalTransform.Rotation);
                     }
                     else
                     {
                         var intermediateParentIndex = boneMap.IndexOf(parent.LogicalIndex);
                         intermediateMesh.Skeleton[intermediateJointIndex].ParentIndex = intermediateParentIndex;
                         intermediateMesh.Skeleton[intermediateParentIndex].NumChildren++;
+                        intermediateMesh.Skeleton[intermediateJointIndex].Position = TransformBonePositionFromGltf(joint.LocalTransform.Translation);
+                        intermediateMesh.Skeleton[intermediateJointIndex].Rotation = TransformBoneRotationFromGltf(joint.LocalTransform.Rotation);
                     }
                 }
                 if (rootJoints.Count > 1)
@@ -765,11 +902,122 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     // just leave it alone? does ME technically require a single root bone?
                     throw new NotImplementedException("This skeleton doesn't seem to have a single root bone, and I don't know how to handle that yet.");
                 }
+
+                // sockets
+                Node[] FindSockets(Node joint)
+                {
+                    // look for direct children of a bone which are not themselves bones
+                    return [..joint.VisualChildren.Where(x => !x.IsSkinJoint)];
+                }
+                foreach (var joint in nodes[0].Skin.Joints)
+                {
+                    var sockets = FindSockets(joint);
+                    foreach (var socket in sockets)
+                    {
+                        intermediateMesh.Sockets.Add(new IntermediateSocket()
+                        {
+                            Bone = joint.Name,
+                            Name = socket.Name,
+                            RelativeLocation = TransformSocketLocationFromGltf(socket.LocalTransform.Translation),
+                            RelativeRotation = TransformSocketRotationFromGltf(socket.LocalTransform.Rotation),
+                            RelativeScale = TransformScaleFromGltf(socket.LocalTransform.Scale)
+                        });
+                    }
+                }
             }
 
             foreach (var node in nodes)
             {
                 var LOD = new IntermediateLOD() { Index = lodIndex++ };
+
+                var sharedAccessors = DoesMeshUseSharedVertexAccessors(node.Mesh);
+
+                List<IntermediateVertex> sharedVerts = null;
+                if (sharedAccessors)
+                {
+                    sharedVerts = GetPrimativeVertices(node.Mesh.Primitives[0]);
+                }
+
+                List<IntermediateVertex> GetPrimativeVertices(MeshPrimitive prim)
+                {
+                    List<IntermediateVertex> verts = [];
+
+                    // this gets us all the attributes of each vertex in order, each in their own array, where all arrays are the same size
+                    var vertColumns = prim.GetVertexColumns();
+
+                    int[] originalIndices = null;
+                    // this is custom metadata I attach on export. It will not be present on re-export from Blender with the default export settings, but can be enabled
+                    if (prim.VertexAccessors.ContainsKey(VertexTextureNOriginalIndex.OriginalIndexAttributeName))
+                    {
+                        originalIndices = [.. prim.VertexAccessors[VertexTextureNOriginalIndex.OriginalIndexAttributeName].AsScalarArray().Select(x => (int)x)];
+                    }
+                    for (int i = 0; i < vertColumns.Positions.Count; i++)
+                    {
+                        var vert = new IntermediateVertex
+                        {
+                            Index = vertIndex++,
+                            Position = TransformVertexPositionFromGltf(vertColumns.Positions[i]),
+                        };
+
+                        // Normals
+                        // usually present, but not required
+                        if (vertColumns.Normals != null)
+                        {
+                            vert.Normal = TranformDirectionFromGltf(vertColumns.Normals[i]);
+                        }
+
+                        // Tangents
+                        // not required, but will be imported if present, calculated otherwise
+                        if (vertColumns.Tangents != null)
+                        {
+                            var tanX = new Vector3(vertColumns.Tangents[i].X, vertColumns.Tangents[i].Y, vertColumns.Tangents[i].Z);
+                            vert.Tangent = TranformDirectionFromGltf(tanX);
+                            vert.BiTangentDirection = vertColumns.Tangents[i].W;
+                        }
+
+                        // UVs
+                        void AddUV(IList<Vector2>? column)
+                        {
+                            if (column != null)
+                            {
+                                vert.UVs.Add(column[i]);
+                            }
+                        }
+                        // usually present
+                        AddUV(vertColumns.TexCoords0);
+                        // only present for some static meshes
+                        AddUV(vertColumns.TexCoords1);
+                        AddUV(vertColumns.TexCoords2);
+                        AddUV(vertColumns.TexCoords3);
+
+                        // weights
+                        void AddWeights(IList<Vector4> jointsList, IList<Vector4> weightsList)
+                        {
+                            if (jointsList == null || weightsList == null)
+                            {
+                                return;
+                            }
+                            var bones = jointsList[i];
+                            var weights = weightsList[i];
+                            for (int j = 0; j < 4; j++)
+                            {
+                                vert.Influences.Add((int)bones[j], weights[j]);
+                            }
+                        }
+                        // only present for skeletal meshes
+                        AddWeights(vertColumns.Joints0, vertColumns.Weights0);
+                        // unlikely to be present, we just need to add them to make sure we cull the right ones later
+                        AddWeights(vertColumns.Joints1, vertColumns.Weights1);
+
+                        if (originalIndices != null)
+                        {
+                            vert.OriginalIndex = originalIndices[i];
+                        }
+
+                        verts.Add(vert);
+                    }
+                    return verts;
+                }
                 // a primitive, for our uses, will roughly correspond to a material
                 // technically it corresponds to a GPU rendering pass, which can be other things, but is most likely to be a material for us.
                 foreach (var prim in node.Mesh.Primitives)
@@ -801,73 +1049,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         MaterialIndex = meshMatIndex
                     };
 
-                    // this gets us all the attributes of each vertex in order, each in their own array, where all arrays are the same size
-                    var vertColumns = prim.GetVertexColumns();
-
-                    for (int i = 0; i < vertColumns.Positions.Count; i++)
-                    {
-                        var vert = new IntermediateVertex
-                        {
-                            Index = vertIndex++,
-                            Position = ScaleForME(Yup2Zup(vertColumns.Positions[i]))
-                        };
-
-                        // Normals
-                        // usually present, but not required
-                        if (vertColumns.Normals != null)
-                        {
-                            vert.Normal = Yup2Zup(vertColumns.Normals[i]);
-                        }
-
-                        // Tangents
-                        // not required, but will be imported if present, calculated otherwise
-                        if (vertColumns.Tangents != null)
-                        {
-                            var tanX = new Vector3(vertColumns.Tangents[i].X, vertColumns.Tangents[i].Y, vertColumns.Tangents[i].Z);
-                            vert.Tangent = Yup2Zup(tanX);
-                            vert.BiTangentDirection = vertColumns.Tangents[i].W;
-                        }
-
-                        // UVs
-                        void AddUV(IList<Vector2>? column)
-                        {
-                            if (column != null)
-                            {
-                                vert.UVs.Add(column[i]);
-                            }
-                        }
-                        // usually present
-                        AddUV(vertColumns.TexCoords0);
-                        // only present for some static meshes
-                        AddUV(vertColumns.TexCoords1);
-                        AddUV(vertColumns.TexCoords2);
-                        AddUV(vertColumns.TexCoords3);
-
-                        // weights
-                        // only present for skeletal meshes
-                        if (vertColumns.Joints0 != null)
-                        {
-                            var bones = vertColumns.Joints0[i];
-                            var weights = vertColumns.Weights0[i];
-                            for (int j = 0; j < 4; j++)
-                            {
-                                vert.Influences.Add((int)bones[j], weights[j]);
-                            }
-                        }
-                        // unlikely to be present, we just need to add them to make sure we cull the right ones later
-                        if (vertColumns.Joints1 != null)
-                        {
-                            var bones = vertColumns.Joints1[i];
-                            var weights = vertColumns.Weights1[i];
-                            for (int j = 0; j < 4; j++)
-                            {
-                                var intermediateBoneIndex = boneMap.IndexOf((int)bones[j]);
-                                vert.Influences.Add(intermediateBoneIndex, weights[j]);
-                            }
-                        }
-
-                        //meshSection.Vertices.Add(vert);
-                    }
+                    // use the shared vertices, if available
+                    meshSection.Vertices = sharedVerts ?? GetPrimativeVertices(prim);
 
                     // this gets us a list of int triplets; the indices of each triangle
                     var triIndices = prim.GetTriangleIndices();
@@ -890,7 +1073,62 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 intermediateMesh.LODs.Add(LOD);
             }
 
+            // TODO collision mesh components for static meshes
             return intermediateMesh;
+        }
+
+        private static Vector3 TransformSocketLocationFromGltf(Vector3 input)
+        {
+            return input * ScaleFactor;
+        }
+        private static Quaternion TransformSocketRotationFromGltf(Quaternion input)
+        {
+            return input;
+        }
+        private static Vector3 TransformScaleFromGltf(Vector3 input)
+        {
+            return input;
+        }
+        private static Vector3 TranformDirectionFromGltf(Vector3 input)
+        {
+            return input;
+        }
+        private static Vector3 TransformBonePositionFromGltf(Vector3 input)
+        {
+            //return new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
+            return input * ScaleFactor;
+        }
+
+        private static Vector3 TransformVertexPositionFromGltf(Vector3 input)
+        {
+            //return new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
+            return input * ScaleFactor;
+        }
+
+        private static Quaternion TransformRootBoneRotationFromGltf(Quaternion input)
+        {
+            //// add a -90 degree rotation around the x axis
+            //var transform = new Quaternion(QuatHalf, 0, 0, -QuatHalf);
+            //return Quaternion.Normalize(transform * input);
+            return input;
+        }
+
+        private static Vector3 TransformRootBonePositionFromGltf(Vector3 input)
+        {
+            //return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
+            return input * ScaleFactor;
+        }
+
+        private static Quaternion TransformBoneRotationFromGltf(Quaternion input)
+        {
+            //// first, get it into the form glTF expects due to the swapped axes
+            //var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
+            //// next, we undo the rotation introduced by the parent
+            //temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
+            //// finally, we rotate the child in its local axes
+            //temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
+            //return Quaternion.Normalize(temp);
+            return input;
         }
 
         private static void ImportSkeletalMesh(IntermediateMesh intermediateMesh, IMEPackage package)
@@ -1102,21 +1340,21 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static Vector3 Yup2Zup(Vector3 input)
-        {
-            return new Vector3(input.X, input.Z, input.Y);
-        }
+        //private static Vector3 Yup2Zup(Vector3 input)
+        //{
+        //    return new Vector3(input.X, input.Z, input.Y);
+        //}
 
-        private static Quaternion Yup2Zup(Quaternion input)
-        {
-            var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
-            return Quaternion.Normalize(input * transformQuat);
-        }
+        //private static Quaternion Yup2Zup(Quaternion input)
+        //{
+        //    var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
+        //    return Quaternion.Normalize(input * transformQuat);
+        //}
 
-        private static Vector3 ScaleForME(Vector3 input)
-        {
-            return input * ScaleFactor;
-        }
+        //private static Vector3 ScaleForME(Vector3 input)
+        //{
+        //    return input * ScaleFactor;
+        //}
         #endregion
 
         #region intermediate
@@ -1201,8 +1439,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             public List<Vector2> UVs = [];
             // only present for skeletal meshes. The engine supports a maximum of four influences, so that is the max length
             public List<(int influenceBone, float weight)> Influences = [];
-            // no known use yet, but static meshes might support it
-            //Vector4 Color;
             // used to store the original index when we export it from ME to glTF; can hopefully help us reconsitutue it later
             public int OriginalIndex;
             public IntermediateVertex()
@@ -1278,6 +1514,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         }
     }
 
+    // A custom Vertex Type for SharpGltf so we can have a variable number of UVs, plus attach custom metadata about the original index of each vertex to reconstruct the order on import
     public struct VertexTextureNOriginalIndex : IVertexCustom
     {
         #region constructors
@@ -1285,42 +1522,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public VertexTextureNOriginalIndex(int originalIndex, IEnumerable<Vector2> UVs)
         {
             _originalIndex = originalIndex;
-            _texCoords = UVs.ToList();
+            _texCoords = [.. UVs];
         }
-        //public static implicit operator VertexTextureNOriginalIndex((Vector4 color, Vector2 tex, Single customId) tuple)
-        //{
-        //    return new VertexTextureNOriginalIndex(tuple.color, tuple.tex, tuple.customId);
-        //}
-
-        //public VertexTextureNOriginalIndex(Vector4 color, Vector2 tex, Single customId)
-        //{
-        //    Color = color;
-        //    TexCoord = tex;
-        //    CustomId = customId;
-        //}
-
-        //public VertexTextureNOriginalIndex(IVertexMaterial src)
-        //{
-        //    this.Color = src.MaxColors > 0 ? src.GetColor(0) : Vector4.One;
-        //    this.TexCoord = src.MaxTextCoords > 0 ? src.GetTexCoord(0) : Vector2.Zero;
-
-        //    this.CustomId = 0;
-
-        //    if (src is VertexTextureNOriginalIndex custom)
-        //    {
-        //        this.CustomId = custom.CustomId;
-        //    }
-        //    else if (src is IVertexCustom otherx)
-        //    {
-        //        if (otherx.TryGetCustomAttribute(CUSTOMATTRIBUTENAME, out object attr0) && attr0 is float c0) this.CustomId = c0;
-        //    }
-        //}
 
         #endregion
 
         #region data
 
-        public const string OriginalIndexAttributeName = "_original_index";
+        public const string OriginalIndexAttributeName = "_ORIGINAL_INDEX";
 
         private List<Vector2> _texCoords = [];
         private int _originalIndex = -1;
