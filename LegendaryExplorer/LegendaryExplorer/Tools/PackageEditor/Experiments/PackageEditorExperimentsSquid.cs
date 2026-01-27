@@ -122,12 +122,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
             if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out var export))
             {
-                var d = new SaveFileDialog { Filter = "glTF|*.glTF,*.glb", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
+                var d = new SaveFileDialog { Filter = "glTF binary|*.glb|glTF|*.glTF", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
                 if (d.ShowDialog() == true)
                 {
                     if (export.ClassName == "SkeletalMesh")
                     {
-                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                     // TODO support other closely related types?
                     else if (export.ClassName == "StaticMesh")
@@ -136,7 +136,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         {
                             ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
                         }
-                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.FullDisplayedVersion}");
+                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                 }
             }
