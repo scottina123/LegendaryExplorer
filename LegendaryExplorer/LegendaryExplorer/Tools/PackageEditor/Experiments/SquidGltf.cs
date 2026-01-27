@@ -432,7 +432,106 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 mats.Add(mat);
             }
 
-            // skeleton
+            // LODs
+            foreach (var lod in mesh.LODs)
+            {
+                var name = lod.Index == 0 ? mesh.Name : $"{mesh.Name}_LOD_{lod.Index}";
+                // SkeletalMesh version
+                if (mesh.Skeleton != null)
+                {
+                    var mb = new MeshBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>(name);
+
+                    foreach (var section in lod.Sections)
+                    {
+                        var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
+                        foreach (var tri in section.Triangles)
+                        {
+                            VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4> GetVert(int i)
+                            {
+                                var intermediateVert = section.Vertices[i];
+                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>()
+                                    .WithGeometry(
+                                        TransformVertexPosition(intermediateVert.Position),
+                                        TransformDirection(intermediateVert.Normal.Value),
+                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
+                                    .WithMaterial([.. intermediateVert.UVs])
+                                    .WithSkinning(intermediateVert.Influences);
+                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
+                                return vb;
+                            }
+                            primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
+                        }
+                    }
+                    var meshNode = new NodeBuilder();
+                    containerNode.AddNode(meshNode);
+                    var rigidMesh = scene.AddRigidMesh(mb, meshNode);
+                    rigidMesh.WithName(name);
+                }
+                // StaticMesh version
+                else
+                {
+                    var mb = new MeshBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>(name);
+
+                    foreach (var section in lod.Sections)
+                    {
+                        var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
+                        foreach (var tri in section.Triangles)
+                        {
+                            VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty> GetVert(int i)
+                            {
+                                var intermediateVert = section.Vertices[i];
+                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>()
+                                    .WithGeometry(
+                                        TransformVertexPosition(intermediateVert.Position),
+                                        TransformDirection(intermediateVert.Normal.Value),
+                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
+                                    .WithMaterial([.. intermediateVert.UVs]);
+                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
+                                return vb;
+                            }
+                            primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
+                        }
+                    }
+                    var meshNode = new NodeBuilder();
+                    containerNode.AddNode(meshNode);
+                    var rigidMesh = scene.AddRigidMesh(mb, meshNode);
+                    rigidMesh.WithName(name);
+                }
+            }
+
+
+            if (mesh.CollisionMeshElements != null)
+            {
+                var collisionMat = new MaterialBuilder("CollisionMaterial");
+
+                for (int i = 0; i < mesh.CollisionMeshElements.Count; i++)
+                {
+                    var name = $"{mesh.Name}_Collision_{i}";
+                    var collisionElement = mesh.CollisionMeshElements[i];
+
+                    var mb = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>(name);
+                    var primitive = mb.UsePrimitive(collisionMat);
+
+                    foreach (var tri in collisionElement.Triangles)
+                    {
+                        VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty> GetVert(int i)
+                        {
+                            var intermediateVert = collisionElement.Vertices[i];
+                            var vb = new VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty>()
+                                .WithGeometry(intermediateVert / ScaleFactor);
+                            return vb;
+                        }
+                        primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
+                    }
+
+                    var meshNode = new NodeBuilder();
+                    containerNode.AddNode(meshNode);
+                    var rigidMesh = scene.AddRigidMesh(mb, meshNode);
+                    rigidMesh.WithName(name);
+                }
+            }
+
+            // skeleton/sockets
             NodeBuilder[] skeletonNodes = [];
             if (mesh.Skeleton != null)
             {
@@ -472,84 +571,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         parent.AddNode(nb);
                     }
                 }
-            }
-
-            // LODs
-            foreach (var lod in mesh.LODs)
-            {
-                var name = lod.Index == 0 ? mesh.Name : $"{mesh.Name}_LOD_{lod.Index}";
-                // SkeletalMesh version
-                if (mesh.Skeleton != null)
-                {
-                    var mb = new MeshBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>(name);
-
-                    foreach (var section in lod.Sections)
-                    {
-                        var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
-                        foreach (var tri in section.Triangles)
-                        {
-                            VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4> GetVert(int i)
-                            {
-                                var intermediateVert = section.Vertices[i];
-                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexJoints4>()
-                                    .WithGeometry(
-                                        TransformVertexPosition(intermediateVert.Position),
-                                        TransformDirection(intermediateVert.Normal.Value),
-                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
-                                    .WithMaterial([.. intermediateVert.UVs])
-                                    .WithSkinning(intermediateVert.Influences);
-                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
-                                return vb;
-                            }
-                            primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
-                        }
-                    }
-                    // create the skin for the first LOD, but not the others to avoid creating duplicate skins in the output file
-                    if (lod.Index == 0)
-                    {
-                        var skinnedMesh = scene.AddSkinnedMesh(mb, Matrix4x4.Identity, skeletonNodes);
-                        skinnedMesh.WithName(name);
-                    }
-                    else
-                    {
-                        var rigidMesh = scene.AddRigidMesh(mb, Matrix4x4.Identity);
-                        rigidMesh.WithName(name);
-                    }
-                }
-                // StaticMesh version
-                else
-                {
-                    var mb = new MeshBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>(name);
-
-                    foreach (var section in lod.Sections)
-                    {
-                        var primitive = mb.UsePrimitive(mats[section.MaterialIndex]);
-                        foreach (var tri in section.Triangles)
-                        {
-                            VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty> GetVert(int i)
-                            {
-                                var intermediateVert = section.Vertices[i];
-                                var vb = new VertexBuilder<VertexPositionNormalTangent, VertexTextureNOriginalIndex, VertexEmpty>()
-                                    .WithGeometry(
-                                        TransformVertexPosition(intermediateVert.Position),
-                                        TransformDirection(intermediateVert.Normal.Value),
-                                        new Vector4(TransformDirection(intermediateVert.Tangent.Value), intermediateVert.BiTangentDirection))
-                                    .WithMaterial([.. intermediateVert.UVs]);
-                                vb.Material.OriginalIndex = intermediateVert.OriginalIndex;
-                                return vb;
-                            }
-                            primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
-                        }
-                    }
-                    var meshNode = new NodeBuilder();
-                    containerNode.AddNode(meshNode);
-                    var rigidMesh = scene.AddRigidMesh(mb, meshNode);
-                    rigidMesh.WithName(name);
-                }
-            }
-
-            if (mesh.Skeleton != null)
-            {
                 // finish sockets by creating nodes under the bones they are attached to
                 for (int i = 0; i < mesh.Skeleton.Count; i++)
                 {
@@ -566,49 +587,20 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
 
-            if (mesh.CollisionMeshElements != null)
-            {
-                var collisionMat = new MaterialBuilder("CollisionMaterial");
-
-                for (int i = 0; i < mesh.CollisionMeshElements.Count; i++)
-                {
-                    var name = $"{mesh.Name}_Collision_{i}";
-                    var collisionElement = mesh.CollisionMeshElements[i];
-
-                    var mb = new MeshBuilder<VertexPosition, VertexEmpty, VertexEmpty>(name);
-                    var primitive = mb.UsePrimitive(collisionMat);
-
-                    foreach (var tri in collisionElement.Triangles)
-                    {
-                        VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty> GetVert(int i)
-                        {
-                            var intermediateVert = collisionElement.Vertices[i];
-                            var vb = new VertexBuilder<VertexPosition, VertexEmpty, VertexEmpty>()
-                                .WithGeometry(intermediateVert / ScaleFactor);
-                            return vb;
-                        }
-                        primitive.AddTriangle(GetVert(tri.VertIndex1), GetVert(tri.VertIndex2), GetVert(tri.VertIndex3));
-                    }
-
-                    var meshNode = new NodeBuilder();
-                    containerNode.AddNode(meshNode);
-                    var rigidMesh = scene.AddRigidMesh(mb, meshNode);
-                    rigidMesh.WithName(name);
-                }
-            }
-
             var gltf = scene.ToGltf2();
             gltf.Asset.Generator = $"{versionInfo ?? "Legendary Explorer Core"}";
 
-            // connect up the skin, if present
-            if (gltf.LogicalSkins.Count == 1)
+            // collect the real nodes for the skeleton, in the exact same order
+            var jointNodes = skeletonNodes.Select(x => gltf.LogicalNodes.First(y => y.Name == x.Name)).ToArray();
+
+            // manually create the skin and then connect it up to the nodes containing the meshes
+            var skin = gltf.CreateSkin(mesh.Name);
+            skin.BindJoints(Matrix4x4.Identity, jointNodes);
+            foreach (var node in gltf.LogicalNodes)
             {
-                foreach (var node in gltf.LogicalNodes)
+                if (node.Mesh != null)
                 {
-                    if (node.Mesh != null && node.Skin == null)
-                    {
-                        node.WithSkin(gltf.LogicalSkins[0]);
-                    }
+                    node.WithSkin(skin);
                 }
             }
 
