@@ -593,14 +593,17 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // collect the real nodes for the skeleton, in the exact same order
             var jointNodes = skeletonNodes.Select(x => gltf.LogicalNodes.First(y => y.Name == x.Name)).ToArray();
 
-            // manually create the skin and then connect it up to the nodes containing the meshes
-            var skin = gltf.CreateSkin(mesh.Name);
-            skin.BindJoints(Matrix4x4.Identity, jointNodes);
-            foreach (var node in gltf.LogicalNodes)
+            if (mesh.Skeleton != null && mesh.Skeleton.Count > 0)
             {
-                if (node.Mesh != null)
+                // manually create the skin and then connect it up to the nodes containing the meshes
+                var skin = gltf.CreateSkin(mesh.Name);
+                skin.BindJoints(Matrix4x4.Identity, jointNodes);
+                foreach (var node in gltf.LogicalNodes)
                 {
-                    node.WithSkin(skin);
+                    if (node.Mesh != null)
+                    {
+                        node.WithSkin(skin);
+                    }
                 }
             }
 
