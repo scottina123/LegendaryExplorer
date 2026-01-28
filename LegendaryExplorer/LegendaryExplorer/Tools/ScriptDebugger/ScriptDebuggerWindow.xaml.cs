@@ -167,6 +167,7 @@ namespace LegendaryExplorer.Tools.ScriptDebugger
         public Requirement.RequirementCommand DebuggerASIInstalledRequirementCommand { get; set; }
         public GenericCommand AttachDebuggerCommand { get; private set; }
         public GenericCommand DetachDebuggerCommand { get; private set; }
+        public GenericCommand ReSyncDebuggerCommand { get; private set; }
         public GenericCommand BreakAllCommand { get; private set; }
         public GenericCommand ResumeCommand { get; private set; }
         public GenericCommand StepIntoCommand { get; private set; }
@@ -179,6 +180,7 @@ namespace LegendaryExplorer.Tools.ScriptDebugger
             DebuggerASIInstalledRequirementCommand = new Requirement.RequirementCommand(IsDebuggerASIInstalled, GetDebuggerASI);
             AttachDebuggerCommand = new GenericCommand(AttachDebugger, CanAttachDebugger);
             DetachDebuggerCommand = new GenericCommand(DetachDebugger, CanDetachDebugger);
+            ReSyncDebuggerCommand = new GenericCommand(ReSyncDebugger, CanDetachDebugger);
             BreakAllCommand = new GenericCommand(BreakAll, CanBreakAll);
             ResumeCommand = new GenericCommand(Resume, CanResume);
             StepIntoCommand = new GenericCommand(StepInto, CanResume);
@@ -306,8 +308,19 @@ namespace LegendaryExplorer.Tools.ScriptDebugger
             }
         }
 
+        private void ReSyncDebugger()
+        {
+            if (CanDetachDebugger())
+            {
+                Debugger?.ReSync();
+            }
+        }
+
         private bool IsDebuggerASIInstalled()
         {
+            //DO NOT COMMIT!
+            return true; // Temporarily disable check while testing new versions
+
             if (!InteropHelper.IsGameInstalled(Game))
             {
                 return false;
