@@ -95,6 +95,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
         public static readonly Dictionary<EF, HighlightingColor> HighlightingColors = [];
         public static readonly Dictionary<EF, SolidColorBrush> ColorBrushes = [];
 
+        public static readonly SolidColorBrush BackgroundBrush = new SolidColorBrush(Color.FromRgb(56, 56, 56));
+
         public string Name => "Unrealscript-Dark";
         public IEnumerable<HighlightingColor> NamedHighlightingColors => HighlightingColors.Values;
         public HighlightingColor GetNamedColor(string name) => NamedHighlightingColors.FirstOrDefault(hc => hc.Name == name);

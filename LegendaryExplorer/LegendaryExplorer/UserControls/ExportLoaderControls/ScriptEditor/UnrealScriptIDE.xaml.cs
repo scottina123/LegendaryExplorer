@@ -706,7 +706,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                                 {
                                     do
                                     {
-                                        completionData.AddRange(cls.TypeDeclarations.OfType<Const>().Select(c => new CompletionData(c.Name, $"{c.Literal?.ResolveType().DisplayName()} {c.Value}")));
+                                        completionData.AddRange(cls.TypeDeclarations.OfType<Const>().Select(c => new CompletionData(c.Name, $"{c.Value}")));
                                         cls = cls.Parent as Class;
                                     } while (cls is not null);
                                 }
@@ -732,7 +732,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
             }
             if (completionData.Count > 0)
             {
-                completionWindow = new CompletionWindow(textEditor.TextArea)
+                completionWindow = new LEXCompletionWindow(textEditor.TextArea)
                 {
                     SizeToContent = SizeToContent.WidthAndHeight
                 };
@@ -1054,15 +1054,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
 
             void SetTooltip(TextBlock content)
             {
-                content.Background = ToolTipBackgroundBrush;
+                content.Background = SyntaxInfo.BackgroundBrush;
                 _hoverToolTip.Content = content;
-                _hoverToolTip.Background = ToolTipBackgroundBrush;
+                _hoverToolTip.Background = SyntaxInfo.BackgroundBrush;
                 _hoverToolTip.PlacementTarget = this; // required for property inheritance
                 _hoverToolTip.IsOpen = true;
             }
         }
-
-        private static readonly SolidColorBrush ToolTipBackgroundBrush = new(Color.FromRgb(56, 56, 56));
 
         private void TextEditor_OnMouseHoverStopped(object sender, MouseEventArgs e)
         {
