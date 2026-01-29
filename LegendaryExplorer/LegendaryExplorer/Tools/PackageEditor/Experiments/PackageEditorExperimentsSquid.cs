@@ -112,7 +112,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         public static void ExportMeshToGltf(PackageEditorWindow pew)
         {
-            // TODO handle no open pcc
+            if (pew.Pcc == null)
+            {
+                return;
+            }
             if (pew.Pcc.Game == MEGame.ME1)
             {
                 ShowError("This experiment does not yet support OT1; if you must do this, port it to another game first");
@@ -149,6 +152,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         public static void ImportGltf(PackageEditorWindow pew)
         {
+            if (pew.Pcc == null)
+            {
+                return;
+            }
             if (pew.Pcc.Game == MEGame.ME1)
             {
                 ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
@@ -172,7 +179,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (d.ShowDialog() == true)
             {
                 filePath = d.FileName;
-                gltf = SharpGLTF.Schema2.ModelRoot.Load(filePath);
+                gltf = SharpGLTF.Schema2.ModelRoot.Load(filePath, SharpGLTF.Validation.ValidationMode.Skip);
                 return true;
             }
 

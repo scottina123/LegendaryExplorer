@@ -29,6 +29,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
     {
         private const float ScaleFactor = 100;
         const float weightUnpackScale = 1f / 255;
+        // the Mass Effect binary mesh format enforces there be a maximum of 4 bone influences per vertex
+        const int MaxBoneInfluences = 4;
+        static readonly float[] displayFactors = [1.0f, 0.25f, 0.1f];
 
         #region export
         public enum MaterialExportLevel
@@ -46,32 +49,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         {
             var intermediateMesh = ToIntermediateMesh(mesh, materialSetting);
             var gltf = ToGltf(intermediateMesh, versionInfo);
-            // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
-            // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
-            if (".glb".CaseInsensitiveEquals(Path.GetExtension(filePath)))
-            {
-                gltf.SaveGLB(filePath);
-            }
-            else
-            {
-                gltf.SaveGLTF(filePath);
-            }
+            gltf.Save(filePath);
         }
 
         public static void ConvertStaticMeshToGltf(StaticMesh mesh, string filePath, MaterialExportLevel materialSetting = MaterialExportLevel.Basic, string versionInfo = null)
         {
             var intermediateMesh = ToIntermediateMesh(mesh, materialSetting);
             var gltf = ToGltf(intermediateMesh, versionInfo);
-            // allow saving as glTF (human readable json, outputs a bin file and textures next to it)
-            // or a glb, which bundles all of that stuff together into a single file. more space efficient and transportable
-            if (".glb".CaseInsensitiveEquals(Path.GetExtension(filePath)))
-            {
-                gltf.SaveGLB(filePath);
-            }
-            else
-            {
-                gltf.SaveGLTF(filePath);
-            }
+            gltf.Save(filePath);
         }
 
         private static IntermediateMesh ToIntermediateMesh(StaticMesh mesh, MaterialExportLevel materialSetting)
@@ -176,7 +161,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                 var intermediateVert = new IntermediateVertex()
                 {
-                    Index = i,
                     OriginalIndex = i,
                     Position = lod.PositionVertexBuffer.VertexData[i],
                     Normal = (Vector3)vert.TangentZ,
@@ -363,7 +347,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
                 vertices.Add(new IntermediateVertex()
                 {
-                    Index = i,
                     Position = originalVertex.Position,
                     Normal = (Vector3)originalVertex.TangentZ,
                     Tangent = (Vector3)originalVertex.TangentX,
@@ -689,7 +672,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         #endregion
 
         #region import
-        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc)
+        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null)
         {
             CollectMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
             int totalMeshes = skeletalMeshes.Count + staticMeshes.Count;
@@ -698,16 +681,18 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 // TODO show a warning or something
                 return;
             }
-            if (totalMeshes > 1)
-            {
-                // TODO add support for this?
-                throw new NotImplementedException("I can't import where there is more than one mesh per file yet");
-            }
+            // TODO right now I just import them all as new meshes, which seems to work ok for skeletal meshes
+            // but if they are replacing a mesh I will need to make them pick one
+            //if (totalMeshes > 1)
+            //{
+            //    // TODO add support for this?
+            //    throw new NotImplementedException("I can't import where there is more than one mesh per file yet");
+            //}
             foreach (var skelMesh in skeletalMeshes)
             {
                 var intermediateMesh = ToIntermediateMesh(skelMesh.Item1, skelMesh.Item2);
                 CleanUpIntermediateMesh(intermediateMesh);
-                // TODO to SkeletalMesh!
+                ToSkeletalMesh(intermediateMesh, pcc, existingMesh);
             }
             foreach (var statMesh in staticMeshes)
             {
@@ -719,43 +704,170 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static IntermediateMesh CleanUpIntermediateMesh(IntermediateMesh mesh)
         {
+            // TODO make sure everything is normalized properly?
             foreach (var lod in mesh.LODs)
             {
+                // fill in data that was not provided on import
+                CalculateNormalsIfNeeded(lod);
+                CalculateTangentIfNeeded(lod);
+                // TODO keep track of whether this succeeded so we can leave the vertex order alone in the future
                 ReconstructVertexOrder(lod);
+                // make the data much easier to process
+                MergeVertexLists(lod);
             }
             // TODO generate tangents, normals if not present
             return mesh;
         }
 
-        private static bool ReconstructVertexOrder(IntermediateLOD lod)
+        private static void MergeVertexLists(IntermediateLOD lod)
         {
-            // make sure this uses shared vertices. This is a requirement to reconstruct vertex order
-            // having only one section also satisfies this
+            // make sure we have a single vertex list for all sections and the triangle indices are remapped to account for this
+            if (lod.Sections.Count == 1)
+            {
+                // nothing to do, there is only one vertex list
+                return;
+            }
+
+            if (lod.Sections.Count > 1)
+            {
+                var firstSectionVerts = lod.Sections[0].Vertices;
+                if (lod.Sections.Skip(1).All(x => x.Vertices == firstSectionVerts))
+                {
+                    // they already have shared vertices
+                    return;
+                }
+            }
+
+            List<IntermediateVertex> vertList = [];
+            foreach (var section in lod.Sections)
+            {
+                if (vertList.Any())
+                {
+                    section.Triangles = [..section.Triangles.Select(x => new IntermediateTriangle()
+                    {
+                        VertIndex1 = x.VertIndex1 + vertList.Count,
+                        VertIndex2 = x.VertIndex2 + vertList.Count,
+                        VertIndex3 = x.VertIndex3 + vertList.Count
+                    })];
+                }
+                vertList.AddRange(section.Vertices);
+                section.Vertices = vertList;
+            }
+        }
+
+        private static void CalculateNormalsIfNeeded(IntermediateLOD lod)
+        {
+            // if we do not already have normals
+            if (lod.Sections[0].Vertices[0].Normal == null)
+            {
+                // TODO is this worth doing? without some welding, it is going to have seams all over the place. I could just enforce that you include them in the export, even if they are
+                // just autogenerated by Blender. It will do a better job and can take into account merged vertices that will get duplicated by the glTF export. 
+                throw new NotImplementedException("You need to export your model with normals for now. I have not implemented generating them");
+            }
+            // If the normals are not present already, calculate them here by averaging the normals of the faces containing each vertex, weighted by the angle containing that vertex, so as not to introduce artifacts due to triangulation
+            //if (psk.VertexNormals == null || psk.VertexNormals.Count == 0)
+            //{
+            //    // things we need per triangle:
+            //    // normal vector
+            //    // point index/angle pairs
+            //    float GetAngle(Vector3 p0, Vector3 p1, Vector3 p2)
+            //    {
+            //        var dot = Vector3.Dot(p1 - p0, p2 - p0);
+            //        var m1 = Vector3.Distance(p0, p1);
+            //        var m2 = Vector3.Distance(p0, p2);
+            //        var temp = dot / (m1 * m2);
+            //        return (float)Math.Acos(temp);
+            //    }
+
+            //    // need to calculate the normal per face
+            //    // need to group faces by point index, but with dupes
+            //    var summedNormals = new Vector3[psk.Points.Count];
+            //    foreach (var face in psk.Faces)
+            //    {
+            //        // point index of each vertex of the triangle
+            //        var i0 = psk.Wedges[face.WedgeIdx0].PointIndex;
+            //        var i1 = psk.Wedges[face.WedgeIdx1].PointIndex;
+            //        var i2 = psk.Wedges[face.WedgeIdx2].PointIndex;
+            //        // position of each vertex of the triangle
+            //        var p0 = psk.Points[i0];
+            //        var p1 = psk.Points[i1];
+            //        var p2 = psk.Points[i2];
+
+            //        // angle (in rad) of each angle of the triangle by point it contains
+            //        var a0 = GetAngle(p0, p1, p2);
+            //        var a1 = GetAngle(p1, p0, p2);
+            //        var a2 = GetAngle(p2, p1, p0);
+
+            //        var faceNormal = Vector3.Normalize(Vector3.Cross(p2 - p0, p1 - p0));
+
+            //        // accumulate the face normals for each point, weighted by the angle
+            //        summedNormals[i0] += faceNormal * a0;
+            //        summedNormals[i1] += faceNormal * a1;
+            //        summedNormals[i2] += faceNormal * a2;
+            //    }
+            //    psk.VertexNormals = [.. summedNormals.Select(x => Vector3.Normalize(x))];
+            //}
+        }
+
+        private static void CalculateTangentIfNeeded(IntermediateLOD lod)
+        {
+            if (lod.Sections[0].Vertices[0].Tangent == null)
+            {
+                throw new NotImplementedException("You need to export your model with tangents for now. I have not implemented generating them");
+            }
+        }
+
+        private static List<IntermediateVertex> GetAllVertices(IntermediateLOD lod)
+        {
             var vertices = lod.Sections[0].Vertices;
             if (lod.Sections.Count > 1)
             {
-                if (!lod.Sections.All(x => x.Vertices == vertices))
+                if (!lod.Sections.Skip(1).All(x => x.Vertices == vertices))
                 {
-                    // they do not have shared verts, so we can't reconstruct the original order
-                    return false;
+                    // they do not have shared accessors, so we need to concatenate the verts from each section
+                    vertices = [.. lod.Sections.SelectMany(x => x.Vertices)];
                 }
             }
+            return vertices;
+        }
+
+        private static bool ReconstructVertexOrder(IntermediateLOD lod)
+        {
+            var vertices = GetAllVertices(lod);
+
             // now that we know there is only one vert array, check to see if the indices got messed up during editing
             // group the vertices by original index
             var groupedVerts = vertices.GroupBy(x => x.OriginalIndex);
             // if there are any duplicates, we cannot reconstitute the the original order
             // this will happen primarily due to topology edits, especially merging vertices
             // this will also fail if they did not export the original indices from blender, as they will all be 0, which is fine
+            List<IntermediateVertex> dedupedVerts;
             if (groupedVerts.Any(x => x.Count() != 1))
             {
-                // I'm not sure why it is splitting them. The normals appear to be ever so slightly different maybe?
-                // I bet I could dedpue them based on slight normal differences
-                // debug
-                var eval = groupedVerts.Where(x => x.Count() != 1).Select(x => x.ToArray()).ToList();
-                return false;
+                // trying to dedupe
+                // this is all the ones that already weren't duplicated
+                dedupedVerts = [.. groupedVerts.Where(x => x.Count() == 1).Select(x => x.Single())];
+
+                var dupes = groupedVerts.Where(x => x.Count() != 1).Select(x => x.ToArray()).ToList();
+                foreach (var dupe in dupes)
+                {
+                    if (DedupeVertices(dupe, out var newVert))
+                    {
+                        dedupedVerts.Add(newVert);
+                    }
+                    else
+                    {
+                        // we cannot dedupe them
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                dedupedVerts = [.. vertices];
             }
             // put them in their original order
-            var verticesOriginalOrder = vertices.OrderBy(x => x.OriginalIndex).ToList();
+            var verticesOriginalOrder = dedupedVerts.OrderBy(x => x.OriginalIndex).ToList();
             // make sure we actually have 0-n, not skipping any
             for (int i = 0; i < verticesOriginalOrder.Count; i++)
             {
@@ -771,25 +883,118 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // assume at this point it is fine. replace the verts on each section, replace the triangles with new ones that point to the original indices
             foreach (var section in lod.Sections)
             {
+                var originalSectionVerts = section.Vertices;
                 section.Vertices = verticesOriginalOrder;
                 section.Triangles = [.. section.Triangles.Select(x => new IntermediateTriangle()
                 {
-                    VertIndex1 = vertices[x.VertIndex1].OriginalIndex,
-                    VertIndex2 = vertices[x.VertIndex2].OriginalIndex,
-                    VertIndex3 = vertices[x.VertIndex3].OriginalIndex
+                    VertIndex1 = originalSectionVerts[x.VertIndex1].OriginalIndex,
+                    VertIndex2 = originalSectionVerts[x.VertIndex2].OriginalIndex,
+                    VertIndex3 = originalSectionVerts[x.VertIndex3].OriginalIndex
                 })];
             }
 
             // at this point, we have restored the vertex order to the original, and the triangle order should also be the same as it is in Blender, which will match exported if you haven't messed with things
-
             return true;
+        }
+
+        private static bool DedupeVertices(IEnumerable<IntermediateVertex> vertices, out IntermediateVertex dedupe)
+        {
+            var numVerts = vertices.Count();
+            if (numVerts == 0)
+            {
+                dedupe = default;
+                return false;
+            }
+            else if (numVerts == 1)
+            {
+                dedupe = vertices.Single();
+                return true;
+            }
+            var first = vertices.First();
+            dedupe = default;
+            foreach (var vert in vertices.Skip(1))
+            {
+                if (!(ApproximatelyEquals(first.Position, vert.Position)
+                    && ApproximatelyEquals(first.Normal, vert.Normal)
+                    && ApproximatelyEquals(first.Tangent, vert.Tangent)
+                    && (int)first.BiTangentDirection == (int)vert.BiTangentDirection
+                    && ApproximatelyEquals(first.UVs, vert.UVs)
+                    && ApproximatelyEquals(first.Influences, vert.Influences)))
+                {
+                    return false;
+                }
+            }
+            // TODO average stuff? it shouldn't matter since they are all very very close by definition
+            dedupe = first;
+            return true;
+        }
+
+        private static bool ApproximatelyEquals(Vector3? first, Vector3? second)
+        {
+            // both are null
+            if (!first.HasValue && !second.HasValue)
+            {
+                return true;
+            }
+            // only one is null
+            if (!first.HasValue || !second.HasValue)
+            {
+                return false;
+            }
+            // TODO check this epsilon
+            return Vector3.DistanceSquared(first.Value, second.Value) < 0.00001;
+        }
+
+        private static bool ApproximatelyEquals(List<Vector2> first, List<Vector2> second)
+        {
+            if (first.Count != second.Count)
+            {
+                return false;
+            }
+            for (int i = 0; i < first.Count; i++)
+            {
+                if (!ApproximatelyEquals(first[i], second[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool ApproximatelyEquals(Vector2 first, Vector2 second)
+        {
+            // TODO check this epsilon
+            return Vector2.DistanceSquared(first, second) < 0.00001;
+        }
+
+        private static bool ApproximatelyEquals(List<(int influenceBone, float weight)> first, List<(int influenceBone, float weight)> second)
+        {
+            if (first.Count != second.Count)
+            {
+                return false;
+            }
+            for (int i = 0; i < first.Count; i++)
+            {
+                if (first[i].influenceBone != second[i].influenceBone
+                    || !ApproximatelyEquals(first[i].weight, second[i].weight))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool ApproximatelyEquals(float first, float second)
+        {
+            // TODO check this epsilon
+            return first - second < 0.00001;
         }
 
         private static void CollectMeshes(ModelRoot modelRoot, out List<(string, Node[])> skeletalMeshes, out List<(string, Node[])> staticMeshes)
         {
             var meshes = modelRoot.LogicalNodes.Where(node => node.Mesh != null).GroupBy(node => node.VisualParent);
             // TODO make sure they all have the same skin?
-            skeletalMeshes = [..meshes.Where(x => x.All(node => node.Skin != null)).Select(group => (group.Key.Name, group.ToArray()))];
+            skeletalMeshes = [.. meshes.Where(x => x.All(node => node.Skin != null)).Select(group => (group.Key.Name, group.ToArray()))];
             // TODO what if they are at the root? What if there is more than one at the root?
             staticMeshes = [.. meshes.Where(x => x.All(node => node.Skin == null)).Select(group => (group.Key.Name, group.ToArray()))];
         }
@@ -835,7 +1040,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
             // TODO sort this into groups of LODs vs collision components
             var skeletalMesh = nodes[0].Skin != null;
-            int vertIndex = 0;
             int lodIndex = 0;
             int boneIndex = 0;
             // maps from material index within the gltf file to materials within this mesh (in the array order)
@@ -844,7 +1048,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // maps from bone order within the gltf file to bone order within this mesh
             List<int> boneMap = [];
 
-            var intermediateMesh = new IntermediateMesh();
+            var intermediateMesh = new IntermediateMesh()
+            {
+                Name = meshName ?? "gltfMesh"
+            };
 
             // skeleton
             if (skeletalMesh)
@@ -907,7 +1114,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 Node[] FindSockets(Node joint)
                 {
                     // look for direct children of a bone which are not themselves bones
-                    return [..joint.VisualChildren.Where(x => !x.IsSkinJoint)];
+                    return [.. joint.VisualChildren.Where(x => !x.IsSkinJoint)];
                 }
                 foreach (var joint in nodes[0].Skin.Joints)
                 {
@@ -955,7 +1162,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     {
                         var vert = new IntermediateVertex
                         {
-                            Index = vertIndex++,
                             Position = TransformVertexPositionFromGltf(vertColumns.Positions[i]),
                         };
 
@@ -1057,14 +1263,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                     foreach (var (v1, v2, v3) in triIndices)
                     {
-                        // I think the vertex order is correct but need to check
                         var tri = new IntermediateTriangle()
                         {
-                            //Index = triangleIndex++,
-                            //MaterialIndex = meshMatIndex,
-                            VertIndex1 = v2,
-                            VertIndex2 = v3,
-                            VertIndex3 = v1,
+                            VertIndex1 = v1,
+                            VertIndex2 = v2,
+                            VertIndex3 = v3,
                         };
                         meshSection.Triangles.Add(tri);
                     }
@@ -1079,10 +1282,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Vector3 TransformSocketLocationFromGltf(Vector3 input)
         {
-            return input * ScaleFactor;
+            return new Vector3(input.X, -input.Y, input.Z) * ScaleFactor;
         }
         private static Quaternion TransformSocketRotationFromGltf(Quaternion input)
         {
+            // TODO this still needs to be done and I need to implement actually importing this
             return input;
         }
         private static Vector3 TransformScaleFromGltf(Vector3 input)
@@ -1091,56 +1295,58 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         }
         private static Vector3 TranformDirectionFromGltf(Vector3 input)
         {
-            return input;
+            return Vector3.Normalize(new Vector3(input.X, input.Z, input.Y));
         }
         private static Vector3 TransformBonePositionFromGltf(Vector3 input)
         {
-            //return new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
-            return input * ScaleFactor;
+            return new Vector3(input.X, -input.Y, input.Z) * ScaleFactor;
         }
 
         private static Vector3 TransformVertexPositionFromGltf(Vector3 input)
         {
-            //return new Vector3(input.X, -input.Y, input.Z) / ScaleFactor;
-            return input * ScaleFactor;
+            return new Vector3(input.X, input.Z, input.Y) * ScaleFactor;
         }
 
         private static Quaternion TransformRootBoneRotationFromGltf(Quaternion input)
         {
-            //// add a -90 degree rotation around the x axis
-            //var transform = new Quaternion(QuatHalf, 0, 0, -QuatHalf);
-            //return Quaternion.Normalize(transform * input);
-            return input;
+            // add a 90 degree rotation around the x axis
+            var transform = new Quaternion(QuatHalf, 0, 0, QuatHalf);
+            return Quaternion.Normalize(transform * input);
         }
 
         private static Vector3 TransformRootBonePositionFromGltf(Vector3 input)
         {
-            //return new Vector3(input.X, input.Z, input.Y) / ScaleFactor;
-            return input * ScaleFactor;
+            return new Vector3(input.X, -input.Z, -input.Y) * ScaleFactor;
         }
 
         private static Quaternion TransformBoneRotationFromGltf(Quaternion input)
         {
-            //// first, get it into the form glTF expects due to the swapped axes
-            //var temp = new Quaternion(input.X, input.Z, input.Y, -input.W);
-            //// next, we undo the rotation introduced by the parent
-            //temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
-            //// finally, we rotate the child in its local axes
-            //temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
-            //return Quaternion.Normalize(temp);
-            return input;
+            var temp = input * new Quaternion(QuatHalf, 0, 0, QuatHalf);
+            temp = new Quaternion(QuatHalf, 0, 0, -QuatHalf) * temp;
+            temp = new Quaternion(temp.X, temp.Z, temp.Y, -temp.W);
+
+            return Quaternion.Normalize(temp);
         }
 
-        private static void ImportSkeletalMesh(IntermediateMesh intermediateMesh, IMEPackage package)
+        private static ExportEntry ToSkeletalMesh(IntermediateMesh intermediateMesh, IMEPackage package, ExportEntry existingEntry)
         {
             var meshBin = SkeletalMesh.Create();
             SetupSkeleton(intermediateMesh.Skeleton, meshBin);
             SetupBounds(intermediateMesh, meshBin);
             SetupMaterials(intermediateMesh.Materials, meshBin, package);
-            foreach (var lod in intermediateMesh.LODs)
-            {
-                SetupLOD(intermediateMesh, lod, meshBin);
-            }
+            meshBin.LODModels = [.. intermediateMesh.LODs.Select(lod => SetupLOD(intermediateMesh, lod, meshBin))];
+
+            // we now have the complete binary; get or create the export and write out properties
+            var export = existingEntry ?? ExportCreator.CreateExport(package, intermediateMesh.Name, "SkeletalMesh");
+
+            export.WriteBinary(meshBin);
+
+            var lodInfo = GetLodInfoProp(intermediateMesh, package);
+
+            export.WriteProperty(lodInfo);
+            WriteSockets(intermediateMesh, export);
+
+            return export;
 
             static void SetupSkeleton(IList<IntermediateBone> skeleton, SkeletalMesh meshBin)
             {
@@ -1179,8 +1385,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         BoneColor = new LegendaryExplorerCore.SharpDX.Color(new Vector4(1, 1, 1, 1)),
                         Flags = 0,
                         ParentIndex = currentBone.ParentIndex,
-                        Position = new Vector3(currentBone.Position.X, currentBone.Position.Y * -1, currentBone.Position.Z),
-                        Orientation = new Quaternion(currentBone.Rotation.X, currentBone.Rotation.Y * -1, currentBone.Rotation.Z, currentBone.Rotation.W)
+                        Position = currentBone.Position,
+                        Orientation = currentBone.Rotation
                     };
 
                     // make sure we calculate the depth
@@ -1193,28 +1399,29 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
             static void SetupBounds(IntermediateMesh intermediateMesh, SkeletalMesh meshBin)
             {
-                //// bounds are important at least for the camera display preview in LEX, and possibly important for when to cull meshes based on visibility in game
-                //// separate out the coordinates for each axis so we can operate on them
-                //var xCoords = intermediateMesh.LODs[0].Vertices.Select(x => x.Position.X);
-                //var yCoords = intermediateMesh.LODs[0].Vertices.Select(x => x.Position.Y);
-                //var zCoords = intermediateMesh.LODs[0].Vertices.Select(x => x.Position.Z);
+                // bounds are important at least for the camera display preview in LEX, and possibly important for when to cull meshes based on visibility in game
+                // separate out the coordinates for each axis so we can operate on them
+                var vertices = GetAllVertices(intermediateMesh.LODs[0]);
+                var xCoords = vertices.Select(x => x.Position.X);
+                var yCoords = vertices.Select(x => x.Position.Y);
+                var zCoords = vertices.Select(x => x.Position.Z);
 
-                //// get the origin by averaging all vertex positions; it'll probably be close enough
-                //var origin = new Vector3(xCoords.Average(), yCoords.Average(), zCoords.Average());
+                // get the origin by averaging all vertex positions; it'll probably be close enough
+                var origin = new Vector3(xCoords.Average(), yCoords.Average(), zCoords.Average());
 
-                //var xRange = xCoords.Select(coord => Math.Abs(coord - origin.X)).Max();
-                //var yRange = yCoords.Select(coord => Math.Abs(coord - origin.Y)).Max();
-                //var zRange = zCoords.Select(coord => Math.Abs(coord - origin.Z)).Max();
-                //var boxExtent = new Vector3(xRange, yRange, zRange);
+                var xRange = xCoords.Select(coord => Math.Abs(coord - origin.X)).Max();
+                var yRange = yCoords.Select(coord => Math.Abs(coord - origin.Y)).Max();
+                var zRange = zCoords.Select(coord => Math.Abs(coord - origin.Z)).Max();
+                var boxExtent = new Vector3(xRange, yRange, zRange);
 
-                //var sphereRad = boxExtent.Length();
-                //meshBin.Bounds = new BoxSphereBounds
-                //{
-                //    Origin = origin,
-                //    // best guess at a reasonable margin
-                //    BoxExtent = boxExtent * 2,
-                //    SphereRadius = sphereRad * 2
-                //};
+                var sphereRad = boxExtent.Length();
+                meshBin.Bounds = new BoxSphereBounds
+                {
+                    Origin = origin,
+                    // best guess at a reasonable margin
+                    BoxExtent = boxExtent * 2,
+                    SphereRadius = sphereRad * 2
+                };
             }
 
             static void SetupMaterials(IList<IntermediateMaterial> materials, SkeletalMesh meshBin, IMEPackage package)
@@ -1226,6 +1433,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     {
                         continue;
                     }
+                    // TODO fall back to looking for just the end of the path for compatibility with stuff exported as psk previously
                     var entry = FindEntryByMemeroryFullPath(package, materials[i].Name, "MaterialInterface");
                     if (entry != null)
                     {
@@ -1234,94 +1442,322 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
 
-            static void SetupLOD(IntermediateMesh intermediateMesh, IntermediateLOD lod, SkeletalMesh meshBin)
+            static StaticLODModel SetupLOD(IntermediateMesh intermediateMesh, IntermediateLOD lod, SkeletalMesh meshBin)
             {
-                //    // TODO implement normal generation, maybe even with welding, angle threshold?
-                //    if (lod.Vertices[0].Normal == null)
-                //    {
-                //        throw new NotImplementedException("I haven't implemented normal generation yet. export your glTF with normals.");
-                //    }
-                //    // TODO implement normal generation, maybe even with welding, angle threshold?
-                //    if (lod.Vertices[0].Tangent == null)
-                //    {
-                //        throw new NotImplementedException("I haven't implemented tangent generation yet. export your glTF with tangents.");
-                //    }
-                //    SetupSectionsAndChunks();
+                var intermediateVerts = GetAllVertices(lod);
 
-                //    void SetupSectionsAndChunks()
-                //    {
-                //        if (intermediateMesh.Materials.Count == 1)
-                //        {
+                var LOD = new StaticLODModel
+                {
+                    // TODO filter this down to bones that actually have any weighting?
+                    RequiredBones = [.. Enumerable.Range(0, intermediateMesh.Skeleton.Count).Select(x => (byte)x)],
+                    ActiveBoneIndices = [.. Enumerable.Range(0, intermediateMesh.Skeleton.Count).Select(x => (ushort)x)],
+                    NumVertices = (uint)intermediateVerts.Count,
+                    VertexBufferGPUSkin = new SkeletalMeshVertexBuffer
+                    {
+                        VertexData = new GPUSkinVertex[intermediateVerts.Count],
+                        MeshExtension = new Vector3(1, 1, 1)
+                    }
+                };
 
-                //        }
-                //        else
-                //        {
-                //            // TODO make this optional?
-                //            // this is useful for draw order stuff, but not the only way to do it, and it might be nice to preserve ordering too
-                //            if (true)
-                //            {
-                //                //lod.Triangles = [.. lod.Triangles.OrderBy(x => x.MaterialIndex)];
-                //            }
+                SetupSectionsAndChunks();
 
-                //            List<List<IntermediateTriangle>> matGroups = [];
-                //            //var currentMat = lod.Triangles[0].MaterialIndex;
-                //            var currentGroup = new List<IntermediateTriangle>();
-                //            foreach (var triangle in lod.Triangles)
-                //            {
-                //                if (triangle.MaterialIndex == currentMat)
-                //                {
-                //                    currentGroup.Add(triangle);
-                //                }
-                //                else
-                //                {
-                //                    currentMat = triangle.MaterialIndex;
-                //                    matGroups.Add(currentGroup);
-                //                    currentGroup = [triangle];
-                //                }
-                //            }
+                SetupVerts();
 
-                //            List<MeshSection> sections = [];
-                //            var startIndex = 0;
-                //            foreach (var matGroup in matGroups)
-                //            {
-                //                var mat = matGroup[0].MaterialIndex;
-                //                var section = new MeshSection
-                //                {
-                //                    Triangles = [.. matGroup],
-                //                    BaseTriIndex = startIndex,
-                //                    MatIndex = mat,
-                //                };
+                void SetupSectionsAndChunks()
+                {
+                    LOD.IndexBuffer = [.. lod.Sections.SelectMany(x => x.Triangles).SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3])];
+                    //TODO if there is only one section, it is trivial to set up
 
-                //                // calculate the min and max vertex indices within this section
-                //                var sectionIndices = matGroup.SelectMany<PSK.PSKTriangle, ushort>(x => [vertsInWedgeOrder[x.WedgeIdx0].Index, vertsInWedgeOrder[x.WedgeIdx1].Index, vertsInWedgeOrder[x.WedgeIdx2].Index]);
-                //                section.MinVertIndex = sectionIndices.Min();
-                //                section.MaxVertIndex = sectionIndices.Max();
+                    // just make the sections 1:1 with the sections in the intermediate mesh
+                    var cumulativeTriangleCount = 0;
+                    List<TempSkelMeshSection> skelMeshSections = [];
+                    foreach (var intermediateSection in lod.Sections)
+                    {
+                        var vertIndices = intermediateSection.Triangles.SelectMany<IntermediateTriangle, int>(x => [x.VertIndex1, x.VertIndex2, x.VertIndex3]);
+                        var section = new TempSkelMeshSection()
+                        {
+                            TriCount = intermediateSection.Triangles.Count,
+                            BaseTriIndex = cumulativeTriangleCount,
+                            MatIndex = intermediateSection.MaterialIndex,
+                            MaxVertIndex = vertIndices.Max(),
+                            MinVertIndex = vertIndices.Min(),
+                            ChunkIndex = -1
+                        };
+                        cumulativeTriangleCount += intermediateSection.Triangles.Count;
+                        skelMeshSections.Add(section);
+                    }
+                    // TODO if there are consecutive sections with the same material, combine them
 
-                //                sections.Add(section);
-                //                startIndex += matGroup.Count();
-                //            }
-                //        }
+                    var orderedSection = skelMeshSections.OrderBy(x => x.MinVertIndex).ThenBy(x => x.MaxVertIndex);
+                    List<TempSkelMeshChunk> chunks = [];
+                    chunks.Add(new TempSkelMeshChunk
+                    {
+                        VertIndexStart = 0,
+                        VertIndexEnd = orderedSection.First().MaxVertIndex,
+                        InfluenceBones = []
+                    });
+                    foreach (var section in orderedSection)
+                    {
+                        if (section.MinVertIndex > chunks[^1].VertIndexEnd)
+                        {
+                            // sections have non overlapping vertices; make a new chunk
+                            chunks.Add(new TempSkelMeshChunk
+                            {
+                                VertIndexStart = section.MinVertIndex,
+                                VertIndexEnd = section.MaxVertIndex,
+                                InfluenceBones = []
+                            });
+                        }
+                        else
+                        {
+                            // sections have overlapping vertices and we need to combine the chunks
+                            chunks[^1].VertIndexEnd = Math.Max(section.MaxVertIndex, chunks[^1].VertIndexEnd);
+                        }
+                    }
 
-                //        var LOD = new StaticLODModel
-                //        {
-                //            IndexBuffer = [.. lod.Triangles.SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3])],
-                //            // TODO filter this down to bones that actually have any weighting?
-                //            RequiredBones = [.. Enumerable.Range(0, intermediateMesh.Skeleton.Count).Select(x => (byte)x)]
-                //        };
+                    // now, assign a chunk index to each section
+                    for (var i = 0; i < skelMeshSections.Count; i++)
+                    {
+                        skelMeshSections[i].ChunkIndex = chunks.FindIndex(x => x.VertIndexStart <= skelMeshSections[i].MinVertIndex && x.VertIndexEnd >= skelMeshSections[i].MaxVertIndex);
+                    }
 
+                    var verts = GetAllVertices(lod);
+                    // next, we need to see which bones influence each chunk
+                    // as well as count the rigid and soft vertices (not positive if that matters in game or not, but I am trying to emulate vanilla as closely as possible)
+                    foreach (var chunk in chunks)
+                    {
+                        for (var i = chunk.VertIndexStart; i <= chunk.VertIndexEnd; i++)
+                        {
+                            var weights = verts[i].Influences;
+                            switch (weights.Count)
+                            {
+                                case <= 1:
+                                    chunk.RigidVerts++;
+                                    break;
+                                default:
+                                    chunk.SoftVerts++;
+                                    break;
+                            }
+                            if (weights.Count > chunk.maxBoneInfluences)
+                            {
+                                chunk.maxBoneInfluences = weights.Count;
+                            }
+                            // TODO limit this to the 4 influences highest influences?
+                            foreach (var weight in weights)
+                            {
+                                chunk.InfluenceBones.Add((ushort)weight.influenceBone);
+                            }
+                        }
+                        // the indices into the bone mapping array are bytes, so we can't have too many here without splitting the chunk up, which I have not implemented because it is extraorinarily unlikely to come up in real world usage
+                        if (chunk.InfluenceBones.Count > 255)
+                        {
+                            throw new Exception("there are too many influence bones in this chunk; Send the file to Squid and tell him to implement chunk splitting logic.");
+                        }
+                    }
 
-                //    }
+                    LOD.Sections = [..skelMeshSections.Select(x => new SkelMeshSection
+                    {
+                        BaseIndex = (uint)(x.BaseTriIndex * 3),
+                        ChunkIndex = (ushort)x.ChunkIndex,
+                        MaterialIndex = (ushort)x.MatIndex,
+                        NumTriangles = x.TriCount
+                    })];
+
+                    LOD.Chunks = [..chunks.Select(x => new SkelMeshChunk
+                    {
+                        BaseVertexIndex = (uint)x.VertIndexStart,
+                        MaxBoneInfluences = Math.Min(x.maxBoneInfluences, 4),
+                        NumRigidVertices = x.RigidVerts,
+                        NumSoftVertices = x.SoftVerts,
+                        BoneMap = [.. x.InfluenceBones.Order()]
+                    })];
+                }
+                void SetupVerts()
+                {
+                    for (int chunkIndex = 0; chunkIndex < LOD.Chunks.Length; chunkIndex++)
+                    {
+                        var chunk = LOD.Chunks[chunkIndex];
+                        var nextChunkStart = chunkIndex != LOD.Chunks.Length - 1 ? (int)LOD.Chunks[chunkIndex + 1].BaseVertexIndex : intermediateVerts.Count;
+                        for (int i = (int)chunk.BaseVertexIndex; i < nextChunkStart; i++)
+                        {
+                            var tempVert = intermediateVerts[i];
+                            var newVert = new GPUSkinVertex
+                            {
+                                UV = new Vector2DHalf(tempVert.UVs[0].X, tempVert.UVs[0].Y),
+                                Position = tempVert.Position
+                            };
+
+                            var packedNorm = (PackedNormal)Vector3.Normalize(tempVert.Normal.Value);
+                            // the w component of the normal stores the bitangent sign, indicating whether the UV mapping is mirorred here
+                            var normalW = tempVert.BiTangentDirection > 0 ? (byte)255 : (byte)0;
+                            newVert.TangentZ = new PackedNormal(packedNorm.X, packedNorm.Y, packedNorm.Z, normalW);
+
+                            newVert.TangentX = (PackedNormal)Vector3.Normalize(tempVert.Tangent.Value);
+
+                            // add in the bone influences
+                            byte GetMappedBoneIndex(int index)
+                            {
+                                return (byte)chunk.BoneMap.IndexOf((ushort)index);
+                            }
+
+                            (newVert.InfluenceBones, newVert.InfluenceWeights) = DistributeWeights(tempVert.Influences.Select(x => (GetMappedBoneIndex(x.influenceBone), x.weight)));
+
+                            LOD.VertexBufferGPUSkin.VertexData[i] = newVert;
+                        }
+                    }
+                }
+                return LOD;
+            }
+
+            static ArrayProperty<StructProperty> GetLodInfoProp(IntermediateMesh intermediateMesh, IMEPackage package)
+            {
+                ArrayProperty<StructProperty> lodInfoProp = new("LODInfo");
+
+                for (int i = 0; i < intermediateMesh.LODs.Count; i++)
+                {
+                    var currentLod = intermediateMesh.LODs[i];
+                    var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
+                    var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), intermediateMesh.Materials.Count), "bEnableShadowCasting");
+                    var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", package.Game), intermediateMesh.Materials.Count), "TriangleSorting");
+
+                    var LODMaterialMapProp = new ArrayProperty<IntProperty>(Enumerable.Range(0, intermediateMesh.Materials.Count).Select(x => new IntProperty(x)), "LODMaterialMap");
+
+                    var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
+                        displayFactorProp,
+                        new FloatProperty(0.2f, "LODHysteresis"),
+                        LODMaterialMapProp,
+                        bEnableShadowCastingProp,
+                        TriangleSortingProp);
+                    lodInfoProp.Add(lodInfo);
+                }
+                return lodInfoProp;
+            }
+
+            static void WriteSockets(IntermediateMesh mesh, ExportEntry export)
+            {
+                var oldSocketsProp = export.GetProperty<ArrayProperty<ObjectProperty>>("Sockets");
+                if (oldSocketsProp != null)
+                {
+                    EntryPruner.TrashEntries(export.FileRef, oldSocketsProp.Select(x => x.ResolveToEntry(export.FileRef)).Where(x => x != null));
+                    export.RemoveProperty("Sockets");
+                }
+                if (!mesh.Sockets.Any())
+                {
+                    return;
+                }
+                var meshSocketProp = new ArrayProperty<ObjectProperty>("Sockets");
+                foreach (var socket in mesh.Sockets)
+                {
+                    var socketObj = ExportCreator.CreateExport(export.FileRef, "SkeletalMeshSocket", "SkeletalMeshSocket", export);
+                    var socketProperties = new PropertyCollection()
+                    {
+                        new StructProperty("Vector", true,
+                            new FloatProperty(socket.RelativeLocation.X, "X"),
+                            new FloatProperty(socket.RelativeLocation.Y, "Y"),
+                            new FloatProperty(socket.RelativeLocation.Z, "Z")
+                        ) { Name = "RelativeLocation" },
+                        // TODO these names are wrong
+                        //new StructProperty("Rotator", true,
+                        //    new FloatProperty(socket.RelativeRotation.X, "X"),
+                        //    new FloatProperty(socket.RelativeRotation.Y, "Y"),
+                        //    new FloatProperty(socket.RelativeRotation.Z, "Z")
+                        //) { Name = "RelativeRotation" },
+                        // TODO support relative scale?
+                        new NameProperty(socket.Name, "SocketName"),
+                        new NameProperty(socket.Bone, "BoneName")
+                    };
+                    if (socket.RelativeScale != Vector3.One)
+                    {
+                        socketProperties.Add(new StructProperty("Vector", true,
+                            new FloatProperty(socket.RelativeScale.X, "X"),
+                            new FloatProperty(socket.RelativeScale.Y, "Y"),
+                            new FloatProperty(socket.RelativeScale.Z, "Z")
+                        )
+                        { Name = "RelativeScale" });
+                    }
+                    socketObj.WriteProperties(socketProperties);
+                    meshSocketProp.Add(new ObjectProperty(socketObj));
+                }
+                export.WriteProperty(meshSocketProp);
             }
         }
 
-        private struct MeshSection
+        static (Influences bones, Influences influences) DistributeWeights(IEnumerable<(byte bone, float weight)> weights)
         {
-            public IntermediateTriangle[] Triangles;
+            const byte totalInfluence = 255;
+            // we have some number of bone weights as floats
+            // we need to convert to 4 or fewer byte weights adding to exactly 255
+
+            // sort by influence descending
+            // drop any after the first 4
+            var contributingWeights = weights.OrderByDescending(x => x.weight).Take(MaxBoneInfluences).ToArray();
+            var sum = contributingWeights.Select(x => x.weight).Sum();
+            // normalize remaining to sum to 255 (float)
+            var floatWeights = contributingWeights.Select(x => (x.bone, floatWeight: x.weight * totalInfluence / sum)).ToArray();
+            // start with an empty array of exactly 4 full of byte zeros
+            var byteWeights = new byte[MaxBoneInfluences];
+            var boneIndices = new byte[MaxBoneInfluences];
+            // fill in the integer portions of each one
+            byte remaining = totalInfluence;
+            for (int i = 0; i < floatWeights.Length; i++)
+            {
+                // copy the bone index
+                boneIndices[i] = floatWeights[i].bone;
+                // copy the integer portion of the float weight
+                byteWeights[i] = (byte)floatWeights[i].floatWeight;
+                // save the remainder of each weight
+                floatWeights[i].floatWeight -= byteWeights[i];
+                // change this to the index within the array; we will need it later
+                floatWeights[i].bone = (byte)i;
+                // keep track of the remaining amount to be distributed
+                remaining -= byteWeights[i];
+            }
+
+            // apportion any remaining by greatest remaining non integer portion
+            if (remaining > 0)
+            {
+                foreach (var (bone, floatWeight) in floatWeights.OrderByDescending(x => x.floatWeight))
+                {
+                    if (remaining > 0)
+                    {
+                        byteWeights[bone] += 1;
+                        remaining--;
+                    }
+                }
+            }
+
+            // if any of the influences fell to 0 in this process, clean up the bone index
+            for (int i = 0; i < MaxBoneInfluences; i++)
+            {
+                if (byteWeights[i] == 0)
+                {
+                    boneIndices[i] = 0;
+                }
+            }
+
+            return (
+                new Influences(boneIndices[0], boneIndices[1], boneIndices[2], boneIndices[3]),
+                new Influences(byteWeights[0], byteWeights[1], byteWeights[2], byteWeights[3]));
+        }
+
+        private class TempSkelMeshSection
+        {
+            public int TriCount;
             public int BaseTriIndex;
             public int ChunkIndex;
             public int MatIndex;
             public int MinVertIndex;
             public int MaxVertIndex;
+        }
+
+        private class TempSkelMeshChunk
+        {
+            public int VertIndexStart;
+            public int VertIndexEnd;
+            public HashSet<ushort> InfluenceBones;
+            public int RigidVerts;
+            public int SoftVerts;
+            public int maxBoneInfluences;
         }
 
         private static void SetNumMaterialSlots(SkeletalMesh meshBinary, int numMaterials)
@@ -1339,22 +1775,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 meshBinary.Materials[i] = tempMaterials[i];
             }
         }
-
-        //private static Vector3 Yup2Zup(Vector3 input)
-        //{
-        //    return new Vector3(input.X, input.Z, input.Y);
-        //}
-
-        //private static Quaternion Yup2Zup(Quaternion input)
-        //{
-        //    var transformQuat = new Quaternion(MathF.Sqrt(2f) / 2f, 0, 0, MathF.Sqrt(2f) / 2f);
-        //    return Quaternion.Normalize(input * transformQuat);
-        //}
-
-        //private static Vector3 ScaleForME(Vector3 input)
-        //{
-        //    return input * ScaleFactor;
-        //}
         #endregion
 
         #region intermediate
@@ -1426,14 +1846,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private struct IntermediateVertex
         {
-            public int Index;
             // always required
             public Vector3 Position;
             // can be imported or calculated if need be
             public Vector3? Normal;
-            // will be calculated
             public Vector3? Tangent;
-            // will be calculated
             public float BiTangentDirection;
             // will usually be present. Expect length 1 for skeletal meshes, but static meshes can have multiple
             public List<Vector2> UVs = [];
