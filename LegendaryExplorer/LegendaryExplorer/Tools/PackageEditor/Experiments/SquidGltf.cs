@@ -1289,8 +1289,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         }
         private static Quaternion TransformSocketRotationFromGltf(Quaternion input)
         {
-            // TODO this still needs to be done and I need to implement actually importing this
-            return input;
+            var temp = new Quaternion(-QuatHalf, 0, 0, QuatHalf) * input;
+            return new Quaternion(temp.X, temp.Z, -temp.Y, temp.W);
         }
         private static Vector3 TransformScaleFromGltf(Vector3 input)
         {
@@ -1319,7 +1319,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Vector3 TransformRootBonePositionFromGltf(Vector3 input)
         {
-            return new Vector3(input.X, -input.Z, -input.Y) * ScaleFactor;
+            return new Vector3(input.X, input.Z, input.Y) * ScaleFactor;
         }
 
         private static Quaternion TransformBoneRotationFromGltf(Quaternion input)
@@ -1651,6 +1651,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 var meshSocketProp = new ArrayProperty<ObjectProperty>("Sockets");
                 foreach (var socket in mesh.Sockets)
                 {
+                    var (yaw, pitch, roll) = ToYawPitchRoll(socket.RelativeRotation);
                     var socketObj = ExportCreator.CreateExport(export.FileRef, "SkeletalMeshSocket", "SkeletalMeshSocket", export);
                     var socketProperties = new PropertyCollection()
                     {
@@ -1659,12 +1660,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             new FloatProperty(socket.RelativeLocation.Y, "Y"),
                             new FloatProperty(socket.RelativeLocation.Z, "Z")
                         ) { Name = "RelativeLocation" },
-                        // TODO these names are wrong
-                        //new StructProperty("Rotator", true,
-                        //    new FloatProperty(socket.RelativeRotation.X, "X"),
-                        //    new FloatProperty(socket.RelativeRotation.Y, "Y"),
-                        //    new FloatProperty(socket.RelativeRotation.Z, "Z")
-                        //) { Name = "RelativeRotation" },
+                        new StructProperty("Rotator", true,
+                            new IntProperty(pitch.RadiansToUnrealRotationUnits(), "Pitch"),
+                            new IntProperty(yaw.RadiansToUnrealRotationUnits(), "Yaw"),
+                            new IntProperty(roll.RadiansToUnrealRotationUnits(), "Roll")
+                        ) { Name = "RelativeRotation" },
                         // TODO support relative scale?
                         new NameProperty(socket.Name, "SocketName"),
                         new NameProperty(socket.Bone, "BoneName")
@@ -1685,6 +1685,24 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
+        static (float yaw, float pitch, float roll) ToYawPitchRoll(Quaternion q)
+        {
+            float x = q.X;
+            float y = q.Y;
+            float z = q.Z;
+            float w = q.W;
+
+            // yaw
+            float yaw = (float)Math.Atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+
+            // pitch
+            float pitch = (float)Math.Asin(Math.Clamp(2 * (w * y - z * x), -1f, 1f));
+
+            // roll
+            float roll = (float)Math.Atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+
+            return (yaw, pitch, roll);
+        }
         static (Influences bones, Influences influences) DistributeWeights(IEnumerable<(byte bone, float weight)> weights)
         {
             const byte totalInfluence = 255;
