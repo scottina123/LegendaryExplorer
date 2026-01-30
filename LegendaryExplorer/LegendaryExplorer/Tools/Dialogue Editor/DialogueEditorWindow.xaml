@@ -49,6 +49,7 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
+            <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
             <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
         </ContextMenu>
         <ContextMenu x:Key="entrynodeContextMenu" Closed="ContextMenu_Closed">
@@ -69,6 +70,7 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
+            <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
             <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
         </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>
