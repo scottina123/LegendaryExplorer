@@ -200,7 +200,6 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
             NestingLevel--;
             Append(";");
 
-            // print the rest of the class, according to the standard "anatomy of an unrealscript" article.
             if (node.TypeDeclarations.Count > 0)
             {
                 AppendToNewLine();
@@ -2059,7 +2058,7 @@ namespace LegendaryExplorerCore.UnrealScript.Analysis.Visitors
                 string digits = floatString[..ePos].Replace(".", "");
                 floatString = $"{minus}0.{new string('0', exponent - 1)}{digits}";
             }
-            else if (!floatString.Contains(".") && !floatString.Contains("e"))
+            else if (!floatString.Contains('.') && !floatString.Contains('e'))
             {
                 //need a decimal place in the float so that it does not get parsed as an int
                 floatString += $".0";

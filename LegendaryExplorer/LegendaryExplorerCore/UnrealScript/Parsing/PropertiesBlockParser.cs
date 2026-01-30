@@ -1,8 +1,4 @@
-﻿using System;
-using System.Buffers.Text;
-using System.Collections.Generic;
-using System.Linq;
-using LegendaryExplorerCore.Helpers;
+﻿using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.UnrealScript.Analysis.Symbols;
 using LegendaryExplorerCore.UnrealScript.Analysis.Visitors;
@@ -10,6 +6,10 @@ using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorerCore.UnrealScript.Lexing;
 using LegendaryExplorerCore.UnrealScript.Utilities;
+using System;
+using System.Buffers.Text;
+using System.Collections.Generic;
+using System.Linq;
 using static LegendaryExplorerCore.UnrealScript.Utilities.Keywords;
 
 namespace LegendaryExplorerCore.UnrealScript.Parsing
@@ -913,8 +913,12 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             }
             else
             {
-                if (!IsT3D) TypeError($"{scopeObject.GetScope()} has no member named '{token.Value}'!", token);
-                symbol = new ErrorType();
+                if (!IsT3D)
+                {
+                    TypeError($"{scopeObject.GetScope()} has no member named '{token.Value}'!", token);
+                }
+
+                symbol = new ErrorType(scopeObject);
             }
 
             if (!inStruct && !IsT3D && (token.Value.CaseInsensitiveEquals("Name") || token.Value.CaseInsensitiveEquals("ObjectArchetype")))
@@ -952,7 +956,8 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 }
                 //TODO: better error message
                 TypeError($"{specificScope} has no member named '{token.Value}'!", token);
-                symbol = new ErrorType();
+                Symbols.TryGetScopeSymbol(specificScope, out ASTNode scopeSymbol);
+                symbol = new ErrorType(scopeSymbol);
             }
 
             return NewSymbolReference(symbol, token, false);

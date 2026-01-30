@@ -1,9 +1,9 @@
-﻿using System;
+﻿using ICSharpCode.AvalonEdit.Highlighting;
+using LegendaryExplorerCore.UnrealScript.Analysis.Visitors;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Media;
-using ICSharpCode.AvalonEdit.Highlighting;
-using LegendaryExplorerCore.UnrealScript.Analysis.Visitors;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
 {
@@ -53,13 +53,76 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
     {
         public readonly List<int> LineToIndex;
         public readonly List<SyntaxSpan> SyntaxSpans;
-        public readonly Dictionary<int, SyntaxSpan> CommentSpans; 
+        public Dictionary<int, SyntaxSpan> CommentSpans;
 
         public SyntaxInfo(List<int> lineToIndex = null, List<SyntaxSpan> syntaxSpans = null, Dictionary<int, SyntaxSpan> commentSpans = null)
         {
             LineToIndex = lineToIndex ?? [];
             SyntaxSpans = syntaxSpans ?? [];
             CommentSpans = commentSpans ?? [];
+        }
+
+        /// <summary>
+        /// Adjusts span offsets in place to account for a text change, keeping stale highlighting approximately in sync
+        /// until the next full parse. Spans that straddle the edit point have their length adjusted;
+        /// spans entirely after the edit point are shifted by the delta.
+        /// </summary>
+        public void AdjustForChange(int changeOffset, int insertionLength, int removalLength)
+        {
+            int delta = insertionLength - removalLength;
+            if (delta == 0) return;
+
+            int originalCursorOffset = changeOffset + removalLength;
+            int i = SyntaxSpans.BinarySearch(new SyntaxSpan(default, default, originalCursorOffset), new SyntaxSpanPositionComparer());
+            if (i > 0)
+            {
+                SyntaxSpan span = SyntaxSpans[i];
+                SyntaxSpans[i] = span with { Offset = span.Offset + delta };
+            }
+            else
+            {
+                i = ~i;
+            }
+            for (int j = i - 1; j >=0; j--)
+            {
+                SyntaxSpan span = SyntaxSpans[j];
+                int spanEnd = span.Offset + span.Length;
+                if (spanEnd <= changeOffset)
+                {
+                    break;
+                }
+                int newLength = Math.Max(0, span.Length + delta);
+                SyntaxSpans[j] = span with { Length = newLength };
+            }
+            for (; i < SyntaxSpans.Count; i++)
+            {
+                SyntaxSpan span = SyntaxSpans[i];
+                SyntaxSpans[i] = span with { Offset = span.Offset + delta };
+            }
+
+            var adjustedComments = new Dictionary<int, SyntaxSpan>(CommentSpans.Count);
+            foreach (var (line, span) in CommentSpans)
+            {
+                if (span.Offset >= changeOffset)
+                {
+                    adjustedComments[line] = span with { Offset = span.Offset + delta };
+                }
+                else if (span.Offset + span.Length > changeOffset)
+                {
+                    int newLength = Math.Max(0, span.Length + delta);
+                    adjustedComments[line] = span with { Length = newLength };
+                }
+                else
+                {
+                    adjustedComments[line] = span;
+                }
+            }
+            CommentSpans = adjustedComments;
+        }
+
+        private readonly struct SyntaxSpanPositionComparer : IComparer<SyntaxSpan>
+        {
+            public readonly int Compare(SyntaxSpan x, SyntaxSpan y) => x.Offset.CompareTo(y.Offset);
         }
 
         private static readonly Dictionary<EF, Color> Colors = new()

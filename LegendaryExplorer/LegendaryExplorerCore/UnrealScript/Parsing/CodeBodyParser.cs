@@ -287,7 +287,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                     else
                     {
                         TypeError($"{Self.Name} has no member named '{varToken.Value}'!", varToken);
-                        symbols.Add(NewSymbolReference(new ErrorType(), varToken, false));
+                        symbols.Add(NewSymbolReference(new ErrorType(Self), varToken, false));
                     }
                     if (Matches(TokenType.SemiColon))
                     {
@@ -377,7 +377,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             {
                 if (!SemiColonExceptions.Contains(current.Type) && Consume(TokenType.SemiColon) == null)
                 {
-                    ParseError("Expected semi-colon after statement!", CurrentPosition);
+                    ParseError("Expected semi-colon after statement!", current.EndPos);
                 }
 
                 if (current is not VariableDeclaration)
@@ -450,6 +450,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             return body;
         }
 
+        bool syncRetry;
         private Statement ParseDeclarationOrStatement()
         {
             while (true)
@@ -459,6 +460,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                     Statement statement = CurrentIs(LOCAL) ? ParseLocalVarDecl() : ParseStatement();
                     if (statement is not null)
                     {
+                        syncRetry = false;
                         return statement;
                     }
                     if (CurrentIs(TokenType.RightBracket) || !Synchronize())
@@ -480,14 +482,21 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
         //returns false if it gets to the end of a block or file without finding one
         private bool Synchronize()
         {
+            if (syncRetry)
+            {
+                Tokens.Advance();
+                syncRetry = false;
+            }
+            syncRetry = true;
             while (ExpressionScopes.Count > 1)
             {
                 ExpressionScopes.Pop();
             }
-            Tokens.Advance();
+            int prevTokenLine = PrevToken is null ? 0 : Tokens.LineLookup.GetLineFromCharIndex(PrevToken.StartPos);
             while (!Tokens.AtEnd() && !CurrentIs(TokenType.RightBracket))
             {
-                if (PrevToken.Type == TokenType.SemiColon)// || CurrentToken.StartPos.Line > PrevToken.EndPos.Line)
+                int currentLine = Tokens.LineLookup.GetLineFromCharIndex(CurrentToken.StartPos);
+                if (PrevToken?.Type == TokenType.SemiColon || currentLine > prevTokenLine)
                 {
                     return true;
                 }
@@ -512,7 +521,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                             return true;
                     }
                 }
-
+                prevTokenLine = currentLine;
                 Tokens.Advance();
             }
             return false;
@@ -2077,7 +2086,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             }
             else
             {
-                throw ParseError("Expected ']'!", CurrentPosition);
+                throw ParseError("Expected ']'!", arrIndex.EndPos);
             }
 
             return expr;
@@ -2843,7 +2852,8 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 {
                     //TODO: better error message
                     TypeError($"{specificScope} has no member named '{token.Value}'!", token);
-                    symbol = new ErrorType();
+                    Symbols.TryGetScopeSymbol(specificScope, out ASTNode scopeSymbol);
+                    symbol = new ErrorType(scopeSymbol);
                 }
             }
 
@@ -2852,10 +2862,11 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 TypeError($"{(symbol is FunctionParameter ? "Parameters" : "Local variables")} do not have default values!", token);
             }
 
-            if (isStructScope && symbol.Outer is not Struct)
+            if (isStructScope && symbol is not ErrorType && symbol.Outer is not Struct)
             {
                 TypeError($"{specificScope} has no member named '{token.Value}'!", token);
-                symbol = new ErrorType();
+                Symbols.TryGetScopeSymbol(specificScope, out ASTNode scopeSymbol);
+                symbol = new ErrorType(scopeSymbol);
             }
 
             if (symbol is Function func)

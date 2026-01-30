@@ -10,11 +10,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "toolTip")]
         private extern static ref ToolTip GetSetToolTip(CompletionWindow c);
 
-        ToolTip ToolTip => GetSetToolTip(this);
-
         public LEXCompletionWindow(TextArea textArea) : base(textArea)
         {
-            ToolTip.Background = SyntaxInfo.BackgroundBrush;
+            GetSetToolTip(this).Background = SyntaxInfo.BackgroundBrush;
         }
     }
 }
