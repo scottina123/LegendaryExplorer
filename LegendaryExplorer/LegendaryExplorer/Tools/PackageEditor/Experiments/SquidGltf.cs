@@ -372,7 +372,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         {
             var scene = new SceneBuilder();
 
-            // TODO do I need this?
+            // Make a root node that all of the LODs will be under. This matches Blender's export of skeletal meshes and makes it easier to group them back up
             var containerNode = new NodeBuilder(mesh.Name);
             scene.AddNode(containerNode);
 
@@ -634,7 +634,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Vector3 TransformScaleToGltf(Vector3 input)
         {
-            // TODO check if this is actually the right transform
             return new Vector3(input.X, input.Z, input.Y);
         }
 
@@ -713,12 +712,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 // fill in data that was not provided on import
                 CalculateNormalsIfNeeded(lod);
                 CalculateTangentIfNeeded(lod);
-                // TODO keep track of whether this succeeded so we can leave the vertex order alone in the future
                 ReconstructVertexOrder(lod);
                 // make the data much easier to process
                 MergeVertexLists(lod);
             }
-            // TODO generate tangents, normals if not present
             return mesh;
         }
 
@@ -944,7 +941,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 return false;
             }
-            // TODO check this epsilon
             return Vector3.DistanceSquared(first.Value, second.Value) < 0.00001;
         }
 
@@ -966,7 +962,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static bool ApproximatelyEquals(Vector2 first, Vector2 second)
         {
-            // TODO check this epsilon
             return Vector2.DistanceSquared(first, second) < 0.00001;
         }
 
@@ -989,17 +984,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static bool ApproximatelyEquals(float first, float second)
         {
-            // TODO check this epsilon
             return first - second < 0.00001;
         }
 
         private static void CollectMeshes(ModelRoot modelRoot, out List<(string, Node[])> skeletalMeshes, out List<(string, Node[])> staticMeshes)
         {
             var meshes = modelRoot.LogicalNodes.Where(node => node.Mesh != null).GroupBy(node => node.VisualParent);
-            // TODO make sure they all have the same skin?
-            skeletalMeshes = [.. meshes.Where(x => x.All(node => node.Skin != null)).Select(group => (group.Key.Name, group.ToArray()))];
-            // TODO what if they are at the root? What if there is more than one at the root?
-            staticMeshes = [.. meshes.Where(x => x.All(node => node.Skin == null)).Select(group => (group.Key.Name, group.ToArray()))];
+            skeletalMeshes = [..meshes.Where(x => x.All(node => node.Skin != null && node.Skin == x.First().Skin)).Select(group => (group.Key.Name, group.ToArray()))];
+            staticMeshes = [.. meshes.Where(x => x.All(node => node.Skin == null)).Select(group => (group.Key?.Name ?? group.First().Name, group.ToArray()))];
         }
 
         private static bool DoesMeshUseSharedVertexAccessors(Mesh mesh)
@@ -1108,8 +1100,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
                 if (rootJoints.Count > 1)
                 {
-                    // TODO make a new fake root bone?
-                    // just leave it alone? does ME technically require a single root bone?
                     throw new NotImplementedException("This skeleton doesn't seem to have a single root bone, and I don't know how to handle that yet.");
                 }
 
@@ -1294,7 +1284,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         }
         private static Vector3 TransformScaleFromGltf(Vector3 input)
         {
-            return input;
+            return new Vector3(input.X, input.Z, input.Y);
         }
         private static Vector3 TranformDirectionFromGltf(Vector3 input)
         {
@@ -1436,8 +1426,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     {
                         continue;
                     }
-                    // TODO fall back to looking for just the end of the path for compatibility with stuff exported as psk previously
+                    // first, look for it by full memory path, which is how it exports as gltf
                     var entry = FindEntryByMemeroryFullPath(package, materials[i].Name, "MaterialInterface");
+                    // fall back to looking for it by just the last segment for compatibility with stuff exported as psk
+                    entry ??= package.Exports.FirstOrDefault(x => x.ObjectName == materials[i].Name && x.IsA("MaterialInterface"));
+                    entry ??= package.Imports.FirstOrDefault(x => x.ObjectName == materials[i].Name && x.IsA("MaterialInterface"));
                     if (entry != null)
                     {
                         meshBin.Materials[i] = entry.UIndex;
@@ -1469,7 +1462,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 void SetupSectionsAndChunks()
                 {
                     LOD.IndexBuffer = [.. lod.Sections.SelectMany(x => x.Triangles).SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3])];
-                    //TODO if there is only one section, it is trivial to set up
 
                     // just make the sections 1:1 with the sections in the intermediate mesh
                     var cumulativeTriangleCount = 0;
@@ -1489,7 +1481,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         cumulativeTriangleCount += intermediateSection.Triangles.Count;
                         skelMeshSections.Add(section);
                     }
-                    // TODO if there are consecutive sections with the same material, combine them
+
+                    // TODO if there are consecutive sections with the same material, combine them?
 
                     var orderedSection = skelMeshSections.OrderBy(x => x.MinVertIndex).ThenBy(x => x.MaxVertIndex);
                     List<TempSkelMeshChunk> chunks = [];
@@ -1665,7 +1658,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             new IntProperty(yaw.RadiansToUnrealRotationUnits(), "Yaw"),
                             new IntProperty(roll.RadiansToUnrealRotationUnits(), "Roll")
                         ) { Name = "RelativeRotation" },
-                        // TODO support relative scale?
                         new NameProperty(socket.Name, "SocketName"),
                         new NameProperty(socket.Bone, "BoneName")
                     };
