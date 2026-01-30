@@ -434,7 +434,7 @@ namespace LegendaryExplorer.DialogueEditor
             SearchCommand = new GenericCommand(SearchDialogue, () => CurrentObjects.Any);
             CopyToClipboardCommand = new RelayCommand(CopyStringToClipboard);
             ForceRefreshCommand = new RelayCommand(ForceRefresh);
-            ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= 0);
+            ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= -2);
         }
 
         private void DialogueEditorWPF_Loaded(object sender, RoutedEventArgs e)
@@ -3647,11 +3647,19 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void ExtractSpeakerAudio()
         {
-            if (SelectedSpeaker == null || SelectedSpeaker.SpeakerID < 0 || SelectedConv == null)
+            if (SelectedSpeaker == null || SelectedSpeaker.SpeakerID < -2 || SelectedConv == null)
                 return;
 
             // Get all entry nodes for this speaker
-            var speakerEntries = SelectedConv.EntryList.Where(e => e.SpeakerIndex == SelectedSpeaker.SpeakerID).ToList();
+            List<DialogueNodeExtended> speakerEntries;
+            if (SelectedSpeaker.SpeakerID == -2)
+            {
+                speakerEntries = SelectedConv.ReplyList.Where(e => e.SpeakerIndex == SelectedSpeaker.SpeakerID).ToList();
+            }
+            else
+            {
+                speakerEntries = SelectedConv.EntryList.Where(e => e.SpeakerIndex == SelectedSpeaker.SpeakerID).ToList();
+            }
 
             if (!speakerEntries.Any())
             {
@@ -3680,10 +3688,25 @@ namespace LegendaryExplorer.DialogueEditor
 
             bool includeDialogueText = includeDialogueResult == MessageBoxResult.Yes;
 
+            // Ask which genders to extract
+            var genderResult = MessageBox.Show(
+                $"Which audio files would you like to extract?\n\n" +
+                $"Male files available: {maleAudioCount}\n" +
+                $"Female files available: {femaleAudioCount}\n\n" +
+                "Yes - Extract both male and female\n" +
+                "No - Extract only male\n" +
+                "Cancel - Extract only female",
+                "Select Genders",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+
+            bool extractMale = genderResult != MessageBoxResult.Cancel;
+            bool extractFemale = genderResult != MessageBoxResult.No;
+
             // Ask user to select folder
             using var folderDialog = new System.Windows.Forms.FolderBrowserDialog
             {
-                Description = $"Select folder to extract audio for '{SelectedSpeaker.SpeakerName}' ({maleAudioCount} male, {femaleAudioCount} female files)",
+                Description = $"Select folder to extract audio for '{SelectedSpeaker.SpeakerName}'",
                 ShowNewFolderButton = true
             };
 
@@ -3692,7 +3715,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             try
             {
-                var extractedCount = ExtractAudioFilesForSpeaker(speakerEntries, SelectedSpeaker.SpeakerName, includeDialogueText, folderDialog.SelectedPath);
+                var extractedCount = ExtractAudioFilesForSpeaker(speakerEntries, SelectedSpeaker.SpeakerName, includeDialogueText, extractMale, extractFemale, folderDialog.SelectedPath);
 
                 MessageBox.Show($"Successfully extracted {extractedCount} audio file(s) for speaker '{SelectedSpeaker.SpeakerName}'.", "Dialogue Editor");
 
@@ -3716,10 +3739,13 @@ namespace LegendaryExplorer.DialogueEditor
         /// include a shortened version of the dialogue text.
         /// </summary>
         /// <param name="speakerEntries"></param>
+        /// <param name="tag"></param>
         /// <param name="includeDialogueText"></param>
+        /// <param name="extractMale">Whether to extract male audio files</param>
+        /// <param name="extractFemale">Whether to extract female audio files</param>
         /// <param name="outputFolder"></param>
         /// <returns></returns>
-        public static int ExtractAudioFilesForSpeaker(List<DialogueNodeExtended> speakerEntries, string tag, bool includeDialogueText, string outputFolder)
+        public static int ExtractAudioFilesForSpeaker(List<DialogueNodeExtended> speakerEntries, string tag, bool includeDialogueText, bool extractMale, bool extractFemale, string outputFolder)
         {
             int extractedCount = 0;
             string speakerName = Regex.Replace(tag, @"[<>:""/\\|?*]", "_");
@@ -3739,7 +3765,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 // Extract male audio
-                if (entry.WwiseStream_Male != null)
+                if (extractMale && entry.WwiseStream_Male != null)
                 {
                     string maleFileName = Path.Combine(outputFolder, $"{baseFileName}_M.wav");
                     if (ExtractWwiseAudio(entry.WwiseStream_Male, maleFileName))
@@ -3749,7 +3775,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 // Extract female audio
-                if (entry.WwiseStream_Female != null)
+                if (extractFemale && entry.WwiseStream_Female != null)
                 {
                     string femaleFileName = Path.Combine(outputFolder, $"{baseFileName}_F.wav");
                     if (ExtractWwiseAudio(entry.WwiseStream_Female, femaleFileName))

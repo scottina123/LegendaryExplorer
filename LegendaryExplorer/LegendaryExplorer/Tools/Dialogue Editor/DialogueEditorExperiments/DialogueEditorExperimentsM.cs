@@ -84,10 +84,29 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             }
 
             // Prompt for speaker tag
-            var speakerTag = PromptDialog.Prompt(window, "Enter the speaker tag to extract audio for:", "Extract Speaker Audio");
+            var speakerTag = PromptDialog.Prompt(window, "Enter the speaker tag to extract audio for.\nEnter 'player' to extract Shepard audio.\nEnter 'owner' to extract audio by conversation owner.", "Extract Speaker Audio");
             if (string.IsNullOrWhiteSpace(speakerTag))
             {
                 return;
+            }
+
+            // Determine which genders to extract
+            bool extractMale = true;
+            bool extractFemale = true;
+
+            if (speakerTag.Equals("player", StringComparison.OrdinalIgnoreCase))
+            {
+                var genderResult = MessageBox.Show(window as System.Windows.Window,
+                    "Which audio files would you like to extract?\n\n" +
+                    "Yes - Extract both male and female\n" +
+                    "No - Extract only male\n" +
+                    "Cancel - Extract only female",
+                    "Select Genders",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question);
+
+                extractMale = genderResult != MessageBoxResult.Cancel;
+                extractFemale = genderResult != MessageBoxResult.No;
             }
 
             // Prompt for output folder
@@ -155,9 +174,9 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                                 convoData.LoadConversation(TLKManagerWPF.GlobalFindStrRefbyID, true);
 
                                 // Filter nodes by speaker tag
-                                var nodes = convoData.EntryList
-                                    .Select(n => n.SpeakerTag?.SpeakerName);
-                                var speakerNodes = convoData.EntryList
+                                var isPlayerTag = speakerTag.Equals("player", StringComparison.OrdinalIgnoreCase);
+                                var sourceList = isPlayerTag ? convoData.ReplyList : convoData.EntryList;
+                                var speakerNodes = sourceList
                                     .Where(n => n.SpeakerTag?.SpeakerName?.Equals(speakerTag, StringComparison.OrdinalIgnoreCase) == true)
                                     .ToList();
 
@@ -178,7 +197,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
 
                                     // Extract audio
                                     int extracted = DialogueEditorWindow.ExtractAudioFilesForSpeaker(
-                                        speakerNodes, speakerTag, includeText, convoFolder);
+                                        speakerNodes, speakerTag, includeText, extractMale, extractFemale, convoFolder);
 
                                     totalExtracted += extracted;
                                     conversationsProcessed++;
