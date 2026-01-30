@@ -271,24 +271,10 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     var rotationProp = socketObject.GetProperty<StructProperty>("RelativeRotation");
                     if (rotationProp != null)
                     {
-                        static Quaternion FromYawPitchRoll(int yaw, int pitch, int roll)
-                        {
-                            var rot = Quaternion.Identity;
-                            var yawRad = (yaw % 65536) / 65536f * Math.PI * 2;
-                            var pitchRad = (pitch % 65536) / 65536f * Math.PI * 2;
-                            var rollRad = (roll % 65536) / 65536f * Math.PI * 2;
-                            // apply yaw
-                            rot = rot * new Quaternion(0, (float)Math.Sin(yawRad / 2), 0, -(float)Math.Cos(yawRad / 2));
-                            // apply pitch
-                            rot = rot * new Quaternion(0, 0, (float)Math.Sin(pitchRad / 2), (float)Math.Cos(pitchRad / 2));
-                            // apply roll
-                            rot = rot * new Quaternion((float)Math.Sin(rollRad / 2), 0, 0, (float)Math.Cos(rollRad / 2));
-                            return Quaternion.Normalize(rot);
-                        }
                         intermediateSocket.RelativeRotation = FromYawPitchRoll(
-                            rotationProp.GetProp<IntProperty>("Yaw").Value,
-                            rotationProp.GetProp<IntProperty>("Pitch").Value,
-                            rotationProp.GetProp<IntProperty>("Roll").Value);
+                            rotationProp.GetProp<IntProperty>("Yaw").Value.UnrealRotationUnitsToRadians(),
+                            rotationProp.GetProp<IntProperty>("Pitch").Value.UnrealRotationUnitsToRadians(),
+                            rotationProp.GetProp<IntProperty>("Roll").Value.UnrealRotationUnitsToRadians());
                     }
                     var scaleProp = socketObject.GetProperty<StructProperty>("RelativeScale");
                     if (scaleProp != null)
@@ -654,9 +640,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         private static Quaternion TransformSocketRotationToGltf(Quaternion input)
         {
-            // add a 90 degree rotation around the x axis
-            var transform = new Quaternion(QuatHalf, 0, 0, QuatHalf);
-            return Quaternion.Normalize(transform * input);
+            // fix coordinate system differences
+            var temp = new Quaternion(input.X, -input.Z, input.Y, input.W);
+            // add a 90 degree rotation
+            temp = new Quaternion(QuatHalf, 0, 0, QuatHalf) * temp;
+            return Quaternion.Normalize(temp);
         }
 
         private static Quaternion TransformBoneRotationToGltf(Quaternion input)
@@ -669,6 +657,21 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             temp = temp * new Quaternion(QuatHalf, 0, 0, -QuatHalf);
             return Quaternion.Normalize(temp);
         }
+
+        static Quaternion FromYawPitchRoll(float yaw, float pitch, float roll)
+        {
+            var rot = Quaternion.Identity;
+
+            // Apply Yaw (Z-axis)
+            rot = rot * new Quaternion(0f, 0f, (float)Math.Sin(yaw / 2), (float)Math.Cos(yaw / 2));
+            // Apply Pitch (Y-axis)
+            rot = rot * new Quaternion(0f, (float)Math.Sin(pitch / 2), 0f, (float)Math.Cos(pitch / 2));
+            // Apply Roll (X-axis)
+            rot = rot * new Quaternion((float)Math.Sin(roll / 2), 0f, 0f, (float)Math.Cos(roll / 2));
+
+            return Quaternion.Normalize(rot);
+        }
+
         #endregion
 
         #region import
