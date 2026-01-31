@@ -483,13 +483,13 @@
                             </controls:TreeViewEntryContainer>
                         </HierarchicalDataTemplate>
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
-                      Color="LightBlue" />
+                      Color="#0078D4" />
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
-                      Color="Black" />
+                      Color="White" />
                         <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
-                      Color="LightBlue" />
+                      Color="#505050" />
                         <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
-                      Color="Black" />
+                      Color="White" />
 
                     </TreeView.Resources>
                     <TreeView.ItemContainerStyle>
