@@ -762,7 +762,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             var pccLoaded = GetPEWindow().Pcc != null;
             if (pccLoaded)
             {
-                PackageEditorExperimentsM.ShiftInterpTrackMovesInPackage(GetPEWindow().Pcc, null);
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
+                {
+                    PackageEditorExperimentsM.ShiftInterpTrackMovesInPackage(GetPEWindow().Pcc, null, dialog.Parameters);
+                }
             }
         }
 
@@ -771,12 +775,16 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             var pccLoaded = GetPEWindow().Pcc != null;
             if (pccLoaded)
             {
-                PackageEditorExperimentsM.ShiftInterpTrackMovesInPackage(GetPEWindow().Pcc, x =>
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
                 {
-                    var prop = x.GetProperty<EnumProperty>("MoveFrame");
-                    if (prop == null || prop.Value != "IMF_AnchorObject") return true;
-                    return false; // IMF_AnchorObject
-                });
+                    PackageEditorExperimentsM.ShiftInterpTrackMovesInPackage(GetPEWindow().Pcc, x =>
+                    {
+                        var prop = x.GetProperty<EnumProperty>("MoveFrame");
+                        if (prop == null || prop.Value != "IMF_AnchorObject") return true;
+                        return false; // IMF_AnchorObject
+                    }, dialog.Parameters);
+                }
             }
         }
 
@@ -785,7 +793,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             var selected = GetPEWindow().TryGetSelectedExport(out var export);
             if (selected)
             {
-                PackageEditorExperimentsM.ShiftInterpTrackMove(export);
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
+                {
+                    PackageEditorExperimentsM.ShiftInterpTrackMove(export, dialog.Parameters);
+                }
             }
         }
 
