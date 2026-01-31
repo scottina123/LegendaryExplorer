@@ -174,8 +174,9 @@
         <MenuItem Header="Replace all wems" Click="ReplaceAllWems_Click"/>
     </MenuItem>
     <MenuItem Header="Squid's new and exciting ways to break stuff">
-        <MenuItem Header="Export to glTF" Click="ExportGltf_Click" ToolTip="Export a mesh as a glTF/glb file."/>
-        <MenuItem Header="Import glTF/glb" Click="ImportGltf_Click" ToolTip="Import one or more things from a gLTF/glb file."/>
+        <MenuItem Header="Export to glTF/glb (no textures)" Click="ExportGltf_Click" ToolTip="Export a mesh as a glTF/glb file. quick, small files."/>
+        <MenuItem Header="Export to glTF/glb (with textures)" Click="ExportGltf_Textures_Click" ToolTip="Export a mesh as a glTF/glb file, including diff and normal textures ready to import/preview in most tools. much slower and larger, especially if there are many materials. "/>
+        <MenuItem Header="Import glTF/glb" Click="ImportGltf_Click" ToolTip="Import one or more things from a gLTF/glb file. Select a compatible item to replace it. Otrherwise, imports as new item."/>
         <MenuItem Header="Export Selected Item as PSKX/PSA" Click="ExportSelectedToPsx_Click" ToolTip="Exports the selected item as a pskx and/or psa and config file. Works for SkeletalMesh, BioMorphFace, MorphTargetSet, AnimSet, BioDynamicAnimSet, and AnimSequence"/>
         <MenuItem Header="Export all textures from material" Click="ExportSelectedMaterial_Click" ToolTip="Exports the selected Material's textures to the selected folder"/>
         <MenuItem Header="Ron File tools">

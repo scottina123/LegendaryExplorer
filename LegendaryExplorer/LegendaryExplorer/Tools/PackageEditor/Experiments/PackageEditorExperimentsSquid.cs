@@ -110,7 +110,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void ExportMeshToGltf(PackageEditorWindow pew)
+        public static void ExportMeshToGltf(PackageEditorWindow pew, SquidGltf.MaterialExportLevel materialExportLevel = SquidGltf.MaterialExportLevel.NameOnly)
         {
             if (pew.Pcc == null)
             {
@@ -131,7 +131,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 {
                     if (export.ClassName == "SkeletalMesh")
                     {
-                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, SquidGltf.MaterialExportLevel.NameOnly, $"Legendary Explorer {AppVersion.DisplayedVersion}");
+                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                     // TODO support other closely related types?
                     else if (export.ClassName == "StaticMesh")
@@ -140,7 +140,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         {
                             ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
                         }
-                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, SquidGltf.MaterialExportLevel.NameOnly, $"Legendary Explorer {AppVersion.DisplayedVersion}");
+                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
                     }
                 }
             }
@@ -166,7 +166,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
             if (GetGltfFromFile(out var gltf, out string _))
             {
-                SquidGltf.ConvertGltfToMesh(gltf, pew.Pcc);
+                GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out ExportEntry selectedMeshToReplace);
+                SquidGltf.ConvertGltfToMesh(gltf, pew.Pcc, selectedMeshToReplace);
             }
         }
         private static bool GetGltfFromFile(out SharpGLTF.Schema2.ModelRoot gltf, out string filePath)

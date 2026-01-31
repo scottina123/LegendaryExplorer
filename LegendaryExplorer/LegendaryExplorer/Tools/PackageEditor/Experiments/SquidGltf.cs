@@ -21,17 +21,22 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
+using System.Windows.Forms.VisualStyles;
 using IsImage = SixLabors.ImageSharp.Image;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
-    public class SquidGltf
+    public partial class SquidGltf
     {
         private const float ScaleFactor = 100;
         const float weightUnpackScale = 1f / 255;
         // the Mass Effect binary mesh format enforces there be a maximum of 4 bone influences per vertex
         const int MaxBoneInfluences = 4;
         static readonly float[] displayFactors = [1.0f, 0.25f, 0.1f];
+
+        [GeneratedRegex(@"\.\d+$")]
+        private static partial Regex BlenderNameSuffixRegex();
 
         #region export
         public enum MaterialExportLevel
@@ -417,7 +422,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             // LODs
             foreach (var lod in mesh.LODs)
             {
-                var name = lod.Index == 0 ? mesh.Name : $"{mesh.Name}_LOD_{lod.Index}";
+                var name = lod.Index == 0 ? mesh.Name : $"{mesh.Name}_LOD{lod.Index}";
                 // SkeletalMesh version
                 if (mesh.Skeleton != null)
                 {
@@ -683,13 +688,26 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 // TODO show a warning or something
                 return;
             }
-            // TODO right now I just import them all as new meshes, which seems to work ok for skeletal meshes
-            // but if they are replacing a mesh I will need to make them pick one
-            //if (totalMeshes > 1)
+            // if there are both skeletal and static meshes in this, you can't have anything selected
+            // covered by the below
+            //if (skeletalMeshes.Any() && staticMeshes.Any() && existingMesh != null)
             //{
-            //    // TODO add support for this?
-            //    throw new NotImplementedException("I can't import where there is more than one mesh per file yet");
+            //    throw new NotImplementedException("The file you are trying to import contains more than one mesh, but you are trying to replace a mesh. try again adding as a new mesh and it will import all your meshes as new meshes.");
             //}
+            if (totalMeshes > 1 && existingMesh != null)
+            {
+                // TODO add support for this?
+                throw new NotImplementedException("The file you are trying to import contains more than one mesh, but you are trying to replace a mesh. try again adding as a new mesh and it will import all your meshes as new meshes.");
+            }
+            // if you are trying to replace a skeletal mesh but you are importing static (or vice versa) count it as nothing selected (not a compatible export selected)
+            if (skeletalMeshes.Count == 1 && existingMesh != null && existingMesh.ClassName == "StaticMesh")
+            {
+                existingMesh = null;
+            }
+            if (staticMeshes.Count == 1 && existingMesh != null && existingMesh.ClassName == "SkeletalMesh")
+            {
+                existingMesh = null;
+            }
             foreach (var skelMesh in skeletalMeshes)
             {
                 var intermediateMesh = ToIntermediateMesh(skelMesh.Item1, skelMesh.Item2);
@@ -700,8 +718,19 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 var intermediateMesh = ToIntermediateMesh(statMesh.Item1, statMesh.Item2);
                 CleanUpIntermediateMesh(intermediateMesh);
-                // TODO to Static Mesh!
+                ToStaticMesh(intermediateMesh, pcc, existingMesh);
             }
+        }
+
+        private static IEntry GetMaterialEntry(IMEPackage package, string materialName)
+        {
+            // first, look for it by full memory path, which is how it exports as gltf
+            var entry = FindEntryByMemeroryFullPath(package, materialName, "MaterialInterface");
+            // fall back to looking for it by just the last segment for compatibility with stuff exported as psk
+            entry ??= package.Exports.FirstOrDefault(x => x.ObjectName == materialName && x.IsA("MaterialInterface"));
+            entry ??= package.Imports.FirstOrDefault(x => x.ObjectName == materialName && x.IsA("MaterialInterface"));
+
+            return entry;
         }
 
         private static IntermediateMesh CleanUpIntermediateMesh(IntermediateMesh mesh)
@@ -1027,14 +1056,39 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                  && IsAttributeShared("WEIGHTS_0")
                  && IsAttributeShared(VertexTextureNOriginalIndex.OriginalIndexAttributeName);
         }
+
+        private static void SortNodes(string meshName, Node[] nodes, out Node[] lodNodes, out IEnumerable<Node> collisionNodes)
+        {
+            
+            if (nodes[0].Skin != null)
+            {
+                // all nodes with skins are LODs. Skeletal Meshes do not have separate collision components
+                // TODO sort these somehow? I think right now it just trusts the order in the gltf, which will be alphabetical coming out of Blender, which will likely work
+                // I could also look for _LODX suffix, but I don't want to be too strict about naming
+                lodNodes = nodes;
+                collisionNodes = [];
+            }
+            else
+            {
+                // static meshes are sorted on whether they contain "collision" in the name (case insensitive)
+                collisionNodes = nodes.Where(x => x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase));
+                // TODO sort these at all?> same problem as above. 
+                lodNodes = nodes.Where(x => !x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase)).ToArray();
+            }
+        }
+
         private static IntermediateMesh ToIntermediateMesh(string meshName, Node[] nodes)
         {
             if (nodes.Length == 0)
             {
                 throw new ArgumentException(nameof(nodes));
             }
+
+            meshName = CleanupName(meshName);
+            SortNodes(meshName, nodes, out var lodNodes, out var collisionNodes);
+
             // TODO sort this into groups of LODs vs collision components
-            var skeletalMesh = nodes[0].Skin != null;
+            var skeletalMesh = lodNodes[0].Skin != null;
             int lodIndex = 0;
             int boneIndex = 0;
             // maps from material index within the gltf file to materials within this mesh (in the array order)
@@ -1052,7 +1106,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (skeletalMesh)
             {
                 intermediateMesh.Skeleton = [];
-                foreach (var joint in nodes[0].Skin.Joints)
+                foreach (var joint in lodNodes[0].Skin.Joints)
                 {
                     boneMap.Add(joint.LogicalIndex);
                     intermediateMesh.Skeleton.Add(new IntermediateBone()
@@ -1063,7 +1117,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
                 // reconstruct the hierarchy of bones from the node hierarchy. There can be other nodes in between joints, so we have to check all ancestors
                 List<int> rootJoints = [];
-                foreach (var joint in nodes[0].Skin.Joints)
+                foreach (var joint in lodNodes[0].Skin.Joints)
                 {
                     Node FindJointParent(Node node)
                     {
@@ -1109,7 +1163,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     // look for direct children of a bone which are not themselves bones
                     return [.. joint.VisualChildren.Where(x => !x.IsSkinJoint)];
                 }
-                foreach (var joint in nodes[0].Skin.Joints)
+                foreach (var joint in lodNodes[0].Skin.Joints)
                 {
                     var sockets = FindSockets(joint);
                     foreach (var socket in sockets)
@@ -1117,7 +1171,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         intermediateMesh.Sockets.Add(new IntermediateSocket()
                         {
                             Bone = joint.Name,
-                            Name = socket.Name,
+                            Name = CleanupName(socket.Name),
                             RelativeLocation = TransformSocketLocationFromGltf(socket.LocalTransform.Translation),
                             RelativeRotation = TransformSocketRotationFromGltf(socket.LocalTransform.Rotation),
                             RelativeScale = TransformScaleFromGltf(socket.LocalTransform.Scale)
@@ -1126,7 +1180,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 }
             }
 
-            foreach (var node in nodes)
+            foreach (var node in lodNodes)
             {
                 var LOD = new IntermediateLOD() { Index = lodIndex++ };
 
@@ -1237,19 +1291,17 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     var meshMatIndex = materialMap.IndexOf(gltfMatIndex);
                     if (meshMatIndex == -1)
                     {
-                        // TODO make sure this is not off by 1
                         meshMatIndex = materialMap.Count;
                         materialMap.Add(gltfMatIndex);
-                        intermediateMesh.Materials.Add(new IntermediateMaterial(prim.Material?.Name ?? "null"));
+                        intermediateMesh.Materials.Add(new IntermediateMaterial(CleanupName(prim.Material?.Name) ?? "null"));
                     }
 
-                    var meshSection = new IntermediateMeshSection()
+                    var meshSection = new IntermediateMeshSection
                     {
-                        MaterialIndex = meshMatIndex
+                        MaterialIndex = meshMatIndex,
+                        // use the shared vertices, if available
+                        Vertices = sharedVerts ?? GetPrimativeVertices(prim)
                     };
-
-                    // use the shared vertices, if available
-                    meshSection.Vertices = sharedVerts ?? GetPrimativeVertices(prim);
 
                     // this gets us a list of int triplets; the indices of each triangle
                     var triIndices = prim.GetTriangleIndices();
@@ -1269,8 +1321,69 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 intermediateMesh.LODs.Add(LOD);
             }
 
-            // TODO collision mesh components for static meshes
+            if (collisionNodes != null)
+            {
+                intermediateMesh.CollisionMeshElements = [];
+            }
+            foreach (var collisionNode in collisionNodes)
+            {
+                intermediateMesh.CollisionMeshElements.Add(ToIntermediateCollisionElement(collisionNode));
+            }
+            
             return intermediateMesh;
+        }
+
+        private static IntermediateCollisionElement ToIntermediateCollisionElement(Node node)
+        {
+            if (DoesMeshUseSharedVertexAccessors(node.Mesh))
+            {
+                var vertices = node.Mesh.Primitives[0].GetVertexAccessor("POSITION").AsVector3Array();
+                var collisionElement = new IntermediateCollisionElement()
+                {
+                    Vertices = [.. vertices],
+                    Triangles = []
+                };
+
+                foreach (var primitive in node.Mesh.Primitives)
+                {
+                    foreach (var (v1, v2, v3) in primitive.GetTriangleIndices())
+                    {
+                        collisionElement.Triangles.Add(new IntermediateTriangle()
+                        {
+                            VertIndex1 = v1,
+                            VertIndex2 = v2,
+                            VertIndex3 = v3
+                        });
+                    }
+                }
+
+                return collisionElement;
+            }
+            else
+            {
+                List<Vector3> vertices = [];
+                List<IntermediateTriangle> triangles = [];
+
+                foreach (var primitive in node.Mesh.Primitives)
+                {
+                    foreach (var (v1, v2, v3) in primitive.GetTriangleIndices())
+                    {
+                        triangles.Add(new IntermediateTriangle()
+                        {
+                            VertIndex1 = v1 + vertices.Count,
+                            VertIndex2 = v2 + vertices.Count,
+                            VertIndex3 = v3 + vertices.Count
+                        });
+                    }
+                    vertices.AddRange(primitive.GetVertexAccessor("POSITION").AsVector3Array());
+                }
+
+                return new IntermediateCollisionElement()
+                {
+                    Vertices = vertices,
+                    Triangles = triangles
+                };
+            }
         }
 
         private static Vector3 TransformSocketLocationFromGltf(Vector3 input)
@@ -1321,11 +1434,161 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return Quaternion.Normalize(temp);
         }
 
+        private static string CleanupName(string name)
+        {
+            if (name == null)
+            {
+                return name;
+            }
+            var match = BlenderNameSuffixRegex().Match(name);
+            if (match.Success)
+            {
+                return name[..match.Index];
+            }
+
+            return name;
+        }
+
+        private static ExportEntry ToStaticMesh(IntermediateMesh intermediateMesh, IMEPackage package, ExportEntry existingEntry)
+        {
+            var staticMesh = new StaticMesh
+            {
+                Bounds = GetBounds(intermediateMesh),
+                LODModels = [.. intermediateMesh.LODs.Select(GetLod)],
+                LightingGuid = Guid.NewGuid()
+            };
+
+            var tris = new kDOPCollisionTriangle[staticMesh.LODModels[0].IndexBuffer.Length / 3];
+            for (int i = 0, elIdx = 0, triCount = 0; i < staticMesh.LODModels[0].IndexBuffer.Length; i += 3, ++triCount)
+            {
+                if (triCount > staticMesh.LODModels[0].Elements[elIdx].NumTriangles)
+                {
+                    triCount = 0;
+                    ++elIdx;
+                }
+                tris[i / 3] = new kDOPCollisionTriangle(staticMesh.LODModels[0].IndexBuffer[i], staticMesh.LODModels[0].IndexBuffer[i + 1], staticMesh.LODModels[0].IndexBuffer[i + 2],
+                                                        (ushort)intermediateMesh.LODs[0].Sections[elIdx].MaterialIndex);
+            }
+
+            staticMesh.kDOPTreeME3UDKLE = KDOPTreeBuilder.ToCompact(tris, staticMesh.LODModels[0].PositionVertexBuffer.VertexData);
+
+            StaticMeshRenderData GetLod(IntermediateLOD intermediateLod)
+            {
+                var lod = new StaticMeshRenderData()
+                {
+                    Edges = [],
+                    RawTriangles = [],
+                    ColorVertexBuffer = new ColorVertexBuffer(),
+                    ShadowTriangleDoubleSided = [],
+                    WireframeIndexBuffer = [],
+                    NumVertices = (uint)intermediateLod.Sections[0].Vertices.Count,
+                    ShadowExtrusionVertexBuffer = new ExtrusionVertexBuffer
+                    {
+                        Stride = 4,
+                        VertexData = []
+                    },
+                };
+
+                var intermediateVerts = intermediateLod.Sections[0].Vertices;
+                // vertex positions
+                lod.PositionVertexBuffer = new PositionVertexBuffer()
+                {
+                    NumVertices = (uint)intermediateVerts.Count,
+                    Stride = 12,
+                    unk = 1,
+                    VertexData = [.. intermediateVerts.Select(x => x.Position)]
+                };
+                // vertex tangents, normal, UVs
+                var numTexCoords = intermediateVerts[0].UVs.Count;
+                lod.VertexBuffer = new StaticMeshVertexBuffer()
+                {
+                    bUseFullPrecisionUVs = false,
+                    NumTexCoords = (uint)numTexCoords,
+                    NumVertices = (uint)intermediateVerts.Count,
+                    Stride = 16, // TODO I bet this depends on the number of UVs and also maybe the precision used
+                    VertexData = [..intermediateVerts.Select(x =>
+                    {
+                        var packedNorm = (PackedNormal)Vector3.Normalize(x.Normal.Value);
+                        var normalW = x.BiTangentDirection > 0 ? (byte)255 : (byte)0;
+                        return new StaticMeshVertexBuffer.StaticMeshFullVertex()
+                        {
+                            TangentX = (PackedNormal)x.Tangent.Value,
+                            TangentZ = new PackedNormal(packedNorm.X, packedNorm.Y, packedNorm.Z, normalW),
+                            HalfPrecisionUVs = [..x.UVs.Select(uv => (Vector2DHalf)uv)]
+                        };
+                    })]
+                };
+
+                lod.IndexBuffer = [.. intermediateLod.Sections.SelectMany(x => x.Triangles).SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3])];
+                List<StaticMeshElement> elements = [];
+                int triOffset = 0;
+                foreach (var section in intermediateLod.Sections)
+                {
+                    var triIndices = section.Triangles.SelectMany<IntermediateTriangle, ushort>(x => [(ushort)x.VertIndex1, (ushort)x.VertIndex2, (ushort)x.VertIndex3]);
+                    var element = new StaticMeshElement()
+                    {
+                        bEnableShadowCasting = true,
+                        EnableCollision = true,
+                        OldEnableCollision = true,
+                        Material = GetMaterialEntry(package, intermediateMesh.Materials[section.MaterialIndex].Name)?.UIndex ?? 0,
+                        MaterialIndex = section.MaterialIndex,
+                        FirstIndex = (uint)triOffset,
+                        NumTriangles = (uint)section.Triangles.Count,
+                        MaxVertexIndex = triIndices.Max(),
+                        MinVertexIndex = triIndices.Min(),
+                        Fragments = [new FragmentRange(triOffset, section.Triangles.Count)]
+                    };
+                    elements.Add(element);
+                    triOffset += section.Triangles.Count * 3;
+                }
+
+                lod.Elements = [.. elements];
+
+                return lod;
+            }
+
+            existingEntry ??= ExportCreator.CreateExport(package, intermediateMesh.Name, "StaticMesh");
+
+            existingEntry.WriteBinary(staticMesh);
+
+            // TODO properties, mostly rigidBody
+
+            return existingEntry;
+        }
+
+        private static BoxSphereBounds GetBounds(IntermediateMesh intermediateMesh)
+        {
+            // bounds are important at least for the camera display preview in LEX, and possibly important for when to cull meshes based on visibility in game
+            // separate out the coordinates for each axis so we can operate on them
+            var vertices = GetAllVertices(intermediateMesh.LODs[0]);
+            var xCoords = vertices.Select(x => x.Position.X);
+            var yCoords = vertices.Select(x => x.Position.Y);
+            var zCoords = vertices.Select(x => x.Position.Z);
+
+            // get the origin by averaging all vertex positions; it'll probably be close enough
+            var origin = new Vector3(xCoords.Average(), yCoords.Average(), zCoords.Average());
+
+            var xRange = xCoords.Select(coord => Math.Abs(coord - origin.X)).Max();
+            var yRange = yCoords.Select(coord => Math.Abs(coord - origin.Y)).Max();
+            var zRange = zCoords.Select(coord => Math.Abs(coord - origin.Z)).Max();
+            var boxExtent = new Vector3(xRange, yRange, zRange);
+
+            var sphereRad = boxExtent.Length();
+            return new BoxSphereBounds
+            {
+                Origin = origin,
+                // best guess at a reasonable margin
+                BoxExtent = boxExtent * 2,
+                SphereRadius = sphereRad * 2
+            };
+        }
+
         private static ExportEntry ToSkeletalMesh(IntermediateMesh intermediateMesh, IMEPackage package, ExportEntry existingEntry)
         {
             var meshBin = SkeletalMesh.Create();
             SetupSkeleton(intermediateMesh.Skeleton, meshBin);
-            SetupBounds(intermediateMesh, meshBin);
+
+            meshBin.Bounds = GetBounds(intermediateMesh);
             SetupMaterials(intermediateMesh.Materials, meshBin, package);
             meshBin.LODModels = [.. intermediateMesh.LODs.Select(lod => SetupLOD(intermediateMesh, lod, meshBin))];
 
@@ -1390,33 +1653,6 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 meshBin.SkeletalDepth = skeletalDepth.Max();
             }
 
-            static void SetupBounds(IntermediateMesh intermediateMesh, SkeletalMesh meshBin)
-            {
-                // bounds are important at least for the camera display preview in LEX, and possibly important for when to cull meshes based on visibility in game
-                // separate out the coordinates for each axis so we can operate on them
-                var vertices = GetAllVertices(intermediateMesh.LODs[0]);
-                var xCoords = vertices.Select(x => x.Position.X);
-                var yCoords = vertices.Select(x => x.Position.Y);
-                var zCoords = vertices.Select(x => x.Position.Z);
-
-                // get the origin by averaging all vertex positions; it'll probably be close enough
-                var origin = new Vector3(xCoords.Average(), yCoords.Average(), zCoords.Average());
-
-                var xRange = xCoords.Select(coord => Math.Abs(coord - origin.X)).Max();
-                var yRange = yCoords.Select(coord => Math.Abs(coord - origin.Y)).Max();
-                var zRange = zCoords.Select(coord => Math.Abs(coord - origin.Z)).Max();
-                var boxExtent = new Vector3(xRange, yRange, zRange);
-
-                var sphereRad = boxExtent.Length();
-                meshBin.Bounds = new BoxSphereBounds
-                {
-                    Origin = origin,
-                    // best guess at a reasonable margin
-                    BoxExtent = boxExtent * 2,
-                    SphereRadius = sphereRad * 2
-                };
-            }
-
             static void SetupMaterials(IList<IntermediateMaterial> materials, SkeletalMesh meshBin, IMEPackage package)
             {
                 SetNumMaterialSlots(meshBin, materials.Count);
@@ -1427,10 +1663,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         continue;
                     }
                     // first, look for it by full memory path, which is how it exports as gltf
-                    var entry = FindEntryByMemeroryFullPath(package, materials[i].Name, "MaterialInterface");
-                    // fall back to looking for it by just the last segment for compatibility with stuff exported as psk
-                    entry ??= package.Exports.FirstOrDefault(x => x.ObjectName == materials[i].Name && x.IsA("MaterialInterface"));
-                    entry ??= package.Imports.FirstOrDefault(x => x.ObjectName == materials[i].Name && x.IsA("MaterialInterface"));
+                    var entry = GetMaterialEntry(package, materials[i].Name);
                     if (entry != null)
                     {
                         meshBin.Materials[i] = entry.UIndex;
@@ -1661,7 +1894,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         new NameProperty(socket.Name, "SocketName"),
                         new NameProperty(socket.Bone, "BoneName")
                     };
-                    if (socket.RelativeScale != Vector3.One)
+                    if (Vector3.DistanceSquared(socket.RelativeScale, Vector3.One) > 0.0001)
                     {
                         socketProperties.Add(new StructProperty("Vector", true,
                             new FloatProperty(socket.RelativeScale.X, "X"),
