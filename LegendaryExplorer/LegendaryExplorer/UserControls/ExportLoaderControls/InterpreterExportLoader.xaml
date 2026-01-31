@@ -45,52 +45,52 @@
         </DataTemplate>
     </UserControl.Resources>
     <DockPanel Name="InterpreterWPF_DockPanel">
-        <WrapPanel DockPanel.Dock="Top">
-            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+        <WrapPanel DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                 <Button Name="SaveHexChange_Button" ToolTip="Commit hex changes to the export" Content="Save Hex Changes" Command="{Binding SaveHexChangesCommand}"
                     Foreground="{Binding HasUnsavedChanges, Converter={StaticResource UnsavedChangesForegroundConverter}}"/>
                 <Button Name="ToggleHexbox_Button" ToolTip="Toggle Hexbox" Command="{Binding ToggleHexBoxCommand}">
                     <fa:ImageAwesome Icon="Solid_Microchip" Height="16" Width="16" Foreground="CornflowerBlue"/>
                 </Button>
                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                <Button Content="Add Property" ToolTip="Add a property from this class or a superclass to this object" Command="{Binding AddPropertyCommand}"/>
+                <Button Content="Add Property" ToolTip="Add a property from this class or a superclass to this object" Command="{Binding AddPropertyCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
 
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                <Label IsEnabled="False">Array:</Label>
+                <Label IsEnabled="False" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Array:</Label>
                 <Button Name="AddArrayElement_Button" ToolTip="Add a new element to the selected array"
                     Command="{Binding AddArrayElementCommand}"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_Plus"/>
                 </Button>
                 <Button Name="RemoveArrayElement_Button" ToolTip="Remove the selected element from the array"
                     Command="{Binding RemoveArrayElementCommand}"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_Minus"/>
                 </Button>
                 <Button Name="ArrayElement_MoveUp_Button" ToolTip="Move the selected array element up in the list" VerticalAlignment="Center" Width="22"
-                    Command="{Binding MoveArrayElementUpCommand}">
+                    Command="{Binding MoveArrayElementUpCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_ArrowUp" />
                 </Button>
                 <Button Name="ArrayElement_MoveDown_Button" ToolTip="Move the selected array element down in the list" VerticalAlignment="Center"  Width="22"
-                    Command="{Binding MoveArrayElementDownCommand}" >
+                    Command="{Binding MoveArrayElementDownCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_ArrowDown" />
                 </Button>
             </ToolBar>
-            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2">
+            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                 <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged" 
-                     IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="0" Style="{StaticResource {x:Type TextBox}}" ToolBar.OverflowMode="Never"/>
+                     IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="0" Style="{StaticResource {x:Type TextBox}}" ToolBar.OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                 <ComboBox Name="Value_ObjectComboBox"
                       MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" 
                       Style="{StaticResource {x:Type ComboBox}}" 
                       IsTextSearchEnabled="True" TextSearch.TextPath="UIndex" 
-                      KeyDown="ValueTextBox_KeyDown" ToolBar.OverflowMode="Never">
+                      KeyDown="ValueTextBox_KeyDown" ToolBar.OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
                     <ComboBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <VirtualizingStackPanel />
                         </ItemsPanelTemplate>
                     </ComboBox.ItemsPanel>
                 </ComboBox>
-                <ComboBox Name="Value_ComboBox" MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" Style="{StaticResource {x:Type ComboBox}}" IsTextSearchEnabled="True" ToolBar.OverflowMode="Never">
+                <ComboBox Name="Value_ComboBox" MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" Style="{StaticResource {x:Type ComboBox}}" IsTextSearchEnabled="True" ToolBar.OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
                     <ComboBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <VirtualizingStackPanel />

@@ -94,16 +94,8 @@
                   <Border x:Name="templateRoot"
                           BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}"
-                          SnapsToDevicePixels="True">
-                    <Border.Background>
-                      <LinearGradientBrush EndPoint="0,1"
-                                           StartPoint="0,0">
-                        <GradientStop Color="#FFF0F0F0"
-                                      Offset="0" />
-                        <GradientStop Color="#FFE5E5E5"
-                                      Offset="1" />
-                      </LinearGradientBrush>
-                    </Border.Background>
+                          SnapsToDevicePixels="True"
+                          Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                     <Border x:Name="splitBorder"
                             BorderBrush="Transparent"
                             BorderThickness="1"
@@ -113,7 +105,7 @@
                             Width="{DynamicResource {x:Static SystemParameters.VerticalScrollBarWidthKey}}">
                       <Path x:Name="Arrow"
                             Data="F1M0,0L2.667,2.66665 5.3334,0 5.3334,-1.78168 2.6667,0.88501 0,-1.78168 0,0z"
-                            Fill="#FF606060"
+                            Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                             HorizontalAlignment="Center"
                             Margin="0"
                             VerticalAlignment="Center" />
@@ -155,20 +147,11 @@
                                    Value="false" />
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
-                              TargetName="templateRoot">
-                        <Setter.Value>
-                          <LinearGradientBrush EndPoint="0,1"
-                                               StartPoint="0,0">
-                            <GradientStop Color="#FFECF4FC"
-                                          Offset="0" />
-                            <GradientStop Color="#FFDCECFC"
-                                          Offset="1" />
-                          </LinearGradientBrush>
-                        </Setter.Value>
-                      </Setter>
+                              TargetName="templateRoot"
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FF7EB4EA" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                     </MultiDataTrigger>
                     <MultiDataTrigger>
                       <MultiDataTrigger.Conditions>
@@ -179,25 +162,16 @@
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
                               TargetName="templateRoot"
-                              Value="White" />
+                              Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FF7EB4EA" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="Background"
-                              TargetName="splitBorder">
-                        <Setter.Value>
-                          <LinearGradientBrush EndPoint="0,1"
-                                               StartPoint="0,0">
-                            <GradientStop Color="#FFEBF4FC"
-                                          Offset="0" />
-                            <GradientStop Color="#FFDCECFC"
-                                          Offset="1" />
-                          </LinearGradientBrush>
-                        </Setter.Value>
-                      </Setter>
+                              TargetName="splitBorder"
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="splitBorder"
-                              Value="#FF7EB4EA" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                     </MultiDataTrigger>
                     <Trigger Property="IsPressed"
                              Value="True">
@@ -213,20 +187,11 @@
                                    Value="false" />
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
-                              TargetName="templateRoot">
-                        <Setter.Value>
-                          <LinearGradientBrush EndPoint="0,1"
-                                               StartPoint="0,0">
-                            <GradientStop Color="#FFDAECFC"
-                                          Offset="0" />
-                            <GradientStop Color="#FFC4E0FC"
-                                          Offset="1" />
-                          </LinearGradientBrush>
-                        </Setter.Value>
-                      </Setter>
+                              TargetName="templateRoot"
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FF569DE5" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                     </MultiDataTrigger>
                     <MultiDataTrigger>
                       <MultiDataTrigger.Conditions>
@@ -237,25 +202,16 @@
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
                               TargetName="templateRoot"
-                              Value="White" />
+                              Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FF569DE5" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="Background"
-                              TargetName="splitBorder">
-                        <Setter.Value>
-                          <LinearGradientBrush EndPoint="0,1"
-                                               StartPoint="0,0">
-                            <GradientStop Color="#FFDAEBFC"
-                                          Offset="0" />
-                            <GradientStop Color="#FFC4E0FC"
-                                          Offset="1" />
-                          </LinearGradientBrush>
-                        </Setter.Value>
-                      </Setter>
+                              TargetName="splitBorder"
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="splitBorder"
-                              Value="#FF569DE5" />
+                              Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
                     </MultiDataTrigger>
                     <Trigger Property="IsEnabled"
                              Value="False">
@@ -272,10 +228,10 @@
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
                               TargetName="templateRoot"
-                              Value="#FFF0F0F0" />
+                              Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FFD9D9D9" />
+                              Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
                     </MultiDataTrigger>
                     <MultiDataTrigger>
                       <MultiDataTrigger.Conditions>
@@ -286,10 +242,10 @@
                       </MultiDataTrigger.Conditions>
                       <Setter Property="Background"
                               TargetName="templateRoot"
-                              Value="White" />
+                              Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
                       <Setter Property="BorderBrush"
                               TargetName="templateRoot"
-                              Value="#FFBFBFBF" />
+                              Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
                       <Setter Property="Background"
                               TargetName="splitBorder"
                               Value="Transparent" />
@@ -315,7 +271,7 @@
                         SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
                         VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
       <Border x:Name="Border"
-              Background="White"
+              Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
               Margin="{TemplateBinding BorderThickness}"
               Visibility="Collapsed">
         <TextBox x:Name="PART_EditableTextBox"
@@ -440,21 +396,12 @@
         </Style>
       </Setter.Value>
     </Setter>
-    <Setter Property="Background">
-      <Setter.Value>
-        <LinearGradientBrush EndPoint="0,1"
-                             StartPoint="0,0">
-          <GradientStop Color="#FFF0F0F0"
-                        Offset="0" />
-          <GradientStop Color="#FFE5E5E5"
-                        Offset="1" />
-        </LinearGradientBrush>
-      </Setter.Value>
-    </Setter>
-    <Setter Property="BorderBrush"
-            Value="#FFACACAC" />
+    <Setter Property="Background"
+            Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
     <Setter Property="Foreground"
             Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+    <Setter Property="BorderBrush"
+            Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
     <Setter Property="BorderThickness"
             Value="1" />
     <Setter Property="ScrollViewer.HorizontalScrollBarVisibility"

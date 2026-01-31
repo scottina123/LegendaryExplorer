@@ -31,7 +31,7 @@
             <fa:ImageAwesome  Name="ParseBinary_Spinner" Grid.Column="7" Icon="Solid_Spinner" Spin="True" SpinDuration="2" Width="24" Height="24" Margin="5"/>
         </StackPanel>
         <DockPanel Name="LoadedContent_Panel">
-            <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
+            <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                 <Button Name="SaveHexChange_Button" Content="Save Hex Changes" Click="BinaryInterpreter_SaveHexChanges_Click" IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}"/>
                 <TextBlock Text="Changes not yet saved" VerticalAlignment="Center" Foreground="Red" Visibility="Collapsed"/>
                 <Button Name="ToggleHexboxWidth_Button" ToolTip="Toggle Hexbox Width" Click="BinaryInterpreter_ToggleHexboxWidth_Click">

@@ -36,6 +36,62 @@
             <VirtualizingStackPanel/>
         </ItemsPanelTemplate>
         <SharedUI:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
+        <Style x:Key="ThemedTabItemStyle" TargetType="{x:Type TabItem}">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,2,6,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabItem}">
+                        <Grid SnapsToDevicePixels="true">
+                            <Border x:Name="Bd" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,1,1,0" Padding="0">
+                                <ContentPresenter x:Name="Content" ContentSource="Header" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" TextBlock.Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="true">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="1,1,1,0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ThemedTabControlStyle" TargetType="{x:Type TabControl}">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabControl}">
+                        <Grid ClipToBounds="true" SnapsToDevicePixels="true" KeyboardNavigation.TabNavigation="Local">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="ColumnDefinition0"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition x:Name="RowDefinition0" Height="Auto"/>
+                                <RowDefinition x:Name="RowDefinition1" Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TabPanel x:Name="HeaderPanel" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Grid.Column="0" Grid.Row="0" IsItemsHost="true" Margin="0,0,0,0" SnapsToDevicePixels="true"/>
+                            <Border x:Name="ContentPanel" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,1,1,1" Grid.Column="0" Grid.Row="1" KeyboardNavigation.DirectionalNavigation="Contained" KeyboardNavigation.TabIndex="2" KeyboardNavigation.TabNavigation="Local">
+                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="0" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedTabItemStyle}"/>
+        </Style>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
@@ -288,8 +344,8 @@
                     <ColumnDefinition Width="5" />
                     <ColumnDefinition Width="6*" />
                 </Grid.ColumnDefinitions>
-                <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="3">
-                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to previous (historically) selected entry.  You can also press the back button on your mouse or right click to view the list" Command="{Binding NavigateBackCommand}">
+                <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="3" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to previous (historically) selected entry.  You can also press the back button on your mouse or right click to view the list" Command="{Binding NavigateBackCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                         <Button.ContextMenu>
                             <ContextMenu ItemsSource="{Binding BackwardsEntries}">
                                 <ContextMenu.DisplayMemberPath>InstancedFullPath</ContextMenu.DisplayMemberPath>
@@ -305,7 +361,7 @@
                             <fa5:FontAwesome Icon="Solid_ArrowLeft" Height="12" />
                         </Button.Content>
                     </Button>
-                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to the next (historically) selected entry. You can also press the forward button on your mouse or right click to view the list" Command="{Binding NavigateForwardCommand}">
+                    <Button Padding="7,0" VerticalAlignment="Stretch" ToolTip="Navigate to the next (historically) selected entry. You can also press the forward button on your mouse or right click to view the list" Command="{Binding NavigateForwardCommand}" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                         <Button.ContextMenu>
                             <ContextMenu ItemsSource="{Binding ForwardsEntries}">
                                 <ContextMenu.DisplayMemberPath>InstancedFullPath</ContextMenu.DisplayMemberPath>
@@ -321,25 +377,25 @@
                             <fa5:FontAwesome Icon="Solid_ArrowRight" Height="12" />
                         </Button.Content>
                     </Button>
-                    <Button Content="Names" Padding="7,0" VerticalAlignment="Stretch" ToolTip="View Name table" Click="NamesView_Click" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Names'}" />
-                    <Button Content="Imports" Padding="7,0" VerticalAlignment="Stretch" Click="ImportsView_Click" ToolTip="View Imports table" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Imports'}"/>
-                    <Button Content="Exports" Padding="7,0" VerticalAlignment="Stretch" Click="ExportsView_Click" ToolTip="View Exports Table" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Exports'}"/>
-                    <Button Content="Tree View" Padding="7,0" VerticalAlignment="Stretch"  Click="TreeView_Click" ToolTip="View imports and exports in package hierarchy" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Tree'}"/>
+                    <Button Content="Names" Padding="7,0" VerticalAlignment="Stretch" ToolTip="View Name table" Click="NamesView_Click" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Names'}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                    <Button Content="Imports" Padding="7,0" VerticalAlignment="Stretch" Click="ImportsView_Click" ToolTip="View Imports table" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Imports'}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <Button Content="Exports" Padding="7,0" VerticalAlignment="Stretch" Click="ExportsView_Click" ToolTip="View Exports Table" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Exports'}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <Button Content="Tree View" Padding="7,0" VerticalAlignment="Stretch"  Click="TreeView_Click" ToolTip="View imports and exports in package hierarchy" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Tree'}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     <Separator/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkComboBox Watermark="Class Selector" Name="ClassDropdown_Combobox" Width="140" ItemsPanel="{StaticResource VSP}" ItemsSource="{Binding ClassDropdownList}" IsTextSearchEnabled="True" KeyUp="ClassDropdown_Combobox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center"/>
-                        <Button Content="Find object by class" Click="FindObjectByClass_Click" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="10,0"/>
+                        <xctk:WatermarkComboBox Watermark="Class Selector" Name="ClassDropdown_Combobox" Width="140" ItemsPanel="{StaticResource VSP}" ItemsSource="{Binding ClassDropdownList}" IsTextSearchEnabled="True" KeyUp="ClassDropdown_Combobox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <Button Content="Find object by class" Click="FindObjectByClass_Click" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkTextBox Watermark="{Binding SearchHintText}" Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box"/>
-                        <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0"/>
+                        <xctk:WatermarkTextBox Watermark="{Binding SearchHintText}" Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkTextBox Watermark="{Binding GotoHintText}" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
-                        <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0"/>
+                        <xctk:WatermarkTextBox Watermark="{Binding GotoHintText}" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
-                    <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="Gray" Margin="5,0,0,0"/>
+                    <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
                 </ToolBar>
                 <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch">
                     <controls:ListBoxScroll.Resources>
@@ -453,7 +509,7 @@
                     </b:Interaction.Behaviors>
                 </TreeView>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Grid.Row="1"/>
-                <TabControl Name="EditorTabs" Grid.Column="2" Grid.Row="1">
+                <TabControl Name="EditorTabs" Grid.Column="2" Grid.Row="1" Style="{StaticResource ThemedTabControlStyle}">
                     <TabItem Name="Intro_Tab" Header="Welcome">
                         <StackPanel>
                             <TextBlock Margin="5" Text="Welcome to Package Editor" FontWeight="Bold"/>
