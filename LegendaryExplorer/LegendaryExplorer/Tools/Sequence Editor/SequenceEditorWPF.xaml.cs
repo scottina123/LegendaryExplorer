@@ -111,6 +111,65 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
 
+            // Load saved colors from settings
+            try
+            {
+                int bgColorArgb = Settings.SequenceEditor_BackgroundColor;
+                _graphEditorBackColor = Color.FromArgb(bgColorArgb);
+            }
+            catch
+            {
+                _graphEditorBackColor = Color.FromArgb(79, 79, 79);
+            }
+
+            try
+            {
+                int boxColorArgb = Settings.SequenceEditor_BoxFillColor;
+                _boxFillColor = Color.FromArgb(boxColorArgb);
+                SObj.NodeBrushColor = _boxFillColor;
+            }
+            catch
+            {
+                _boxFillColor = Color.FromArgb(140, 140, 140);
+                SObj.NodeBrushColor = _boxFillColor;
+            }
+
+            try
+            {
+                int titleColorArgb = Settings.SequenceEditor_TitleBoxColor;
+                _titleBoxColor = Color.FromArgb(titleColorArgb);
+                SObj.TitleBoxBrushColor = _titleBoxColor;
+            }
+            catch
+            {
+                _titleBoxColor = Color.FromArgb(112, 112, 112);
+                SObj.TitleBoxBrushColor = _titleBoxColor;
+            }
+
+            try
+            {
+                int commentColorArgb = Settings.SequenceEditor_CommentTextColor;
+                _commentTextColor = Color.FromArgb(commentColorArgb);
+                SObj.CommentTextColor = _commentTextColor;
+            }
+            catch
+            {
+                _commentTextColor = Color.FromArgb(74, 63, 190);
+                SObj.CommentTextColor = _commentTextColor;
+            }
+
+            try
+            {
+                int boxTextColorArgb = Settings.SequenceEditor_BoxTextColor;
+                _boxTextColor = Color.FromArgb(boxTextColorArgb);
+                SObj.BoxTextColor = _boxTextColor;
+            }
+            catch
+            {
+                _boxTextColor = Color.FromArgb(0, 0, 0);
+                SObj.BoxTextColor = _boxTextColor;
+            }
+
             graphEditor = (SequenceGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
             graphEditor.Camera.MouseDown += backMouseDown_Handler;
@@ -1619,7 +1678,99 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         private bool AllowWindowRefocus = true;
-        private static readonly Color GraphEditorBackColor = Color.FromArgb(167, 167, 167);
+        
+        private Color _graphEditorBackColor = Color.FromArgb(79, 79, 79);
+        public Color GraphEditorBackColor
+        {
+            get => _graphEditorBackColor;
+            set
+            {
+                if (_graphEditorBackColor != value)
+                {
+                    _graphEditorBackColor = value;
+                    if (graphEditor != null)
+                    {
+                        graphEditor.BackColor = value;
+                        if (CurrentObjects.Any())
+                        {
+                            RefreshView();
+                        }
+                    }
+                }
+            }
+        }
+
+        private Color _boxFillColor = Color.FromArgb(140, 140, 140);
+        public Color BoxFillColor
+        {
+            get => _boxFillColor;
+            set
+            {
+                if (_boxFillColor != value)
+                {
+                    _boxFillColor = value;
+                    SObj.NodeBrushColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _titleBoxColor = Color.FromArgb(112, 112, 112);
+        public Color TitleBoxColor
+        {
+            get => _titleBoxColor;
+            set
+            {
+                if (_titleBoxColor != value)
+                {
+                    _titleBoxColor = value;
+                    SObj.TitleBoxBrushColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _commentTextColor = Color.FromArgb(74, 63, 190);
+        public Color CommentTextColor
+        {
+            get => _commentTextColor;
+            set
+            {
+                if (_commentTextColor != value)
+                {
+                    _commentTextColor = value;
+                    SObj.CommentTextColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _boxTextColor = Color.FromArgb(0, 0, 0);
+        public Color BoxTextColor
+        {
+            get => _boxTextColor;
+            set
+            {
+                if (_boxTextColor != value)
+                {
+                    _boxTextColor = value;
+                    SObj.BoxTextColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
 
         private void saveView(bool toFile = true)
         {
@@ -3086,6 +3237,91 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                     sw.WriteProperty(new IntProperty(currentIdx, "LinkCount"));
                 }
+            }
+        }
+
+        private void BackgroundColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colorDialog = new System.Windows.Forms.ColorDialog
+            {
+                Color = GraphEditorBackColor,
+                AllowFullOpen = true,
+                FullOpen = true
+            };
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                GraphEditorBackColor = colorDialog.Color;
+                Settings.SequenceEditor_BackgroundColor = colorDialog.Color.ToArgb();
+                Settings.Save();
+            }
+        }
+
+        private void BoxColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colorDialog = new System.Windows.Forms.ColorDialog
+            {
+                Color = BoxFillColor,
+                AllowFullOpen = true,
+                FullOpen = true
+            };
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                BoxFillColor = colorDialog.Color;
+                Settings.SequenceEditor_BoxFillColor = colorDialog.Color.ToArgb();
+                Settings.Save();
+            }
+        }
+
+        private void TitleBoxColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colorDialog = new System.Windows.Forms.ColorDialog
+            {
+                Color = TitleBoxColor,
+                AllowFullOpen = true,
+                FullOpen = true
+            };
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                TitleBoxColor = colorDialog.Color;
+                Settings.SequenceEditor_TitleBoxColor = colorDialog.Color.ToArgb();
+                Settings.Save();
+            }
+        }
+
+        private void CommentTextColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colorDialog = new System.Windows.Forms.ColorDialog
+            {
+                Color = CommentTextColor,
+                AllowFullOpen = true,
+                FullOpen = true
+            };
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                CommentTextColor = colorDialog.Color;
+                Settings.SequenceEditor_CommentTextColor = colorDialog.Color.ToArgb();
+                Settings.Save();
+            }
+        }
+
+        private void BoxTextColor_Click(object sender, RoutedEventArgs e)
+        {
+            var colorDialog = new System.Windows.Forms.ColorDialog
+            {
+                Color = BoxTextColor,
+                AllowFullOpen = true,
+                FullOpen = true
+            };
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                BoxTextColor = colorDialog.Color;
+                Settings.SequenceEditor_BoxTextColor = colorDialog.Color.ToArgb();
+                Settings.Save();
             }
         }
     }

@@ -111,12 +111,37 @@ namespace LegendaryExplorer.Misc.AppSettings
             set => SetProperty(ref _sequenceeditor_favorites_le3, value);
         }
         private static string _sequenceeditor_favorites_udk = "Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent"; 
-        public static string SequenceEditor_Favorites_UDK {
-            get => _sequenceeditor_favorites_udk; 
-            set => SetProperty(ref _sequenceeditor_favorites_udk, value);
-        }
-        private static bool _soundplorer_reverseiddisplayendianness = false; 
-        public static bool Soundplorer_ReverseIDDisplayEndianness {
+         public static string SequenceEditor_Favorites_UDK {
+             get => _sequenceeditor_favorites_udk; 
+             set => SetProperty(ref _sequenceeditor_favorites_udk, value);
+         }
+         private static int _sequenceeditor_backgroundcolor = -8355840; 
+         public static int SequenceEditor_BackgroundColor {
+             get => _sequenceeditor_backgroundcolor; 
+             set => SetProperty(ref _sequenceeditor_backgroundcolor, value);
+         }
+         private static int _sequenceeditor_boxfillcolor = -7892495; 
+         public static int SequenceEditor_BoxFillColor {
+             get => _sequenceeditor_boxfillcolor; 
+             set => SetProperty(ref _sequenceeditor_boxfillcolor, value);
+         }
+          private static int _sequenceeditor_titleboxcolor = -8553424; 
+          public static int SequenceEditor_TitleBoxColor {
+             get => _sequenceeditor_titleboxcolor; 
+             set => SetProperty(ref _sequenceeditor_titleboxcolor, value);
+         }
+         private static int _sequenceeditor_commenttextcolor = -5978694; 
+         public static int SequenceEditor_CommentTextColor {
+             get => _sequenceeditor_commenttextcolor; 
+             set => SetProperty(ref _sequenceeditor_commenttextcolor, value);
+         }
+         private static int _sequenceeditor_boxtextcolor = -1; 
+         public static int SequenceEditor_BoxTextColor {
+             get => _sequenceeditor_boxtextcolor; 
+             set => SetProperty(ref _sequenceeditor_boxtextcolor, value);
+         }
+         private static bool _soundplorer_reverseiddisplayendianness = false; 
+         public static bool Soundplorer_ReverseIDDisplayEndianness {
             get => _soundplorer_reverseiddisplayendianness; 
             set => SetProperty(ref _soundplorer_reverseiddisplayendianness, value);
         }

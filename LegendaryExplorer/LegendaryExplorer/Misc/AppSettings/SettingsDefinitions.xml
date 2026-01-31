@@ -36,6 +36,16 @@
            friendlyName="Auto-save View"/>
   <setting name="SequenceEditor_ShowOutputNumbers" type="bool" defaultvalue="false" category="Sequence Editor"
            friendlyName="Show Output Numbers"/>
+  <setting name="SequenceEditor_BackgroundColor" type="int" defaultvalue="-8355840" category="Sequence Editor"
+           friendlyName="Graph Editor Background Color"/>
+  <setting name="SequenceEditor_BoxFillColor" type="int" defaultvalue="-7892495" category="Sequence Editor"
+           friendlyName="Sequence Box Fill Color"/>
+  <setting name="SequenceEditor_TitleBoxColor" type="int" defaultvalue="-8553424" category="Sequence Editor"
+           friendlyName="Sequence Title Box Color"/>
+  <setting name="SequenceEditor_CommentTextColor" type="int" defaultvalue="-5978694" category="Sequence Editor"
+           friendlyName="Comment Text Color"/>
+  <setting name="SequenceEditor_BoxTextColor" type="int" defaultvalue="-1" category="Sequence Editor"
+           friendlyName="Box Text Color"/>
   <setting name="SequenceEditor_Favorites" type="string" defaultvalue="Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent"
            pergame="true"/>
     

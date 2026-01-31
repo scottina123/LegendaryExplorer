@@ -46,32 +46,59 @@ namespace LegendaryExplorer.Tools.SequenceObjects
     }
 
     [DebuggerDisplay("SObj | #{UIndex}: {export.ObjectName.Instanced}")]
-    public abstract class SObj : PNode, IDisposable
-    {
-        private static readonly Color CommentColor = Color.FromArgb(74, 63, 190);
-        private static readonly Color IntColor = Color.FromArgb(34, 218, 218);//cyan
-        private static readonly Color FloatColor = Color.FromArgb(23, 23, 213);//blue
-        private static readonly Color BoolColor = Color.FromArgb(215, 37, 33); //red
-        private static readonly Color ObjectColor = Color.FromArgb(219, 39, 217);//purple
-        private static readonly Color InterpDataColor = Color.FromArgb(222, 123, 26);//orange
-        private static readonly Color StringColor = Color.FromArgb(24, 219, 12);//lime green
-        private static readonly Color VectorColor = Color.FromArgb(127, 123, 32);//dark gold
-        private static readonly Color RotatorColor = Color.FromArgb(176, 97, 63);//burnt sienna
-        protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
-        protected static readonly Color TitleColor = Color.FromArgb(255, 255, 128);
-        protected static readonly Brush TitleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
-        protected static readonly Brush MostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
-        protected static readonly Brush NodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
-        protected static readonly Pen SelectedPen = new(Color.FromArgb(255, 255, 0));
-        protected static bool draggingOutlink;
-        protected static bool draggingVarlink;
-        protected static bool draggingEventlink;
-        protected static PNode DragTarget;
-        public static bool OutputNumbers;
+     public abstract class SObj : PNode, IDisposable
+     {
+         private static Color _commentColor = Color.FromArgb(74, 63, 190);
+         private static readonly Color IntColor = Color.FromArgb(34, 218, 218);//cyan
+         private static readonly Color FloatColor = Color.FromArgb(23, 23, 213);//blue
+         private static readonly Color BoolColor = Color.FromArgb(215, 37, 33); //red
+         private static readonly Color ObjectColor = Color.FromArgb(219, 39, 217);//purple
+         private static readonly Color InterpDataColor = Color.FromArgb(222, 123, 26);//orange
+         private static readonly Color StringColor = Color.FromArgb(24, 219, 12);//lime green
+         private static readonly Color VectorColor = Color.FromArgb(127, 123, 32);//dark gold
+         private static readonly Color RotatorColor = Color.FromArgb(176, 97, 63);//burnt sienna
+         protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
+         protected static readonly Color TitleColor = Color.FromArgb(255, 255, 128);
+         private static Color _titleBoxColor = Color.FromArgb(112, 112, 112);
+         protected static Brush TitleBoxBrush => new SolidBrush(_titleBoxColor);
+         protected static readonly Brush MostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
+         private static Color _nodeBrushColor = Color.FromArgb(140, 140, 140);
+         protected static Brush NodeBrush => new SolidBrush(_nodeBrushColor);
+         protected static readonly Pen SelectedPen = new(Color.FromArgb(255, 255, 0));
+         private static Color _boxTextColor = Color.FromArgb(0, 0, 0); // Black text
+         protected static bool draggingOutlink;
+         protected static bool draggingVarlink;
+         protected static bool draggingEventlink;
+         protected static PNode DragTarget;
+         public static bool OutputNumbers;
+         
+         public static Color NodeBrushColor
+         {
+             get => _nodeBrushColor;
+             set => _nodeBrushColor = value;
+         }
 
-        protected IMEPackage Pcc;
-        protected SequenceGraphEditor g;
-        public RectangleF PosAtDragStart;
+         public static Color TitleBoxBrushColor
+         {
+             get => _titleBoxColor;
+             set => _titleBoxColor = value;
+         }
+
+         public static Color CommentTextColor
+         {
+             get => _commentColor;
+             set => _commentColor = value;
+         }
+
+         public static Color BoxTextColor
+         {
+             get => _boxTextColor;
+             set => _boxTextColor = value;
+         }
+
+         protected IMEPackage Pcc;
+         protected SequenceGraphEditor g;
+         public RectangleF PosAtDragStart;
 
         protected ExportEntry export;
         public ExportEntry Export => export;
@@ -83,16 +110,16 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
         public string Comment => comment.Text;
 
-        protected SObj(ExportEntry entry, SequenceGraphEditor grapheditor)
-        {
-            Pcc = entry.FileRef;
-            export = entry;
-            g = grapheditor;
-            comment = new SText(GetComment(), CommentColor, false)
-            {
-                Pickable = false,
-            };
-            comment.Y = 0 - comment.Height;
+         protected SObj(ExportEntry entry, SequenceGraphEditor grapheditor)
+         {
+             Pcc = entry.FileRef;
+             export = entry;
+             g = grapheditor;
+             comment = new SText(GetComment(), _commentColor, false)
+             {
+                 Pickable = false,
+             };
+             comment.Y = 0 - comment.Height;
             AddChild(comment);
             Pickable = true;
         }
@@ -1571,69 +1598,69 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                  .Replace("SeqAct_", "").Replace("SeqCond_", "");
             float starty = 8;
             float w = 20;
-            VarLinkBox = new PPath();
-            for (int i = 0; i < Varlinks.Count; i++)
-            {
-                string d = string.Join(",", Varlinks[i].Links.Select(l => $"#{l}"));
-                var t2 = new SText($"{d}\n{Varlinks[i].Desc}", x: w)
-                {
-                    Pickable = false
-                };
-                w += t2.Width + 20;
-                Varlinks[i].Node.TranslateBy(t2.X + t2.Width / 2, t2.Y + t2.Height);
-                t2.AddChild(Varlinks[i].Node);
-                VarLinkBox.AddChild(t2);
-            }
-            for (int i = 0; i < EventLinks.Count; i++)
-            {
-                string d = string.Join(",", EventLinks[i].Links.Select(l => $"#{l}"));
-                var t2 = new SText($"{d}\n{EventLinks[i].Desc}", x: w)
-                {
-                    Pickable = false
-                };
-                w += t2.Width + 20;
-                EventLinks[i].Node.TranslateBy(t2.X + t2.Width / 2, t2.Y + t2.Height);
-                t2.AddChild(EventLinks[i].Node);
-                VarLinkBox.AddChild(t2);
-            }
+             VarLinkBox = new PPath();
+             for (int i = 0; i < Varlinks.Count; i++)
+             {
+                 string d = string.Join(",", Varlinks[i].Links.Select(l => $"#{l}"));
+                 var t2 = new SText($"{d}\n{Varlinks[i].Desc}", BoxTextColor, x: w)
+                 {
+                     Pickable = false
+                 };
+                 w += t2.Width + 20;
+                 Varlinks[i].Node.TranslateBy(t2.X + t2.Width / 2, t2.Y + t2.Height);
+                 t2.AddChild(Varlinks[i].Node);
+                 VarLinkBox.AddChild(t2);
+             }
+             for (int i = 0; i < EventLinks.Count; i++)
+             {
+                 string d = string.Join(",", EventLinks[i].Links.Select(l => $"#{l}"));
+                 var t2 = new SText($"{d}\n{EventLinks[i].Desc}", BoxTextColor, x: w)
+                 {
+                     Pickable = false
+                 };
+                 w += t2.Width + 20;
+                 EventLinks[i].Node.TranslateBy(t2.X + t2.Width / 2, t2.Y + t2.Height);
+                 t2.AddChild(EventLinks[i].Node);
+                 VarLinkBox.AddChild(t2);
+             }
             if (Varlinks.Any() || EventLinks.Any())
                 VarLinkBox.Height = VarLinkBox[0].Height;
             VarLinkBox.Width = w;
             VarLinkBox.Pickable = false;
-            OutLinkBox = new PPath();
-            float outW = 0;
-            for (int i = 0; i < Outlinks.Count; i++)
-            {
-                string linkDesc = Outlinks[i].Desc;
-                if (OutputNumbers && Outlinks[i].Links.Any())
-                {
-                    linkDesc += $": {string.Join(",", Outlinks[i].Links.Select(l => $"#{l}"))}";
-                }
-                var t2 = new SText(linkDesc);
-                if (t2.Width + 10 > outW) outW = t2.Width + 10;
-                t2.SetBounds(0 - t2.Width, starty, t2.Width, t2.Height);
-                starty += t2.Height;
-                t2.Pickable = false;
-                Outlinks[i].Node.TranslateBy(0, t2.Y + t2.Height / 2);
-                t2.AddChild(Outlinks[i].Node);
-                OutLinkBox.AddChild(t2);
-            }
-            OutLinkBox.Pickable = false;
-            inputLinkBox = new PNode();
-            GetInputLinks(properties);
-            float inW = 0;
-            float inY = 8;
-            for (int i = 0; i < InLinks.Count; i++)
-            {
-                var t2 = new SText(InLinks[i].Desc, x: 3, y: inY);
-                if (t2.Width > inW) inW = t2.Width;
-                inY += t2.Height;
-                t2.Pickable = false;
-                PPath inLinkNode = InLinks[i].Node;
-                inLinkNode.SetBounds(-10, t2.Y + t2.Height / 2 - 5, inLinkNode.Width, inLinkNode.Height);
-                t2.AddChild(inLinkNode);
-                inputLinkBox.AddChild(t2);
-            }
+             OutLinkBox = new PPath();
+             float outW = 0;
+             for (int i = 0; i < Outlinks.Count; i++)
+             {
+                 string linkDesc = Outlinks[i].Desc;
+                 if (OutputNumbers && Outlinks[i].Links.Any())
+                 {
+                     linkDesc += $": {string.Join(",", Outlinks[i].Links.Select(l => $"#{l}"))}";
+                 }
+                 var t2 = new SText(linkDesc, BoxTextColor);
+                 if (t2.Width + 10 > outW) outW = t2.Width + 10;
+                 t2.SetBounds(0 - t2.Width, starty, t2.Width, t2.Height);
+                 starty += t2.Height;
+                 t2.Pickable = false;
+                 Outlinks[i].Node.TranslateBy(0, t2.Y + t2.Height / 2);
+                 t2.AddChild(Outlinks[i].Node);
+                 OutLinkBox.AddChild(t2);
+             }
+             OutLinkBox.Pickable = false;
+             inputLinkBox = new PNode();
+             GetInputLinks(properties);
+             float inW = 0;
+             float inY = 8;
+             for (int i = 0; i < InLinks.Count; i++)
+             {
+                 var t2 = new SText(InLinks[i].Desc, BoxTextColor, x: 3, y: inY);
+                 if (t2.Width > inW) inW = t2.Width;
+                 inY += t2.Height;
+                 t2.Pickable = false;
+                 PPath inLinkNode = InLinks[i].Node;
+                 inLinkNode.SetBounds(-10, t2.Y + t2.Height / 2 - 5, inLinkNode.Width, inLinkNode.Height);
+                 t2.AddChild(inLinkNode);
+                 inputLinkBox.AddChild(t2);
+             }
             inputLinkBox.Pickable = false;
             if (inY > starty) starty = inY;
             if (inW + outW + 10 > w) w = inW + outW + 10;
