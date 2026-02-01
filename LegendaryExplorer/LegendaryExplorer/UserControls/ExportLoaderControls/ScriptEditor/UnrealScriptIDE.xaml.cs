@@ -71,6 +71,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
         public ICommand ToggleCommentCommand { get; set; }
         public ICommand IncreaseFontSizeCommand { get; set; }
         public ICommand DecreaseFontSizeCommand { get; set; }
+        public ICommand IncreaseIndentCommand { get; set; }
+        public ICommand DecreaseIndentCommand { get; set; }
+        public ICommand AddCommentCommand { get; set; }
+        public ICommand UncommentCommand { get; set; }
 
         public UnrealScriptIDE() : base("UnrealScript IDE")
         {
@@ -90,10 +94,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
 
             FindUsagesInFileCommand = new GenericCommand(FindUsagesInFile, CanFindReferences);
             GoToDefinitionCommand = new GenericCommand(() => VisualLineDefinitionLinkText.GoToDefinition(contextMenuDefinitionNode, ScrollTo), () => contextMenuDefinitionNode is not null && CurrentFileLib.IsInitialized);
-            ToggleCommentCommand = new GenericCommand(ToggleComment, CanToggleComment);
+            ToggleCommentCommand = new GenericCommand(() => ToggleComment(CommentAction.Toggle), CanApplyTextEdit);
 
             IncreaseFontSizeCommand = new GenericCommand(() => textEditor.UpdateFontSize(true));
             DecreaseFontSizeCommand = new GenericCommand(() => textEditor.UpdateFontSize(false));
+            IncreaseIndentCommand = new GenericCommand(() => IndentCode(true), CanApplyTextEdit);
+            DecreaseIndentCommand = new GenericCommand(() => IndentCode(false), CanApplyTextEdit);
+            AddCommentCommand = new GenericCommand(() => ToggleComment(CommentAction.Add), CanApplyTextEdit);
+            UncommentCommand = new GenericCommand(() => ToggleComment(CommentAction.Remove), CanApplyTextEdit);
+
+            ApplyThemeColors();
+            SyntaxInfo.ThemeChanged += OnThemeChanged;
         }
 
         public override bool CanParse(ExportEntry exportEntry) =>
@@ -202,6 +213,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
             }
             textEditor.TextArea.TextEntered -= TextAreaOnTextEntered;
             textEditor.TextArea.TextEntering -= TextAreaOnTextEntering;
+            SyntaxInfo.ThemeChanged -= OnThemeChanged;
         }
 
         private void ExportLoaderControl_Loaded(object sender, RoutedEventArgs e)
@@ -1023,9 +1035,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
             });
         }
 
-        private bool CanToggleComment() => Document is not null;
+        private bool CanApplyTextEdit() => Document is not null;
 
-        private void ToggleComment()
+        private enum CommentAction
+        {
+            Toggle,
+            Add,
+            Remove
+        }
+
+        private void ToggleComment(CommentAction action)
         {
             TextArea textArea = textEditor.TextArea;
             Selection selection = textArea.Selection;
@@ -1063,7 +1082,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                     //oops, all whitespace!
                     return;
                 }
-                if (hasNonCommentedLines)
+                if (action is CommentAction.Add || action is CommentAction.Toggle && hasNonCommentedLines)
                 {
                     for (int i = 0; i < lines.Length; i++)
                     {
@@ -1079,13 +1098,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                     for (int i = 0; i < lines.Length; i++)
                     {
                         string lineText = lines[i];
-                        if (lineText.IndexOf("//", StringComparison.Ordinal) is var commentStart and > 0)
+                        if (lineText.IndexOf("//", StringComparison.Ordinal) is var commentStart and >= 0)
                         {
                             lines[i] = $"{lineText.AsSpan(0, commentStart)}{lineText.AsSpan(commentStart + 2)}";
                         }
                     }
                 }
                 textArea.PerformTextInput(string.Join('\n', lines));
+                startLine = Document.GetLineByNumber(startLineNum);
+                endLine = Document.GetLineByNumber(endLineNum);
+                textArea.Selection = selection = Selection.Create(textArea, startLine.Offset, endLine.EndOffset);
             }
             else
             {
@@ -1101,6 +1123,72 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
                 {
                     textArea.PerformTextInput($"{indentation}//{lineText.AsSpan(indentation.Length)}");
                 }
+            }
+        }
+
+        private void IndentCode(bool indent = true)
+        {
+            const int IndentSize = 4;
+            TextArea textArea = textEditor.TextArea;
+            Selection selection = textArea.Selection;
+            if (!selection.IsEmpty)
+            {
+                int startLineNum = selection.StartPosition.Line;
+                int endLineNum = selection.EndPosition.Line;
+                //if the selection was made by dragging up, these must be swapped
+                if (startLineNum > endLineNum)
+                {
+                    (startLineNum, endLineNum) = (endLineNum, startLineNum);
+                }
+                DocumentLine startLine = Document.GetLineByNumber(startLineNum);
+                DocumentLine endLine = Document.GetLineByNumber(endLineNum);
+                textArea.Selection = selection = Selection.Create(textArea, startLine.Offset, endLine.EndOffset);
+                string text = selection.GetText();
+                string[] lines = text.Split('\n');
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    int whitespaceCount = line.CountLeadingWhitespace();
+                    if (whitespaceCount == line.Length) break;
+                    if (indent)
+                    {
+                        lines[i] = new string(' ', IndentSize) + line;
+                    }
+                    else
+                    {
+                        int whitespaceRemoved = Math.Min(IndentSize, whitespaceCount);
+                        lines[i] = line.AsSpan(whitespaceRemoved).ToString();
+                    }
+                }
+                textArea.PerformTextInput(string.Join('\n', lines));
+                startLine = Document.GetLineByNumber(startLineNum);
+                endLine = Document.GetLineByNumber(endLineNum);
+                textArea.Selection = selection = Selection.Create(textArea, startLine.Offset, endLine.EndOffset);
+            }
+            else
+            {
+                DocumentLine line = Document.GetLineByNumber(textArea.Caret.Line);
+                string lineText = Document.GetText(line);
+                int indentationLength = lineText.CountLeadingWhitespace();
+                if (indentationLength == lineText.Length)
+                {
+                    //all whitespace
+                    return;
+                }
+                var caretPos = textArea.Caret.Offset;
+                textArea.Selection = Selection.Create(textArea, line.Offset, line.EndOffset);
+                if (indent)
+                {
+                    textArea.PerformTextInput(new string(' ', IndentSize) + lineText);
+                    caretPos += IndentSize;
+                }
+                else
+                {
+                    int whitespaceRemoved = Math.Min(IndentSize, indentationLength);
+                    textArea.PerformTextInput(lineText.AsSpan(whitespaceRemoved).ToString());
+                    caretPos -= whitespaceRemoved;
+                }
+                textArea.Caret.Offset = caretPos ;
             }
         }
 
@@ -1154,7 +1242,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
 
             void SetStringTooltip(string text)
             {
-                SetInlinesTooltip([new Run(text) { Foreground = SyntaxInfo.ColorBrushes[EF.None] }]);
+                SetInlinesTooltip([new Run(text) { Foreground = SyntaxInfo.ColorBrushes[ST.None] }]);
             }
 
             void SetTooltip(TextBlock content)
@@ -1261,9 +1349,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor
             }
         }
 
+        private void OnThemeChanged()
+        {
+            Dispatcher.Invoke(ApplyThemeColors);
+        }
+
+        private void ApplyThemeColors()
+        {
+            textEditor.Background = SyntaxInfo.BackgroundBrush;
+            textEditor.Foreground = SyntaxInfo.ColorBrushes[ST.None];
+            textEditor.LineNumbersForeground = SyntaxInfo.ColorBrushes[ST.Keyword];
+            textEditor.TextArea.TextView.Redraw();
+        }
+
         private void ThemePicker_OnClick(object sender, RoutedEventArgs e)
         {
-            new IdeThemePicker(Window.GetWindow(this)).Show();
+            IdeThemePicker.ShowThemeEditor(Window.GetWindow(this));
         }
     }
 }

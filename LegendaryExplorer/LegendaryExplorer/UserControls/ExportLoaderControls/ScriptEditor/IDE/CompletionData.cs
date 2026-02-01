@@ -30,7 +30,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
                 if (_description is null && descriptionText is not null)
                 {
                     var textBlock = new TextBlock();
-                    textBlock.Inlines.Add(new Run(descriptionText) { Foreground = SyntaxInfo.ColorBrushes[LegendaryExplorerCore.UnrealScript.Analysis.Visitors.EF.None] });
+                    textBlock.Inlines.Add(new Run(descriptionText) { Foreground = SyntaxInfo.ColorBrushes[LegendaryExplorerCore.UnrealScript.Analysis.Visitors.ST.None] });
 
                     textBlock.Background = SyntaxInfo.BackgroundBrush;
                     _description = textBlock;
