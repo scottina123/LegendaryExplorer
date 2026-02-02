@@ -1352,7 +1352,7 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         private void ExportGltf_Textures_Click(object sender, RoutedEventArgs args)
         {
-            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow(), SquidGltf.MaterialExportLevel.Basic);
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow(), GLTF.MaterialExportLevel.Basic);
         }
         private void ExportSelectedToPsx_Click(object sender, RoutedEventArgs e)
         {

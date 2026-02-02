@@ -24,6 +24,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using static LegendaryExplorerCore.Packages.CloningImportingAndRelinking.EntryImporter;
 using static LegendaryExplorerCore.Unreal.PSA;
@@ -110,7 +111,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void ExportMeshToGltf(PackageEditorWindow pew, SquidGltf.MaterialExportLevel materialExportLevel = SquidGltf.MaterialExportLevel.NameOnly)
+        public static void ExportMeshToGltf(PackageEditorWindow pew, GLTF.MaterialExportLevel materialExportLevel = GLTF.MaterialExportLevel.NameOnly)
         {
             if (pew.Pcc == null)
             {
@@ -124,29 +125,33 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             {
                 ShowError("This experiment does not support UDK files;");
             }
-            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out var export))
+            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh", "SkeletalMeshComponent", "BioPawn"], out var export))
             {
+                if (export.ClassName == "StaticMesh" && !(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
+                {
+                    ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
+                }
                 var d = new SaveFileDialog { Filter = "glTF binary|*.glb|glTF|*.glTF", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
                 if (d.ShowDialog() == true)
                 {
-                    if (export.ClassName == "SkeletalMesh")
+                    Task.Run(() =>
                     {
-                        SquidGltf.ConvertSkeletalMeshToGltf(ObjectBinary.From<SkeletalMesh>(export, new PackageCache()), d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
-                    }
-                    // TODO support other closely related types?
-                    else if (export.ClassName == "StaticMesh")
+                        pew.BusyText = "Exporting to glTF...";
+                        pew.IsBusy = true;
+                        GLTF.ExportMeshToGltf(export, d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
+                    }).ContinueWithOnUIThread(x =>
                     {
-                        if (!(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
+                        pew.IsBusy = false;
+                        if (x.Exception != null)
                         {
-                            ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
+                            ShowError(x.Exception.FlattenException());
                         }
-                        SquidGltf.ConvertStaticMeshToGltf(ObjectBinary.From<StaticMesh>(export, new PackageCache()), d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
-                    }
+                    });
                 }
             }
             else
             {
-                ShowError("You must select a skeletal mesh or static mesh");
+                ShowError("You must select a skeletal mesh, static mesh, SkeletalMeshComponent, or BioPawn");
             }
         }
 
@@ -167,7 +172,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (GetGltfFromFile(out var gltf, out string _))
             {
                 GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out ExportEntry selectedMeshToReplace);
-                SquidGltf.ConvertGltfToMesh(gltf, pew.Pcc, selectedMeshToReplace);
+                GLTF.ConvertGltfToMesh(gltf, pew.Pcc, selectedMeshToReplace);
             }
         }
         private static bool GetGltfFromFile(out SharpGLTF.Schema2.ModelRoot gltf, out string filePath)
@@ -875,143 +880,9 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        public static void GetMaterialTextures(ExportEntry materialExport, out Dictionary<string, ExportEntry> textureExports, out List<ExportEntry> baseTextures, bool includeUniformExpressionTextures = true)
-        {
-            Dictionary<string, ExportEntry> tempTextureExports = [];
-            List<ExportEntry> tempBaseTextures = [];
-            var cache = new PackageCache();
-
-            delegateByType(materialExport);
-
-            textureExports = tempTextureExports;
-            baseTextures = tempBaseTextures;
-
-            void delegateByType(ExportEntry materialEntry)
-            {
-                var selectedEntryClass = materialEntry.ClassName;
-                if (materialEntry.ClassName == "Material")
-                {
-                    ExportBaseMaterialTextures(materialEntry, includeUniformExpressionTextures);
-                }
-                else if (materialEntry.IsA("MaterialInstanceConstant"))
-                {
-                    ExportMICTextures(materialEntry);
-                }
-                else if (materialEntry.IsA("RvrEffectsMaterialUser"))
-                {
-                    ExportEffectMatUserTextures(materialEntry);
-
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            void ExportEffectMatUserTextures(ExportEntry effectsMatEntry)
-            {
-                // for this, just get the base material stuff
-                if (effectsMatEntry.GetProperty<ObjectProperty>("m_pBaseMaterial", cache).TryResolveExport(effectsMatEntry.FileRef, cache, out var baseMat))
-                {
-                    delegateByType(baseMat);
-                }
-            }
-
-            void ExportMICTextures(ExportEntry micExport)
-            {
-                // get anything from the texture Parameters
-                var texParamsProp = micExport.GetProperty<ArrayProperty<StructProperty>>("TextureParameterValues", cache);
-                if (texParamsProp != null)
-                {
-                    foreach (var texParam in texParamsProp)
-                    {
-                        var paramName = texParam.GetProp<NameProperty>("ParameterName").Value.Instanced;
-                        if (!tempTextureExports.ContainsKey(paramName) && texParam.GetProp<ObjectProperty>("ParameterValue").TryResolveExport(micExport.FileRef, cache, out var value))
-                        {
-                            // skip the really dumb textures
-                            if (value.ObjectNameString.StartsWith("GBL_ARM_ALL"))
-                            {
-                                continue;
-                            }
-                            if (value.IsA("Texture2D"))
-                            {
-                                tempTextureExports.Add(paramName, value);
-                            }
-                        }
-                    }
-                }
-                // then go to the parent, if it exists
-                if (micExport.GetProperty<ObjectProperty>("Parent", cache).TryResolveExport(micExport.FileRef, cache, out var parent))
-                {
-                    delegateByType(parent);
-                }
-            }
-
-            void ExportBaseMaterialTextures(ExportEntry baseMatEntry, bool includeUniformExpressionTextures = true)
-            {
-                if (includeUniformExpressionTextures)
-                {
-                    var matBin = ObjectBinary.From<Material>(baseMatEntry);
-                    if (matBin.SM2MaterialResource.UniformExpressionTextures != null)
-                    {
-                        foreach (var texIdx in matBin.SM2MaterialResource.UniformExpressionTextures)
-                        {
-                            if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
-                            {
-                                // skip the really dumb textures
-                                if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
-                                {
-                                    continue;
-                                }
-                                if (tex.IsA("Texture2D"))
-                                {
-                                    tempBaseTextures.Add(tex);
-                                }
-                            }
-                        }
-                    }
-
-                    if (matBin.SM3MaterialResource.UniformExpressionTextures != null)
-                    {
-                        foreach (var texIdx in matBin.SM3MaterialResource.UniformExpressionTextures)
-                        {
-                            if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
-                            {
-                                // skip the really dumb textures
-                                if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
-                                {
-                                    continue;
-                                }
-                                if (tex.IsA("Texture2D"))
-                                {
-                                    tempBaseTextures.Add(tex);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                var expressions = baseMatEntry.GetProperty<ArrayProperty<ObjectProperty>>("Expressions");
-                if (expressions == null)
-                {
-                    return;
-                }
-
-                // Read default expressions
-                foreach (var expr in expressions.Select(x => x.ResolveToEntry(baseMatEntry.FileRef)).Where(x => x != null && x.IsA("MaterialExpressionTextureSampleParameter")).OfType<ExportEntry>())
-                {
-                    var paramName = expr.GetProperty<NameProperty>("ParameterName")?.Value.Instanced ?? "None";
-
-                    if (!tempTextureExports.ContainsKey(paramName) && expr.GetProperty<ObjectProperty>("Texture").TryResolveExport(baseMatEntry.FileRef, cache, out var value))
-                    {
-                        tempTextureExports.Add(paramName, value);
-                    }
-                }
-            }
-        }
         public static void ExportMaterialTextures(ExportEntry materialExport, string exportDirectory)
         {
-            GetMaterialTextures(materialExport, out var textureExports, out var baseTextures, true);
+            var textureExports = materialExport.GetMaterialTextures(out var baseTextures);
 
             foreach (var tex in baseTextures)
             {
