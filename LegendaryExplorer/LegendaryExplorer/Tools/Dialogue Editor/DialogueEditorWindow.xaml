@@ -355,10 +355,10 @@
                         <Expander.Header>
                             <TextBlock Text="Stage Directions" VerticalAlignment="Center" Margin="0,0,4,0" />
                         </Expander.Header>
-                        <DockPanel Background="White" Margin="0,3,4,3" LastChildFill="True">
+                        <DockPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Margin="0,3,4,3" LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top" Text="Stage Directions" Margin="5,5,5,0" FontWeight="Bold"
-                                       TextAlignment="Center" />
-                            <TextBlock DockPanel.Dock="Top" Text="Add stage directions or notes" Foreground="Gray"
+                                       TextAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                            <TextBlock DockPanel.Dock="Top" Text="Add stage directions or notes" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
                                        FontSize="10" TextWrapping="Wrap" TextAlignment="Center" />
                             <ListBox Name="StageDirs_ListBox" DockPanel.Dock="Bottom"
                                      ItemsSource="{Binding Path=SelectedConv.StageDirections}"
@@ -381,7 +381,9 @@
                                             <TextBox Grid.Row="1"
                                                      Text="{Binding Direction, Mode=TwoWay, UpdateSourceTrigger=Explicit}"
                                                      TextWrapping="Wrap" HorizontalAlignment="Stretch"
-                                                     KeyUp="StageDirections_TextChanged" />
+                                                     KeyUp="StageDirections_TextChanged"
+                                                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                     Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -887,6 +889,8 @@
                                                          HorizontalAlignment="Stretch" FontSize="15"
                                                          VerticalAlignment="Center" HorizontalContentAlignment="Left"
                                                          BorderBrush="LightGray" BorderThickness="0"
+                                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                         Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                                                          GotKeyboardFocus="EditBox_GotKeyboardFocus"
                                                          LostKeyboardFocus="EditBox_LostKeyboardFocus"
                                                          KeyUp="EditBox_Node_KeyUp"
@@ -913,7 +917,9 @@
                                                 <xctk:IntegerUpDown Name="Node_Text_CamInt"
                                                                     Value="{Binding Path=SelectedDialogueNode.CameraIntimacy}"
                                                                     HorizontalAlignment="Stretch" FontSize="12"
-                                                                    Margin="2" />
+                                                                    Margin="2"
+                                                                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                                             </StackPanel>
                                             <DockPanel ToolTip="Links to event scripts that fire new sequences. ">
                                                 <TextBlock Text="Script: " VerticalAlignment="Center" FontSize="15"
@@ -1102,8 +1108,8 @@
                                             <ColumnDefinition Width="31"></ColumnDefinition>
                                             <ColumnDefinition Width="31"></ColumnDefinition>
                                         </Grid.ColumnDefinitions>
-                                        <Label Grid.Column="0" Background="GhostWhite">Order</Label>
-                                        <Label Grid.Column="1" Background="GhostWhite">Entry Link</Label>
+                                        <Label Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Order</Label>
+                                        <Label Grid.Column="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Entry Link</Label>
                                         <Button Name="StartAddButton" Command="{Binding StartAddCommand}"
                                                 CommandParameter="Add" Padding="3" DockPanel.Dock="Right"
                                                 IsEnabled="True" Grid.Column="2" Margin="2" ToolTip="Add a new start">
@@ -1194,8 +1200,8 @@
                             <ColumnDefinition Width="31"></ColumnDefinition>
                             <ColumnDefinition Width="31"></ColumnDefinition>
                         </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Background="GhostWhite">ID</Label>
-                        <Label Grid.Column="1" Background="GhostWhite">Speaker Tag</Label>
+                        <Label Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">ID</Label>
+                        <Label Grid.Column="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Speaker Tag</Label>
                         <Button Name="SpkrUpButton" Command="{Binding SpeakerMoveUpCommand}" CommandParameter="Up"
                                 Padding="3" DockPanel.Dock="Right" IsEnabled="True" Grid.Column="2" Margin="2">
                             <Button.Content>
@@ -1322,7 +1328,7 @@
                                                             Value="This export has been modified but the file has not yet been saved" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsParsed}" Value="False">
-                                                    <Setter Property="Background" Value="GhostWhite" />
+                                                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

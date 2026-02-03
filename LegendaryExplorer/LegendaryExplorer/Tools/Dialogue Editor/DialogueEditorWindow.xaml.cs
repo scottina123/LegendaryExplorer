@@ -2154,13 +2154,15 @@ namespace LegendaryExplorer.DialogueEditor
         {
             var editbox = (TextBox)sender;
             editbox.BorderThickness = new Thickness(2, 2, 2, 2);
-            editbox.Background = System.Windows.Media.Brushes.GhostWhite;
+            editbox.SetResourceReference(TextBox.BackgroundProperty, System.Windows.SystemColors.HighlightBrushKey);
+            editbox.SetResourceReference(TextBox.ForegroundProperty, System.Windows.SystemColors.HighlightTextBrushKey);
         }
         private void EditBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
             var editbox = (TextBox)sender;
             editbox.BorderThickness = new Thickness(0, 0, 0, 0);
-            editbox.Background = System.Windows.Media.Brushes.White;
+            editbox.SetResourceReference(TextBox.BackgroundProperty, System.Windows.SystemColors.ControlBrushKey);
+            editbox.SetResourceReference(TextBox.ForegroundProperty, System.Windows.SystemColors.ControlTextBrushKey);
         }
         private void EditBox_Node_KeyUp(object sender, KeyEventArgs e)
         {
