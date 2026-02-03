@@ -42,10 +42,16 @@ namespace LegendaryExplorer.DialogueEditor
         public static Color replyColor = Color.CadetBlue;
         public static Color replyPenColor = Color.Black;
         protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
-        protected static readonly Color titleColor = Color.FromArgb(255, 255, 128);
-        protected static readonly Brush titleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
+        public static Color titleColor = Color.FromArgb(255, 255, 128);
+        public static Color titleBoxColor = Color.FromArgb(112, 112, 112);
+        public static Color backgroundColor = Color.FromArgb(128, 128, 128);
+        public static Color graphBackgroundColor = Color.FromArgb(64, 64, 64);
+        public static Color boxColor = Color.FromArgb(140, 140, 140);
+        public static Color boxTextColor = Color.White;
+        protected static Brush titleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
         protected static readonly Brush mostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
-        protected static readonly Brush nodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
+        public static Brush _nodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
+        protected static Brush nodeBrush => _nodeBrush;
         protected static readonly Pen selectedPen = new Pen(Color.FromArgb(255, 255, 0));
         public static bool draggingOutlink;
         public static PNode dragTarget;
@@ -205,7 +211,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         protected float GetTitleBox(string s, float w)
         {
-            DText title = new DText(s, titleColor)
+            DText title = new DText(s, boxTextColor)
             {
                 TextAlignment = StringAlignment.Center,
                 ConstrainWidthToTextWidth = false,
@@ -228,7 +234,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         protected float GetTitlePlusLineBox(string s, string l, string n, float w)
         {
-            DText title = new DText(s, titleColor)
+            DText title = new DText(s, boxTextColor)
             {
                 TextAlignment = StringAlignment.Center,
                 ConstrainWidthToTextWidth = false,
@@ -263,7 +269,7 @@ namespace LegendaryExplorer.DialogueEditor
                 };
             }
 
-            DText nodeID = new DText(n, titleColor) //Add node count to left side
+            DText nodeID = new DText(n, boxTextColor) //Add node count to left side
             {
                 TextAlignment = StringAlignment.Near,
                 ConstrainWidthToTextWidth = false,
@@ -652,7 +658,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             string d = $"{Node.LineStrRef}\r\n{plotCnd}{trans}{type}";
 
-            DText insidetext = new DText(d, insideTextColor, true)
+            DText insidetext = new DText(d, boxTextColor, true)
             {
                 TextAlignment = StringAlignment.Center,
                 ConstrainWidthToTextWidth = false,
@@ -1157,7 +1163,7 @@ namespace LegendaryExplorer.DialogueEditor
         public DText(string s, bool shadows = true, float scale = 1)
             : base(s)
         {
-            base.TextBrush = new SolidBrush(Color.FromArgb(255, 255, 255));
+            base.TextBrush = new SolidBrush(DObj.boxTextColor);
             base.GlobalScale = scale;
             shadowRendering = shadows;
         }

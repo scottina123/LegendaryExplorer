@@ -169,6 +169,48 @@ namespace LegendaryExplorer.DialogueEditor
         public int ColumnSpace { get => _ColumnSpacee; set => SetProperty(ref _ColumnSpacee, value); }
         private int _WaterfallSpace = 40;
         public int WaterfallSpace { get => _WaterfallSpace; set => SetProperty(ref _WaterfallSpace, value); }
+
+        private Color _graphBackgroundColor = Color.FromArgb(64, 64, 64);
+        public Color GraphBackgroundColor
+        {
+            get => _graphBackgroundColor;
+            set
+            {
+                if (_graphBackgroundColor != value)
+                {
+                    _graphBackgroundColor = value;
+                    DObj.graphBackgroundColor = value;
+                    if (graphEditor != null)
+                    {
+                        graphEditor.BackColor = value;
+                        if (CurrentObjects.Any())
+                        {
+                            RefreshView();
+                        }
+                    }
+                }
+            }
+        }
+
+        private Color _boxColor = Color.FromArgb(140, 140, 140);
+        public Color BoxColor
+        {
+            get => _boxColor;
+            set
+            {
+                if (_boxColor != value)
+                {
+                    _boxColor = value;
+                    DObj.boxColor = value;
+                    UpdateNodeBrush();
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
         public ICommand OpenCommand { get; set; }
         public ICommand SaveCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
@@ -343,6 +385,24 @@ namespace LegendaryExplorer.DialogueEditor
                     DObj.replyPenColor = c;
                     ClrPcker_ReplyPen.SelectedColor = c.ToWPFColor();
                 }
+                if (options.ContainsKey("GraphBackgroundColor"))
+                {
+                    var c = ColorTranslator.FromHtml((string)options["GraphBackgroundColor"]);
+                    GraphBackgroundColor = c;
+                    ClrPcker_GraphBackground.SelectedColor = c.ToWPFColor();
+                }
+                if (options.ContainsKey("BoxColor"))
+                {
+                    var c = ColorTranslator.FromHtml((string)options["BoxColor"]);
+                    BoxColor = c;
+                    ClrPcker_BoxColor.SelectedColor = c.ToWPFColor();
+                }
+                if (options.ContainsKey("BoxTextColor"))
+                {
+                    var c = ColorTranslator.FromHtml((string)options["BoxTextColor"]);
+                    DObj.boxTextColor = c;
+                    ClrPcker_BoxText.SelectedColor = c.ToWPFColor();
+                }
                 if (options.ContainsKey("AutoSaveMode"))
                 {
                     int.TryParse(options["AutoSaveMode"].ToString(), out int a);
@@ -387,6 +447,9 @@ namespace LegendaryExplorer.DialogueEditor
                 ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
                 ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();
                 ClrPcker_ReplyPen.SelectedColor = DObj.replyPenColor.ToWPFColor();
+                ClrPcker_GraphBackground.SelectedColor = GraphBackgroundColor.ToWPFColor();
+                ClrPcker_BoxColor.SelectedColor = BoxColor.ToWPFColor();
+                ClrPcker_BoxText.SelectedColor = DObj.boxTextColor.ToWPFColor();
             }
             UpdateLayoutDefaults("startup");
         }
@@ -494,6 +557,9 @@ namespace LegendaryExplorer.DialogueEditor
                 {"ReplyColor", ColorTranslator.ToHtml(DObj.replyColor)},
                 {"EntryPenColor", ColorTranslator.ToHtml(DObj.entryPenColor)},
                 {"ReplyPenColor", ColorTranslator.ToHtml(DObj.replyPenColor)},
+                {"GraphBackgroundColor", ColorTranslator.ToHtml(DObj.graphBackgroundColor)},
+                {"BoxColor", ColorTranslator.ToHtml(DObj.boxColor)},
+                {"BoxTextColor", ColorTranslator.ToHtml(DObj.boxTextColor)},
                 {"LinesAtTop", DBox.LinesAtTop},
                 {"OutputNumbers", DObj.OutputNumbers},
                 {"AutoSaveMode", (int)SaveViewMode},
@@ -3538,9 +3604,23 @@ namespace LegendaryExplorer.DialogueEditor
                     case "ClrPcker_Reply":
                         DObj.replyColor = newcolor.ToWinformsColor(); ;
                         break;
+                    case "ClrPcker_GraphBackground":
+                        GraphBackgroundColor = newcolor.ToWinformsColor();
+                        break;
+                    case "ClrPcker_BoxColor":
+                        BoxColor = newcolor.ToWinformsColor();
+                        break;
+                    case "ClrPcker_BoxText":
+                        DObj.boxTextColor = newcolor.ToWinformsColor(); ;
+                        break;
                 }
                 RefreshView();
             }
+        }
+        private void UpdateNodeBrush()
+        {
+            DObj._nodeBrush?.Dispose();
+            DObj._nodeBrush = new System.Drawing.SolidBrush(DObj.boxColor);
         }
         private void ResetColorsToDefault()
         {
@@ -3559,6 +3639,9 @@ namespace LegendaryExplorer.DialogueEditor
             DObj.entryPenColor = Color.Black;
             DObj.replyColor = Color.CadetBlue;
             DObj.replyPenColor = Color.Black;
+            GraphBackgroundColor = Color.FromArgb(64, 64, 64);
+            BoxColor = Color.FromArgb(140, 140, 140);
+            DObj.boxTextColor = Color.Black;
             ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
             ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
             ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
@@ -3570,6 +3653,10 @@ namespace LegendaryExplorer.DialogueEditor
             ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
             ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();
             ClrPcker_ReplyPen.SelectedColor = DObj.replyPenColor.ToWPFColor();
+            ClrPcker_GraphBackground.SelectedColor = GraphBackgroundColor.ToWPFColor();
+            ClrPcker_BoxColor.SelectedColor = BoxColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = DObj.boxTextColor.ToWPFColor();
+            RefreshView();
         }
         private void Spacing_ValueChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {

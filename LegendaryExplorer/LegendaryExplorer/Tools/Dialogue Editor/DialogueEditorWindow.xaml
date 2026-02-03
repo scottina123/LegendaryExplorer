@@ -227,6 +227,19 @@
                         <TextBlock Text="Hostile response: " />
                         <xctk:ColorPicker Name="ClrPcker_Hostile" SelectedColorChanged="ChangeLineColor"
                                           HorizontalAlignment="Stretch" />
+                        <Separator />
+                        <TextBlock Text="Graph Background: " />
+                        <xctk:ColorPicker Name="ClrPcker_GraphBackground" SelectedColorChanged="ChangeLineColor"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Adjust the background color of the graph editor" />
+                        <TextBlock Text="Node Box: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxColor" SelectedColorChanged="ChangeLineColor"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Adjust the color of the node boxes" />
+                        <TextBlock Text="Node Box Text: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxText" SelectedColorChanged="ChangeLineColor"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Adjust the text color inside the node boxes" />
                     </MenuItem>
                     <MenuItem Header="Reset colors to default" Command="{Binding DefaultColorsCommand}" />
                     <MenuItem Name="HideEntryOutput_MenuItem" Header="Hide GUI choice text" IsCheckable="True"
