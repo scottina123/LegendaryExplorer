@@ -28,32 +28,6 @@
 
   <conv:InverseBoolConverter x:Key="InverseBoolConverter" />
 
-  <LinearGradientBrush x:Key="PopupDarkBorderBrush"
-                       EndPoint="0.5,1"
-                       StartPoint="0.5,0">
-    <GradientStop Color="#FFA3AEB9"
-                  Offset="0" />
-    <GradientStop Color="#FF8399A9"
-                  Offset="0.375" />
-    <GradientStop Color="#FF718597"
-                  Offset="0.375" />
-    <GradientStop Color="#FF617584"
-                  Offset="1" />
-  </LinearGradientBrush>
-
-  <LinearGradientBrush x:Key="PopupBackgroundBrush"
-                       StartPoint="0,0"
-                       EndPoint="0,1">
-    <LinearGradientBrush.GradientStops>
-      <GradientStopCollection>
-        <GradientStop Offset="0"
-                      Color="#FFffffff" />
-        <GradientStop Offset="1"
-                      Color="#FFE8EBED" />
-      </GradientStopCollection>
-    </LinearGradientBrush.GradientStops>
-  </LinearGradientBrush>
-
   <Style TargetType="{x:Type local:DropDownButton}">
     <Setter Property="BorderThickness"
             Value="1" />
@@ -64,11 +38,13 @@
     <Setter Property="VerticalContentAlignment"
             Value="Center" />
     <Setter Property="Background"
-            Value="{DynamicResource {x:Static themes:ResourceKeys.ButtonNormalBackgroundKey}}" />
+            Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
     <Setter Property="BorderBrush"
-            Value="{DynamicResource {x:Static themes:ResourceKeys.ButtonNormalOuterBorderKey}}" />
+            Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" />
+    <Setter Property="Foreground"
+            Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
     <Setter Property="DropDownContentBackground"
-            Value="{StaticResource PopupBackgroundBrush}" />
+            Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
     <Setter Property="Padding"
             Value="3" />
     <Setter Property="Template">
@@ -115,7 +91,7 @@
                             Width="9"
                             Height="5"
                             Data="{StaticResource DownArrowGeometry}"
-                            Fill="#FF000000"
+                            Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                             Margin="0,1,0,0" />
                     </Grid>
                   </Grid>
@@ -145,7 +121,7 @@
               </Popup.Resources>
               <Border BorderThickness="1"
                       Background="{TemplateBinding DropDownContentBackground}"
-                      BorderBrush="{StaticResource PopupDarkBorderBrush}"
+                      BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                       MaxHeight="{TemplateBinding MaxDropDownHeight}">
                 <ScrollViewer x:Name="DropDownScrollViewer"
                               VerticalScrollBarVisibility="Auto">
