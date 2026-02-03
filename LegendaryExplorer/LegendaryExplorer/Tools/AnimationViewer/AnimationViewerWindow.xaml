@@ -96,7 +96,7 @@
                 <TabItem Name="optionsTab" Header="Controls/Options" Visibility="{Binding ReadyToView, Converter={StaticResource BoolToVisibilityConverter}}">
                     <StackPanel>
                         <Label Content="Playback" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <Button ToolTip="Start or pause playback" Click="PlayPause_Click" Margin="5">
@@ -111,11 +111,11 @@
                             </StackPanel>
                         </Border>
                         <Label Content="Actor" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <ComboBox SelectedItem="{Binding SelectedSquadMember}" ItemsSource="{Binding ESquadMemberValues}" Margin="5"/>
                         </Border>
                         <Label Content="Actor Position" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <StackPanel Orientation="Vertical">
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content=" Reset Position " Margin="5" Click="SetDefaultPosition_Click" />
@@ -134,7 +134,7 @@
                             </StackPanel>
                         </Border>
                         <Label Content="Actor Rotation" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content=" Reset Rotation " Margin="5" Click="ResetRotation_Click" />
                                 <TextBlock Text=" Yaw:  " VerticalAlignment="Center"/>
@@ -144,7 +144,7 @@
                             </StackPanel>
                         </Border>
                         <Label Content="Camera" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <StackPanel Orientation="Vertical">
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content=" Reset Rotation " Margin="5" Click="ResetCamRotation_Click" />
@@ -159,7 +159,7 @@
                             </StackPanel>
                         </Border>
                         <!--<Label Content="Camera" Margin="10,0,0,0"/>
-                        <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+                        <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                             <StackPanel Margin="10 0" Orientation="Horizontal">
                                 <RadioButton IsChecked="{Binding CameraState, Converter={StaticResource EnumComparisonConverter}, ConverterParameter={x:Static local:ECameraState.Fixed}}" Margin="30,0,0,0">
                                     <Label Content="Fixed"/>

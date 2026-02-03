@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:LegendaryExplorer"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         mc:Ignorable="d"
-        Title="About LegendaryExplorer" ResizeMode="CanMinimize" Background="#FFD8D8D8" WindowStartupLocation="CenterOwner" 
+        Title="About LegendaryExplorer" ResizeMode="CanMinimize" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" WindowStartupLocation="CenterOwner" 
         Width="616" SizeToContent="Height">
     <StackPanel Width="608" Margin="0,0,0,10">
         <StackPanel Orientation="Horizontal">
@@ -20,14 +20,14 @@
             </Grid>
         </StackPanel>
         <!--<Rectangle Height="6" Fill="#FFF3F3F3"/>-->
-        <TextBlock FontFamily="{StaticResource Exo-SemiBold}" Foreground="#FF080808" FontSize="17" HorizontalAlignment="Center" Margin="0,9">
+        <TextBlock FontFamily="{StaticResource Exo-SemiBold}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" FontSize="17" HorizontalAlignment="Center" Margin="0,9">
             <Run Text="Source code available at "/>
-            <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.RepositoryURL}, Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+            <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.RepositoryURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                 <Run Text="{Binding Source={x:Static misc:AppLinks.RepositoryURL}, Mode=OneTime}"/>
             </Hyperlink>
         </TextBlock>
-        <Grid Height="32" Background="#FFBFBFBF">
-            <TextBlock Text="Credits" Foreground="#FF080808" FontSize="18" VerticalAlignment="Center" 
+        <Grid Height="32" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+            <TextBlock Text="Credits" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" FontSize="18" VerticalAlignment="Center" 
                                FontFamily="{StaticResource TitilliumWeb-SemiBold}" Margin="10,0,0,-1"/>
         </Grid>
         <Grid Margin="10,4,10,8" Width="580">
@@ -47,24 +47,24 @@
                 </TextBlock>
 
             </StackPanel>
-            <TabControl Height="228" Width="385" HorizontalContentAlignment="Right" Grid.Column="1" Margin="0,0,0,0" BorderThickness="2" BorderBrush="#FFA8A8A8">
+            <TabControl Height="228" Width="385" HorizontalContentAlignment="Right" Grid.Column="1" Margin="0,0,0,0" BorderThickness="2" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                 <TabControl.Resources>
                     <Style TargetType="TabItem">
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="{x:Type TabItem}">
                                     <Grid SnapsToDevicePixels="True">
-                                        <Border x:Name="Bd" Margin="-2,-2,0,-2" BorderBrush="#FFA8A8A8" BorderThickness="2,2,2,0" Background="{x:Null}" Padding="{TemplateBinding Padding}" Height="24">
+                                        <Border x:Name="Bd" Margin="-2,-2,0,-2" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2,2,2,0" Background="{x:Null}" Padding="{TemplateBinding Padding}" Height="24">
                                             <ContentPresenter x:Name="Content" Margin="0,0,0,1" ContentTemplate="{TemplateBinding HeaderTemplate}" Content="{TemplateBinding Header}" ContentStringFormat="{TemplateBinding HeaderStringFormat}" ContentSource="Header" HorizontalAlignment="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource FindAncestor, AncestorLevel=1, AncestorType={x:Type ItemsControl}}}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{Binding VerticalContentAlignment, RelativeSource={RelativeSource FindAncestor, AncestorLevel=1, AncestorType={x:Type ItemsControl}}}"/>
                                         </Border>
                                     </Grid>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" TargetName="Bd" Value="#FFF9F9F9"/>
+                                            <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
                                             <Setter Property="Panel.ZIndex" Value="1"/>
-                                            <Setter Property="Background" TargetName="Bd" Value="#FFF9F9F9"/>
+                                            <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
                                         </Trigger>
                                         <Trigger Property="IsEnabled" Value="False">
                                             <Setter Property="Background" TargetName="Bd" Value="{x:Null}"/>
@@ -166,8 +166,8 @@
                 </TabItem>
             </TabControl>
         </Grid>
-        <Grid Height="32" Background="#FFBFBFBF">
-            <TextBlock Text="License" Foreground="#FF080808" FontSize="18" VerticalAlignment="Center" 
+        <Grid Height="32" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+            <TextBlock Text="License" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" FontSize="18" VerticalAlignment="Center" 
                                FontFamily="{StaticResource TitilliumWeb-SemiBold}" Margin="10,0,0,-1"/>
         </Grid>
         <StackPanel Margin="10,0">

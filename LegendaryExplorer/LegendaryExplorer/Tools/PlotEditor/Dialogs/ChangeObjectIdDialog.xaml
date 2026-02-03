@@ -12,7 +12,7 @@
 	Title="Change Object Id"
 	Width="400" Height="200"
 	ContentRendered="ChangeObjectIdDialog_OnContentRendered">
-	<Grid Background="#F4F4F4">
+	<Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="*" />
 		</Grid.ColumnDefinitions>
@@ -24,7 +24,7 @@
 
 		<!-- Header -->
 		<Border Grid.Column="0" Grid.Row="0"
-			BorderThickness="0 0 0 1" BorderBrush="#C8C8C8" Background="#FFFFFF"
+			BorderThickness="0 0 0 1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 			Padding="10">
 			<Grid>
 				<Grid.ColumnDefinitions>

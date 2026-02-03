@@ -310,11 +310,11 @@
                             <LineBreak/>
                             If you have issues with Sequence Editor, please report them to one of the following places:
                             <LineBreak/>
-                            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
                             </Hyperlink>                                <LineBreak/>
                             - The issues list on GitHub at 
-                            <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
                             </Hyperlink>
                         </TextBlock>

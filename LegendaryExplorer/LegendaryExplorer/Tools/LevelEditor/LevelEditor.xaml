@@ -252,17 +252,17 @@
                 </WrapPanel>
 
                 <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}"
-                            Background="#FFBFBFBF">
+                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                     <TextBlock Margin="5" Text="Welcome to Level Editor" FontWeight="Bold" TextWrapping="Wrap"/>
                     <TextBlock Margin="5" TextWrapping="Wrap">
                 This is a work in progress, and only displays some of the actors in a level.
                 If you have issues with Level Editor, please report them to one of the following places:
                 <LineBreak/>
-            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+            - <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.ME3TweaksDiscordInviteURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                 <Run Text="The ME3Tweaks Discord (#Legendary_Explorer channel)"/>
             </Hyperlink>                                <LineBreak/>
                  - The issues list on GitHub at 
-                <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                <Hyperlink NavigateUri="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                     <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
                 </Hyperlink>
                     </TextBlock>

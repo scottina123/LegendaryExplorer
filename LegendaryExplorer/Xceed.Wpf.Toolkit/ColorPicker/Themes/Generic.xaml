@@ -27,15 +27,15 @@
   </ResourceDictionary.MergedDictionaries>
 
   <SolidColorBrush x:Key="ButtonHover"
-                   Color="#C2E0FF" />
+                   Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
   <SolidColorBrush x:Key="ButtonHoverBorder"
-                   Color="#3399FF" />
+                   Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
   <SolidColorBrush x:Key="ButtonChecked"
-                   Color="#E6F0FA" />
+                   Color="{DynamicResource {x:Static SystemColors.ControlLightColorKey}}" />
   <SolidColorBrush x:Key="ButtonPressed"
-                   Color="#99CCFF" />
+                   Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
   <SolidColorBrush x:Key="ButtonPressedBorder"
-                   Color="#3399FF" />
+                   Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
 
   <!-- =============================================================================== -->
   <!-- ColorPicker                                                                     -->
@@ -47,31 +47,11 @@
   <conv:AdditionConverter x:Key="AdditionConverter" />
   <conv:ColorModeToTabItemSelectedConverter x:Key="ColorModeToTabItemSelectedConverter" />
 
-  <LinearGradientBrush x:Key="ColorPickerDarkBorderBrush"
-                       EndPoint="0.5,1"
-                       StartPoint="0.5,0">
-    <GradientStop Color="#FFA3AEB9"
-                  Offset="0" />
-    <GradientStop Color="#FF8399A9"
-                  Offset="0.375" />
-    <GradientStop Color="#FF718597"
-                  Offset="0.375" />
-    <GradientStop Color="#FF617584"
-                  Offset="1" />
-  </LinearGradientBrush>
+  <SolidColorBrush x:Key="ColorPickerDarkBorderBrush"
+                   Color="{DynamicResource {x:Static SystemColors.ActiveBorderColorKey}}" />
 
-  <LinearGradientBrush x:Key="PopupBackgroundBrush"
-                       StartPoint="0,0"
-                       EndPoint="0,1">
-    <LinearGradientBrush.GradientStops>
-      <GradientStopCollection>
-        <GradientStop Offset="0"
-                      Color="#FFffffff" />
-        <GradientStop Offset="1"
-                      Color="#FFE8EBED" />
-      </GradientStopCollection>
-    </LinearGradientBrush.GradientStops>
-  </LinearGradientBrush>
+  <SolidColorBrush x:Key="PopupBackgroundBrush"
+                   Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
 
   <Style x:Key="ColorItemContainerStyle"
          TargetType="{x:Type ListBoxItem}">

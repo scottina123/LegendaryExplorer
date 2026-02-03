@@ -647,11 +647,11 @@
                             <LineBreak />
                             If you have issues with Pathfinding Editor, please report them to one of the following places:
                             <LineBreak/>
-                            - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
                             </Hyperlink>                                <LineBreak/>
                             - The issues list on GitHub at 
-                            <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"/>
                             </Hyperlink>
                         </TextBlock>
@@ -673,7 +673,7 @@
                                 </TextBlock>
                             </Expander.Header>
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,3,4,3">
-                                <StackPanel Background="White">
+                                <StackPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                                     <TextBlock Text="Actor Collections" Margin="5,5,5,0" FontWeight="Bold"
                                                TextAlignment="Center" />
                                     <TextBlock Text="Select items to show actors in that collection" Foreground="Gray"

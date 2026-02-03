@@ -231,8 +231,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _backgroundColor;
             set
             {
-                SetProperty(ref _backgroundColor, value);
-                MeshContext.BackgroundColor = value;
+                if (SetProperty(ref _backgroundColor, value))
+                {
+                    MeshContext.BackgroundColor = value;
+                    if (!startingUp)
+                    {
+                        Settings.Meshplorer_BackgroundColor = value.ToString();
+                        Settings.Save();
+                    }
+                }
             }
         }
         #endregion

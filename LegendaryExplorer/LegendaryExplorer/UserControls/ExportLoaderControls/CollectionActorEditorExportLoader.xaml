@@ -17,7 +17,7 @@
         <StackPanel Name="editControlsPanel" Orientation="Vertical">
             <Label Name="titleLabel"  HorizontalAlignment="Center"/>
             <Label Content="Location"/>
-            <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+            <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                 <StackPanel Orientation="Vertical">
                     <StackPanel Orientation="Horizontal" Margin="5">
                         <TextBlock Text=" X:  " VerticalAlignment="Center" />
@@ -34,7 +34,7 @@
                 </StackPanel>
             </Border>
             <Label Content="DrawScale3D"/>
-            <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+            <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                 <StackPanel Orientation="Vertical">
                     <StackPanel Orientation="Horizontal" Margin="5">
                         <TextBlock Text=" X:  " VerticalAlignment="Center" />
@@ -51,7 +51,7 @@
                 </StackPanel>
             </Border>
             <Label Content="Rotation"/>
-            <Border Margin="10,0,10,10" BorderBrush="#FFD8D8D8" BorderThickness="2" CornerRadius="5">
+            <Border Margin="10,0,10,10" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" CornerRadius="5">
                 <StackPanel Orientation="Vertical">
                     <StackPanel Orientation="Horizontal" Margin="5">
                         <TextBlock Text=" Pitch:   " VerticalAlignment="Center" />

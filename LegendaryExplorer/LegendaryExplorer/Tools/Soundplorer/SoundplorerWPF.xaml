@@ -122,17 +122,17 @@
                             ME2: The correct version of Wwise is not available (ME2 predates public Wwise)
                             <LineBreak/>
                             ME3: Requires 
-                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNrC9eh-_sOj_eqLIa?e=8lzC4j" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNrC9eh-_sOj_eqLIa?e=8lzC4j" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="the 64 bit version of Wwise 2010.3.3 (Build 3773)"/>
                             </Hyperlink>
                             <LineBreak/>
                             LE1: Generating new streaming audio requires external use of 
-                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNwVpaGRsKk_wke2UW?e=Dwz2KZ" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            <Hyperlink NavigateUri="https://1drv.ms/u/s!AorirBfl09VNwVpaGRsKk_wke2UW?e=Dwz2KZ" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="ISACT 1.64"/>
                             </Hyperlink>
                             <LineBreak/>
                             LE2 and LE3: Requires 
-                            <Hyperlink NavigateUri="https://mega.nz/file/4ZlgyCbI#2sNNZWAyApBJNomMAgRXSroAsinsuRmoJ1MRNSr9aCY" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                            <Hyperlink NavigateUri="https://mega.nz/file/4ZlgyCbI#2sNNZWAyApBJNomMAgRXSroAsinsuRmoJ1MRNSr9aCY" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="the 64 bit version of Wwise 2019.1.6 (Build 7110)"/>
                             </Hyperlink>
                             </Italic>
@@ -144,12 +144,12 @@
 
                                 If you have issues, please report them to one of the following places:
                                 <LineBreak/>
-                                 - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                                 - <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.ME3TweaksDiscordInviteURL}, Mode=OneTime}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                 <Run Text="The ME3Tweaks Discord (Legendary_Explorer channel)"/>
                             </Hyperlink>
                                 <LineBreak/>
                                  - The issues list on GitHub at 
-                                <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}}" Foreground="#FF182574" misc:HyperlinkExtensions.IsExternal="True">
+                                <Hyperlink NavigateUri="{Binding Source={x:Static misc:AppLinks.BugReportURL}}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" misc:HyperlinkExtensions.IsExternal="True">
                                     <Run Text="{Binding Source={x:Static misc:AppLinks.BugReportURL}, Mode=OneTime}"/>
                                 </Hyperlink>
                     </TextBlock>
