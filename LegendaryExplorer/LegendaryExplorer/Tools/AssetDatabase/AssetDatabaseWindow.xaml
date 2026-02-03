@@ -214,7 +214,7 @@
                     <TabItem Header="Files" TabIndex="0">
                         <DockPanel DockPanel.Dock="Left" MinWidth="300">
                             <DockPanel LastChildFill="True">
-                                <TextBlock Text="All game files (right click to open in various tools)" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the files in the game" DockPanel.Dock="Top"/>
+                            <TextBlock Text="All game files (right click to open in various tools)" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the files in the game" DockPanel.Dock="Top"/>
                                 <Expander Name="expander_CustomFiles" DockPanel.Dock="Right" MaxWidth="300" ExpandDirection="Left" IsExpanded="False" Background="Orange" Padding="2" >
                                     <Expander.Header>
                                         <TextBlock Text="Custom File List" Background="Orange" VerticalAlignment="Stretch" TextAlignment="Center" Padding="3" DockPanel.Dock="Right" ToolTip="{x:Static assetDatabase:AssetDatabaseWindow.CustomListDesc}">
@@ -226,7 +226,7 @@
                                     <DockPanel LastChildFill="True" DockPanel.Dock="Left">
                                         <StackPanel DockPanel.Dock="Top">
                                             <Border BorderBrush="Black" BorderThickness="1" >
-                                                <TextBlock Padding="3" FontSize="11" TextAlignment="Center" Background="AliceBlue" TextWrapping="WrapWithOverflow">
+                                                <TextBlock Padding="3" FontSize="11" TextAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" TextWrapping="WrapWithOverflow">
                                                 <Run Text="{x:Static assetDatabase:AssetDatabaseWindow.CustomListDesc}"/>
                                                 </TextBlock>
                                             </Border>
@@ -318,7 +318,7 @@
                                     <RowDefinition Height="24"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="Class Records" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" Grid.Row="0" ToolTip="Unreal classes"/>
+                                <TextBlock Text="Class Records" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" Grid.Row="0" ToolTip="Unreal classes"/>
                                 <controls:ListBoxScroll x:Name="lstbx_Classes"  MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.ClassRecords, Mode=OneWay}" Grid.Row="1"
                                                         SelectedItem="{Binding SelectedClass}">
                                     <controls:ListBoxScroll.ItemTemplate>
@@ -360,7 +360,7 @@
                                     <RowDefinition Height="24"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="Properties" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" Grid.Row="0" ToolTip="Properties of this class that are used in game"/>
+                                <TextBlock Text="Properties" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" Grid.Row="0" ToolTip="Properties of this class that are used in game"/>
                                 <controls:ListBoxScroll x:Name="lstbx_Properties" MinWidth="200" ItemsSource="{Binding Source={StaticResource PropertyContentView} }"
                                                         ItemTemplate="{StaticResource PropertyTemplate}" Grid.Row="1" >
                                     <controls:ListBoxScroll.ContextMenu>
@@ -376,7 +376,7 @@
                                     <RowDefinition Height="24"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Grid.Row="0" Background="AliceBlue" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" VerticalAlignment="Center">
                                     <TextBlock Text="Usages (Bold is default class settings)"  HorizontalAlignment="Stretch" Padding="3"
                                                ToolTip="Shows all the files that use this class, and the first export number&#x0a;Right click to open in Package Editor" />
                                     <CheckBox x:Name="allClassInstancesCheckBox" Content="Show multiple per file" IsChecked="{Binding ShowAllClassUsages}" 
@@ -436,7 +436,7 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*" MinWidth="200"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Material Records" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Material Records (Grey shows DLC only materials that require a shadercache)" Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="Material Records" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Material Records (Grey shows DLC only materials that require a shadercache)" Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="1" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -462,7 +462,7 @@
                                     </Style>
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Material Info" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="The default properties of the material" Grid.Row="0"  Grid.Column="2"/>
+                            <TextBlock Text="Material Info" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="The default properties of the material" Grid.Row="0"  Grid.Column="2"/>
                             <!-- Todo: Make this a toggleable switch -->
                             <!--
                             <controls:ListBoxScroll x:Name="lstbx_MatProps" MinWidth="200" ItemsSource="{Binding SelectedItem.MatSettings, ElementName=lstbx_Materials }" Grid.Row="1" Grid.Column="1">
@@ -481,7 +481,7 @@
                             <GridSplitter Grid.RowSpan="2" Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
                             <materialEditor:MaterialEditorExportLoader x:Name="MaterialEditorExportLoader_Control" Grid.Row="1" Grid.Column="2" IsReadOnly="True" ShowSaveBar="False" AlwaysLoadData="True" MinWidth="200"/>
                             <GridSplitter Grid.RowSpan="2" Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the files that use the material (grey is official DLC with shadercache)&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="4"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the files that use the material (grey is official DLC with shadercache)&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="4"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesMaterials_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="4">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -531,7 +531,7 @@
                                 <ColumnDefinition MinWidth="400" Width="30*"/>
                                 <ColumnDefinition Width="15*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Meshes" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Meshes within the game" Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="Meshes" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Meshes within the game" Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Meshes" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Meshes}" SelectionChanged="lstbx_Meshes_SelectionChanged" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -567,14 +567,14 @@
                                     </Style>
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Viewer" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Toggle the viewer on or off" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Viewer" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Toggle the viewer on or off" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="1" Grid.Column="1">
                                 <DockPanel x:Name="details_Mesh" MinWidth="350" Margin="3" >
                                     <ToggleButton x:Name="btn_MeshRenderToggle" Content="Toggle Mesh Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_MeshRenderToggle_Click" IsChecked="False"></ToggleButton>
                                     <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer" Visibility="Visible" />
                                 </DockPanel>
                             </Border>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this Mesh&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this Mesh&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesMeshes_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="2">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -628,7 +628,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Textures" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the textures in the game (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="Textures" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="All the textures in the game (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Textures" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Textures}" SelectionChanged="lstbx_Textures_SelectionChanged" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -665,7 +665,7 @@
                                     </Style>
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Texture Viewer" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Click button to toggle the viewer" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Texture Viewer" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Click button to toggle the viewer" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1" Background="LightYellow">
                                 <DockPanel x:Name="details_Textures" MinWidth="350" MaxWidth="550" Margin="3">
                                     <ToggleButton x:Name="btn_TextRenderToggle" Content="Toggle Texture Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_TextRenderToggle_Click"/>
@@ -675,7 +675,7 @@
                                     </Grid>
                                 </DockPanel>
                             </Border>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this texture&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this texture&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesTextures_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="2">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -728,7 +728,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Animsequences / Ambient Performance Tracks" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="Animsequences / Ambient Performance Tracks" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -764,7 +764,7 @@
                                     </ContextMenu>
                                 </controls:ListBoxScroll.ContextMenu>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Details" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Details" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
                                 <StackPanel x:Name="details_Anim" MinWidth="200" Margin="8">
                                     <TextBlock Text="Ambient Performance" FontWeight="DemiBold" Margin="0,5,0,0" Visibility="{Binding Path=SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -783,7 +783,7 @@
                                     <TextBlock Text="{Binding Path=SelectedItem.KeyFormat, ElementName=lstbx_Anims}" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this animsequence&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this animsequence&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesAnimations_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="2">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -833,7 +833,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Particle Systems and Receiver Effects (Visual Effects)" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Particle systems (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="Particle Systems and Receiver Effects (Visual Effects)" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Particle systems (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -863,7 +863,7 @@
                                     </Style>
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Details" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Details" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
                                 <StackPanel x:Name="details_PS" MinWidth="200" Margin="3">
                                     <TextBlock Text="Parent Package: " Margin="0,5,0,0"/>
@@ -874,7 +874,7 @@
                                     <TextBlock Text="{Binding Path=SelectedItem.IsDLCOnly, ElementName=lstbx_Particles}" />
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesVFX_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="2">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -927,7 +927,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="GUI Elements (ScaleForm)" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="GUI Elements such as menus and Hud." Grid.Row="0" Grid.Column="0"/>
+                            <TextBlock Text="GUI Elements (ScaleForm)" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="GUI Elements such as menus and Hud." Grid.Row="0" Grid.Column="0"/>
                             <controls:ListBoxScroll x:Name="lstbx_Scaleform" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.GUIElements}" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -949,13 +949,13 @@
                                     </Style>
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Details" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Details" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
                                 <StackPanel x:Name="details_GUI" MinWidth="200" Margin="3">
 
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="Usages" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
+                            <TextBlock Text="Usages" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor" Grid.Row="0" Grid.Column="2"/>
                             <Button ToolTip="Copies the list of usages to the clipboard as text" Name="CopyUsagesGUI_Button" Click="CopyUsages_Click" VerticalAlignment="Center" Padding="3" HorizontalAlignment="Right" Width="26" Grid.Row="0" Grid.Column="2">
                                 <fa:ImageAwesome Icon="Solid_Copy" Foreground="CornflowerBlue"/>
                             </Button>
@@ -1004,8 +1004,8 @@
                                 <ColumnDefinition Width="3*"/>
                                 <ColumnDefinition MinWidth="300" Width="1*"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0" Background="AliceBlue">
-                                <TextBlock Text="Lines" HorizontalAlignment="Stretch" Padding="3" ToolTip="Conversation Lines"  />
+                            <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                            <TextBlock Text="Lines" HorizontalAlignment="Stretch" Padding="3" ToolTip="Conversation Lines"  />
                                 <xctk:WatermarkComboBox Name="cmbbx_filterSpkrs" Watermark="Filter by Speaker" ItemsSource="{Binding SpeakerList}" SelectionChanged="cmbbx_filterSpkrs_SelectionChanged" Margin="10, 3" Padding="1" MinWidth="120" IsEditable="True" IsTextSearchEnabled="True" IsEnabled="{Binding IsGettingTLKs, Converter={StaticResource InverseBooleanConverter}}"/>
                                 <TextBlock Text="Parsing TLKs: " Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="5,0" VerticalAlignment="Center"/>
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
@@ -1038,7 +1038,7 @@
                                     </ContextMenu>
                                 </ListView.ContextMenu>
                             </ListView>
-                            <TextBlock Text="Details" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
+                            <TextBlock Text="Details" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
                                 <StackPanel Margin="5" Visibility="{Binding CurrentConvo.Item1, Converter={StaticResource NullVisibilityConverter}}" >
                                     <TextBlock Text="Conversation:" FontSize="14"/>
@@ -1067,7 +1067,7 @@
                             </Border>
                             <DockPanel Grid.Row="2" Grid.Column="1" >
                                 <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="Playback" Background="AliceBlue" HorizontalAlignment="Stretch" Padding="3" ToolTip="Playback of selected line." />
+                                    <TextBlock Text="Playback" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Playback of selected line." />
                                     <TabControl x:Name="genderTabs" SelectionChanged="genderTabs_SelectionChanged">
                                         <TabItem Header="Male"/>
                                         <TabItem Header="Female"/>
@@ -1167,15 +1167,15 @@
                             </TabControl>
                             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
                             <Grid Grid.Column="2">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="24"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Grid.Row="0" Background="AliceBlue">
-                                    <TextBlock Text="Usages"  HorizontalAlignment="Stretch" Padding="3"
-                                               ToolTip="Shows all the files that use this class, and the first export number&#x0a;Right click to open in Package Editor" />
-                                </StackPanel>
-                                <controls:ListBoxScroll x:Name="lstbx_PlotUsages" MinWidth="200" ItemsSource="{Binding SelectedPlotUsages}" Grid.Row="1" >
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal" Grid.Row="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <TextBlock Text="Usages"  HorizontalAlignment="Stretch" Padding="3"
+                                           ToolTip="Shows all the files that use this class, and the first export number&#x0a;Right click to open in Package Editor" />
+                            </StackPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_PlotUsages" MinWidth="200" ItemsSource="{Binding SelectedPlotUsages}" Grid.Row="1" >
                                     <controls:ListBoxScroll.Resources>
                                         <DataTemplate DataType="{x:Type assetDatabase:PlotUsage}">
                                             <StackPanel Orientation="Vertical">
