@@ -66,22 +66,21 @@ namespace LegendaryExplorerCore.Unreal
             List<IntermediateMesh> intermediateMeshes = [];
             foreach (var export in exports)
             {
-                switch (export.ClassName)
+                if (export.IsA("SkeletalMesh"))
                 {
-                    case "SkeletalMesh":
-                        intermediateMeshes.Add(ToIntermediateMesh(export.GetBinaryData<SkeletalMesh>(), materialSetting));
-                        break;
-                    case "StaticMesh":
-                        intermediateMeshes.Add(ToIntermediateMesh(export.GetBinaryData<StaticMesh>(), materialSetting));
-                        break;
-                    case "SkeletalMeshComponent":
-                        intermediateMeshes.Add(SkeletalMeshComponentToIntermediateMesh(export, materialSetting));
-                        break;
-                    case "BioPawn":
-                        intermediateMeshes.AddRange(BioPawnToIntermediateMeshes(export, materialSetting));
-                        break;
-                    default:
-                        break;
+                    intermediateMeshes.Add(ToIntermediateMesh(export.GetBinaryData<SkeletalMesh>(), materialSetting));
+                }
+                else if (export.IsA("StaticMesh"))
+                {
+                    intermediateMeshes.Add(ToIntermediateMesh(export.GetBinaryData<StaticMesh>(), materialSetting));
+                }
+                else if (export.IsA("SkeletalMeshComponent"))
+                {
+                    intermediateMeshes.Add(SkeletalMeshComponentToIntermediateMesh(export, materialSetting));
+                }
+                else if (export.IsA("BioPawn"))
+                {
+                    intermediateMeshes.AddRange(BioPawnToIntermediateMeshes(export, materialSetting));
                 }
             }
             
@@ -93,31 +92,56 @@ namespace LegendaryExplorerCore.Unreal
         {
             cache ??= new PackageCache();
             var props = export.GetProperties();
-            var bodyMesh = props.GetProp<ObjectProperty>("Mesh")?.ResolveToExport(export.FileRef, cache);
-            var headMesh = props.GetProp<ObjectProperty>("m_oHeadMesh")?.ResolveToExport(export.FileRef, cache);
-            var hairMesh = props.GetProp<ObjectProperty>("m_oHairMesh").ResolveToExport(export.FileRef, cache);
-            var headGearMesh = props.GetProp<ObjectProperty>("m_oHeadGearMesh")?.ResolveToExport(export.FileRef, cache);
-            var visorMesh = props.GetProp<ObjectProperty>("m_oVisorMesh")?.ResolveToExport(export.FileRef, cache);
-            var faceplateMesh = props.GetProp<ObjectProperty>("m_oFacePlateMesh")?.ResolveToExport(export.FileRef, cache);
-            var otherMeshes = props.GetProp<ArrayProperty<ObjectProperty>>("m_aoMeshes").Select(x => x?.ResolveToExport(export.FileRef, cache));
-            IEnumerable<ExportEntry> meshes = [bodyMesh, headMesh, hairMesh, headGearMesh, visorMesh, faceplateMesh, .. otherMeshes];
+            ExportEntry GetMeshComponent(string name)
+            {
+                return props.GetProp<ObjectProperty>(name)?.ResolveToExport(export.FileRef, cache);
+            }
+            ExportEntry[] GetMeshComponentArray(string name)
+            {
+                return [..props.GetProp<ArrayProperty<ObjectProperty>>(name)?.Select(x => x?.ResolveToExport(export.FileRef, cache)) ?? []];
+            }
+
+            IEnumerable<ExportEntry> meshes = [
+                GetMeshComponent("Mesh"),
+                GetMeshComponent("m_oHeadMesh"),
+                GetMeshComponent("HeadMesh"),
+                GetMeshComponent("m_oHeadGearMesh"),
+                GetMeshComponent("HelmetMesh"),
+                GetMeshComponent("m_oHairMesh"),
+                GetMeshComponent("m_oVisorMesh"),
+                GetMeshComponent("m_oFacePlateMesh"),
+                ..GetMeshComponentArray("m_aoMeshes"),
+                ..GetMeshComponentArray("m_aoAccessories")
+            ];
 
             foreach (var meshComponent in meshes.Where(x => x != null).Distinct())
             {
-                yield return SkeletalMeshComponentToIntermediateMesh(meshComponent, materialSetting, cache);
+                var intermediate = SkeletalMeshComponentToIntermediateMesh(meshComponent, materialSetting, cache);
+                if (intermediate != null)
+                {
+                    yield return intermediate;
+                }
             }
         }
 
         private static IntermediateMesh SkeletalMeshComponentToIntermediateMesh(ExportEntry export, MaterialExportLevel materialSetting, PackageCache cache = null)
         {
             cache ??= new PackageCache();
-            var skelMesh = export.GetProperty<ObjectProperty>("SkeletalMesh").ResolveToExport(export.FileRef, cache);
+            var skelMesh = export.GetProperty<ObjectProperty>("SkeletalMesh")?.ResolveToExport(export.FileRef, cache);
+            if (skelMesh == null)
+            {
+                return null;
+            }
             var materials = export.GetProperty<ArrayProperty<ObjectProperty>>("Materials")?.Select(x => x.ResolveToExport(export.FileRef, cache)) ?? [];
             return ToIntermediateMesh(skelMesh.GetBinaryData<SkeletalMesh>(), materialSetting, [.. materials]);
         }
 
         private static IntermediateMesh ToIntermediateMesh(StaticMesh mesh, MaterialExportLevel materialSetting)
         {
+            if (mesh.Export.Game == MEGame.ME1 || mesh.Export.Game == MEGame.ME2 || mesh.Export.Game == MEGame.UDK)
+            {
+                throw new NotImplementedException("Exporting static meshes from OT1, OT2, or UDK is not implemented.");
+            }
             var intermediateMesh = new IntermediateMesh()
             {
                 Name = mesh.Export.ObjectName.Instanced
@@ -295,6 +319,10 @@ namespace LegendaryExplorerCore.Unreal
 
         private static IntermediateMesh ToIntermediateMesh(SkeletalMesh mesh, MaterialExportLevel materialSetting, ExportEntry[] overrideMaterials = null)
         {
+            if (mesh.Export.Game == MEGame.ME1 || mesh.Export.Game == MEGame.UDK)
+            {
+                throw new NotImplementedException("Exporting skeletal meshes from OT1 or UDK is not implemented.");
+            }
             overrideMaterials ??= [];
             var intermediateMesh = new IntermediateMesh()
             {
@@ -462,6 +490,7 @@ namespace LegendaryExplorerCore.Unreal
                 {
                     var mat = new MaterialBuilder(intermediateMat.Name);
                     mat.WithDoubleSide(intermediateMat.TwoSided);
+                    // TODO the whole texture thing is very slow. Should look into making it faster. 
                     if (intermediateMat.DiffTexture != null)
                     {
                         var imageBytes = intermediateMat.DiffTexture.GetPNG(intermediateMat.DiffTexture.GetTopMip());
@@ -1451,6 +1480,10 @@ namespace LegendaryExplorerCore.Unreal
 
         private static ExportEntry ToStaticMesh(IntermediateMesh intermediateMesh, IMEPackage package, ExportEntry existingEntry)
         {
+            if (package.Game == MEGame.ME1 || package.Game == MEGame.ME2 || package.Game == MEGame.UDK)
+            {
+                throw new NotImplementedException("Importing static meshes to OT1, OT2, or UDK is not implemented.");
+            }
             var staticMesh = new StaticMesh
             {
                 Bounds = GetBounds(intermediateMesh),
@@ -1596,6 +1629,10 @@ namespace LegendaryExplorerCore.Unreal
 
         private static ExportEntry ToSkeletalMesh(IntermediateMesh intermediateMesh, IMEPackage package, ExportEntry existingEntry)
         {
+            if (package.Game == MEGame.ME1 || package.Game == MEGame.UDK)
+            {
+                throw new NotImplementedException("Importing skeletal meshes to OT1 or UDK is not implemented.");
+            }
             var meshBin = SkeletalMesh.Create();
             SetupSkeleton(intermediateMesh.Skeleton, meshBin);
 

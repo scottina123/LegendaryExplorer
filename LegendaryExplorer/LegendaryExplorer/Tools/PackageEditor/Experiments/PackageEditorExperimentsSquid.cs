@@ -120,16 +120,19 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (pew.Pcc.Game == MEGame.ME1)
             {
                 ShowError("This experiment does not yet support OT1; if you must do this, port it to another game first");
+                return;
             }
             if (pew.Pcc.Game == MEGame.UDK)
             {
                 ShowError("This experiment does not support UDK files;");
+                return;
             }
             if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh", "SkeletalMeshComponent", "BioPawn"], out var export))
             {
                 if (export.ClassName == "StaticMesh" && !(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
                 {
                     ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
+                    return;
                 }
                 var d = new SaveFileDialog { Filter = "glTF binary|*.glb|glTF|*.glTF", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
                 if (d.ShowDialog() == true)
@@ -3112,14 +3115,15 @@ defaultproperties
             entry = null;
             if (pew.SelectedItem == null || pew.SelectedItem.Entry == null || pew.Pcc == null) { return false; }
 
-            if (!expectedTypes.Contains(pew.SelectedItem.Entry.ClassName))
+            foreach (var expectedType in expectedTypes)
             {
-                return false;
+                if (pew.SelectedItem.Entry.IsA(expectedType))
+                {
+                    entry = (ExportEntry)pew.SelectedItem.Entry;
+                    return entry != null;
+                }
             }
-
-            entry = (ExportEntry)pew.SelectedItem.Entry;
-
-            return entry != null;
+            return false;
         }
     }
 }

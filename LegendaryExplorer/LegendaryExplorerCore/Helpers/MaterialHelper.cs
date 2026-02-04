@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -115,16 +116,25 @@ namespace LegendaryExplorerCore.Helpers
                     {
                         foreach (var texIdx in matBin.SM3MaterialResource.UniformExpressionTextures)
                         {
-                            if (baseMatEntry.FileRef.TryGetUExport(texIdx, out var tex))
+                            if (baseMatEntry.FileRef.TryGetEntry(texIdx, out var texEntry))
                             {
+                                ExportEntry texExport;
                                 // skip the really dumb textures
-                                if (tex.ObjectNameString.StartsWith("GBL_ARM_ALL"))
+                                if (texEntry.ObjectNameString.StartsWith("GBL_ARM_ALL"))
                                 {
                                     continue;
                                 }
-                                if (tex.IsA("Texture2D"))
+                                if (texEntry is ImportEntry importTex)
                                 {
-                                    tempBaseTextures.Add(tex);
+                                    EntryImporter.TryResolveImport(importTex, out texExport);
+                                }
+                                else
+                                {
+                                    texExport = texEntry as ExportEntry;
+                                }
+                                if (texEntry.IsA("Texture2D"))
+                                {
+                                    tempBaseTextures.Add(texExport);
                                 }
                             }
                         }
@@ -160,9 +170,9 @@ namespace LegendaryExplorerCore.Helpers
 
         public static IReadOnlyDictionary<string, ExportEntry> GetMaterialTextures(this ExportEntry materialExport, out IReadOnlyList<ExportEntry> baseTextures)
         {
-            var baseTextureList = new List<ExportEntry>();
+            var paramTextures = GetMaterialTextures(materialExport, out var baseTextureList, true);
             baseTextures = baseTextureList;
-            return GetMaterialTextures(materialExport, out baseTextureList, true);
+            return paramTextures;
         }
 
         public static ExportEntry GetBaseMaterial(this ExportEntry materialExport, PackageCache cache = null)
@@ -198,14 +208,28 @@ namespace LegendaryExplorerCore.Helpers
                 case "HMN_HED_NPC_Scalp_Mat_1a":
                     paramTextures.TryGetValue("HED_Scalp_Diff", out diffuseTexture);
                     paramTextures.TryGetValue("HED_Scalp_Norm", out normalTexture);
-                    break;
+                    return;
                 case "HMM_CTH_MASTER_MAT":
                     paramTextures.TryGetValue("HMM_ARM_ALL_Diff_Stack", out diffuseTexture);
                     paramTextures.TryGetValue("HMM_ARM_ALL_Norm_Stack", out normalTexture);
-                    break;
+                    return;
                 case "HMN_HED_LASH_Unlit_MASTER_MAT":
                     paramTextures.TryGetValue("HED_Lash_Diff", out diffuseTexture);
-                    break;
+                    return;
+                case "ElevatorConsole02_Material01":
+                    diffuseTexture = baseTextures[2];
+                    normalTexture = baseTextures[0];
+                    return;
+                case "BIOG_SOV_INGAME_MASTER_A_MAT":
+                case "BIOG_SOV_INGAME_MASTER_MAT":
+                    diffuseTexture = baseTextures[6];
+                    normalTexture = baseTextures[0];
+                    return;
+                case "BIOG_SOV_Damage_Master_Mat":
+                    diffuseTexture = baseTextures[8];
+                    normalTexture = baseTextures[0];
+                    return;
+                // consider Galaxy_Holo_Mat
                 default:
                     break;
             }
