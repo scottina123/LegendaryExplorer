@@ -209,9 +209,11 @@ namespace LegendaryExplorer.GameInterop
 
                 foreach (var asi in ASIModIDs.GetInstalledASIModIds(MEDirectories.GetExecutableFolderPath(game)))
                 {
-                    // Todo: Figure out where to specify the version so updates to LEX don't think old ASI is okay to keep using.
-                    if (asi.id == interopId /* && asi.version >= interopMinVersion*/)
+                    if (asi.id == interopId && asi.version >= GameController.GetInteropVersion(game))
                     {
+                        // If we are out of date, requesting ASI installation should clear the old one.
+                        // This only works if old versions are in the ASI manifest as Mod Manager does not
+                        // ID ASI files via the V2 versioning system as of 02/03/2026.
                         return true;
                     }
                 }
