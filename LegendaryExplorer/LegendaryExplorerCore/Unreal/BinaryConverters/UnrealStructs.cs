@@ -228,6 +228,14 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
                 IsValid = 1;
             }
         }
+
+        public StructProperty GetStructProperty()
+        {
+            return new StructProperty("Box", true,
+                CommonStructs.Vector3Prop(Min, "Min"),
+                CommonStructs.Vector3Prop(Max, "Max"),
+                new ByteProperty(IsValid, "IsValid"));
+        }
     }
 
     public struct BoxSphereBounds
