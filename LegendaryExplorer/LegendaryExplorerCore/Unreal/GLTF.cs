@@ -78,14 +78,14 @@ namespace LegendaryExplorerCore.Unreal
                 {
                     intermediateMeshes.Add(SkeletalMeshComponentToIntermediateMesh(export, materialSetting));
                 }
-                else if (export.IsA("BioPawn"))
+                else if (export.IsA("BioPawn") || export.IsA("SFXStuntActor") || export.IsA("SkeletalMeshActor"))
                 {
                     intermediateMeshes.AddRange(BioPawnToIntermediateMeshes(export, materialSetting));
                 }
             }
             
             var gltf = ToGltf(intermediateMeshes, versionInfo);
-            gltf.Save(filePath);
+            gltf?.Save(filePath);
         }
 
         private static IEnumerable<IntermediateMesh> BioPawnToIntermediateMeshes(ExportEntry export, MaterialExportLevel materialSetting, PackageCache cache = null)
@@ -101,13 +101,18 @@ namespace LegendaryExplorerCore.Unreal
                 return [..props.GetProp<ArrayProperty<ObjectProperty>>(name)?.Select(x => x?.ResolveToExport(export.FileRef, cache)) ?? []];
             }
 
+            // the properties are inconsistent across games and classes, but this should cover BioPawn from any game or SFXStuntActor
             IEnumerable<ExportEntry> meshes = [
+                GetMeshComponent("SkeletalMeshComponent"),
                 GetMeshComponent("Mesh"),
+                GetMeshComponent("BodyMesh"),
                 GetMeshComponent("m_oHeadMesh"),
                 GetMeshComponent("HeadMesh"),
                 GetMeshComponent("m_oHeadGearMesh"),
                 GetMeshComponent("HelmetMesh"),
+                GetMeshComponent("HeadGearMesh"),
                 GetMeshComponent("m_oHairMesh"),
+                GetMeshComponent("HairMesh"),
                 GetMeshComponent("m_oVisorMesh"),
                 GetMeshComponent("m_oFacePlateMesh"),
                 ..GetMeshComponentArray("m_aoMeshes"),
@@ -447,8 +452,10 @@ namespace LegendaryExplorerCore.Unreal
                 });
             }
 
-            foreach (var section in lod.Sections)
+            for (var sectionIndex = 0; sectionIndex < lod.Sections.Length; sectionIndex++)
             {
+                var section = lod.Sections[sectionIndex];
+                var endIndex = sectionIndex == lod.Sections.Length - 1 ? lod.IndexBuffer.Length : (int)(lod.Sections[sectionIndex + 1].BaseIndex);
                 var intermediateSection = new IntermediateMeshSection
                 {
                     MaterialIndex = materialMapping[section.MaterialIndex],
@@ -456,7 +463,7 @@ namespace LegendaryExplorerCore.Unreal
                     Vertices = vertices
                 };
 
-                for (int i = (int)section.BaseIndex; i < section.BaseIndex + section.NumTriangles * 3; i += 3)
+                for (int i = (int)section.BaseIndex; i < endIndex; i += 3)
                 {
                     intermediateSection.Triangles.Add(new IntermediateTriangle()
                     {
@@ -474,6 +481,11 @@ namespace LegendaryExplorerCore.Unreal
 
         private static ModelRoot ToGltf(IEnumerable<IntermediateMesh> meshes, string versionInfo = null)
         {
+            if (!meshes.Any())
+            {
+                // it will output an empty gltf, which will error upon trying to import into Blender.
+                return null;
+            }
             var scene = new SceneBuilder();
 
             Dictionary<IntermediateMesh, NodeBuilder[]> skeletonMap = [];

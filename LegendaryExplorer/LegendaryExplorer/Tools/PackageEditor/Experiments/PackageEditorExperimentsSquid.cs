@@ -127,7 +127,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 ShowError("This experiment does not support UDK files;");
                 return;
             }
-            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh", "SkeletalMeshComponent", "BioPawn"], out var export))
+            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh", "SkeletalMeshComponent", "BioPawn", "SFXStuntActor", "SkeletalMeshActor"], out var export))
             {
                 if (export.ClassName == "StaticMesh" && !(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
                 {
@@ -154,7 +154,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
             else
             {
-                ShowError("You must select a skeletal mesh, static mesh, SkeletalMeshComponent, or BioPawn");
+                ShowError("You must select a skeletal mesh, static mesh, SkeletalMeshComponent, SFXStuntActor, SkeletalMeshActor, or BioPawn");
             }
         }
 
