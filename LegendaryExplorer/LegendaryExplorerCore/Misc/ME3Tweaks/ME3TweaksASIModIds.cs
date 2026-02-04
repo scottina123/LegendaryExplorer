@@ -99,26 +99,15 @@ namespace LegendaryExplorerCore.Misc.ME3Tweaks
         public const int LE3_FUNCTION_LOGGER = 85; // 'Function Logger'
         public const int LE3_PNG_SCREENSHOTS = 46; // 'PNG ScreenShots'
 
-        /// <summary>
-        /// Returns if the given ASI is installed in the given game directory. This only detects 
-        /// ASIs built after 01/25/2026 that embed their ASI Mod ID in the binary metadata.
-        /// </summary>
-        /// <param name="asiModId">ID to find</param>
-        /// <param name="binaryPath">Path to the game binary</param>
-        /// <returns></returns>
-        public static bool IsASIInstalled(int asiModId, string binaryPath)
-        {
-            return GetInstalledASIModIds(binaryPath).Contains(asiModId);
-        }
 
         /// <summary>
-        /// Gets a list of installed ASI update groups (mod ids)
+        /// Gets a list of installed ASI update groups (mod ids) and their versions. only works on ASIs built after 01/26/2026
         /// </summary>
-        /// <param name="binaryPath"></param>
+        /// <param name="win64Path">Path to game Win64 folder</param>
         /// <returns></returns>
-        public static IEnumerable<int> GetInstalledASIModIds(string binaryPath)
+        public static IEnumerable<(int id,int version)> GetInstalledASIModIds(string win64Path)
         {
-            var asiPath = Path.Combine(binaryPath, "ASI");
+            var asiPath = Path.Combine(win64Path, "ASI");
             if (!Directory.Exists(asiPath))
             {
                 yield break;
@@ -128,28 +117,28 @@ namespace LegendaryExplorerCore.Misc.ME3Tweaks
             
             foreach (var asiFile in asiFiles)
             {
-                int? asiModId = null;
+                FileVersionInfo fvi = null;
                 try
                 {
-                    var versionInfo = FileVersionInfo.GetVersionInfo(asiFile);
-                    if (!string.IsNullOrEmpty(versionInfo.ProductVersion))
-                    {
-                        var versionParts = versionInfo.ProductVersion.Split('.');
-                        if (versionParts.Length >= 4 && int.TryParse(versionParts[3], out int parsedId))
-                        {
-                            asiModId = parsedId;
-                        }
-                    }
+                    fvi = FileVersionInfo.GetVersionInfo(asiFile);
                 }
                 catch
                 {
-                    // Skip files that can't be read or don't have valid version info
+                    // If the file can't be read or doesn't have version info, skip it.
                 }
 
-                if (asiModId.HasValue)
-                {
-                    yield return asiModId.Value;
-                }
+                if (fvi == null)
+                    continue;
+
+                // ASI mod id is stored in ProductPrivatePart, version in ProductMajorPart.
+                // Only return an entry when both pieces of information are present (non-zero).
+                var asiId = fvi.ProductPrivatePart;
+                var asiVersion = fvi.ProductMajorPart;
+
+                if (asiId <= 0 || asiVersion <= 0)
+                    continue;
+
+                yield return (asiId, asiVersion);
             }
         }
     }
