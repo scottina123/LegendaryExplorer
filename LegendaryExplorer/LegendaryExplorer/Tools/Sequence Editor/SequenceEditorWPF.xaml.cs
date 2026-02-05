@@ -47,6 +47,12 @@ using Image = System.Drawing.Image;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using LegendaryExplorer.Tools.PackageEditor;
+using Xceed.Wpf.Toolkit;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using WindowStartupLocation = System.Windows.WindowStartupLocation;
 
 namespace LegendaryExplorer.Tools.Sequence_Editor
 {
@@ -111,64 +117,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
 
-            // Load saved colors from settings
-            try
-            {
-                int bgColorArgb = Settings.SequenceEditor_BackgroundColor;
-                _graphEditorBackColor = Color.FromArgb(bgColorArgb);
-            }
-            catch
-            {
-                _graphEditorBackColor = Color.FromArgb(79, 79, 79);
-            }
-
-            try
-            {
-                int boxColorArgb = Settings.SequenceEditor_BoxFillColor;
-                _boxFillColor = Color.FromArgb(boxColorArgb);
-                SObj.NodeBrushColor = _boxFillColor;
-            }
-            catch
-            {
-                _boxFillColor = Color.FromArgb(140, 140, 140);
-                SObj.NodeBrushColor = _boxFillColor;
-            }
-
-            try
-            {
-                int titleColorArgb = Settings.SequenceEditor_TitleBoxColor;
-                _titleBoxColor = Color.FromArgb(titleColorArgb);
-                SObj.TitleBoxBrushColor = _titleBoxColor;
-            }
-            catch
-            {
-                _titleBoxColor = Color.FromArgb(112, 112, 112);
-                SObj.TitleBoxBrushColor = _titleBoxColor;
-            }
-
-            try
-            {
-                int commentColorArgb = Settings.SequenceEditor_CommentTextColor;
-                _commentTextColor = Color.FromArgb(commentColorArgb);
-                SObj.CommentTextColor = _commentTextColor;
-            }
-            catch
-            {
-                _commentTextColor = Color.FromArgb(74, 63, 190);
-                SObj.CommentTextColor = _commentTextColor;
-            }
-
-            try
-            {
-                int boxTextColorArgb = Settings.SequenceEditor_BoxTextColor;
-                _boxTextColor = Color.FromArgb(boxTextColorArgb);
-                SObj.BoxTextColor = _boxTextColor;
-            }
-            catch
-            {
-                _boxTextColor = Color.FromArgb(0, 0, 0);
-                SObj.BoxTextColor = _boxTextColor;
-            }
+            // Load saved colors from settings (persisted user customizations)
+            LoadSavedColors();
+            
+            // Subscribe to theme changes to update graph colors dynamically
+            ThemeManager.ThemeChanged += OnThemeChanged;
 
             graphEditor = (SequenceGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
@@ -196,6 +149,42 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             AutoSaveView_MenuItem.IsChecked = Settings.SequenceEditor_AutoSaveViewV2;
             ShowOutputNumbers_MenuItem.IsChecked = Settings.SequenceEditor_ShowOutputNumbers;
             SObj.OutputNumbers = ShowOutputNumbers_MenuItem.IsChecked;
+
+            // Initialize color pickers with loaded colors
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+        }
+        
+        /// <summary>
+        /// Handles theme changes from the ThemeManager.
+        /// Resets graph colors to theme defaults when user switches between light/dark mode.
+        /// </summary>
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            // Apply theme defaults (overrides any user customizations)
+            ApplyThemeDefaults();
+            
+            // Update the graph editor background
+            if (graphEditor != null)
+            {
+                graphEditor.BackColor = GraphEditorBackColor;
+            }
+            
+            // Update color pickers to reflect the new theme colors
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            
+            // Refresh the view if there are objects loaded
+            if (CurrentObjects.Any())
+            {
+                RefreshView();
+            }
         }
 
         private void CreateCustomSequence(object obj)
@@ -1772,6 +1761,67 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+
+
+
+
+
+
+
+        /// <summary>
+        /// Loads saved colors from settings. Called on initial window open to restore user customizations.
+        /// </summary>
+        private void LoadSavedColors()
+        {
+            // Load saved settings
+            _graphEditorBackColor = Color.FromArgb(Settings.SequenceEditor_BackgroundColor);
+            _boxFillColor = Color.FromArgb(Settings.SequenceEditor_BoxFillColor);
+            _titleBoxColor = Color.FromArgb(Settings.SequenceEditor_TitleBoxColor);
+            _commentTextColor = Color.FromArgb(Settings.SequenceEditor_CommentTextColor);
+            _boxTextColor = Color.FromArgb(Settings.SequenceEditor_BoxTextColor);
+
+            // Apply to static properties used by SObj
+            SObj.NodeBrushColor = _boxFillColor;
+            SObj.TitleBoxBrushColor = _titleBoxColor;
+            SObj.CommentTextColor = _commentTextColor;
+            SObj.BoxTextColor = _boxTextColor;
+        }
+
+        /// <summary>
+        /// Applies theme-appropriate default colors based on the current dark mode setting.
+        /// Called when user switches themes - overrides any user customizations.
+        /// User can then customize colors again via color pickers.
+        /// </summary>
+        private void ApplyThemeDefaults()
+        {
+            bool isDarkMode = Settings.Global_DarkMode_Enabled;
+
+            if (isDarkMode)
+            {
+                // Dark theme - Visual Studio dark mode inspired colors
+                _graphEditorBackColor = Color.FromArgb(30, 30, 30);
+                _boxFillColor = Color.FromArgb(45, 45, 48);
+                _titleBoxColor = Color.FromArgb(37, 37, 38);
+                _commentTextColor = Color.FromArgb(87, 166, 74);
+                _boxTextColor = Color.FromArgb(220, 220, 220);
+            }
+            else
+            {
+                // Light theme defaults
+                _graphEditorBackColor = Color.FromArgb(128, 128, 128);
+                _boxFillColor = Color.FromArgb(140, 140, 140);
+                _titleBoxColor = Color.FromArgb(112, 112, 112);
+                _commentTextColor = Color.FromArgb(25, 25, 112);
+                _boxTextColor = Color.FromArgb(255, 255, 255);
+            }
+
+            // Apply to static properties used by SObj
+            SObj.NodeBrushColor = _boxFillColor;
+            SObj.TitleBoxBrushColor = _titleBoxColor;
+            SObj.CommentTextColor = _commentTextColor;
+            SObj.BoxTextColor = _boxTextColor;
+        }
+
         private void saveView(bool toFile = true)
         {
             if (CurrentObjects.Count == 0)
@@ -2348,6 +2398,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             Settings.SequenceEditor_AutoSaveViewV2 = AutoSaveView_MenuItem.IsChecked;
             Settings.SequenceEditor_ShowOutputNumbers = SObj.OutputNumbers;
+
+            // Unsubscribe from theme changes to prevent memory leaks
+            ThemeManager.ThemeChanged -= OnThemeChanged;
 
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
@@ -3240,87 +3293,35 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void BackgroundColor_Click(object sender, RoutedEventArgs e)
+        private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
         {
-            var colorDialog = new System.Windows.Forms.ColorDialog
+            var source = (Xceed.Wpf.Toolkit.ColorPicker)sender;
+            if (e.NewValue is not null)
             {
-                Color = GraphEditorBackColor,
-                AllowFullOpen = true,
-                FullOpen = true
-            };
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                GraphEditorBackColor = colorDialog.Color;
-                Settings.SequenceEditor_BackgroundColor = colorDialog.Color.ToArgb();
-                Settings.Save();
-            }
-        }
-
-        private void BoxColor_Click(object sender, RoutedEventArgs e)
-        {
-            var colorDialog = new System.Windows.Forms.ColorDialog
-            {
-                Color = BoxFillColor,
-                AllowFullOpen = true,
-                FullOpen = true
-            };
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                BoxFillColor = colorDialog.Color;
-                Settings.SequenceEditor_BoxFillColor = colorDialog.Color.ToArgb();
-                Settings.Save();
-            }
-        }
-
-        private void TitleBoxColor_Click(object sender, RoutedEventArgs e)
-        {
-            var colorDialog = new System.Windows.Forms.ColorDialog
-            {
-                Color = TitleBoxColor,
-                AllowFullOpen = true,
-                FullOpen = true
-            };
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                TitleBoxColor = colorDialog.Color;
-                Settings.SequenceEditor_TitleBoxColor = colorDialog.Color.ToArgb();
-                Settings.Save();
-            }
-        }
-
-        private void CommentTextColor_Click(object sender, RoutedEventArgs e)
-        {
-            var colorDialog = new System.Windows.Forms.ColorDialog
-            {
-                Color = CommentTextColor,
-                AllowFullOpen = true,
-                FullOpen = true
-            };
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                CommentTextColor = colorDialog.Color;
-                Settings.SequenceEditor_CommentTextColor = colorDialog.Color.ToArgb();
-                Settings.Save();
-            }
-        }
-
-        private void BoxTextColor_Click(object sender, RoutedEventArgs e)
-        {
-            var colorDialog = new System.Windows.Forms.ColorDialog
-            {
-                Color = BoxTextColor,
-                AllowFullOpen = true,
-                FullOpen = true
-            };
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                BoxTextColor = colorDialog.Color;
-                Settings.SequenceEditor_BoxTextColor = colorDialog.Color.ToArgb();
+                var newColor = e.NewValue.Value.ToWinformsColor();
+                switch (source.Name)
+                {
+                    case "ClrPcker_Background":
+                        GraphEditorBackColor = newColor;
+                        Settings.SequenceEditor_BackgroundColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_BoxFill":
+                        BoxFillColor = newColor;
+                        Settings.SequenceEditor_BoxFillColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_TitleBox":
+                        TitleBoxColor = newColor;
+                        Settings.SequenceEditor_TitleBoxColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_CommentText":
+                        CommentTextColor = newColor;
+                        Settings.SequenceEditor_CommentTextColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_BoxText":
+                        BoxTextColor = newColor;
+                        Settings.SequenceEditor_BoxTextColor = newColor.ToArgb();
+                        break;
+                }
                 Settings.Save();
             }
         }

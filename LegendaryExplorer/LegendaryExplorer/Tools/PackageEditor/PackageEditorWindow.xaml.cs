@@ -13,6 +13,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using System.Windows.Interop;
 using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor;
@@ -48,6 +49,11 @@ using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.GameInterop;
+using Xceed.Wpf.Toolkit;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 
 namespace LegendaryExplorer.Tools.PackageEditor
@@ -1808,7 +1814,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     (List<IEntry> itemsToTrash, IEntry entryWithReferences) = prevTask.Result;
                     if (entryWithReferences is not null)
                     {
-                        MessageBoxResult messageBoxResult = MessageBox.Show(this,
+                        MessageBoxResult messageBoxResult = Xceed.Wpf.Toolkit.MessageBox.Show(this,
                             $"#{entryWithReferences.UIndex} {entryWithReferences.InstancedFullPath} is referenced by other entries! Use the \"{FindReferencesMenuText}\" option in the context menu to see the references. " +
                             "These references will be broken if you trash it! Are you sure you want to proceed?",
                             "Trash warning", MessageBoxButton.YesNo);

@@ -531,6 +531,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             ScriptEditor_Hexbox = (HexBox)ScriptEditor_Hexbox_Host.Child;
             ControlLoaded = true;
+            
+            // Register HexBox for theme management
+            Misc.ThemeManager.RegisterHexBox(ScriptEditor_Hexbox);
         }
 
         private void ByteProviderBytesChanged(object sender, EventArgs e)

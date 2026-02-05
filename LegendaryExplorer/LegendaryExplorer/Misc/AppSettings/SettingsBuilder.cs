@@ -115,22 +115,22 @@ namespace LegendaryExplorer.Misc.AppSettings
              get => _sequenceeditor_favorites_udk; 
              set => SetProperty(ref _sequenceeditor_favorites_udk, value);
          }
-         private static int _sequenceeditor_backgroundcolor = -8355840; 
+         private static int _sequenceeditor_backgroundcolor = -8355712; // RGB(128, 128, 128) - grey background
          public static int SequenceEditor_BackgroundColor {
              get => _sequenceeditor_backgroundcolor; 
              set => SetProperty(ref _sequenceeditor_backgroundcolor, value);
          }
-         private static int _sequenceeditor_boxfillcolor = -7892495; 
+         private static int _sequenceeditor_boxfillcolor = -7566196; // RGB(140, 140, 140) - UE3 Kismet gray node body
          public static int SequenceEditor_BoxFillColor {
              get => _sequenceeditor_boxfillcolor; 
              set => SetProperty(ref _sequenceeditor_boxfillcolor, value);
          }
-          private static int _sequenceeditor_titleboxcolor = -8553424; 
+          private static int _sequenceeditor_titleboxcolor = -9408400; // RGB(112, 112, 112) - UE3 Kismet darker title box
           public static int SequenceEditor_TitleBoxColor {
              get => _sequenceeditor_titleboxcolor; 
              set => SetProperty(ref _sequenceeditor_titleboxcolor, value);
          }
-         private static int _sequenceeditor_commenttextcolor = -5978694; 
+         private static int _sequenceeditor_commenttextcolor = -15132304; // RGB(25, 25, 112) - midnight blue comment text
          public static int SequenceEditor_CommentTextColor {
              get => _sequenceeditor_commenttextcolor; 
              set => SetProperty(ref _sequenceeditor_commenttextcolor, value);
@@ -300,6 +300,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_analytics_enabled; 
             set => SetProperty(ref _global_analytics_enabled, value);
         }
+        private static bool _global_darkmode_enabled = false; 
+        public static bool Global_DarkMode_Enabled {
+            get => _global_darkmode_enabled; 
+            set => SetProperty(ref _global_darkmode_enabled, value);
+        }
         private static string _global_me1directory = ""; 
         public static string Global_ME1Directory {
             get => _global_me1directory; 
@@ -461,6 +466,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             TFCCompactor_LastStagingPath = TryGetSetting(settingsJson, "tfccompactor_laststagingpath", "");
             Global_PropertyParsing_ParseUnknownArrayTypeAsObject = TryGetSetting(settingsJson, "global_propertyparsing_parseunknownarraytypeasobject", false);
             Global_Analytics_Enabled = TryGetSetting(settingsJson, "global_analytics_enabled", true);
+            Global_DarkMode_Enabled = TryGetSetting(settingsJson, "global_darkmode_enabled", false);
             Global_ME1Directory = TryGetSetting(settingsJson, "global_me1directory", "");
             Global_ME2Directory = TryGetSetting(settingsJson, "global_me2directory", "");
             Global_ME3Directory = TryGetSetting(settingsJson, "global_me3directory", "");
@@ -542,6 +548,7 @@ namespace LegendaryExplorer.Misc.AppSettings
                     settingsJson["tfccompactor_laststagingpath"] = TFCCompactor_LastStagingPath.ToString();
                     settingsJson["global_propertyparsing_parseunknownarraytypeasobject"] = Global_PropertyParsing_ParseUnknownArrayTypeAsObject.ToString();
                     settingsJson["global_analytics_enabled"] = Global_Analytics_Enabled.ToString();
+                    settingsJson["global_darkmode_enabled"] = Global_DarkMode_Enabled.ToString();
                     settingsJson["global_me1directory"] = Global_ME1Directory.ToString();
                     settingsJson["global_me2directory"] = Global_ME2Directory.ToString();
                     settingsJson["global_me3directory"] = Global_ME3Directory.ToString();

@@ -25,7 +25,7 @@
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
         <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
-        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle">
+        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle" BasedOn="{StaticResource {x:Type ListBox}}">
             <Style.Triggers>
                 <Trigger Property="HasItems" Value="True">
                     <Setter Property="SelectedIndex" Value="0" />
@@ -116,11 +116,11 @@
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
-                <ListBox.ItemContainerStyle>
-                    <Style>
+            <ListBox.ItemContainerStyle>
+                    <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Style.Triggers>
                             <Trigger Property="Selector.IsSelected" Value="True">
-                                <Setter Property="TextElement.Foreground" Value="Black" />
+                                <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
                             </Trigger>
                         </Style.Triggers>
                     </Style>

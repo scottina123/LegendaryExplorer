@@ -159,11 +159,23 @@
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Name="BackgroundColor_MenuItem" Header="Background Color" Click="BackgroundColor_Click" />
-                    <MenuItem Name="BoxColor_MenuItem" Header="Box Fill Color" Click="BoxColor_Click" />
-                    <MenuItem Name="TitleBoxColor_MenuItem" Header="Title Box Color" Click="TitleBoxColor_Click" />
-                    <MenuItem Name="CommentTextColor_MenuItem" Header="Comment Text Color" Click="CommentTextColor_Click" />
-                    <MenuItem Name="BoxTextColor_MenuItem" Header="Box Text Color" Click="BoxTextColor_Click" />
+                    <MenuItem Header="Adjust graph color settings">
+                        <TextBlock Text="Background Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_Background" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Box Fill Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxFill" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Title Box Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_TitleBox" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Comment Text Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_CommentText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Box Text Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                    </MenuItem>
                 </MenuItem>
 
                 <MenuItem Header="Layout" Padding="4">
@@ -395,10 +407,10 @@
                     </sharedUi:WindowsFormsHostEx>
                     <Expander Grid.Column="0" Name="toolBoxExpander" HorizontalAlignment="Left"
                                 IsEnabled="{Binding SelectedSequence, Converter={StaticResource NullEnabledConverter}}"
-                                ExpandDirection="Right" IsExpanded="False" Background="Orange"
+                                ExpandDirection="Right" IsExpanded="False" Background="{DynamicResource ToolBoxAccentBrush}"
                                 sharedUi:Bindings.VisibilityToEnabled="True">
                         <Expander.Header>
-                            <TextBlock Text="Sequence Object Toolbox" Foreground="Black" VerticalAlignment="Center"
+                            <TextBlock Text="Sequence Object Toolbox" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" VerticalAlignment="Center"
                                         Margin="0,0,4,0">
                                 <TextBlock.LayoutTransform>
                                     <RotateTransform Angle="-90" />

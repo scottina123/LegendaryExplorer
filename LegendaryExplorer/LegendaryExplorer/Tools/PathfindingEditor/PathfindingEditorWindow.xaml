@@ -663,10 +663,10 @@
                            Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Visible}">
                     <DockPanel DockPanel.Dock="Left">
                         <Expander DockPanel.Dock="Left" Name="CombatZonesSMC_Expander" ExpandDirection="Right"
-                                  IsExpanded="False" Background="Orange" Padding="2" MaxWidth="310">
+                                  IsExpanded="False" Background="{DynamicResource ToolBoxAccentBrush}" Padding="2" MaxWidth="310">
                             <Expander.Header>
                                 <TextBlock Text="Zones &amp; Actor Collections" VerticalAlignment="Center"
-                                           Margin="0,0,4,0">
+                                           Margin="0,0,4,0" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}">
                                     <TextBlock.LayoutTransform>
                                         <RotateTransform Angle="-90" />
                                     </TextBlock.LayoutTransform>

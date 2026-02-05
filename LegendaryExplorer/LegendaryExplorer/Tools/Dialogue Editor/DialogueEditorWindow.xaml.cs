@@ -48,6 +48,12 @@ using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
 using Key = System.Windows.Input.Key;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using Xceed.Wpf.Toolkit;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using WindowStartupLocation = System.Windows.WindowStartupLocation;
 
 namespace LegendaryExplorer.DialogueEditor
 {

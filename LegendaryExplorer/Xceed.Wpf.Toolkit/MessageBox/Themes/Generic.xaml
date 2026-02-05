@@ -31,7 +31,13 @@
   <Style TargetType="{x:Type local:MessageBox}"
          BasedOn="{StaticResource {x:Type prim:WindowControl}}">
     <Setter Property="ButtonRegionBackground"
-            Value="#FFF0F0F0" />
+            Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+    <Setter Property="Background"
+            Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+    <Setter Property="Foreground"
+            Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+    <Setter Property="BorderBrush"
+            Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" />
     <Setter Property="Focusable"
             Value="False" />
     <Setter Property="MinWidth"

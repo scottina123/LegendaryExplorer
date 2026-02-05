@@ -383,32 +383,32 @@
                     <Button Content="Tree View" Padding="7,0" VerticalAlignment="Stretch"  Click="TreeView_Click" ToolTip="View imports and exports in package hierarchy" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  Background="{Binding CurrentView, Converter={StaticResource PackageEditorWPFActiveViewHighlightConverter}, ConverterParameter='Tree'}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     <Separator/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkComboBox Watermark="Class Selector" Name="ClassDropdown_Combobox" Width="140" ItemsPanel="{StaticResource VSP}" ItemsSource="{Binding ClassDropdownList}" IsTextSearchEnabled="True" KeyUp="ClassDropdown_Combobox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <controls:WatermarkComboBox Watermark="Class Selector" x:Name="ClassDropdown_Combobox" Width="140" ItemsPanel="{StaticResource VSP}" ItemsSource="{Binding ClassDropdownList}" IsTextSearchEnabled="True" KeyUp="ClassDropdown_Combobox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center"/>
                         <Button Content="Find object by class" Click="FindObjectByClass_Click" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkTextBox Watermark="{Binding SearchHintText}" Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box"/>
                         <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <xctk:WatermarkTextBox Watermark="{Binding GotoHintText}" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
                     <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
                 </ToolBar>
-                <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch">
+                <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <controls:ListBoxScroll.Resources>
                         <DataTemplate DataType="{x:Type SharedUI:IndexedName}">
                             <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
-                                <TextBlock Text="{Binding Path=Index, Mode=OneTime}" Foreground="Gray"/>
-                                <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Margin="5,0,0,0"/>
+                                <TextBlock Text="{Binding Path=Index, Mode=OneTime}" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Margin="5,0,0,0" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                             </StackPanel>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type Packages:ImportEntry}">
                             <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
-                                <TextBlock Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="Gray"/>
-                                <TextBlock Text="{Binding Path=InstancedFullPath}"  Margin="5,0,0,0"/>
+                                <TextBlock Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="{DynamicResource ImportIndexBrush}"/>
+                                <TextBlock Text="{Binding Path=InstancedFullPath}"  Margin="5,0,0,0" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                             </StackPanel>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type Packages:ExportEntry}">
@@ -422,9 +422,9 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="Maroon" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding InstancedFullPath}" Margin="5,0,0,0"/>
-                                <TextBlock Grid.Column="1" Grid.Row="1" Foreground="BlueViolet" Margin="5,0,0,0" FontWeight="Bold" FontFamily="Consolas">
+                                <TextBlock Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="{DynamicResource ExportIndexBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Grid.Row="0" Grid.ColumnSpan="2" Text="{Binding InstancedFullPath}" Margin="5,0,0,0" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                <TextBlock Grid.Column="1" Grid.Row="1" Foreground="{DynamicResource ClassNameBrush}" Margin="5,0,0,0" FontWeight="Bold" FontFamily="Consolas">
                                     <TextBlock.Text>
                                         <MultiBinding StringFormat="{}{0}{1}">
                                             <Binding Path="ClassName" />
@@ -442,14 +442,14 @@
                     </ListBox.ItemsPanel>
 
                 </controls:ListBoxScroll>
-                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="Consolas" Visibility="Collapsed" dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.DropHandler="{Binding}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="Consolas" Visibility="Collapsed" dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.DropHandler="{Binding}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type SharedUI:TreeViewEntry}" ItemsSource="{Binding Sublinks}">
                             <controls:TreeViewEntryContainer ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent"  Padding="{Binding Path=(SharedUI:TouchComfySettings.TreeViewMargin)}">
                                 <controls:TreeViewEntryContainer.ToolTip>TestTrigger</controls:TreeViewEntryContainer.ToolTip>
                                 <DockPanel>
 
-                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding SubText}"  FontSize="10" Foreground="{Binding Path=ForegroundColor}" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="300" HorizontalAlignment="Left"  Visibility="{Binding SubText, Converter={StaticResource NullVisibilityConverter}}" >
+                                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding SubText}"  FontSize="10" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="300" HorizontalAlignment="Left"  Visibility="{Binding SubText, Converter={StaticResource NullVisibilityConverter}}" >
                                         <TextBlock.Style>
                                             <Style TargetType="{x:Type TextBlock}">
                                                 <Style.Triggers>
@@ -462,7 +462,7 @@
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal">
                                         <Image Width="16" Height="16" Margin="0,0,3,0" Source="{Binding Entry, Converter={StaticResource EntryFileTypeIconPathConverter}}" Visibility="{Binding Entry, Converter={StaticResource EntryFileTypeConverter}}" />
-                                        <TextBlock  Text="{Binding DisplayName}" Foreground="{Binding Path=ForegroundColor}" VerticalAlignment="Center">
+                                        <TextBlock  Text="{Binding DisplayName}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" VerticalAlignment="Center">
                                             <TextBlock.Style>
                                                 <Style TargetType="{x:Type TextBlock}">
                                                     <Style.Triggers>
@@ -511,9 +511,9 @@
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Grid.Row="1"/>
                 <TabControl Name="EditorTabs" Grid.Column="2" Grid.Row="1" Style="{StaticResource ThemedTabControlStyle}">
                     <TabItem Name="Intro_Tab" Header="Welcome">
-                        <StackPanel>
-                            <TextBlock Margin="5" Text="Welcome to Package Editor" FontWeight="Bold"/>
-                            <TextBlock Margin="5">
+                        <StackPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                            <TextBlock Margin="5" Text="Welcome to Package Editor" FontWeight="Bold" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                            <TextBlock Margin="5" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}">
                             Package Editor is the primary modding tool for editing game package files (.pcc) and contains
                             <LineBreak/>
                             many embedded tools that appear as tabs on the right pane.

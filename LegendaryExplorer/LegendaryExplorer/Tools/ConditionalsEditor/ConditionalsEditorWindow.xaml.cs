@@ -25,6 +25,11 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
+using Xceed.Wpf.Toolkit;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
 
 namespace LegendaryExplorer.Tools.ConditionalsEditor
 {
@@ -129,6 +134,9 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             hexBox.ByteProvider = new ReadOptimizedByteProvider();
             this.bind(HexBoxMinWidthProperty, hexBox, nameof(hexBox.MinWidth));
             this.bind(HexBoxMaxWidthProperty, hexBox, nameof(hexBox.MaxWidth));
+            
+            // Register HexBox for theme management
+            Misc.ThemeManager.RegisterHexBox(hexBox);
         }
 
         public ICommand OpenCommand { get; set; }

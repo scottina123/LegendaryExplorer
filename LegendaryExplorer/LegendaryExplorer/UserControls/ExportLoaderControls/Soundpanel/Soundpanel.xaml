@@ -76,7 +76,7 @@
                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <Button Content="Replace" Command="{Binding ReplaceAudioCommand}" VerticalContentAlignment="Center" VerticalAlignment="Center" Margin="0,0,5,0">
                         <Button.Style>
-                            <Style TargetType="Button">
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                 <Setter Property="ToolTip" Value="Change audio by importing a Wave file"/>
                                 <Style.Triggers>
                                     <Trigger Property="IsEnabled" Value="False">
@@ -135,11 +135,11 @@
                             <!--Sets a context menu for each ListBoxItem in the current ListBox-->
                             <DataTemplate DataType="{x:Type audio:EmbeddedWEMFile}">
                                 <!-- Do not remove transparent background. It is required for mouse hit testing.-->
-                                <TextBlock Text="{Binding DisplayString}" Foreground="DarkBlue"/>
+                                <TextBlock Text="{Binding DisplayString}" Foreground="{DynamicResource AudioEntryTextBrush}"/>
                             </DataTemplate>
                             <DataTemplate DataType="{x:Type isact:ISACTListBankChunk}">
                                 <!-- Do not remove transparent background. It is required for mouse hit testing.-->
-                                <TextBlock Text="{Binding TitleInfo.Value}" Foreground="DarkBlue" Background="Transparent">
+                                <TextBlock Text="{Binding TitleInfo.Value}" Foreground="{DynamicResource AudioEntryTextBrush}" Background="Transparent">
                                     <TextBlock.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Click="ExtractISBEToWav" ToolTip="Extract audio to WAV file">
@@ -152,7 +152,7 @@
                             </TextBlock>
                             </DataTemplate>
                             <DataTemplate DataType="{x:Type s:String}">
-                                <TextBlock Text="{Binding}" Foreground="Gray"/>
+                                <TextBlock Text="{Binding}" Foreground="{DynamicResource SecondaryTextBrush}"/>
                             </DataTemplate>
                         </ListBox.Resources>
                     </ListBox>
@@ -168,7 +168,7 @@
                     <ToolBar ToolBarTray.IsLocked="True" DockPanel.Dock="Top">
                         <Button Command="{Binding CommitCommand}" Content="Commit" ToolTip="Commit changes to this Wwisebank file back to the export" VerticalAlignment="Stretch" Padding="7,0">
                             <Button.Style>
-                                <Style TargetType="{x:Type Button}">
+                                <Style TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
                                     <Style.Triggers>
                                         <Trigger Property="IsEnabled" Value="True">
                                             <Setter Property="FontWeight" Value="Bold"/>
@@ -182,7 +182,7 @@
                         <xctk:WatermarkTextBox Watermark="Search for hex" Name="SearchHIRCHex_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" VerticalContentAlignment="Center"/>
                         <Button Content="Search" Command="{Binding SearchHIRCHexCommand}" Padding="10,0" VerticalAlignment="Stretch" Margin="5,0"/>
                         <!--<CheckBox Content="Search Big Endian" ToolTip="Searches bytes in reverse order endian (Big Endian). Search will read bytes as if they were text on a page, left to right."/>-->
-                        <TextBlock Text="{Binding SearchStatusText}" VerticalAlignment="Center" Margin="5,0" Foreground="Gray"/>
+                        <TextBlock Text="{Binding SearchStatusText}" VerticalAlignment="Center" Margin="5,0" Foreground="{DynamicResource SecondaryTextBrush}"/>
                     </ToolBar>
                     <Grid>
                         <Grid.RowDefinitions>
@@ -208,7 +208,7 @@
                                                 CommandParameter="{Binding}">
 
                                         </Button>
-                                        <Border Margin="0" DockPanel.Dock="Bottom" Padding="2,0,2,0" BorderThickness="1" BorderBrush="Red" Background="AntiqueWhite" 
+                                        <Border Margin="0" DockPanel.Dock="Bottom" Padding="2,0,2,0" BorderThickness="1" BorderBrush="{DynamicResource MediaStateBorderBrush}" Background="{DynamicResource MediaStateBackgroundBrush}" 
                                                 CornerRadius="2" HorizontalAlignment="Left" 
                                                 Visibility="{Binding Converter={StaticResource HIRCObjectTypeVisibilityConverter},ConverterParameter=2}">
                                             <TextBlock Text="{Binding State,Converter={StaticResource HIRCMediaFetchTypeConverter}}" FontWeight="Bold"/>
@@ -226,7 +226,7 @@
                                     </DockPanel>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding Path=DataChanged}" Value="true">
-                                            <Setter Property="Background" Value="Yellow" TargetName="HIRCContainer"/>
+                                            <Setter Property="Background" Value="{DynamicResource DataChangedBackgroundBrush}" TargetName="HIRCContainer"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding Path=IsSelected, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type ListBoxItem }}}" Value="True">
                                             <Setter Property="TextBlock.FontWeight" Value="Bold"/>
@@ -259,7 +259,7 @@
                             <ToolBar ToolBarTray.IsLocked="True" Grid.Row="0" Grid.ColumnSpan="4">
                                 <Button Name="SaveHexChange_Button" ToolTip="Commit hex changes to the HIRC object. This does not commit the changes to the export." Content="Save Hex Changes" Command="{Binding SaveHIRCHexCommand}">
                                     <Button.Style>
-                                        <Style TargetType="{x:Type Button}">
+                                        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
                                             <Style.Triggers>
                                                 <Trigger Property="IsEnabled" Value="True">
                                                     <Setter Property="Foreground" Value="Red"/>

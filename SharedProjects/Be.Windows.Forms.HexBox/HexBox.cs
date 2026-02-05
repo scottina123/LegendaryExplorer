@@ -1168,9 +1168,9 @@ namespace Be.Windows.Forms
         /// </summary>
         long _scrollVpos;
         /// <summary>
-        /// Contains a vertical scroll
+        /// Contains a vertical scroll bar with dark mode support
         /// </summary>
-        VScrollBar _vScrollBar;
+        DarkScrollBar _vScrollBar;
         /// <summary>
         /// Contains a timer for thumbtrack scrolling
         /// </summary>
@@ -1480,7 +1480,7 @@ namespace Be.Windows.Forms
         public HexBox()
         {
             this.MaxBytesPerLine = 0x64; //default absolute max.
-            this._vScrollBar = new VScrollBar();
+            this._vScrollBar = new DarkScrollBar();
             this._vScrollBar.Scroll += _vScrollBar_Scroll;
 
             this._builtInContextMenu = new BuiltInContextMenu(this);
@@ -2521,11 +2521,15 @@ namespace Be.Windows.Forms
         /// <param name="e">A PaintEventArgs that contains the event data.</param>
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            // Check if using a custom/dark theme color (significantly darker than white)
+            // Brightness ranges from 0 (black) to 1 (white)
+            bool isCustomTheme = this.BackColor.GetBrightness() < 0.5f;
+
             switch (_borderStyle)
             {
                 case BorderStyle.Fixed3D:
                     {
-                        if (TextBoxRenderer.IsSupported)
+                        if (TextBoxRenderer.IsSupported && !isCustomTheme)
                         {
                             VisualStyleElement state = VisualStyleElement.TextBox.TextEdit.Normal;
                             Color backColor = this.BackColor;
@@ -2551,11 +2555,9 @@ namespace Be.Windows.Forms
                         }
                         else
                         {
-                            // draw background
-                            e.Graphics.FillRectangle(new SolidBrush(BackColor), ClientRectangle);
-
-                            // draw default border
-                            ControlPaint.DrawBorder3D(e.Graphics, ClientRectangle, Border3DStyle.Sunken);
+                            // Custom theme - skip visual styles and draw simple background
+                            e.Graphics.FillRectangle(new SolidBrush(this.BackColor), this.ClientRectangle);
+                            ControlPaint.DrawBorder3D(e.Graphics, this.ClientRectangle, Border3DStyle.Sunken);
                         }
 
                         break;
@@ -2563,16 +2565,16 @@ namespace Be.Windows.Forms
                 case BorderStyle.FixedSingle:
                     {
                         // draw background
-                        e.Graphics.FillRectangle(new SolidBrush(BackColor), ClientRectangle);
+                        e.Graphics.FillRectangle(new SolidBrush(this.BackColor), this.ClientRectangle);
 
                         // draw fixed single border
-                        ControlPaint.DrawBorder(e.Graphics, ClientRectangle, Color.Black, ButtonBorderStyle.Solid);
+                        ControlPaint.DrawBorder(e.Graphics, this.ClientRectangle, Color.Black, ButtonBorderStyle.Solid);
                         break;
                     }
                 default:
                     {
                         // draw background
-                        e.Graphics.FillRectangle(new SolidBrush(BackColor), ClientRectangle);
+                        e.Graphics.FillRectangle(new SolidBrush(this.BackColor), this.ClientRectangle);
                         break;
                     }
             }
@@ -2584,10 +2586,14 @@ namespace Be.Windows.Forms
         /// <param name="e">A PaintEventArgs that contains the event data.</param>
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
-
             if (_byteProvider == null)
                 return;
+
+            // Fill the entire visible area with the background color BEFORE any painting
+            // This ensures dark theme background is applied first
+            e.Graphics.Clear(this.BackColor);
+
+            base.OnPaint(e);
 
             //System.Diagnostics.Debug.WriteLine("OnPaint " + DateTime.Now.ToString(), "HexBox");
 
@@ -3369,6 +3375,29 @@ namespace Be.Windows.Forms
             }
         }
         bool _vScrollBarVisible;
+
+        /// <summary>
+        /// Gets the vertical scroll bar control.
+        /// This allows external code to customize scrollbar appearance for theming purposes.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public DarkScrollBar VScrollBar => _vScrollBar;
+
+        /// <summary>
+        /// Gets or sets whether the scrollbar uses dark mode rendering.
+        /// </summary>
+        [DefaultValue(false), Category("Appearance"), Description("Gets or sets whether the scrollbar uses dark mode rendering.")]
+        public bool ScrollBarDarkMode
+        {
+            get => _vScrollBar?.IsDarkMode ?? false;
+            set
+            {
+                if (_vScrollBar != null)
+                {
+                    _vScrollBar.IsDarkMode = value;
+                }
+            }
+        }
 
         /// <summary>
         /// Gets or sets the ByteProvider.
@@ -4340,17 +4369,28 @@ namespace Be.Windows.Forms
 
         #region DarkModeSupport
 
-        /// <summary>
-        /// Gets the background color for the control.
-        /// </summary>
-        //[DefaultValue(typeof(Color), Control.D)]
-        public override Color BackColor => backColor;
+        // Instance-level color fields for per-control theming
+        private Color _instanceBackColor = Color.Empty;
+        private Color _instanceForeColor = Color.Empty;
 
         /// <summary>
-        /// Gets the background color for the control.
+        /// Gets or sets the background color for the control.
+        /// </summary>
+        public override Color BackColor
+        {
+            get => _instanceBackColor != Color.Empty ? _instanceBackColor : backColor;
+            set { _instanceBackColor = value; Invalidate(); }
+        }
+
+        /// <summary>
+        /// Gets or sets the foreground color for the control.
         /// </summary>
         [DefaultValue(typeof(Color), "Black")]
-        public override Color ForeColor => foreColor;
+        public override Color ForeColor
+        {
+            get => _instanceForeColor != Color.Empty ? _instanceForeColor : foreColor;
+            set { _instanceForeColor = value; Invalidate(); }
+        }
 
         public static void SetColors(Color background, Color text)
         {

@@ -350,10 +350,10 @@
                            ScrollViewer.CanContentScroll="False">
                     <!--Stage Directions ME3 -->
                     <Expander Name="StageDirections_Expander" ExpandDirection="Up" IsExpanded="False"
-                              Background="Orange" Padding="2" Panel.ZIndex="250" DockPanel.Dock="Bottom"
+                              Background="{DynamicResource ToolBoxAccentBrush}" Padding="2" Panel.ZIndex="250" DockPanel.Dock="Bottom"
                               Visibility="Collapsed">
                         <Expander.Header>
-                            <TextBlock Text="Stage Directions" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="Stage Directions" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
                         </Expander.Header>
                         <DockPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Margin="0,3,4,3" LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top" Text="Stage Directions" Margin="5,5,5,0" FontWeight="Bold"
@@ -1376,7 +1376,7 @@
                     <TabControl TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}">
                         <TabControl.Resources>
-                            <Style TargetType="{x:Type TabItem}">
+                            <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource {x:Type TabItem}}">
                                 <Setter Property="HeaderTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
@@ -1400,7 +1400,7 @@
                             <TabControl Name="faceFXEditorTabControl"
                                         SelectionChanged="GenderTabControl_SelectionChanged">
                                 <TabControl.Resources>
-                                    <Style TargetType="{x:Type TabItem}">
+                                    <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource {x:Type TabItem}}">
                                         <Setter Property="HeaderTemplate">
                                             <Setter.Value>
                                                 <DataTemplate>

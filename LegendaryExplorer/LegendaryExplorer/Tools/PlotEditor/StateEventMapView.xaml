@@ -17,7 +17,7 @@
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <plotEditor:NameConverter x:Key="NameConverter" />
         <plotEditor:PlotPathConverter x:Key="PlotPathConverter" />
-        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle">
+        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle" BasedOn="{StaticResource {x:Type ListBox}}">
 			<Style.Triggers>
 				<Trigger Property="HasItems" Value="True">
 					<Setter Property="SelectedIndex" Value="0" />
@@ -43,6 +43,7 @@
 
 		<!-- State Event Map ListBox -->
 		<ListBox x:Name="StateEventMapListBox" Grid.Column="0" Grid.Row="0" Style="{DynamicResource ListBoxStyle}"
+		    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 			ItemsSource="{Binding StateEvents, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedStateEvent, Mode=TwoWay}">
 			<!-- Resources -->
             <ListBox.ItemTemplate>
@@ -124,6 +125,7 @@
 
 				<!-- State Event Elements ListBox -->
 				<ListBox x:Name="StateEventElementsListBox" Width="150" Style="{DynamicResource ListBoxStyle}"
+				    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 					ItemsSource="{Binding SelectedStateEvent.Value.Elements, NotifyOnTargetUpdated=True}"
 					SelectedItem="{Binding SelectedStateEventElement, Mode=TwoWay}">
 					<!-- Resources -->
@@ -158,7 +160,7 @@
 					</ListBox.Resources>
 
                     <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="Tag" Value="{Binding DataContext, ElementName=StateEventElementsListBox}" />
                             <Setter Property="ContextMenu">
                                 <Setter.Value>
@@ -846,6 +848,7 @@
                                     </Grid.RowDefinitions>
 
                                     <ListBox x:Name="SubstateStateEventSiblingIndicesListBox" Grid.Column="0" Grid.Row="0"
+                                        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 									ItemsSource="{Binding Path=SiblingIndices}"
 									Width="150" Height="60" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center"/>
 
@@ -865,7 +868,7 @@
 
                                         <Button Grid.Column="2" Grid.Row="0" Content="Remove" Click="RemoveSubstateSiblingIndex_Click" Tag="{Binding ElementName=SubstateStateEventSiblingIndicesListBox, Path=SelectedIndex}">
                                             <Button.Style>
-                                                <Style TargetType="Button">
+                                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding ElementName=SubstateStateEventSiblingIndicesListBox, Path=SelectedIndex}" Value="-1">
                                                             <Setter Property="IsEnabled" Value="False" />

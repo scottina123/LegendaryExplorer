@@ -13,7 +13,7 @@
 	d:DesignHeight="600" d:DesignWidth="800">
 	<UserControl.Resources>
 		<converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
-		<Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle">
+		<Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle" BasedOn="{StaticResource {x:Type ListBox}}">
 			<Style.Triggers>
 				<Trigger Property="HasItems" Value="True">
 					<Setter Property="SelectedIndex" Value="0" />
@@ -35,7 +35,7 @@
 
 	<!-- Content -->
 	<Grid>
-		<TabControl>
+		<TabControl Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
 			<TabItem Header="Quests">
 				<Grid>
 					<!-- Grid Definitions -->
@@ -50,6 +50,7 @@
 
 					<!-- Grid Content -->
 					<ListBox x:Name="QuestsListBox" Grid.Column="0" Grid.Row="0" Width="200" Style="{DynamicResource ListBoxStyle}"
+					    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 						ItemsSource="{Binding Quests, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuest, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
                             <!--<DataTemplate DataType="{x:Type questMap:BioQuest}">-->
@@ -105,7 +106,7 @@
 							</StackPanel>
 						</StackPanel>
 
-						<TabControl Grid.Column="0" Grid.Row="1" Margin="0,5,0,0">
+						<TabControl Grid.Column="0" Grid.Row="1" Margin="0,5,0,0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
 							<!-- Quest Goals -->
 							<TabItem Header="Goals">
 								<Grid>
@@ -121,6 +122,7 @@
 
 									<!-- Grid Content -->
 									<ListBox x:Name="QuestGoalsListBox" Grid.Column="0" Grid.Row="0" Width="150" Style="{DynamicResource ListBoxStyle}"
+									    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 										ItemsSource="{Binding SelectedQuest.Value.Goals, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuestGoal, Mode=TwoWay}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate DataType="{x:Type questMap:BioQuestGoal}">
@@ -237,6 +239,7 @@
 
 									<!-- Grid Content -->
 									<ListBox x:Name="QuestPlotItemsListBox" Grid.Column="0" Grid.Row="0" Width="150" Style="{DynamicResource ListBoxStyle}"
+									    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 										ItemsSource="{Binding SelectedQuest.Value.PlotItems, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuestPlotItem, Mode=TwoWay}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate DataType="{x:Type questMap:BioQuestPlotItem}">
@@ -352,6 +355,7 @@
 
 									<!-- Grid Content -->
 									<ListBox x:Name="QuestTasksListBox" Grid.Column="0" Grid.Row="0" Width="150" Style="{DynamicResource ListBoxStyle}"
+									    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 										ItemsSource="{Binding SelectedQuest.Value.Tasks, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuestTask, Mode=TwoWay}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate DataType="{x:Type questMap:BioQuestTask}">
@@ -448,6 +452,7 @@
 											</Grid.RowDefinitions>
 
                                             <ListBox x:Name="QuestTaskPlotItemIndicesListBox" Grid.Column="0" Grid.Row="0"
+                                                Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 												ItemsSource="{Binding Path=SelectedQuestTask.PlotItemIndices}"
 												Width="150" Height="60" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center">
                                             </ListBox>
@@ -466,10 +471,10 @@
 												<!-- Grid Content -->
 												<Button Grid.Column="0" Grid.Row="0" Content="Add" Click="AddQuestTaskPlotItemIndex_Click"/>
 
-												<Button x:Name="RemoveQuestTaskPlotItemIndexButton"  Grid.Column="2" Grid.Row="0" Content="Remove" 
-													Click="RemoveQuestTaskPlotItemIndex_Click">
+														<Button x:Name="RemoveQuestTaskPlotItemIndexButton"  Grid.Column="2" Grid.Row="0" Content="Remove" 
+															Click="RemoveQuestTaskPlotItemIndex_Click">
                                                     <Button.Style>
-                                                        <Style TargetType="Button">
+                                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding ="{Binding ElementName=QuestTaskPlotItemIndicesListBox, Path=SelectedIndex}" Value="-1">
                                                                     <Setter Property="IsEnabled" Value="False"/>

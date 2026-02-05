@@ -242,6 +242,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 this.bind(HexBoxMinWidthProperty, SoundpanelHIRC_Hexbox, nameof(SoundpanelHIRC_Hexbox.MinWidth));
                 this.bind(HexBoxMaxWidthProperty, SoundpanelHIRC_Hexbox, nameof(SoundpanelHIRC_Hexbox.MaxWidth));
 
+                // Register HexBox for theme management
+                Misc.ThemeManager.RegisterHexBox(SoundpanelHIRC_Hexbox);
+                
                 ControlLoaded = true;
             }
         }

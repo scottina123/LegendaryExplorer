@@ -31,9 +31,9 @@
 
   <Style TargetType="{x:Type local:ButtonSpinner}">
     <Setter Property="Background"
-            Value="{DynamicResource {x:Static themes:ResourceKeys.ControlNormalBackgroundKey}}" />
+            Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
     <Setter Property="BorderBrush"
-            Value="{DynamicResource {x:Static themes:ResourceKeys.ControlNormalBorderKey}}" />
+            Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" />
     <Setter Property="BorderThickness"
             Value="1" />
     <Setter Property="Focusable"
@@ -105,7 +105,7 @@
             <Trigger Property="IsEnabled"
                      Value="False">
               <Setter Property="Background"
-                      Value="{DynamicResource {x:Static themes:ResourceKeys.ControlDisabledBackgroundKey}}" />
+                      Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
             </Trigger>
             <Trigger SourceName="PART_IncreaseButton"
                      Property="IsEnabled"

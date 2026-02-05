@@ -18,7 +18,8 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.UnrealScript.Documentation;
-using Xceed.Wpf.Toolkit.Primitives;
+using LegendaryExplorer.SharedUI.Controls;
+using System.Windows.Controls.Primitives;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
@@ -45,6 +46,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private const int HEADER_OFFSET_IMP_IDXLINK = 0x10;
         private const int HEADER_OFFSET_IMP_IDXOBJECTNAME = 0x14;
         private const int HEADER_OFFSET_IMP_IDXPACKAGEFILE = 0x0;
+
         private IEntry _currentLoadedEntry;
         public IEntry CurrentLoadedEntry
         {
@@ -533,11 +535,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //InfoTab_Archetype_ComboBox.Items.Clear();
             InfoTab_Archetype_ComboBox.SelectedItem = null;
             InfoTab_Flags_ComboBox.ItemsSource = null;
-            InfoTab_Flags_ComboBox.SelectedItem = null;
+            InfoTab_Flags_ComboBox.SelectedValue = null;
             InfoTab_ExportFlags_ComboBox.ItemsSource = null;
-            InfoTab_ExportFlags_ComboBox.SelectedItem = null;
+            InfoTab_ExportFlags_ComboBox.SelectedValue = null;
             InfoTab_PackageFlags_ComboBox.ItemsSource = null;
-            InfoTab_PackageFlags_ComboBox.SelectedItem = null;
+            InfoTab_PackageFlags_ComboBox.SelectedValue = null;
             InfoTab_ExportDataSize_TextBox.Text = null;
             InfoTab_ExportOffsetHex_TextBox.Text = null;
             InfoTab_ExportOffsetDec_TextBox.Text = null;
@@ -791,7 +793,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 EObjectFlags newFlags = 0U;
                 foreach (object flag in InfoTab_Flags_ComboBox.Items)
                 {
-                    if (InfoTab_Flags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is SelectorItem { IsSelected: true })
+                    if (InfoTab_Flags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is ListBoxItem { IsSelected: true })
                     {
                         newFlags |= (EObjectFlags)flag;
                     }
@@ -814,7 +816,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 EExportFlags newFlags = 0U;
                 foreach (object flag in InfoTab_ExportFlags_ComboBox.Items)
                 {
-                    if (InfoTab_ExportFlags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is SelectorItem { IsSelected: true })
+                    if (InfoTab_ExportFlags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is ListBoxItem { IsSelected: true })
                     {
                         newFlags |= (EExportFlags)flag;
                     }
@@ -841,6 +843,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 Header_Hexbox.SelectionStartChanged += hb1_SelectionChanged;
                 Header_Hexbox.SelectionLengthChanged += hb1_SelectionChanged;
+                
+                // Register HexBox for theme management
+                Misc.ThemeManager.RegisterHexBox(Header_Hexbox);
             }
         }
 
@@ -1003,7 +1008,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 EPackageFlags newFlags = 0U;
                 foreach (object flag in InfoTab_PackageFlags_ComboBox.Items)
                 {
-                    if (InfoTab_PackageFlags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is SelectorItem { IsSelected: true })
+                    if (InfoTab_PackageFlags_ComboBox.ItemContainerGenerator.ContainerFromItem(flag) is ListBoxItem { IsSelected: true })
                     {
                         newFlags |= (EPackageFlags)flag;
                     }

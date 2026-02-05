@@ -1155,6 +1155,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             this.bind(HexBoxMinWidthProperty, BinaryInterpreter_Hexbox, nameof(BinaryInterpreter_Hexbox.MinWidth));
             this.bind(HexBoxMaxWidthProperty, BinaryInterpreter_Hexbox, nameof(BinaryInterpreter_Hexbox.MaxWidth));
+            
+            // Register HexBox for theme management
+            ThemeManager.RegisterHexBox(BinaryInterpreter_Hexbox);
         }
 
         private void hb1_SelectionChanged(object sender, EventArgs e)

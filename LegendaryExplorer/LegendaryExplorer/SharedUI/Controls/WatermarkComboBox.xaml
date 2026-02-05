@@ -1,0 +1,38 @@
+<UserControl x:Class="LegendaryExplorer.SharedUI.Controls.WatermarkComboBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" 
+             d:DesignHeight="24" d:DesignWidth="200"
+             x:Name="WatermarkComboBoxControl"
+             Focusable="False">
+    <Grid>
+        <ComboBox x:Name="PART_ComboBox"
+                  ItemsSource="{Binding ItemsSource, ElementName=WatermarkComboBoxControl}"
+                  SelectedItem="{Binding SelectedItem, ElementName=WatermarkComboBoxControl, Mode=TwoWay}"
+                  SelectedIndex="{Binding SelectedIndex, ElementName=WatermarkComboBoxControl, Mode=TwoWay}"
+                  IsTextSearchEnabled="{Binding IsTextSearchEnabled, ElementName=WatermarkComboBoxControl}"
+                  IsEditable="True"
+                  IsReadOnly="True"
+                  VerticalContentAlignment="{Binding VerticalContentAlignment, ElementName=WatermarkComboBoxControl}"
+                  Loaded="PART_ComboBox_Loaded"/>
+        <TextBlock x:Name="PART_Watermark"
+                   Text="{Binding Watermark, ElementName=WatermarkComboBoxControl}"
+                   VerticalAlignment="Center"
+                   Margin="6,0,0,0"
+                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                   IsHitTestVisible="False">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SelectedItem, ElementName=PART_ComboBox}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </Grid>
+</UserControl>

@@ -13,7 +13,7 @@
 	<!-- UserControl Resources -->
     <UserControl.Resources>
         <Converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
-        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle">
+        <Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle" BasedOn="{StaticResource {x:Type ListBox}}">
             <Style.Triggers>
                 <Trigger Property="HasItems" Value="True">
                     <Setter Property="SelectedIndex" Value="0" />
@@ -35,7 +35,7 @@
 
     <!-- Content -->
 	<Grid>
-		<TabControl x:Name="CodexTabControl" >
+		<TabControl x:Name="CodexTabControl" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
 			<TabItem x:Name="CodexPagesTab" Header="Codex Pages">
 				<Grid>
 					<!-- Grid Definitions -->
@@ -51,6 +51,7 @@
 
 					<!-- Grid Content -->
                     <ListBox x:Name="CodexPagesListBox" Grid.Column="0" Grid.Row="0" Style="{DynamicResource ListBoxStyle}"
+                        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 						ItemsSource="{Binding CodexPages, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedCodexPage, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
                             <!--<DataTemplate DataType="{x:Type codexMap:BioCodexPage}">-->
@@ -183,6 +184,7 @@
 
 					<!-- Grid Content -->
 					<ListBox x:Name="CodexSectionsListBox" Grid.Column="0" Grid.Row="0" Style="{DynamicResource ListBoxStyle}"
+					    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 						ItemsSource="{Binding CodexSections, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedCodexSection, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
                             <!--<DataTemplate DataType="{x:Type codexMap:BioCodexSection}">-->

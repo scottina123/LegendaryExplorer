@@ -2382,6 +2382,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void Interpreter_Loaded(object sender, RoutedEventArgs e)
         {
             Interpreter_Hexbox = (HexBox)Interpreter_Hexbox_Host.Child;
+            
+            // Register HexBox for theme management BEFORE any other initialization
+            // This ensures colors are applied immediately
+            ThemeManager.RegisterHexBox(Interpreter_Hexbox);
+            
             Interpreter_Hexbox.ByteProvider ??= new ReadOptimizedByteProvider();
             //remove in the event this object is reloaded again
             Interpreter_Hexbox.ByteProvider.Changed -= Interpreter_Hexbox_BytesChanged;

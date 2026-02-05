@@ -1,0 +1,234 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Windows;
+using Be.Windows.Forms;
+using LegendaryExplorer.Misc.AppSettings;
+using Color = System.Drawing.Color;
+
+namespace LegendaryExplorer.Misc
+{
+    /// <summary>
+    /// Manages application theme switching between light and dark modes.
+    /// </summary>
+    public static class ThemeManager
+    {
+        private const string DarkThemeUri = "/LegendaryExplorer;component/DarkTheme.xaml";
+        private static ResourceDictionary _darkThemeDictionary;
+        
+        // Track registered HexBox controls for theme updates
+        private static readonly List<WeakReference<HexBox>> _registeredHexBoxes = new();
+
+        /// <summary>
+        /// Event that fires when the theme changes. Subscribe to this to update custom themed controls.
+        /// </summary>
+        public static event EventHandler<bool> ThemeChanged;
+
+        /// <summary>
+        /// Applies the current theme based on settings.
+        /// </summary>
+        public static void ApplyTheme()
+        {
+            ApplyTheme(Settings.Global_DarkMode_Enabled);
+        }
+
+        /// <summary>
+        /// Applies the specified theme.
+        /// </summary>
+        /// <param name="isDarkMode">True for dark mode, false for light mode.</param>
+        public static void ApplyTheme(bool isDarkMode)
+        {
+            if (Application.Current == null)
+                return;
+
+            var mergedDictionaries = Application.Current.Resources.MergedDictionaries;
+
+            if (isDarkMode)
+            {
+                // Load and apply dark theme if not already applied
+                if (_darkThemeDictionary == null)
+                {
+                    _darkThemeDictionary = new ResourceDictionary
+                    {
+                        Source = new Uri(DarkThemeUri, UriKind.Relative)
+                    };
+                }
+
+                if (!mergedDictionaries.Contains(_darkThemeDictionary))
+                {
+                    mergedDictionaries.Add(_darkThemeDictionary);
+                }
+                
+                // Also set the static HexBox colors so new instances get dark colors
+                HexBox.SetColors(Color.FromArgb(0x1E, 0x1E, 0x1E), Color.FromArgb(0xE0, 0xE0, 0xE0));
+            }
+            else
+            {
+                // Remove dark theme to revert to system defaults
+                if (_darkThemeDictionary != null && mergedDictionaries.Contains(_darkThemeDictionary))
+                {
+                    mergedDictionaries.Remove(_darkThemeDictionary);
+                }
+                
+                // Reset static HexBox colors to light theme
+                HexBox.SetColors(Color.White, Color.Black);
+            }
+            
+            // Update all registered HexBox controls
+            UpdateAllHexBoxThemes(isDarkMode);
+            
+            // Fire the ThemeChanged event to notify subscribers
+            ThemeChanged?.Invoke(null, isDarkMode);
+        }
+        
+        /// <summary>
+        /// Registers a HexBox control for theme management and applies current theme.
+        /// Call this when a HexBox is loaded.
+        /// </summary>
+        /// <param name="hexBox">The HexBox control to register.</param>
+        public static void RegisterHexBox(HexBox hexBox)
+        {
+            if (hexBox == null) return;
+            
+            // Clean up dead references and check if already registered
+            _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out _));
+            
+            // Check if already registered
+            foreach (var weakRef in _registeredHexBoxes)
+            {
+                if (weakRef.TryGetTarget(out var existingHexBox) && existingHexBox == hexBox)
+                    return;
+            }
+            
+            _registeredHexBoxes.Add(new WeakReference<HexBox>(hexBox));
+            
+            // Apply theme immediately
+            ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+            
+            // Hook into HandleCreated to reapply after control is fully initialized
+            hexBox.HandleCreated += (s, e) => ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+            
+            // Hook into VisibleChanged for when the control becomes visible
+            hexBox.VisibleChanged += (s, e) => 
+            { 
+                if (hexBox.Visible) 
+                    ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled); 
+            };
+            
+            // Schedule another apply after delays to ensure rendering is complete
+            Task.Delay(50).ContinueWith(_ =>
+            {
+                try
+                {
+                    if (!hexBox.IsDisposed)
+                        ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+                }
+                catch { }
+            });
+            
+            Task.Delay(200).ContinueWith(_ =>
+            {
+                try
+                {
+                    if (!hexBox.IsDisposed)
+                        ApplyHexBoxTheme(hexBox, Settings.Global_DarkMode_Enabled);
+                }
+                catch { }
+            });
+        }
+        
+        /// <summary>
+        /// Applies the current theme colors to a HexBox control.
+        /// </summary>
+        /// <param name="hexBox">The HexBox control to theme.</param>
+        /// <param name="isDarkMode">Whether dark mode is enabled.</param>
+        public static void ApplyHexBoxTheme(HexBox hexBox, bool isDarkMode)
+        {
+            if (hexBox == null || hexBox.IsDisposed) return;
+            
+            // Apply dark mode to the scrollbar
+            hexBox.ScrollBarDarkMode = isDarkMode;
+            
+            if (isDarkMode)
+            {
+                // Dark theme colors - set all color properties explicitly
+                hexBox.BackColor = Color.FromArgb(0x1E, 0x1E, 0x1E);           // DarkBackground #FF1E1E1E
+                hexBox.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);           // DarkText #FFE0E0E0
+                hexBox.InfoForeColor = Color.FromArgb(0xB0, 0xB0, 0xB0);       // DarkTextSecondary #FFB0B0B0
+                hexBox.SelectionBackColor = Color.FromArgb(0x00, 0x7A, 0xCC); // DarkHighlight #FF007ACC
+                hexBox.SelectionForeColor = Color.White;                       // DarkHighlightText
+                hexBox.HighlightBackColor = Color.FromArgb(0x26, 0x4F, 0x78); // DarkSelection #FF264F78
+                hexBox.HighlightForeColor = Color.FromArgb(0xFF, 0xFF, 0xE0); // Light yellow for visibility
+                hexBox.BackColorDisabled = Color.FromArgb(0x2D, 0x2D, 0x30);  // DarkControl #FF2D2D30
+            }
+            else
+            {
+                // Light theme colors (defaults)
+                hexBox.BackColor = Color.White;
+                hexBox.ForeColor = Color.Black;
+                hexBox.InfoForeColor = Color.Gray;
+                hexBox.SelectionBackColor = Color.Blue;
+                hexBox.SelectionForeColor = Color.White;
+                hexBox.HighlightBackColor = Color.Yellow;
+                hexBox.HighlightForeColor = Color.Black;
+                hexBox.BackColorDisabled = Color.FromName("WhiteSmoke");
+            }
+            
+            // Force immediate synchronous refresh for WinForms control hosted in WPF
+            try
+            {
+                if (hexBox.InvokeRequired)
+                {
+                    hexBox.Invoke(() => PerformHexBoxRefresh(hexBox));
+                }
+                else
+                {
+                    PerformHexBoxRefresh(hexBox);
+                }
+            }
+            catch
+            {
+                // Control might be disposed
+            }
+        }
+        
+        /// <summary>
+        /// Performs the actual refresh operations on the HexBox control
+        /// </summary>
+        private static void PerformHexBoxRefresh(HexBox hexBox)
+        {
+            try
+            {
+                hexBox.Invalidate(true);
+                hexBox.Update();
+                hexBox.Refresh();
+                
+                // Also refresh parent
+                if (hexBox.Parent != null)
+                {
+                    hexBox.Parent.Invalidate(true);
+                    hexBox.Parent.Update();
+                    try { hexBox.Parent.Refresh(); } catch { }
+                }
+            }
+            catch { }
+        }
+        
+        /// <summary>
+        /// Updates all registered HexBox controls with the current theme.
+        /// </summary>
+        private static void UpdateAllHexBoxThemes(bool isDarkMode)
+        {
+            // Clean up dead references as we iterate
+            _registeredHexBoxes.RemoveAll(wr => !wr.TryGetTarget(out _));
+            
+            foreach (var weakRef in _registeredHexBoxes)
+            {
+                if (weakRef.TryGetTarget(out var hexBox))
+                {
+                    ApplyHexBoxTheme(hexBox, isDarkMode);
+                }
+            }
+        }
+    }
+}

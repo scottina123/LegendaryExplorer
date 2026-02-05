@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:hb1="clr-namespace:Be.Windows.Forms;assembly=Be.Windows.Forms.HexBox"
     xmlns:system="clr-namespace:System;assembly=mscorlib"
-    xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+    xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
     mc:Ignorable="d" 
     d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
     Loaded="MetadataEditor_Loaded"
@@ -124,7 +124,6 @@
                   ItemsPanel="{StaticResource VSP}" KeyUp="InfoTab_Objectname_ComboBox_KeyUp" 
                   GotFocus="InfoTab_Objectname_ComboBox_GotFocus" SelectionChanged="Info_ObjectNameComboBox_SelectionChanged" 
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name" IsEditable="True"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Name for this entry&#10;Type a name value to automatically select it&#10;Type in a new name and press enter to add a new name"/>
         
         <TextBox Name="InfoTab_ObjectnameIndex_TextBox"  VerticalAlignment="Center" Grid.Row="1" 
@@ -147,7 +146,6 @@
         <ComboBox Name="InfoTab_Class_ComboBox" VerticalAlignment="Center" Grid.Row="4" Grid.Column="1" 
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Class_ComboBox_GotFocus" 
                   SelectionChanged="Info_ClassComboBox_SelectionChanged" IsTextSearchEnabled="True" TextSearch.TextPath="UIndex" 
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Class for this entry&#10;Type a UIndex value to automatically select it"
                   ItemsSource="{Binding AllClassesList, Mode=OneTime}"/>
         
@@ -156,14 +154,12 @@
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_ImpClass_ComboBox_GotFocus" 
                   SelectionChanged="Info_ImpClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Class for this entry&#10;Type a name value to automatically select it"/>
 
         <ComboBox Name="InfoTab_Superclass_ComboBox" VerticalAlignment="Center" Grid.Row="6" Grid.Column="1" 
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Superclass_ComboBox_GotFocus" 
                   SelectionChanged="Info_SuperClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Superclass for this entry&#10;Type a UIndex value to automatically select it"
                   ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
 
@@ -171,7 +167,6 @@
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_PackageLink_ComboBox_GotFocus" 
                   SelectionChanged="Info_PackageLinkClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Parent for this entry&#10;Set to 0 to make this item a top level entry&#10;Type a UIndex value to automatically select it"
                   ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
         
@@ -180,18 +175,16 @@
                   ItemsPanel="{StaticResource VSP}" 
                   GotFocus="InfoTab_PackageFile_ComboBox_GotFocus" SelectionChanged="Info_PackageFileComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Filename (without extension) that contains the class for this import&#10;Type a name value to automatically select it"/>
 
         <ComboBox Name="InfoTab_Archetype_ComboBox" VerticalAlignment="Center" Grid.Row="9" 
                   Grid.Column="1" ItemsPanel="{StaticResource VSP}"  GotFocus="InfoTab_Archetype_ComboBox_GotFocus" 
                   SelectionChanged="Info_ArchetypeComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                   ToolTip="Archetype for this entry&#10;Set to 0 to indicate no archetype&#10;Type a UIndex value to automatically select it"
                   ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
 
-        <xctk:CheckComboBox Name="InfoTab_Flags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="10" Grid.Column="1"
+        <controls:FlagsComboBox x:Name="InfoTab_Flags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="10" Grid.Column="1"
                             GotFocus="InfoTab_Flags_ComboBox_GotFocus" ItemSelectionChanged="InfoTab_Flags_ComboBox_ItemSelectionChanged"
                             ToolTip="Flags for this entry&#10;It is very rare you will ever need to change these"/>
         <Separator Grid.ColumnSpan="2" Grid.Row="11"/>
@@ -200,12 +193,12 @@
         <TextBox Name="InfoTab_ExportDataSize_TextBox" Grid.Row="13" Grid.Column="1" IsReadOnly ="true" VerticalAlignment="Center" Style="{StaticResource MetadataTextboxStyle}"/>
         <TextBox Name="InfoTab_ExportOffsetHex_TextBox" Grid.Row="14" Grid.Column="1" IsReadOnly ="true" VerticalAlignment="Center" Style="{StaticResource MetadataTextboxStyle}"/>
         <TextBox Name="InfoTab_ExportOffsetDec_TextBox" Grid.Row="15" Grid.Column="1" IsReadOnly="True" VerticalAlignment="Center" Style="{StaticResource MetadataTextboxStyle}"/>
-        <xctk:CheckComboBox Name="InfoTab_ExportFlags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="16" Grid.Column="1"
+        <controls:FlagsComboBox x:Name="InfoTab_ExportFlags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="16" Grid.Column="1"
                             GotFocus="InfoTab_ExportFlags_ComboBox_GotFocus" ItemSelectionChanged="InfoTab_ExportFlags_ComboBox_ItemSelectionChanged"
                             ToolTip="ExportFlags for this entry&#10;It is very rare you will ever need to change these"/>
         <TextBox Name="InfoTab_GenerationNetObjectCount_TextBox" Grid.Row="17" Grid.Column="1" IsReadOnly="True" VerticalAlignment="Center" Style="{StaticResource MetadataTextboxStyle}"/>
         <TextBox Name="InfoTab_ExportGUID_TextBox" Grid.Row="18" Grid.Column="1" IsReadOnly="True" VerticalAlignment="Center" Style="{StaticResource MetadataTextboxStyle}"/>
-        <xctk:CheckComboBox Name="InfoTab_PackageFlags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="19" Grid.Column="1"
+        <controls:FlagsComboBox x:Name="InfoTab_PackageFlags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="19" Grid.Column="1"
                             GotFocus="InfoTab_PackageFlags_ComboBox_GotFocus" ItemSelectionChanged="InfoTab_PackageFlags_ComboBox_ItemSelectionChanged"
                             ToolTip="PackageFlags for this package entry&#10;It is very rare you will ever need to change these"/>        
         <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Grid.Row="20">

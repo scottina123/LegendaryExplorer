@@ -86,6 +86,9 @@ namespace LegendaryExplorer.Startup
             }
 
             Settings.LoadSettings();
+            
+            // Apply theme based on settings
+            ThemeManager.ApplyTheme();
 
             ToolSet.Initialize();
             app.ShutdownMode = ShutdownMode.OnExplicitShutdown;

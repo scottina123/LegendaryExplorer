@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+using LegendaryExplorer.Misc;
 using Microsoft.AppCenter;
 
 namespace LegendaryExplorer.Misc.AppSettings
@@ -45,6 +46,12 @@ namespace LegendaryExplorer.Misc.AppSettings
                 {
                     // Will not re-enable for this session. However, will enable on the next session
                     AppCenter.SetEnabledAsync(Global_Analytics_Enabled);
+                }
+                
+                if (propertyName == nameof(Global_DarkMode_Enabled))
+                {
+                    // Apply theme immediately when setting changes
+                    ThemeManager.ApplyTheme(Global_DarkMode_Enabled);
                 }
             }
             return true;

@@ -390,6 +390,9 @@ namespace LegendaryExplorer.ToolsetDev
         private void FileHexViewerWPF_OnLoaded(object sender, RoutedEventArgs e)
         {
             Interpreter_Hexbox = (HexBox)Interpreter_Hexbox_Host.Child;
+            
+            // Register HexBox for theme management
+            Misc.ThemeManager.RegisterHexBox(Interpreter_Hexbox);
         }
 
         private void FileHexViewerWPF_OnClosing(object sender, CancelEventArgs e)
