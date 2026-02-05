@@ -1064,9 +1064,53 @@ namespace LegendaryExplorerCore.Unreal
 
         private static void CollectMeshes(ModelRoot modelRoot, out List<(string, Node[])> skeletalMeshes, out List<(string, Node[])> staticMeshes)
         {
+            // sort all the nodes that have a mesh into groups by visual parent (or none; that's also a group)
+            // there will be a parent for each armature exported from Blender, with all meshes under that armature sharing the parent and the same skin
             var meshes = modelRoot.LogicalNodes.Where(node => node.Mesh != null).GroupBy(node => node.VisualParent);
-            skeletalMeshes = [..meshes.Where(x => x.All(node => node.Skin != null && node.Skin == x.First().Skin)).Select(group => (group.Key.Name, group.ToArray()))];
-            staticMeshes = [.. meshes.Where(x => x.All(node => node.Skin == null)).Select(group => (group.Key?.Name ?? group.First().Name, group.ToArray()))];
+            skeletalMeshes = [];
+            staticMeshes = [];
+            foreach (var meshGroup in meshes)
+            {
+                foreach (var node in meshGroup)
+                {
+                    node.Name = CleanupName(node.Name);
+                }
+                // do I want descending?
+                var sorted = meshGroup.OrderBy(x => x.Name);
+                var currentLOD0 = sorted.First();
+                List<Node> currentLODs = [];
+                foreach (var node in sorted)
+                {
+                    // collect them in a list as long as they have the same name prefix and skin
+                    if (node.Skin == currentLOD0.Skin && node.Name.StartsWith(currentLOD0.Name))
+                    {
+                        currentLODs.Add(node);
+                    }
+                    // when they don't add that list to the output list and start a new one
+                    else
+                    {
+                        if (currentLOD0.Skin != null)
+                        {
+                            skeletalMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                        }
+                        else
+                        {
+                            staticMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                        }
+                        currentLOD0 = node;
+                        currentLODs = [node];
+                    }
+                }
+                // add the final list
+                if (currentLOD0.Skin != null)
+                {
+                    skeletalMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                }
+                else
+                {
+                    staticMeshes.Add(currentLOD0.Name, [.. currentLODs]);
+                }
+            }
         }
 
         private static bool DoesMeshUseSharedVertexAccessors(Mesh mesh)
@@ -1103,9 +1147,8 @@ namespace LegendaryExplorerCore.Unreal
                  && IsAttributeShared(VertexTextureNOriginalIndex.OriginalIndexAttributeName);
         }
 
-        private static void SortNodes(string meshName, Node[] nodes, out Node[] lodNodes, out IEnumerable<Node> collisionNodes)
+        private static void SortNodes(string meshName, Node[] nodes, out Node[] lodNodes, out Node[] collisionNodes)
         {
-            
             if (nodes[0].Skin != null)
             {
                 // all nodes with skins are LODs. Skeletal Meshes do not have separate collision components
@@ -1117,9 +1160,9 @@ namespace LegendaryExplorerCore.Unreal
             else
             {
                 // static meshes are sorted on whether they contain "collision" in the name (case insensitive)
-                collisionNodes = nodes.Where(x => x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase));
+                collisionNodes = [.. nodes.Where(x => x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase))];
                 // TODO sort these at all?> same problem as above. 
-                lodNodes = nodes.Where(x => !x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase)).ToArray();
+                lodNodes = [.. nodes.Where(x => !x.Name.Contains("collision", StringComparison.InvariantCultureIgnoreCase))];
             }
         }
 
