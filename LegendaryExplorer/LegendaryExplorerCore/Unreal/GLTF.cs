@@ -794,29 +794,99 @@ namespace LegendaryExplorerCore.Unreal
         #endregion
 
         #region import
-        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null)
+
+        /// <summary>
+        /// Find out what meshes are inside a glTF, if any.
+        /// </summary>
+        /// <param name="gltf">the gltf to query</param>
+        /// <param name="skeletalMeshes">the names of any contained skeletal meshes</param>
+        /// <param name="staticMeshes">the names of any contained static meshes</param>
+        public static void QueryMeshes(ModelRoot gltf, out IEnumerable<string> skeletalMeshes, out IEnumerable<string> staticMeshes)
+        {
+            CollectMeshes(gltf, out var skelMeshTemp, out var staticMeshTemp);
+            skeletalMeshes = skelMeshTemp.Select(x => x.Item1);
+            staticMeshes = staticMeshTemp.Select(x => x.Item1);
+        }
+
+        /// <summary>
+        /// Takes a gltf object and imports one or more mesh from it into the given file.
+        /// </summary>
+        /// <param name="gltf">the glTF object to get the mesh data from</param>
+        /// <param name="pcc">the package the meshes should be added to.</param>
+        /// <param name="existingMesh">The existing mesh export to be replaced (optional)</param>
+        /// <param name="specificMesh">the name of the mesh to use as the replacement in the case that there are more than one. (optional)</param>
+        /// <exception cref="ArgumentException">If you try to replace a mesh when there are more than one mesh to replace it with without specifying which one to use, or if you specify an invalid one</exception>
+        public static void ConvertGltfToMesh(ModelRoot gltf, IMEPackage pcc, ExportEntry existingMesh = null, string specificMesh = null)
         {
             CollectMeshes(gltf, out var skeletalMeshes, out var staticMeshes);
-            int totalMeshes = skeletalMeshes.Count + staticMeshes.Count;
-            if (totalMeshes == 0)
+            if (skeletalMeshes.Count == 0 && staticMeshes.Count == 0)
             {
-                // TODO show a warning or something
+                // TODO show a warning or something?
                 return;
             }
-            if (totalMeshes > 1 && existingMesh != null)
+            // if there is an existing mesh to replace, make sure we know which one to replace it with
+            if (existingMesh != null)
             {
-                // TODO add support for this?
-                // ideally it would pop a dialog to choose which one to import
-                throw new NotImplementedException("The file you are trying to import contains more than one mesh, but you are trying to replace a mesh. try again adding as a new mesh (select something that is not a mesh) and it will import all your meshes as new meshes.");
-            }
-            // if you are trying to replace a skeletal mesh but you are importing static (or vice versa) count it as nothing selected (not a compatible export selected)
-            if (skeletalMeshes.Count == 1 && existingMesh != null && existingMesh.ClassName == "StaticMesh")
-            {
-                existingMesh = null;
-            }
-            if (staticMeshes.Count == 1 && existingMesh != null && existingMesh.ClassName == "SkeletalMesh")
-            {
-                existingMesh = null;
+                if (existingMesh.ClassName == "SkeletalMesh")
+                {
+                    if (skeletalMeshes.Count == 0)
+                    {
+                        // this is fine, continue with any static meshes and ignore the selected mesh to replace
+                        existingMesh = null;
+                    }
+                    else if (skeletalMeshes.Count == 1)
+                    {
+                        // great, use this one, ignore any static meshes
+                        staticMeshes = [];
+                    }
+                    else if (skeletalMeshes.Count > 1)
+                    {
+                        // there is more than one and they didn't specify which one to use
+                        if (specificMesh == null)
+                        {
+                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have not specified which one to use as the replacement.");
+                        }
+                        var specificSkelMesh = skeletalMeshes.FirstOrDefault(x => x.Item1 == specificMesh);
+                        if (specificSkelMesh == default)
+                        {
+                            // they specified one, but it wasn't found
+                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have specified an invalid one to use as the replacement.");
+                        }
+                        // they specified one and it was found; use that, ignore any static meshes
+                        skeletalMeshes = [specificSkelMesh];
+                        staticMeshes = [];
+                    }
+                }
+                else if (existingMesh.ClassName == "StaticMesh")
+                {
+                    if (staticMeshes.Count == 0)
+                    {
+                        // this is fine, continue with any skeletal meshes and ignore the selected mesh to replace
+                        existingMesh = null;
+                    }
+                    else if (staticMeshes.Count == 1)
+                    {
+                        // great, use this one, ignore any skeletal meshes
+                        skeletalMeshes = [];
+                    }
+                    else if (staticMeshes.Count > 1)
+                    {
+                        // there is more than one and they didn't specify which one to use
+                        if (specificMesh == null)
+                        {
+                            throw new ArgumentException("you are trying to replace a static mesh, but there is more than one static mesh in this glTF and you have not specified which one to use as the replacement.");
+                        }
+                        var specificStatMesh = staticMeshes.FirstOrDefault(x => x.Item1 == specificMesh);
+                        if (specificStatMesh == default)
+                        {
+                            // they specified one, but it wasn't found
+                            throw new ArgumentException("you are trying to replace a skeletal mesh, but there is more than one skeletal mesh in this glTF and you have specified an invalid one to use as the replacement.");
+                        }
+                        // they specified one and it was found; use that, ignore any skeletal meshes
+                        staticMeshes = [specificStatMesh];
+                        skeletalMeshes = [];
+                    }
+                }
             }
             foreach (var skelMesh in skeletalMeshes)
             {

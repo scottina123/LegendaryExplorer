@@ -113,89 +113,31 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
         public static void ExportMeshToGltf(PackageEditorWindow pew, GLTF.MaterialExportLevel materialExportLevel = GLTF.MaterialExportLevel.NameOnly)
         {
-            if (pew.Pcc == null)
-            {
-                return;
-            }
-            if (pew.Pcc.Game == MEGame.ME1)
-            {
-                ShowError("This experiment does not yet support OT1; if you must do this, port it to another game first");
-                return;
-            }
-            if (pew.Pcc.Game == MEGame.UDK)
-            {
-                ShowError("This experiment does not support UDK files;");
-                return;
-            }
-            if (GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh", "SkeletalMeshComponent", "BioPawn", "SFXStuntActor", "SkeletalMeshActor"], out var export))
-            {
-                if (export.ClassName == "StaticMesh" && !(pew.Pcc.Game.IsGame3() || pew.Pcc.Game.IsLEGame()))
-                {
-                    ShowError("This experiment does not yet support OT1 or OT2 for static meshes.");
-                    return;
-                }
-                var d = new SaveFileDialog { Filter = "glTF binary|*.glb|glTF|*.glTF", FileName = $"{pew.SelectedItem.Entry.ObjectName.Instanced}.glb"};
-                if (d.ShowDialog() == true)
-                {
-                    Task.Run(() =>
-                    {
-                        pew.BusyText = "Exporting to glTF...";
-                        pew.IsBusy = true;
-                        GLTF.ExportMeshToGltf(export, d.FileName, materialExportLevel, $"Legendary Explorer {AppVersion.DisplayedVersion}");
-                    }).ContinueWithOnUIThread(x =>
-                    {
-                        pew.IsBusy = false;
-                        if (x.Exception != null)
-                        {
-                            ShowError(x.Exception.FlattenException());
-                        }
-                    });
-                }
-            }
-            else
-            {
-                ShowError("You must select a skeletal mesh, static mesh, SkeletalMeshComponent, SFXStuntActor, SkeletalMeshActor, or BioPawn");
-            }
+            GltfHelper.ExportMeshToGltf(pew, null, pew.Pcc, pew.SelectedItem.Entry, materialExportLevel);
         }
 
         public static void ImportGltf(PackageEditorWindow pew)
         {
-            if (pew.Pcc == null)
+            if (pew.SelectedItem?.Entry != null && (pew.SelectedItem.Entry.ClassName == "SkeletalMesh" || pew.SelectedItem.Entry.ClassName == "StaticMesh"))
             {
-                return;
+                GltfHelper.ReplaceFromGltf(pew, pew.SelectedItem.Entry);
             }
-            if (pew.Pcc.Game == MEGame.ME1)
+            else 
             {
-                ShowError("This experiment does not yet support OT1; if you must do this, import it into another game and port it to OT1");
-            }
-            if (pew.Pcc.Game == MEGame.UDK)
-            {
-                ShowError("This experiment does not support UDK files;");
-            }
-            if (GetGltfFromFile(out var gltf, out string _))
-            {
-                GetSelectedItem(pew, ["SkeletalMesh", "StaticMesh"], out ExportEntry selectedMeshToReplace);
-                GLTF.ConvertGltfToMesh(gltf, pew.Pcc, selectedMeshToReplace);
+                GltfHelper.ImportNewFromGltf(pew);
             }
         }
-        private static bool GetGltfFromFile(out SharpGLTF.Schema2.ModelRoot gltf, out string filePath)
-        {
-            var d = new OpenFileDialog
-            {
-                Filter = "gLTF|*.gltf;*.glb",
-                Title = "Select a gLTF or glb file"
-            };
-            if (d.ShowDialog() == true)
-            {
-                filePath = d.FileName;
-                gltf = SharpGLTF.Schema2.ModelRoot.Load(filePath, SharpGLTF.Validation.ValidationMode.Skip);
-                return true;
-            }
 
-            gltf = null;
-            filePath = null;
-            return false;
-        }
+        //public static void ImportNewFromGltf(PackageEditorWindow pew)
+        //{
+        //    GltfHelper.ImportNewFromGltf(pew);
+        //}
+
+        //public static void ReplaceFromGltf(PackageEditorWindow pew)
+        //{
+        //    GltfHelper.ReplaceFromGltf(pew, pew.SelectedItem.Entry);
+        //}
+
 
         private static SkeletalMesh CreateSkeletalMeshFromPsks(PackageEditorWindow pew, PSK[] psks, out ArrayProperty<StructProperty> lodInfoProp)
         {
