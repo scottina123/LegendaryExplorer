@@ -592,7 +592,7 @@
   </DataTemplate>
 
   <SolidColorBrush x:Key="GlyphBrush"
-                   Color="Black" />
+                   Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}" />
 
   <ControlTemplate x:Key="ExpanderToggleButton"
                    TargetType="{x:Type ToggleButton}">

@@ -1074,10 +1074,112 @@ xmlns:xctkthemes="clr-namespace:Xceed.Wpf.Toolkit.Themes;assembly=DotNetProjects
     <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
     <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#FF3E7B98"/>
     
-    <!-- Expander styling - simplified to work with all ExpandDirection values -->
+    <!-- Expander Toggle Button style for dark theme -->
+    <Style x:Key="ExpanderToggleButtonStyle" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border x:Name="ExpanderButtonBorder"
+                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                            BorderThickness="1"
+                            CornerRadius="9"
+                            Width="19"
+                            Height="19"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Path x:Name="Arrow"
+                              Data="M 1,1.5 L 4.5,5 L 8,1.5"
+                              Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                              StrokeThickness="2"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform Angle="0"/>
+                            </Path.RenderTransform>
+                        </Path>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="180"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ExpanderButtonBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                            <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ExpanderButtonBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
+    <!-- Expander styling with full template for dark theme support -->
     <Style TargetType="{x:Type Expander}">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+        <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Expander}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            SnapsToDevicePixels="True">
+                        <DockPanel>
+                            <ToggleButton x:Name="HeaderSite"
+                                          DockPanel.Dock="Top"
+                                          Style="{StaticResource ExpanderToggleButtonStyle}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          MinWidth="0"
+                                          MinHeight="0"
+                                          Margin="1"
+                                          Content="{TemplateBinding Header}"
+                                          ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"/>
+                            <ContentPresenter x:Name="ExpandSite"
+                                              DockPanel.Dock="Bottom"
+                                              Visibility="Collapsed"
+                                              Focusable="False"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="ExpandDirection" Value="Right">
+                            <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Right"/>
+                            <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Left"/>
+                        </Trigger>
+                        <Trigger Property="ExpandDirection" Value="Up">
+                            <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Top"/>
+                            <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Bottom"/>
+                        </Trigger>
+                        <Trigger Property="ExpandDirection" Value="Left">
+                            <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Left"/>
+                            <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Right"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     
     <!-- Label styling -->
