@@ -1,4 +1,4 @@
-﻿<misc:NotifyPropertyChangedWindowBase
+<misc:NotifyPropertyChangedWindowBase
     x:Class="LegendaryExplorer.Dialogs.SoundReplaceOptionsDialog"
     xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

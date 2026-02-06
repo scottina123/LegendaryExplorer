@@ -1,4 +1,4 @@
-﻿<bases:WPFBase x:Class="LegendaryExplorer.Tools.TextureStudio.MasterTextureSelector"
+<bases:WPFBase x:Class="LegendaryExplorer.Tools.TextureStudio.MasterTextureSelector"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -55,7 +55,7 @@
                                             <Style TargetType="{x:Type TextBlock}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="true">
-                                                        <Setter Property="Background" Value="Yellow"/>
+                                                        <Setter Property="Background" Value="#50D4A020"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -68,7 +68,7 @@
                                                 <Style TargetType="{x:Type TextBlock}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="true">
-                                                            <Setter Property="Background" Value="Yellow"/>
+                                                            <Setter Property="Background" Value="#50D4A020"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>

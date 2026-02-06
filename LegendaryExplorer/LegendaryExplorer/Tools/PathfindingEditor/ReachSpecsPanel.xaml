@@ -1,4 +1,4 @@
-﻿<exportLoaderControls:ExportLoaderControl
+<exportLoaderControls:ExportLoaderControl
              x:Class="LegendaryExplorer.Tools.PathfindingEditor.ReachSpecsPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

@@ -1,4 +1,4 @@
-﻿<bases:WPFBase x:Class="LegendaryExplorer.Tools.Sequence_Editor.SequenceEditorWPF"
+<bases:WPFBase x:Class="LegendaryExplorer.Tools.Sequence_Editor.SequenceEditorWPF"
         xmlns:global="clr-namespace:LegendaryExplorer"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -266,7 +266,7 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Path=Export.EntryHasPendingChanges}"
                                                             Value="true">
-                                                <Setter Property="Background" Value="Yellow" />
+                                                <Setter Property="Background" Value="#50D4A020" />
                                                 <Setter Property="ToolTip"
                                                         Value="This export has been modified but the file has not yet been saved" />
                                             </DataTrigger>
@@ -350,7 +350,7 @@
                                                         <DataTrigger
                                                             Binding="{Binding Path=Entry.EntryHasPendingChanges}"
                                                             Value="true">
-                                                            <Setter Property="Background" Value="Yellow" />
+                                                            <Setter Property="Background" Value="#50D4A020" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>

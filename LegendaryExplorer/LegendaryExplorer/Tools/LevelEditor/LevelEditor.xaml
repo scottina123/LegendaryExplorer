@@ -1,4 +1,4 @@
-﻿<bases:WPFBase
+<bases:WPFBase
         x:Class="LegendaryExplorer.Tools.LevelEditor.LevelEditor"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -86,7 +86,7 @@
                             <Style TargetType="Button">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="true">
-                                        <Setter Property="Background" Value="Yellow"/>
+                                        <Setter Property="Background" Value="#50D4A020"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -162,7 +162,7 @@
                                 </StackPanel>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding Path=Export.EntryHasPendingChanges}" Value="true">
-                                        <Setter Property="Background" Value="Yellow" TargetName="ExportContainer"/>
+                                        <Setter Property="Background" Value="#50D4A020" TargetName="ExportContainer"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>

@@ -1,4 +1,4 @@
-﻿<bases:TrackingNotifyPropertyChangedWindowBase
+<bases:TrackingNotifyPropertyChangedWindowBase
     x:Class="LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF_ExportReplaceDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

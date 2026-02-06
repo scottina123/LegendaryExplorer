@@ -1,4 +1,4 @@
-﻿<bases:TrackingNotifyPropertyChangedWindowBase 
+<bases:TrackingNotifyPropertyChangedWindowBase 
         x:Class="LegendaryExplorer.Tools.ConditionalsEditor.ConditionalsEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -107,7 +107,7 @@
                                 <Style TargetType="{x:Type Grid}">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Path=IsModified}" Value="true">
-                                            <Setter Property="Background" Value="Yellow" />
+                                            <Setter Property="Background" Value="#50D4A020" />
                                             <Setter Property="ToolTip" Value="This conditional has been modified but the file has not yet been saved" />
                                         </DataTrigger>
                                     </Style.Triggers>
