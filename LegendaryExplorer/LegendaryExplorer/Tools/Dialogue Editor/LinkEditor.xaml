@@ -11,7 +11,7 @@
     <Window.Resources>
 
     </Window.Resources>
-    <DockPanel LastChildFill="True"  Background="GhostWhite">
+    <DockPanel LastChildFill="True" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
         <TextBlock Name="LineString_TextBlock" DockPanel.Dock="Top" TextWrapping="WrapWithOverflow" FontSize="12" Margin="5"/>
         <FrameworkElement x:Name="dummyElement" Visibility="Collapsed"/>
         <DockPanel DockPanel.Dock="Bottom" Margin="0,5,0,0">
