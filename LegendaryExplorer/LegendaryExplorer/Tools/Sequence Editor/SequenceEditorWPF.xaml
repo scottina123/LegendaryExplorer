@@ -260,7 +260,7 @@
                             Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,0,5,0">
+                            <Grid Margin="0,0,5,0" TextElement.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
                                 <Grid.Style>
                                     <Style TargetType="{x:Type Grid}">
                                         <Style.Triggers>
@@ -379,8 +379,7 @@
                                                         ItemsSource="{Binding Sublinks}">
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding DisplayName}"
-                                                    Foreground="{Binding Path=ForegroundColor}">
+                                        <TextBlock Text="{Binding DisplayName}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TreeViewItem}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="{x:Type TextBlock}">
                                                     <Style.Triggers>
