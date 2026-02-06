@@ -545,8 +545,9 @@ namespace LegendaryExplorer.SharedUI
             }
         }
 
-        // Use dynamic resource lookups for theme support
-        private static SolidColorBrush ImportEntryBrush => (SolidColorBrush)Application.Current.FindResource(SystemColors.GrayTextBrushKey);
+        // Use application-specific brushes for import/export text colors
+        // ImportIndexBrush is darker than ControlTextBrush to distinguish imports from exports
+        private static SolidColorBrush ImportEntryBrush => (SolidColorBrush)Application.Current.FindResource("ImportIndexBrush");
         private static SolidColorBrush ExportEntryBrush => (SolidColorBrush)Application.Current.FindResource(SystemColors.ControlTextBrushKey);
 
         public override string ToString()
