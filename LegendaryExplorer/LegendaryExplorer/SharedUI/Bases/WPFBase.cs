@@ -14,6 +14,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using Microsoft.AppCenter.Analytics;
+using XceedMessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.SharedUI.Bases
 {
@@ -51,7 +52,7 @@ namespace LegendaryExplorer.SharedUI.Bases
             if (pcc is { IsModified: true } && pcc.Users.Count == 1)
             {
                 this.RestoreAndBringToFront();
-                if (MessageBoxResult.No == MessageBox.Show(this, $"{Path.GetFileName(pcc.FilePath)} has unsaved changes. Do you really want to close {Title}?", "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning))
+                if (MessageBoxResult.No == XceedMessageBox.Show(this, $"{Path.GetFileName(pcc.FilePath)} has unsaved changes. Do you really want to close {Title}?", "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning))
                 {
                     LEXMainWindow.IsAllowedToClose = false; // Do not let main window close at this time
                     e.Cancel = true;

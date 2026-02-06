@@ -19,10 +19,14 @@
             <Style x:Key="CustomListViewItemStyle" TargetType="{x:Type ListViewItem}">
                 <Style.Triggers>
                     <Trigger Property="ItemsControl.AlternationIndex" Value="0">
-                        <Setter Property="Background" Value="White"></Setter>
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"></Setter>
                     </Trigger>
                     <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                        <Setter Property="Background" Value="#EEEEFF"></Setter>
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"></Setter>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
                     </Trigger>
                 </Style.Triggers>
                 <Setter
@@ -31,6 +35,9 @@
                 <Setter
                     Property="HorizontalContentAlignment"
                     Value="Stretch" />
+                <Setter
+                    Property="Foreground"
+                    Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
             </Style>
         </DockPanel.Resources>
         <TextBlock Text="{Binding TopText}" TextWrapping="Wrap" DockPanel.Dock="Top" Margin="0,5,0,5"/>
