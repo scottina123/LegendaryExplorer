@@ -5,6 +5,12 @@
                 xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
                 xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit">
 
+    <!-- Light theme brushes that can be overridden by DarkTheme.xaml -->
+    <!-- Must be in MergedDictionaries for proper override behavior -->
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/LegendaryExplorer;component/LightTheme.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
 <FontFamily x:Key="TitilliumWeb-Italic">/LegendaryExplorer;component/Resources/Fonts/TitilliumWeb-Italic.ttf#Titillium Web</FontFamily>
 <FontFamily x:Key="TitilliumWeb-Light">/LegendaryExplorer;component/Resources/Fonts/TitilliumWeb-Light.ttf#Titillium Web</FontFamily>
 <FontFamily x:Key="TitilliumWeb-SemiBold">/LegendaryExplorer;component/Resources/Fonts/TitilliumWeb-SemiBold.ttf#Titillium Web</FontFamily>
@@ -24,19 +30,6 @@
 <SolidColorBrush x:Key="ImportIndexBrush" Color="Gray"/>
 <SolidColorBrush x:Key="ClassNameBrush" Color="BlueViolet"/>
 <SolidColorBrush x:Key="SecondaryTextBrush" Color="Gray"/>
-    
-<!-- ToolBox accent color - used for sequence/dialogue editor toolboxes (light mode: orange) -->
-<SolidColorBrush x:Key="ToolBoxAccentBrush" Color="Orange"/>
-
-<!-- Soundpanel-specific brushes for light mode -->
-<SolidColorBrush x:Key="AudioEntryTextBrush" Color="DarkBlue"/>
-<SolidColorBrush x:Key="DataChangedBackgroundBrush" Color="Yellow"/>
-<SolidColorBrush x:Key="MediaStateBorderBrush" Color="Red"/>
-<SolidColorBrush x:Key="MediaStateBackgroundBrush" Color="AntiqueWhite"/>
-
-<!-- Menu popup brushes for light mode (system default colors) -->
-<SolidColorBrush x:Key="MenuPopupBackgroundBrush" Color="{x:Static SystemColors.MenuColor}"/>
-<SolidColorBrush x:Key="MenuPopupBorderBrush" Color="{x:Static SystemColors.ActiveBorderColor}"/>
 
 <system:Double x:Key="InfoPanelWidth">300</system:Double>
 <Style TargetType="TextBox">

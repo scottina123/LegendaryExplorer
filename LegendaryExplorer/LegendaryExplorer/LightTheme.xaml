@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <!-- 
+    Light Theme for Legendary Explorer
+    Contains brushes that can be overridden by DarkTheme.xaml
+    These must be in a merged dictionary to allow proper override behavior.
+    -->
+    
+    <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
+    <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="Orange"/>
+    
+    <!-- Soundpanel-specific brushes for light mode -->
+    <SolidColorBrush x:Key="AudioEntryTextBrush" Color="DarkBlue"/>
+    <SolidColorBrush x:Key="DataChangedBackgroundBrush" Color="Yellow"/>
+    <SolidColorBrush x:Key="MediaStateBorderBrush" Color="Red"/>
+    <SolidColorBrush x:Key="MediaStateBackgroundBrush" Color="AntiqueWhite"/>
+    
+    <!-- Menu popup brushes for light mode (system default colors) -->
+    <SolidColorBrush x:Key="MenuPopupBackgroundBrush" Color="{x:Static SystemColors.MenuColor}"/>
+    <SolidColorBrush x:Key="MenuPopupBorderBrush" Color="{x:Static SystemColors.ActiveBorderColor}"/>
+    
+</ResourceDictionary>
