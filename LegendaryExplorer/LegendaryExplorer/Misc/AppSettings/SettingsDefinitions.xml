@@ -69,6 +69,8 @@
   <setting name="PathfindingEditor_ShowArtLayer" type="bool" defaultvalue="false"/>
   <setting name="PathfindingEditor_ShowSplinesLayer" type="bool" defaultvalue="false"/>
   <setting name="PathfindingEditor_ShowEverythingElseLayer" type="bool" defaultvalue="false"/>
+  <setting name="PathfindingEditor_BackgroundColor" type="int" defaultvalue="-8224126" category="Pathfinding Editor"
+           friendlyName="Graph Editor Background Color"/>
 
   <!-- AssetDB specific settings-->
   <setting name="AssetDB_DefaultGame" type="string" defaultvalue=""/>

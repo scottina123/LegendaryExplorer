@@ -205,6 +205,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _pathfindingeditor_showeverythingelselayer; 
             set => SetProperty(ref _pathfindingeditor_showeverythingelselayer, value);
         }
+        private static int _pathfindingeditor_backgroundcolor = -8224126; // RGB(130, 130, 130) - grey background
+        public static int PathfindingEditor_BackgroundColor {
+            get => _pathfindingeditor_backgroundcolor; 
+            set => SetProperty(ref _pathfindingeditor_backgroundcolor, value);
+        }
         private static string _assetdb_defaultgame = ""; 
         public static string AssetDB_DefaultGame {
             get => _assetdb_defaultgame; 

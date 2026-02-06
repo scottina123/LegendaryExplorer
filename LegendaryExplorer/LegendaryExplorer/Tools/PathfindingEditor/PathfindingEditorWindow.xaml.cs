@@ -558,7 +558,23 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         #endregion
 
         #region Load+I/O
-        private static readonly System.Drawing.Color GraphEditorBackColor = System.Drawing.Color.FromArgb(130, 130, 130);
+        private Color _graphEditorBackColor = Color.FromArgb(Settings.PathfindingEditor_BackgroundColor);
+        public Color GraphEditorBackColor
+        {
+            get => _graphEditorBackColor;
+            set
+            {
+                if (_graphEditorBackColor != value)
+                {
+                    _graphEditorBackColor = value;
+                    if (graphEditor != null)
+                    {
+                        graphEditor.BackColor = value;
+                    }
+                }
+            }
+        }
+
         public PathfindingEditorWindow() : base("Pathfinding Editor")
         {
             DataContext = this;
@@ -643,6 +659,9 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
         private void PathfindingEditorWPF_Loaded(object sender, RoutedEventArgs e)
         {
+            // Initialize color picker with saved color
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+
             if (FileQueuedForLoad != null || PackageQueuedForLoad != null)
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
@@ -5065,6 +5084,17 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
             string message = (assignedCount == 1) ? "one path node" : $"{assignedCount} path nodes";
             MessageBox.Show($"Added {message}.", "Success", MessageBoxButton.OK);
+        }
+
+        private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
+        {
+            if (e.NewValue is not null)
+            {
+                var newColor = Color.FromArgb(e.NewValue.Value.A, e.NewValue.Value.R, e.NewValue.Value.G, e.NewValue.Value.B);
+                GraphEditorBackColor = newColor;
+                Settings.PathfindingEditor_BackgroundColor = newColor.ToArgb();
+                Settings.Save();
+            }
         }
 
         #region Busy

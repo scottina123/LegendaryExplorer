@@ -1,4 +1,5 @@
-<bases:WPFBase
+
+    <bases:WPFBase
        x:Class="LegendaryExplorer.Tools.PathfindingEditor.PathfindingEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -193,6 +194,12 @@
                               IsChecked="{Binding Path=(appsettings:Settings.PathfindingEditor_ShowNodeSizes)}"
                               StaysOpenOnClick="True"
                               ToolTip="Toggles the size of nodes being listed beneath their UIndex. BS = Boss, MB = Miniboss, M = Mooks." />
+                    <Separator />
+                    <MenuItem Header="Adjust graph color settings">
+                        <TextBlock Text="Background Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_Background" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                    </MenuItem>
                 </MenuItem>
                 <MenuItem Header="Experiments" Padding="4">
                     <MenuItem Header="Connect GPS (requires interop)" Click="ConnectGPS_Clicked"/>
