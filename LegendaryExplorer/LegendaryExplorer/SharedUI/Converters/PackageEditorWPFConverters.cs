@@ -28,7 +28,8 @@ namespace LegendaryExplorer.SharedUI.Converters
             }
             if (value.ToString() == (string)parameter)
             {
-                return Brushes.LightBlue;
+                // Use system highlight color for theme support
+                return (SolidColorBrush)Application.Current.FindResource(SystemColors.HighlightBrushKey);
             }
             return Brushes.Transparent;
         }
