@@ -462,10 +462,14 @@
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal">
                                         <Image Width="16" Height="16" Margin="0,0,3,0" Source="{Binding Entry, Converter={StaticResource EntryFileTypeIconPathConverter}}" Visibility="{Binding Entry, Converter={StaticResource EntryFileTypeConverter}}" />
-                                        <TextBlock  Text="{Binding DisplayName}" Foreground="{Binding ForegroundColor}" VerticalAlignment="Center">
+                                        <TextBlock  Text="{Binding DisplayName}" VerticalAlignment="Center">
                                             <TextBlock.Style>
                                                 <Style TargetType="{x:Type TextBlock}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                                                     <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsImport}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource ImportIndexBrush}"/>
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="true">
                                                             <Setter Property="Background" Value="#50D4A020"/>
                                                         </DataTrigger>

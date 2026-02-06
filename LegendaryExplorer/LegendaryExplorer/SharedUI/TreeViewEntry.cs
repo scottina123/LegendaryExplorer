@@ -534,21 +534,10 @@ namespace LegendaryExplorer.SharedUI
 
         public int UIndex => Entry?.UIndex ?? 0;
 
-        private System.Windows.Media.Brush _foregroundColor;
-        public System.Windows.Media.Brush ForegroundColor
-        {
-            get => Entry is ImportEntry ? ImportEntryBrush : ExportEntryBrush;
-            set
-            {
-                _foregroundColor = value;
-                OnPropertyChanged();
-            }
-        }
-
-        // Use application-specific brushes for import/export text colors
-        // ImportIndexBrush is darker than ControlTextBrush to distinguish imports from exports
-        private static SolidColorBrush ImportEntryBrush => (SolidColorBrush)Application.Current.FindResource("ImportIndexBrush");
-        private static SolidColorBrush ExportEntryBrush => (SolidColorBrush)Application.Current.FindResource(SystemColors.ControlTextBrushKey);
+        /// <summary>
+        /// Returns true if this entry is an ImportEntry, used for XAML DataTrigger binding
+        /// </summary>
+        public bool IsImport => Entry is ImportEntry;
 
         public override string ToString()
         {
