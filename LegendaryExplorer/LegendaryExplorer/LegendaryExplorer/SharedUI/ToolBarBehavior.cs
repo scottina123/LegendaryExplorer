@@ -7,8 +7,8 @@ using System.Windows.Media;
 namespace LegendaryExplorer.SharedUI
 {
     /// <summary>
-    /// Attached behavior for ToolBar controls that styles the overflow button to match the toolbar's background.
-    /// This removes the white background from the overflow arrow button that appears in toolbars.
+    /// Attached behavior for ToolBar controls that styles the overflow button and its popup to match the toolbar's background.
+    /// This removes the white background from the overflow arrow button and dropdown that appears in toolbars.
     /// </summary>
     public static class ToolBarBehavior
     {
@@ -46,15 +46,6 @@ namespace LegendaryExplorer.SharedUI
 
         private static void ApplyOverflowButtonStyle(ToolBar toolBar)
         {
-            // Get the toolbar's background to use for the overflow area
-            // This ensures we match whatever theme is being used
-            var toolbarBackground = toolBar.Background;
-            if (toolbarBackground == null)
-            {
-                // Fallback: bind to the system control brush dynamically
-                toolbarBackground = new SolidColorBrush(SystemColors.ControlColor);
-            }
-
             // Find the OverflowGrid by its template part name
             if (toolBar.Template?.FindName("OverflowGrid", toolBar) is Grid overflowGrid)
             {
@@ -73,6 +64,92 @@ namespace LegendaryExplorer.SharedUI
 
                     // Find any Border elements inside the button's visual tree and make them transparent
                     StyleOverflowButtonVisuals(overflowButton);
+                }
+            }
+
+            // Style the overflow popup/dropdown
+            StyleOverflowPopup(toolBar);
+        }
+
+        /// <summary>
+        /// Styles the overflow popup that appears when the overflow button is clicked.
+        /// </summary>
+        private static void StyleOverflowPopup(ToolBar toolBar)
+        {
+            // Find the Popup named "OverflowPopup" in the toolbar template
+            if (toolBar.Template?.FindName("OverflowPopup", toolBar) is Popup overflowPopup)
+            {
+                // When the popup opens, style its contents
+                overflowPopup.Opened += (s, e) =>
+                {
+                    if (overflowPopup.Child != null)
+                    {
+                        StylePopupContents(overflowPopup.Child, toolBar);
+                    }
+                };
+
+                // If popup already has a child, style it now
+                if (overflowPopup.Child != null)
+                {
+                    StylePopupContents(overflowPopup.Child, toolBar);
+                }
+            }
+
+            // Also look for the ToolBarOverflowPanel directly
+            if (toolBar.Template?.FindName("PART_ToolBarOverflowPanel", toolBar) is ToolBarOverflowPanel overflowPanel)
+            {
+                overflowPanel.SetBinding(Panel.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+            }
+        }
+
+        /// <summary>
+        /// Styles the contents of the overflow popup to match the toolbar background.
+        /// </summary>
+        private static void StylePopupContents(UIElement popupChild, ToolBar toolBar)
+        {
+            // Style any Border elements in the popup
+            if (popupChild is Border border)
+            {
+                border.SetBinding(Border.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+                
+                // Also style children of the border
+                if (border.Child != null)
+                {
+                    StylePopupContents(border.Child, toolBar);
+                }
+            }
+            else if (popupChild is Panel panel)
+            {
+                panel.SetBinding(Panel.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+
+                // Style children of the panel
+                foreach (UIElement child in panel.Children)
+                {
+                    StylePopupContents(child, toolBar);
+                }
+            }
+            else if (popupChild is FrameworkElement element)
+            {
+                // Walk the visual tree for other elements
+                int childCount = VisualTreeHelper.GetChildrenCount(element);
+                for (int i = 0; i < childCount; i++)
+                {
+                    if (VisualTreeHelper.GetChild(element, i) is UIElement child)
+                    {
+                        StylePopupContents(child, toolBar);
+                    }
                 }
             }
         }
