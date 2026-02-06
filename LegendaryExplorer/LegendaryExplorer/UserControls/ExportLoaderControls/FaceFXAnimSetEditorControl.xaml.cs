@@ -1713,6 +1713,40 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             AddLinesFromXML();
         }
+
+        private void AutoFaceFXGeneration_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLineEntry == null || SelectedLine == null)
+            {
+                MessageBox.Show("Please select a line first.", "No Line Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Find the audio export for this line
+            var audioExport = FindVoiceStreamFromExport(SelectedLineEntry);
+
+            // Create and show the dialog
+            var dialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.AutoFaceFXGenerationDialog(
+                FaceFX,
+                SelectedLine,
+                SelectedLineEntry.TLKID,
+                SelectedLineEntry.TLKString,
+                audioExport,
+                Window.GetWindow(this));
+
+            if (dialog.ShowDialog() == true && dialog.WasGenerated)
+            {
+                // Write the binary directly since the generator modified the line object
+                // We must do this BEFORE UpdateAnimListBox because SaveChanges reads from the UI Animations collection
+                CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
+                
+                // Refresh the UI to show the new animations
+                UpdateAnimListBox();
+                SelectedLineEntry.UpdateLength();
+                
+                MessageBox.Show("FaceFX animations generated successfully!", "Generation Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
     }
 
     public class Animation : NotifyPropertyChangedBase

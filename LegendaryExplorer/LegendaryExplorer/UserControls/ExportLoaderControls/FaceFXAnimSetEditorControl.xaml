@@ -43,6 +43,8 @@
                     <MenuItem Header="Add Line" Click="AddLine_Click"/>
                     <MenuItem Header="Re-assign Line IDs to new range" Click="ReAssignLineIds_Click"/>
                     <MenuItem Header="Add Lines from XML" Click="AddLinesFromXML_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations from TLK text and audio"/>
                 </MenuItem>
             </Menu>
             <ListBox x:Name="linesListBox" Grid.Row="1"  ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLineEntry}"
