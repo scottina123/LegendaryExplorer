@@ -257,7 +257,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private bool IsUsageSelected(object obj)
         {
-            return (lstbx_Usages.SelectedIndex >= 0 && currentView == 1) || (lstbx_MatUsages.SelectedIndex >= 0 && currentView == 2) || (lstbx_AnimUsages.SelectedIndex >= 0 && currentView == 5) || (lstbx_MeshUsages.SelectedIndex >= 0 && currentView == 3) || (lstbx_PSUsages.SelectedIndex >= 0 && currentView == 6) || (lstbx_TextureUsages.SelectedIndex >= 0 && currentView == 4) || (lstbx_GUIUsages.SelectedIndex >= 0 && currentView == 7) || (lstbx_Lines.SelectedIndex >= 0 && currentView == 8) || (currentView == 9 && lstbx_PlotUsages.SelectedIndex >= 0) || (currentView == 0 && IsNotCND(lstbx_Files.SelectedItem));
+            return (lstbx_Usages.SelectedIndex >= 0 && currentView == 1)
+                || (materialsUsagesPanel.SelectedIndex >= 0 && currentView == 2)
+                || (meshesUsagesPanel.SelectedIndex >= 0 && currentView == 3)
+                || (texturesUsagesPanel.SelectedIndex >= 0 && currentView == 4)
+                || (animationsUsagesPanel.SelectedIndex >= 0 && currentView == 5)
+                || (vfxUsagesPanel.SelectedIndex >= 0 && currentView == 6)
+                || (guiUsagesPanel.SelectedIndex >= 0 && currentView == 7)
+                || (lstbx_Lines.SelectedIndex >= 0 && currentView == 8)
+                || (currentView == 9 && lstbx_PlotUsages.SelectedIndex >= 0)
+                || (currentView == 0 && IsNotCND(lstbx_Files.SelectedItem));
         }
 
         private bool IsNotCND(object obj)
@@ -894,41 +903,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 (usagepkg, contentdir, usagemount) = FileListExtended[c.FileKey];
                 usageUID = c.UIndex;
             }
-            else if (lstbx_MatUsages.SelectedIndex >= 0 && currentView == 2)
+            else if (GetSelectedPanelUsage(currentView) is IAssetUsage usage)
             {
-                var m = (MatUsage)lstbx_MatUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[m.FileKey];
-                usageUID = m.UIndex;
-            }
-            else if (lstbx_MeshUsages.SelectedIndex >= 0 && currentView == 3)
-            {
-                var s = (MeshUsage)lstbx_MeshUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[s.FileKey];
-                usageUID = s.UIndex;
-            }
-            else if (lstbx_TextureUsages.SelectedIndex >= 0 && currentView == 4)
-            {
-                var t = (TextureUsage)lstbx_TextureUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[t.FileKey];
-                usageUID = t.UIndex;
-            }
-            else if (lstbx_AnimUsages.SelectedIndex >= 0 && currentView == 5)
-            {
-                var a = (AnimUsage)lstbx_AnimUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[a.FileKey];
-                usageUID = a.UIndex;
-            }
-            else if (lstbx_PSUsages.SelectedIndex >= 0 && currentView == 6)
-            {
-                var ps = (ParticleSysUsage)lstbx_PSUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[ps.FileKey];
-                usageUID = ps.UIndex;
-            }
-            else if (lstbx_GUIUsages.SelectedIndex >= 0 && currentView == 7)
-            {
-                var sf = (GUIUsage)lstbx_GUIUsages.SelectedItem;
-                (usagepkg, contentdir, usagemount) = FileListExtended[sf.FileKey];
-                usageUID = sf.UIndex;
+                (usagepkg, contentdir, usagemount) = FileListExtended[usage.FileKey];
+                usageUID = usage.UIndex;
             }
             else if (lstbx_Lines.SelectedIndex >= 0 && currentView == 8)
             {
@@ -2103,35 +2081,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         var c = (ClassUsage)lstbx_Usages.SelectedItem;
                         FileKey = c.FileKey;
                     }
-                    else if (lstbx_MatUsages.SelectedIndex >= 0 && currentView == 2)
+                    else if (GetSelectedPanelUsage(currentView) is IAssetUsage panelUsage)
                     {
-                        var m = (MatUsage)lstbx_MatUsages.SelectedItem;
-                        FileKey = m.FileKey;
-                    }
-                    else if (lstbx_MeshUsages.SelectedIndex >= 0 && currentView == 3)
-                    {
-                        var s = (MeshUsage)lstbx_MeshUsages.SelectedItem;
-                        FileKey = s.FileKey;
-                    }
-                    else if (lstbx_TextureUsages.SelectedIndex >= 0 && currentView == 4)
-                    {
-                        var t = (TextureUsage)lstbx_TextureUsages.SelectedItem;
-                        FileKey = t.FileKey;
-                    }
-                    else if (lstbx_AnimUsages.SelectedIndex >= 0 && currentView == 5)
-                    {
-                        var a = (AnimUsage)lstbx_AnimUsages.SelectedItem;
-                        FileKey = a.FileKey;
-                    }
-                    else if (lstbx_PSUsages.SelectedIndex >= 0 && currentView == 6)
-                    {
-                        var ps = (ParticleSysUsage)lstbx_PSUsages.SelectedItem;
-                        FileKey = ps.FileKey;
-                    }
-                    else if (lstbx_GUIUsages.SelectedIndex >= 0 && currentView == 7)
-                    {
-                        var sf = (GUIUsage)lstbx_GUIUsages.SelectedItem;
-                        FileKey = sf.FileKey;
+                        FileKey = panelUsage.FileKey;
                     }
                     else if (lstbx_Lines.SelectedIndex >= 0 && currentView == 8)
                     {
@@ -2422,38 +2374,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             CommandManager.InvalidateRequerySuggested(); //Refresh commands
         }
 
-        private void CopyUsages_Click(object sender, RoutedEventArgs e)
+        public void CopyUsagesFromPanel(AssetUsagesPanel panel)
         {
-            string text = null;
-
             if (FileListExtended == null || !FileListExtended.Any())
-                return; // Can't copy anything
+                return;
 
-            if (sender == CopyUsagesMaterials_Button && lstbx_Materials.SelectedItem is MaterialRecord matR)
-            {
-                text = string.Join("\n", matR.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
-            else if (sender == CopyUsagesTextures_Button && lstbx_Textures.SelectedItem is TextureRecord tr)
-            {
-                text = string.Join("\n", tr.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
-            else if (sender == CopyUsagesMeshes_Button && lstbx_Meshes.SelectedItem is MeshRecord mr)
-            {
-                text = string.Join("\n", mr.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
-            else if (sender == CopyUsagesAnimations_Button && lstbx_Anims.SelectedItem is AnimationRecord animR)
-            {
-                text = string.Join("\n", animR.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
-            else if (sender == CopyUsagesVFX_Button && lstbx_Particles.SelectedItem is ParticleSysRecord psysR)
-            {
-                text = string.Join("\n", psysR.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
-            else if (sender == CopyUsagesGUI_Button && lstbx_Scaleform.SelectedItem is GUIElement ge)
-            {
-                text = string.Join("\n", ge.Usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
-            }
+            if (panel.UsagesSource is not IEnumerable<IAssetUsage> usages)
+                return;
 
+            var text = string.Join("\n", usages.Select(x => FileListExtended[x.FileKey]?.FileName).Distinct());
             if (text != null)
             {
                 try
@@ -2465,6 +2394,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     MessageBox.Show(ex.Message, "Error copying to clipboard", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
+        }
+
+        private IAssetUsage GetSelectedPanelUsage(int view)
+        {
+            return view switch
+            {
+                2 => materialsUsagesPanel.SelectedItem as IAssetUsage,
+                3 => meshesUsagesPanel.SelectedItem as IAssetUsage,
+                4 => texturesUsagesPanel.SelectedItem as IAssetUsage,
+                5 => animationsUsagesPanel.SelectedItem as IAssetUsage,
+                6 => vfxUsagesPanel.SelectedItem as IAssetUsage,
+                7 => guiUsagesPanel.SelectedItem as IAssetUsage,
+                _ => null
+            };
         }
 
 
