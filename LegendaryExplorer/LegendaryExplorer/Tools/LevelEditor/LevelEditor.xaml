@@ -176,7 +176,7 @@
                     </ListBox>
                 </DockPanel>
 
-                <scene3D:SceneRenderControl Grid.Column="2" Canvas.ZIndex="0" x:Name="SceneViewer" />
+                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" />
 
 
                 <WrapPanel x:Name="wrapPanel" Grid.Column="4" IsEnabled="{Binding ., Converter={StaticResource NullEnabledConverter}}" DataContext="{Binding SelectedActor}">

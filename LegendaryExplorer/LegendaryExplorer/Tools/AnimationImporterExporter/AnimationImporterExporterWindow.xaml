@@ -8,9 +8,11 @@
         xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
         xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
         xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
+        xmlns:scene3D="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls.Scene3D"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
+        xmlns:system="clr-namespace:System;assembly=mscorlib"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         mc:Ignorable="d"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -18,7 +20,7 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         Icon="pack://application:,,,/Tools/Icons/16x16/AnimationImporter_Icon_16.ico"
-        Title="Animation Importer/Exporter" Height="600" Width="1000" Loaded="AnimationImporter_OnLoaded">
+        Title="Animation Importer/Exporter" Height="800" Width="1200" Loaded="AnimationImporter_OnLoaded">
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
@@ -172,19 +174,68 @@
 
                 </DockPanel>
                 <Grid Grid.Column="2"
-                      Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Collapsed}"
-                      IsEnabled="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter='Not'}">
+                      Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, FallbackValue=Collapsed}">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition MinHeight="5" MaxHeight="5" Height="5" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" HideHexBox="True" />
-                    <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" />
-                    <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter"
-                                                               Grid.Row="2" HideHexBox="True"
-                                                               AlwaysLoadRegardlessOfSize="True"
-                                                               HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
+                    <!-- Row 0: SkeletalMesh selector -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2">
+                        <TextBlock Text="SkeletalMesh:" VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <ComboBox x:Name="SkeletalMeshComboBox" Width="250"
+                                  ItemsSource="{Binding SkeletalMeshExports}"
+                                  SelectedItem="{Binding SelectedSkeletalMesh}"
+                                  DisplayMemberPath="ObjectName.Instanced" />
+                    </StackPanel>
+                    <!-- Row 1: 3D Preview -->
+                    <scene3D:SceneRenderControl x:Name="AnimPreviewRenderer" Grid.Row="1" />
+                    <!-- Row 2: Playback controls -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2">
+                        <Button Content="Play/Pause" Command="{Binding PlayPauseCommand}" Width="75" Margin="0,0,5,0" />
+                        <Slider x:Name="FrameSlider" Width="200" Minimum="0"
+                                Maximum="{Binding AnimFrameCount}" Value="{Binding AnimCurrentFrame}"
+                                IsSnapToTickEnabled="True" TickFrequency="1"
+                                VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <TextBlock VerticalAlignment="Center" Margin="0,0,10,0">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0} / {1}">
+                                    <Binding Path="AnimCurrentFrame" />
+                                    <Binding Path="AnimFrameCount" />
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                        <TextBlock Text="Speed:" VerticalAlignment="Center" Margin="0,0,5,0" />
+                        <ComboBox x:Name="SpeedComboBox" Width="60"
+                                  SelectedItem="{Binding PlaybackSpeed}"
+                                  VerticalAlignment="Center">
+                            <ComboBox.Items>
+                                <system:Double>0.1</system:Double>
+                                <system:Double>0.25</system:Double>
+                                <system:Double>0.5</system:Double>
+                                <system:Double>1</system:Double>
+                                <system:Double>2</system:Double>
+                            </ComboBox.Items>
+                        </ComboBox>
+                    </StackPanel>
+                    <!-- Row 3: Splitter -->
+                    <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
+                    <!-- Row 4: Interpreter + Binary (existing) -->
+                    <Grid Grid.Row="4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition MinHeight="5" MaxHeight="5" Height="5" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpreterTab_Interpreter" HideHexBox="True" />
+                        <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" />
+                        <exportLoaderControls:BinaryInterpreterWPF x:Name="BinaryInterpreterTab_BinaryInterpreter"
+                                                                   Grid.Row="2" HideHexBox="True"
+                                                                   AlwaysLoadRegardlessOfSize="True"
+                                                                   HostingControl="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
+                    </Grid>
                 </Grid>
             </Grid>
         </DockPanel>
