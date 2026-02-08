@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
@@ -14,7 +12,6 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
-using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -24,7 +21,6 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.Win32;
 using Path = System.IO.Path;
-using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
 
 namespace LegendaryExplorer.Tools.AnimationImporterExporter
 {
@@ -35,13 +31,6 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
     {
         public const string PSAFilter = "*.psa|*.psa";
 
-        // 3D preview fields
-        private MeshRenderContext _meshContext;
-        private ModelPreview<WorldVertex> _meshPreview;
-        private SkinnedMeshRenderer _skinnedRenderer;
-        private SkeletonAnimPlayer _animPlayer;
-        private bool _previewInitialized;
-
         public AnimationImporterExporterWindow() : base("Animation Importer/Exporter")
         {
             DataContext = this;
@@ -49,11 +38,6 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             InitializeComponent();
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
-
-            // Initialize 3D preview
-            _meshContext = new MeshRenderContext();
-            AnimPreviewRenderer.Context = _meshContext;
-            AnimPreviewRenderer.Loaded += AnimPreviewRenderer_Loaded;
         }
 
         public AnimationImporterExporterWindow(ExportEntry exportToLoad) : this()
@@ -67,17 +51,6 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             FileQueuedForLoad = filePath;
             ExportQueuedForFocusing = null;
             UIndexQueuedForFocusing = uIndex;
-        }
-
-        private void AnimPreviewRenderer_Loaded(object sender, RoutedEventArgs e)
-        {
-            if (_meshContext.IsReady && !_previewInitialized)
-            {
-                _meshContext.UpdateScene += AnimPreview_UpdateScene;
-                _meshContext.RenderScene += AnimPreview_RenderScene;
-                _previewInitialized = true;
-                AnimPreviewRenderer.SetShouldRender(true);
-            }
         }
 
         #region Properties
@@ -99,10 +72,10 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     BinaryInterpreterTab_BinaryInterpreter.LoadExport(CurrentExport);
                     InterpreterTab_Interpreter.LoadExport(CurrentExport);
 
-                    // If it's an AnimSequence, load it into the animation player
-                    if (CurrentExport.ClassName == "AnimSequence" && _animPlayer != null)
+                    // If it's an AnimSequence, load it into the preview
+                    if (CurrentExport.ClassName == "AnimSequence")
                     {
-                        LoadAnimSequenceForPreview(CurrentExport);
+                        AnimPreview.LoadAnimSequence(CurrentExport);
                     }
                 }
             }
@@ -123,45 +96,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             {
                 if (SetProperty(ref _selectedSkeletalMesh, value) && value != null)
                 {
-                    LoadSkeletalMeshForPreview(value);
-                }
-            }
-        }
-
-        private int _animCurrentFrame;
-        public int AnimCurrentFrame
-        {
-            get => _animCurrentFrame;
-            set
-            {
-                if (SetProperty(ref _animCurrentFrame, value) && _animPlayer != null)
-                {
-                    _animPlayer.CurrentFrame = value;
-                    // If not playing, do a one-shot skinning update
-                    if (!_animPlayer.IsPlaying)
-                    {
-                        UpdateSkinningOneShot();
-                    }
-                }
-            }
-        }
-
-        private int _animFrameCount;
-        public int AnimFrameCount
-        {
-            get => _animFrameCount;
-            set => SetProperty(ref _animFrameCount, value);
-        }
-
-        private double _playbackSpeed = 1.0;
-        public double PlaybackSpeed
-        {
-            get => _playbackSpeed;
-            set
-            {
-                if (SetProperty(ref _playbackSpeed, value) && _animPlayer != null)
-                {
-                    _animPlayer.PlaybackSpeed = (float)value;
+                    AnimPreview.LoadSkeletalMesh(value);
                 }
             }
         }
@@ -179,7 +114,6 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
         public ICommand ReplaceFromPSACommand { get; set; }
         public ICommand ExportAnimSeqToPSACommand { get; set; }
         public ICommand ExportAnimSetToPSACommand { get; set; }
-        public ICommand PlayPauseCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -193,127 +127,11 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             ReplaceFromPSACommand = new GenericCommand(ReplaceFromPSA, IsAnimSequenceSelected);
             ExportAnimSeqToPSACommand = new GenericCommand(ExportAnimSeqToPSA, IsAnimSequenceSelected);
             ExportAnimSetToPSACommand = new GenericCommand(ExportAnimSetToPSA, IsBioAnimDataSelected);
-            PlayPauseCommand = new GenericCommand(TogglePlayPause);
         }
 
         #endregion
 
-        #region Animation Preview
-
-        private void LoadSkeletalMeshForPreview(ExportEntry meshExport)
-        {
-            if (!_meshContext.IsReady) return;
-
-            // Dispose old preview
-            _meshPreview?.Dispose();
-            _meshPreview = null;
-            _skinnedRenderer = null;
-            _animPlayer = null;
-
-            try
-            {
-                var skm = ObjectBinary.From<SkeletalMesh>(meshExport);
-                using var assetCache = new PackageCache();
-
-                // Create the model preview (same pattern as MeshRenderer)
-                _meshPreview = new ModelPreview<WorldVertex>(_meshContext.Device, skm, _meshContext.TextureCache, assetCache);
-
-                // Build skinned mesh renderer from LOD 0
-                if (skm.LODModels.Length > 0)
-                {
-                    _skinnedRenderer = new SkinnedMeshRenderer();
-                    _skinnedRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[0]);
-                }
-
-                // Create animation player with skeleton
-                _animPlayer = new SkeletonAnimPlayer();
-                _animPlayer.SetSkeleton(skm);
-                _animPlayer.PlaybackSpeed = (float)PlaybackSpeed;
-
-                // Center camera on mesh
-                _meshContext.Camera.FocusDepth = skm.Bounds.SphereRadius * 1.2f;
-                if (_meshPreview.LODs.Count > 0)
-                {
-                    _meshContext.Camera.Position = _meshPreview.LODs[0].Mesh.AABBCenter;
-                    _meshContext.Camera.Pitch = -MathF.PI / 7.0f;
-                }
-
-                // If an AnimSequence is already selected, load it
-                if (CurrentExport?.ClassName == "AnimSequence")
-                {
-                    LoadAnimSequenceForPreview(CurrentExport);
-                }
-            }
-            catch (Exception ex)
-            {
-                _meshContext.ErrorText = $"Error loading mesh: {ex.Message}";
-            }
-        }
-
-        private void LoadAnimSequenceForPreview(ExportEntry animExport)
-        {
-            if (_animPlayer == null) return;
-
-            try
-            {
-                var animSequence = ObjectBinary.From<AnimSequence>(animExport);
-                animSequence.DecompressAnimationData();
-
-                _animPlayer.SetAnimation(animSequence);
-
-                AnimFrameCount = Math.Max(0, _animPlayer.TotalFrames - 1);
-                AnimCurrentFrame = 0;
-
-                // Do initial skinning at frame 0
-                UpdateSkinningOneShot();
-            }
-            catch (Exception)
-            {
-                // Animation might not be compatible with this skeleton - that's okay
-            }
-        }
-
-        private void UpdateSkinningOneShot()
-        {
-            if (_skinnedRenderer == null || _meshPreview == null || _animPlayer == null) return;
-            if (!_meshContext.IsReady || _meshPreview.LODs.Count == 0) return;
-
-            _skinnedRenderer.UpdateSkinning(_meshContext.Device, _meshPreview.LODs[0].Mesh, _animPlayer);
-        }
-
-        private void TogglePlayPause()
-        {
-            if (_animPlayer == null) return;
-            _animPlayer.IsPlaying = !_animPlayer.IsPlaying;
-        }
-
-        private void AnimPreview_UpdateScene(object sender, float timestep)
-        {
-            if (_animPlayer is { IsPlaying: true } && _skinnedRenderer != null && _meshPreview is { LODs.Count: > 0 })
-            {
-                _animPlayer.AdvanceTime(timestep);
-                _skinnedRenderer.UpdateSkinning(_meshContext.Device, _meshPreview.LODs[0].Mesh, _animPlayer);
-
-                // Update frame slider without triggering setter logic
-                _animCurrentFrame = _animPlayer.CurrentFrame;
-                OnPropertyChanged(nameof(AnimCurrentFrame));
-            }
-        }
-
-        private void AnimPreview_RenderScene(object sender, EventArgs e)
-        {
-            if (_meshPreview is { LODs.Count: > 0 })
-            {
-                foreach (RenderPass renderPass in Enum.GetValues<RenderPass>())
-                {
-                    _meshPreview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
-                }
-            }
-        }
-
-        #endregion
-
-        #region Existing Import/Export functionality
+        #region Import/Export functionality
 
         private void ExportAnimSetToPSA()
         {
@@ -834,13 +652,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             if (e.Cancel)
                 return;
 
-            if (_previewInitialized)
-            {
-                _meshContext.UpdateScene -= AnimPreview_UpdateScene;
-                _meshContext.RenderScene -= AnimPreview_RenderScene;
-            }
-            _meshPreview?.Dispose();
-            AnimPreviewRenderer?.Dispose();
+            AnimPreview?.Dispose();
             InterpreterTab_Interpreter?.Dispose();
             BinaryInterpreterTab_BinaryInterpreter?.Dispose();
             RecentsController?.Dispose();

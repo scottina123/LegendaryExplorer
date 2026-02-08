@@ -1,11 +1,10 @@
 using System;
 using System.Numerics;
-using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Device = SharpDX.Direct3D11.Device;
 
-namespace LegendaryExplorer.Tools.AnimationImporterExporter;
+namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
 /// <summary>
 /// Per-vertex bone skinning data. Stores bind-pose positions/normals and bone influence data.
@@ -135,11 +134,9 @@ public class SkinnedMeshRenderer
             var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
             var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
 
-            // Convert from Unreal space (Z-up) to renderer space: (-X, Z, Y)
-            var rendererPos = new Vector3(-skinnedPos.X, skinnedPos.Z, skinnedPos.Y);
-            var rendererNormal = new Vector3(-skinnedNormal.X, skinnedNormal.Z, skinnedNormal.Y);
+            var rendererNormal = new Vector4(skinnedNormal.X, skinnedNormal.Z, skinnedNormal.Y, 1);
 
-            mesh.Vertices[i] = new WorldVertex(rendererPos, rendererNormal, sv.UV);
+            mesh.Vertices[i] = new WorldVertex(skinnedPos, rendererNormal, sv.UV);
         }
 
         mesh.RebuildBuffer(device);

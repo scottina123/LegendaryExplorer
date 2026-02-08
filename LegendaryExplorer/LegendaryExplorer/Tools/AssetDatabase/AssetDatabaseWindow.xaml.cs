@@ -205,10 +205,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage meshPcc;
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
+        private IMEPackage animPcc;
         private GridViewColumnHeader _lastHeaderClicked = null;
         private ListSortDirection _lastDirection = ListSortDirection.Ascending;
 
-        private BlockingCollection<ConvoLine> _linequeue = new();
+        private BlockingCollection<ConvoLine> _linequeue = [];
         private Tuple<string, string, int, string, bool> _currentConvo = new(null, null, -1, null, false); //ConvoName, FileName, export, contentdir, isAmbient
         public Tuple<string, string, int, string, bool> CurrentConvo
         {
@@ -388,14 +389,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             BIKExternalExportLoaderTab_BIKExternalExportLoader?.Dispose();
             EmbeddedTextureViewerTab_EmbeddedTextureViewer?.Dispose();
             MaterialEditorExportLoader_Control?.Dispose();
+            AnimPreviewControl?.Dispose();
 
             audioPcc?.Dispose();
             meshPcc?.Dispose();
             textPcc?.Dispose();
+            animPcc?.Dispose();
 
             audioPcc = null;
             meshPcc = null;
             textPcc = null;
+            animPcc = null;
 
             dbworker.DoWork -= GetLineStrings;
             dbworker.RunWorkerCompleted -= dbworker_LineWorkCompleted;
@@ -662,6 +666,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             textPcc?.Dispose();
             btn_TextRenderToggle.IsChecked = false;
             btn_TextRenderToggle.Content = "Toggle Texture Rendering";
+            AnimPreviewControl?.Clear();
+            animPcc?.Dispose();
+            animPcc = null;
+            btn_AnimPreviewToggle.IsChecked = false;
+            btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
             MaterialEditorExportLoader_Control?.UnloadExport();
             SoundpanelWPF_ADB.UnloadExport();
             audioPcc?.Dispose();
@@ -1278,6 +1287,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     btn_TextRenderToggle.Content = "Toggle Texture Rendering";
                 }
 
+                if (previousView == 5)
+                {
+                    AnimPreviewControl.Clear();
+                    animPcc?.Dispose();
+                    animPcc = null;
+                    btn_AnimPreviewToggle.IsChecked = false;
+                    btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
+                }
+
                 if (currentView == 0)
                 {
                     menu_OpenUsage.Header = "Open File";
@@ -1306,6 +1324,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (currentView == 4 && lstbx_Textures.SelectedIndex >= 0)
             {
                 ToggleRenderTexture();
+            }
+        }
+
+        private void lstbx_Anims_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            e.Handled = true;
+            if (currentView == 5 && lstbx_Anims.SelectedIndex >= 0)
+            {
+                ToggleRenderAnimation();
             }
         }
 
@@ -1374,6 +1401,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             else
             {
                 btn_MeshRenderToggle.Content = "Toggle Mesh Rendering";
+            }
+        }
+
+        private void btn_AnimPreviewToggle_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleRenderAnimation();
+            if (btn_AnimPreviewToggle.IsChecked == true)
+            {
+                btn_AnimPreviewToggle.Content = "Untoggle Animation Preview";
+            }
+            else
+            {
+                btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
             }
         }
 
@@ -1446,6 +1486,61 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     }
                 }
                 meshPcc.Dispose();
+            }
+        }
+
+        private void ToggleRenderAnimation()
+        {
+            bool showAnim = btn_AnimPreviewToggle.IsChecked == true
+                && lstbx_Anims.SelectedIndex >= 0
+                && !((lstbx_Anims.SelectedItem as AnimationRecord)?.IsAmbPerf ?? true)
+                && currentView == 5;
+
+            if (!showAnim)
+            {
+                AnimPreviewControl.Clear();
+                animPcc?.Dispose();
+                animPcc = null;
+                return;
+            }
+
+            var anim = (AnimationRecord)lstbx_Anims.SelectedItem;
+            if (!anim.Usages.Any()) return;
+
+            var (fileListIndex, animUIndex, _) = anim.Usages[0];
+            string filePath = GetFilePath(fileListIndex);
+            if (filePath == null) return;
+
+            animPcc?.Dispose();
+            animPcc = MEPackageHandler.OpenMEPackage(filePath);
+
+            if (animPcc.IsUExport(animUIndex))
+            {
+                var animExp = animPcc.GetUExport(animUIndex);
+                LoadSkeletalMeshForAnimPreview();
+                AnimPreviewControl.LoadAnimSequence(animExp);
+                AnimPreviewControl.Play();
+            }
+        }
+
+        private void AnimPreview_MeshSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            LoadSkeletalMeshForAnimPreview();
+        }
+
+        private void LoadSkeletalMeshForAnimPreview()
+        {
+            if (cbx_AnimPreviewMesh.SelectedItem is MeshRecord meshRecord && meshRecord.Usages.Any())
+            {
+                var usage = meshRecord.Usages[0];
+                string filePath = GetFilePath(usage.FileKey);
+                if (filePath == null) return;
+
+                using var meshPackage = MEPackageHandler.OpenMEPackage(filePath);
+                if (meshPackage.IsUExport(usage.UIndex))
+                {
+                    AnimPreviewControl.LoadSkeletalMesh(meshPackage.GetUExport(usage.UIndex));
+                }
             }
         }
 
@@ -1785,10 +1880,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var t = FilterBox.Text;
             if (!string.IsNullOrEmpty(t))
             {
-                showthis = f.FileName.ToLower().Contains(t.ToLower());
+                showthis = f.FileName.Contains(t, StringComparison.CurrentCultureIgnoreCase);
                 if (!showthis)
                 {
-                    showthis = f.Directory.ToLower().Contains(t.ToLower());
+                    showthis = f.Directory.Contains(t, StringComparison.CurrentCultureIgnoreCase);
                 }
             }
             return showthis;
@@ -1823,6 +1918,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewA = CollectionViewSource.GetDefaultView(CurrentDataBase.Animations);
                     viewA.Filter = AssetFilters.AnimationFilter.Filter;
                     lstbx_Anims.ItemsSource = viewA;
+                    List<MeshRecord> meshRecords = CurrentDataBase.Meshes.Where(m => m.IsSkeleton).ToList();
+                    cbx_AnimPreviewMesh.ItemsSource = meshRecords;
+                    // Human mesh, exists in ever game
+                    if (meshRecords.FindIndex(mr => mr.MeshName == "HMF_ARM_CTHe_MDL") is int idx and > 0)
+                    {
+                        cbx_AnimPreviewMesh.SelectedIndex = idx;
+                    }
                     break;
                 case 6: //Particles
                     ICollectionView viewP = CollectionViewSource.GetDefaultView(CurrentDataBase.Particles);

@@ -114,9 +114,8 @@ public partial class LevelEditor : WPFBase, IRecents
     private void RenderScene(object sender, EventArgs e)
     {
         Span<RenderPass> passes = ShowCollision 
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision] 
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
-        
 
         foreach (RenderPass pass in passes)
         {

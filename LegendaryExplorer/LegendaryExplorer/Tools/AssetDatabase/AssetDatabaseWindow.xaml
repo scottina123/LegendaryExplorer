@@ -633,11 +633,11 @@
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition MinWidth="350" Width="*"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition MinWidth="400" Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Animsequences / Ambient Performance Tracks" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
-                            <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" Grid.Row="1" Grid.Column="0">
+                            <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" SelectionChanged="lstbx_Anims_SelectionChanged" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -666,26 +666,20 @@
                                     </ContextMenu>
                                 </controls:ListBoxScroll.ContextMenu>
                             </controls:ListBoxScroll>
-                            <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
-                                <StackPanel x:Name="details_Anim" MinWidth="200" Margin="8">
-                                    <TextBlock Text="Ambient Performance" FontWeight="DemiBold" Margin="0,5,0,0" Visibility="{Binding Path=SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="Sequence Name: " Margin="0,5,0,0" />
-                                    <TextBlock Text="{Binding Path=SelectedItem.SeqName, ElementName=lstbx_Anims}" />
-                                    <TextBlock Text="Animation Group: " Margin="0,5,0,0" Visibility="{Binding Path=SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="{Binding Path=SelectedItem.AnimData, ElementName=lstbx_Anims}" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="Length (s): " Margin="0,5,0,0" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="{Binding Path=SelectedItem.Length, ElementName=lstbx_Anims}" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="Number of Frames (runs at 30fps): " Margin="0,5,0,0" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="Number of Animation Sets: " Margin="0,5,0,0" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="{Binding Path=SelectedItem.Frames, ElementName=lstbx_Anims}" />
-                                    <TextBlock Text="Compression Format: " Margin="0,5,0,0" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="{Binding Path=SelectedItem.Compression, ElementName=lstbx_Anims}" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="Key Format: " Margin="0,5,0,0" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <TextBlock Text="{Binding Path=SelectedItem.KeyFormat, ElementName=lstbx_Anims}" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                </StackPanel>
+                            <TextBlock Text="Animation Preview and details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the animation preview on or off" Grid.Row="0" Grid.Column="1"/>
+                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="1" Grid.Column="1">
+                                <DockPanel MinWidth="350" Margin="3">
+                                    <ToggleButton x:Name="btn_AnimPreviewToggle" Content="Toggle Animation Preview" MaxHeight="30" ClickMode="Release" 
+                                                  Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"
+                                                  Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                    <ComboBox x:Name="cbx_AnimPreviewMesh" DockPanel.Dock="Top" Margin="0,0,0,3"
+                                              DisplayMemberPath="MeshName"
+                                              SelectionChanged="AnimPreview_MeshSelectionChanged" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                    <sharedToolControls:AnimationPreviewControl x:Name="AnimPreviewControl" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                </DockPanel>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="animationsUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                            <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="2"/>
+                            <assetDatabase:AssetUsagesPanel x:Name="animationsUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="3"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Anims}"
                                                            HeaderToolTip="Every file that uses this animsequence&#x0a;Right click to open in Package Editor"/>
                         </Grid>

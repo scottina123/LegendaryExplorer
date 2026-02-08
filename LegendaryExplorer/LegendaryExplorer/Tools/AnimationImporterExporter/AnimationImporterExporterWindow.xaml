@@ -8,11 +8,9 @@
         xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
         xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
         xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
-        xmlns:scene3D="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls.Scene3D"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
-        xmlns:system="clr-namespace:System;assembly=mscorlib"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         mc:Ignorable="d"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -178,7 +176,6 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition MinHeight="5" MaxHeight="5" Height="5" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -190,40 +187,12 @@
                                   SelectedItem="{Binding SelectedSkeletalMesh}"
                                   DisplayMemberPath="ObjectName.Instanced" />
                     </StackPanel>
-                    <!-- Row 1: 3D Preview -->
-                    <scene3D:SceneRenderControl x:Name="AnimPreviewRenderer" Grid.Row="1" />
-                    <!-- Row 2: Playback controls -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2">
-                        <Button Content="Play/Pause" Command="{Binding PlayPauseCommand}" Width="75" Margin="0,0,5,0" />
-                        <Slider x:Name="FrameSlider" Width="200" Minimum="0"
-                                Maximum="{Binding AnimFrameCount}" Value="{Binding AnimCurrentFrame}"
-                                IsSnapToTickEnabled="True" TickFrequency="1"
-                                VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <TextBlock VerticalAlignment="Center" Margin="0,0,10,0">
-                            <TextBlock.Text>
-                                <MultiBinding StringFormat="{}{0} / {1}">
-                                    <Binding Path="AnimCurrentFrame" />
-                                    <Binding Path="AnimFrameCount" />
-                                </MultiBinding>
-                            </TextBlock.Text>
-                        </TextBlock>
-                        <TextBlock Text="Speed:" VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <ComboBox x:Name="SpeedComboBox" Width="60"
-                                  SelectedItem="{Binding PlaybackSpeed}"
-                                  VerticalAlignment="Center">
-                            <ComboBox.Items>
-                                <system:Double>0.1</system:Double>
-                                <system:Double>0.25</system:Double>
-                                <system:Double>0.5</system:Double>
-                                <system:Double>1</system:Double>
-                                <system:Double>2</system:Double>
-                            </ComboBox.Items>
-                        </ComboBox>
-                    </StackPanel>
-                    <!-- Row 3: Splitter -->
-                    <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" />
-                    <!-- Row 4: Interpreter + Binary (existing) -->
-                    <Grid Grid.Row="4">
+                    <!-- Row 1: Animation Preview -->
+                    <sharedToolControls:AnimationPreviewControl x:Name="AnimPreview" Grid.Row="1" />
+                    <!-- Row 2: Splitter -->
+                    <GridSplitter Grid.Row="2" HorizontalAlignment="Stretch" />
+                    <!-- Row 3: Interpreter + Binary -->
+                    <Grid Grid.Row="3">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
                             <RowDefinition MinHeight="5" MaxHeight="5" Height="5" />
