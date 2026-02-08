@@ -8,6 +8,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
 

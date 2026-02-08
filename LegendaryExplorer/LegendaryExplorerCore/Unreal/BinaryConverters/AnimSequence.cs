@@ -13,7 +13,8 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
 {
     public class AnimSequence : ObjectBinary
     {
-        public static readonly AnimationCompressionFormat[] ValidRotationCompressionFormats = { AnimationCompressionFormat.ACF_None, AnimationCompressionFormat.ACF_Float96NoW, AnimationCompressionFormat.ACF_BioFixed48, AnimationCompressionFormat.ACF_Fixed48NoW };
+        public static readonly AnimationCompressionFormat[] ValidRotationCompressionFormats =
+            [AnimationCompressionFormat.ACF_None, AnimationCompressionFormat.ACF_Float96NoW, AnimationCompressionFormat.ACF_BioFixed48, AnimationCompressionFormat.ACF_Fixed48NoW];
 
         public List<AnimTrack> RawAnimationData;
         public byte[] CompressedAnimationData;

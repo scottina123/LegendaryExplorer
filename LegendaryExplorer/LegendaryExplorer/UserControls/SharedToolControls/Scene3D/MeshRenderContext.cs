@@ -19,12 +19,12 @@ using Texture2D = SharpDX.Direct3D11.Texture2D;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 
-namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 
 /// <summary>
 /// Handles rendering of mesh data
 /// </summary>
-public class MeshRenderContext : RenderContext
+public class MeshRenderContext : LegacyRenderContext
 {
     /// <summary>
     /// The current flags for rendering textures. This renderer does not support 'SetAlphaAsBlack' or 'ReconstructZ'

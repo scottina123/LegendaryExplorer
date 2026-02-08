@@ -76,6 +76,7 @@ public class Widget : UIElement
 
         if (Mode is EWidgetMode.Rotate)
         {
+            //currently disabled in UI because the rotation math is wrong and causes incorrect rotations when the widget is dragged
             DrawRotator(context, ltw, origin);
         }
         else

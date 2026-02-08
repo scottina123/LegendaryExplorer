@@ -113,7 +113,7 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private void RenderScene(object sender, EventArgs e)
     {
-        Span<RenderPass> passes = ShowCollision 
+        Span<RenderPass> passes = ShowCollision
             ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
 
@@ -249,7 +249,7 @@ public partial class LevelEditor : WPFBase, IRecents
                 {
                     if (level.Export.FileRef.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                     {
-                        var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                        var smcActor = new StaticMeshCollectionActorProxy(this, smcExport, smca, i);
                         actors.Add(smcActor);
                     }
                 }
@@ -523,7 +523,7 @@ public partial class LevelEditor : WPFBase, IRecents
                         {
                             if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                             {
-                                var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                                var smcActor = new StaticMeshCollectionActorProxy(this, smcExport, smca, i);
                                 Actors.Add(smcActor);
                             }
                         }

@@ -14,7 +14,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UnrealExtensions.Classes;
-using LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;

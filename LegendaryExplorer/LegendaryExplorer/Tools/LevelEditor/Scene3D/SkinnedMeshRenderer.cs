@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Device = SharpDX.Direct3D11.Device;
 

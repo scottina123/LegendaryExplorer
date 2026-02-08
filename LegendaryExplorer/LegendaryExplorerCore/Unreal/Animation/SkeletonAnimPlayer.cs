@@ -1,8 +1,9 @@
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace LegendaryExplorerCore.Unreal.BinaryConverters;
+namespace LegendaryExplorerCore.Unreal.Animation;
 
 /// <summary>
 /// Pure math class that handles skeleton bind-pose computation, animation track mapping,
@@ -25,6 +26,8 @@ public class SkeletonAnimPlayer
     public bool IsPlaying { get; set; }
     public bool IsLooping { get; set; } = true;
     public float PlaybackSpeed { get; set; } = 1f;
+
+    public bool HasAnimation => _animSequence != null;
 
     public int CurrentFrame
     {
