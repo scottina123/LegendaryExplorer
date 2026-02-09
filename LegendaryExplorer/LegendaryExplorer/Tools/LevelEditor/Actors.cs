@@ -133,6 +133,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public virtual bool IsVolume => false;
 
+    public TransformSnapshot SnapshotTransform() => new(location, rotation, drawScale, drawScale3D);
+
+    public void RestoreTransform(TransformSnapshot snapshot)
+    {
+        Location = snapshot.Location;
+        Rotation = snapshot.Rotation;
+        DrawScale = snapshot.DrawScale;
+        DrawScale3D = snapshot.DrawScale3D;
+    }
+
     protected ActorProxy(LevelEditor context, ExportEntry actorExport)
     {
         Editor = context;
