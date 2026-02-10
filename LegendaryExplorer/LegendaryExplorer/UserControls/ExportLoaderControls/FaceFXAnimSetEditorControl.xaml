@@ -44,7 +44,12 @@
                     <MenuItem Header="Re-assign Line IDs to new range" Click="ReAssignLineIds_Click"/>
                     <MenuItem Header="Add Lines from XML" Click="AddLinesFromXML_Click"/>
                     <Separator/>
-                    <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations from TLK text and audio"/>
+                    <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations for selected line"/>
+                    <Separator/>
+                    <MenuItem Header="Bulk Operations">
+                        <MenuItem Header="Bulk Generate FaceFX for All Lines" Click="BulkGenerateFaceFX_Click" ToolTip="Generate lip sync animations for all lines in this FaceFX asset"/>
+                        <MenuItem Header="Bulk Clear All Animations" Click="BulkClearAnimations_Click" ToolTip="Clear all animations from every line in this FaceFX asset"/>
+                    </MenuItem>
                 </MenuItem>
             </Menu>
             <ListBox x:Name="linesListBox" Grid.Row="1"  ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLineEntry}"

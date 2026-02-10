@@ -1,10 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Media;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using Microsoft.Win32;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
@@ -39,26 +41,72 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _audioDurationText = value; OnPropertyChanged(); }
         }
 
-        // Character type
-        public List<string> CharacterTypes { get; } = new() { "Human Female", "Human Male" };
-        
-        private string _selectedCharacterType = "Human Female";
-        public string SelectedCharacterType
+        // FXA file support (animation curves)
+        private string _fxaFilePath;
+        public string FxaFilePath
         {
-            get => _selectedCharacterType;
-            set { _selectedCharacterType = value; OnPropertyChanged(); }
+            get => _fxaFilePath;
+            set 
+            { 
+                _fxaFilePath = value; 
+                OnPropertyChanged();
+                ValidateFxaFile();
+            }
         }
+
+        private string _fxaStatusText = "No FXA file loaded";
+        public string FxaStatusText
+        {
+            get => _fxaStatusText;
+            set { _fxaStatusText = value; OnPropertyChanged(); }
+        }
+
+        private Brush _fxaStatusColor = Brushes.Gray;
+        public Brush FxaStatusColor
+        {
+            get => _fxaStatusColor;
+            set { _fxaStatusColor = value; OnPropertyChanged(); }
+        }
+
+        // FXT file support (phoneme timing)
+        private string _fxtFilePath;
+        public string FxtFilePath
+        {
+            get => _fxtFilePath;
+            set 
+            { 
+                _fxtFilePath = value; 
+                OnPropertyChanged();
+                ValidateFxtFile();
+            }
+        }
+
+        private string _fxtStatusText = "No FXT file loaded";
+        public string FxtStatusText
+        {
+            get => _fxtStatusText;
+            set { _fxtStatusText = value; OnPropertyChanged(); }
+        }
+
+        private Brush _fxtStatusColor = Brushes.Gray;
+        public Brush FxtStatusColor
+        {
+            get => _fxtStatusColor;
+            set { _fxtStatusColor = value; OnPropertyChanged(); }
+        }
+
+        private bool _useTextAnalysis = true;
+        public bool UseTextAnalysis
+        {
+            get => _useTextAnalysis;
+            set { _useTextAnalysis = value; OnPropertyChanged(); }
+        }
+
+        // Parsed data
+        private FxaAnimationData _fxaData;
+        private FxaAnimationData _fxtData;
 
         // Generation options
-        public bool GenerateLipSync { get; } = true; // Always true, shown for info
-
-        private bool _generateJawAnimation = true;
-        public bool GenerateJawAnimation
-        {
-            get => _generateJawAnimation;
-            set { _generateJawAnimation = value; OnPropertyChanged(); }
-        }
-
         private bool _generateBlinkAnimation = true;
         public bool GenerateBlinkAnimation
         {
@@ -80,13 +128,6 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _generateHeadMovement = value; OnPropertyChanged(); }
         }
 
-        private bool _useAudioAmplitude = true;
-        public bool UseAudioAmplitude
-        {
-            get => _useAudioAmplitude;
-            set { _useAudioAmplitude = value; OnPropertyChanged(); }
-        }
-
         private float _lipSyncIntensity = 1.0f;
         public float LipSyncIntensity
         {
@@ -99,6 +140,35 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         {
             get => _blinkFrequency;
             set { _blinkFrequency = value; OnPropertyChanged(); }
+        }
+
+        // Emotion options
+        public List<string> AvailableEmotions { get; } = new List<string>
+        {
+            "None",
+            "Anger",
+            "Disgust",
+            "Fear",
+            "Happy",
+            "Sad",
+            "Surprise",
+            "Contempt",
+            "Determined",
+            "Worried"
+        };
+
+        private string _selectedEmotion = "None";
+        public string SelectedEmotion
+        {
+            get => _selectedEmotion;
+            set { _selectedEmotion = value; OnPropertyChanged(); }
+        }
+
+        private float _emotionIntensity = 0.5f;
+        public float EmotionIntensity
+        {
+            get => _emotionIntensity;
+            set { _emotionIntensity = value; OnPropertyChanged(); }
         }
 
         // Result
@@ -138,22 +208,135 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
         }
 
+        private void BrowseFxaButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select FXA File (Animation Curves)",
+                Filter = "FXA Files (*.fxa)|*.fxa|XML Files (*.xml)|*.xml|All Files (*.*)|*.*",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                FxaFilePath = dialog.FileName;
+            }
+        }
+
+        private void BrowseFxtButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select FXT File (Phoneme Timing)",
+                Filter = "FXT Files (*.fxt)|*.fxt|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                FxtFilePath = dialog.FileName;
+            }
+        }
+
+        private void ValidateFxaFile()
+        {
+            if (string.IsNullOrEmpty(_fxaFilePath))
+            {
+                FxaStatusText = "No FXA file loaded";
+                FxaStatusColor = Brushes.Gray;
+                _fxaData = null;
+                return;
+            }
+
+            try
+            {
+                _fxaData = FxaXmlParser.ParseFxaFile(_fxaFilePath);
+
+                if (_fxaData != null && _fxaData.Animations.Count > 0)
+                {
+                    FxaStatusText = $"✓ Loaded {_fxaData.Animations.Count} animation curves";
+                    FxaStatusColor = Brushes.Green;
+                }
+                else
+                {
+                    FxaStatusText = "⚠ File loaded but no animation curves found";
+                    FxaStatusColor = Brushes.Orange;
+                    _fxaData = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                FxaStatusText = $"✗ {ex.Message}";
+                FxaStatusColor = Brushes.Red;
+                _fxaData = null;
+            }
+        }
+
+        private void ValidateFxtFile()
+        {
+            if (string.IsNullOrEmpty(_fxtFilePath))
+            {
+                FxtStatusText = "No FXT file loaded";
+                FxtStatusColor = Brushes.Gray;
+                _fxtData = null;
+                return;
+            }
+
+            try
+            {
+                _fxtData = FxaXmlParser.ParseFxtFile(_fxtFilePath);
+
+                if (_fxtData != null && _fxtData.PhonemeEvents.Count > 0)
+                {
+                    FxtStatusText = $"✓ Loaded {_fxtData.PhonemeEvents.Count} phoneme events";
+                    FxtStatusColor = Brushes.Green;
+                }
+                else if (_fxtData != null && _fxtData.Animations.Count > 0)
+                {
+                    FxtStatusText = $"✓ Converted to {_fxtData.Animations.Count} animation curves";
+                    FxtStatusColor = Brushes.Green;
+                }
+                else
+                {
+                    FxtStatusText = "⚠ File loaded but no phoneme data found";
+                    FxtStatusColor = Brushes.Orange;
+                    _fxtData = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                FxtStatusText = $"✗ {ex.Message}";
+                FxtStatusColor = Brushes.Red;
+                _fxtData = null;
+            }
+        }
+
         private void GenerateButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
+                // Parse the selected emotion
+                EmotionType emotion = EmotionType.None;
+                if (!string.IsNullOrEmpty(SelectedEmotion) && SelectedEmotion != "None")
+                {
+                    Enum.TryParse(SelectedEmotion, out emotion);
+                }
+
+                // FXA/FXT support is disabled for now - just use text analysis
                 var options = new FaceFXGenerationOptions
                 {
-                    CharacterType = SelectedCharacterType == "Human Female" 
-                        ? CharacterType.HumanFemale 
-                        : CharacterType.HumanMale,
-                    GenerateJawAnimation = GenerateJawAnimation,
+                    CharacterType = CharacterType.HumanFemale,
+                    GenerateJawAnimation = true,
                     GenerateBlinkAnimation = GenerateBlinkAnimation,
                     GenerateEyebrowAnimation = GenerateEyebrowAnimation,
                     GenerateHeadMovement = GenerateHeadMovement,
                     LipSyncIntensity = LipSyncIntensity,
                     BlinkFrequency = BlinkFrequency,
-                    UseAudioAmplitude = UseAudioAmplitude
+                    UseAudioAmplitude = true,
+                    Emotion = emotion,
+                    EmotionIntensity = EmotionIntensity,
+                    FxaData = null, // Disabled for now
+                    UseTextFallback = true
                 };
 
                 var generator = new FaceFXGenerator(_faceFX, _line, TLKText, _audioExport, options);
@@ -174,7 +357,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     }
                     else
                     {
-                        errorMessage += "\n\nPlease check that:\n� A line is selected\n� The TLK text is not empty\n� The FaceFX data is valid";
+                        errorMessage += "\n\nPlease provide dialogue text for lip sync generation.";
                     }
                     MessageBox.Show(errorMessage, "Generation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
@@ -184,6 +367,63 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 MessageBox.Show($"An error occurred during generation:\n\n{ex.Message}\n\n{ex.StackTrace}", 
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        /// <summary>
+        /// Combine FXA animation curves with FXT phoneme timing data
+        /// </summary>
+        private FxaAnimationData CombineFxaAndFxtData()
+        {
+            // If neither file is loaded, return null
+            if (_fxaData == null && _fxtData == null)
+                return null;
+
+            // If only one is loaded, return that one
+            if (_fxaData == null)
+                return _fxtData;
+            if (_fxtData == null)
+                return _fxaData;
+
+            // Combine both datasets
+            var combined = new FxaAnimationData();
+
+            // Start with FXA animations (these are the primary curves)
+            foreach (var kvp in _fxaData.Animations)
+            {
+                combined.Animations[kvp.Key] = kvp.Value;
+            }
+
+            // Merge in FXT-generated animations
+            // If FXT has animations that FXA doesn't have, add them
+            // If both have the same animation, prefer FXA but blend with FXT
+            foreach (var kvp in _fxtData.Animations)
+            {
+                if (!combined.Animations.ContainsKey(kvp.Key))
+                {
+                    // FXT has this animation but FXA doesn't - add it
+                    combined.Animations[kvp.Key] = kvp.Value;
+                }
+                // If FXA already has this animation, we keep FXA's version
+                // (FXA is considered more authoritative)
+            }
+
+            // Copy phoneme events for reference
+            combined.PhonemeEvents.AddRange(_fxtData.PhonemeEvents);
+
+            // Copy phoneme mapping
+            foreach (var kvp in _fxaData.PhonemeMapping)
+            {
+                combined.PhonemeMapping[kvp.Key] = kvp.Value;
+            }
+            foreach (var kvp in _fxtData.PhonemeMapping)
+            {
+                if (!combined.PhonemeMapping.ContainsKey(kvp.Key))
+                {
+                    combined.PhonemeMapping[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return combined;
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)

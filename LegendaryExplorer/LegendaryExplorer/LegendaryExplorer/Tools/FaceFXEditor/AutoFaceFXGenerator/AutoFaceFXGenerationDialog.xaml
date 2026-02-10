@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Auto FaceFX Generation"
-        Height="500" Width="450"
+        Height="620" Width="540"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:AutoFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
@@ -34,7 +34,7 @@
         <Border Grid.Row="0" Background="{DynamicResource PrimaryColorBrush}" Padding="10">
             <StackPanel>
                 <TextBlock Text="Auto FaceFX Generation" FontSize="18" FontWeight="Bold" Foreground="White"/>
-                <TextBlock Text="Generate lip sync animations from text and audio" FontSize="12" Foreground="White" Opacity="0.8"/>
+                <TextBlock Text="Generate lip sync animations from TLK text and audio" FontSize="12" Foreground="White" Opacity="0.8"/>
             </StackPanel>
         </Border>
 
@@ -56,39 +56,31 @@
                             <Label Content="Audio Duration:" Width="100"/>
                             <TextBlock Text="{Binding AudioDurationText}" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Label Content="TLK Text:"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- Text Input -->
+                <GroupBox Header="Dialogue Text">
+                    <StackPanel>
+                        <TextBlock Text="Enter the dialogue text to generate lip sync animations:" 
+                                   FontStyle="Italic" FontSize="11" Margin="5,2" Opacity="0.8" TextWrapping="Wrap"/>
                         <TextBox Text="{Binding TLKText, Mode=TwoWay}" TextWrapping="Wrap" 
-                                 Height="60" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                 Height="80" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
                                  Margin="5"/>
                     </StackPanel>
                 </GroupBox>
 
-                <!-- Character Type -->
-                <GroupBox Header="Character Type">
-                    <StackPanel>
-                        <ComboBox ItemsSource="{Binding CharacterTypes}" 
-                                  SelectedItem="{Binding SelectedCharacterType}"
-                                  Margin="5"/>
-                        <TextBlock Text="Note: Currently only Human Female is fully supported." 
-                                   FontStyle="Italic" FontSize="11" Margin="5,2" Opacity="0.7"/>
-                    </StackPanel>
-                </GroupBox>
-
                 <!-- Generation Options -->
-                <GroupBox Header="Generation Options">
+                <GroupBox Header="Additional Options">
                     <StackPanel>
-                        <CheckBox Content="Generate Lip Sync (m_ animations)" IsChecked="True" IsEnabled="False"/>
-                        <CheckBox Content="Generate Jaw Animation" IsChecked="{Binding GenerateJawAnimation}"/>
                         <CheckBox Content="Generate Blink Animation" IsChecked="{Binding GenerateBlinkAnimation}"/>
                         <CheckBox Content="Generate Eyebrow Animation" IsChecked="{Binding GenerateEyebrowAnimation}"/>
                         <CheckBox Content="Generate Head Movement" IsChecked="{Binding GenerateHeadMovement}"/>
-                        <CheckBox Content="Use Audio Amplitude Analysis" IsChecked="{Binding UseAudioAmplitude}" 
-                                  ToolTip="Modulate animations based on audio volume"/>
                         
                         <Separator Margin="5,10"/>
                         
                         <StackPanel Orientation="Horizontal">
-                            <Label Content="Lip Sync Intensity:" Width="120"/>
+                            <Label Content="Intensity Scale:" Width="120"/>
                             <Slider Value="{Binding LipSyncIntensity}" Minimum="0.1" Maximum="2.0" 
                                     Width="150" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding LipSyncIntensity, StringFormat={}{0:F1}}" 
@@ -105,12 +97,35 @@
                     </StackPanel>
                 </GroupBox>
 
+                <!-- Emotion Options -->
+                <GroupBox Header="Emotion Expression">
+                    <StackPanel>
+                        <TextBlock Text="Add an emotional expression to the animation:" 
+                                   FontStyle="Italic" FontSize="11" Margin="5,2" Opacity="0.8" TextWrapping="Wrap"/>
+                        
+                        <StackPanel Orientation="Horizontal" Margin="5">
+                            <Label Content="Emotion:" Width="80"/>
+                            <ComboBox ItemsSource="{Binding AvailableEmotions}" 
+                                      SelectedItem="{Binding SelectedEmotion}"
+                                      Width="180" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        
+                        <StackPanel Orientation="Horizontal" Margin="5,0">
+                            <Label Content="Intensity:" Width="80"/>
+                            <Slider Value="{Binding EmotionIntensity}" Minimum="0.0" Maximum="1.0" 
+                                    Width="150" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding EmotionIntensity, StringFormat={}{0:P0}}" 
+                                       Width="50" VerticalAlignment="Center" Margin="5,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
                 <!-- Warning -->
                 <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1" 
                         Padding="10" Margin="5" CornerRadius="3">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="?" FontSize="16" Margin="0,0,10,0"/>
-                        <TextBlock Text="This will replace existing lip sync animations (m_ prefix) on this line." 
+                        <TextBlock Text="This will replace existing lip sync animations on this line." 
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>

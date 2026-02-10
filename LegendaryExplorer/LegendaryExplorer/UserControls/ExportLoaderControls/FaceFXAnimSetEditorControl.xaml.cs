@@ -1747,6 +1747,130 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 MessageBox.Show("FaceFX animations generated successfully!", "Generation Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
+
+        private void BulkGenerateFaceFX_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show("No lines in this FaceFX asset.", "No Lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"This will generate FaceFX lip sync animations for all {Lines.Count} lines in this asset.\n\n" +
+                "Lines with TLK text will have animations generated.\n" +
+                "Lines without TLK text will be skipped.\n\n" +
+                "This operation cannot be undone. Continue?",
+                "Bulk Generate FaceFX",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            int successCount = 0;
+            int skipCount = 0;
+            int errorCount = 0;
+            var errors = new List<string>();
+
+            foreach (var lineEntry in Lines)
+            {
+                if (string.IsNullOrWhiteSpace(lineEntry.TLKString))
+                {
+                    skipCount++;
+                    continue;
+                }
+
+                try
+                {
+                    var audioExport = FindVoiceStreamFromExport(lineEntry);
+
+                    var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
+                    {
+                        CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
+                        GenerateJawAnimation = true,
+                        GenerateBlinkAnimation = true,
+                        GenerateEyebrowAnimation = true,
+                        GenerateHeadMovement = false,
+                        LipSyncIntensity = 1.0f,
+                        BlinkFrequency = 0.2f,
+                        UseAudioAmplitude = true,
+                        FxaData = null,
+                        UseTextFallback = true
+                    };
+
+                    var generator = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerator(
+                        FaceFX, lineEntry.Line, lineEntry.TLKString, audioExport, options);
+
+                    if (generator.Generate())
+                    {
+                        successCount++;
+                        lineEntry.UpdateLength();
+                    }
+                    else
+                    {
+                        errorCount++;
+                        errors.Add($"{lineEntry.Name}: {generator.LastError ?? "Unknown error"}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    errors.Add($"{lineEntry.Name}: {ex.Message}");
+                }
+            }
+
+            CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
+            if (SelectedLineEntry != null) UpdateAnimListBox();
+
+            string message = $"Bulk generation complete.\n\nSuccess: {successCount}\nSkipped (no TLK text): {skipCount}\nErrors: {errorCount}";
+            if (errors.Count > 0 && errors.Count <= 10)
+                message += "\n\nErrors:\n" + string.Join("\n", errors);
+            else if (errors.Count > 10)
+                message += $"\n\nFirst 10 errors:\n" + string.Join("\n", errors.Take(10));
+
+            MessageBox.Show(message, "Bulk Generation Complete", MessageBoxButton.OK,
+                errorCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+
+        private void BulkClearAnimations_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show("No lines in this FaceFX asset.", "No Lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"This will clear ALL animations from ALL {Lines.Count} lines in this FaceFX asset.\n\n" +
+                "This includes lip sync, blink, eyebrow, head movement, and all other animations.\n\n" +
+                "This operation cannot be undone. Continue?",
+                "Bulk Clear All Animations",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            int clearedCount = 0;
+            foreach (var lineEntry in Lines)
+            {
+                if (lineEntry.Line != null)
+                {
+                    lineEntry.Line.AnimationNames?.Clear();
+                    lineEntry.Line.NumKeys?.Clear();
+                    lineEntry.Line.Points?.Clear();
+                    lineEntry.UpdateLength();
+                    clearedCount++;
+                }
+            }
+
+            CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
+            if (SelectedLineEntry != null) UpdateAnimListBox();
+
+            MessageBox.Show($"Cleared all animations from {clearedCount} lines.", "Bulk Clear Complete",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     public class Animation : NotifyPropertyChangedBase
