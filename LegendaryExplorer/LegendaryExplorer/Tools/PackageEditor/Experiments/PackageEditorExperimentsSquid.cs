@@ -24,7 +24,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using static LegendaryExplorerCore.Packages.CloningImportingAndRelinking.EntryImporter;
 using static LegendaryExplorerCore.Unreal.PSA;
@@ -36,6 +35,38 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
     {
         // the Mass Effect binary mesh format enforces there be a maximum of 4 bone influences per vertex
         const int MaxBoneInfluences = 4;
+
+        public static void MakeLODs(PackageEditorWindow pew)
+        {
+            if (GetSelectedMeshBinary(pew, out var meshExport, out var meshBin))
+            {
+                meshBin = MeshHelper.UnMapMaterials(meshExport);
+                // find the lowest LOD, duplicate it until
+                var worstLod = meshBin.LODModels.Last();
+                List<StaticLODModel> LODs = [.. meshBin.LODModels];
+                while (LODs.Count < 3)
+                {
+                    LODs.Add(worstLod);
+                }
+                meshBin.LODModels = [..LODs];
+                meshExport.WriteBinary(meshBin);
+                var lodInfo = MeshHelper.GetLodInfoForSkeletalMesh(meshBin, meshExport.Game);
+                meshExport.WriteProperty(lodInfo);
+            }
+        }
+
+        public static void RemoveLODs(PackageEditorWindow pew)
+        {
+            if (GetSelectedMeshBinary(pew, out var meshExport, out var meshBin))
+            {
+                var LOD0 = meshBin.LODModels[0];
+                meshBin.LODModels = [LOD0];
+                meshExport.WriteBinary(meshBin);
+                var lodInfo = MeshHelper.GetLodInfoForSkeletalMesh(meshBin, meshExport.Game);
+                meshExport.WriteProperty(lodInfo);
+            }
+        }
+
         public static void ImportAnimSet(PackageEditorWindow pew)
         {
             if (GetPsaFromFile(pew, out var psa, out var filePath))
@@ -171,34 +202,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
              * importing to OT1 (the format is slightly different in ways I don't care to implement), you can probably use debug build to port into OT1 if you must
              * */
 
-            lodInfoProp = new ArrayProperty<StructProperty>("LODInfo");
-            float[] displayFactors = [1.0f, 0.25f, 0.1f];
-            for (int i = 0; i < psks.Length; i++)
-            {
-                var currentLod = psks[i];
-                var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
-                var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), currentLod.Materials.Count), "bEnableShadowCasting");
-                var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", pew.Pcc.Game), currentLod.Materials.Count), "TriangleSorting");
-
-                var matMap = new List<int>(currentLod.Materials.Count);
-                // to match vanilla, LOD0 has an empty array
-                if (i != 0)
-                {
-                    foreach (var mat in currentLod.Materials)
-                    {
-                        matMap.Add(materials.IndexOf(mat.Name));
-                    }
-                }
-
-                var LODMaterialMapProp = new ArrayProperty<IntProperty>(matMap.Select(x => new IntProperty(x)), "LODMaterialMap");
-                var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
-                    displayFactorProp,
-                    new FloatProperty(0.2f, "LODHysteresis"),
-                    LODMaterialMapProp,
-                    bEnableShadowCastingProp,
-                    TriangleSortingProp);
-                lodInfoProp.Add(lodInfo);
-            }
+            lodInfoProp = MeshHelper.GetLodInfoForSkeletalMesh(meshBin, pew.Pcc.Game);
 
             return meshBin;
 

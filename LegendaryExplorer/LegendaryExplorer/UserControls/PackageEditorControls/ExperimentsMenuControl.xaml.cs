@@ -1350,6 +1350,16 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         // EXPERIMENTS: DropTheSquid
         #region DropTheSquid's Experiments
 
+        private void MakeLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.MakeLODs(GetPEWindow());
+        }
+
+        private void RemoveLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.RemoveLODs(GetPEWindow());
+        }
+
         private void ImportAnimSet_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportAnimSet(GetPEWindow());

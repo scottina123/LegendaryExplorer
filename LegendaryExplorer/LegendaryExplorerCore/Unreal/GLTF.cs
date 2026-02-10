@@ -1770,7 +1770,7 @@ namespace LegendaryExplorerCore.Unreal
 
             export.WriteBinary(meshBin);
 
-            var lodInfo = GetLodInfoProp(intermediateMesh, package);
+            var lodInfo = MeshHelper.GetLodInfoForSkeletalMesh(meshBin, package.Game);
 
             export.WriteProperty(lodInfo);
             WriteSockets(intermediateMesh, export);
@@ -2009,30 +2009,6 @@ namespace LegendaryExplorerCore.Unreal
                     }
                 }
                 return LOD;
-            }
-
-            static ArrayProperty<StructProperty> GetLodInfoProp(IntermediateMesh intermediateMesh, IMEPackage package)
-            {
-                ArrayProperty<StructProperty> lodInfoProp = new("LODInfo");
-
-                for (int i = 0; i < intermediateMesh.LODs.Count; i++)
-                {
-                    var currentLod = intermediateMesh.LODs[i];
-                    var displayFactorProp = new FloatProperty(displayFactors[Math.Min(i, displayFactors.Length - 1)], "DisplayFactor");
-                    var bEnableShadowCastingProp = new ArrayProperty<BoolProperty>(Enumerable.Repeat(new BoolProperty(true), intermediateMesh.Materials.Count), "bEnableShadowCasting");
-                    var TriangleSortingProp = new ArrayProperty<EnumProperty>(Enumerable.Repeat(new EnumProperty("TRISORT_None", "TriangleSortOption", package.Game), intermediateMesh.Materials.Count), "TriangleSorting");
-
-                    var LODMaterialMapProp = new ArrayProperty<IntProperty>(Enumerable.Range(0, intermediateMesh.Materials.Count).Select(x => new IntProperty(x)), "LODMaterialMap");
-
-                    var lodInfo = new StructProperty("SkeletalMeshLODInfo", false,
-                        displayFactorProp,
-                        new FloatProperty(0.2f, "LODHysteresis"),
-                        LODMaterialMapProp,
-                        bEnableShadowCastingProp,
-                        TriangleSortingProp);
-                    lodInfoProp.Add(lodInfo);
-                }
-                return lodInfoProp;
             }
 
             static void WriteSockets(IntermediateMesh mesh, ExportEntry export)
