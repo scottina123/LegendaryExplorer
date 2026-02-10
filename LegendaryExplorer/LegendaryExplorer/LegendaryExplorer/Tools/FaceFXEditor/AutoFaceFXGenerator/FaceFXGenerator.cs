@@ -8,7 +8,7 @@ using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEd
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
     /// <summary>
-    /// Supported character types for FaceFX generation
+    /// Supported character types for FaceFX generation (legacy - use FaceFXSpecies instead)
     /// </summary>
     public enum CharacterType
     {
@@ -40,6 +40,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
     public class FaceFXGenerationOptions
     {
         public CharacterType CharacterType { get; set; } = CharacterType.HumanFemale;
+        
+        /// <summary>
+        /// Species for FaceFX generation - determines which phoneme-to-viseme mappings to use
+        /// </summary>
+        public FaceFXSpecies Species { get; set; } = FaceFXSpecies.HumanFemale;
+        
         public bool GenerateJawAnimation { get; set; } = true;
         public bool GenerateBlinkAnimation { get; set; } = true;
         public bool GenerateEyebrowAnimation { get; set; } = true;
@@ -198,6 +204,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (phonemes == null || phonemes.Count == 0)
                 return;
 
+            // Get species-specific phoneme map
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            
             // Group phoneme events by viseme animation
             var visemeAnimations = new Dictionary<string, List<(float time, float weight)>>();
             
@@ -206,7 +215,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
             foreach (var phoneme in phonemes)
             {
-                if (!PhonemeToVisemeMap.PhonemeMap.TryGetValue(phoneme.Phoneme, out var mappings))
+                if (!phonemeMap.TryGetValue(phoneme.Phoneme, out var mappings))
                     continue;
 
                 float centerTime = phoneme.StartTime + phoneme.Duration / 2f;
@@ -487,9 +496,11 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // This adjusts the timing of existing animations based on precise phoneme timing
             // For now, we'll add additional keyframes at phoneme boundaries
             
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            
             foreach (var (phoneme, startTime, endTime) in phonemeEvents)
             {
-                if (!PhonemeToVisemeMap.PhonemeMap.TryGetValue(phoneme.ToUpper(), out var mappings))
+                if (!phonemeMap.TryGetValue(phoneme.ToUpper(), out var mappings))
                     continue;
 
                 float ampMod = GetAmplitudeAtTime((startTime + endTime) / 2f);
@@ -649,10 +660,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 }
             }
 
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            
             // Generate animations from text analysis for any missing visemes
             foreach (var phoneme in textPhonemes)
             {
-                if (!PhonemeToVisemeMap.PhonemeMap.TryGetValue(phoneme.Phoneme, out var mappings))
+                if (!phonemeMap.TryGetValue(phoneme.Phoneme, out var mappings))
                     continue;
 
                 foreach (var mapping in mappings)
@@ -882,6 +895,10 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Text determines WHICH animations (phonemes -> visemes)
             // Audio determines TIMING, WIDTH, and STRENGTH
             
+            // Get species-specific mappings
+            var phonemeMap = PhonemeToVisemeMap.GetPhonemeMap(_options.Species);
+            var visemeNames = PhonemeToVisemeMap.GetVisemes(_options.Species);
+            
             // Step 1: Analyze audio to find speech segments and amplitude envelope
             var audioSegments = AnalyzeAudioForSpeechSegments(duration);
             
@@ -897,7 +914,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             int numSamples = (int)(duration * sampleRate) + 1;
             
             // Initialize all visemes with zero samples
-            foreach (var viseme in PhonemeToVisemeMap.HumanFemaleVisemes)
+            foreach (var viseme in visemeNames)
             {
                 visemeSamples[viseme] = new float[numSamples];
             }
@@ -905,7 +922,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             // Process each timed phoneme - add contribution to the sampled curves
             foreach (var timedPhoneme in timedPhonemes)
             {
-                if (!PhonemeToVisemeMap.PhonemeMap.TryGetValue(timedPhoneme.Phoneme, out var mappings))
+                if (!phonemeMap.TryGetValue(timedPhoneme.Phoneme, out var mappings))
                     continue;
 
                 float peakTime = timedPhoneme.StartTime + timedPhoneme.Duration * 0.5f;
@@ -967,7 +984,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
 
             // Convert sampled curves to keyframes (with intelligent decimation)
-            foreach (var viseme in PhonemeToVisemeMap.HumanFemaleVisemes)
+            foreach (var viseme in visemeNames)
             {
                 var samples = visemeSamples[viseme];
                 

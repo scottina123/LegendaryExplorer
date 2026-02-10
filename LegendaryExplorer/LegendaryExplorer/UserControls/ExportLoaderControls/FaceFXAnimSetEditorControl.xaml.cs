@@ -1756,17 +1756,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            var result = MessageBox.Show(
-                $"This will generate FaceFX lip sync animations for all {Lines.Count} lines in this asset.\n\n" +
-                "Lines with TLK text will have animations generated.\n" +
-                "Lines without TLK text will be skipped.\n\n" +
-                "This operation cannot be undone. Continue?",
-                "Bulk Generate FaceFX",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.Yes)
+            // Show bulk generation options dialog
+            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(Lines.Count, Window.GetWindow(this));
+            if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
                 return;
+
+            var selectedSpecies = bulkDialog.SelectedSpeciesEnum;
 
             int successCount = 0;
             int skipCount = 0;
@@ -1788,6 +1783,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
                     {
                         CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
+                        Species = selectedSpecies,
                         GenerateJawAnimation = true,
                         GenerateBlinkAnimation = true,
                         GenerateEyebrowAnimation = true,

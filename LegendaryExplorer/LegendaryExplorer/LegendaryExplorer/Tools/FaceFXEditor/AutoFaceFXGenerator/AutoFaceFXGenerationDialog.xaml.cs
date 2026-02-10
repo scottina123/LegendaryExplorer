@@ -171,6 +171,25 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _emotionIntensity = value; OnPropertyChanged(); }
         }
 
+        // Species selection
+        public List<string> AvailableSpecies { get; } = new List<string>
+        {
+            "Human Female",
+            "Human Male",
+            "Asari",
+            "Krogan",
+            "Drell",
+            "Turian",
+            "Salarian"
+        };
+
+        private string _selectedSpecies = "Human Female";
+        public string SelectedSpecies
+        {
+            get => _selectedSpecies;
+            set { _selectedSpecies = value; OnPropertyChanged(); }
+        }
+
         // Result
         public bool WasGenerated { get; private set; }
 
@@ -322,10 +341,23 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                     Enum.TryParse(SelectedEmotion, out emotion);
                 }
 
+                // Parse the selected species
+                FaceFXSpecies species = SelectedSpecies switch
+                {
+                    "Human Male" => FaceFXSpecies.HumanMale,
+                    "Asari" => FaceFXSpecies.Asari,
+                    "Krogan" => FaceFXSpecies.Krogan,
+                    "Drell" => FaceFXSpecies.Drell,
+                    "Turian" => FaceFXSpecies.Turian,
+                    "Salarian" => FaceFXSpecies.Salarian,
+                    _ => FaceFXSpecies.HumanFemale
+                };
+
                 // FXA/FXT support is disabled for now - just use text analysis
                 var options = new FaceFXGenerationOptions
                 {
                     CharacterType = CharacterType.HumanFemale,
+                    Species = species,
                     GenerateJawAnimation = true,
                     GenerateBlinkAnimation = GenerateBlinkAnimation,
                     GenerateEyebrowAnimation = GenerateEyebrowAnimation,

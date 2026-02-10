@@ -1,0 +1,66 @@
+<Window x:Class="LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Bulk FaceFX Generation"
+        Height="280" Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        d:DataContext="{d:DesignInstance Type={x:Type local:BulkFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
+        xmlns:local="clr-namespace:LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator">
+    <Window.Resources>
+        <Style TargetType="Label">
+            <Setter Property="Margin" Value="5,2"/>
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{DynamicResource PrimaryColorBrush}" Padding="10">
+            <StackPanel>
+                <TextBlock Text="Bulk FaceFX Generation" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="Generate lip sync for all lines in this asset" FontSize="12" Foreground="White" Opacity="0.8"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <StackPanel Grid.Row="1" Margin="15">
+            <TextBlock Text="{Binding LineCountText}" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <Label Content="Species:" Width="100"/>
+                <ComboBox ItemsSource="{Binding AvailableSpecies}" 
+                          SelectedItem="{Binding SelectedSpecies}"
+                          Width="180" VerticalAlignment="Center"/>
+            </StackPanel>
+            
+            <TextBlock Text="Lines with TLK text will have animations generated." 
+                       Margin="0,15,0,0" FontStyle="Italic" Opacity="0.8"/>
+            <TextBlock Text="Lines without TLK text will be skipped." 
+                       FontStyle="Italic" Opacity="0.8"/>
+            
+            <!-- Warning -->
+            <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1" 
+                    Padding="10" Margin="0,15,0,0" CornerRadius="3">
+                <TextBlock Text="? This operation cannot be undone." TextWrapping="Wrap"/>
+            </Border>
+        </StackPanel>
+
+        <!-- Footer Buttons -->
+        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderColorBrush}" Padding="10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Generate" Width="100" Margin="0,0,10,0" 
+                        Click="GenerateButton_Click" IsDefault="True"/>
+                <Button Content="Cancel" Width="100" Click="CancelButton_Click" IsCancel="True"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

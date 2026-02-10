@@ -71,8 +71,15 @@
                 </GroupBox>
 
                 <!-- Generation Options -->
-                <GroupBox Header="Additional Options">
+                <GroupBox Header="Generation Options">
                     <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="5">
+                            <Label Content="Species:" Width="120"/>
+                            <ComboBox ItemsSource="{Binding AvailableSpecies}" 
+                                      SelectedItem="{Binding SelectedSpecies}"
+                                      Width="150" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        
                         <CheckBox Content="Generate Blink Animation" IsChecked="{Binding GenerateBlinkAnimation}"/>
                         <CheckBox Content="Generate Eyebrow Animation" IsChecked="{Binding GenerateEyebrowAnimation}"/>
                         <CheckBox Content="Generate Head Movement" IsChecked="{Binding GenerateHeadMovement}"/>
