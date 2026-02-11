@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Bulk FaceFX Generation"
-        Height="280" Width="400"
+        Height="320" Width="400"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:BulkFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
@@ -41,8 +41,16 @@
                           SelectedItem="{Binding SelectedSpecies}"
                           Width="180" VerticalAlignment="Center"/>
             </StackPanel>
-            
-            <TextBlock Text="Lines with TLK text will have animations generated." 
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <Label Content="Intensity Scale:" Width="100"/>
+                <Slider Value="{Binding LipSyncIntensity}" Minimum="0.1" Maximum="2.0" 
+                        Width="150" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding LipSyncIntensity, StringFormat={}{0:F1}}" 
+                           Width="40" VerticalAlignment="Center" Margin="5,0"/>
+            </StackPanel>
+
+            <TextBlock Text="Lines with TLK text will have animations generated."
                        Margin="0,15,0,0" FontStyle="Italic" Opacity="0.8"/>
             <TextBlock Text="Lines without TLK text will be skipped." 
                        FontStyle="Italic" Opacity="0.8"/>

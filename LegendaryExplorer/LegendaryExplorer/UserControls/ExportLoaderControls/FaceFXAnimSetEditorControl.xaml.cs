@@ -1762,6 +1762,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
 
             var selectedSpecies = bulkDialog.SelectedSpeciesEnum;
+            var lipSyncIntensity = bulkDialog.LipSyncIntensity;
 
             int successCount = 0;
             int skipCount = 0;
@@ -1788,7 +1789,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         GenerateBlinkAnimation = true,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
-                        LipSyncIntensity = 1.0f,
+                        LipSyncIntensity = lipSyncIntensity,
                         BlinkFrequency = 0.2f,
                         UseAudioAmplitude = true,
                         FxaData = null,

@@ -60,9 +60,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         public EmotionType Emotion { get; set; } = EmotionType.None;
         
         /// <summary>
-        /// Intensity of the emotion (0-1)
+        /// Intensity of the emotion (0-1) - higher values create more visible expressions
         /// </summary>
-        public float EmotionIntensity { get; set; } = 0.5f;
+        public float EmotionIntensity { get; set; } = 0.8f;
         
         /// <summary>
         /// FXA animation data imported from UDK FaceFX Studio
@@ -1749,148 +1749,90 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             switch (emotion)
             {
                 case EmotionType.Anger:
-                    // Anger - all face part categories (variants 2, 3)
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Anger2", 0.8f);      // S = Mouth
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Anger2", 0.8f);      // B = Brow
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Anger2", 0.8f);      // Y = Eye
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Anger2", 0.8f);     // WB = Wide Brow
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Anger3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Anger3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Anger3", 0.6f);
-                    // Stern as alternative - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern1", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Stern1", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Stern1", 0.5f);
+                    // Anger - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Anger1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Anger2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Anger1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Anger2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Anger1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Anger2", 1.0f));
                     break;
 
                 case EmotionType.Disgust:
-                    // Disdain - all face part categories (variants 1, 2, 3)
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Disdain2", 0.8f);    // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Disdain2", 0.8f);    // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Disdain2", 0.8f);    // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Disdain2", 0.8f);   // WB
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Disdain1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Disdain1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Disdain1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Disdain3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Disdain3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Disdain3", 0.5f);
+                    // Disgust - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Disgust1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Disgust2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Disgust1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Disgust2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Disgust1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Disgust2", 1.0f));
                     break;
 
                 case EmotionType.Fear:
-                    // Fear/Terror - all categories
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_B_Terror1", 0.8f);   // D_B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_S_Concern", 0.7f);   // D_S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Wounded_Squint", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_NervousLoop", 0.6f);
-                    // Concern - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Concern1", 0.7f);    // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern1", 0.7f);    // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern2", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern1", 0.7f);    // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern2", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Concern1", 0.7f);   // WB
+                    // Fear - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Fear1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Fear2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Fear1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Fear2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Fear1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Fear2", 1.0f));
                     break;
 
                 case EmotionType.Happy:
-                    // Joy - all face part categories (variants 1, 2, 3)
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Joy1", 0.8f);        // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Joy2", 0.8f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Joy1", 0.8f);        // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Joy3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Joy1", 0.8f);        // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Joy1", 0.8f);       // WB
-                    // Satisfaction - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Satisfaction1", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Satisfaction2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Satisfaction3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Satisfaction1", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Satisfaction2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Satisfaction3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Satisfaction1", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Satisfaction2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Satisfaction3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Satisfaction3", 0.6f);
-                    // Laughter - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Laughter1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Laughter1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Laughter1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Happy_Diabolical", 0.4f);
+                    // Happy/Joy - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Joy1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Joy2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Joy1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Joy2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Joy1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Joy2", 1.0f));
                     break;
 
                 case EmotionType.Sad:
-                    // Sad expressions
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Sad_Disappointed", 0.8f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Sad_Shocked", 0.6f);
-                    // Dejection - all face part categories
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Dejection1", 0.8f);  // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Dejection3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Dejection1", 0.8f);  // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Dejection3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Dejection1", 0.8f);  // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Dejection3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_S_Concern", 0.5f);   // D_S
+                    // Sad - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Sadness1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Sadness2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Sadness1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Sadness2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Sadness1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Sadness2", 1.0f));
                     break;
 
                 case EmotionType.Surprise:
-                    // Shock/Surprise
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Neutral_Shock", 0.8f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Sad_Shocked", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_S_MouthOpen", 0.7f); // D_S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_Blink", 0.5f);       // D
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Neutral_Perplexed", 0.5f);
-                    // Concern for wide eyes - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Concern1", 0.5f);    // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern1", 0.6f);    // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern1", 0.6f);    // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Concern1", 0.6f);   // WB
+                    // Surprise/Shock - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Shock1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Shock1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Shock1", 1.2f));
                     break;
 
                 case EmotionType.Contempt:
-                    // Disdain for contempt - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Disdain1", 0.7f);    // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Disdain1", 0.7f);    // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Disdain1", 0.7f);    // Y
-                    // Stern - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern2", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Stern1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Stern3", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Stern1", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Satisfaction2", 0.4f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Happy_Diabolical", 0.5f);
+                    // Contempt/Disdain - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Disdain1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Disdain2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Disdain1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Disdain2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Disdain1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Disdain2", 1.0f));
                     break;
 
                 case EmotionType.Determined:
-                    // Stern - all face part categories
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern1", 0.8f);      // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern2", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Stern3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Stern1", 0.8f);      // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Stern3", 0.6f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Stern1", 0.8f);      // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Stern3", 0.6f);
-                    // Slight anger for intensity
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Anger2", 0.4f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Anger2", 0.3f);
+                    // Determined/Stern - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Stern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Stern2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Stern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Stern2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Stern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Stern2", 1.0f));
                     break;
 
                 case EmotionType.Worried:
-                    // Concern - all face part categories
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Concern1", 0.8f);    // S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern1", 0.8f);    // B
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Concern2", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern1", 0.8f);    // Y
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Concern2", 0.7f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_WB_Concern1", 0.8f);   // WB
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_D_S_Concern", 0.6f);   // D_S
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_NervousLoop", 0.5f);
-                    // Dejection for worry - all face parts
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_S_Dejection1", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_B_Dejection1", 0.5f);
-                    AddIfAvailable(mappings, availableEmotionAnims, "E_Y_Dejection1", 0.5f);
+                    // Worried/Concern - strong weights for game visibility
+                    mappings.Add(new EmotionAnimationMapping("E_S_Concern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_S_Concern2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Concern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_B_Concern2", 1.0f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Concern1", 1.2f));
+                    mappings.Add(new EmotionAnimationMapping("E_Y_Concern2", 1.0f));
                     break;
             }
 

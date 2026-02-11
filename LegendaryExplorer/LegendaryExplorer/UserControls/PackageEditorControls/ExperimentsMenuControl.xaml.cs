@@ -801,6 +801,41 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             }
         }
 
+        private void ExtractFaceFXCombineNodeNames_Click(object sender, RoutedEventArgs e)
+        {
+            if (!GetPEWindow().TryGetSelectedExport(out var export))
+            {
+                MessageBox.Show("Please select a FaceFXAsset export.", "No export selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (export.ClassName != "FaceFXAsset")
+            {
+                MessageBox.Show("Selected export is not a FaceFXAsset.", "Invalid export type", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var faceFxAsset = ObjectBinary.From<FaceFXAsset>(export);
+            if (faceFxAsset.CombinerNodes == null || faceFxAsset.CombinerNodes.Count == 0)
+            {
+                MessageBox.Show("No Combine_Nodes found in this FaceFXAsset.", "No nodes", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var combineNodeNames = new List<string>();
+            foreach (var node in faceFxAsset.CombinerNodes)
+            {
+                if (node.Name >= 0 && node.Name < faceFxAsset.Names.Count)
+                {
+                    combineNodeNames.Add(faceFxAsset.Names[node.Name]);
+                }
+            }
+
+            var result = string.Join(Environment.NewLine, combineNodeNames);
+            Clipboard.SetText(result);
+            MessageBox.Show($"Extracted {combineNodeNames.Count} Combine_Node names and copied to clipboard.\n\nNames:\n{result}", "Extraction complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private void RandomizeTerrain_Click(object sender, RoutedEventArgs e)
         {
             if (GetPEWindow().Pcc == null) return;

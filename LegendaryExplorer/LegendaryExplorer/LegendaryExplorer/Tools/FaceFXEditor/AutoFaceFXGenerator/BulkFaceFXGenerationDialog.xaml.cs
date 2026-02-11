@@ -38,6 +38,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _selectedSpecies = value; OnPropertyChanged(); }
         }
 
+        private float _lipSyncIntensity = 1.0f;
+        public float LipSyncIntensity
+        {
+            get => _lipSyncIntensity;
+            set { _lipSyncIntensity = value; OnPropertyChanged(); }
+        }
+
         /// <summary>
         /// The selected species as enum value
         /// </summary>

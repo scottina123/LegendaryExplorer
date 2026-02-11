@@ -142,7 +142,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _blinkFrequency = value; OnPropertyChanged(); }
         }
 
-        // Emotion options
+        // Base emotion categories - the code will apply appropriate FaceFX animations based on selected emotion
         public List<string> AvailableEmotions { get; } = new List<string>
         {
             "None",

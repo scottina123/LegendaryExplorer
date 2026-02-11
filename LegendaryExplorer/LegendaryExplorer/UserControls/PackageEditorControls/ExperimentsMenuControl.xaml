@@ -236,6 +236,7 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
         <MenuItem Header="Shift current selected InterpTrackMove" Click="ShiftInterpTrackMove"/>
         <MenuItem Header="Shift all InterpTrackMove in package" Click="ShiftInterpTrackMovePackageWide"/>
         <MenuItem Header="Shift all InterpTrackMove in package (Ignore MoveFrame=IMF_AnchorObject)" Click="ShiftInterpTrackMovePackageWideNoAnchor"/>
+        <MenuItem Header="Extract FaceFXAsset Combine_Node names" Click="ExtractFaceFXCombineNodeNames_Click" ToolTip="Extracts the names of all Combine_Nodes from the selected FaceFXAsset export."/>
     </MenuItem>
     <MenuItem Header="Other people's box of Legos">
         <MenuItem Header="Export level to T3D" Click="ExportLevelToT3D_Click"/>
