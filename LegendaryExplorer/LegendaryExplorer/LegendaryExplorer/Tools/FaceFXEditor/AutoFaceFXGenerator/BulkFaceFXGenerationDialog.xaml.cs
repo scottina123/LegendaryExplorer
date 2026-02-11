@@ -24,11 +24,21 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         {
             "Human Female",
             "Human Male",
+            "Human Child",
             "Asari",
             "Krogan",
             "Drell",
             "Turian",
-            "Salarian"
+            "Salarian",
+            "Quarian",
+            "Geth",
+            "Elcor",
+            "Hanar",
+            "Volus",
+            "Batarian",
+            "Vorcha",
+            "Prothean",
+            "Yahg"
         };
 
         private string _selectedSpecies = "Human Female";
@@ -51,11 +61,21 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         public FaceFXSpecies SelectedSpeciesEnum => SelectedSpecies switch
         {
             "Human Male" => FaceFXSpecies.HumanMale,
+            "Human Child" => FaceFXSpecies.HumanChild,
             "Asari" => FaceFXSpecies.Asari,
             "Krogan" => FaceFXSpecies.Krogan,
             "Drell" => FaceFXSpecies.Drell,
             "Turian" => FaceFXSpecies.Turian,
             "Salarian" => FaceFXSpecies.Salarian,
+            "Quarian" => FaceFXSpecies.Quarian,
+            "Geth" => FaceFXSpecies.Geth,
+            "Elcor" => FaceFXSpecies.Elcor,
+            "Hanar" => FaceFXSpecies.Hanar,
+            "Volus" => FaceFXSpecies.Volus,
+            "Batarian" => FaceFXSpecies.Batarian,
+            "Vorcha" => FaceFXSpecies.Vorcha,
+            "Prothean" => FaceFXSpecies.Prothean,
+            "Yahg" => FaceFXSpecies.Yahg,
             _ => FaceFXSpecies.HumanFemale
         };
 
