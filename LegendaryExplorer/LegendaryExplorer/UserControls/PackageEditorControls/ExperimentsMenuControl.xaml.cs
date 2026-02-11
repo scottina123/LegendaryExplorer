@@ -836,6 +836,135 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             MessageBox.Show($"Extracted {combineNodeNames.Count} Combine_Node names and copied to clipboard.\n\nNames:\n{result}", "Extraction complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
+        {
+            if (!GetPEWindow().TryGetSelectedExport(out var export))
+            {
+                MessageBox.Show("Please select a FaceFXAsset export.", "No export selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (export.ClassName != "FaceFXAsset")
+            {
+                MessageBox.Show("Selected export is not a FaceFXAsset.", "Invalid export type", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var faceFxAsset = ObjectBinary.From<FaceFXAsset>(export);
+
+            // Create save file dialog
+            var saveFileDialog = new SaveFileDialog
+            {
+                Filter = "XML files (*.xml)|*.xml|All files (*.*)|*.*",
+                FileName = $"{export.ObjectName}_FaceFX.xml",
+                Title = "Export FaceFXAsset to XML"
+            };
+
+            if (saveFileDialog.ShowDialog() != true)
+                return;
+
+            try
+            {
+                var xmlDoc = new System.Xml.XmlDocument();
+                var declaration = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+                xmlDoc.AppendChild(declaration);
+
+                // Create root actor element
+                var actorElement = xmlDoc.CreateElement("actor");
+                actorElement.SetAttribute("name", export.ObjectName.Instanced);
+                xmlDoc.AppendChild(actorElement);
+
+                // Create face_graph element
+                var faceGraphElement = xmlDoc.CreateElement("face_graph");
+                actorElement.AppendChild(faceGraphElement);
+
+                // Create bones element
+                var bonesElement = xmlDoc.CreateElement("bones");
+                faceGraphElement.AppendChild(bonesElement);
+
+                // Add bone data
+                foreach (var boneNode in faceFxAsset.BoneNodes)
+                {
+                    var boneName = boneNode.BoneName >= 0 && boneNode.BoneName < faceFxAsset.Names.Count
+                        ? faceFxAsset.Names[boneNode.BoneName]
+                        : $"Unknown_{boneNode.BoneName}";
+
+                    var boneElement = xmlDoc.CreateElement("bone");
+                    boneElement.SetAttribute("name", boneName);
+
+                    // Format: X Y Z (position) + first 4 unkFloats (rotation quaternion) + next 3 unkFloats (scale)
+                    var boneData = $"{boneNode.X:F6} {boneNode.Y:F6} {boneNode.Z:F6}";
+                    if (boneNode.unkFloats != null && boneNode.unkFloats.Length >= 7)
+                    {
+                        boneData += $" {boneNode.unkFloats[0]:F6} {boneNode.unkFloats[1]:F6} {boneNode.unkFloats[2]:F6} {boneNode.unkFloats[3]:F6}";
+                        boneData += $" {boneNode.unkFloats[4]:F6} {boneNode.unkFloats[5]:F6} {boneNode.unkFloats[6]:F6}";
+                    }
+                    boneElement.InnerText = boneData;
+                    bonesElement.AppendChild(boneElement);
+                }
+
+                // Create mapping element
+                var mappingElement = xmlDoc.CreateElement("mapping");
+                actorElement.AppendChild(mappingElement);
+
+                // Add mapping entries from bone children
+                foreach (var boneNode in faceFxAsset.BoneNodes)
+                {
+                    var phonemeName = boneNode.BoneName >= 0 && boneNode.BoneName < faceFxAsset.Names.Count
+                        ? faceFxAsset.Names[boneNode.BoneName]
+                        : $"Unknown_{boneNode.BoneName}";
+
+                    if (boneNode.Children != null)
+                    {
+                        foreach (var child in boneNode.Children)
+                        {
+                            // Get target name from combiner nodes
+                            var targetName = "Unknown";
+                            if (child.CombinerIndex >= 0 && child.CombinerIndex < faceFxAsset.CombinerNodes.Count)
+                            {
+                                var combinerNode = faceFxAsset.CombinerNodes[child.CombinerIndex];
+                                if (combinerNode.Name >= 0 && combinerNode.Name < faceFxAsset.Names.Count)
+                                {
+                                    targetName = faceFxAsset.Names[combinerNode.Name];
+                                }
+                            }
+
+                            // Use first float from unkFloats as amount (this appears to be the weight/amount value)
+                            var amount = child.unkFloats != null && child.unkFloats.Length > 0
+                                ? child.unkFloats[0]
+                                : 0f;
+
+                            var entryElement = xmlDoc.CreateElement("entry");
+                            entryElement.SetAttribute("phoneme", phonemeName);
+                            entryElement.SetAttribute("target", targetName);
+                            entryElement.SetAttribute("amount", amount.ToString("F6"));
+                            mappingElement.AppendChild(entryElement);
+                        }
+                    }
+                }
+
+                // Save with formatting
+                var settings = new System.Xml.XmlWriterSettings
+                {
+                    Indent = true,
+                    IndentChars = "    ",
+                    NewLineChars = Environment.NewLine,
+                    NewLineHandling = System.Xml.NewLineHandling.Replace
+                };
+
+                using (var writer = System.Xml.XmlWriter.Create(saveFileDialog.FileName, settings))
+                {
+                    xmlDoc.Save(writer);
+                }
+
+                MessageBox.Show($"Successfully exported FaceFXAsset to:\n{saveFileDialog.FileName}", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error exporting FaceFXAsset: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void RandomizeTerrain_Click(object sender, RoutedEventArgs e)
         {
             if (GetPEWindow().Pcc == null) return;
