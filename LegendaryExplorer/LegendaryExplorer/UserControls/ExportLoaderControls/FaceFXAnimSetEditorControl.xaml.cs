@@ -1714,6 +1714,191 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddLinesFromXML();
         }
 
+        private void AddAudioFromFolder_Click(object sender, RoutedEventArgs e)
+        {
+            AddAudioFromFolder();
+        }
+
+        /// <summary>
+        /// Adds FaceFX lines from WwiseEvents in a selected package folder.
+        /// Female WwiseEvents (containing "f_play") are only added to female FaceFX assets (ending in "_f").
+        /// Male WwiseEvents (containing "m_play") are only added to male FaceFX assets (ending in "_m").
+        /// </summary>
+        private void AddAudioFromFolder()
+        {
+            if (CurrentLoadedExport == null) return;
+
+            // Determine if this is a female or male FaceFX asset
+            bool isFemaleAsset = CurrentLoadedExport.ObjectName.Name.EndsWith("_F", StringComparison.OrdinalIgnoreCase);
+            bool isMaleAsset = CurrentLoadedExport.ObjectName.Name.EndsWith("_M", StringComparison.OrdinalIgnoreCase);
+
+            if (!isFemaleAsset && !isMaleAsset)
+            {
+                MessageBox.Show("This FaceFX asset does not end with '_F' or '_M'. Cannot determine gender for audio filtering.",
+                    "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Prompt user to select a folder (Package export) in the package
+            var folderExport = EntrySelector.GetEntry<ExportEntry>(Window.GetWindow(this), Pcc,
+                "Select the folder containing WwiseEvents:",
+                exp => exp.ClassName == "Package");
+
+            if (folderExport == null) return;
+
+            // Get all WwiseEvents under the selected folder
+            var entryTree = new EntryTree(Pcc);
+            var allEntriesInFolder = entryTree.FlattenTreeOf(folderExport, includeRoot: false);
+            var wwiseEvents = allEntriesInFolder
+                .OfType<ExportEntry>()
+                .Where(exp => exp.ClassName == "WwiseEvent")
+                .ToList();
+
+            if (wwiseEvents.Count == 0)
+            {
+                MessageBox.Show("No WwiseEvents found in the selected folder.", "No Events", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Filter WwiseEvents based on gender
+            List<ExportEntry> filteredEvents;
+            if (isFemaleAsset)
+            {
+                filteredEvents = wwiseEvents.Where(e => e.ObjectName.Name.Contains("f_play", StringComparison.OrdinalIgnoreCase) ||
+                                                         e.ObjectName.Name.Contains("f_Play", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else
+            {
+                filteredEvents = wwiseEvents.Where(e => e.ObjectName.Name.Contains("m_play", StringComparison.OrdinalIgnoreCase) ||
+                                                         e.ObjectName.Name.Contains("m_Play", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (filteredEvents.Count == 0)
+            {
+                string genderType = isFemaleAsset ? "female (f_play)" : "male (m_play)";
+                MessageBox.Show($"No {genderType} WwiseEvents found in the selected folder.", "No Matching Events", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Get or create ReferencedSoundCues property
+            var referencedSoundCues = CurrentLoadedExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")
+                                      ?? new ArrayProperty<ObjectProperty>("ReferencedSoundCues");
+
+            // Build a set of already referenced WwiseEvent UIndexes for quick lookup
+            var existingReferences = new HashSet<int>(referencedSoundCues.Select(op => op.Value));
+
+            int linesAdded = 0;
+            int skippedDuplicates = 0;
+            int lineIndex = FaceFX.Lines.Count;
+
+            foreach (var wwiseEvent in filteredEvents)
+            {
+                // Check if this WwiseEvent is already in ReferencedSoundCues
+                if (existingReferences.Contains(wwiseEvent.UIndex))
+                {
+                    skippedDuplicates++;
+                    continue; // Skip - already referenced
+                }
+
+                // Extract TLK ID from WwiseEvent name (e.g., "VO_123456_f_Play" -> 123456)
+                string eventName = wwiseEvent.ObjectName.Name;
+                int tlkID = ExtractTlkIdFromWwiseEventName(eventName);
+
+                if (tlkID <= 0)
+                {
+                    continue; // Skip if we can't extract a valid TLK ID
+                }
+
+                // Check if a line with this TLK ID already exists
+                if (Lines.Any(l => l.TLKID == tlkID))
+                {
+                    skippedDuplicates++;
+                    continue; // Skip duplicates
+                }
+
+                // Create the line name (e.g., "FXA_123456_F" or "FXA_123456_M")
+                string lineName = $"FXA_{tlkID}_{(isFemaleAsset ? "F" : "M")}";
+                string lineId = tlkID.ToString();
+
+                // Create the new FaceFX line
+                var line = new FaceFXLine
+                {
+                    NameIndex = FaceFX.Names.FindOrAdd(lineName),
+                    NameAsString = lineName,
+                    AnimationNames = new List<int>(),
+                    Points = new List<FaceFXControlPoint>(),
+                    NumKeys = new List<int>(),
+                    FadeInTime = 0.16f,
+                    FadeOutTime = 0.22f,
+                    Path = wwiseEvent.InstancedFullPath,
+                    ID = lineId,
+                    Index = lineIndex
+                };
+
+                // Add to ReferencedSoundCues and track it
+                referencedSoundCues.Add(new ObjectProperty(wwiseEvent.UIndex));
+                existingReferences.Add(wwiseEvent.UIndex);
+
+                // Create the line entry for UI
+                var lineEntry = new FaceFXLineEntry(line)
+                {
+                    IsMale = !isFemaleAsset,
+                    TLKID = tlkID,
+                    TLKString = TLKManagerWPF.GlobalFindStrRefbyID(tlkID, Pcc)
+                };
+
+                FaceFX.Lines.Add(line);
+                Lines.Add(lineEntry);
+
+                lineIndex++;
+                linesAdded++;
+            }
+
+            if (linesAdded > 0)
+            {
+                // Write the ReferencedSoundCues property
+                CurrentLoadedExport.WriteProperty(referencedSoundCues);
+
+                // Save changes to the binary
+                CurrentLoadedExport.WriteBinary(FaceFX.Binary);
+
+                string message = $"Successfully added {linesAdded} line(s) from WwiseEvents.";
+                if (skippedDuplicates > 0)
+                {
+                    message += $"\n{skippedDuplicates} duplicate(s) were skipped.";
+                }
+                MessageBox.Show(message, "Lines Added", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show($"No new lines were added. {skippedDuplicates} WwiseEvent(s) already have corresponding lines.",
+                    "No Lines Added", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        /// <summary>
+        /// Extracts the TLK ID from a WwiseEvent name.
+        /// Expected format: "VO_123456_f_Play" or similar patterns containing the numeric TLK ID.
+        /// </summary>
+        private static int ExtractTlkIdFromWwiseEventName(string eventName)
+        {
+            // Try to find a pattern like "VO_123456" or just extract digits
+            var match = Regex.Match(eventName, @"VO_(\d+)", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int tlkId))
+            {
+                return tlkId;
+            }
+
+            // Fallback: try to find any sequence of 6+ digits
+            match = Regex.Match(eventName, @"(\d{6,})");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out tlkId))
+            {
+                return tlkId;
+            }
+
+            return -1;
+        }
+
         private void AutoFaceFXGeneration_Click(object sender, RoutedEventArgs e)
         {
             if (SelectedLineEntry == null || SelectedLine == null)
