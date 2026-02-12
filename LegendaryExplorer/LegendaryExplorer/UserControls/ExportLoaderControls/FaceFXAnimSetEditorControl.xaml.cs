@@ -1868,6 +1868,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             MessageBox.Show($"Cleared all animations from {clearedCount} lines.", "Bulk Clear Complete",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
+
+        private void BulkDeleteAllLines_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show("No lines in this FaceFX asset.", "No Lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"This will DELETE ALL {Lines.Count} lines from this FaceFX asset.\n\n" +
+                "This operation cannot be undone. Continue?",
+                "Bulk Delete All Lines",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            int deletedCount = Lines.Count;
+            FaceFX.Lines.Clear();
+            Lines.Clear();
+            SaveChanges();
+
+            MessageBox.Show($"Deleted {deletedCount} lines.", "Bulk Delete Complete",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     public class Animation : NotifyPropertyChangedBase

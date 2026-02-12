@@ -49,6 +49,7 @@
                     <MenuItem Header="Bulk Operations">
                         <MenuItem Header="Bulk Generate FaceFX for All Lines" Click="BulkGenerateFaceFX_Click" ToolTip="Generate lip sync animations for all lines in this FaceFX asset"/>
                         <MenuItem Header="Bulk Clear All Animations" Click="BulkClearAnimations_Click" ToolTip="Clear all animations from every line in this FaceFX asset"/>
+                        <MenuItem Header="Bulk Delete All Lines" Click="BulkDeleteAllLines_Click" ToolTip="Delete all lines from this FaceFX asset"/>
                     </MenuItem>
                 </MenuItem>
             </Menu>
