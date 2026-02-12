@@ -255,6 +255,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand CopyToClipboardCommand { get; set; }
         public ICommand ForceRefreshCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
+        public ICommand BulkEditInterpGroupsCommand { get; set; }
         private bool HasWwbank(object param)
         {
             return SelectedConv?.WwiseBank != null;
@@ -504,6 +505,7 @@ namespace LegendaryExplorer.DialogueEditor
             CopyToClipboardCommand = new RelayCommand(CopyStringToClipboard);
             ForceRefreshCommand = new RelayCommand(ForceRefresh);
             ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= -2);
+            BulkEditInterpGroupsCommand = new GenericCommand(OpenBulkInterpEditor, LineHasInterpData);
         }
 
         private void DialogueEditorWPF_Loaded(object sender, RoutedEventArgs e)
@@ -3902,6 +3904,25 @@ namespace LegendaryExplorer.DialogueEditor
                 Debug.WriteLine($"Failed to extract audio from {wwiseStream.InstancedFullPath}: {ex.Message}");
             }
             return false;
+        }
+
+        /// <summary>
+        /// Opens the bulk InterpGroup editor dialog for the currently selected dialogue node.
+        /// </summary>
+        private void OpenBulkInterpEditor()
+        {
+            if (SelectedDialogueNode?.InterpData == null || SelectedConv == null)
+            {
+                MessageBox.Show("No InterpData available for this node.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new BulkInterpEditorDialog(this, SelectedDialogueNode, SelectedConv);
+            if (dialog.ShowDialog() == true)
+            {
+                // Refresh the view after changes
+                ForceRefresh(null);
+            }
         }
 
         #region Helpers

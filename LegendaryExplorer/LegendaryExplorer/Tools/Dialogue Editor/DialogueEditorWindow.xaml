@@ -42,6 +42,8 @@
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Update VOElements and Interp Comment" Command="{Binding UpdateVOElementsAndInterpCommentCommand}" ToolTip="Update the Interp comment and VOElement' StrRefID that are linked to the selected audio node." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Bulk Edit Interp Groups" Command="{Binding BulkEditInterpGroupsCommand}" ToolTip="Bulk edit tags, actor names, and group names in the InterpData for this node." 
+                      sharedUi:Bindings.VisibilityToEnabled="True"/>
             <Separator />
             <MenuItem Header="Break Links" Name="breakLinksMenuItem">
                 <MenuItem Header="Individual Links" Name="outputLinksMenuItem"></MenuItem>
@@ -62,6 +64,8 @@
             <MenuItem Header="Update InterpLengths" Command="{Binding UpdateInterpLengthCommand}" ToolTip="Update the InterpLength of the selected audio node, based either on the FXA or the audio length." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Update VOElements and Interp Comment" Command="{Binding UpdateVOElementsAndInterpCommentCommand}" ToolTip="Update the Interp comment and VOElement' StrRefID that are linked to the selected audio node." 
+                      sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Bulk Edit Interp Groups" Command="{Binding BulkEditInterpGroupsCommand}" ToolTip="Bulk edit tags, actor names, and group names in the InterpData for this node." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <Separator />
             <MenuItem Header="Break Links" Name="ebreakLinksMenuItem">
