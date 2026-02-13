@@ -58,6 +58,7 @@
             <MenuItem Header="Open Referenced State Event in Plot Editor" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
             <Separator />
             <MenuItem Header="Clone Object" Click="CloneObject_Clicked" ToolTip="Create a new node as a duplicate of this one"/>
+            <MenuItem Header="Clone Object with Links" Click="CloneObjectWithLinks_Clicked" ToolTip="Create a new node as a duplicate of this one, preserving output and variable links"/>
             <MenuItem Header="Clone InterpData tree" Click="CloneInterpData_Clicked" Name="cloneInterpDataMenuItem" ToolTip="Clone InterpData and all of its children"/>
             <MenuItem Header="Edit Comment" Click="EditComment_Click" ToolTip="Add or edit this node's comment"/>
             <MenuItem Header="Break Links" Name="breakLinksMenuItem">

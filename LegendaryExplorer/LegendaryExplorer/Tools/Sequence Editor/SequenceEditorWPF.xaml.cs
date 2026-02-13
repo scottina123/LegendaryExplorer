@@ -2471,6 +2471,40 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private void CloneObjectWithLinks_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is SObj obj)
+            {
+                // Save the link properties before cloning
+                var originalProps = obj.Export.GetProperties();
+                var outputLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("OutputLinks");
+                var variableLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
+                var eventLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("EventLinks");
+
+                // Clone the object (this may remove links due to the topLevel parameter)
+                ExportEntry clonedExport = KismetHelper.CloneObject(obj.Export, SelectedSequence);
+
+                // Restore the link properties to the cloned object
+                var clonedProps = clonedExport.GetProperties();
+                if (outputLinks != null)
+                {
+                    clonedProps.AddOrReplaceProp(outputLinks);
+                }
+                if (variableLinks != null)
+                {
+                    clonedProps.AddOrReplaceProp(variableLinks);
+                }
+                if (eventLinks != null)
+                {
+                    clonedProps.AddOrReplaceProp(eventLinks);
+                }
+                clonedExport.WriteProperties(clonedProps);
+
+                customSaveData[clonedExport.UIndex] =
+                    new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+            }
+        }
+
         private void ContextMenu_Closed(object sender, RoutedEventArgs e)
         {
             graphEditor.AllowDragging();
