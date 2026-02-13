@@ -1,9 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Misc
 {
@@ -42,6 +43,8 @@ namespace LegendaryExplorer.Misc
     {
         public NotifyPropertyChangedWindowBase()
         {
+            // Apply custom window chrome for dark mode title bar support
+            CustomWindowChrome.ApplyCustomChrome(this);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
