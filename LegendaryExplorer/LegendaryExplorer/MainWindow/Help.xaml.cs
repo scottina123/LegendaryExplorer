@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Reflection;
 using System.Windows;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.MainWindow
 {
@@ -12,6 +13,7 @@ namespace LegendaryExplorer.MainWindow
         public Help()
         {
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
         }
     }
 }
