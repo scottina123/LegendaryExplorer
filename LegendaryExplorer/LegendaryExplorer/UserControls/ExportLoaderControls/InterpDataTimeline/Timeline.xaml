@@ -15,9 +15,9 @@
         <converters:TimeToPositionConverter x:Key="TimeToPositionConverter"/>
         <converters:NullOrEmptyStringVisibilityConverter x:Key="NullOrEmptyStringVisibilityConverter"/>
         <SolidColorBrush x:Key="KeyBrush" Color="#FF640000"/>
-        <Color x:Key="SelectedBackgroundColor">#FFC5CBF9</Color>
-        <Color x:Key="SelectedUnfocusedColor">#FFDDDDDD</Color>
-        <Color x:Key="GlyphColor">#FF000000</Color>
+        <Color x:Key="SelectedBackgroundColor">#FF264F78</Color>
+        <Color x:Key="SelectedUnfocusedColor">#FF3D3D40</Color>
+        <SolidColorBrush x:Key="GlyphBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
         <Style x:Key="ExpandCollapseToggleStyle"
             TargetType="ToggleButton">
             <Setter Property="Focusable"
@@ -54,21 +54,15 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
                                 Margin="1,1,1,1"
-                                Data="M 6 0 L 12 5.5 L 6 11 Z">
-                                <Path.Fill>
-                                    <SolidColorBrush Color="{StaticResource GlyphColor}" />
-                                </Path.Fill>
-                            </Path>
+                                Data="M 6 0 L 12 5.5 L 6 11 Z"
+                                Fill="{DynamicResource GlyphBrush}" />
                             <Path x:Name="Expanded"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
                                 Margin="1,1,1,1"
                                 Data="M 0 5.5 L 12 5.5 L 6 11 Z"
-                                Visibility="Hidden">
-                                <Path.Fill>
-                                    <SolidColorBrush Color="{StaticResource GlyphColor}" />
-                                </Path.Fill>
-                            </Path>
+                                Visibility="Hidden"
+                                Fill="{DynamicResource GlyphBrush}" />
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -294,19 +288,19 @@
                     </Style>
                 </Canvas.Resources>
             </Canvas>
-            <Canvas Grid.Column="0" Grid.Row="1" Background="Black" />
+            <Canvas Grid.Column="0" Grid.Row="1" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" />
             <TreeView Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" ItemsSource="{Binding InterpGroups}"
                       Background="{x:Null}" SelectedItemChanged="TreeView_SelectedItemChanged" Name="MatineeTree">
                 <TreeView.Resources>
                     <HierarchicalDataTemplate DataType="{x:Type interpEditor:InterpGroup}" ItemsSource="{Binding Tracks}">
-                        <Border BorderBrush="Black" BorderThickness="0 1 0 0" HorizontalAlignment="Stretch">
-                            <Grid HorizontalAlignment="Stretch" Height="24" Background="#FF818181">
+                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0 1 0 0" HorizontalAlignment="Stretch">
+                            <Grid HorizontalAlignment="Stretch" Height="24" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="196" />
                                     <ColumnDefinition />
                                 </Grid.ColumnDefinitions>
                                 <Canvas Grid.Column="0">
-                                    <TextBlock Text="{Binding GroupName}" Canvas.Left="25" Canvas.Top="3" Foreground="Black"/>
+                                    <TextBlock Text="{Binding GroupName}" Canvas.Left="25" Canvas.Top="3" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                                     <Rectangle Width="10" Height="24" Canvas.Right="0">
                                         <Rectangle.Fill>
                                             <SolidColorBrush Color="{Binding GroupColor}" />
@@ -322,7 +316,7 @@
                         </Border>
                     </HierarchicalDataTemplate>
                     <DataTemplate DataType="{x:Type interpEditor:InterpTrack}">
-                        <Border BorderBrush="Black" BorderThickness="0 1" HorizontalAlignment="Stretch">
+                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0 1" HorizontalAlignment="Stretch">
                             <Grid HorizontalAlignment="Stretch" Height="24">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="196" />
@@ -370,8 +364,8 @@
                                         </Style>
                                     </ItemsControl.ItemContainerStyle>
                                 </ItemsControl>
-                                <Canvas Grid.Column="0" Background="DarkGray">
-                                    <TextBlock Text="{Binding TrackTitle}" Canvas.Left="30" Canvas.Top="3" Foreground="Black" />
+                                <Canvas Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                                    <TextBlock Text="{Binding TrackTitle}" Canvas.Left="30" Canvas.Top="3" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
                                 </Canvas>
                             </Grid>
                             <b:Interaction.Triggers>

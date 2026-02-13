@@ -157,8 +157,9 @@
         <Canvas.Resources>
             <Style TargetType="TextBox">
                 <Setter Property="Grid.Column" Value="1"/>
-                <Setter Property="Background" Value="#FFB8B8B8"/>
-                <Setter Property="BorderBrush" Value="{x:Null}"/>
+                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
                 <EventSetter Event="PreviewTextInput" Handler="FloatTextBox_PreviewTextInput"/>
             </Style>
         </Canvas.Resources>

@@ -150,12 +150,41 @@
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <TabControl Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2" TabStripPlacement="Left"
-                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
+                                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <TabControl.ItemContainerStyle>
                             <Style TargetType="TabItem">
                                 <Setter Property="LayoutTransform">
                                     <Setter.Value>
                                         <RotateTransform Angle="270" />
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="TabItem">
+                                            <Border Name="Border" 
+                                                    Background="{TemplateBinding Background}" 
+                                                    BorderBrush="{TemplateBinding BorderBrush}" 
+                                                    BorderThickness="1,1,1,0" 
+                                                    Padding="6,2">
+                                                <ContentPresenter x:Name="ContentSite"
+                                                                  VerticalAlignment="Center"
+                                                                  HorizontalAlignment="Center"
+                                                                  ContentSource="Header"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
                                     </Setter.Value>
                                 </Setter>
                             </Style>
