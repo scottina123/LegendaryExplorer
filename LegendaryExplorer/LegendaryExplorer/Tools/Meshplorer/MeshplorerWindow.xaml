@@ -119,15 +119,17 @@
                     <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
                 </StackPanel>
 
-                <DockPanel Grid.Row="0" Grid.Column="0"                              
-                           IsEnabled="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter='Not'}">
+                <DockPanel Grid.Row="0" Grid.Column="0"
+                           Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                           IsHitTestVisible="{Binding IsRendererBusy, Converter={StaticResource BoolEnabledConverter}, ConverterParameter='Not'}">
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
                         <CheckBox Content="Brushes" IsChecked="{Binding ShowBrushes}"/>
                         <CheckBox Content="SkeletalMeshes" Margin="5,0" IsChecked="{Binding ShowSkeletalMeshes}"/>
                         <CheckBox Content="StaticMeshes" IsChecked="{Binding ShowStaticMeshes}"/>
                     </StackPanel>
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
-                              HorizontalContentAlignment="Stretch">
+                              HorizontalContentAlignment="Stretch"
+                              Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type packages:ExportEntry}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
