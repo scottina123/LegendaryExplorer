@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using CommunityToolkit.HighPerformance;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
@@ -16,7 +18,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorerCore.Packages
 {
-    public static class MEPackageExtensions
+    public static partial class MEPackageExtensions
     {
         public static string GetEntryString(this IMEPackage pcc, int index)
         {
@@ -562,6 +564,51 @@ namespace LegendaryExplorerCore.Packages
                     Refs.Add(Pcc.GetEntry(uIndex));
                 }
             }
+        }
+
+        [GeneratedRegex(@"^(.+)_LOC_[A-Z]{3}$")]
+        private static partial Regex LOCFileRegex();
+
+        public static ExportEntry FindActorByTag(this IMEPackage pcc, NameReference tag, bool searchRelatedFiles = false)
+        {
+            if (pcc.FindExport("TheWorld.PersistentLevel") is ExportEntry { ClassName: "Level" } levelExport)
+            {
+                var level = ObjectBinary.From<Level>(levelExport);
+                foreach (int actoridx in level.Actors)
+                {
+                    if (pcc.TryGetUExport(actoridx, out ExportEntry actor) 
+                        && actor.GetProperty<NameProperty>("Tag")?.Value == tag)
+                    {
+                        return actor;
+                    }
+                }
+            }
+            if (searchRelatedFiles)
+            {
+                if (pcc.FileNameNoExtension is string fileName && LOCFileRegex().Match(fileName) is { Success: true} match)
+                {
+                    string relatedFileName = match.Groups[1].Value + ".pcc";
+                    string relatedFilePath = null;
+                    if (!MELoadedFiles.TryGetHighestMountedFile(pcc.Game, relatedFileName, out relatedFilePath))
+                    {
+                        relatedFilePath = Path.Combine(Path.GetDirectoryName(pcc.FilePath), relatedFileName);
+                        if (!File.Exists(relatedFilePath))
+                        {
+                            relatedFilePath = null;
+                        }
+                    }
+                    if (relatedFilePath is not null)
+                    {
+                        using IMEPackage relatedPcc = MEPackageHandler.OpenMEPackage(relatedFilePath);
+                        var actor = relatedPcc.FindActorByTag(tag, false);
+                        if (actor != null)
+                        {
+                            return actor;
+                        }
+                    }
+                }
+            }
+            return null;
         }
     }
 

@@ -319,9 +319,8 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
     public override void UpdateScene(MeshRenderContext context, float deltaTime)
     {
-        if (Mesh is not null && animPlayer.HasAnimation && animPlayer.IsPlaying)
+        if (Mesh is not null && skinnedMeshRenderer.NeedsUpdate)
         {
-            animPlayer.AdvanceTime(deltaTime);
             skinnedMeshRenderer.UpdateSkinning(context.Device, Mesh.LODs[LOD].Mesh, animPlayer);
         }
     }
@@ -332,11 +331,25 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         Mesh?.Render(pass, context, LOD);
     }
 
-    public void SetAnimation(AnimSequence animSequence)
+    public void SetAnimation(AnimSequence animSequence, float pos)
     {
-        animPlayer?.SetAnimation(animSequence);
-        //temp, should probably have a better way to control this
-        animPlayer.IsPlaying = true;
+        if (animPlayer is null) return;
+        if (animSequence is null)
+        {
+            if (animPlayer.HasAnimation)
+            {
+                //cancel animation, reset to ref pose
+                animPlayer.SetAnimation(null);
+                skinnedMeshRenderer.NeedsUpdate = true;
+            }
+            return;
+        }
+        if (animSequence.Name != animPlayer.AnimName)
+        {
+            animPlayer.SetAnimation(animSequence);
+        }
+        animPlayer.SetCurrentTime(pos);
+        skinnedMeshRenderer.NeedsUpdate = true;
     }
 
     public override void UpdateLocalToWorld()

@@ -1920,8 +1920,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     lstbx_Anims.ItemsSource = viewA;
                     List<MeshRecord> meshRecords = CurrentDataBase.Meshes.Where(m => m.IsSkeleton).ToList();
                     cbx_AnimPreviewMesh.ItemsSource = meshRecords;
-                    // Human mesh, exists in ever game
-                    if (meshRecords.FindIndex(mr => mr.MeshName == "HMF_ARM_CTHe_MDL") is int idx and > 0)
+
+                    //Tali
+                    string defaultMesh = CurrentGame switch
+                    {
+                        MEGame.LE1 => "QRN_FAC_ARM_LGTa_MDL",
+                        MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
+                        MEGame.LE2 => "QRN_TLI_LGTa_MDL",
+                        MEGame.ME2 => "QRN_TLI_LGTa_MDL",
+                        //LE3/ME3
+                        _ => "QRN_ARM_TLIa_MDL"
+                    };
+                    if (meshRecords.FindIndex(mr => mr.MeshName == defaultMesh) is int idx and > 0)
                     {
                         cbx_AnimPreviewMesh.SelectedIndex = idx;
                     }

@@ -53,6 +53,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void UnloadExport()
         {
             CurrentLoadedExport = null;
+            InterpData = null;
             InterpGroups.ClearEx();
             ResetView();
         }
@@ -83,6 +84,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public event Action<ExportEntry> SelectionChanged;
         public bool HasSelection(object obj) { return MatineeTree.SelectedItem != null; }
         public bool HasData(object obj) { return CurrentLoadedExport != null; }
+        public InterpData InterpData { get; private set; }
         public ObservableCollectionExtended<InterpGroup> InterpGroups { get; } = [];
 
         public Timeline() : base("Timeline")
@@ -230,13 +232,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadGroups()
         {
+            InterpData = new InterpData(CurrentLoadedExport);
             InterpGroups.ClearEx();
-            var groupsProp = CurrentLoadedExport?.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
-            if (groupsProp != null)
-            {
-                var groupExports = groupsProp.Where(prop => Pcc.IsUExport(prop.Value)).Select(prop => Pcc.GetUExport(prop.Value));
-                InterpGroups.AddRange(groupExports.Select(exp => new InterpGroup(exp)));
-            }
+            InterpGroups.AddRange(InterpData.Groups);
 
             int? strRef = InterpGroups.Select(g => g.TryGetStrRefId()).FirstOrDefault(id => id != null);
             if (strRef != null)

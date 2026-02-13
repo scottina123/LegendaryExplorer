@@ -7,6 +7,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -36,6 +37,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             }
         }
     }
+
+    public NameReference Tag;
 
     protected Rotator rotation;
     protected Vector3 location;
@@ -150,6 +153,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         Properties = actorExport.GetCondensedProperties();
         PropertyCollection props = Properties;
 
+        Tag = props.GetProp<NameProperty>("Tag")?.Value ?? NameReference.None;
+
         var rotationProp = props.GetProp<StructProperty>("Rotation");
         var locationsProp = props.GetProp<StructProperty>("location");
         var drawScale3DProp = props.GetProp<StructProperty>("DrawScale3D");
@@ -226,28 +231,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         //return new ActorProxy(context, actorExport);
     }
 
-    protected void AddComponents(MeshRenderContext context, params Span<string> propNames)
+    protected void AddComponentArray<T>(MeshRenderContext context, ref List<T> components, [CallerArgumentExpression(nameof(components))] string propName = null) where T : PrimitiveComponentProxy
     {
-        foreach (var propName in propNames)
+        if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
         {
-            if (Properties.GetProp<ObjectProperty>(propName)?.ResolveToEntry(Export.FileRef) is ExportEntry componentExport)
+            foreach (IEntry entry in componentArray.ResolveToEntries(Export.FileRef))
             {
-                if (PrimitiveComponentProxy.Create(context, componentExport, this) is { } cmpProxy)
+                if (entry is ExportEntry cmpExport && PrimitiveComponentProxy.Create(context, cmpExport, this) is T cmpProxy)
                 {
+                    components.Add(cmpProxy);
                     Components.Add(cmpProxy);
-                }
-            }
-            else if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
-            {
-                foreach (ObjectProperty prop in componentArray)
-                {
-                    if (prop?.ResolveToEntry(Export.FileRef) is ExportEntry cmpExport)
-                    {
-                        if (PrimitiveComponentProxy.Create(context, cmpExport, this) is { } cmpProxy)
-                        {
-                            Components.Add(cmpProxy);
-                        }
-                    }
                 }
             }
         }
@@ -346,6 +339,15 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         return false;
     }
 
+    public virtual void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        if (App.IsDebug && Debugger.IsAttached)
+        {
+            //If reached, need to add animation support for whatever kind of actor this is
+            Debugger.Break();
+        }
+    }
+
     #region IDisposable
     protected bool isDisposed;
 
@@ -399,6 +401,11 @@ public class SkeletalMeshActorProxy : ActorProxy
     {
         AddComponent(context.RenderContext, ref SkeletalMeshComponent);
     }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        SkeletalMeshComponent?.SetAnimation(animSequence, pos);
+    }
 }
 
 //interpactor, placeables
@@ -437,6 +444,14 @@ public class SFXStuntActorProxy : ActorProxy
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
     }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        BodyMesh?.SetAnimation(animSequence, pos);
+        HeadMesh?.SetAnimation(animSequence, pos);
+        HairMesh?.SetAnimation(animSequence, pos);
+        HeadGearMesh?.SetAnimation(animSequence, pos);
+    }
 }
 public class BioArtPlaceableProxy : ActorProxy
 {
@@ -459,6 +474,11 @@ public class PawnProxy : ActorProxy
     {
         AddComponent(context.RenderContext, ref Mesh);
     }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        Mesh?.SetAnimation(animSequence, pos);
+    }
 }
 public class BioPawnProxy : PawnProxy
 {
@@ -467,6 +487,7 @@ public class BioPawnProxy : PawnProxy
     public SkeletalMeshComponentProxy m_oHeadGearMesh;
     public SkeletalMeshComponentProxy m_oVisorMesh;
     public SkeletalMeshComponentProxy m_oFacePlateMesh;
+    public List<SkeletalMeshComponentProxy> m_aoAccessories = [];
 
     public BioPawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
@@ -475,7 +496,21 @@ public class BioPawnProxy : PawnProxy
         AddComponent(context.RenderContext, ref m_oHeadGearMesh);
         AddComponent(context.RenderContext, ref m_oVisorMesh);
         AddComponent(context.RenderContext, ref m_oFacePlateMesh);
-        AddComponents(context.RenderContext, "m_aoAccessories");
+        AddComponentArray(context.RenderContext, ref m_aoAccessories);
+    }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        base.SetAnimation(animSequence, pos);
+        HeadMesh?.SetAnimation(animSequence, pos);
+        m_oHairMesh?.SetAnimation(animSequence, pos);
+        m_oHeadGearMesh?.SetAnimation(animSequence, pos);
+        m_oVisorMesh?.SetAnimation(animSequence, pos);
+        m_oFacePlateMesh?.SetAnimation(animSequence, pos);
+        foreach (var accessory in m_aoAccessories)
+        {
+            accessory?.SetAnimation(animSequence, pos);
+        }
     }
 }
 

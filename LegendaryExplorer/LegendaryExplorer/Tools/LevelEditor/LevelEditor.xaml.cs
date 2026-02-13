@@ -600,6 +600,27 @@ public partial class LevelEditor : WPFBase, IRecents
         IsDirty = false;
     }
 
+    public void RemoveActor(ActorProxy actor)
+    {
+        if (Actors.Remove(actor))
+        {
+            RenderContext.RemoveActor(actor);
+            actor.Dispose();
+            IsDirty = true;
+        }
+    }
+
+    public void AddActor(ActorProxy actor)
+    {
+        if (!Actors.Contains(actor))
+        {
+            Actors.Add(actor);
+            Actors.Sort(a => a.Export.UIndex);
+            RenderContext.AddActor(actor);
+            IsDirty = true;
+        }
+    }
+
     public override void HandleUpdate(List<PackageUpdate> updates)
     {
         if (LevelExport is null)
@@ -637,11 +658,11 @@ public partial class LevelEditor : WPFBase, IRecents
                         collectionActorsToUpdate.Add(cacp.Export);
                         continue;
                     }
-                    Actors.RemoveAt(i);
+                    RemoveActor(alteredActor);
                     if (Pcc.GetEntry(alteredActor.Export.UIndex) is ExportEntry actorExport 
                         && ActorProxy.Create(this, actorExport) is { } actorProxy)
                     {
-                        Actors.Add(actorProxy);
+                        AddActor(actorProxy);
                     }
                 }
             }
@@ -651,7 +672,7 @@ public partial class LevelEditor : WPFBase, IRecents
                 {
                     if (Actors[i] is CollectionActorComponentProxy)
                     {
-                        Actors.RemoveAt(i);
+                        RemoveActor(Actors[i]);
                     }
                 }
                 if (Pcc.GetEntry(collectionActor.UIndex) is ExportEntry newCollectionActor)
@@ -665,7 +686,7 @@ public partial class LevelEditor : WPFBase, IRecents
                             if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                             {
                                 var smcActor = new StaticMeshCollectionActorProxy(this, smcExport, smca, i);
-                                Actors.Add(smcActor);
+                                AddActor(smcActor);
                             }
                         }
                     }

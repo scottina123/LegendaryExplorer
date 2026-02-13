@@ -227,4 +227,21 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         base.DisposeSizeDependentResources();
     }
+
+    internal void RemoveActor(ActorProxy actor)
+    {
+        if (DrawList_3D.Remove(actor))
+        {
+            HitProxies.RemoveAt(actor.HitID);
+        }
+    }
+
+    internal void AddActor(ActorProxy actor)
+    {
+        if (!DrawList_3D.Contains(actor))
+        {
+            DrawList_3D.Add(actor);
+            actor.HitID = HitProxies.Add(actor);
+        }
+    }
 }
