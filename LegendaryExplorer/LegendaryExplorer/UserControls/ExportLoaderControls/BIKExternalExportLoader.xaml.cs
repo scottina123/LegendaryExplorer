@@ -22,6 +22,7 @@ using LibVLCSharp.Shared;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Path = System.IO.Path;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {

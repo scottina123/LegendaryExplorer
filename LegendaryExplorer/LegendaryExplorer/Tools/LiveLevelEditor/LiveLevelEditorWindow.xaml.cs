@@ -26,6 +26,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using InterpCurveVector = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<System.Numerics.Vector3>;
 using InterpCurveFloat = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<float>;
 using LegendaryExplorer.Tools.PackageEditor;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.LiveLevelEditor
 {

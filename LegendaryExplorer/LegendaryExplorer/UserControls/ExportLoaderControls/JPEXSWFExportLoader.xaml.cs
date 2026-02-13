@@ -14,6 +14,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Classes;
 using Microsoft.Win32;
 using Path = System.IO.Path;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {

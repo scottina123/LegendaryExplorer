@@ -24,6 +24,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 using Newtonsoft.Json;
 using BioMorphFace = LegendaryExplorerCore.Unreal.Classes.BioMorphFace;
 using Microsoft.VisualBasic;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {

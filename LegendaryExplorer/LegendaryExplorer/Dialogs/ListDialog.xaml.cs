@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore.Misc;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs
 {

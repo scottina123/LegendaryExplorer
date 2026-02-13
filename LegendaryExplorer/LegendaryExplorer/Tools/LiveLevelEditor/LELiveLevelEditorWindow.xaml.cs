@@ -34,6 +34,7 @@ using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using Newtonsoft.Json;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.LiveLevelEditor
 {

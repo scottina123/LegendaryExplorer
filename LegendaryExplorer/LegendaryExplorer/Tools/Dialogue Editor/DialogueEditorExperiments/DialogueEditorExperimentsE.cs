@@ -18,6 +18,7 @@ using static LegendaryExplorer.Misc.ExperimentsTools.SharedMethods;
 using static LegendaryExplorer.Misc.ExperimentsTools.DialogueAutomations;
 using static LegendaryExplorer.Misc.ExperimentsTools.SequenceAutomations;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 {

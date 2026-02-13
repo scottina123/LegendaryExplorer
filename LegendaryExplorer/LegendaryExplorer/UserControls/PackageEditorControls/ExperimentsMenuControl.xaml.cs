@@ -30,6 +30,7 @@ using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Newtonsoft.Json;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.PackageEditorControls
 {

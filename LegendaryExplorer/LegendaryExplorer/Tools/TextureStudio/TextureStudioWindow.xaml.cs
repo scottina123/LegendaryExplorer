@@ -29,6 +29,7 @@ using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Image = LegendaryExplorerCore.Textures.Image;
 using Path = System.IO.Path;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.TextureStudio
 {

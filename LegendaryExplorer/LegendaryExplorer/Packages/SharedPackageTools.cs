@@ -19,6 +19,7 @@ using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
 using Xceed.Wpf.Toolkit.Primitives;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Packages
 {

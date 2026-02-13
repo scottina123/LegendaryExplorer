@@ -15,6 +15,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.TLK;
 using LegendaryExplorerCore.Unreal;
 using Xceed.Wpf.Toolkit.Primitives;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.MountEditor
 {

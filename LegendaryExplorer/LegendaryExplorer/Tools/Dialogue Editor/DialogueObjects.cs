@@ -14,6 +14,7 @@ using System.Drawing.Text;
 using System.Linq;
 using System.Windows.Forms;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.DialogueEditor
 {

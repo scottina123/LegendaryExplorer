@@ -23,6 +23,7 @@ using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using LegendaryExplorerCore.PlotDatabase.Serialization;
 using Microsoft.Win32;
 using Newtonsoft.Json;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PlotDatabase
 {

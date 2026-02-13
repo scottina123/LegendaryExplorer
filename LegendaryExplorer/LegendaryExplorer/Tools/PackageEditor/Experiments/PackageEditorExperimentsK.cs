@@ -29,6 +29,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 using Newtonsoft.Json;
 using static LegendaryExplorer.Tools.ScriptDebugger.DebuggerInterface;
 using Path = System.IO.Path;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {

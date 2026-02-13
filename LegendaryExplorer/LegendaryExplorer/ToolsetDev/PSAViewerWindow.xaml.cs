@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using LegendaryExplorer.Misc;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.ToolsetDev;
 

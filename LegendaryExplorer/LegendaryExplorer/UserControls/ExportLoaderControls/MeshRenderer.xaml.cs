@@ -33,6 +33,7 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Shaders;
 using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
 using Color = LegendaryExplorerCore.SharpDX.Color;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {

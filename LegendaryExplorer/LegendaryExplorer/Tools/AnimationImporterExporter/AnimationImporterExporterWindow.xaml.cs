@@ -21,6 +21,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.Win32;
 using Path = System.IO.Path;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.AnimationImporterExporter
 {

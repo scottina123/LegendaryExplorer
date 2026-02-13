@@ -23,6 +23,7 @@ using System.Windows;
 using static LegendaryExplorer.Misc.ExperimentsTools.PackageAutomations;
 using static LegendaryExplorer.Misc.ExperimentsTools.SequenceAutomations;
 using static LegendaryExplorer.Misc.ExperimentsTools.SharedMethods;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {

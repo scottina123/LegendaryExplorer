@@ -10,6 +10,7 @@ using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Classes;
 using LegendaryExplorer.Misc;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {

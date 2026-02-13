@@ -38,6 +38,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using DashStyle = System.Drawing.Drawing2D.DashStyle;
 using RectangleF = System.Drawing.RectangleF;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PathfindingEditor
 {

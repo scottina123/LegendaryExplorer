@@ -39,6 +39,7 @@ using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorerCore.Memory;
 using LegendaryExplorerCore.PlotDatabase;
 using TerraFX.Interop.Windows;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.AssetDatabase
 {

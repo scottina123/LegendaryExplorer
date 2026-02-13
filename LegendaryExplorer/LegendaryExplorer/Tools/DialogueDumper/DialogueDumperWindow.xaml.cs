@@ -23,6 +23,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.DialogueDumper
 {

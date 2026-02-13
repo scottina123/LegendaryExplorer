@@ -36,6 +36,7 @@ using LegendaryExplorer.Tools.ClassViewer;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.ScriptDebugger;
 using LegendaryExplorer.Tools.LevelEditor;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer;
 

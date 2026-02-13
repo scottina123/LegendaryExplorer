@@ -8,6 +8,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using Microsoft.Win32;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {

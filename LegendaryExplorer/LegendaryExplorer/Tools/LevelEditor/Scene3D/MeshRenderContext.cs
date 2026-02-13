@@ -21,6 +21,7 @@ using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 

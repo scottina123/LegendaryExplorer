@@ -15,6 +15,7 @@ using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using LegendaryExplorer.Misc;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.SFARExplorer
 {

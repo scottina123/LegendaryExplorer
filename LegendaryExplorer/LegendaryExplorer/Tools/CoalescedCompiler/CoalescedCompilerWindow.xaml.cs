@@ -10,6 +10,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore.Coalesced;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.CoalescedCompiler
 {

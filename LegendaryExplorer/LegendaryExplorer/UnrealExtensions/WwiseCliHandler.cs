@@ -16,6 +16,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.WwiseEditor;
 using LegendaryExplorerCore.Audio;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UnrealExtensions
 {

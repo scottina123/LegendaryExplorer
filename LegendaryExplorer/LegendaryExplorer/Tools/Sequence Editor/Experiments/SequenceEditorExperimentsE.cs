@@ -12,6 +12,7 @@ using System.Linq;
 using System.Windows;
 using static LegendaryExplorerCore.Kismet.KismetHelper;
 using static LegendaryExplorer.Misc.ExperimentsTools.SharedMethods;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.Sequence_Editor.Experiments
 {

@@ -41,6 +41,7 @@ using System.Windows;
 using TerraFX.Interop.Windows;
 using static LegendaryExplorer.Tools.ScriptDebugger.DebuggerInterface;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 #pragma warning disable CS8321 //unused function warning
 

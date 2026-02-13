@@ -8,6 +8,7 @@ using System.Windows;
 using LegendaryExplorer.Misc;
 using Microsoft.AppCenter.Analytics;
 using Microsoft.Win32;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Startup
 {

@@ -13,6 +13,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Packages;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Shell.Interop;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.MainWindow
 {

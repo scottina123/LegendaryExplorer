@@ -14,6 +14,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.DialogueEditor
 {

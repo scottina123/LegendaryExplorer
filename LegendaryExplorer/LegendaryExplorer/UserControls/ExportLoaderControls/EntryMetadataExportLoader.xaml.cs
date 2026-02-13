@@ -21,6 +21,7 @@ using LegendaryExplorerCore.UnrealScript.Documentation;
 using LegendaryExplorer.SharedUI.Controls;
 using System.Windows.Controls.Primitives;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {

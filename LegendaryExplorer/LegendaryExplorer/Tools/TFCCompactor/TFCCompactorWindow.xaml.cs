@@ -26,6 +26,7 @@ using LegendaryExplorerCore.Unreal.Classes;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Settings = LegendaryExplorer.Misc.AppSettings.Settings;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.TFCCompactor
 {

@@ -44,6 +44,7 @@ using LegendaryExplorerCore.UDK;
 using LegendaryExplorerCore.UnrealScript.Documentation;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorerCore.Diagnostics;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 //using ImageMagick;
 

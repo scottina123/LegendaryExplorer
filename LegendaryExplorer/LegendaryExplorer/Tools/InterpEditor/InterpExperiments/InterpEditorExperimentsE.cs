@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using static LegendaryExplorer.Misc.ExperimentsTools.SharedMethods;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.InterpEditor.InterpExperiments
 {

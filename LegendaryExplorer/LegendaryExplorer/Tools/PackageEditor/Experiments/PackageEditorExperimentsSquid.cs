@@ -27,6 +27,7 @@ using System.Windows;
 using static LegendaryExplorerCore.Packages.CloningImportingAndRelinking.EntryImporter;
 using static LegendaryExplorerCore.Unreal.PSA;
 using Texture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {

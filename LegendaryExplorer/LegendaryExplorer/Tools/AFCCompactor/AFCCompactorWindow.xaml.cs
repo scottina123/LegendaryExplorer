@@ -21,6 +21,7 @@ using Microsoft.AppCenter.Analytics;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using AFCCompactor = LegendaryExplorerCore.Audio.AFCCompactor;
 using Application = System.Windows.Application;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.AFCCompactorWindow
 {

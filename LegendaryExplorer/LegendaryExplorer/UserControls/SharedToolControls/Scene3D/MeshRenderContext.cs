@@ -18,6 +18,7 @@ using SharpDX.Mathematics.Interop;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
 

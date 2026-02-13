@@ -14,6 +14,7 @@ using LegendaryExplorerCore.TLK.ME1;
 using LegendaryExplorerCore.TLK.ME2ME3;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
 using HuffmanCompression = LegendaryExplorerCore.TLK.ME2ME3.HuffmanCompression;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.TlkManagerNS
 {

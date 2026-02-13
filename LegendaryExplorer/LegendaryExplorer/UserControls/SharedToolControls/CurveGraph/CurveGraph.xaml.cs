@@ -13,6 +13,7 @@ using LegendaryExplorer.UserControls.SharedToolControls.Curves;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Unreal;
 using BezierSegment = LegendaryExplorer.UserControls.SharedToolControls.Curves.BezierSegment;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls
 {

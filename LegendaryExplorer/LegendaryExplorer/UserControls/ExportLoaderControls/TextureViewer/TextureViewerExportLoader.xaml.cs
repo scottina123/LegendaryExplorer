@@ -33,6 +33,7 @@ using Image = LegendaryExplorerCore.Textures.Image;
 using LegendaryExplorerCore.Helpers;
 using SharpDX.Direct3D11;
 using LegendaryExplorer.Misc;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls
 {
