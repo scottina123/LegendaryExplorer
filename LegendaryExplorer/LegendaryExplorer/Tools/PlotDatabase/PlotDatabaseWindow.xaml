@@ -20,7 +20,7 @@
         Title="Plot Database" Height="900" Width="1500">
     <Window.Resources>
         <plotDatabase1:PlotElementTypeConverter x:Key="PlotElementTypeConverter"/>
-        <Style x:Key="FileLVHeader" TargetType="{x:Type GridViewColumnHeader}">
+        <Style x:Key="FileLVHeader" TargetType="{x:Type GridViewColumnHeader}" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
             <Setter Property="HorizontalContentAlignment" Value="Left" />
         </Style>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -65,7 +65,7 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="35"/>
                 </Grid.RowDefinitions>
-                <DockPanel Name="TopBar"  Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" Background="WhiteSmoke" LastChildFill="True">
+                <DockPanel Name="TopBar"  Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" LastChildFill="True">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" DockPanel.Dock="Right" >
                         <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowBoolStates}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Bool States">
                             <Image Source="/Tools/PlotDatabase/PlotTypeIcons/icon_bool.png" Height="12" Width="12"/>
@@ -229,7 +229,7 @@
                         </Grid.RowDefinitions>
 
                         <DockPanel Name="ListPanel" LastChildFill="True">
-                            <StackPanel DockPanel.Dock="Bottom" Background="AliceBlue">
+                            <StackPanel DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                 <ContentControl x:Name="TreeContent" Margin="5" BorderThickness="1" 
                                     Content="{Binding SelectedNode}" >
                                     <ContentControl.Resources>
@@ -312,8 +312,8 @@
                             <Grid.Background>
                                 <SolidColorBrush Color="Black" Opacity=".2"/>
                             </Grid.Background>
-                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="3"  Padding="5" Background="AliceBlue">
-                                <StackPanel Background="AliceBlue">
+                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="3"  Padding="5" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                     <TextBlock x:Name="newMod_Title" Text="Add a New Mod" FontWeight="DemiBold" Margin="5"/>
                                     <DockPanel>
                                         <TextBlock Text="Mod Name: " DockPanel.Dock="Left" Margin="3"/>
@@ -344,8 +344,8 @@
                             <Grid.Background>
                                 <SolidColorBrush Color="Black" Opacity=".2"/>
                             </Grid.Background>
-                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="3" Padding="5" Background="AliceBlue">
-                                <StackPanel Background="AliceBlue">
+                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="3" Padding="5" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                     <TextBlock x:Name="newCat_Title" Text="Add a New Category to a Mod" FontWeight="DemiBold" Margin="5"/>
                                     <DockPanel>
                                         <TextBlock Text="Path: " DockPanel.Dock="Left" Margin="3"/>
@@ -380,8 +380,8 @@
                             <Grid.Background>
                                 <SolidColorBrush Color="Black" Opacity=".2"/>
                             </Grid.Background>
-                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="3" Padding="5" Background="AliceBlue">
-                                <StackPanel Background="AliceBlue">
+                            <Border Grid.Row="1" Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="3" Padding="5" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                     <TextBlock x:Name="newItem_Title"  Text="Add a New Game State to the Mod Database" FontWeight="DemiBold" Margin="5"/>
                                     <DockPanel Margin="3">
                                         <TextBlock Text="Path: " DockPanel.Dock="Left" Margin="3" Width="40"/>
