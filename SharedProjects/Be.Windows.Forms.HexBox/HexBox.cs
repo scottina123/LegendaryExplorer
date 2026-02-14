@@ -3232,6 +3232,7 @@ namespace Be.Windows.Forms
         #region Properties
 
         private int _minWidth;
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int MinWidth
         {
             get => (int)Math.Ceiling(_minWidth / ScalingFactor);
@@ -3239,6 +3240,7 @@ namespace Be.Windows.Forms
         }
 
         private int _maxWidth;
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int MaxWidth
         {
             get => (int)Math.Ceiling(_maxWidth / ScalingFactor);
@@ -3712,6 +3714,7 @@ namespace Be.Windows.Forms
         /// Default alpha = 100
         /// </remarks>
         [Category("Hex"), Description("Gets or sets the color of the shadow selection.")]
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color ShadowSelectionColor
         {
             get { return _shadowSelectionColor; }
@@ -4324,18 +4327,22 @@ namespace Be.Windows.Forms
                 }));
         }
         #endregion
-
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public System.Drawing.Font BoldFont { get; set; }
-        /// <summary>
+        
+        // <summary>
         /// Sets the minimum amount of bytes per row that can be displayed.
         /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] 
         public int MinBytesPerLine { get; set; }
 
         /// <summary>
         /// Sets the maximum amount of bytes per row that can be displayed.
         /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] 
         public int MaxBytesPerLine { get; set; }
 
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color LineInfoForeColor { get; set; }
 
         #region DarkModeSupport
