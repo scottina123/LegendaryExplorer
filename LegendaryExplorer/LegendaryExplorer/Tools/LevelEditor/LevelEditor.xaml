@@ -33,6 +33,7 @@
         <converters:EntryFileTypeIconPathConverter x:Key="EntryFileTypeIconPathConverter"/>
         <converters:EmbeddedFileToolTipConverter x:Key="EmbeddedFileToolTipConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
+         <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
         <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
         <converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
         <TextDecorationCollection x:Key="XTextDeco">
@@ -297,7 +298,28 @@
                     <Run Text="{Binding Path=(misc:AppLinks.BugReportURL), Mode=OneTime}"/>
                 </Hyperlink>
                     </TextBlock>
-                    <sharedToolControls:RecentsControl x:Name="RecentsController" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Recent level sets" TextAlignment="Center" FontSize="20" FontWeight="Light" Margin="10"
+                               Visibility="{Binding RecentSets.Count, Converter={StaticResource NullVisibilityConverter}}"/>
+                    <ItemsControl ItemsSource="{Binding RecentSets}" HorizontalAlignment="Left" Width="560">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding TooltipText}"
+                                        Command="{Binding DataContext.OpenRecentSetCommand, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality"
+                                               Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding DisplayName}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Grid>
         </DockPanel>

@@ -265,7 +265,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
-    public virtual void UpdateScene(MeshRenderContext context, float deltaTime)
+    public virtual void UpdateScene(LevelEditorRenderContext context, float deltaTime)
     {
         foreach (var component in Components)
         {
@@ -273,7 +273,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
-    public virtual void Render(MeshRenderContext context, RenderPass pass)
+    public virtual void Render(LevelEditorRenderContext context, RenderPass pass)
     {
         foreach (var component in Components)
         {
@@ -600,7 +600,7 @@ public class PrefabInstanceProxy : ActorProxy
         }
     }
 
-    public override void UpdateScene(MeshRenderContext context, float deltaTime)
+    public override void UpdateScene(LevelEditorRenderContext context, float deltaTime)
     {
         foreach (var actor in Actors)
         {
@@ -608,10 +608,12 @@ public class PrefabInstanceProxy : ActorProxy
         }
     }
 
-    public override void Render(MeshRenderContext context, RenderPass pass)
+    public override void Render(LevelEditorRenderContext context, RenderPass pass)
     {
         foreach (var actor in Actors)
         {
+            if (actor.IsVolume && !context.ShowVolumes) continue;
+            if (actor.IsVolumetricMesh && !context.ShowVolumetrics) continue;
             actor.Render(context, pass);
         }
     }

@@ -30,6 +30,9 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public readonly BatchedPrimitives Primitives = new();
 
+    public bool ShowVolumes;
+    public bool ShowVolumetrics;
+
     public LevelEditorRenderContext() : base()
     {
         BackgroundColor = System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99);

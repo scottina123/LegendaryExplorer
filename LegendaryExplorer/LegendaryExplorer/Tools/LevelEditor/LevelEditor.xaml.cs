@@ -1,8 +1,6 @@
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
-using LegendaryExplorer.SharedUI.Interfaces;
-using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -12,6 +10,7 @@ using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using LegendaryExplorer.Tools.PackageEditor;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -21,6 +20,7 @@ using System.Numerics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -30,7 +30,24 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 /// <summary>
 /// Interaction logic for LevelEditor.xaml
 /// </summary>
-public partial class LevelEditor : WPFBase, IRecents
+public class RecentFileSet
+{
+    public MEGame Game { get; set; }
+    public List<string> FilePaths { get; set; } = [];
+
+    [JsonIgnore]
+    public string DisplayName => FilePaths.Count switch
+    {
+        0 => "(empty)",
+        1 => Path.GetFileName(FilePaths[0]),
+        _ => $"{Path.GetFileName(FilePaths[0])} (+{FilePaths.Count - 1} more)"
+    };
+
+    [JsonIgnore]
+    public string TooltipText => string.Join("\n", FilePaths.Select(Path.GetFileName));
+}
+
+public partial class LevelEditor : WPFBase
 {
     public readonly LevelEditorRenderContext RenderContext;
 
@@ -77,14 +94,14 @@ public partial class LevelEditor : WPFBase, IRecents
         set => SetProperty(ref _showCollision, value);
     }
 
-    private bool _showVolumes = true;
+    private bool _showVolumes = false;
     public bool ShowVolumes
     {
         get => _showVolumes;
         set => SetProperty(ref _showVolumes, value);
     }
 
-    private bool _showVolumetrics = true;
+    private bool _showVolumetrics = false;
     public bool ShowVolumetrics
     {
         get => _showVolumetrics;
@@ -97,7 +114,12 @@ public partial class LevelEditor : WPFBase, IRecents
         set => SetProperty(ref RenderContext.TransformWidget.UseLocalCoords, value);
     }
 
-    public string Toolname => "LevelEditor";
+    public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
+
+    private static string RecentSetsFile => Path.Combine(
+        Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, "LevelEditor")).FullName,
+        "RECENTSETS");
+
     public LevelEditor() : base("LevelEditor")
     {
         RenderContext = new LevelEditorRenderContext();
@@ -108,7 +130,7 @@ public partial class LevelEditor : WPFBase, IRecents
 
         LoadCommands();
         InitializeComponent();
-        RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+        LoadRecentSets();
 
         SceneViewer.Context = RenderContext;
         UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
@@ -130,6 +152,8 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private void RenderScene(object sender, EventArgs e)
     {
+        RenderContext.ShowVolumes = ShowVolumes;
+        RenderContext.ShowVolumetrics = ShowVolumetrics;
         Span<RenderPass> passes = ShowCollision
             ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
@@ -148,7 +172,8 @@ public partial class LevelEditor : WPFBase, IRecents
             ActorProxy actor = RenderContext.DrawList_3D[i];
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
-            RenderContext.CurrentHitTestId = new Vector3((i & 0xFF) / 255f, ((i >> 8) & 0xFF) / 255f, ((i >> 16) & 0xFF) / 255f);
+            int hitID = actor.HitID;
+            RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
             if (actor == selectedActor)
             {
                 RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Selected;
@@ -267,8 +292,7 @@ public partial class LevelEditor : WPFBase, IRecents
         OpenFiles.Add(openFile);
         HasAnyFileOpen = true;
 
-        RecentsController.AddRecent(path, false, pcc.Game);
-        RecentsController.SaveRecentList(true);
+        RecordCurrentFilesAsRecent();
 
         Level levelBin = levelExport.GetBinaryData<Level>();
         bool isFirstFile = OpenFiles.Count == 1;
@@ -473,7 +497,7 @@ public partial class LevelEditor : WPFBase, IRecents
 
     public ICommand OpenFileCommand { get; set; }
     public ICommand AddFileCommand { get; set; }
-    public ICommand SaveAllFilesCommand { get; set; }
+    public ICommand SaveFileCommand { get; set; }
     public ICommand SaveAsCommand { get; set; }
     public ICommand SaveSingleFileCommand { get; set; }
     public ICommand CloseFileCommand { get; set; }
@@ -486,13 +510,14 @@ public partial class LevelEditor : WPFBase, IRecents
     public ICommand FocusSelectedCommand { get; set; }
     public ICommand ToggleLocalCoordsCommand { get; set; }
     public ICommand OpenInPackageEditorCommand { get; set; }
+    public ICommand OpenRecentSetCommand { get; set; }
     public ICommand UndoCommand { get; set; }
     public ICommand RedoCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
         AddFileCommand = new GenericCommand(AddFile);
-        SaveAllFilesCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
+        SaveFileCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
         SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
         SaveSingleFileCommand = new RelayCommand(SaveSingleFileExecute, _ => PackageIsLoaded());
         CloseFileCommand = new RelayCommand(CloseFileExecute);
@@ -520,6 +545,7 @@ public partial class LevelEditor : WPFBase, IRecents
                 p.Activate();
             }
         }, () => PackageIsLoaded() && SelectedActor is not null);
+        OpenRecentSetCommand = new RelayCommand(obj => { if (obj is RecentFileSet set) OpenRecentFileSet(set); });
         UndoCommand = new GenericCommand(Undo, () => UndoHistory.CanUndo);
         RedoCommand = new GenericCommand(Redo, () => UndoHistory.CanRedo);
     }
@@ -1102,7 +1128,6 @@ public partial class LevelEditor : WPFBase, IRecents
         UndoHistory.Clear();
 
         SceneViewer.Dispose();
-        RecentsController?.Dispose();
     }
 
     private void LevelEditor_Loaded(object sender, RoutedEventArgs e)
@@ -1123,9 +1148,83 @@ public partial class LevelEditor : WPFBase, IRecents
         }
     }
 
-    public void PropogateRecentsChange(string propogationSource, IEnumerable<RecentsControl.RecentItem> newRecents)
+    #endregion
+
+    #region Recent File Sets
+
+    private void LoadRecentSets()
     {
-        RecentsController.PropogateRecentsChange(false, newRecents);
+        if (!File.Exists(RecentSetsFile)) return;
+        try
+        {
+            var json = File.ReadAllText(RecentSetsFile);
+            var sets = JsonConvert.DeserializeObject<List<RecentFileSet>>(json);
+            if (sets is null) return;
+            foreach (var set in sets)
+            {
+                set.FilePaths.RemoveAll(p => !File.Exists(p));
+                if (set.FilePaths.Count > 0)
+                    RecentSets.Add(set);
+            }
+        }
+        catch { /* corrupt file, ignore */ }
+        RefreshRecentsMenu();
+    }
+
+    private void SaveRecentSets()
+    {
+        var json = JsonConvert.SerializeObject(RecentSets.ToList(), Formatting.Indented);
+        File.WriteAllText(RecentSetsFile, json);
+        RefreshRecentsMenu();
+    }
+
+    private void RecordCurrentFilesAsRecent()
+    {
+        if (OpenFiles.Count == 0) return;
+        var currentPaths = OpenFiles.Select(f => f.FilePath).ToList();
+
+        for (int i = 0; i < RecentSets.Count; i++)
+        {
+            var existing = RecentSets[i].FilePaths;
+            if (existing.Count > 0 && existing[0] == currentPaths[0])
+            {
+                RecentSets.RemoveAt(i);
+            }
+        }
+
+        RecentSets.Insert(0, new RecentFileSet { Game = Game, FilePaths = currentPaths });
+
+        while (RecentSets.Count > 10)
+            RecentSets.RemoveAt(RecentSets.Count - 1);
+
+        SaveRecentSets();
+    }
+
+    private void OpenRecentFileSet(RecentFileSet set)
+    {
+        CloseAllFiles();
+        foreach (string path in set.FilePaths)
+        {
+            if (File.Exists(path))
+                AddLevelFile(path);
+        }
+    }
+
+    private void RefreshRecentsMenu()
+    {
+        Recents_MenuItem.Items.Clear();
+        Recents_MenuItem.IsEnabled = RecentSets.Count > 0;
+        foreach (var set in RecentSets)
+        {
+            var mi = new MenuItem
+            {
+                Header = set.DisplayName.Replace("_", "__"),
+                ToolTip = set.TooltipText,
+                Tag = set
+            };
+            mi.Click += (_, _) => OpenRecentFileSet((RecentFileSet)mi.Tag);
+            Recents_MenuItem.Items.Add(mi);
+        }
     }
 
     #endregion
