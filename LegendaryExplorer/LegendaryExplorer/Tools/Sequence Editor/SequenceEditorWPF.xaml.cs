@@ -116,9 +116,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
 
-            // Load saved colors from settings (persisted user customizations)
-            LoadSavedColors();
-            
+            // Apply theme-appropriate colors based on current dark mode setting
+            ApplyThemeDefaults();
+
             // Subscribe to theme changes to update graph colors dynamically
             ThemeManager.ThemeChanged += OnThemeChanged;
 
@@ -1823,25 +1823,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
 
 
-
-        /// <summary>
-        /// Loads saved colors from settings. Called on initial window open to restore user customizations.
-        /// </summary>
-        private void LoadSavedColors()
-        {
-            // Load saved settings
-            _graphEditorBackColor = Color.FromArgb(Settings.SequenceEditor_BackgroundColor);
-            _boxFillColor = Color.FromArgb(Settings.SequenceEditor_BoxFillColor);
-            _titleBoxColor = Color.FromArgb(Settings.SequenceEditor_TitleBoxColor);
-            _commentTextColor = Color.FromArgb(Settings.SequenceEditor_CommentTextColor);
-            _boxTextColor = Color.FromArgb(Settings.SequenceEditor_BoxTextColor);
-
-            // Apply to static properties used by SObj
-            SObj.NodeBrushColor = _boxFillColor;
-            SObj.TitleBoxBrushColor = _titleBoxColor;
-            SObj.CommentTextColor = _commentTextColor;
-            SObj.BoxTextColor = _boxTextColor;
-        }
 
         /// <summary>
         /// Applies theme-appropriate default colors based on the current dark mode setting.

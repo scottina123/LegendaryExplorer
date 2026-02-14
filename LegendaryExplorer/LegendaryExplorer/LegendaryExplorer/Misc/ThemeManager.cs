@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using Be.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.Tools.SequenceObjects;
 using Color = System.Drawing.Color;
 
 namespace LegendaryExplorer.Misc
@@ -73,14 +74,42 @@ namespace LegendaryExplorer.Misc
                 // Reset static HexBox colors to light theme
                 HexBox.SetColors(Color.White, Color.Black);
             }
-            
+
+            // Update graph editor static colors (SObj)
+            ApplyGraphEditorTheme(isDarkMode);
+
             // Update all registered HexBox controls
             UpdateAllHexBoxThemes(isDarkMode);
             
             // Fire the ThemeChanged event to notify subscribers
             ThemeChanged?.Invoke(null, isDarkMode);
         }
-        
+
+        /// <summary>
+        /// Applies theme colors to the static graph editor properties used by SObj and other graph objects.
+        /// This ensures correct colors even when graph editors aren't open.
+        /// </summary>
+        /// <param name="isDarkMode">Whether dark mode is enabled.</param>
+        private static void ApplyGraphEditorTheme(bool isDarkMode)
+        {
+            if (isDarkMode)
+            {
+                // Dark theme - Visual Studio dark mode inspired colors
+                SObj.NodeBrushColor = Color.FromArgb(45, 45, 48);
+                SObj.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
+                SObj.CommentTextColor = Color.FromArgb(87, 166, 74);
+                SObj.BoxTextColor = Color.FromArgb(220, 220, 220);
+            }
+            else
+            {
+                // Light theme defaults
+                SObj.NodeBrushColor = Color.FromArgb(140, 140, 140);
+                SObj.TitleBoxBrushColor = Color.FromArgb(112, 112, 112);
+                SObj.CommentTextColor = Color.FromArgb(25, 25, 112);
+                SObj.BoxTextColor = Color.FromArgb(255, 255, 255);
+            }
+        }
+
         /// <summary>
         /// Registers a HexBox control for theme management and applies current theme.
         /// Call this when a HexBox is loaded.
