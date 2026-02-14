@@ -1526,6 +1526,17 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         // EXPERIMENTS: DropTheSquid
         #region DropTheSquid's Experiments
+
+        private void MakeLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.MakeLODs(GetPEWindow());
+        }
+
+        private void RemoveLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.RemoveLODs(GetPEWindow());
+        }
+
         private void ImportAnimSet_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportAnimSet(GetPEWindow());
@@ -1542,10 +1553,23 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         }
 
         // export mesh
+        private void ExportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow());
+        }
 
+        private void ExportGltf_Textures_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow(), GLTF.MaterialExportLevel.Basic);
+        }
         private void ExportSelectedToPsx_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ExportSelectedToPsx(GetPEWindow());
+        }
+
+        private void ExportSelectedMaterial_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ExportTexturesFromMaterial(GetPEWindow());
         }
 
         private void ExportRonToPsx_Click(object sender, RoutedEventArgs e)
@@ -1553,12 +1577,20 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsSquid.RonFileToPskx(GetPEWindow());
         }
 
+        private void ImportPskOverMesh_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ImportPskOverMesh(GetPEWindow());
+        }
+
         // import a mesh like object
         private void ImportPskAsNewMesh_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportPskAsNewMesh(GetPEWindow());
         }
-
+        private void ImportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ImportGltf(GetPEWindow());
+        }
 
         private void MakeHeterochromia_Click(object sender, RoutedEventArgs e)
         {

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -59,6 +60,7 @@ namespace Be.Windows.Forms
         /// <summary>
         /// Gets or sets whether dark mode is enabled for this scrollbar.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool IsDarkMode
         {
             get => _isDarkMode;
@@ -75,6 +77,7 @@ namespace Be.Windows.Forms
         /// <summary>
         /// Gets or sets the track (background) color in dark mode.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Color TrackColor
         {
             get => _trackColor;
@@ -84,6 +87,7 @@ namespace Be.Windows.Forms
         /// <summary>
         /// Gets or sets the thumb color in dark mode.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Color ThumbColor
         {
             get => _thumbColor;
@@ -93,6 +97,7 @@ namespace Be.Windows.Forms
         /// <summary>
         /// Gets or sets the thumb hover color in dark mode.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Color ThumbHoverColor
         {
             get => _thumbHoverColor;
@@ -102,6 +107,7 @@ namespace Be.Windows.Forms
         /// <summary>
         /// Gets or sets the arrow button color in dark mode.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Color ArrowColor
         {
             get => _arrowColor;

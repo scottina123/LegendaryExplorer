@@ -57,6 +57,10 @@
             sharedUi:Bindings.VisibilityToEnabled="true">
                             <Image Source="/Resources/Images/umodel.ico" Width="16" RenderOptions.BitmapScalingMode="HighQuality"/>
                         </Button>
+                        <Button Command="{Binding GltfExportCommand}"  ToolTip="Export to glTF (Experimental)" Margin="2,0"
+            sharedUi:Bindings.VisibilityToEnabled="true">
+                            glTF
+                        </Button>
                     </StackPanel>
                 </StackPanel>
             </StatusBar>

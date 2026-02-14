@@ -542,6 +542,29 @@ namespace LegendaryExplorerCore.Packages
             }
         }
 
+        /// <summary>
+        /// Find an entry within the given package by Memory full path, optionally filtering by class
+        /// </summary>
+        /// <param name="pachage">The package to search in</param>
+        /// <param name="memoryFullPath">The memory full path to search for</param>
+        /// <param name="className">The class to filter on. It will find instances of this class or classes that extend it. </param>
+        /// <returns>the matching entry, or null if none are found.</returns>
+        public static IEntry FindEntryByMemeroryFullPath(this IMEPackage pachage, string memoryFullPath, string className = null)
+        {
+            foreach (IEntry entry in pachage.Exports.Concat<IEntry>(pachage.Imports))
+            {
+                if (entry.MemoryFullPath.CaseInsensitiveEquals(memoryFullPath))
+                {
+                    if (className != null && !(entry.ClassName.CaseInsensitiveEquals(className) || entry.IsA(className)))
+                    {
+                        continue;
+                    }
+                    return entry;
+                }
+            }
+            return null;
+        }
+
         private readonly struct ReferenceFinder : IUIndexAction
         {
             private readonly int CurrentExportUIndex;
