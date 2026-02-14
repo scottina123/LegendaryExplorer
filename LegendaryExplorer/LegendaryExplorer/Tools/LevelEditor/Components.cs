@@ -206,6 +206,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
+    public bool IsVolumetric;
+    public string MeshIFP { get; protected set; }
     protected ModelPreview<VertexType> Mesh;
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
@@ -248,6 +250,12 @@ public class StaticMeshComponentProxy : MeshComponentProxy
                 stm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, stm, LOD);
+                MeshIFP = meshExport.InstancedFullPath;
+                if (MeshIFP.Contains("Volumetric", StringComparison.OrdinalIgnoreCase) 
+                    || Mesh.Materials.Keys.Any(matIFP => matIFP.Contains("VolumeLight", StringComparison.OrdinalIgnoreCase)))
+                {
+                    IsVolumetric = true;
+                }
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
             UpdateSelfLocalToWorld();
@@ -308,6 +316,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
                 skm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, skm);
+                MeshIFP = meshExport.InstancedFullPath;
                 skinnedMeshRenderer = new SkinnedMeshRenderer();
                 skinnedMeshRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[0]);
                 animPlayer = new SkeletonAnimPlayer();

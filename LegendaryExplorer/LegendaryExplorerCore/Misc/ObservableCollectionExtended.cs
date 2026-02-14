@@ -1,4 +1,5 @@
-﻿using System;
+﻿using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -113,7 +114,7 @@ namespace LegendaryExplorerCore.Misc
         /// </summary> 
         public void Replace(T item)
         {
-            ReplaceAll(new[] { item });
+            ReplaceAll([item]);
         }
 
         /// <summary> 
@@ -147,6 +148,12 @@ namespace LegendaryExplorerCore.Misc
         /// <param name="keySelector">A function to extract a key from an item.</param>
         public void Sort<TKey>(Func<T, TKey> keySelector)
         {
+            if (Items is List<T> list)
+            {
+                list.Sort((t1, t2) => Comparer<TKey>.Default.Compare(keySelector(t1), keySelector(t2)));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+                return;
+            }
             InternalSort(Items.OrderBy(keySelector));
         }
 
@@ -157,6 +164,12 @@ namespace LegendaryExplorerCore.Misc
         /// <param name="keySelector">A function to extract a key from an item.</param>
         public void SortDescending<TKey>(Func<T, TKey> keySelector)
         {
+            if (Items is List<T> list)
+            {
+                list.Sort((t1, t2) => -Comparer<TKey>.Default.Compare(keySelector(t1), keySelector(t2)));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+                return;
+            }
             InternalSort(Items.OrderByDescending(keySelector));
         }
 
@@ -168,6 +181,12 @@ namespace LegendaryExplorerCore.Misc
         /// <param name="comparer">An <see cref="IComparer{T}"/> to compare keys.</param>
         public void Sort<TKey>(Func<T, TKey> keySelector, IComparer<TKey> comparer)
         {
+            if (Items is List<T> list)
+            {
+                list.Sort((t1, t2) => comparer.Compare(keySelector(t1), keySelector(t2)));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+                return;
+            }
             InternalSort(Items.OrderBy(keySelector, comparer));
         }
 
@@ -179,10 +198,8 @@ namespace LegendaryExplorerCore.Misc
         {
             var sortedItemsList = sortedItems.ToList();
 
-            foreach (var item in sortedItemsList)
-            {
-                Move(IndexOf(item), sortedItemsList.IndexOf(item));
-            }
+            Items.Clear();
+            Items.AddRange(sortedItemsList);
             OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 

@@ -16,6 +16,7 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
     public LevelEditor Editor;
+    public OpenLevelFile OwningFile;
 
     public Matrix4x4 LocalToWorld;
 
@@ -25,15 +26,20 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public ExportEntry Export { get; }
 
+    public string OwningFileName => System.IO.Path.GetFileName(Export.FileRef.FilePath);
+
     private bool isDirty;
     public bool IsDirty
     {
         get => isDirty;
         protected set
         {
-            if (SetProperty(ref isDirty, value) && isDirty && Editor is not null)
+            if (SetProperty(ref isDirty, value) && isDirty)
             {
-                Editor.IsDirty = true;
+                if (OwningFile is not null)
+                {
+                    OwningFile.IsDirty = true;
+                }
             }
         }
     }
@@ -135,6 +141,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     }
 
     public virtual bool IsVolume => false;
+    public bool IsVolumetricMesh { get; protected set; }
 
     public TransformSnapshot SnapshotTransform() => new(location, rotation, drawScale, drawScale3D);
 
@@ -391,6 +398,7 @@ public class StaticMeshActorProxy : ActorProxy
     public StaticMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
+        IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
     }
 }
 
@@ -553,12 +561,13 @@ public abstract class CollectionActorComponentProxy : ActorProxy
     }
 }
 
-public class StaticMeshCollectionActorProxy : CollectionActorComponentProxy
+public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
 {
-    public StaticMeshCollectionActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
+    public StaticMeshComponentActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
     {
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
+        IsVolumetricMesh = (staticMeshComponentProxy as StaticMeshComponentProxy)?.IsVolumetric ?? false;
     }
 }
 
