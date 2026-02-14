@@ -50,6 +50,15 @@ namespace LegendaryExplorer.DialogueEditor
         public static Color boxColor = Color.FromArgb(140, 140, 140);
         public static Color boxTextColor = Color.White;
         protected static Brush titleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
+        public static Brush _titleBoxBrush
+        {
+            get => titleBoxBrush;
+            set
+            {
+                titleBoxBrush?.Dispose();
+                titleBoxBrush = value;
+            }
+        }
         protected static readonly Brush mostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
         public static Brush _nodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
         protected static Brush nodeBrush => _nodeBrush;

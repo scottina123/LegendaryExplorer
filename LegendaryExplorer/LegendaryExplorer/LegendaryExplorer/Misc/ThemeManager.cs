@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using Be.Windows.Forms;
@@ -15,7 +16,9 @@ namespace LegendaryExplorer.Misc
     public static class ThemeManager
     {
         private const string DarkThemeUri = "/LegendaryExplorer;component/DarkTheme.xaml";
+        private const string LightThemeUri = "/LegendaryExplorer;component/LightTheme.xaml";
         private static ResourceDictionary _darkThemeDictionary;
+        private static bool _isApplyingTheme;
         
         // Track registered HexBox controls for theme updates
         private static readonly List<WeakReference<HexBox>> _registeredHexBoxes = new();
@@ -39,50 +42,88 @@ namespace LegendaryExplorer.Misc
         /// <param name="isDarkMode">True for dark mode, false for light mode.</param>
         public static void ApplyTheme(bool isDarkMode)
         {
-            if (Application.Current == null)
+            if (Application.Current == null || _isApplyingTheme)
                 return;
 
-            var mergedDictionaries = Application.Current.Resources.MergedDictionaries;
-
-            if (isDarkMode)
+            _isApplyingTheme = true;
+            try
             {
-                // Load and apply dark theme if not already applied
-                if (_darkThemeDictionary == null)
+                var mergedDictionaries = Application.Current.Resources.MergedDictionaries;
+
+                if (isDarkMode)
                 {
-                    _darkThemeDictionary = new ResourceDictionary
+                    // Load dark theme dictionary if not already loaded
+                    if (_darkThemeDictionary == null)
                     {
-                        Source = new Uri(DarkThemeUri, UriKind.Relative)
-                    };
+                        _darkThemeDictionary = new ResourceDictionary
+                        {
+                            Source = new Uri(DarkThemeUri, UriKind.Relative)
+                        };
+                    }
+
+                    // Check if already applied by reference or by source URI
+                    bool darkThemeAlreadyApplied = mergedDictionaries.Contains(_darkThemeDictionary) ||
+                        mergedDictionaries.Any(rd => rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
+
+                    if (!darkThemeAlreadyApplied)
+                    {
+                        // Remove light theme first to avoid resource conflicts
+                        var lightTheme = mergedDictionaries.FirstOrDefault(rd => 
+                            rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
+                        if (lightTheme != null)
+                        {
+                            mergedDictionaries.Remove(lightTheme);
+                        }
+
+                        // Re-check after removal - WPF resource system may cause re-entrancy
+                        // that adds the dictionary during Remove operations
+                        if (!mergedDictionaries.Contains(_darkThemeDictionary))
+                        {
+                            mergedDictionaries.Add(_darkThemeDictionary);
+                        }
+                    }
+                    
+                    // Also set the static HexBox colors so new instances get dark colors
+                    HexBox.SetColors(Color.FromArgb(0x1E, 0x1E, 0x1E), Color.FromArgb(0xE0, 0xE0, 0xE0));
+                }
+                else
+                {
+                    // Remove dark theme to revert to light theme
+                    var darkTheme = mergedDictionaries.FirstOrDefault(rd => 
+                        rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
+                    if (darkTheme != null)
+                    {
+                        mergedDictionaries.Remove(darkTheme);
+                    }
+                    
+                    // Ensure light theme is present
+                    bool lightThemePresent = mergedDictionaries.Any(rd => 
+                        rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
+                    if (!lightThemePresent)
+                    {
+                        mergedDictionaries.Insert(0, new ResourceDictionary
+                        {
+                            Source = new Uri(LightThemeUri, UriKind.Relative)
+                        });
+                    }
+                    
+                    // Reset static HexBox colors to light theme
+                    HexBox.SetColors(Color.White, Color.Black);
                 }
 
-                if (!mergedDictionaries.Contains(_darkThemeDictionary))
-                {
-                    mergedDictionaries.Add(_darkThemeDictionary);
-                }
+                // Update graph editor static colors (SObj)
+                ApplyGraphEditorTheme(isDarkMode);
+
+                // Update all registered HexBox controls
+                UpdateAllHexBoxThemes(isDarkMode);
                 
-                // Also set the static HexBox colors so new instances get dark colors
-                HexBox.SetColors(Color.FromArgb(0x1E, 0x1E, 0x1E), Color.FromArgb(0xE0, 0xE0, 0xE0));
+                // Fire the ThemeChanged event to notify subscribers
+                ThemeChanged?.Invoke(null, isDarkMode);
             }
-            else
+            finally
             {
-                // Remove dark theme to revert to system defaults
-                if (_darkThemeDictionary != null && mergedDictionaries.Contains(_darkThemeDictionary))
-                {
-                    mergedDictionaries.Remove(_darkThemeDictionary);
-                }
-                
-                // Reset static HexBox colors to light theme
-                HexBox.SetColors(Color.White, Color.Black);
+                _isApplyingTheme = false;
             }
-
-            // Update graph editor static colors (SObj)
-            ApplyGraphEditorTheme(isDarkMode);
-
-            // Update all registered HexBox controls
-            UpdateAllHexBoxThemes(isDarkMode);
-            
-            // Fire the ThemeChanged event to notify subscribers
-            ThemeChanged?.Invoke(null, isDarkMode);
         }
 
         /// <summary>

@@ -1,6 +1,7 @@
 ﻿using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor.DialogueEditorExperiments;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
@@ -308,8 +309,14 @@ namespace LegendaryExplorer.DialogueEditor
             InitializeComponent();
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
+            // Apply theme-appropriate colors based on current dark mode setting
+            ApplyThemeDefaults();
+
+            // Subscribe to theme changes to update graph colors dynamically
+            ThemeManager.ThemeChanged += OnThemeChanged;
+
             graphEditor = (ConvGraphEditor)GraphHost.Child;
-            graphEditor.BackColor = Color.FromArgb(130, 130, 130);
+            graphEditor.BackColor = GraphBackgroundColor;
             graphEditor.Camera.MouseDown += backMouseDown_Handler;
             graphEditor.Camera.MouseUp += back_MouseUp;
 
@@ -508,6 +515,101 @@ namespace LegendaryExplorer.DialogueEditor
             BulkEditInterpGroupsCommand = new GenericCommand(OpenBulkInterpEditor, LineHasInterpData);
         }
 
+        /// <summary>
+        /// Applies theme-appropriate default colors based on the current dark mode setting.
+        /// Called when user switches themes - overrides any user customizations.
+        /// User can then customize colors again via color pickers.
+        /// </summary>
+        private void ApplyThemeDefaults()
+        {
+            bool isDarkMode = Settings.Global_DarkMode_Enabled;
+
+            if (isDarkMode)
+            {
+                // Dark theme - Visual Studio dark mode inspired colors
+                DBox.lineColor = Color.FromArgb(130, 180, 255);  // Light blue for better visibility
+                DObj.paraintColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
+                DObj.renintColor = Color.FromArgb(255, 99, 71);  // Tomato
+                DObj.agreeColor = Color.FromArgb(135, 206, 250);  // Light sky blue
+                DObj.disagreeColor = Color.FromArgb(255, 160, 122);  // Light salmon
+                DObj.friendlyColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
+                DObj.hostileColor = Color.FromArgb(205, 92, 92);  // Indian red
+                DObj.entryColor = Color.FromArgb(218, 165, 32);  // Goldenrod
+                DObj.entryPenColor = Color.FromArgb(220, 220, 220);  // Light gray
+                DObj.replyColor = Color.FromArgb(95, 158, 160);  // Cadet blue
+                DObj.replyPenColor = Color.FromArgb(220, 220, 220);  // Light gray
+                GraphBackgroundColor = Color.FromArgb(30, 30, 30);  // Dark background
+                BoxColor = Color.FromArgb(45, 45, 48);  // VS dark box color
+                DObj.boxTextColor = Color.FromArgb(220, 220, 220);  // Light text
+            }
+            else
+            {
+                // Light theme defaults - matching the classic Dialogue Editor look
+                DBox.lineColor = Color.White;  // White for spoken line text
+                DObj.paraintColor = Color.Blue;
+                DObj.renintColor = Color.Red;
+                DObj.agreeColor = Color.DodgerBlue;
+                DObj.disagreeColor = Color.Tomato;
+                DObj.friendlyColor = Color.FromArgb(3, 3, 116);  // Dark blue
+                DObj.hostileColor = Color.FromArgb(116, 3, 3);  // Dark red
+                DObj.entryColor = Color.FromArgb(218, 165, 32);  // Goldenrod for entry headers
+                DObj.entryPenColor = Color.Black;
+                DObj.replyColor = Color.FromArgb(64, 224, 208);  // Turquoise for reply headers
+                DObj.replyPenColor = Color.Black;
+                GraphBackgroundColor = Color.FromArgb(115, 115, 115);  // Gray background
+                BoxColor = Color.FromArgb(80, 80, 80);  // Dark gray node boxes
+                DObj.boxTextColor = Color.White;
+            }
+        }
+
+        /// <summary>
+        /// Handles theme changes from the ThemeManager.
+        /// Resets graph colors to theme defaults when user switches between light/dark mode.
+        /// </summary>
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            // Ensure we're on the UI thread
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => OnThemeChanged(sender, isDarkMode)));
+                return;
+            }
+
+            // Apply theme defaults (overrides any user customizations)
+            ApplyThemeDefaults();
+
+            // Update the graph editor background
+            if (graphEditor != null)
+            {
+                graphEditor.BackColor = GraphBackgroundColor;
+            }
+
+            // Update node brush
+            UpdateNodeBrush();
+
+            // Update color pickers to reflect the new theme colors
+            ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
+            ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
+            ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
+            ClrPcker_Agree.SelectedColor = DObj.agreeColor.ToWPFColor();
+            ClrPcker_Disagree.SelectedColor = DObj.disagreeColor.ToWPFColor();
+            ClrPcker_Friendly.SelectedColor = DObj.friendlyColor.ToWPFColor();
+            ClrPcker_Hostile.SelectedColor = DObj.hostileColor.ToWPFColor();
+            ClrPcker_Entry.SelectedColor = DObj.entryColor.ToWPFColor();
+            ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
+            ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();
+            ClrPcker_ReplyPen.SelectedColor = DObj.replyPenColor.ToWPFColor();
+            ClrPcker_GraphBackground.SelectedColor = GraphBackgroundColor.ToWPFColor();
+            ClrPcker_BoxColor.SelectedColor = BoxColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = DObj.boxTextColor.ToWPFColor();
+
+            // Refresh the view if there are objects loaded
+            if (CurrentObjects.Any())
+            {
+                RefreshView();
+            }
+        }
+
         private void DialogueEditorWPF_Loaded(object sender, RoutedEventArgs e)
         {
             if (FileQueuedForLoad != null)
@@ -583,6 +685,9 @@ namespace LegendaryExplorer.DialogueEditor
                 File.WriteAllText(OptionsPath, JsonConvert.SerializeObject(options));
             }
             );
+
+            // Unsubscribe from theme changes to prevent memory leaks
+            ThemeManager.ThemeChanged -= OnThemeChanged;
 
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
@@ -3631,6 +3736,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             DObj._nodeBrush?.Dispose();
             DObj._nodeBrush = new System.Drawing.SolidBrush(DObj.boxColor);
+            DObj._titleBoxBrush = new System.Drawing.SolidBrush(DObj.boxColor);
         }
         private void ResetColorsToDefault()
         {
@@ -3638,20 +3744,13 @@ namespace LegendaryExplorer.DialogueEditor
             if (cdlg == MessageBoxResult.Cancel)
                 return;
 
-            DBox.lineColor = Color.FromArgb(74, 63, 190);
-            DObj.paraintColor = Color.Blue; ;//Strong Blue
-            DObj.renintColor = Color.Red;//Strong Red
-            DObj.agreeColor = Color.DodgerBlue;
-            DObj.disagreeColor = Color.Tomato;
-            DObj.friendlyColor = Color.FromArgb(3, 3, 116);//dark blue
-            DObj.hostileColor = Color.FromArgb(116, 3, 3);//dark red
-            DObj.entryColor = Color.DarkGoldenrod;
-            DObj.entryPenColor = Color.Black;
-            DObj.replyColor = Color.CadetBlue;
-            DObj.replyPenColor = Color.Black;
-            GraphBackgroundColor = Color.FromArgb(64, 64, 64);
-            BoxColor = Color.FromArgb(140, 140, 140);
-            DObj.boxTextColor = Color.Black;
+            // Apply theme-appropriate defaults
+            ApplyThemeDefaults();
+
+            // Update node brush
+            UpdateNodeBrush();
+
+            // Update color pickers to reflect the new colors
             ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
             ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
             ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
