@@ -177,6 +177,9 @@
                         <TextBlock Text="Box Text Color: " />
                         <xctk:ColorPicker Name="ClrPcker_BoxText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
                                           HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Connection Line Color: " ToolTip="Base connection line color for output links" />
+                        <xctk:ColorPicker Name="ClrPcker_Connection" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" ToolTip="Base connection line color for output links" />
                     </MenuItem>
                 </MenuItem>
 

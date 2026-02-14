@@ -339,6 +339,12 @@ namespace LegendaryExplorer.DialogueEditor
                     DBox.lineColor = c;
                     ClrPcker_Line.SelectedColor = c.ToWPFColor();
                 }
+                if (options.ContainsKey("LinkTextColor"))
+                {
+                    var c = ColorTranslator.FromHtml((string)options["LinkTextColor"]);
+                    DObj.linkTextColor = c;
+                    ClrPcker_LinkText.SelectedColor = c.ToWPFColor();
+                }
                 if (options.ContainsKey("ParaIntRColor"))
                 {
                     var c = ColorTranslator.FromHtml((string)options["ParaIntRColor"]);
@@ -374,6 +380,12 @@ namespace LegendaryExplorer.DialogueEditor
                     var c = ColorTranslator.FromHtml((string)options["HostileRColor"]);
                     DObj.hostileColor = c;
                     ClrPcker_Hostile.SelectedColor = c.ToWPFColor();
+                }
+                if (options.ContainsKey("ConnectionColor"))
+                {
+                    var c = ColorTranslator.FromHtml((string)options["ConnectionColor"]);
+                    DObj.connectionColor = c;
+                    ClrPcker_Connection.SelectedColor = c.ToWPFColor();
                 }
                 if (options.ContainsKey("EntryPenColor"))
                 {
@@ -451,12 +463,14 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 Menu_LineSize_10.IsChecked = true;
                 ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
+                ClrPcker_LinkText.SelectedColor = DObj.linkTextColor.ToWPFColor();
                 ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
                 ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
                 ClrPcker_Agree.SelectedColor = DObj.agreeColor.ToWPFColor();
                 ClrPcker_Disagree.SelectedColor = DObj.disagreeColor.ToWPFColor();
                 ClrPcker_Friendly.SelectedColor = DObj.friendlyColor.ToWPFColor();
                 ClrPcker_Hostile.SelectedColor = DObj.hostileColor.ToWPFColor();
+                ClrPcker_Connection.SelectedColor = DObj.connectionColor.ToWPFColor();
                 ClrPcker_Entry.SelectedColor = DObj.entryColor.ToWPFColor();
                 ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
                 ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();
@@ -528,12 +542,14 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 // Dark theme - Visual Studio dark mode inspired colors
                 DBox.lineColor = Color.FromArgb(130, 180, 255);  // Light blue for better visibility
+                DObj.linkTextColor = Color.White;  // White for link text in dark mode
                 DObj.paraintColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
                 DObj.renintColor = Color.FromArgb(255, 99, 71);  // Tomato
                 DObj.agreeColor = Color.FromArgb(135, 206, 250);  // Light sky blue
                 DObj.disagreeColor = Color.FromArgb(255, 160, 122);  // Light salmon
                 DObj.friendlyColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
                 DObj.hostileColor = Color.FromArgb(205, 92, 92);  // Indian red
+                DObj.connectionColor = Color.White;  // White connection lines for dark mode
                 DObj.entryColor = Color.FromArgb(218, 165, 32);  // Goldenrod
                 DObj.entryPenColor = Color.FromArgb(220, 220, 220);  // Light gray
                 DObj.replyColor = Color.FromArgb(95, 158, 160);  // Cadet blue
@@ -546,12 +562,14 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 // Light theme defaults - matching the classic Dialogue Editor look
                 DBox.lineColor = Color.White;  // White for spoken line text
+                DObj.linkTextColor = Color.Black;  // Black for link text in light mode
                 DObj.paraintColor = Color.Blue;
                 DObj.renintColor = Color.Red;
                 DObj.agreeColor = Color.DodgerBlue;
                 DObj.disagreeColor = Color.Tomato;
                 DObj.friendlyColor = Color.FromArgb(3, 3, 116);  // Dark blue
                 DObj.hostileColor = Color.FromArgb(116, 3, 3);  // Dark red
+                DObj.connectionColor = Color.Black;  // Black connection lines for light mode
                 DObj.entryColor = Color.FromArgb(218, 165, 32);  // Goldenrod for entry headers
                 DObj.entryPenColor = Color.Black;
                 DObj.replyColor = Color.FromArgb(64, 224, 208);  // Turquoise for reply headers
@@ -589,12 +607,14 @@ namespace LegendaryExplorer.DialogueEditor
 
             // Update color pickers to reflect the new theme colors
             ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
+            ClrPcker_LinkText.SelectedColor = DObj.linkTextColor.ToWPFColor();
             ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
             ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
             ClrPcker_Agree.SelectedColor = DObj.agreeColor.ToWPFColor();
             ClrPcker_Disagree.SelectedColor = DObj.disagreeColor.ToWPFColor();
             ClrPcker_Friendly.SelectedColor = DObj.friendlyColor.ToWPFColor();
             ClrPcker_Hostile.SelectedColor = DObj.hostileColor.ToWPFColor();
+            ClrPcker_Connection.SelectedColor = DObj.connectionColor.ToWPFColor();
             ClrPcker_Entry.SelectedColor = DObj.entryColor.ToWPFColor();
             ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
             ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();
@@ -657,12 +677,14 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 {"LineTextSize", DBox.LineScaleOption},
                 {"LineTextColor", ColorTranslator.ToHtml(DBox.lineColor)},
+                {"LinkTextColor", ColorTranslator.ToHtml(DObj.linkTextColor)},
                 {"ParaIntRColor", ColorTranslator.ToHtml(DObj.paraintColor)},
                 {"RenIntRColor", ColorTranslator.ToHtml(DObj.renintColor)},
                 {"AgreeRColor", ColorTranslator.ToHtml(DObj.agreeColor)},
                 {"DisagreeRColor", ColorTranslator.ToHtml(DObj.disagreeColor)},
                 {"FriendlyRColor", ColorTranslator.ToHtml(DObj.friendlyColor)},
                 {"HostileRColor", ColorTranslator.ToHtml(DObj.hostileColor)},
+                {"ConnectionColor", ColorTranslator.ToHtml(DObj.connectionColor)},
                 {"EntryColor", ColorTranslator.ToHtml(DObj.entryColor)},
                 {"ReplyColor", ColorTranslator.ToHtml(DObj.replyColor)},
                 {"EntryPenColor", ColorTranslator.ToHtml(DObj.entryPenColor)},
@@ -3689,6 +3711,9 @@ namespace LegendaryExplorer.DialogueEditor
                     case "ClrPcker_Line":
                         DBox.lineColor = newcolor.ToWinformsColor();
                         break;
+                    case "ClrPcker_LinkText":
+                        DObj.linkTextColor = newcolor.ToWinformsColor();
+                        break;
                     case "ClrPcker_ParaInt":
                         DObj.paraintColor = newcolor.ToWinformsColor(); ;
                         break;
@@ -3706,6 +3731,9 @@ namespace LegendaryExplorer.DialogueEditor
                         break;
                     case "ClrPcker_Hostile":
                         DObj.hostileColor = newcolor.ToWinformsColor(); ;
+                        break;
+                    case "ClrPcker_Connection":
+                        DObj.connectionColor = newcolor.ToWinformsColor();
                         break;
                     case "ClrPcker_EntryPen":
                         DObj.entryPenColor = newcolor.ToWinformsColor(); ;
@@ -3752,12 +3780,14 @@ namespace LegendaryExplorer.DialogueEditor
 
             // Update color pickers to reflect the new colors
             ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
+            ClrPcker_LinkText.SelectedColor = DObj.linkTextColor.ToWPFColor();
             ClrPcker_ParaInt.SelectedColor = DObj.paraintColor.ToWPFColor();
             ClrPcker_RenInt.SelectedColor = DObj.renintColor.ToWPFColor();
             ClrPcker_Agree.SelectedColor = DObj.agreeColor.ToWPFColor();
             ClrPcker_Disagree.SelectedColor = DObj.disagreeColor.ToWPFColor();
             ClrPcker_Friendly.SelectedColor = DObj.friendlyColor.ToWPFColor();
             ClrPcker_Hostile.SelectedColor = DObj.hostileColor.ToWPFColor();
+            ClrPcker_Connection.SelectedColor = DObj.connectionColor.ToWPFColor();
             ClrPcker_Entry.SelectedColor = DObj.entryColor.ToWPFColor();
             ClrPcker_EntryPen.SelectedColor = DObj.entryPenColor.ToWPFColor();
             ClrPcker_Reply.SelectedColor = DObj.replyColor.ToWPFColor();

@@ -155,6 +155,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
         }
         
         /// <summary>
@@ -165,20 +166,21 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             // Apply theme defaults (overrides any user customizations)
             ApplyThemeDefaults();
-            
+
             // Update the graph editor background
             if (graphEditor != null)
             {
                 graphEditor.BackColor = GraphEditorBackColor;
             }
-            
+
             // Update color pickers to reflect the new theme colors
             ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
             ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
             ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
-            
+            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+
             // Refresh the view if there are objects loaded
             if (CurrentObjects.Any())
             {
@@ -1817,6 +1819,24 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private Color _connectionColor = Color.Black;
+        public Color ConnectionColor
+        {
+            get => _connectionColor;
+            set
+            {
+                if (_connectionColor != value)
+                {
+                    _connectionColor = value;
+                    SObj.ConnectionColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
 
 
 
@@ -1841,6 +1861,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 _titleBoxColor = Color.FromArgb(37, 37, 38);
                 _commentTextColor = Color.FromArgb(87, 166, 74);
                 _boxTextColor = Color.FromArgb(220, 220, 220);
+                _connectionColor = Color.White;  // White connection lines for dark mode
             }
             else
             {
@@ -1850,6 +1871,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 _titleBoxColor = Color.FromArgb(112, 112, 112);
                 _commentTextColor = Color.FromArgb(25, 25, 112);
                 _boxTextColor = Color.FromArgb(255, 255, 255);
+                _connectionColor = Color.Black;  // Black connection lines for light mode
             }
 
             // Apply to static properties used by SObj
@@ -1857,6 +1879,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SObj.TitleBoxBrushColor = _titleBoxColor;
             SObj.CommentTextColor = _commentTextColor;
             SObj.BoxTextColor = _boxTextColor;
+            SObj.ConnectionColor = _connectionColor;
         }
 
         private void saveView(bool toFile = true)
@@ -3391,6 +3414,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     case "ClrPcker_BoxText":
                         BoxTextColor = newColor;
                         Settings.SequenceEditor_BoxTextColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_Connection":
+                        ConnectionColor = newColor;
+                        Settings.SequenceEditor_ConnectionColor = newColor.ToArgb();
                         break;
                 }
                 Settings.Save();

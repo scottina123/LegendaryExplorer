@@ -42,6 +42,7 @@ namespace LegendaryExplorer.DialogueEditor
         public static Color entryPenColor = Color.Black;
         public static Color replyColor = Color.CadetBlue;
         public static Color replyPenColor = Color.Black;
+        public static Color connectionColor = Color.Black;  // Base connection line color (black for light mode, white for dark mode)
         protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
         public static Color titleColor = Color.FromArgb(255, 255, 128);
         public static Color titleBoxColor = Color.FromArgb(112, 112, 112);
@@ -49,6 +50,7 @@ namespace LegendaryExplorer.DialogueEditor
         public static Color graphBackgroundColor = Color.FromArgb(64, 64, 64);
         public static Color boxColor = Color.FromArgb(140, 140, 140);
         public static Color boxTextColor = Color.White;
+        public static Color linkTextColor = Color.Black;  // Color for link paraphrase text
         protected static Brush titleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
         public static Brush _titleBoxBrush
         {
@@ -97,7 +99,7 @@ namespace LegendaryExplorer.DialogueEditor
                 EReplyCategory.REPLY_CATEGORY_DISAGREE => disagreeColor,
                 EReplyCategory.REPLY_CATEGORY_FRIENDLY => friendlyColor,
                 EReplyCategory.REPLY_CATEGORY_HOSTILE => hostileColor,
-                _ => Color.Black
+                _ => connectionColor
             };
 
         public virtual void Dispose()
@@ -919,7 +921,16 @@ namespace LegendaryExplorer.DialogueEditor
                         l.node.Pickable = false;
                         if (!OutputNumbers)
                         {
-                            DText paraphrase = new DText(reply.ReplyLine, linkcolor, false, 0.8f)
+                            // Use category-specific color for special reply types, otherwise use linkTextColor
+                            var textColor = reply.RCategory switch
+                            {
+                                EReplyCategory.REPLY_CATEGORY_AGREE => agreeColor,
+                                EReplyCategory.REPLY_CATEGORY_DISAGREE => disagreeColor,
+                                EReplyCategory.REPLY_CATEGORY_FRIENDLY => friendlyColor,
+                                EReplyCategory.REPLY_CATEGORY_HOSTILE => hostileColor,
+                                _ => linkTextColor
+                            };
+                            DText paraphrase = new DText(reply.ReplyLine, textColor, false, 0.8f)
                             {
                                 TextAlignment = StringAlignment.Near,
                                 ConstrainWidthToTextWidth = true,

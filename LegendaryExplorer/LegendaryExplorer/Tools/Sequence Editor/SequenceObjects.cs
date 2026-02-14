@@ -47,30 +47,31 @@ namespace LegendaryExplorer.Tools.SequenceObjects
 
     [DebuggerDisplay("SObj | #{UIndex}: {export.ObjectName.Instanced}")]
      public abstract class SObj : PNode, IDisposable
-     {
-         private static Color _commentColor = Color.FromArgb(74, 63, 190);
-         private static readonly Color IntColor = Color.FromArgb(34, 218, 218);//cyan
-         private static readonly Color FloatColor = Color.FromArgb(23, 23, 213);//blue
-         private static readonly Color BoolColor = Color.FromArgb(215, 37, 33); //red
-         private static readonly Color ObjectColor = Color.FromArgb(219, 39, 217);//purple
-         private static readonly Color InterpDataColor = Color.FromArgb(222, 123, 26);//orange
-         private static readonly Color StringColor = Color.FromArgb(24, 219, 12);//lime green
-         private static readonly Color VectorColor = Color.FromArgb(127, 123, 32);//dark gold
-         private static readonly Color RotatorColor = Color.FromArgb(176, 97, 63);//burnt sienna
-         protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
-         protected static readonly Color TitleColor = Color.FromArgb(255, 255, 128);
-         private static Color _titleBoxColor = Color.FromArgb(112, 112, 112);
-         protected static Brush TitleBoxBrush => new SolidBrush(_titleBoxColor);
-         protected static readonly Brush MostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
-         private static Color _nodeBrushColor = Color.FromArgb(140, 140, 140);
-         protected static Brush NodeBrush => new SolidBrush(_nodeBrushColor);
-         protected static readonly Pen SelectedPen = new(Color.FromArgb(255, 255, 0));
-         private static Color _boxTextColor = Color.FromArgb(0, 0, 0); // Black text
-         protected static bool draggingOutlink;
-         protected static bool draggingVarlink;
-         protected static bool draggingEventlink;
-         protected static PNode DragTarget;
-         public static bool OutputNumbers;
+      {
+          private static Color _commentColor = Color.FromArgb(74, 63, 190);
+          private static readonly Color IntColor = Color.FromArgb(34, 218, 218);//cyan
+          private static readonly Color FloatColor = Color.FromArgb(23, 23, 213);//blue
+          private static readonly Color BoolColor = Color.FromArgb(215, 37, 33); //red
+          private static readonly Color ObjectColor = Color.FromArgb(219, 39, 217);//purple
+          private static readonly Color InterpDataColor = Color.FromArgb(222, 123, 26);//orange
+          private static readonly Color StringColor = Color.FromArgb(24, 219, 12);//lime green
+          private static readonly Color VectorColor = Color.FromArgb(127, 123, 32);//dark gold
+          private static readonly Color RotatorColor = Color.FromArgb(176, 97, 63);//burnt sienna
+          protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
+          protected static readonly Color TitleColor = Color.FromArgb(255, 255, 128);
+          private static Color _titleBoxColor = Color.FromArgb(112, 112, 112);
+          protected static Brush TitleBoxBrush => new SolidBrush(_titleBoxColor);
+          protected static readonly Brush MostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
+          private static Color _nodeBrushColor = Color.FromArgb(140, 140, 140);
+          protected static Brush NodeBrush => new SolidBrush(_nodeBrushColor);
+          protected static readonly Pen SelectedPen = new(Color.FromArgb(255, 255, 0));
+          private static Color _boxTextColor = Color.FromArgb(0, 0, 0); // Black text
+          private static Color _connectionColor = Color.Black; // Base connection line color (black for light mode, white for dark mode)
+          protected static bool draggingOutlink;
+          protected static bool draggingVarlink;
+          protected static bool draggingEventlink;
+          protected static PNode DragTarget;
+          public static bool OutputNumbers;
          
          public static Color NodeBrushColor
          {
@@ -94,6 +95,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
          {
              get => _boxTextColor;
              set => _boxTextColor = value;
+         }
+
+         public static Color ConnectionColor
+         {
+             get => _connectionColor;
+             set => _connectionColor = value;
          }
 
          protected IMEPackage Pcc;
@@ -822,6 +829,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         {
                             PPath p1 = outLink.Node;
                             var edge = new ActionEdge();
+                            edge.Pen = new Pen(ConnectionColor);
                             p1.Tag ??= new List<ActionEdge>();
                             ((List<ActionEdge>)p1.Tag).Add(edge);
                             destAction.InputEdges.Add(edge);

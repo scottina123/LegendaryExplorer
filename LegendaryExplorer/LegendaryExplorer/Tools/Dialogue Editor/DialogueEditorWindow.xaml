@@ -198,6 +198,9 @@
                         <TextBlock Text="Spoken Text: " />
                         <xctk:ColorPicker Name="ClrPcker_Line" SelectedColorChanged="ChangeLineColor"
                                           HorizontalAlignment="Right" />
+                        <TextBlock Text="Link Text: " ToolTip="Adjust the color of the paraphrase text next to link connectors" />
+                        <xctk:ColorPicker Name="ClrPcker_LinkText" SelectedColorChanged="ChangeLineColor"
+                                          HorizontalAlignment="Stretch" ToolTip="Adjust the color of the paraphrase text next to link connectors" />
                         <Separator />
                         <TextBlock Text="Entry outline: " />
                         <xctk:ColorPicker Name="ClrPcker_EntryPen" SelectedColorChanged="ChangeLineColor"
@@ -231,6 +234,10 @@
                         <TextBlock Text="Hostile response: " />
                         <xctk:ColorPicker Name="ClrPcker_Hostile" SelectedColorChanged="ChangeLineColor"
                                           HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Connection Line: " ToolTip="Base connection line color (used when not hostile, friendly, agree, etc.)" />
+                        <xctk:ColorPicker Name="ClrPcker_Connection" SelectedColorChanged="ChangeLineColor"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Base connection line color (used when not hostile, friendly, agree, etc.)" />
                         <Separator />
                         <TextBlock Text="Graph Background: " />
                         <xctk:ColorPicker Name="ClrPcker_GraphBackground" SelectedColorChanged="ChangeLineColor"
