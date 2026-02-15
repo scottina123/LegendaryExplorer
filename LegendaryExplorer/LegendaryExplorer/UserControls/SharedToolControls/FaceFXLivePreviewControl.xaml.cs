@@ -460,15 +460,22 @@ public class FaceFXBoneAnimator
     private enum CurveType
     {
         HeadPitch, HeadYaw, HeadRoll,
-        NeckPitch,
+        NeckPitch, NeckYaw, NeckRoll,
         EyePitch, EyeYaw,
-        Blink, EyebrowRaise,
-        LipSync
+        LeftEyePitch, LeftEyeYaw,
+        RightEyePitch, RightEyeYaw,
+        Blink,
+        EyelidSquint,
+        EyelidWide,
+        BrowRaise,
+        BrowLower,
+        LipSync,
+        Ignored
     }
     private struct CurveMapping
     {
         public CurveType Type;
-        public float JawContribution; // for LipSync type
+        public float Multiplier; // jaw contribution for LipSync, direction for emotions
     }
     private CurveMapping[] _curveMappings;
     private bool _curveMappingsBuilt;
@@ -572,7 +579,8 @@ public class FaceFXBoneAnimator
 
     /// <summary>
     /// Pre-classifies curve names so we never do string operations per-frame.
-    /// Called once when the line changes.
+    /// Covers all FaceFX curve categories: lip sync, head/neck/eye orientation,
+    /// emotions (brow/eye/mouth), gestures, blink, and brow details.
     /// </summary>
     private void BuildCurveMappings(FaceFXLivePreviewControl.IFaceFXBinary faceFX, FaceFXLine line)
     {
@@ -583,57 +591,350 @@ public class FaceFXBoneAnimator
         {
             if (line.AnimationNames[i] >= faceFX.Names.Count)
             {
-                _curveMappings[i] = new CurveMapping { Type = CurveType.LipSync, JawContribution = 0 };
+                _curveMappings[i] = new CurveMapping { Type = CurveType.Ignored };
                 continue;
             }
 
             string name = faceFX.Names[line.AnimationNames[i]];
-            string lower = name.ToLowerInvariant();
-
-            if (lower.Contains("orientation_head_") || lower.Contains("emphasis_head_"))
-            {
-                if (lower.Contains("pitch")) _curveMappings[i].Type = CurveType.HeadPitch;
-                else if (lower.Contains("yaw")) _curveMappings[i].Type = CurveType.HeadYaw;
-                else if (lower.Contains("roll")) _curveMappings[i].Type = CurveType.HeadRoll;
-            }
-            else if (lower.Contains("neck") && lower.Contains("pitch"))
-            {
-                _curveMappings[i].Type = CurveType.NeckPitch;
-            }
-            else if (lower.Contains("gaze_eye_"))
-            {
-                _curveMappings[i].Type = lower.Contains("pitch") ? CurveType.EyePitch : CurveType.EyeYaw;
-            }
-            else if (lower.Contains("blink"))
-            {
-                _curveMappings[i].Type = CurveType.Blink;
-            }
-            else if (lower.Contains("eyebrow") || (lower.Contains("brow") && lower.Contains("raise")))
-            {
-                _curveMappings[i].Type = CurveType.EyebrowRaise;
-            }
-            else
-            {
-                _curveMappings[i].Type = CurveType.LipSync;
-                _curveMappings[i].JawContribution = GetJawContribution(lower);
-            }
+            _curveMappings[i] = ClassifyCurve(name);
         }
 
         _curveMappingsBuilt = true;
         _lastLineHashCode = RuntimeHelpers.GetHashCode(line);
     }
 
-    private static float GetJawContribution(string lowerCurveName)
+    private static CurveMapping ClassifyCurve(string name)
     {
-        if (lowerCurveName.Contains("jaw+") || lowerCurveName.Contains("open")) return 1.0f;
-        if (lowerCurveName.Contains("jaw-")) return -0.5f;
-        if (lowerCurveName.Contains("m_ah") || lowerCurveName.Contains("m_oh") ||
-            lowerCurveName.Contains("m_ow") || lowerCurveName.Contains("m_eh") ||
-            lowerCurveName.Contains("m_open")) return 0.6f;
-        if (lowerCurveName.Contains("m_ee") || lowerCurveName.Contains("m_oo")) return 0.3f;
-        if (lowerCurveName.Contains("m_m") || lowerCurveName.Contains("m_n") ||
-            lowerCurveName.Contains("m_fv") || lowerCurveName.Contains("m_th")) return 0.1f;
-        return 0.2f;
+        string lower = name.ToLowerInvariant();
+
+        // === SKIP: driver nodes, correctives, wrinkles, fixers ===
+        if (lower.EndsWith("_wrinkle") || lower.EndsWith("_fixer") || lower.EndsWith("_val") ||
+            lower.StartsWith("ph_") || lower.StartsWith("w_") || lower.StartsWith("limiter_") ||
+            lower == "aibark" || lower == "ph_nullifier" ||
+            lower == "winkleconstant" || lower == "wrinkleconstant")
+            return new CurveMapping { Type = CurveType.Ignored };
+        if (lower.EndsWith("_sum") || lower.EndsWith("_constant"))
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === HEAD ORIENTATION ===
+        if (lower.Contains("orientation_head_") || lower.Contains("emphasis_head_") ||
+            lower.Contains("e_d_head_") || lower == "head_pitch" || lower == "head_yaw" || lower == "head_roll" ||
+            lower == "aiheadpitch" || lower == "aiheadyaw" || lower == "aiheadroll")
+        {
+            if (lower.Contains("pitch")) return new CurveMapping { Type = CurveType.HeadPitch, Multiplier = 1f };
+            if (lower.Contains("yaw")) return new CurveMapping { Type = CurveType.HeadYaw, Multiplier = 1f };
+            if (lower.Contains("roll")) return new CurveMapping { Type = CurveType.HeadRoll, Multiplier = 1f };
+        }
+        if (lower.StartsWith("head_r"))
+        {
+            if (lower.StartsWith("head_rx")) return new CurveMapping { Type = CurveType.HeadYaw, Multiplier = lower.EndsWith("+") ? 1f : -1f };
+            if (lower.StartsWith("head_ry")) return new CurveMapping { Type = CurveType.HeadRoll, Multiplier = lower.EndsWith("+") ? 1f : -1f };
+            if (lower.StartsWith("head_rz")) return new CurveMapping { Type = CurveType.HeadPitch, Multiplier = lower.EndsWith("+") ? 1f : -1f };
+        }
+        if (lower == "e_gesture_headup") return new CurveMapping { Type = CurveType.HeadPitch, Multiplier = -1f };
+        if (lower == "e_gesture_headdown") return new CurveMapping { Type = CurveType.HeadPitch, Multiplier = 1f };
+        if (lower == "e_gesture_headleft") return new CurveMapping { Type = CurveType.HeadYaw, Multiplier = 1f };
+        if (lower == "e_gesture_headright") return new CurveMapping { Type = CurveType.HeadYaw, Multiplier = -1f };
+        if (lower == "e_gesture_headrollleft") return new CurveMapping { Type = CurveType.HeadRoll, Multiplier = 1f };
+        if (lower == "e_gesture_headrollright") return new CurveMapping { Type = CurveType.HeadRoll, Multiplier = -1f };
+
+        // === NECK ORIENTATION ===
+        if (lower.Contains("neck") && (lower.Contains("pitch") || lower.Contains("yaw") || lower.Contains("roll") ||
+            lower.StartsWith("neck_r")))
+        {
+            if (lower.Contains("pitch") || lower.StartsWith("neck_rz")) return new CurveMapping { Type = CurveType.NeckPitch, Multiplier = lower.EndsWith("-") ? -1f : 1f };
+            if (lower.Contains("yaw") || lower.StartsWith("neck_rx")) return new CurveMapping { Type = CurveType.NeckYaw, Multiplier = lower.EndsWith("-") ? -1f : 1f };
+            if (lower.Contains("roll") || lower.StartsWith("neck_ry")) return new CurveMapping { Type = CurveType.NeckRoll, Multiplier = lower.EndsWith("-") ? -1f : 1f };
+        }
+        if (lower.StartsWith("e_gesture_neckforward") || lower.StartsWith("e_gesture_neckback"))
+            return new CurveMapping { Type = CurveType.NeckPitch, Multiplier = lower.Contains("forward") ? 1f : -1f };
+
+        // === EYE GAZE (both eyes) ===
+        if (lower.Contains("gaze_eye_") || lower == "eye_pitch" || lower == "eye_yaw" ||
+            lower.Contains("e_d_eye_pitch") || lower.Contains("e_d_eye_yaw"))
+        {
+            if (lower.Contains("pitch")) return new CurveMapping { Type = CurveType.EyePitch, Multiplier = 1f };
+            if (lower.Contains("yaw")) return new CurveMapping { Type = CurveType.EyeYaw, Multiplier = 1f };
+        }
+        if (lower == "e_gesture_eyesup") return new CurveMapping { Type = CurveType.EyePitch, Multiplier = -1f };
+        if (lower == "e_gesture_eyesdown") return new CurveMapping { Type = CurveType.EyePitch, Multiplier = 1f };
+        if (lower == "e_gesture_eyesleft") return new CurveMapping { Type = CurveType.EyeYaw, Multiplier = 1f };
+        if (lower == "e_gesture_eyesright") return new CurveMapping { Type = CurveType.EyeYaw, Multiplier = -1f };
+        // Krogan: E_LookingUpLoop, E_LookingDownLoop, E_LookingLeftUp, E_LookingRightNeutral, etc.
+        if (lower.StartsWith("e_looking"))
+        {
+            if (lower.Contains("left")) return new CurveMapping { Type = CurveType.EyeYaw, Multiplier = 1f };
+            if (lower.Contains("right")) return new CurveMapping { Type = CurveType.EyeYaw, Multiplier = -1f };
+            if (lower.Contains("up")) return new CurveMapping { Type = CurveType.EyePitch, Multiplier = -1f };
+            if (lower.Contains("down")) return new CurveMapping { Type = CurveType.EyePitch, Multiplier = 1f };
+        }
+
+        // === INDIVIDUAL EYE ROTATION (eye_Left_RY+, eye_Right_RZ-, etc.) ===
+        if (lower.StartsWith("eye_left_r"))
+        {
+            float dir = lower.EndsWith("+") ? 1f : -1f;
+            if (lower.StartsWith("eye_left_ry") || lower.StartsWith("eye_left_rx")) return new CurveMapping { Type = CurveType.LeftEyeYaw, Multiplier = dir };
+            if (lower.StartsWith("eye_left_rz")) return new CurveMapping { Type = CurveType.LeftEyePitch, Multiplier = dir };
+        }
+        if (lower.StartsWith("eye_right_r"))
+        {
+            float dir = lower.EndsWith("+") ? 1f : -1f;
+            if (lower.StartsWith("eye_right_ry") || lower.StartsWith("eye_right_rx")) return new CurveMapping { Type = CurveType.RightEyeYaw, Multiplier = dir };
+            if (lower.StartsWith("eye_right_rz")) return new CurveMapping { Type = CurveType.RightEyePitch, Multiplier = dir };
+        }
+
+        // === BLINK / EYELIDS (all species) ===
+        if (lower is "blink" or "blinker" or "m_blinker" or "e_d_blink" or "blinknode" or "blinkupdown"
+            or "eyeblink" or "eyeblinker")
+            return new CurveMapping { Type = CurveType.Blink, Multiplier = 1f };
+        if (lower is "blinknegate")
+            return new CurveMapping { Type = CurveType.Blink, Multiplier = -1f };
+        if (lower is "e_gesture_closeeyes")
+            return new CurveMapping { Type = CurveType.Blink, Multiplier = 1f };
+        if (lower is "blinkright" or "blinkleft")
+            return new CurveMapping { Type = CurveType.Blink, Multiplier = 1f };
+        if (lower.Contains("eyelidupper") && lower.Contains("+"))
+            return new CurveMapping { Type = CurveType.EyelidWide, Multiplier = 1f };
+        if (lower.Contains("eyelidupper") && lower.Contains("-"))
+            return new CurveMapping { Type = CurveType.Blink, Multiplier = 1f };
+        if (lower.Contains("wideopen_eyelids"))
+            return new CurveMapping { Type = CurveType.EyelidWide, Multiplier = 1f };
+        if (lower.Contains("squint_eyelids") || lower == "squintnode")
+            return new CurveMapping { Type = CurveType.EyelidSquint, Multiplier = 1f };
+        // Drell: wideEyeRight, wideEyeLeft
+        if (lower.StartsWith("wideeye"))
+            return new CurveMapping { Type = CurveType.EyelidWide, Multiplier = 1f };
+        // Drell: lowLidRightUp/Down, lowLidLeftUp/Down
+        if (lower.StartsWith("lowlid"))
+        {
+            if (lower.Contains("up")) return new CurveMapping { Type = CurveType.EyelidSquint, Multiplier = 0.5f };
+            return new CurveMapping { Type = CurveType.Ignored };
+        }
+        // Eyelid rotation curves (drell: eyeLidRight_RY+/-)
+        if (lower.StartsWith("eyelid") && lower.Contains("_ry"))
+            return new CurveMapping { Type = CurveType.Ignored };
+        if (lower.StartsWith("blinkfix") || lower.StartsWith("blinkcorrective") || lower.Contains("blinkslookat"))
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === EYEBROW (all species) ===
+        if (lower is "eyebrow_raise")
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 1f };
+        if (lower.StartsWith("m_brow"))
+        {
+            if (lower.Contains("_u")) return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 1f };
+            if (lower.Contains("_d")) return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 1f };
+            if (lower.Contains("in")) return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.5f };
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.3f };
+        }
+        if (lower == "m_browmidup") return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 1f };
+        if (lower == "m_browmiddown") return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 1f };
+        // Drell/other: innerBrowRightUp, innerBrowLeftDown, outBrowRightUp, etc.
+        if (lower.StartsWith("innerbrow") || lower.StartsWith("outbrow"))
+        {
+            if (lower.Contains("up") && !lower.Contains("down")) return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.7f };
+            if (lower.Contains("down")) return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.7f };
+            if (lower.Contains("_rotatein") || lower.Contains("_in")) return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.3f };
+            if (lower.Contains("_rotateout") || lower.Contains("_out")) return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.3f };
+            return new CurveMapping { Type = CurveType.Ignored };
+        }
+        if (lower.Contains("cockedbrows") || lower.Contains("updownbrow") || lower.Contains("emotionbrows"))
+        {
+            if (lower.Contains("_u") || lower.Contains("_l")) return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.5f };
+            if (lower.Contains("_d") || lower.Contains("_r")) return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.5f };
+        }
+
+        // === B_ PREFIXED CURVES (check specific patterns before generic emotion brow) ===
+        if (lower.StartsWith("b_"))
+        {
+            if (lower.StartsWith("blink")) return new CurveMapping { Type = CurveType.Ignored };
+            // Eye B_ curves (drell: B_EyesWide, B_EyeSquint)
+            if (lower.Contains("eyeswide") || lower.Contains("eyewide"))
+                return new CurveMapping { Type = CurveType.EyelidWide, Multiplier = 0.5f };
+            if (lower.Contains("eyesquint") || lower.Contains("eyequint"))
+                return new CurveMapping { Type = CurveType.EyelidSquint, Multiplier = 0.5f };
+            if (lower.Contains("cheek"))
+                return new CurveMapping { Type = CurveType.Ignored };
+            // Drell named brow results (B_ShockBrow, B_SadBrow, B_RageBrow, etc.)
+            if (lower.Contains("shockbrow") || lower.Contains("questionbrow") || lower.Contains("perplexedbrow"))
+                return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.5f };
+            if (lower.Contains("ragebrow") || lower.Contains("squintbrow") || lower.Contains("woundedbrow") || lower.Contains("woundedgrimace"))
+                return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.5f };
+            if (lower.Contains("sadbrow"))
+                return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.4f };
+            // Generic emotion B_ (human: B_Fear1, B_Anger3, etc.)
+            return new CurveMapping { Type = GetEmotionBrowType(lower), Multiplier = 0.5f };
+        }
+
+        // === EMOTION BROW CURVES (E_WB_, E_B_, E_D_B_, p_B_) ===
+        if (lower.StartsWith("e_wb_") || lower.StartsWith("e_b_") || lower.StartsWith("e_d_b_") || lower.StartsWith("p_b_"))
+            return new CurveMapping { Type = GetEmotionBrowType(lower), Multiplier = GetEmotionBrowMultiplier(lower) };
+
+        // === EMOTION EYE CURVES (E_Y_, E_D_Y_, Y_) ===
+        if (lower.StartsWith("e_y_") || lower.StartsWith("e_d_y_") || lower.StartsWith("y_"))
+            return new CurveMapping { Type = GetEmotionEyeType(lower), Multiplier = GetEmotionEyeMultiplier(lower) };
+
+        // === EMOTION MOUTH/SMILE CURVES (E_S_, E_D_S_, S_, E_D_F_) ===
+        if (lower.StartsWith("e_s_") || lower.StartsWith("e_d_s_") || lower.StartsWith("s_") || lower.StartsWith("e_d_f_"))
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = GetEmotionMouthJaw(lower) };
+
+        // === FULL-FACE EMOTION PRESETS ===
+        if (lower.StartsWith("e_happy_") || lower.StartsWith("e_flirt_"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.3f };
+        if (lower.StartsWith("e_sad_") || lower.StartsWith("e_wounded_"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.4f };
+        if (lower.StartsWith("e_angry_"))
+            return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.5f };
+        if (lower.StartsWith("e_neutral_"))
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === PERSISTENT EXPRESSIONS ===
+        if (lower.StartsWith("p_mouth_"))
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = lower.Contains("happy") || lower.Contains("smug") ? -0.1f : 0.1f };
+        if (lower.StartsWith("p_eye_"))
+            return new CurveMapping { Type = CurveType.Ignored };
+        if (lower.StartsWith("p_happy_") || lower.StartsWith("p_flirt_"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.2f };
+        if (lower.StartsWith("p_sad_") || lower.StartsWith("p_wounded_"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.3f };
+        if (lower.StartsWith("p_angry_"))
+            return new CurveMapping { Type = CurveType.BrowLower, Multiplier = 0.3f };
+        if (lower.StartsWith("p_neutral_"))
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === JAW CURVES (bare names — drell/other species) ===
+        if (lower == "jawopen" || lower == "o_mouth")
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = 1.0f };
+        if (lower == "jawclench" || lower == "smilejawclench")
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.3f };
+        if (lower.StartsWith("jawrotate"))
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.2f };
+        if (lower is "jawsideleft" or "jawsideright" or "jawforward" or "jawback")
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === LIP SYNC m_ CURVES (human jaw/mouth shapes) ===
+        if (lower.StartsWith("m_"))
+        {
+            if (lower.StartsWith("m_jaw"))
+            {
+                if (lower.Contains("+") || lower.Contains("open")) return new CurveMapping { Type = CurveType.LipSync, Multiplier = 1.0f };
+                if (lower.Contains("clench")) return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.3f };
+                return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.5f };
+            }
+            if (lower.StartsWith("m_open")) return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.6f };
+            if (lower.StartsWith("m_closed")) return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.1f };
+            if (lower is "m_oh" or "m_ow" or "m_eh") return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.6f };
+            if (lower is "m_ee" or "m_g" or "m_flap") return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.3f };
+            if (lower is "m_fv" or "m_th" or "m_m" or "m_n" or "m_l" or "m_zz") return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.1f };
+            if (lower.Contains("lipcornerup") || lower.Contains("smile_frown_u") || lower == "m_smilefull")
+                return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.05f };
+            if (lower.Contains("lipcornerdown") || lower.Contains("smile_frown_d"))
+                return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.05f };
+            if (lower.Contains("angry"))
+                return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.05f };
+            return new CurveMapping { Type = CurveType.Ignored };
+        }
+
+        // === BARE SMILE/FROWN (drell: smileRight, smileLeft, frownRight, etc.) ===
+        if (lower.StartsWith("smile"))
+        {
+            if (lower.Contains("omouth")) return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.3f };
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = -0.05f };
+        }
+        if (lower.StartsWith("frown"))
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.05f };
+        if (lower.StartsWith("opensmile"))
+            return new CurveMapping { Type = CurveType.LipSync, Multiplier = 0.2f };
+
+        // === BARE SNEER, PUCKER, CHEEK, NOSE, TONGUE, LIP DETAIL ===
+        if (lower.StartsWith("sneer") || lower.StartsWith("pucker") || lower.StartsWith("cheek") ||
+            lower.StartsWith("nose") || lower.StartsWith("tongue") || lower.StartsWith("upperlip") ||
+            lower.StartsWith("lowerlip") || lower.StartsWith("lipcurl") || lower.StartsWith("mouthdown") ||
+            lower.StartsWith("crowsfoot") || lower == "narrowmouth" || lower == "cheekpuff")
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // === YAHG F_ FACE EMOTION PRESETS ===
+        if (lower.StartsWith("f_happy") || lower.StartsWith("f_flirt") || lower.StartsWith("f_flirst"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.3f };
+        if (lower.StartsWith("f_sad") || lower.StartsWith("f_wounded"))
+            return new CurveMapping { Type = CurveType.BrowRaise, Multiplier = 0.4f };
+        if (lower.StartsWith("f_neutral"))
+            return new CurveMapping { Type = CurveType.Ignored };
+
+        // Unrecognized — ignore rather than treat as jaw movement
+        return new CurveMapping { Type = CurveType.Ignored };
+    }
+
+    /// <summary>Determines brow type for emotion brow curves based on the emotion name.</summary>
+    private static CurveType GetEmotionBrowType(string lower)
+    {
+        // Emotions that RAISE brows
+        if (lower.Contains("fear") || lower.Contains("terror") || lower.Contains("shock") ||
+            lower.Contains("laughter") || lower.Contains("joy") || lower.Contains("amusement") ||
+            lower.Contains("satisfaction") || lower.Contains("concern") ||
+            lower.Contains("sadness") || lower.Contains("grief") || lower.Contains("melancholy"))
+            return CurveType.BrowRaise;
+
+        // Emotions that LOWER/furrow brows
+        if (lower.Contains("anger") || lower.Contains("angry") || lower.Contains("rage") || lower.Contains("indignation") ||
+            lower.Contains("stern") || lower.Contains("disgust") || lower.Contains("revulsion") ||
+            lower.Contains("aversion") || lower.Contains("disdain") || lower.Contains("dejection") ||
+            lower.Contains("anxiety"))
+            return CurveType.BrowLower;
+
+        return CurveType.BrowRaise;
+    }
+
+    /// <summary>Gets intensity multiplier for emotion brow curves.</summary>
+    private static float GetEmotionBrowMultiplier(string lower)
+    {
+        // Persistent and driver curves are subtler
+        if (lower.StartsWith("p_b_")) return 0.3f;
+        if (lower.StartsWith("e_d_b_")) return 0.4f;
+        // E_WB_ (whole brow) is strongest
+        if (lower.StartsWith("e_wb_")) return 0.8f;
+        // E_B_ and B_ are moderate
+        return 0.5f;
+    }
+
+    /// <summary>Determines eye type for emotion eye curves.</summary>
+    private static CurveType GetEmotionEyeType(string lower)
+    {
+        // Wide-eyed emotions
+        if (lower.Contains("terror") || lower.Contains("fear") || lower.Contains("shock") ||
+            lower.Contains("wide"))
+            return CurveType.EyelidWide;
+
+        // Squinting emotions
+        if (lower.Contains("laughter") || lower.Contains("joy") || lower.Contains("amusement") ||
+            lower.Contains("satisfaction") || lower.Contains("anger") || lower.Contains("rage") ||
+            lower.Contains("disgust") || lower.Contains("revulsion") || lower.Contains("squint") ||
+            lower.Contains("stern") || lower.Contains("indignation") || lower.Contains("disdain") ||
+            lower.Contains("aversion"))
+            return CurveType.EyelidSquint;
+
+        // Droopy emotions
+        if (lower.Contains("sadness") || lower.Contains("grief") || lower.Contains("melancholy") ||
+            lower.Contains("dejection") || lower.Contains("concern") || lower.Contains("droop"))
+            return CurveType.EyelidSquint;
+
+        return CurveType.EyelidSquint;
+    }
+
+    /// <summary>Gets intensity multiplier for emotion eye curves.</summary>
+    private static float GetEmotionEyeMultiplier(string lower)
+    {
+        if (lower.StartsWith("e_d_y_")) return 0.3f;
+        if (lower.StartsWith("y_")) return 0.5f;
+        return 0.4f;
+    }
+
+    /// <summary>Gets jaw contribution for emotion mouth/smile curves.</summary>
+    private static float GetEmotionMouthJaw(string lower)
+    {
+        if (lower.Contains("laughter")) return 0.3f;
+        if (lower.Contains("shock") || lower.Contains("mouthopen")) return 0.4f;
+        if (lower.Contains("smile") || lower.Contains("smirk")) return -0.05f;
+        return 0.05f;
     }
 
     /// <summary>
@@ -659,7 +960,10 @@ public class FaceFXBoneAnimator
         Vector3 rightEyeRotation = Vector3.Zero;
         float jawOpen = 0f;
         float blinkAmount = 0f;
+        float eyelidSquint = 0f;
+        float eyelidWide = 0f;
         float browRaise = 0f;
+        float browLower = 0f;
 
         int pointIndex = 0;
         for (int i = 0; i < line.AnimationNames.Count; i++)
@@ -672,17 +976,28 @@ public class FaceFXBoneAnimator
 
             if (Math.Abs(value) < 0.001f) continue;
 
+            float scaled = value * _curveMappings[i].Multiplier;
             switch (_curveMappings[i].Type)
             {
-                case CurveType.HeadPitch: headRotation.X += value; break;
-                case CurveType.HeadYaw: headRotation.Z += value; break;
-                case CurveType.HeadRoll: headRotation.Y += value; break;
-                case CurveType.NeckPitch: neckRotation.X += value; break;
-                case CurveType.EyePitch: leftEyeRotation.X += value; rightEyeRotation.X += value; break;
-                case CurveType.EyeYaw: leftEyeRotation.Z += value; rightEyeRotation.Z += value; break;
-                case CurveType.Blink: blinkAmount += value; break;
-                case CurveType.EyebrowRaise: browRaise += value; break;
-                case CurveType.LipSync: jawOpen += _curveMappings[i].JawContribution * value; break;
+                case CurveType.HeadPitch: headRotation.X += scaled; break;
+                case CurveType.HeadYaw: headRotation.Z += scaled; break;
+                case CurveType.HeadRoll: headRotation.Y += scaled; break;
+                case CurveType.NeckPitch: neckRotation.X += scaled; break;
+                case CurveType.NeckYaw: neckRotation.Z += scaled; break;
+                case CurveType.NeckRoll: neckRotation.Y += scaled; break;
+                case CurveType.EyePitch: leftEyeRotation.X += scaled; rightEyeRotation.X += scaled; break;
+                case CurveType.EyeYaw: leftEyeRotation.Z += scaled; rightEyeRotation.Z += scaled; break;
+                case CurveType.LeftEyePitch: leftEyeRotation.X += scaled; break;
+                case CurveType.LeftEyeYaw: leftEyeRotation.Z += scaled; break;
+                case CurveType.RightEyePitch: rightEyeRotation.X += scaled; break;
+                case CurveType.RightEyeYaw: rightEyeRotation.Z += scaled; break;
+                case CurveType.Blink: blinkAmount += scaled; break;
+                case CurveType.EyelidSquint: eyelidSquint += value * _curveMappings[i].Multiplier; break;
+                case CurveType.EyelidWide: eyelidWide += value * _curveMappings[i].Multiplier; break;
+                case CurveType.BrowRaise: browRaise += value * _curveMappings[i].Multiplier; break;
+                case CurveType.BrowLower: browLower += value * _curveMappings[i].Multiplier; break;
+                case CurveType.LipSync: jawOpen += _curveMappings[i].Multiplier * value; break;
+                case CurveType.Ignored: break;
             }
         }
 
@@ -699,18 +1014,33 @@ public class FaceFXBoneAnimator
         if (_rightEyeBoneIndex >= 0 && rightEyeRotation != Vector3.Zero)
             ApplyRotationToBone(_rightEyeBoneIndex, rightEyeRotation * 0.08f);
         if (_jawBoneIndex >= 0 && Math.Abs(jawOpen) > 0.001f)
-            ApplyRotationToBone(_jawBoneIndex, new Vector3(Math.Clamp(jawOpen, 0f, 1f) * 0.15f, 0, 0));
-        if (Math.Abs(blinkAmount) > 0.001f)
+            ApplyRotationToBone(_jawBoneIndex, new Vector3(Math.Clamp(jawOpen, -0.5f, 1f) * 0.15f, 0, 0));
+
+        // Blink + eyelid squint (both close the lids)
+        float totalBlink = Math.Clamp(blinkAmount + eyelidSquint * 0.5f, 0f, 1f);
+        if (totalBlink > 0.001f)
         {
-            float lidAngle = Math.Clamp(blinkAmount, 0f, 1f) * 0.3f;
+            float lidAngle = totalBlink * 0.3f;
             if (_leftUpperLidIndex >= 0)
                 ApplyRotationToBone(_leftUpperLidIndex, new Vector3(lidAngle, 0, 0));
             if (_rightUpperLidIndex >= 0)
                 ApplyRotationToBone(_rightUpperLidIndex, new Vector3(lidAngle, 0, 0));
         }
-        if (Math.Abs(browRaise) > 0.001f)
+        // Eyelid wide (opens eyes wider — opposite direction from blink)
+        if (eyelidWide > 0.001f)
         {
-            float browAngle = browRaise * 0.1f;
+            float wideAngle = Math.Clamp(eyelidWide, 0f, 1f) * -0.15f;
+            if (_leftUpperLidIndex >= 0)
+                ApplyRotationToBone(_leftUpperLidIndex, new Vector3(wideAngle, 0, 0));
+            if (_rightUpperLidIndex >= 0)
+                ApplyRotationToBone(_rightUpperLidIndex, new Vector3(wideAngle, 0, 0));
+        }
+
+        // Brow: combine raise and lower
+        float netBrow = browRaise - browLower;
+        if (Math.Abs(netBrow) > 0.001f)
+        {
+            float browAngle = netBrow * 0.1f;
             if (_leftBrowBoneIndex >= 0)
                 ApplyRotationToBone(_leftBrowBoneIndex, new Vector3(-browAngle, 0, 0));
             if (_rightBrowBoneIndex >= 0)
