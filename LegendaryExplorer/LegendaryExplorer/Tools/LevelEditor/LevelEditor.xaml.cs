@@ -11,14 +11,17 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
+using LegendaryExplorer.Tools.PackageEditor;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -32,6 +35,8 @@ public partial class LevelEditor : WPFBase, IRecents
     public readonly LevelEditorRenderContext RenderContext;
 
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
+    public ICollectionView ActorsView { get; }
+    private string _actorFilterText = "";
     private ExportEntry LevelExport;
 
     private ActorProxy selectedActor;
@@ -40,11 +45,7 @@ public partial class LevelEditor : WPFBase, IRecents
         get => selectedActor;
         set
         {
-            if (SetProperty(ref selectedActor, value) && selectedActor is not null)
-            {
-                FocusOnBounds(selectedActor.GetBounds());
-                RenderContext.TransformWidget.Attach = selectedActor;
-            }
+            SelectActor(value, true);
         }
     }
 
@@ -89,12 +90,16 @@ public partial class LevelEditor : WPFBase, IRecents
     public LevelEditor() : base("LevelEditor")
     {
         RenderContext = new LevelEditorRenderContext();
+        RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
+        ActorsView = CollectionViewSource.GetDefaultView(Actors);
+        ActorsView.Filter = ActorFilter;
 
         LoadCommands();
         InitializeComponent();
         RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
         SceneViewer.Context = RenderContext;
+        UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
     }
 
     private string FileQueuedForLoad;
@@ -113,10 +118,9 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private void RenderScene(object sender, EventArgs e)
     {
-        Span<RenderPass> passes = ShowCollision 
-            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision] 
+        Span<RenderPass> passes = ShowCollision
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
-        
 
         foreach (RenderPass pass in passes)
         {
@@ -152,9 +156,34 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private void ViewportActorSelect(ActorProxy actor)
     {
-        //don't set the property normally, as we don't want to trigger FocusOnBounds
-        SetProperty(ref selectedActor, actor, nameof(SelectedActor));
+        SelectActor(actor, false);
         MeshExportsList.ScrollIntoView(selectedActor);
+    }
+
+    private void SelectActor(ActorProxy actor, bool focus)
+    {
+        var prev = selectedActor;
+        if (SetProperty(ref selectedActor, actor, nameof(SelectedActor)))
+        {
+            if (prev is not null)
+            {
+                prev.PropertyChanged -= OnActorPropertyChanged;
+            }
+            if (selectedActor is not null)
+            {
+                if (focus)
+                {
+                    FocusOnBounds(selectedActor.GetBounds());
+                    RenderContext.TransformWidget.Attach = selectedActor;
+                }
+                selectedActor.PropertyChanged += OnActorPropertyChanged;
+                _preEditSnapshot = selectedActor.SnapshotTransform();
+            }
+            else
+            {
+                _preEditSnapshot = null;
+            }
+        }
     }
 
     private void CenterView()
@@ -250,7 +279,7 @@ public partial class LevelEditor : WPFBase, IRecents
                 {
                     if (level.Export.FileRef.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                     {
-                        var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                        var smcActor = new StaticMeshCollectionActorProxy(this, smcExport, smca, i);
                         actors.Add(smcActor);
                     }
                 }
@@ -316,6 +345,10 @@ public partial class LevelEditor : WPFBase, IRecents
 
     public void UnloadLevel()
     {
+        if (selectedActor is not null)
+        {
+            selectedActor.PropertyChanged -= OnActorPropertyChanged;
+        }
         SceneViewer.SetShouldRender(false);
         RenderContext.UnloadLevel();
         ClearOverlay();
@@ -323,6 +356,8 @@ public partial class LevelEditor : WPFBase, IRecents
         TextBelowActors = "";
         LevelExport = null;
         IsDirty = false;
+        UndoHistory.Clear();
+        _preEditSnapshot = null;
     }
 
     public ICommand OpenFileCommand { get; set; }
@@ -334,18 +369,88 @@ public partial class LevelEditor : WPFBase, IRecents
     public ICommand ToggleUniformScaleCommand { get; set; }
     public ICommand CommitChangesCommand { get; set; }
     public ICommand LoadRelatedLevelsCommand { get; set; }
+    public ICommand FocusSelectedCommand { get; set; }
+    public ICommand ToggleLocalCoordsCommand { get; set; }
+    public ICommand OpenInPackageEditorCommand { get; set; }
+    public ICommand UndoCommand { get; set; }
+    public ICommand RedoCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
         SaveFileCommand = new GenericCommand(SaveFile, PackageIsLoaded);
         SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
-        ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate, PackageIsLoaded);
-        ToggleRotateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Rotate, PackageIsLoaded);
-        ToggleScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Scale, PackageIsLoaded);
-        ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale, PackageIsLoaded);
+        ToggleTranslateCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.Translate; CurrentModeName = "Translate"; }, PackageIsLoaded);
+        ToggleRotateCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.Rotate; CurrentModeName = "Rotate"; }, PackageIsLoaded);
+        ToggleScaleCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.Scale; CurrentModeName = "Scale"; }, PackageIsLoaded);
+        ToggleUniformScaleCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale; CurrentModeName = "Uniform Scale"; }, PackageIsLoaded);
         CommitChangesCommand = new GenericCommand(CommitChanges, PackageIsLoaded);
         LoadRelatedLevelsCommand = new GenericCommand(LoadRelatedLevels, PackageIsLoaded);
+        FocusSelectedCommand = new GenericCommand(() =>
+        {
+            if (SelectedActor is not null)
+            {
+                FocusOnBounds(SelectedActor.GetBounds());
+            }
+        }, () => PackageIsLoaded() && SelectedActor is not null);
+        ToggleLocalCoordsCommand = new GenericCommand(() => UseLocalCoordsForWidget = !UseLocalCoordsForWidget, PackageIsLoaded);
+        OpenInPackageEditorCommand = new GenericCommand(() =>
+        {
+            if (SelectedActor is not null)
+            {
+                var p = new PackageEditorWindow();
+                p.Show();
+                p.LoadFile(Pcc.FilePath, SelectedActor.Export.UIndex);
+                p.Activate();
+            }
+        }, () => PackageIsLoaded() && SelectedActor is not null);
+        UndoCommand = new GenericCommand(Undo, () => UndoHistory.CanUndo);
+        RedoCommand = new GenericCommand(Redo, () => UndoHistory.CanRedo);
     }
+
+    #region Undo/Redo
+    public readonly UndoHistory UndoHistory = new();
+    private TransformSnapshot? _preEditSnapshot;
+    private bool _isApplyingUndoRedo;
+
+    public bool CanUndo => UndoHistory.CanUndo;
+    public bool CanRedo => UndoHistory.CanRedo;
+
+    private void UndoHistory_PropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+    }
+
+    public void Undo_Clicked(object sender, RoutedEventArgs e) => Undo();
+    public void Undo()
+    {
+        if (UndoHistory.CanUndo)
+        {
+            _isApplyingUndoRedo = true;
+            UndoHistory.Undo();
+            _isApplyingUndoRedo = false;
+            if (SelectedActor is not null)
+            {
+                _preEditSnapshot = SelectedActor.SnapshotTransform();
+            }
+        }
+    }
+
+    public void Redo_Clicked(object sender, RoutedEventArgs e) => Redo();
+    void Redo()
+    {
+        if (UndoHistory.CanRedo)
+        {
+            _isApplyingUndoRedo = true;
+            UndoHistory.Redo();
+            _isApplyingUndoRedo = false;
+            if (SelectedActor is not null)
+            {
+                _preEditSnapshot = SelectedActor.SnapshotTransform();
+            }
+        }
+    }
+    #endregion
 
     private void LoadRelatedLevels()
     {
@@ -407,6 +512,41 @@ public partial class LevelEditor : WPFBase, IRecents
         }
         OverlayLevels.Clear();
         OverlayActors.DisposeAndClear();
+    }
+
+    private void OnActorPropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        if (_isApplyingUndoRedo || RenderContext.TransformWidget.IsDragging) return;
+        if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
+
+        if (sender is ActorProxy actor && _preEditSnapshot is { } before)
+        {
+            var after = actor.SnapshotTransform();
+            if (!before.Equals(after))
+            {
+                UndoHistory.Push(new TransformAction(actor, before, after, $"Edit {actor.Export.ObjectName.Instanced}"));
+                _preEditSnapshot = after;
+            }
+        }
+    }
+
+    private void OnWidgetDragComplete(ActorProxy actor, TransformSnapshot before, TransformSnapshot after)
+    {
+        UndoHistory.Push(new TransformAction(actor, before, after, $"Drag {actor.Export.ObjectName.Instanced}"));
+        _preEditSnapshot = after;
+    }
+
+    private bool ActorFilter(object obj)
+    {
+        if (string.IsNullOrEmpty(_actorFilterText)) return true;
+        return obj is ActorProxy actor &&
+               actor.Export.ObjectName.Instanced.Contains(_actorFilterText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ActorFilter_TextBox_KeyUp(object sender, KeyEventArgs e)
+    {
+        _actorFilterText = ActorFilter_TextBox.Text;
+        ActorsView.Refresh();
     }
 
     private void Goto_TextBox_KeyUp(object sender, KeyEventArgs e)
@@ -524,7 +664,7 @@ public partial class LevelEditor : WPFBase, IRecents
                         {
                             if (Pcc.TryGetUExport(smca.Components[i], out ExportEntry smcExport))
                             {
-                                var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
+                                var smcActor = new StaticMeshCollectionActorProxy(this, smcExport, smca, i);
                                 Actors.Add(smcActor);
                             }
                         }
@@ -666,7 +806,7 @@ public partial class LevelEditor : WPFBase, IRecents
             }
         }
     }
-    private void LevelEditor_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    private void LevelEditor_Closing(object sender, CancelEventArgs e)
     {
         if (e.Cancel)
             return;
@@ -676,6 +816,9 @@ public partial class LevelEditor : WPFBase, IRecents
         RenderContext.UpdateScene -= UpdateScene;
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectActor -= ViewportActorSelect;
+
+        UndoHistory.PropertyChanged -= UndoHistory_PropertyChanged;
+        UndoHistory.Clear();
 
         SceneViewer.Dispose();
         RecentsController?.Dispose();
@@ -728,6 +871,9 @@ public partial class LevelEditor : WPFBase, IRecents
 
     private string textBelowActors;
     public string TextBelowActors { get => textBelowActors; set => SetProperty(ref textBelowActors, value); }
+
+    private string _currentModeName = "Translate";
+    public string CurrentModeName { get => _currentModeName; set => SetProperty(ref _currentModeName, value); }
 
     private void ResetUncommittedChanges_Click(object sender, RoutedEventArgs e)
     {

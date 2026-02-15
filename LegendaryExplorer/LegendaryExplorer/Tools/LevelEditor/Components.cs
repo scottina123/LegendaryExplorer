@@ -3,6 +3,7 @@ using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
@@ -68,6 +69,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         set { if (SetProperty(ref absoluteScale, value)) UpdateLocalToWorld(); }
     }
 
+    public bool IsVisible { get; set; } = true;
+
     protected PrimitiveComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)
     {
         Actor = parent;
@@ -111,6 +114,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     }
 
     public virtual void Render(MeshRenderContext context, RenderPass pass) { }
+
+    public virtual void UpdateScene(MeshRenderContext context, float deltaTime) { }
 
     private void UpdateSelfLocalToWorld()
     {
@@ -199,7 +204,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     #endregion
 }
 
-file abstract class MeshComponentProxy : PrimitiveComponentProxy
+public abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
     protected ModelPreview<VertexType> Mesh;
     public int LOD;
@@ -219,7 +224,7 @@ file abstract class MeshComponentProxy : PrimitiveComponentProxy
         {
             return base.GetBounds();
         }
-        return Mesh.LODs[0].Mesh.TransformedBounds;
+        return Mesh.LODs[LOD].Mesh.TransformedBounds;
     }
 
     protected override void Dispose(bool disposing)
@@ -229,7 +234,7 @@ file abstract class MeshComponentProxy : PrimitiveComponentProxy
     }
 }
 
-file class StaticMeshComponentProxy : MeshComponentProxy
+public class StaticMeshComponentProxy : MeshComponentProxy
 {
     private readonly Mesh<WorldVertex> CollisionMesh;
 
@@ -238,11 +243,11 @@ file class StaticMeshComponentProxy : MeshComponentProxy
         if (Properties.GetProp<ObjectProperty>("StaticMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
         {
             StaticMesh stm = meshExport.GetBinaryData<StaticMesh>();
-            if (stm.LODModels.Length > 0)
+            if (stm.LODModels.Length > LOD)
             {
                 stm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
-                Mesh = new ModelPreview<VertexType>(context, stm, 0);
+                Mesh = new ModelPreview<VertexType>(context, stm, LOD);
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
             UpdateSelfLocalToWorld();
@@ -251,6 +256,7 @@ file class StaticMeshComponentProxy : MeshComponentProxy
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
+        if (!IsVisible) return;
         if (pass is RenderPass.Collision)
         {
             if (CollisionMesh is not null)
@@ -287,26 +293,50 @@ file class StaticMeshComponentProxy : MeshComponentProxy
     }
 }
 
-file class SkeletalMeshComponentProxy : MeshComponentProxy
+public class SkeletalMeshComponentProxy : MeshComponentProxy
 {
+    SkinnedMeshRenderer skinnedMeshRenderer;
+    SkeletonAnimPlayer animPlayer;
+
     public SkeletalMeshComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
         if (Properties.GetProp<ObjectProperty>("SkeletalMesh")?.ResolveToExport(Export.FileRef, context.PackageCache) is ExportEntry meshExport)
         {
             SkeletalMesh skm = meshExport.GetBinaryData<SkeletalMesh>();
-            if (skm.LODModels.Length > 0)
+            if (skm.LODModels.Length > LOD)
             {
                 skm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, skm);
+                skinnedMeshRenderer = new SkinnedMeshRenderer();
+                skinnedMeshRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[0]);
+                animPlayer = new SkeletonAnimPlayer();
+                animPlayer.SetSkeleton(skm);
             }
             UpdateSelfLocalToWorld();
         }
     }
 
+    public override void UpdateScene(MeshRenderContext context, float deltaTime)
+    {
+        if (Mesh is not null && animPlayer.HasAnimation && animPlayer.IsPlaying)
+        {
+            animPlayer.AdvanceTime(deltaTime);
+            skinnedMeshRenderer.UpdateSkinning(context.Device, Mesh.LODs[LOD].Mesh, animPlayer);
+        }
+    }
+
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
+        if (!IsVisible) return;
         Mesh?.Render(pass, context, LOD);
+    }
+
+    public void SetAnimation(AnimSequence animSequence)
+    {
+        animPlayer?.SetAnimation(animSequence);
+        //temp, should probably have a better way to control this
+        animPlayer.IsPlaying = true;
     }
 
     public override void UpdateLocalToWorld()
@@ -321,7 +351,7 @@ file class SkeletalMeshComponentProxy : MeshComponentProxy
     }
 }
 
-file class BrushComponentProxy : PrimitiveComponentProxy
+public class BrushComponentProxy : PrimitiveComponentProxy
 {
     private readonly Mesh<WorldVertex> Brush;
 
@@ -333,6 +363,7 @@ file class BrushComponentProxy : PrimitiveComponentProxy
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
+        if (!IsVisible) return;
         if (Brush is not null)
         {
             context.RenderMeshAsWireframe(Brush);

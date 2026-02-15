@@ -61,8 +61,10 @@
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenFileCommand}"/>
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveFileCommand}"/>
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}"/>
-        <!--<KeyBinding Key="F" Modifiers="Control" Command="{Binding FindCommand}"/>
-        <KeyBinding Key="G" Modifiers="Control" Command="{Binding GotoCommand}"/>-->
+        <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}"/>
+        <KeyBinding Key="F" Command="{Binding FocusSelectedCommand}"/>
+        <KeyBinding Key="L" Command="{Binding ToggleLocalCoordsCommand}"/>
     </Window.InputBindings>
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
         <DockPanel>
@@ -92,7 +94,12 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Content="Reset" ToolTip="Reset uncommitted changes" Click="ResetUncommittedChanges_Click" IsEnabled="{Binding IsDirty, Converter={StaticResource BoolEnabledConverter}}"/>
+                    <Button Name="UndoMenuItem" Click="Undo_Clicked" ToolTip="Undo (Ctrl-Z)" IsEnabled="{Binding CanUndo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
+                        <fa:ImageAwesome Icon="Solid_Undo" Width="16"/>
+                    </Button>
+                    <Button Name="RedoMenuItem" Click="Redo_Clicked" ToolTip="Redo (Ctrl-Y)" IsEnabled="{Binding CanRedo, Converter={StaticResource BoolEnabledConverter}, Mode=OneWay}">
+                        <fa:ImageAwesome Icon="Solid_Redo" Width="16"/>
+                    </Button>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <RadioButton GroupName="WidgetMode" ToolTip="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True">
                         Translate
@@ -111,7 +118,7 @@
 
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <ToggleButton Content="Show Collision" ToolTip="Show collision meshes" IsChecked="{Binding ShowCollision}"/>
-                    <ToggleButton Content="Show Volumes" ToolTip="Show collision meshes" IsChecked="{Binding ShowVolumes}"/>
+                    <ToggleButton Content="Show Volumes" ToolTip="Show volume meshes" IsChecked="{Binding ShowVolumes}"/>
                     <!--<ToggleButton Content="Show Levels Overlay" ToolTip="Show collision meshes" IsChecked="{Binding ShowLevelsOverlay}"/>-->
                 </ToolBar>
             </WrapPanel>
@@ -121,6 +128,12 @@
                                                  GameType="{Binding Pcc, Converter={StaticResource GameTypeConverter}}" Margin="0,-4"/>
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="Select package file to load"/>
+                </StatusBarItem>
+                <StatusBarItem Visibility="{Binding SelectedActor, Converter={StaticResource NullVisibilityConverter}}">
+                    <TextBlock Text="{Binding SelectedActor.Export.ObjectName.Instanced, StringFormat='Selected: {0}'}" Foreground="DarkBlue"/>
+                </StatusBarItem>
+                <StatusBarItem Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <TextBlock Text="{Binding CurrentModeName, StringFormat='Mode: {0}'}" Foreground="Gray"/>
                 </StatusBarItem>
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
@@ -146,10 +159,13 @@
                         <xctk:WatermarkTextBox Watermark="UIndex" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0"/>
                     </StackPanel>
+                    <xctk:WatermarkTextBox DockPanel.Dock="Top" Watermark="Search actors..." Name="ActorFilter_TextBox" Margin="5,2,5,2" Height="22"
+                                           KeyUp="ActorFilter_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center"/>
                     
                     <TextBlock DockPanel.Dock="Bottom" Text="{Binding TextBelowActors}" TextWrapping="Wrap"/>
 
-                    <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding Actors}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch">
+                    <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding ActorsView}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch"
+                             VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type local:ActorProxy}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="0" x:Name="ExportContainer">
@@ -167,6 +183,8 @@
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                             <ContextMenu x:Key="MyMenu">
+                                <MenuItem Header="Focus Camera" Command="{Binding Data.FocusSelectedCommand, Source={StaticResource bindingProxy}}" InputGestureText="F"/>
+                                <MenuItem Header="Open in Package Editor" Command="{Binding Data.OpenInPackageEditorCommand, Source={StaticResource bindingProxy}}"/>
                             </ContextMenu>
                             <Style TargetType="{x:Type ListBoxItem}">
                                 <Setter Property="ContextMenu" Value="{StaticResource MyMenu}"/>
@@ -176,7 +194,7 @@
                     </ListBox>
                 </DockPanel>
 
-                <scene3D:SceneRenderControl Grid.Column="2" Canvas.ZIndex="0" x:Name="SceneViewer" />
+                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" />
 
 
                 <WrapPanel x:Name="wrapPanel" Grid.Column="4" IsEnabled="{Binding ., Converter={StaticResource NullEnabledConverter}}" DataContext="{Binding SelectedActor}">

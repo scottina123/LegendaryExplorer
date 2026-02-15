@@ -8,6 +8,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -65,7 +66,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public Vector3 Location
     {
         get => location;
-        set 
+        set
         {
             var oldValue = location;
             if (location != value)
@@ -108,8 +109,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public float DrawScale
     {
         get => drawScale;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
@@ -120,8 +121,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public Vector3 PrePivot
     {
         get => prePivot;
-        set 
-        { 
+        set
+        {
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
@@ -131,6 +132,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     }
 
     public virtual bool IsVolume => false;
+
+    public TransformSnapshot SnapshotTransform() => new(location, rotation, drawScale, drawScale3D);
+
+    public void RestoreTransform(TransformSnapshot snapshot)
+    {
+        Location = snapshot.Location;
+        Rotation = snapshot.Rotation;
+        DrawScale = snapshot.DrawScale;
+        DrawScale3D = snapshot.DrawScale3D;
+    }
 
     protected ActorProxy(LevelEditor context, ExportEntry actorExport)
     {
@@ -175,9 +186,6 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public static ActorProxy Create(LevelEditor context, ExportEntry actorExport)
     {
         string className = actorExport.ClassName;
-        switch (className)
-        {
-        }
         if (GlobalUnrealObjectInfo.IsA(className, "StaticMeshActor", actorExport.Game))
         {
             return new StaticMeshActorProxy(context, actorExport);
@@ -242,6 +250,26 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                     }
                 }
             }
+        }
+    }
+
+    protected void AddComponent<T>(MeshRenderContext context, ref T component, [CallerArgumentExpression(nameof(component))] string propName = null) where T : PrimitiveComponentProxy
+    {
+        if (Properties.GetProp<ObjectProperty>(propName)?.ResolveToEntry(Export.FileRef) is ExportEntry componentExport)
+        {
+            if (PrimitiveComponentProxy.Create(context, componentExport, this) is T cmpProxy)
+            {
+                component = cmpProxy;
+                Components.Add(cmpProxy);
+            }
+        }
+    }
+
+    public virtual void UpdateScene(MeshRenderContext context, float deltaTime)
+    {
+        foreach (var component in Components)
+        {
+            component.UpdateScene(context, deltaTime);
         }
     }
 
@@ -355,72 +383,99 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     #endregion
 }
 
-file class StaticMeshActorProxy : ActorProxy
+public class StaticMeshActorProxy : ActorProxy
 {
+    public StaticMeshComponentProxy StaticMeshComponent;
     public StaticMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "StaticMeshComponent");
+        AddComponent(context.RenderContext, ref StaticMeshComponent);
     }
 }
 
-file class SkeletalMeshActorProxy : ActorProxy
+public class SkeletalMeshActorProxy : ActorProxy
 {
+    public SkeletalMeshComponentProxy SkeletalMeshComponent;
     public SkeletalMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "SkeletalMeshComponent");
+        AddComponent(context.RenderContext, ref SkeletalMeshComponent);
     }
 }
 
 //interpactor, placeables
-file class DynamicSMActorProxy : ActorProxy
+public class DynamicSMActorProxy : ActorProxy
 {
+    public StaticMeshComponentProxy StaticMeshComponent;
+
     public DynamicSMActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "StaticMeshComponent");
+        AddComponent(context.RenderContext, ref StaticMeshComponent);
     }
 }
 
 //volumes
-file class BrushProxy : ActorProxy
+public class BrushProxy : ActorProxy
 {
+    public BrushComponentProxy BrushComponent;
     public override bool IsVolume => true;
 
     public BrushProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "BrushComponent");
+        AddComponent(context.RenderContext, ref BrushComponent);
     }
     public override int HitPriority => IHitProxy.WireFramePriority;
 }
-file class SFXStuntActorProxy : ActorProxy
+public class SFXStuntActorProxy : ActorProxy
 {
+    public SkeletalMeshComponentProxy BodyMesh;
+    public SkeletalMeshComponentProxy HeadMesh;
+    public SkeletalMeshComponentProxy HairMesh;
+    public SkeletalMeshComponentProxy HeadGearMesh;
     public SFXStuntActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "BodyMesh", "HeadMesh", "HairMesh", "HeadGearMesh");
+        AddComponent(context.RenderContext, ref BodyMesh);
+        AddComponent(context.RenderContext, ref HeadMesh);
+        AddComponent(context.RenderContext, ref HairMesh);
+        AddComponent(context.RenderContext, ref HeadGearMesh);
     }
 }
-file class BioArtPlaceableProxy : ActorProxy
+public class BioArtPlaceableProxy : ActorProxy
 {
+    public MeshComponentProxy PlaceableMesh;
+    public MeshComponentProxy DestroyedMesh;
     public BioArtPlaceableProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "PlaceableMesh");
-        if (Components.Count is 0)
+        AddComponent(context.RenderContext, ref PlaceableMesh);
+        AddComponent(context.RenderContext, ref DestroyedMesh);
+        if (PlaceableMesh is not null)
         {
-            AddComponents(context.RenderContext, "DestroyedMesh");
+            DestroyedMesh?.IsVisible = false;
         }
     }
 }
-file class PawnProxy : ActorProxy
+public class PawnProxy : ActorProxy
 {
+    public SkeletalMeshComponentProxy Mesh;
     public PawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "Mesh");
+        AddComponent(context.RenderContext, ref Mesh);
     }
 }
-file class BioPawnProxy : PawnProxy
+public class BioPawnProxy : PawnProxy
 {
+    public SkeletalMeshComponentProxy HeadMesh;
+    public SkeletalMeshComponentProxy m_oHairMesh;
+    public SkeletalMeshComponentProxy m_oHeadGearMesh;
+    public SkeletalMeshComponentProxy m_oVisorMesh;
+    public SkeletalMeshComponentProxy m_oFacePlateMesh;
+
     public BioPawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponents(context.RenderContext, "HeadMesh", "m_oHairMesh", "m_oHeadGearMesh", "m_oVisorMesh", "m_oFacePlateMesh", "m_aoAccessories");
+        AddComponent(context.RenderContext, ref HeadMesh);
+        AddComponent(context.RenderContext, ref m_oHairMesh);
+        AddComponent(context.RenderContext, ref m_oHeadGearMesh);
+        AddComponent(context.RenderContext, ref m_oVisorMesh);
+        AddComponent(context.RenderContext, ref m_oFacePlateMesh);
+        AddComponents(context.RenderContext, "m_aoAccessories");
     }
 }
 
@@ -428,7 +483,7 @@ public abstract class CollectionActorComponentProxy : ActorProxy
 {
     public ExportEntry CollectionActorExport { get; }
 
-    public CollectionActorComponentProxy(LevelEditor context, StaticCollectionActor collectionActor, ExportEntry componentActor, int index) : base(componentActor)
+    protected CollectionActorComponentProxy(LevelEditor context, StaticCollectionActor collectionActor, ExportEntry componentActor, int index) : base(componentActor)
     {
         Editor = context;
         CollectionActorExport = collectionActor.Export;
@@ -463,16 +518,16 @@ public abstract class CollectionActorComponentProxy : ActorProxy
     }
 }
 
-public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
+public class StaticMeshCollectionActorProxy : CollectionActorComponentProxy
 {
-    public StaticMeshComponentActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
+    public StaticMeshCollectionActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
     {
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
     }
 }
 
-file class PrefabInstanceProxy : ActorProxy
+public class PrefabInstanceProxy : ActorProxy
 {
     private readonly List<ActorProxy> Actors = [];
     private readonly List<Matrix4x4> RelativeMatrices = [];
@@ -490,7 +545,6 @@ file class PrefabInstanceProxy : ActorProxy
                 if (objProp.TryResolveExport(prefab.FileRef, packageCache, out ExportEntry prefabActor)
                     && Create(context, prefabActor) is ActorProxy prefabActorProxy)
                 {
-                    
                     prefabActorProxy.Editor = null; // prevent IsDirty being marked
 
                     var actorRelative = ActorUtils.ComposeLocalToWorld(prefabActorProxy.Location, prefabActorProxy.Rotation, Vector3.One);
@@ -499,6 +553,14 @@ file class PrefabInstanceProxy : ActorProxy
                     RelativeMatrices.Add(actorRelative);
                 }
             }
+        }
+    }
+
+    public override void UpdateScene(MeshRenderContext context, float deltaTime)
+    {
+        foreach (var actor in Actors)
+        {
+            actor.UpdateScene(context, deltaTime);
         }
     }
 
