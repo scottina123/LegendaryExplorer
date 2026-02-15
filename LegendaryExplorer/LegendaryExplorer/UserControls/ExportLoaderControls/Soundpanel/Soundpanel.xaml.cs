@@ -67,6 +67,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public event EventHandler<AudioPlayheadEventArgs> SeekbarPositionChanged;
 
+        /// <summary>
+        /// Notified when playback state changes (playing, paused, stopped).
+        /// True = playing, False = paused or stopped.
+        /// </summary>
+        public event EventHandler<bool> PlaybackStateChanged;
+
         public ISACTListBankChunk CurrentLoadedISACTEntry { get; private set; }
         public AFCFileEntry CurrentLoadedAFCFileEntry { get; private set; }
         public WwiseBankParsed CurrentLoadedWwisebank { get; private set; }
@@ -1106,6 +1112,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             _playbackState = PlaybackState.Stopped;
             PlayPauseIcon = EFontAwesomeIcon.Solid_Play;
+            PlaybackStateChanged?.Invoke(this, false);
 
             CommandManager.InvalidateRequerySuggested();
             CurrentTrackPosition = 0;
@@ -1126,6 +1133,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             _playbackState = PlaybackState.Playing;
             PlayPauseIcon = EFontAwesomeIcon.Solid_Pause;
+            PlaybackStateChanged?.Invoke(this, true);
         }
 
         private void _audioPlayer_PlaybackPaused()
@@ -1133,6 +1141,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UpdateSeekBarPos(null, null);
             _playbackState = PlaybackState.Paused;
             PlayPauseIcon = EFontAwesomeIcon.Solid_Play;
+            PlaybackStateChanged?.Invoke(this, false);
         }
 
         private void Seekbar_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)

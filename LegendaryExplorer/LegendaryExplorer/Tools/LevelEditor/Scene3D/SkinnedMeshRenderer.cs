@@ -121,6 +121,19 @@ public class SkinnedMeshRenderer
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();
         if (skinningMatrices == null) return;
 
+        UpdateSkinningWithMatrices(device, mesh, skinningMatrices);
+    }
+
+    /// <summary>
+    /// Performs CPU skinning using pre-computed skinning matrices.
+    /// Uses dynamic vertex buffer update (Map/Unmap) instead of recreating
+    /// the GPU buffer every frame for much better performance.
+    /// </summary>
+    public void UpdateSkinningWithMatrices(Device device, Mesh<WorldVertex> mesh, Matrix4x4[] skinningMatrices)
+    {
+        NeedsUpdate = false;
+        if (_skinVertices == null || mesh == null || skinningMatrices == null) return;
+
         int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
         for (int i = 0; i < vertexCount; i++)
         {
@@ -142,7 +155,8 @@ public class SkinnedMeshRenderer
             mesh.Vertices[i] = new WorldVertex(skinnedPos, rendererNormal, sv.UV);
         }
 
-        mesh.RebuildBuffer(device);
+        // Use fast dynamic buffer update instead of full buffer recreation
+        mesh.UpdateVertexBuffer(device);
     }
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)

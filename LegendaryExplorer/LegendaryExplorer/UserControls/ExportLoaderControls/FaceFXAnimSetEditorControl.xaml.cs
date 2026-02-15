@@ -103,6 +103,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     UpdateAnimListBox();
                     UpdateAudioPlayer();
                     UpdateTreeItems(FaceFX, SelectedLineEntry.Line);
+                    UpdateLivePreviewFaceFXData();
                 }
             }
         }
@@ -185,6 +186,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Animations.Clear();
             TreeNodes.ClearEx();
             graph.Clear();
+            livePreviewControl?.Clear();
         }
 
         public override void PopOut()
@@ -204,6 +206,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UnloadExport();
             graph.Dispose();
             audioPlayer?.Dispose();
+            livePreviewControl?.Dispose();
         }
 
         #endregion
@@ -1302,7 +1305,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             graph?.ExtraXLines.Remove(PlayheadPositionLine);
 
             if (audioPlayer != null)
+            {
                 audioPlayer.SeekbarPositionChanged -= AudioPositionChanged;
+                audioPlayer.PlaybackStateChanged -= AudioPlaybackStateChanged;
+            }
             audioPlayer?.StopPlaying();
         }
 
@@ -1314,13 +1320,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             if (audioPlayer != null)
+            {
                 audioPlayer.SeekbarPositionChanged += AudioPositionChanged;
+                audioPlayer.PlaybackStateChanged += AudioPlaybackStateChanged;
+            }
         }
 
         private void AudioPositionChanged(object sender, AudioPlayheadEventArgs e)
         {
             PlayheadPositionLine.Position = e.PlayheadTime;
             graph.Paint();
+        }
+
+        private void AudioPlaybackStateChanged(object sender, bool isPlaying)
+        {
+            if (isPlaying)
+            {
+                livePreviewControl?.StartAnimating();
+            }
+            else
+            {
+                livePreviewControl?.StopAnimating();
+            }
         }
 
         private void NameDoubleClick()
@@ -2079,6 +2100,50 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             MessageBox.Show($"Deleted {deletedCount} lines.", "Bulk Delete Complete",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void ViewTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source != ViewTabControl) return;
+
+            if (ViewTabControl.SelectedIndex == 1) // Live Preview tab
+            {
+                // Initialize the live preview with current package and FaceFX data
+                if (CurrentLoadedExport != null)
+                {
+                    livePreviewControl.SetPackage(CurrentLoadedExport.FileRef);
+                    UpdateLivePreviewFaceFXData();
+                }
+            }
+        }
+
+        private void UpdateLivePreviewFaceFXData()
+        {
+            if (livePreviewControl == null || FaceFX == null) return;
+
+            if (SelectedLine != null)
+            {
+                // Create a wrapper that implements the interface expected by FaceFXLivePreviewControl
+                var faceFXWrapper = new FaceFXBinaryWrapper(FaceFX);
+                livePreviewControl.SetFaceFXData(faceFXWrapper, SelectedLine);
+            }
+        }
+
+        /// <summary>
+        /// Wrapper class to adapt IFaceFXBinary to FaceFXLivePreviewControl.IFaceFXBinary
+        /// </summary>
+        private class FaceFXBinaryWrapper : SharedToolControls.FaceFXLivePreviewControl.IFaceFXBinary
+        {
+            private readonly IFaceFXBinary _source;
+
+            public FaceFXBinaryWrapper(IFaceFXBinary source)
+            {
+                _source = source;
+            }
+
+            public List<string> Names => _source.Names;
+            public List<FaceFXLine> Lines => _source.Lines;
+            public ObjectBinary Binary => _source.Binary;
         }
     }
 

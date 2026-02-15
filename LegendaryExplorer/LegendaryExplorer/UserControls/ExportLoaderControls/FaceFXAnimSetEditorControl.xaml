@@ -170,9 +170,16 @@
                 <RowDefinition/>
                 <RowDefinition Name="lineTextRowDef" Height="40"/>
             </Grid.RowDefinitions>
-            <sharedToolControls:CurveGraph x:Name="graph" DockPanel.Dock="Right" KeyDown="Graph_KeyDown"/>
+            <TabControl x:Name="ViewTabControl" SelectionChanged="ViewTabControl_SelectionChanged">
+                <TabItem Header="Graph">
+                    <sharedToolControls:CurveGraph x:Name="graph" KeyDown="Graph_KeyDown"/>
+                </TabItem>
+                <TabItem Header="Live Preview">
+                    <sharedToolControls:FaceFXLivePreviewControl x:Name="livePreviewControl"/>
+                </TabItem>
+            </TabControl>
             <TextBlock Text="{Binding SelectedLineEntry.TLKString}" Grid.Row="1" TextWrapping="Wrap"/>
         </Grid>
-        <exportLoaderControls:Soundpanel x:Name="audioPlayer" Grid.Row="2" Grid.Column="4" MiniPlayerMode="True" GenerateWaveformGraph="True" SeekbarUpdatePeriod="66"/>
+        <exportLoaderControls:Soundpanel x:Name="audioPlayer" Grid.Row="2" Grid.Column="4" MiniPlayerMode="True" GenerateWaveformGraph="True" SeekbarUpdatePeriod="16"/>
     </Grid>
 </exportLoaderControls:ExportLoaderControl>

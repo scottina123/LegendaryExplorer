@@ -39,7 +39,10 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
     private SharpDX.Matrix3x3 worldToLocal = SharpDX.Matrix3x3.Identity;
     public SharpDX.Matrix3x3 WorldToLocal => worldToLocal;
 
-    // Creates a new blank mesh.
+    // Dynamic vertex buffer for fast skinning updates (Map/Unmap instead of recreate)
+    private SharpDX.Direct3D11.Buffer _dynamicVertexBuffer;
+    private int _dynamicVertexCapacity;
+    private float[] _vertexScratch; // reusable scratch array
 
     // Creates a blank mesh with the given data.
     public Mesh(Device device, List<Triangle> triangles, List<TVertex> vertices)
@@ -80,9 +83,64 @@ public class Mesh<TVertex> : IDisposable where TVertex : IVertexBase
         IndexBuffer = SharpDX.Direct3D11.Buffer.Create(device, BindFlags.IndexBuffer, Triangles.ToArray());
     }
 
+    /// <summary>
+    /// Updates the GPU vertex buffer in-place using Map/Unmap on a dynamic buffer.
+    /// Much faster than RebuildBuffer for per-frame skinning updates because it avoids
+    /// destroying and recreating GPU resources every frame.
+    /// </summary>
+    public void UpdateVertexBuffer(Device device)
+    {
+        if (Vertices.Count == 0) return;
+
+        int floatsPerVertex = TVertex.Stride / 4;
+        int numFloats = floatsPerVertex * Vertices.Count;
+        int bufferSizeBytes = numFloats * 4;
+
+        // Ensure dynamic buffer exists and is large enough
+        if (_dynamicVertexBuffer == null || _dynamicVertexCapacity < Vertices.Count)
+        {
+            _dynamicVertexBuffer?.Dispose();
+            _dynamicVertexCapacity = Vertices.Count;
+
+            var desc = new BufferDescription
+            {
+                SizeInBytes = bufferSizeBytes,
+                Usage = ResourceUsage.Dynamic,
+                BindFlags = BindFlags.VertexBuffer,
+                CpuAccessFlags = CpuAccessFlags.Write,
+                OptionFlags = ResourceOptionFlags.None,
+                StructureByteStride = 0
+            };
+            _dynamicVertexBuffer = new SharpDX.Direct3D11.Buffer(device, desc);
+
+            // Switch the mesh to use the dynamic buffer
+            VertexBuffer?.Dispose();
+            VertexBuffer = _dynamicVertexBuffer;
+        }
+
+        // Reuse scratch array
+        if (_vertexScratch == null || _vertexScratch.Length < numFloats)
+            _vertexScratch = new float[numFloats];
+
+        Span<float> span = _vertexScratch.AsSpan(0, numFloats);
+        for (int vertIdx = 0, floatIdx = 0; vertIdx < Vertices.Count; vertIdx++, floatIdx += floatsPerVertex)
+        {
+            Vertices[vertIdx].ToFloats(span[floatIdx..]);
+        }
+
+        // Map, write, unmap — no buffer allocation
+        var context = device.ImmediateContext;
+        var dataBox = context.MapSubresource(_dynamicVertexBuffer, 0, MapMode.WriteDiscard, SharpDX.Direct3D11.MapFlags.None);
+        Marshal.Copy(_vertexScratch, 0, dataBox.DataPointer, numFloats);
+        context.UnmapSubresource(_dynamicVertexBuffer, 0);
+    }
+
     public void Dispose()
     {
-        VertexBuffer?.Dispose();
+        // If VertexBuffer == _dynamicVertexBuffer, only dispose once
+        if (VertexBuffer != null && VertexBuffer != _dynamicVertexBuffer)
+            VertexBuffer.Dispose();
+        _dynamicVertexBuffer?.Dispose();
         IndexBuffer?.Dispose();
     }
 }
