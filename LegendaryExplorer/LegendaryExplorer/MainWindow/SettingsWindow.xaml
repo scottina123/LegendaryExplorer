@@ -19,6 +19,7 @@
         <TabControl>
          
             <TabItem Header="General">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -82,10 +83,12 @@
                             <TextBlock>Default to Male TLK</TextBlock>
                         </StackPanel>
                                       </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
  
             <TabItem Header="Package Editor">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -119,10 +122,12 @@
                             <TextBlock>Show experimental features</TextBlock>
                         </StackPanel>
                                       </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
  
             <TabItem Header="Sequence Editor">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                                             <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -146,10 +151,12 @@
                             <TextBlock>Show Output Numbers</TextBlock>
                         </StackPanel>
                                       </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
- 
+
             <TabItem Header="Audio">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -182,10 +189,12 @@
                             Margin="5,0" Tag="*.exe">Browse</Button>
                                                 </StackPanel>
                                       </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
- 
+
             <TabItem Header="Export Loaders">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -219,9 +228,11 @@
                             <TextBlock>Properties: Show LinearColor picker</TextBlock>
                         </StackPanel>
                                       </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Files">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <Button Margin="10" Click="AssociatePCCSFM_Click"
                             ToolTip="Opens .PCC and .SFM files in Package Editor when double clicked in Windows Explorer"
@@ -233,6 +244,7 @@
                             ToolTip="Makes appropriate tool open when double clicking on TLK/AFC/ISB/DLC/CND files in Windows Explorer"
                     >Associate Other Filetypes (TLK/AFC/ISB/DLC/CND)</Button>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
         </TabControl>
