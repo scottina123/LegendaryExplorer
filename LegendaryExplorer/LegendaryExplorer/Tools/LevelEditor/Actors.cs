@@ -7,6 +7,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -15,6 +16,7 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
     public LevelEditor Editor;
+    public OpenLevelFile OwningFile;
 
     public Matrix4x4 LocalToWorld;
 
@@ -24,18 +26,38 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public ExportEntry Export { get; }
 
+    public string OwningFileName => System.IO.Path.GetFileName(Export.FileRef.FilePath);
+
+    public string DisplayText { get; }
+
     private bool isDirty;
     public bool IsDirty
     {
         get => isDirty;
         protected set
         {
-            if (SetProperty(ref isDirty, value) && isDirty && Editor is not null)
+            if (SetProperty(ref isDirty, value))
             {
-                Editor.IsDirty = true;
+                if (OwningFile is not null)
+                {
+                    if (isDirty)
+                        OwningFile.IsDirty = true;
+                    else
+                        OwningFile.RecalculateDirty();
+                }
             }
         }
     }
+
+    protected TransformSnapshot _cleanSnapshot;
+
+    public void MarkClean()
+    {
+        _cleanSnapshot = SnapshotTransform();
+        IsDirty = false;
+    }
+
+    public NameReference Tag;
 
     protected Rotator rotation;
     protected Vector3 location;
@@ -56,7 +78,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
                 if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -77,7 +99,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -99,7 +121,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -114,7 +136,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -126,12 +148,13 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
 
     public virtual bool IsVolume => false;
+    public bool IsVolumetricMesh { get; protected set; }
 
     public TransformSnapshot SnapshotTransform() => new(location, rotation, drawScale, drawScale3D);
 
@@ -150,6 +173,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         Properties = actorExport.GetCondensedProperties();
         PropertyCollection props = Properties;
 
+        Tag = props.GetProp<NameProperty>("Tag")?.Value ?? NameReference.None;
+
+        DisplayText = Export.ObjectName.Instanced;
+        if (!Tag.Name.CaseInsensitiveEquals(Export.ClassName))
+        {
+            DisplayText += $" ({Tag})";
+        }
+
         var rotationProp = props.GetProp<StructProperty>("Rotation");
         var locationsProp = props.GetProp<StructProperty>("location");
         var drawScale3DProp = props.GetProp<StructProperty>("DrawScale3D");
@@ -161,12 +192,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         prePivot = prePivotProp != null ? CommonStructs.GetVector3(prePivotProp) : Vector3.Zero;
         rotation = rotationProp != null ? CommonStructs.GetRotator(rotationProp) : new Rotator(0, 0, 0);
         UpdateLocalToWorld();
+        _cleanSnapshot = SnapshotTransform();
     }
 
     //only for use by the faux actors that are children of the CollectionActors
     protected ActorProxy(ExportEntry actorExport)
     {
         Export = actorExport;
+        DisplayText = Export.ObjectName.Instanced;
         drawScale = 1;
         location =  Vector3.Zero;
         drawScale3D =  Vector3.One;
@@ -226,28 +259,16 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         //return new ActorProxy(context, actorExport);
     }
 
-    protected void AddComponents(MeshRenderContext context, params Span<string> propNames)
+    protected void AddComponentArray<T>(MeshRenderContext context, ref List<T> components, [CallerArgumentExpression(nameof(components))] string propName = null) where T : PrimitiveComponentProxy
     {
-        foreach (var propName in propNames)
+        if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
         {
-            if (Properties.GetProp<ObjectProperty>(propName)?.ResolveToEntry(Export.FileRef) is ExportEntry componentExport)
+            foreach (IEntry entry in componentArray.ResolveToEntries(Export.FileRef))
             {
-                if (PrimitiveComponentProxy.Create(context, componentExport, this) is { } cmpProxy)
+                if (entry is ExportEntry cmpExport && PrimitiveComponentProxy.Create(context, cmpExport, this) is T cmpProxy)
                 {
+                    components.Add(cmpProxy);
                     Components.Add(cmpProxy);
-                }
-            }
-            else if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
-            {
-                foreach (ObjectProperty prop in componentArray)
-                {
-                    if (prop?.ResolveToEntry(Export.FileRef) is ExportEntry cmpExport)
-                    {
-                        if (PrimitiveComponentProxy.Create(context, cmpExport, this) is { } cmpProxy)
-                        {
-                            Components.Add(cmpProxy);
-                        }
-                    }
                 }
             }
         }
@@ -265,7 +286,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
-    public virtual void UpdateScene(MeshRenderContext context, float deltaTime)
+    public virtual void UpdateScene(LevelEditorRenderContext context, float deltaTime)
     {
         foreach (var component in Components)
         {
@@ -273,7 +294,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         }
     }
 
-    public virtual void Render(MeshRenderContext context, RenderPass pass)
+    public virtual void Render(LevelEditorRenderContext context, RenderPass pass)
     {
         foreach (var component in Components)
         {
@@ -346,6 +367,15 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         return false;
     }
 
+    public virtual void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        if (App.IsDebug && Debugger.IsAttached)
+        {
+            //If reached, need to add animation support for whatever kind of actor this is
+            Debugger.Break();
+        }
+    }
+
     #region IDisposable
     protected bool isDisposed;
 
@@ -389,6 +419,7 @@ public class StaticMeshActorProxy : ActorProxy
     public StaticMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
+        IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
     }
 }
 
@@ -398,6 +429,11 @@ public class SkeletalMeshActorProxy : ActorProxy
     public SkeletalMeshActorProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref SkeletalMeshComponent);
+    }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        SkeletalMeshComponent?.SetAnimation(animSequence, pos);
     }
 }
 
@@ -437,6 +473,14 @@ public class SFXStuntActorProxy : ActorProxy
         AddComponent(context.RenderContext, ref HairMesh);
         AddComponent(context.RenderContext, ref HeadGearMesh);
     }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        BodyMesh?.SetAnimation(animSequence, pos);
+        HeadMesh?.SetAnimation(animSequence, pos);
+        HairMesh?.SetAnimation(animSequence, pos);
+        HeadGearMesh?.SetAnimation(animSequence, pos);
+    }
 }
 public class BioArtPlaceableProxy : ActorProxy
 {
@@ -459,6 +503,11 @@ public class PawnProxy : ActorProxy
     {
         AddComponent(context.RenderContext, ref Mesh);
     }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        Mesh?.SetAnimation(animSequence, pos);
+    }
 }
 public class BioPawnProxy : PawnProxy
 {
@@ -467,6 +516,7 @@ public class BioPawnProxy : PawnProxy
     public SkeletalMeshComponentProxy m_oHeadGearMesh;
     public SkeletalMeshComponentProxy m_oVisorMesh;
     public SkeletalMeshComponentProxy m_oFacePlateMesh;
+    public List<SkeletalMeshComponentProxy> m_aoAccessories = [];
 
     public BioPawnProxy(LevelEditor context, ExportEntry actorExport) : base(context, actorExport)
     {
@@ -475,7 +525,21 @@ public class BioPawnProxy : PawnProxy
         AddComponent(context.RenderContext, ref m_oHeadGearMesh);
         AddComponent(context.RenderContext, ref m_oVisorMesh);
         AddComponent(context.RenderContext, ref m_oFacePlateMesh);
-        AddComponents(context.RenderContext, "m_aoAccessories");
+        AddComponentArray(context.RenderContext, ref m_aoAccessories);
+    }
+
+    public override void SetAnimation(AnimSequence animSequence, float pos)
+    {
+        base.SetAnimation(animSequence, pos);
+        HeadMesh?.SetAnimation(animSequence, pos);
+        m_oHairMesh?.SetAnimation(animSequence, pos);
+        m_oHeadGearMesh?.SetAnimation(animSequence, pos);
+        m_oVisorMesh?.SetAnimation(animSequence, pos);
+        m_oFacePlateMesh?.SetAnimation(animSequence, pos);
+        foreach (var accessory in m_aoAccessories)
+        {
+            accessory?.SetAnimation(animSequence, pos);
+        }
     }
 }
 
@@ -495,6 +559,7 @@ public abstract class CollectionActorComponentProxy : ActorProxy
             drawScale = drawScale3D.X;
             drawScale3D = Vector3.One;
         }
+        _cleanSnapshot = SnapshotTransform();
     }
 
     public override void CommitChanges(PackageCache packageCache = null)
@@ -518,12 +583,13 @@ public abstract class CollectionActorComponentProxy : ActorProxy
     }
 }
 
-public class StaticMeshCollectionActorProxy : CollectionActorComponentProxy
+public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
 {
-    public StaticMeshCollectionActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
+    public StaticMeshComponentActorProxy(LevelEditor context, ExportEntry smcExport, StaticMeshCollectionActor smca, int smcaIndex) : base(context, smca, smcExport, smcaIndex)
     {
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
+        IsVolumetricMesh = (staticMeshComponentProxy as StaticMeshComponentProxy)?.IsVolumetric ?? false;
     }
 }
 
@@ -556,7 +622,7 @@ public class PrefabInstanceProxy : ActorProxy
         }
     }
 
-    public override void UpdateScene(MeshRenderContext context, float deltaTime)
+    public override void UpdateScene(LevelEditorRenderContext context, float deltaTime)
     {
         foreach (var actor in Actors)
         {
@@ -564,10 +630,12 @@ public class PrefabInstanceProxy : ActorProxy
         }
     }
 
-    public override void Render(MeshRenderContext context, RenderPass pass)
+    public override void Render(LevelEditorRenderContext context, RenderPass pass)
     {
         foreach (var actor in Actors)
         {
+            if (actor.IsVolume && !context.ShowVolumes) continue;
+            if (actor.IsVolumetricMesh && !context.ShowVolumetrics) continue;
             actor.Render(context, pass);
         }
     }

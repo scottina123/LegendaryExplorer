@@ -206,6 +206,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy
 {
+    public bool IsVolumetric;
+    public string MeshIFP { get; protected set; }
     protected ModelPreview<VertexType> Mesh;
     public int LOD;
     public List<IEntry> MaterialOverrides = [];
@@ -248,6 +250,12 @@ public class StaticMeshComponentProxy : MeshComponentProxy
                 stm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, stm, LOD);
+                MeshIFP = meshExport.InstancedFullPath;
+                if (MeshIFP.Contains("Volumetric", StringComparison.OrdinalIgnoreCase) 
+                    || Mesh.Materials.Keys.Any(matIFP => matIFP.Contains("VolumeLight", StringComparison.OrdinalIgnoreCase)))
+                {
+                    IsVolumetric = true;
+                }
             }
             CollisionMesh = context.GetMeshFromAggGeom(stm.GetCollisionMeshProperty(Export.FileRef));
             UpdateSelfLocalToWorld();
@@ -308,6 +316,7 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
                 skm.SetMaterials(MaterialOverrides, true);
                 MaterialOverrides.Clear();
                 Mesh = new ModelPreview<VertexType>(context, skm);
+                MeshIFP = meshExport.InstancedFullPath;
                 skinnedMeshRenderer = new SkinnedMeshRenderer();
                 skinnedMeshRenderer.BuildFromSkeletalMesh(meshExport.FileRef.Game, skm.LODModels[0]);
                 animPlayer = new SkeletonAnimPlayer();
@@ -319,9 +328,8 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
 
     public override void UpdateScene(MeshRenderContext context, float deltaTime)
     {
-        if (Mesh is not null && animPlayer.HasAnimation && animPlayer.IsPlaying)
+        if (Mesh is not null && skinnedMeshRenderer.NeedsUpdate)
         {
-            animPlayer.AdvanceTime(deltaTime);
             skinnedMeshRenderer.UpdateSkinning(context.Device, Mesh.LODs[LOD].Mesh, animPlayer);
         }
     }
@@ -332,11 +340,25 @@ public class SkeletalMeshComponentProxy : MeshComponentProxy
         Mesh?.Render(pass, context, LOD);
     }
 
-    public void SetAnimation(AnimSequence animSequence)
+    public void SetAnimation(AnimSequence animSequence, float pos)
     {
-        animPlayer?.SetAnimation(animSequence);
-        //temp, should probably have a better way to control this
-        animPlayer.IsPlaying = true;
+        if (animPlayer is null) return;
+        if (animSequence is null)
+        {
+            if (animPlayer.HasAnimation)
+            {
+                //cancel animation, reset to ref pose
+                animPlayer.SetAnimation(null);
+                skinnedMeshRenderer.NeedsUpdate = true;
+            }
+            return;
+        }
+        if (animSequence.Name != animPlayer.AnimName)
+        {
+            animPlayer.SetAnimation(animSequence);
+        }
+        animPlayer.SetCurrentTime(pos);
+        skinnedMeshRenderer.NeedsUpdate = true;
     }
 
     public override void UpdateLocalToWorld()

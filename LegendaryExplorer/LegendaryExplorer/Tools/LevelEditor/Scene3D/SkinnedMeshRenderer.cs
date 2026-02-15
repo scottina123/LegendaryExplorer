@@ -22,6 +22,7 @@ public struct SkinVertex
 
 public class SkinnedMeshRenderer
 {
+    public bool NeedsUpdate { get; set; }
     private SkinVertex[] _skinVertices;
 
     /// <summary>
@@ -114,6 +115,7 @@ public class SkinnedMeshRenderer
     /// </summary>
     public void UpdateSkinning(Device device, Mesh<WorldVertex> mesh, SkeletonAnimPlayer animPlayer)
     {
+        NeedsUpdate = false;
         if (_skinVertices == null || mesh == null) return;
 
         var skinningMatrices = animPlayer.ComputeSkinningMatrices();

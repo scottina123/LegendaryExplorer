@@ -21,6 +21,7 @@ public class SkeletonAnimPlayer
     private int[] _skelToAnimMap; // skeleton bone index -> animTrack[i] or -1 if no track
     private float _currentTime;
 
+    public NameReference AnimName => _animSequence?.Name ?? "None";
     public int TotalFrames => _animSequence?.NumFrames ?? 0;
     public float Duration => _animSequence?.SequenceLength ?? 0f;
     public bool IsPlaying { get; set; }
@@ -164,6 +165,16 @@ public class SkeletonAnimPlayer
         {
             _currentTime = Math.Clamp(_currentTime, 0, Duration);
         }
+    }
+
+    public void SetCurrentTime(float time)
+    {
+        if (_animSequence == null || Duration <= 0)
+        {
+            _currentTime = 0;
+            return;
+        }
+        _currentTime = Math.Clamp(time, 0, Duration);
     }
 
     /// <summary>

@@ -13,7 +13,31 @@ using Color = System.Windows.Media.Color;
 
 namespace LegendaryExplorer.Tools.InterpEditor
 {
-    public class InterpGroup : NotifyPropertyChangedBase
+    public sealed partial class InterpData
+    {
+        public ExportEntry Export;
+
+        public ObservableCollectionExtended<InterpGroup> Groups { get; } = [];
+
+        public InterpData(ExportEntry export)
+        {
+            Export = export;
+            var pcc = export.FileRef;
+            var props = export.GetCondensedProperties();
+            var groupsProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups");
+            if (groupsProp != null)
+            {
+                foreach (var groupExport in groupsProp.Where(prop => pcc.IsUExport(prop.Value)).Select(prop => pcc.GetUExport(prop.Value)))
+                {
+                    var group = new InterpGroup(groupExport);
+                    Groups.Add(group);
+                    group.Parent = this;
+                }
+            }
+        }
+    }
+
+    public partial class InterpGroup : NotifyPropertyChangedBase
     {
         public ExportEntry Export { get; }
 
@@ -25,7 +49,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
 
         public Color GroupColor { get; set; } = Color.FromArgb(0, 0, 0, 0);
 
-        public ObservableCollectionExtended<InterpTrack> Tracks { get; } = new();
+        public ObservableCollectionExtended<InterpTrack> Tracks { get; } = [];
 
         public InterpGroup(ExportEntry export)
         {
@@ -50,7 +74,9 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 var trackExports = tracksProp.Where(prop => Export.FileRef.IsUExport(prop.Value)).Select(prop => Export.FileRef.GetUExport(prop.Value));
                 foreach (ExportEntry trackExport in trackExports)
                 {
-                    Tracks.Add(InterpTrack.CreateInterpTrackForExport(trackExport));
+                    InterpTrack track = InterpTrack.CreateInterpTrackForExport(trackExport);
+                    track.Group = this;
+                    Tracks.Add(track);
                 }
             }
         }
@@ -81,9 +107,11 @@ namespace LegendaryExplorer.Tools.InterpEditor
         }
     }
 
-    public abstract class InterpTrack : NotifyPropertyChangedBase
+    public abstract partial class InterpTrack : NotifyPropertyChangedBase
     {
         public ExportEntry Export { get; }
+
+        public InterpGroup Group { get; set; }
 
         private string _trackTitle;
         public string TrackTitle
@@ -118,19 +146,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
             else if (trackExport.IsA("BioInterpTrack"))
             {
                 string secondaryArrayName = null;
-                if (trackExport.IsA("SFXInterpTrackToggleBase"))
-                {
-                    secondaryArrayName = "m_aToggleKeyData";
-                }
-                else if (trackExport.IsA("BioEvtSysTrackDOF"))
-                {
-                    secondaryArrayName = "m_aDOFData";
-                }
-                else if (trackExport.IsA("BioEvtSysTrackInterrupt"))
-                {
-                    secondaryArrayName = "m_aInterruptData";
-                }
-                else if (trackExport.IsA("BioEvtSysTrackLighting"))
+                if (trackExport.IsA("BioEvtSysTrackLighting"))
                 {
                     secondaryArrayName = "m_aLightingKeys";
                 }
@@ -146,6 +162,31 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 {
                     secondaryArrayName = "m_aFacingKeys";
                 }
+                else if (trackExport.IsA("SFXGameInterpTrackProcFoley"))
+                {
+                    secondaryArrayName = "m_aProcFoleyStartStopKeys";
+                }
+                else if (trackExport.IsA("SFXInterpTrackPlayFaceOnlyVO"))
+                {
+                    secondaryArrayName = "m_aFOVOKeys";
+                }
+                if (secondaryArrayName is not null)
+                {
+                    return new SFXGameActorInterpTrack(trackExport, secondaryArrayName);
+                }
+
+                if (trackExport.IsA("SFXInterpTrackToggleBase"))
+                {
+                    secondaryArrayName = "m_aToggleKeyData";
+                }
+                else if (trackExport.IsA("BioEvtSysTrackDOF"))
+                {
+                    secondaryArrayName = "m_aDOFData";
+                }
+                else if (trackExport.IsA("BioEvtSysTrackInterrupt"))
+                {
+                    secondaryArrayName = "m_aInterruptData";
+                }
                 else if (trackExport.IsA("BioEvtSysTrackSwitchCamera"))
                 {
                     secondaryArrayName = "m_aCameras";
@@ -153,10 +194,6 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 else if (trackExport.IsA("BioInterpTrackRotationMode"))
                 {
                     secondaryArrayName = "EventTrack";
-                }
-                else if (trackExport.IsA("SFXGameInterpTrackProcFoley"))
-                {
-                    secondaryArrayName = "m_aProcFoleyStartStopKeys";
                 }
                 else if (trackExport.IsA("SFXGameInterpTrackWwiseMicLock"))
                 {
@@ -185,10 +222,6 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 else if (trackExport.IsA("SFXInterpTrackSetWeaponInstant"))
                 {
                     secondaryArrayName = "m_aWeaponClassKeyData";
-                }
-                else if (trackExport.IsA("SFXInterpTrackPlayFaceOnlyVO"))
-                {
-                    secondaryArrayName = "m_aFOVOKeys";
                 }
                 else if (trackExport.IsA("BioConvNodeTrackDebug"))
                 {
@@ -286,6 +319,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         /// </summary>
         public abstract void InsertKey(float time);
 
+        #region Key Manipulation Helpers
         /// <summary>
         /// Generates a StructProperty with default values for insertion into an array.
         /// Uses the Unreal object info database to look up the struct type and its defaults.
@@ -305,15 +339,16 @@ namespace LegendaryExplorer.Tools.InterpEditor
         {
             var props = Export.GetProperties();
             var array = props.GetProp<ArrayProperty<StructProperty>>(arrayPropName);
-            if (array != null)
+            if (array == null)
             {
-                var element = GenerateDefaultStruct(Export.Game, arrayPropName, containingClassName);
-                element.GetProp<FloatProperty>(timePropName).Value = time;
-                int index = FindSortedInsertionIndex(array, time, timePropName);
-                array.Insert(index, element);
-                Export.WriteProperties(props);
-                LoadTrack();
+                props.Add(array = new ArrayProperty<StructProperty>(arrayPropName));
             }
+            var element = GenerateDefaultStruct(Export.Game, arrayPropName, containingClassName);
+            element.GetProp<FloatProperty>(timePropName).Value = time;
+            int index = FindSortedInsertionIndex(array, time, timePropName);
+            array.Insert(index, element);
+            Export.WriteProperties(props);
+            LoadTrack();
         }
 
         /// <summary>
@@ -342,23 +377,25 @@ namespace LegendaryExplorer.Tools.InterpEditor
         {
             var props = Export.GetProperties();
             var array = props.GetProp<ArrayProperty<StructProperty>>(arrayPropName);
-            if (array != null)
+            if (array == null)
             {
-                var element = GenerateDefaultStruct(Export.Game, arrayPropName, containingClassName);
-                element.GetProp<FloatProperty>(timePropName).Value = time;
-                int index = FindSortedInsertionIndex(array, time, timePropName);
-                array.Insert(index, element);
-
-                var secondary = props.GetProp<ArrayProperty<StructProperty>>(secondaryArrayPropName);
-                if (secondary != null)
-                {
-                    var secondaryElement = GenerateDefaultStruct(Export.Game, secondaryArrayPropName, containingClassName);
-                    secondary.Insert(index, secondaryElement);
-                }
-
-                Export.WriteProperties(props);
-                LoadTrack();
+                props.Add(array = new ArrayProperty<StructProperty>(arrayPropName));
             }
+            var element = GenerateDefaultStruct(Export.Game, arrayPropName, containingClassName);
+            element.GetProp<FloatProperty>(timePropName).Value = time;
+            int index = FindSortedInsertionIndex(array, time, timePropName);
+            array.Insert(index, element);
+
+            var secondary = props.GetProp<ArrayProperty<StructProperty>>(secondaryArrayPropName);
+            if (secondary == null)
+            {
+                props.Add(secondary = new ArrayProperty<StructProperty>(secondaryArrayPropName));
+            }
+            var secondaryElement = GenerateDefaultStruct(Export.Game, secondaryArrayPropName, containingClassName);
+            secondary.Insert(index, secondaryElement);
+
+            Export.WriteProperties(props);
+            LoadTrack();
         }
 
         /// <summary>
@@ -489,6 +526,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 LoadTrack();
             }
         }
+        #endregion
 
         private bool _isSelected;
         public bool IsSelected
@@ -537,6 +575,13 @@ namespace LegendaryExplorer.Tools.InterpEditor
 
         public override void InsertKey(float time) =>
             InsertKeyInArrayWithSecondary("m_aTrackKeys", time, "fTime", Export.ClassName, SecondaryArrayName);
+    }
+
+    public partial class SFXGameActorInterpTrack : BioInterpTrack
+    {
+        public SFXGameActorInterpTrack(ExportEntry export,string secondaryArrayName) : base(export, secondaryArrayName)
+        {
+        }
     }
 
     public class BioConvNodeTrackDebug : BioInterpTrack
@@ -739,19 +784,19 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 int i = 0;
                 foreach (var trackKey in trackKeys)
                 {
-                    Keys.Add(new Key(trackKey.GetProp<FloatProperty>(Export.Game.IsGame1() ? "Time" : "StartTime"), trackKey.GetProp<NameProperty>("EventName").Value.Name, index: i++, parentTrack: this));
+                    Keys.Add(new Key(trackKey.GetProp<FloatProperty>("Time"), trackKey.GetProp<NameProperty>("EventName").Value.Name, index: i++, parentTrack: this));
                 }
             }
         }
 
         public override void UpdateKeyTime(int keyIndex, float newTime) =>
-            UpdateTimeInArray("EventTrack", keyIndex, newTime, Export.Game.IsGame1() ? "Time" : "StartTime");
+            UpdateTimeInArray("EventTrack", keyIndex, newTime, "Time");
 
         public override void DeleteKey(int keyIndex) =>
             DeleteKeyFromArray("EventTrack", keyIndex);
 
         public override void InsertKey(float time) =>
-            InsertKeyInArray("EventTrack", time, Export.Game.IsGame1() ? "Time" : "StartTime", Export.ClassName);
+            InsertKeyInArray("EventTrack", time, "Time", Export.ClassName);
     }
     public class InterpTrackFaceFX : InterpTrack
     {
@@ -782,7 +827,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         public override void InsertKey(float time) =>
             InsertKeyInArray("FaceFXSeqs", time, "StartTime", Export.ClassName);
     }
-    public class InterpTrackAnimControl : InterpTrack
+    public partial class InterpTrackAnimControl : InterpTrack
     {
         public InterpTrackAnimControl(ExportEntry export) : base(export)
         {
@@ -811,7 +856,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         public override void InsertKey(float time) =>
             InsertKeyInArray("AnimSeqs", time, "StartTime", Export.ClassName);
     }
-    public class InterpTrackMove : InterpTrack
+    public partial class InterpTrackMove : InterpTrack
     {
         public InterpTrackMove(ExportEntry export) : base(export)
         {
@@ -1087,7 +1132,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         }
     }
 
-    public class BioEvtSysTrackGesture : BioInterpTrack
+    public partial class BioEvtSysTrackGesture : SFXGameActorInterpTrack
     {
         public BioEvtSysTrackGesture(ExportEntry export) : base(export, "m_aGestures")
         {
