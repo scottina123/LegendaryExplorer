@@ -108,7 +108,7 @@ namespace LegendaryExplorerCore.Packages
             return (s, associatedFilePath) => new UDKPackage(s, associatedFilePath);
         }
 
-        public static Action<UDKPackage, string, bool, object> RegisterSaver() => saveByReconstructing;
+        public static Action<UDKPackage, string, bool, Lock> RegisterSaver() => saveByReconstructing;
 
         /// <summary>
         ///     UDKPackage class constructor. It also load namelist, importlist and exportinfo (not exportdata) from udk file

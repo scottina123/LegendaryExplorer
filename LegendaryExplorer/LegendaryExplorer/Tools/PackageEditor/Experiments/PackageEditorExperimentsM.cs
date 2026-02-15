@@ -4632,7 +4632,7 @@ defaultproperties
             foreach (var game in games)
             {
                 Debug.WriteLine(game);
-                var tlks = TLKSystem.LoadTLKs(packageEditorWindow.Pcc, game, MELocalization.INT, true);
+                var tlks = TLKSystem.LoadTLKs(game, MELocalization.INT, true);
                 foreach (var tlk in tlks)
                 {
                     Debug.WriteLine(tlk.Source);

@@ -699,7 +699,7 @@ namespace LegendaryExplorerCore.Packages
 #endif
         }
 
-        public static Action<MEPackage, string, bool, bool, bool, bool, object> RegisterSaver() => saveByReconstructing;
+        public static Action<MEPackage, string, bool, bool, bool, bool, Lock> RegisterSaver() => saveByReconstructing;
 
         /// <summary>
         /// Saves the package to disk by reconstructing the package file

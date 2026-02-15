@@ -25,8 +25,8 @@ namespace LegendaryExplorerCore.Packages
         public static bool CanReconstruct(IMEPackage pckg, string path) =>
             pckg.Game is MEGame.UDK or MEGame.ME3 or MEGame.ME2 || pckg.Game.IsLEGame() || pckg.Game == MEGame.ME1 && ME1TextureFiles.TrueForAll(texFilePath => !path.EndsWith(texFilePath));
 
-        private static Action<MEPackage, string, bool, bool, bool, bool, object> MESaveDelegate;
-        private static Action<UDKPackage, string, bool, object> UDKSaveDelegate;
+        private static Action<MEPackage, string, bool, bool, bool, bool, Lock> MESaveDelegate;
+        private static Action<UDKPackage, string, bool, Lock> UDKSaveDelegate;
 
         public static void Initialize()
         {
@@ -142,7 +142,7 @@ namespace LegendaryExplorerCore.Packages
         /// </summary>
         public static Func<bool> NotifyRunningTOCUpdateRequired { get; set; }
 
-        private static void MESave(MEPackage pcc, string savePath, bool compress = false, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, object diskIOSyncLock = null)
+        private static void MESave(MEPackage pcc, string savePath, bool compress = false, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, Lock diskIOSyncLock = null)
         {
             bool isSaveAs = savePath != null && savePath != pcc.FilePath;
             int originalLength = -1;
