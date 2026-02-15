@@ -408,6 +408,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         {
             new CustomFilesManagerWindow().Show();
         }
+
+        private void TestTLKSystem_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.TestTLKSystem(GetPEWindow());
+        }
         
         private void DetectInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
         {

@@ -297,14 +297,17 @@ public class PreviewTextureCache : IDisposable
     /// </summary>
     public void ExpungeStaleCacheItems()
     {
-        TimeSpan oneMinute = TimeSpan.FromMinutes(1);
-        foreach (var (key, entry) in AssetCache)
+        lock (textureLoadLock)
         {
-            if (DateTime.Now - entry.LastUsageTime > oneMinute)
+            TimeSpan oneMinute = TimeSpan.FromMinutes(1);
+            foreach (var (key, entry) in AssetCache)
             {
-                entry.Dispose();
-                //Remove does not actually invalidate the enumerator
-                AssetCache.Remove(key);
+                if (DateTime.Now - entry.LastUsageTime > oneMinute)
+                {
+                    entry.Dispose();
+                    //Remove does not actually invalidate the enumerator
+                    AssetCache.Remove(key);
+                }
             }
         }
     }
@@ -314,40 +317,52 @@ public class PreviewTextureCache : IDisposable
     /// </summary>
     public void Dispose()
     {
-        AssetCache.DisposeValuesAndClear();
+        lock (textureLoadLock)
+        {
+            AssetCache.DisposeValuesAndClear();
+        }
     }
 
     /// <summary>
     /// Stores loaded textures by their full name.
     /// </summary>
-    private Dictionary<string, TextureEntry> AssetCache { get; } = new();
+    private Dictionary<string, TextureEntry> AssetCache { get; } = [];
 
+    private object textureLoadLock = new object();
     /// <summary>
     /// Queues a texture for eventual loading.
     /// </summary>
     public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
     {
         string ifp = textureEntry.InstancedFullPath;
-        if (textureEntry is ImportEntry import)
+        if (AssetCache.TryGetValue(ifp, out TextureEntry entry))
         {
-            textureEntry = EntryImporter.ResolveImport(import, packageCache);
+            entry.LastUsageTime = DateTime.Now;
+            return entry;
         }
-        if (textureEntry is ExportEntry textureExport)
+        lock (textureLoadLock)
         {
-            if (AssetCache.TryGetValue(textureExport.InstancedFullPath, out TextureEntry entry))
+            if (textureEntry is ImportEntry import)
             {
-                entry.LastUsageTime = DateTime.Now;
-                return entry;
+                textureEntry = EntryImporter.ResolveImport(import, packageCache);
             }
-            try
+            if (textureEntry is ExportEntry textureExport)
             {
-                entry = textureExport.ClassName is "FlipBookTextureEntry" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
-                AssetCache.Add(entry.InstanceFullPath, entry);
-                return entry;
-            }
-            catch
-            {
-                //just do the error path below
+                if (AssetCache.TryGetValue(textureExport.InstancedFullPath, out entry))
+                {
+                    entry.LastUsageTime = DateTime.Now;
+                    return entry;
+                }
+                try
+                {
+                    entry = textureExport.ClassName is "FlipBookTextureEntry" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
+                    AssetCache.Add(entry.InstanceFullPath, entry);
+                    return entry;
+                }
+                catch
+                {
+                    //just do the error path below
+                }
             }
         }
         Debug.WriteLine($"Unable to resolve texture: {ifp}");
