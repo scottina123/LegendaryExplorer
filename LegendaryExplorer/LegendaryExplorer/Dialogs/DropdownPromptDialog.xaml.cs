@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Misc;
 
 namespace LegendaryExplorer.Dialogs
@@ -16,6 +17,7 @@ namespace LegendaryExplorer.Dialogs
         {
             Owner = owner;
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             txtInfo.Text = question;
             Title = title;
             Selection_Combobox.Watermark = watermark;

@@ -1,4 +1,5 @@
 using System.Windows;
+using LegendaryExplorer.SharedUI;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs
@@ -33,6 +34,7 @@ namespace LegendaryExplorer.Dialogs
         {
             Parameters = new ShiftInterpTrackParameters();
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)

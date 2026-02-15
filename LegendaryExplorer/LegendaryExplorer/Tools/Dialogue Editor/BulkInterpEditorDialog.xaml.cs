@@ -1,3 +1,4 @@
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Misc;
@@ -132,6 +133,7 @@ namespace LegendaryExplorer.DialogueEditor
             _pcc = conversation.Export.FileRef;
 
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             Owner = owner;
 
             LoadInterpGroups();

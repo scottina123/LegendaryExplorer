@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 {
@@ -87,8 +88,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         public BulkFaceFXGenerationDialog(int lineCount, Window owner = null)
         {
             LineCountText = $"Generate FaceFX for {lineCount} lines";
-            
+
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             DataContext = this;
 
             if (owner != null)

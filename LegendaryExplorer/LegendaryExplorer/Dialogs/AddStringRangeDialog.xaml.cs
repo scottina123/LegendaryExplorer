@@ -44,6 +44,7 @@ namespace LegendaryExplorer.Dialogs
         {
             LoadCommands();
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             this.Loaded += AddStringRangeDialog_Loaded;
             existingStringIDs = existingIDs;
             validationFunc = ValidateRange;

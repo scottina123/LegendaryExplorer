@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using Microsoft.Win32;
@@ -219,6 +220,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             TLKText = tlkText ?? "";
 
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             DataContext = this;
 
             if (owner != null)

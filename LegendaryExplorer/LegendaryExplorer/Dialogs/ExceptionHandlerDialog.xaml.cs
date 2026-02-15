@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Helpers;
 using Microsoft.AppCenter.Crashes;
 
@@ -18,6 +19,7 @@ namespace LegendaryExplorer.Dialogs
         public ExceptionHandlerDialog(Exception exception)
         {
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             string flattened = exception.FlattenException();
             ExceptionStackTrace_TextBox.Text = flattened;
             ExceptionMessage_TextBlock.Text = exception.Message;

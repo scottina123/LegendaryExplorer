@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI.Bases;
@@ -30,6 +31,7 @@ namespace LegendaryExplorer.MainWindow
         public InitialSetup()
         {
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             me1PathBox.Text = ME1Directory.DefaultGamePath;
             me2PathBox.Text = ME2Directory.DefaultGamePath;
             me3PathBox.Text = ME3Directory.DefaultGamePath;

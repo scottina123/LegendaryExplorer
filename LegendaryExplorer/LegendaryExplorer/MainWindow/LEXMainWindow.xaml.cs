@@ -16,6 +16,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UnrealExtensions;
@@ -43,6 +44,7 @@ namespace LegendaryExplorer.MainWindow
         public LEXMainWindow()
         {
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             DataContext = this;
 
             //Check that at least one game path is set. If none are, show the initial dialog.

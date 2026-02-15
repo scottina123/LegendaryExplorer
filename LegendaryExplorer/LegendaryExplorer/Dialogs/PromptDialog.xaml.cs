@@ -47,6 +47,7 @@ namespace LegendaryExplorer.Dialogs
         public PromptDialog(string question, string title, string defaultValue = "", bool selectText = false, int selectionStart = -1, int selectionEnd = -1, InputType inputType = InputType.Text)
         {
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
             this.Loaded += PromptDialog_Loaded;
             txtQuestion.Text = question;
             Title = title;
