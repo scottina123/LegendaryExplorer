@@ -15,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 #if AZURE
@@ -707,7 +708,7 @@ namespace LegendaryExplorerCore.Packages
         /// <param name="path"></param>
         /// <param name="isSaveAs"></param>
         /// <param name="compress"></param>
-        private static void saveByReconstructing(MEPackage mePackage, string path, bool isSaveAs, bool compress, bool includeAdditionalPackagesToCook, bool includeDependencyTable, object diskIOSyncLockObject = null)
+        private static void saveByReconstructing(MEPackage mePackage, string path, bool isSaveAs, bool compress, bool includeAdditionalPackagesToCook, bool includeDependencyTable, Lock diskIOSyncLockObject = null)
         {
             //var sw = Stopwatch.StartNew();
             using var saveStream = compress

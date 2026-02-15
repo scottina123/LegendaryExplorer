@@ -124,7 +124,7 @@ namespace LegendaryExplorerCore.Packages
             return import;
         }
 
-        public static bool AddToLevelActorsIfNotThere(this IMEPackage pcc, params ExportEntry[] actors) //TODO NET 9: change to span params
+        public static bool AddToLevelActorsIfNotThere(this IMEPackage pcc, params ReadOnlySpan<ExportEntry> actors)
         {
             bool added = false;
             if (pcc.FindExport("TheWorld.PersistentLevel") is ExportEntry { ClassName: "Level" } levelExport)
@@ -590,7 +590,7 @@ namespace LegendaryExplorerCore.Packages
         }
 
         [GeneratedRegex(@"^(.+)_LOC_[A-Z]{3}$")]
-        private static partial Regex LOCFileRegex();
+        private static partial Regex LOCFileRegex { get; }
 
         public static ExportEntry FindActorByTag(this IMEPackage pcc, NameReference tag, bool searchRelatedFiles = false)
         {
@@ -608,7 +608,7 @@ namespace LegendaryExplorerCore.Packages
             }
             if (searchRelatedFiles)
             {
-                if (pcc.FileNameNoExtension is string fileName && LOCFileRegex().Match(fileName) is { Success: true} match)
+                if (pcc.FileNameNoExtension is string fileName && LOCFileRegex.Match(fileName) is { Success: true} match)
                 {
                     string relatedFileName = match.Groups[1].Value + ".pcc";
                     string relatedFilePath = null;

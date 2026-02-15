@@ -8,6 +8,7 @@ using SharpDX.Direct3D11;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -328,7 +329,7 @@ public class PreviewTextureCache : IDisposable
     /// </summary>
     private Dictionary<string, TextureEntry> AssetCache { get; } = [];
 
-    private object textureLoadLock = new object();
+    private readonly Lock textureLoadLock = new Lock();
     /// <summary>
     /// Queues a texture for eventual loading.
     /// </summary>

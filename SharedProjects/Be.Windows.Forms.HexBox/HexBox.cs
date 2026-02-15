@@ -2258,7 +2258,7 @@ namespace Be.Windows.Forms
         }
 
         [GeneratedRegex("[^0-9A-Fa-f]")]
-        private static partial Regex ValidHexRegex();
+        private static partial Regex ValidHexRegex { get; }
 
         /// <summary>
         /// Replaces the current selection in the hex box with the contents of the Clipboard.
@@ -2281,12 +2281,11 @@ namespace Be.Windows.Forms
             else if (da.GetDataPresent(typeof(string)))
             {
                 string sBuffer = (string)da.GetData(typeof(string));
-                Regex invalidHex = ValidHexRegex();
-                bool hexString = !invalidHex.IsMatch(sBuffer) && sBuffer.Length % 2 == 0;
+                bool hexString = !ValidHexRegex.IsMatch(sBuffer) && sBuffer.Length % 2 == 0;
                 if (!hexString)
                 {
                     string spaceLess = sBuffer.Replace(" ", "");
-                    if (!invalidHex.IsMatch(spaceLess) && spaceLess.Length % 2 == 0)
+                    if (!ValidHexRegex.IsMatch(spaceLess) && spaceLess.Length % 2 == 0)
                     {
                         hexString = true;
                         sBuffer = spaceLess;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -42,7 +43,7 @@ namespace LegendaryExplorerCore.Packages
         /// <param name="includeAdditionalPackagesToCook"></param>
         /// <param name="includeDependencyTable"></param>
         /// <param name="diskIOSyncLock">Object that can be used to force a lock on write operations, which can be used to prevent concurrent operations on the same package file. If null, a lock is not used.</param>
-        public static void Save(this IMEPackage package, string savePath = null, bool? compress = null, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, object diskIOSyncLock = null)
+        public static void Save(this IMEPackage package, string savePath = null, bool? compress = null, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, Lock diskIOSyncLock = null)
         {
             if (package == null)
             {
@@ -90,7 +91,7 @@ namespace LegendaryExplorerCore.Packages
         /// <param name="includeAdditionalPackagesToCook"></param>
         /// <param name="includeDependencyTable"></param>
         /// <param name="diskIOSyncLock">Object that can be used to force a lock on write operations, which can be used to prevent concurrent operations on the same package file. If null, a lock is not used.</param>
-        public static async Task SaveAsync(this IMEPackage package, string savePath = null, bool? compress = null, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, object diskIOSyncLock = null)
+        public static async Task SaveAsync(this IMEPackage package, string savePath = null, bool? compress = null, bool includeAdditionalPackagesToCook = true, bool includeDependencyTable = true, Lock diskIOSyncLock = null)
         {
             try
             {
@@ -186,7 +187,7 @@ namespace LegendaryExplorerCore.Packages
             }
         }
 
-        private static void UDKSave(UDKPackage pcc, string path, object diskIOSyncLock = null)
+        private static void UDKSave(UDKPackage pcc, string path, Lock diskIOSyncLock = null)
         {
             if (!pcc.CanSave)
             {

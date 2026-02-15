@@ -39,7 +39,7 @@ namespace LegendaryExplorerCore.Unreal
         private const bool ExportCollision = false;
 
         [GeneratedRegex(@"\.\d+$")]
-        private static partial Regex BlenderNameSuffixRegex();
+        private static partial Regex BlenderNameSuffixRegex { get; }
 
         #region export
         public enum MaterialExportLevel
@@ -1594,7 +1594,7 @@ namespace LegendaryExplorerCore.Unreal
             {
                 return name;
             }
-            var match = BlenderNameSuffixRegex().Match(name);
+            var match = BlenderNameSuffixRegex.Match(name);
             if (match.Success)
             {
                 return name[..match.Index];
