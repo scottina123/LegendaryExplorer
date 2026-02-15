@@ -629,11 +629,11 @@ public class FaceFXBoneAnimator
         if (lowerCurveName.Contains("jaw-")) return -0.5f;
         if (lowerCurveName.Contains("m_ah") || lowerCurveName.Contains("m_oh") ||
             lowerCurveName.Contains("m_ow") || lowerCurveName.Contains("m_eh") ||
-            lowerCurveName.Contains("m_open")) return 0.8f;
-        if (lowerCurveName.Contains("m_ee") || lowerCurveName.Contains("m_oo")) return 0.5f;
+            lowerCurveName.Contains("m_open")) return 0.6f;
+        if (lowerCurveName.Contains("m_ee") || lowerCurveName.Contains("m_oo")) return 0.3f;
         if (lowerCurveName.Contains("m_m") || lowerCurveName.Contains("m_n") ||
-            lowerCurveName.Contains("m_fv") || lowerCurveName.Contains("m_th")) return 0.2f;
-        return 0.4f;
+            lowerCurveName.Contains("m_fv") || lowerCurveName.Contains("m_th")) return 0.1f;
+        return 0.2f;
     }
 
     /// <summary>
@@ -691,18 +691,18 @@ public class FaceFXBoneAnimator
 
         // Apply accumulated rotations to specific bones
         if (_headBoneIndex >= 0 && headRotation != Vector3.Zero)
-            ApplyRotationToBone(_headBoneIndex, headRotation * 0.2f);
+            ApplyRotationToBone(_headBoneIndex, headRotation * 0.05f);
         if (_neckBoneIndex >= 0 && neckRotation != Vector3.Zero)
-            ApplyRotationToBone(_neckBoneIndex, neckRotation * 0.15f);
+            ApplyRotationToBone(_neckBoneIndex, neckRotation * 0.03f);
         if (_leftEyeBoneIndex >= 0 && leftEyeRotation != Vector3.Zero)
-            ApplyRotationToBone(_leftEyeBoneIndex, leftEyeRotation * 0.25f);
+            ApplyRotationToBone(_leftEyeBoneIndex, leftEyeRotation * 0.08f);
         if (_rightEyeBoneIndex >= 0 && rightEyeRotation != Vector3.Zero)
-            ApplyRotationToBone(_rightEyeBoneIndex, rightEyeRotation * 0.25f);
+            ApplyRotationToBone(_rightEyeBoneIndex, rightEyeRotation * 0.08f);
         if (_jawBoneIndex >= 0 && Math.Abs(jawOpen) > 0.001f)
-            ApplyRotationToBone(_jawBoneIndex, new Vector3(Math.Clamp(jawOpen, 0f, 1f) * 0.4f, 0, 0));
+            ApplyRotationToBone(_jawBoneIndex, new Vector3(Math.Clamp(jawOpen, 0f, 1f) * 0.15f, 0, 0));
         if (Math.Abs(blinkAmount) > 0.001f)
         {
-            float lidAngle = Math.Clamp(blinkAmount, 0f, 1f) * 0.5f;
+            float lidAngle = Math.Clamp(blinkAmount, 0f, 1f) * 0.3f;
             if (_leftUpperLidIndex >= 0)
                 ApplyRotationToBone(_leftUpperLidIndex, new Vector3(lidAngle, 0, 0));
             if (_rightUpperLidIndex >= 0)
@@ -710,7 +710,7 @@ public class FaceFXBoneAnimator
         }
         if (Math.Abs(browRaise) > 0.001f)
         {
-            float browAngle = browRaise * 0.25f;
+            float browAngle = browRaise * 0.1f;
             if (_leftBrowBoneIndex >= 0)
                 ApplyRotationToBone(_leftBrowBoneIndex, new Vector3(-browAngle, 0, 0));
             if (_rightBrowBoneIndex >= 0)
