@@ -189,88 +189,88 @@
                                     <Condition Binding="{Binding RawPropertyType}" Value="ObjectProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#6d6c3f"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88fffec4"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b0af7a"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44fffec4"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="FloatProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#004f46"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#4400ffaa"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#66b3a3"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#2200ffaa"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="IntProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#664f46"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#AAffeae2"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b0948a"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffeae2"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="StrProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#071f06"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#6632aaf4"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#6699cc"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#3332aaf4"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="ArrayProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#382c4c"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#99ffe2ba"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9085a0"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffe2ba"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="BoolProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#43563a"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88ecffe2"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#8faa82"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ecffe2"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="StructProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#593953"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88f4beea"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#a88aa0"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44f4beea"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="ByteProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#474647"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88afaeaf"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a9999"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44afaeaf"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="EnumProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#390268"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#66A972ff"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a7dcc"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#33A972ff"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="BioMask4Property" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#474647"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88afaeaf"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#9a9999"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44afaeaf"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding RawPropertyType}" Value="NameProperty" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#4a5568"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88e2edff"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#8fa3bb"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44e2edff"/>
                             </MultiDataTrigger>
                             <MultiDataTrigger>
                                 <MultiDataTrigger.Conditions>
@@ -287,13 +287,13 @@
                                     <Condition Binding="{Binding RawPropertyType}" Value="None" />
                                     <Condition Binding="{Binding Path=(appsettings:Settings.Interpreter_Colorize)}" Value="True" />
                                 </MultiDataTrigger.Conditions>
-                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#6d4818"/>
-                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#88ffb759"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b08a5a"/>
+                                <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffb759"/>
                             </MultiDataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
-                      Color="#0078D4" />
+                      Color="#004080" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
                       Color="White" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
