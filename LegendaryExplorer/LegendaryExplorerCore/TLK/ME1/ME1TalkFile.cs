@@ -60,6 +60,7 @@ namespace LegendaryExplorerCore.TLK.ME1
         /// All the <see cref="TLKStringRef"/>s in the TLK
         /// </summary>
         public List<TLKStringRef> StringRefs { get; set; }
+        public string Source { get; init; }
 
         /// <summary>
         /// The UIndex of the BioTLKFile export
@@ -105,6 +106,7 @@ namespace LegendaryExplorerCore.TLK.ME1
             {
                 throw new Exception("ME1 Unreal TalkFile cannot be initialized with a non-ME1 file");
             }
+            Source = export.MemoryFullPath;
             UIndex = export.UIndex;
             LoadTlkData(pcc);
             FilePath = pcc.FilePath;
