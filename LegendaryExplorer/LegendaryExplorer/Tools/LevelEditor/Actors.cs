@@ -28,20 +28,33 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public string OwningFileName => System.IO.Path.GetFileName(Export.FileRef.FilePath);
 
+    public string DisplayText { get; }
+
     private bool isDirty;
     public bool IsDirty
     {
         get => isDirty;
         protected set
         {
-            if (SetProperty(ref isDirty, value) && isDirty)
+            if (SetProperty(ref isDirty, value))
             {
                 if (OwningFile is not null)
                 {
-                    OwningFile.IsDirty = true;
+                    if (isDirty)
+                        OwningFile.IsDirty = true;
+                    else
+                        OwningFile.RecalculateDirty();
                 }
             }
         }
+    }
+
+    protected TransformSnapshot _cleanSnapshot;
+
+    public void MarkClean()
+    {
+        _cleanSnapshot = SnapshotTransform();
+        IsDirty = false;
     }
 
     public NameReference Tag;
@@ -65,7 +78,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
                 if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -86,7 +99,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -108,7 +121,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -123,7 +136,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -135,7 +148,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = true;
+                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -162,6 +175,12 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
         Tag = props.GetProp<NameProperty>("Tag")?.Value ?? NameReference.None;
 
+        DisplayText = Export.ObjectName.Instanced;
+        if (!Tag.Name.CaseInsensitiveEquals(Export.ClassName))
+        {
+            DisplayText += $" ({Tag})";
+        }
+
         var rotationProp = props.GetProp<StructProperty>("Rotation");
         var locationsProp = props.GetProp<StructProperty>("location");
         var drawScale3DProp = props.GetProp<StructProperty>("DrawScale3D");
@@ -173,12 +192,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         prePivot = prePivotProp != null ? CommonStructs.GetVector3(prePivotProp) : Vector3.Zero;
         rotation = rotationProp != null ? CommonStructs.GetRotator(rotationProp) : new Rotator(0, 0, 0);
         UpdateLocalToWorld();
+        _cleanSnapshot = SnapshotTransform();
     }
 
     //only for use by the faux actors that are children of the CollectionActors
     protected ActorProxy(ExportEntry actorExport)
     {
         Export = actorExport;
+        DisplayText = Export.ObjectName.Instanced;
         drawScale = 1;
         location =  Vector3.Zero;
         drawScale3D =  Vector3.One;
@@ -538,6 +559,7 @@ public abstract class CollectionActorComponentProxy : ActorProxy
             drawScale = drawScale3D.X;
             drawScale3D = Vector3.One;
         }
+        _cleanSnapshot = SnapshotTransform();
     }
 
     public override void CommitChanges(PackageCache packageCache = null)

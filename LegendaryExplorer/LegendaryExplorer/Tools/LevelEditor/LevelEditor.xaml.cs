@@ -245,13 +245,14 @@ public partial class LevelEditor : WPFBase
 
     #region File Management
 
-    public void LoadFile(string s)
+    public async Task LoadFileAsync(string s)
     {
         try
         {
             CloseAllFiles();
             Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
-            AddLevelFile(s);
+            IsBusy = true;
+            await AddLevelFile(s).ConfigureAwait(true);
         }
         catch (Exception e)
         {
@@ -262,7 +263,7 @@ public partial class LevelEditor : WPFBase
         }
     }
 
-    public void AddLevelFile(string path)
+    private async Task AddLevelFile(string path)
     {
         path = Path.GetFullPath(path);
 
@@ -299,39 +300,37 @@ public partial class LevelEditor : WPFBase
 
         IsBusy = true;
         BusyText = $"Loading {Path.GetFileName(path)}...";
-        Task.Run(() => LoadActors(levelBin, openFile)).ContinueWithOnUIThread(prevTask =>
+
+        var (actors, ignoredClasses) = await Task.Run(() => LoadActors(levelBin, openFile)).ConfigureAwait(true);
+        var sorted = actors.OrderBy(actor => actor.Export.UIndex).ToList();
+        openFile.Actors.AddRange(sorted);
+        Actors.AddRange(sorted);
+        RenderContext.LoadActors(sorted);
+
+        if (isFirstFile)
         {
-            var (actors, ignoredClasses) = prevTask.Result;
-            var sorted = actors.OrderBy(actor => actor.Export.UIndex).ToList();
-            openFile.Actors.AddRange(sorted);
-            Actors.AddRange(sorted);
-            RenderContext.LoadActors(sorted);
+            CenterView();
+        }
 
-            if (isFirstFile)
+        SceneViewer.SetShouldRender(true);
+        IsBusy = false;
+
+        if (ignoredClasses.Count > 0)
+        {
+            string existing = string.IsNullOrEmpty(TextBelowActors) ? "" : TextBelowActors + "\n";
+            TextBelowActors = existing + $"{Path.GetFileName(path)} unrendered: {string.Join(", ", ignoredClasses)}";
+        }
+
+        if (ExportQueuedForFocusing > 0)
+        {
+            if (sorted.FirstOrDefault(a => a.Export.UIndex == ExportQueuedForFocusing) is { } proxy)
             {
-                CenterView();
-            }
-
-            SceneViewer.SetShouldRender(true);
-            IsBusy = false;
-
-            if (ignoredClasses.Count > 0)
-            {
-                string existing = string.IsNullOrEmpty(TextBelowActors) ? "" : TextBelowActors + "\n";
-                TextBelowActors = existing + $"{Path.GetFileName(path)} unrendered: {string.Join(", ", ignoredClasses)}";
-            }
-
-            if (ExportQueuedForFocusing > 0)
-            {
-                if (sorted.FirstOrDefault(a => a.Export.UIndex == ExportQueuedForFocusing) is { } proxy)
-                {
-                    SelectedActor = proxy;
-                }
+                SelectedActor = proxy;
                 ExportQueuedForFocusing = 0;
             }
+        }
 
-            UpdateTitle();
-        });
+        UpdateTitle();
     }
 
     private void CloseAllFiles()
@@ -433,7 +432,9 @@ public partial class LevelEditor : WPFBase
 
     #region Actor Loading
 
-    private (List<ActorProxy>, HashSet<string> ignoredActorClasses) LoadActors(Level level, OpenLevelFile owningFile)
+    private readonly record struct LoadActorsResult(List<ActorProxy> actors, HashSet<string> ignoredActorClasses);
+
+    private LoadActorsResult LoadActors(Level level, OpenLevelFile owningFile)
     {
         var actorExports = level.Actors.Where(level.Export.FileRef.IsUExport).Select(level.Export.FileRef.GetUExport);
         var actors = new List<ActorProxy>();
@@ -464,7 +465,7 @@ public partial class LevelEditor : WPFBase
                 ignoredActorClasses.Add(className);
             }
         }
-        return (actors, ignoredActorClasses);
+        return new(actors, ignoredActorClasses);
     }
 
     public void RemoveActor(ActorProxy actor)
@@ -506,6 +507,7 @@ public partial class LevelEditor : WPFBase
     public ICommand ToggleScaleCommand { get; set; }
     public ICommand ToggleUniformScaleCommand { get; set; }
     public ICommand CommitChangesCommand { get; set; }
+    public ICommand CommitSingleFileCommand { get; set; }
     public ICommand LoadRelatedLevelsCommand { get; set; }
     public ICommand FocusSelectedCommand { get; set; }
     public ICommand ToggleLocalCoordsCommand { get; set; }
@@ -526,6 +528,7 @@ public partial class LevelEditor : WPFBase
         ToggleScaleCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.Scale; CurrentModeName = "Scale"; }, PackageIsLoaded);
         ToggleUniformScaleCommand = new GenericCommand(() => { RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale; CurrentModeName = "Uniform Scale"; }, PackageIsLoaded);
         CommitChangesCommand = new GenericCommand(CommitChanges, PackageIsLoaded);
+        CommitSingleFileCommand = new RelayCommand(CommitSingleFileExecute, _ => PackageIsLoaded());
         LoadRelatedLevelsCommand = new GenericCommand(LoadRelatedLevels, PackageIsLoaded);
         FocusSelectedCommand = new GenericCommand(() =>
         {
@@ -599,7 +602,7 @@ public partial class LevelEditor : WPFBase
 
     #region Load Related Levels
 
-    private void LoadRelatedLevels()
+    private async void LoadRelatedLevels()
     {
         if (OpenFiles.Count == 0) return;
 
@@ -626,7 +629,7 @@ public partial class LevelEditor : WPFBase
 
             foreach (string path in paths)
             {
-                AddLevelFile(path);
+                await AddLevelFile(path).ConfigureAwait(true);
             }
         }
     }
@@ -669,6 +672,7 @@ public partial class LevelEditor : WPFBase
             {
                 actor.CommitChanges();
             }
+            actor.MarkClean();
         }
 
         foreach (var collectionActor in collectionActorMap.Values)
@@ -676,6 +680,15 @@ public partial class LevelEditor : WPFBase
             collectionActor.Export.WriteBinary(collectionActor);
         }
         file.IsDirty = false;
+    }
+
+    private void CommitSingleFileExecute(object parameter)
+    {
+        OpenLevelFile file = ResolveFileParameter(parameter);
+        if (file is not null)
+        {
+            CommitChangesForFile(file);
+        }
     }
 
     private async void SaveAllFiles()
@@ -1004,7 +1017,7 @@ public partial class LevelEditor : WPFBase
 
     #region Open / Drag-Drop
 
-    private void OpenFile()
+    private async void OpenFile()
     {
         var d = AppDirectories.GetOpenPackageDialog();
         if (d.ShowDialog() == true)
@@ -1013,7 +1026,7 @@ public partial class LevelEditor : WPFBase
             try
             {
 #endif
-            LoadFile(d.FileName);
+            await LoadFileAsync(d.FileName);
 #if !DEBUG
             }
             catch (Exception ex)
@@ -1024,7 +1037,7 @@ public partial class LevelEditor : WPFBase
         }
     }
 
-    private void AddFile()
+    private async void AddFile()
     {
         var d = AppDirectories.GetOpenPackageDialog();
         if (d.ShowDialog() == true)
@@ -1033,7 +1046,7 @@ public partial class LevelEditor : WPFBase
             try
             {
 #endif
-            AddLevelFile(d.FileName);
+            await AddLevelFile(d.FileName).ConfigureAwait(true);
 #if !DEBUG
             }
             catch (Exception ex)
@@ -1063,7 +1076,7 @@ public partial class LevelEditor : WPFBase
         }
     }
 
-    private void Window_Drop(object sender, DragEventArgs e)
+    private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -1084,12 +1097,12 @@ public partial class LevelEditor : WPFBase
 
                 if (isFirst && OpenFiles.Count == 0)
                 {
-                    LoadFile(file);
+                    await LoadFileAsync(file);
                     isFirst = false;
                 }
                 else
                 {
-                    AddLevelFile(file);
+                    await AddLevelFile(file).ConfigureAwait(true);
                     isFirst = false;
                 }
             }
@@ -1140,7 +1153,7 @@ public partial class LevelEditor : WPFBase
         {
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
-                LoadFile(FileQueuedForLoad);
+                LoadFileAsync(FileQueuedForLoad);
                 FileQueuedForLoad = null;
 
                 Activate();
@@ -1200,13 +1213,15 @@ public partial class LevelEditor : WPFBase
         SaveRecentSets();
     }
 
-    private void OpenRecentFileSet(RecentFileSet set)
+    private async void OpenRecentFileSet(RecentFileSet set)
     {
         CloseAllFiles();
         foreach (string path in set.FilePaths)
         {
             if (File.Exists(path))
-                AddLevelFile(path);
+            {
+                await AddLevelFile(path).ConfigureAwait(true);
+            }
         }
     }
 

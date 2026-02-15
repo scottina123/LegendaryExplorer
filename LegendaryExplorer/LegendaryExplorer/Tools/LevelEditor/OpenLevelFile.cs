@@ -5,6 +5,7 @@ using LegendaryExplorerCore.Packages;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -35,6 +36,11 @@ public class OpenLevelFile : NotifyPropertyChangedBase, IPackageUser, IDisposabl
                 Owner.UpdateGlobalDirtyState();
             }
         }
+    }
+
+    public void RecalculateDirty()
+    {
+        IsDirty = Actors.Any(a => a.IsDirty);
     }
 
     public OpenLevelFile(LevelEditor owner, IMEPackage package, ExportEntry levelExport)

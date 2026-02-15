@@ -140,7 +140,7 @@
             </StatusBar>
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition MinWidth="80" Width="280"/>
+                    <ColumnDefinition MinWidth="80" Width="300"/>
                     <ColumnDefinition MinWidth="5" MaxWidth="5"/>
                     <ColumnDefinition Width="*" MinWidth="300"/>
                     <ColumnDefinition MinWidth="5" MaxWidth="5"/>
@@ -167,13 +167,16 @@
                             <GroupStyle>
                                 <GroupStyle.HeaderTemplate>
                                     <DataTemplate>
-                                        <DockPanel Background="#FFE0E0E0" Margin="0,2,0,0">
+                                        <DockPanel x:Name="FileGroupHeader" Background="#FFE0E0E0" Margin="0,2,0,0">
                                             <Button DockPanel.Dock="Right" Content="X" Padding="4,0" Margin="2,0"
                                                     Command="{Binding Data.CloseFileCommand, Source={StaticResource bindingProxy}}"
                                                     CommandParameter="{Binding Name}" ToolTip="Close this file" FontSize="10"/>
                                             <Button DockPanel.Dock="Right" Content="Save" Padding="4,0" Margin="2,0"
                                                     Command="{Binding Data.SaveSingleFileCommand, Source={StaticResource bindingProxy}}"
                                                     CommandParameter="{Binding Name}" ToolTip="Save this file" FontSize="10"/>
+                                            <Button DockPanel.Dock="Right" Content="Commit" Padding="4,0" Margin="2,0"
+                                                    Command="{Binding Data.CommitSingleFileCommand, Source={StaticResource bindingProxy}}"
+                                                    CommandParameter="{Binding Name}" ToolTip="Commit Level Editor changes for this file" FontSize="10"/>
                                             <TextBlock Text="{Binding Name}" FontWeight="Bold" Padding="4,2" VerticalAlignment="Center"/>
                                         </DockPanel>
                                     </DataTemplate>
@@ -186,12 +189,12 @@
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export index"/>
-                                            <TextBlock Text="{Binding Export.ObjectName.Instanced, Mode=OneTime}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding DisplayText, Mode=OneTime}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                                 <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding Path=Export.EntryHasPendingChanges}" Value="true">
+                                    <DataTrigger Binding="{Binding IsDirty}" Value="true">
                                         <Setter Property="Background" Value="Yellow" TargetName="ExportContainer"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
