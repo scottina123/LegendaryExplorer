@@ -46,6 +46,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             LoadCommands();
             InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
 
             Dnode = node;
             IsReply = Dnode.Node.IsReply;
