@@ -14,7 +14,7 @@ namespace LegendaryExplorerCore.GameFilesystem
 {
     public static class TLKSystem
     {
-        public static List<ITalkFile> LoadTLKs(IMEPackage pcc, MEGame game, MELocalization localization, bool male, string gamePath = null)
+        public static List<ITalkFile> LoadTLKs(MEGame game, MELocalization localization, bool male, string gamePath = null)
         {
             if (gamePath == null)
             {
