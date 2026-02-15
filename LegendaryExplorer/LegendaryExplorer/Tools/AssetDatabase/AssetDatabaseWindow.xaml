@@ -53,12 +53,54 @@
         </CollectionViewSource>
         <Style x:Key="FileLVHeader" TargetType="{x:Type GridViewColumnHeader}">
             <!-- Ensure column headers follow dark theme even when this keyed style is applied -->
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Padding" Value="4,2"/>
             <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
+                        <Grid>
+                            <Border x:Name="HeaderBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter x:Name="HeaderContent"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  RecognizesAccessKey="True"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </Border>
+                            <Thumb x:Name="PART_HeaderGripper"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,0,-9,0"
+                                   Width="18"
+                                   Background="Transparent">
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="{x:Type Thumb}">
+                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                            <Rectangle Width="1" HorizontalAlignment="Center" Fill="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <DataTemplate x:Key="HeaderTemplateArrowUp">
             <DockPanel LastChildFill="True" Width="{Binding ActualWidth, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type GridViewColumnHeader}}}">
