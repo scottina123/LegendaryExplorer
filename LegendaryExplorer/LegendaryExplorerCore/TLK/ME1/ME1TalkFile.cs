@@ -78,6 +78,11 @@ namespace LegendaryExplorerCore.TLK.ME1
         public readonly string Name;
 
         /// <summary>
+        /// If this TLK will use global override from the LE1 Autoload ASI
+        /// </summary>
+        public readonly bool IsLE1OverrideTLK;
+
+        /// <summary>
         /// The name of the BioTlkSet this BioTalkFile is in. (Probably. Not gauranteed to be accurate)
         /// </summary>
         public readonly string BioTlkSetName;
@@ -115,6 +120,15 @@ namespace LegendaryExplorerCore.TLK.ME1
 
             // ME1 localizations for TLK are... fun
             Localization = getTlkLocalization(export);
+
+            if (export.Game == MEGame.LE1)
+            {
+                // ASI uses NotForServer flag on TLK to determine if it should be prioritized over local TLKs
+                if ((export.ObjectFlags & Unreal.UnrealFlags.EObjectFlags.NotForServer) != 0)
+                {
+                    IsLE1OverrideTLK = true;
+                }
+            }
         }
 
         private MELocalization getTlkLocalization(ExportEntry exportEntry)
