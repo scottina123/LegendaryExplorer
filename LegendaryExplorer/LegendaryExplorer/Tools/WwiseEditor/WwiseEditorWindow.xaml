@@ -164,21 +164,21 @@
                     <TabControl TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}" >
                         <TabControl.Resources>
-                            <Style TargetType="{x:Type TabItem}">
-                                <Setter Property="HeaderTemplate">
-                                    <Setter.Value>
-                                        <DataTemplate>
-                                            <ContentPresenter Content="{TemplateBinding Content}">
-                                                <ContentPresenter.LayoutTransform>
-                                                    <RotateTransform Angle="270" />
-                                                </ContentPresenter.LayoutTransform>
-                                            </ContentPresenter>
-                                        </DataTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                                <Setter Property="Padding" Value="3" />
-                            </Style>
-                        </TabControl.Resources>
+                                <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource {x:Type TabItem}}">
+                                    <Setter Property="HeaderTemplate">
+                                        <Setter.Value>
+                                            <DataTemplate>
+                                                <ContentPresenter Content="{TemplateBinding Content}">
+                                                    <ContentPresenter.LayoutTransform>
+                                                        <RotateTransform Angle="270" />
+                                                    </ContentPresenter.LayoutTransform>
+                                                </ContentPresenter>
+                                            </DataTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter Property="Padding" Value="3" />
+                                </Style>
+                            </TabControl.Resources>
                         <TabItem Header="Properties">
                             <exportLoaderControls:InterpreterExportLoader x:Name="Properties_InterpreterWPF" HideHexBox="True"/>
                         </TabItem>
