@@ -1108,6 +1108,16 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
             }
+
+            // Find SFXSceneShopGameData exports that act as sequence-like containers
+            foreach (var export in Pcc.Exports)
+            {
+                if (export.IsA("SFXSceneShopGameData"))
+                {
+                    TreeViewRootNodes.Add(FindSequences(export, true));
+                    SequenceExports.Add(export);
+                }
+            }
         }
 
         private void ResetTreeView()
@@ -1265,6 +1275,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             CurrentObjects.ClearEx();
             var seqObjs = export.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+
+            // SFXSceneShopGameData stores children in m_aNodes instead of SequenceObjects
+            if (seqObjs == null && export.IsA("SFXSceneShopGameData"))
+            {
+                seqObjs = export.GetProperty<ArrayProperty<ObjectProperty>>("m_aNodes");
+            }
+
             if (seqObjs != null)
             {
                 // Resolve imports
@@ -1680,8 +1697,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
             if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
             {
-                //loaded sequence is no longer a sequence
-                if (!SelectedSequence.IsSequence())
+                //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
+                if (!SelectedSequence.IsSequence() && !SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
                     SelectedSequence = null;
                     graphEditor.nodeLayer.RemoveAllChildren();
@@ -1705,7 +1722,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 foreach (var updatedExportUIndex in updatedExports)
                 {
                     if (Pcc.TryGetUExport(updatedExportUIndex, out ExportEntry updatedExport) &&
-                        updatedExport.IsSequence() && updatedExport != SelectedSequence)
+                        (updatedExport.IsSequence() || updatedExport.IsA("SFXSceneShopGameData")) && updatedExport != SelectedSequence)
                     {
                         LoadSequences();
                         break;
@@ -2166,7 +2183,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 if (contextMenu.GetChild("sequenceRefGotoMenuItem") is MenuItem sequenceRefGotoMenuItem)
                 {
                     if (obj is SAction sAction && sAction.Export != null &&
-                        (sAction.Export.ClassName is "SequenceReference" or "Sequence"))
+                        (sAction.Export.ClassName is "SequenceReference" or "Sequence"
+                         || SequenceExports.Contains(sAction.Export)))
                     {
                         sequenceRefGotoMenuItem.Visibility = Visibility.Visible;
                     }
@@ -2274,22 +2292,51 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void removeAllLinks(object sender, RoutedEventArgs args)
         {
             ExportEntry export = (ExportEntry)((MenuItem)sender).Tag;
-            KismetHelper.RemoveAllLinks(export);
+            if (export.IsA("SFXSceneShopNode"))
+            {
+                removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
+                removeAllSFXSceneShopPinLinks(export, "m_aInputPins");
+            }
+            else
+            {
+                KismetHelper.RemoveAllLinks(export);
+            }
         }
 
         private void removeAllOutputLinks(object sender, RoutedEventArgs args)
         {
             ExportEntry export = (ExportEntry)((MenuItem)sender).Tag;
-            var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
-            if (outLinksProp != null)
+            if (export.IsA("SFXSceneShopNode"))
             {
-                foreach (var prop in outLinksProp)
-                {
-                    prop.GetProp<ArrayProperty<StructProperty>>("Links").Clear();
-                }
+                removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
             }
+            else
+            {
+                var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
+                if (outLinksProp != null)
+                {
+                    foreach (var prop in outLinksProp)
+                    {
+                        prop.GetProp<ArrayProperty<StructProperty>>("Links").Clear();
+                    }
+                }
 
-            export.WriteProperty(outLinksProp);
+                export.WriteProperty(outLinksProp);
+            }
+        }
+
+        private static void removeAllSFXSceneShopPinLinks(ExportEntry export, string pinPropertyName)
+        {
+            var pins = export.GetProperty<ArrayProperty<StructProperty>>(pinPropertyName);
+            if (pins != null)
+            {
+                foreach (var pin in pins)
+                {
+                    var links = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
+                    links?.Clear();
+                }
+                export.WriteProperty(pins);
+            }
         }
 
         private void removeAllVarLinks(object sender, RoutedEventArgs args)
@@ -2370,15 +2417,36 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 }
 
                 //remove outgoing links
-                KismetHelper.RemoveAllLinks(sObj.Export);
+                if (sObj.Export.IsA("SFXSceneShopNode"))
+                {
+                    removeAllSFXSceneShopPinLinks(sObj.Export, "m_aOutputPins");
+                    removeAllSFXSceneShopPinLinks(sObj.Export, "m_aInputPins");
+                }
+                else
+                {
+                    KismetHelper.RemoveAllLinks(sObj.Export);
+                }
 
                 //remove from sequence
-                var seqObjs = SelectedSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
-                var arrayObj = seqObjs?.FirstOrDefault(x => x.Value == sObj.UIndex);
-                if (arrayObj != null)
+                if (SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
-                    seqObjs.Remove(arrayObj);
-                    SelectedSequence.WriteProperty(seqObjs);
+                    var nodes = SelectedSequence.GetProperty<ArrayProperty<ObjectProperty>>("m_aNodes");
+                    var arrayObj = nodes?.FirstOrDefault(x => x.Value == sObj.UIndex);
+                    if (arrayObj != null)
+                    {
+                        nodes.Remove(arrayObj);
+                        SelectedSequence.WriteProperty(nodes);
+                    }
+                }
+                else
+                {
+                    var seqObjs = SelectedSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+                    var arrayObj = seqObjs?.FirstOrDefault(x => x.Value == sObj.UIndex);
+                    if (arrayObj != null)
+                    {
+                        seqObjs.Remove(arrayObj);
+                        SelectedSequence.WriteProperty(seqObjs);
+                    }
                 }
 
                 if (trash)
@@ -2525,9 +2593,24 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (CurrentObjects_ListBox.SelectedItem is SObj obj)
             {
-                ExportEntry clonedExport = KismetHelper.CloneObject(obj.Export, SelectedSequence);
-                customSaveData[clonedExport.UIndex] =
-                    new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                if (SelectedSequence.IsA("SFXSceneShopGameData"))
+                {
+                    var clonedExport = EntryCloner.CloneEntry(obj.Export);
+                    clonedExport.Parent = SelectedSequence;
+
+                    // Strip pin links (clone without links)
+                    ClearSFXSceneShopNodePinLinks(clonedExport);
+
+                    AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
+                    customSaveData[clonedExport.UIndex] =
+                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                }
+                else
+                {
+                    ExportEntry clonedExport = KismetHelper.CloneObject(obj.Export, SelectedSequence);
+                    customSaveData[clonedExport.UIndex] =
+                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                }
             }
         }
 
@@ -2535,33 +2618,82 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (CurrentObjects_ListBox.SelectedItem is SObj obj)
             {
-                // Save the link properties before cloning
-                var originalProps = obj.Export.GetProperties();
-                var outputLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("OutputLinks");
-                var variableLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
-                var eventLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("EventLinks");
-
-                // Clone the object (this may remove links due to the topLevel parameter)
-                ExportEntry clonedExport = KismetHelper.CloneObject(obj.Export, SelectedSequence);
-
-                // Restore the link properties to the cloned object
-                var clonedProps = clonedExport.GetProperties();
-                if (outputLinks != null)
+                if (SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
-                    clonedProps.AddOrReplaceProp(outputLinks);
+                    // Clone with links preserved - don't strip pins
+                    var clonedExport = EntryCloner.CloneEntry(obj.Export);
+                    clonedExport.Parent = SelectedSequence;
+                    AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
+                    customSaveData[clonedExport.UIndex] =
+                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
                 }
-                if (variableLinks != null)
+                else
                 {
-                    clonedProps.AddOrReplaceProp(variableLinks);
-                }
-                if (eventLinks != null)
-                {
-                    clonedProps.AddOrReplaceProp(eventLinks);
-                }
-                clonedExport.WriteProperties(clonedProps);
+                    // Save the link properties before cloning
+                    var originalProps = obj.Export.GetProperties();
+                    var outputLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("OutputLinks");
+                    var variableLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
+                    var eventLinks = originalProps.GetProp<ArrayProperty<StructProperty>>("EventLinks");
 
-                customSaveData[clonedExport.UIndex] =
-                    new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    // Clone the object (this may remove links due to the topLevel parameter)
+                    ExportEntry clonedExport = KismetHelper.CloneObject(obj.Export, SelectedSequence);
+
+                    // Restore the link properties to the cloned object
+                    var clonedProps = clonedExport.GetProperties();
+                    if (outputLinks != null)
+                    {
+                        clonedProps.AddOrReplaceProp(outputLinks);
+                    }
+                    if (variableLinks != null)
+                    {
+                        clonedProps.AddOrReplaceProp(variableLinks);
+                    }
+                    if (eventLinks != null)
+                    {
+                        clonedProps.AddOrReplaceProp(eventLinks);
+                    }
+                    clonedExport.WriteProperties(clonedProps);
+
+                    customSaveData[clonedExport.UIndex] =
+                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                }
+            }
+        }
+
+        private static void AddObjectToSFXSceneShopGameData(ExportEntry newObject, ExportEntry container)
+        {
+            var nodes = container.GetProperty<ArrayProperty<ObjectProperty>>("m_aNodes")
+                        ?? new ArrayProperty<ObjectProperty>("m_aNodes");
+            if (nodes.All(x => x.Value != newObject.UIndex))
+            {
+                nodes.Add(new ObjectProperty(newObject));
+                container.WriteProperty(nodes);
+            }
+        }
+
+        private static void ClearSFXSceneShopNodePinLinks(ExportEntry export)
+        {
+            var props = export.GetProperties();
+            bool modified = false;
+            foreach (string pinPropName in new[] { "m_aOutputPins", "m_aInputPins" })
+            {
+                var pins = props.GetProp<ArrayProperty<StructProperty>>(pinPropName);
+                if (pins != null)
+                {
+                    foreach (var pin in pins)
+                    {
+                        var links = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
+                        if (links is { Count: > 0 })
+                        {
+                            links.Clear();
+                            modified = true;
+                        }
+                    }
+                }
+            }
+            if (modified)
+            {
+                export.WriteProperties(props);
             }
         }
 
@@ -2656,7 +2788,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             customSaveData[exportToAdd.UIndex] =
                 new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
-            KismetHelper.AddObjectToSequence(exportToAdd, SelectedSequence, removeLinks);
+            if (SelectedSequence.IsA("SFXSceneShopGameData"))
+            {
+                exportToAdd.Parent = SelectedSequence;
+                AddObjectToSFXSceneShopGameData(exportToAdd, SelectedSequence);
+            }
+            else
+            {
+                KismetHelper.AddObjectToSequence(exportToAdd, SelectedSequence, removeLinks);
+            }
         }
 
         private void AddObject_Clicked(object sender, RoutedEventArgs e)
@@ -2838,7 +2978,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
-            if (goIntoSequences && expToNavigateTo.ClassName is "SequenceReference" or "Sequence")
+            if (goIntoSequences && (expToNavigateTo.ClassName is "SequenceReference" or "Sequence"
+                                    || SequenceExports.Contains(expToNavigateTo)))
             {
                 if (expToNavigateTo.ClassName == "SequenceReference")
                 {
@@ -2880,6 +3021,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                     // Enumerate the objects in the sequence to see if what we are looking for is in this sequence
                     var seqObjs = sequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+
+                    // SFXSceneShopGameData stores children in m_aNodes instead of SequenceObjects
+                    if (seqObjs == null && sequence.IsA("SFXSceneShopGameData"))
+                    {
+                        seqObjs = sequence.GetProperty<ArrayProperty<ObjectProperty>>("m_aNodes");
+                    }
+
                     if (seqObjs != null && seqObjs.Any(objProp => objProp.Value == expToNavigateTo.UIndex))
                     {
                         //This is our sequence
@@ -3071,7 +3219,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void GotoSequenceReference_Clicked(object sender, RoutedEventArgs e)
         {
             if (CurrentObjects_ListBox.SelectedItem is SAction sAction &&
-                (sAction.Export.ClassName is "SequenceReference" or "Sequence"))
+                (sAction.Export.ClassName is "SequenceReference" or "Sequence"
+                 || SequenceExports.Contains(sAction.Export)))
             {
                 GoToExport(sAction.Export);
             }

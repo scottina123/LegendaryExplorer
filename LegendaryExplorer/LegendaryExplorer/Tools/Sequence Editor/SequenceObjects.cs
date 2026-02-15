@@ -1043,6 +1043,47 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     }
                 }
             }
+            else if (export.IsA("SFXSceneShopNode"))
+            {
+                // SFXSceneShopNode uses m_aOutputPins instead of OutputLinks
+                var outputPins = properties.GetProp<ArrayProperty<StructProperty>>("m_aOutputPins");
+                if (outputPins != null)
+                {
+                    foreach (StructProperty pin in outputPins)
+                    {
+                        var l = new OutputLink
+                        {
+                            Links = new List<int>(),
+                            InputIndices = new List<int>(),
+                            Edges = new List<ActionEdge>(),
+                            Desc = pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin"
+                        };
+                        var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
+                        if (pinLinks != null)
+                        {
+                            foreach (StructProperty pinLink in pinLinks)
+                            {
+                                var linkedNode = pinLink.GetProp<ObjectProperty>("pLinkedNode");
+                                var linkedIndex = pinLink.GetProp<IntProperty>("nLinkedIndex");
+                                if (linkedNode != null)
+                                {
+                                    l.Links.Add(linkedNode.Value);
+                                    l.InputIndices.Add(linkedIndex?.Value ?? 0);
+                                }
+                            }
+                        }
+                        l.Node = CreateActionLinkBox();
+                        l.Node.Brush = OutputBrush;
+                        l.Node.Pickable = false;
+                        PPath dragger = CreateActionLinkBox();
+                        dragger.Brush = MostlyTransparentBrush;
+                        dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
+                        dragger.AddInputEventListener(outputDragHandler);
+                        l.Node.AddChild(dragger);
+                        Outlinks.Add(l);
+                    }
+                }
+            }
         }
 
         private sealed class OutputDragHandler : PDragEventHandler
@@ -1245,7 +1286,36 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
             if (inputIndex == -1)
                 return;
-            KismetHelper.CreateOutputLink(start.export, linkDesc, end.export, inputIndex);
+            if (start.export.IsA("SFXSceneShopNode"))
+            {
+                CreateSFXSceneShopOutlink(start.export, linkDesc, end.export, inputIndex);
+            }
+            else
+            {
+                KismetHelper.CreateOutputLink(start.export, linkDesc, end.export, inputIndex);
+            }
+        }
+
+        private static void CreateSFXSceneShopOutlink(ExportEntry source, string pinName, ExportEntry destExport, int inputIndex)
+        {
+            var outputPins = source.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
+            if (outputPins != null)
+            {
+                foreach (StructProperty pin in outputPins)
+                {
+                    if ((pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin") == pinName)
+                    {
+                        var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks")
+                                       ?? new ArrayProperty<StructProperty>("aLinks");
+                        pinLinks.Add(new StructProperty("SFXSSNodePinLink", false,
+                            new ObjectProperty(destExport, "pLinkedNode"),
+                            new IntProperty(inputIndex, "nLinkedIndex")));
+                        pin.Properties.AddOrReplaceProp(pinLinks);
+                        source.WriteProperty(outputPins);
+                        return;
+                    }
+                }
+            }
         }
 
         private static void CreateVarlink(PNode p1, SVar end)
@@ -1305,16 +1375,39 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         public void RemoveOutlink(int linkconnection, int linkIndex)
         {
             string linkDesc = Outlinks[linkconnection].Desc;
-            var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
-            if (outLinksProp != null)
+            if (export.IsA("SFXSceneShopNode"))
             {
-                foreach (StructProperty prop in outLinksProp)
+                var outputPins = export.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
+                if (outputPins != null)
                 {
-                    if (prop.GetProp<StrProperty>("LinkDesc") == linkDesc)
+                    foreach (StructProperty pin in outputPins)
                     {
-                        prop.GetProp<ArrayProperty<StructProperty>>("Links").RemoveAt(linkIndex);
-                        export.WriteProperty(outLinksProp);
-                        return;
+                        if ((pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin") == linkDesc)
+                        {
+                            var pinLinks = pin.GetProp<ArrayProperty<StructProperty>>("aLinks");
+                            if (pinLinks != null && linkIndex < pinLinks.Count)
+                            {
+                                pinLinks.RemoveAt(linkIndex);
+                                export.WriteProperty(outputPins);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
+                if (outLinksProp != null)
+                {
+                    foreach (StructProperty prop in outLinksProp)
+                    {
+                        if (prop.GetProp<StrProperty>("LinkDesc") == linkDesc)
+                        {
+                            prop.GetProp<ArrayProperty<StructProperty>>("Links").RemoveAt(linkIndex);
+                            export.WriteProperty(outLinksProp);
+                            return;
+                        }
                     }
                 }
             }
@@ -1768,6 +1861,19 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 for (int i = 0; i < inputLinksProp.Count; i++)
                 {
                     CreateInputLink(inputLinksProp[i].GetProp<StrProperty>("LinkDesc"), i);
+                }
+            }
+            else if (export.IsA("SFXSceneShopNode"))
+            {
+                // SFXSceneShopNode uses m_aInputPins instead of InputLinks
+                var inputPins = properties.GetProp<ArrayProperty<StructProperty>>("m_aInputPins");
+                if (inputPins != null)
+                {
+                    for (int i = 0; i < inputPins.Count; i++)
+                    {
+                        string desc = inputPins[i].GetProp<StrProperty>("sLinkName")?.Value ?? $"In {i}";
+                        CreateInputLink(desc, i);
+                    }
                 }
             }
             else
