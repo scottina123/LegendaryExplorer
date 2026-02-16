@@ -416,6 +416,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             s = s.Replace("SFXSeqVar_", "");
             s = s.Replace("SeqVar_", "");
             Type = GetVarType(s);
+
+            // Non-SequenceVariable objects used as var-like references (e.g. SFXSceneGroup)
+            if (Type == VarTypes.Extern && !export.IsA("SequenceVariable"))
+            {
+                Type = VarTypes.Object;
+            }
             const float w = RADIUS * 2;
             const float h = RADIUS * 2;
             OutlinePen = new Pen(GetColor(Type));
@@ -568,6 +574,11 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                                         return text;
                                     }
                             }
+                        }
+                        // Non-SequenceVariable objects displayed as var nodes (e.g. SFXSceneGroup)
+                        if (!export.IsA("SequenceVariable"))
+                        {
+                            return $"#{UIndex}\n{Export.ObjectName.Instanced}";
                         }
                         return unknownValue;
                     case VarTypes.StrRef:
@@ -970,6 +981,44 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                     }
                 }
             }
+            else if (export.IsA("SFXSceneShopNode"))
+            {
+                // SFXSceneShopNode subclasses use object properties as variable-like references
+                GetSFXSceneShopNodeVarLinks(properties);
+            }
+        }
+
+        private void GetSFXSceneShopNodeVarLinks(PropertyCollection properties)
+        {
+            // m_pLinkedScene on SFXSceneShopNodeScene points to an SFXSceneGroup (which is an InterpGroup)
+            // Always show the var link box so users can drag connections even when unlinked
+            if (export.IsA("SFXSceneShopNodeScene"))
+            {
+                var linkedScene = properties.GetProp<ObjectProperty>("m_pLinkedScene");
+                int linkedUIndex = linkedScene is { Value: not 0 } ? linkedScene.Value : 0;
+                CreateSFXSceneShopVarLink("Scene", linkedUIndex, VarTypes.Object);
+            }
+        }
+
+        private void CreateSFXSceneShopVarLink(string desc, int linkedUIndex, VarTypes type)
+        {
+            var l = new VarLink
+            {
+                Links = linkedUIndex != 0 ? new List<int> { linkedUIndex } : new List<int>(),
+                Edges = new List<VarEdge>(),
+                Desc = desc,
+                Type = type
+            };
+            var varPen = new Pen(GetColor(l.Type));
+            l.Node = CreateVarLinkBox(varPen);
+            l.Node.Brush = new SolidBrush(GetColor(l.Type));
+            l.Node.Pickable = false;
+            PPath dragger = CreateVarLinkBox(varPen);
+            dragger.Brush = MostlyTransparentBrush;
+            dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
+            dragger.AddInputEventListener(varDragHandler);
+            l.Node.AddChild(dragger);
+            Varlinks.Add(l);
         }
 
         protected void GetEventLinks(PropertyCollection properties)
@@ -1334,7 +1383,18 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             }
             if (linkDesc == null)
                 return;
-            KismetHelper.CreateVariableLink(start.export, linkDesc, end.Export);
+            if (start.export.IsA("SFXSceneShopNode"))
+            {
+                // SFXSceneShopNode var links are direct object properties
+                if (linkDesc == "Scene")
+                {
+                    start.export.WriteProperty(new ObjectProperty(end.UIndex, "m_pLinkedScene"));
+                }
+            }
+            else
+            {
+                KismetHelper.CreateVariableLink(start.export, linkDesc, end.Export);
+            }
         }
 
         private static void CreateEventlink(PNode p1, SEvent end)
@@ -1433,6 +1493,15 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         public void RemoveVarlink(int linkconnection, int linkIndex)
         {
             string linkDesc = Varlinks[linkconnection].Desc;
+            if (export.IsA("SFXSceneShopNode"))
+            {
+                // SFXSceneShopNode var links are direct object properties (e.g. m_pLinkedScene)
+                if (linkDesc == "Scene")
+                {
+                    export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                }
+                return;
+            }
             var varLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
             if (varLinksProp != null)
             {

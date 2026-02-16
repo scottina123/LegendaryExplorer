@@ -1109,15 +1109,45 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 }
             }
 
-            // Find SFXSceneShopGameData exports that act as sequence-like containers
+            // Find SFXSceneShopGameData exports and nest them under the sequence that contains them
             foreach (var export in Pcc.Exports)
             {
                 if (export.IsA("SFXSceneShopGameData"))
                 {
-                    TreeViewRootNodes.Add(FindSequences(export, true));
                     SequenceExports.Add(export);
+
+                    // Walk up the parent chain to find the containing sequence's tree node
+                    var entry = FindContainingTreeNode(export);
+                    if (entry != null)
+                    {
+                        entry.Sublinks.Add(FindSequences(export));
+                    }
+                    else
+                    {
+                        // Fallback: add at root if no containing sequence found
+                        TreeViewRootNodes.Add(FindSequences(export, true));
+                    }
                 }
             }
+        }
+
+        private TreeViewEntry FindContainingTreeNode(ExportEntry export)
+        {
+            // Walk up the export parent chain to find a sequence that's in the tree
+            var current = export.Parent as ExportEntry;
+            while (current != null)
+            {
+                // Look for this export in the existing tree
+                var match = TreeViewRootNodes
+                    .SelectMany(node => node.FlattenTree())
+                    .FirstOrDefault(node => node.UIndex == current.UIndex);
+                if (match != null)
+                {
+                    return match;
+                }
+                current = current.Parent as ExportEntry;
+            }
+            return null;
         }
 
         private void ResetTreeView()
@@ -1299,11 +1329,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 var nullCount = seqObjs.Count(x => x.Value == 0);
 
-                CurrentObjects.AddRange(seqObjs.OrderBy(prop => prop.Value)
+                var loadedExports = seqObjs.OrderBy(prop => prop.Value)
                     .Where(prop => Pcc.IsUExport(prop.Value))
                     .Select(prop => Pcc.GetUExport(prop.Value))
-                    .ToHashSet() //remove duplicate exports
-                    .Select(LoadObject));
+                    .ToHashSet();
+
+                CurrentObjects.AddRange(loadedExports.Select(LoadObject));
                 //CurrentObjects.AddRange(convertedImports.Select(LoadObject));
 
                 // Subtrack imports. But they should be shown still
@@ -1312,6 +1343,52 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     MessageBox.Show(this,
                         "Sequence contains invalid or duplicate exports! Correct this by editing the SequenceObject array in the Properties editor");
                 }
+
+                // For SFXSceneShopGameData, also load referenced objects (SFXSceneGroup etc.) as SVar nodes
+                if (export.IsA("SFXSceneShopGameData"))
+                {
+                    LoadSFXSceneShopReferencedObjects(loadedExports);
+                }
+            }
+        }
+
+        private void LoadSFXSceneShopReferencedObjects(HashSet<ExportEntry> loadedExports)
+        {
+            var referencedExports = new HashSet<ExportEntry>();
+
+            // Collect SFXSceneGroups referenced by m_pLinkedScene
+            foreach (var exp in loadedExports)
+            {
+                var linkedScene = exp.GetProperty<ObjectProperty>("m_pLinkedScene");
+                if (linkedScene is { Value: not 0 } && Pcc.IsUExport(linkedScene.Value))
+                {
+                    var sceneGroup = Pcc.GetUExport(linkedScene.Value);
+                    if (!loadedExports.Contains(sceneGroup) && !referencedExports.Contains(sceneGroup))
+                    {
+                        referencedExports.Add(sceneGroup);
+                    }
+                }
+            }
+
+            // Also find SFXSceneGroup siblings of the SFXSceneShopGameData (children of same parent, e.g. InterpData)
+            // This ensures they remain visible even when not referenced by any node
+            if (SelectedSequence.Parent is ExportEntry parentExport)
+            {
+                foreach (var exp in Pcc.Exports)
+                {
+                    if (exp.idxLink == parentExport.UIndex && exp.IsA("SFXSceneGroup"))
+                    {
+                        if (!loadedExports.Contains(exp) && !referencedExports.Contains(exp))
+                        {
+                            referencedExports.Add(exp);
+                        }
+                    }
+                }
+            }
+
+            foreach (var refExport in referencedExports)
+            {
+                CurrentObjects.Add(new SVar(refExport, graphEditor));
             }
         }
 
@@ -2296,6 +2373,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
                 removeAllSFXSceneShopPinLinks(export, "m_aInputPins");
+                // Also clear object property references used as var links
+                if (export.GetProperty<ObjectProperty>("m_pLinkedScene") != null)
+                {
+                    export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                }
             }
             else
             {
@@ -2342,6 +2424,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void removeAllVarLinks(object sender, RoutedEventArgs args)
         {
             ExportEntry export = (ExportEntry)((MenuItem)sender).Tag;
+            if (export.IsA("SFXSceneShopNode"))
+            {
+                // Clear object property references used as var links
+                if (export.GetProperty<ObjectProperty>("m_pLinkedScene") != null)
+                {
+                    export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                }
+                return;
+            }
             var varLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
             if (varLinksProp != null)
             {
@@ -2421,6 +2512,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     removeAllSFXSceneShopPinLinks(sObj.Export, "m_aOutputPins");
                     removeAllSFXSceneShopPinLinks(sObj.Export, "m_aInputPins");
+                    if (sObj.Export.GetProperty<ObjectProperty>("m_pLinkedScene") != null)
+                    {
+                        sObj.Export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                    }
                 }
                 else
                 {
@@ -2595,15 +2690,25 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 if (SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
-                    var clonedExport = EntryCloner.CloneEntry(obj.Export);
-                    clonedExport.Parent = SelectedSequence;
+                    if (obj is SVar && obj.Export.IsA("SFXSceneGroup"))
+                    {
+                        // SFXSceneGroup is a sibling of SFXSceneShopGameData, not a child node
+                        var clonedExport = EntryCloner.CloneTree(obj.Export);
+                        customSaveData[clonedExport.UIndex] =
+                            new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    }
+                    else
+                    {
+                        var clonedExport = EntryCloner.CloneEntry(obj.Export);
+                        clonedExport.Parent = SelectedSequence;
 
-                    // Strip pin links (clone without links)
-                    ClearSFXSceneShopNodePinLinks(clonedExport);
+                        // Strip pin links (clone without links)
+                        ClearSFXSceneShopNodePinLinks(clonedExport);
 
-                    AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
-                    customSaveData[clonedExport.UIndex] =
-                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                        AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
+                        customSaveData[clonedExport.UIndex] =
+                            new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    }
                 }
                 else
                 {
@@ -2620,12 +2725,22 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 if (SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
-                    // Clone with links preserved - don't strip pins
-                    var clonedExport = EntryCloner.CloneEntry(obj.Export);
-                    clonedExport.Parent = SelectedSequence;
-                    AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
-                    customSaveData[clonedExport.UIndex] =
-                        new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    if (obj is SVar && obj.Export.IsA("SFXSceneGroup"))
+                    {
+                        // SFXSceneGroup is a sibling of SFXSceneShopGameData, not a child node
+                        var clonedExport = EntryCloner.CloneTree(obj.Export);
+                        customSaveData[clonedExport.UIndex] =
+                            new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    }
+                    else
+                    {
+                        // Clone with links preserved - don't strip pins
+                        var clonedExport = EntryCloner.CloneEntry(obj.Export);
+                        clonedExport.Parent = SelectedSequence;
+                        AddObjectToSFXSceneShopGameData(clonedExport, SelectedSequence);
+                        customSaveData[clonedExport.UIndex] =
+                            new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                    }
                 }
                 else
                 {
@@ -2690,6 +2805,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                         }
                     }
                 }
+            }
+            // Also clear object property references used as var links (e.g. m_pLinkedScene)
+            var linkedScene = props.GetProp<ObjectProperty>("m_pLinkedScene");
+            if (linkedScene is { Value: not 0 })
+            {
+                props.AddOrReplaceProp(new ObjectProperty(0, "m_pLinkedScene"));
+                modified = true;
             }
             if (modified)
             {
