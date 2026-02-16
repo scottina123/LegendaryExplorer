@@ -2,6 +2,7 @@
 using LegendaryExplorerCore.UnrealScript;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using LegendaryExplorerCore.UnrealScript.Utilities;
+using System;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
 {
@@ -31,6 +32,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
                     (_, log) = UnrealScriptCompiler.CompileClass(export.FileRef, scriptText, fileLib, usop, export, export.Parent);
                     break;
                 case "Function":
+                    if (export.ObjectName.Name.StartsWith("__lambda__", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new CompilationResult(null, "Lambdas cannot be edited on their own. You can edit them in the function they are defined in.");
+                    }
                     (_, log) = UnrealScriptCompiler.CompileFunction(export, scriptText, fileLib, usop);
                     break;
                 case "State":

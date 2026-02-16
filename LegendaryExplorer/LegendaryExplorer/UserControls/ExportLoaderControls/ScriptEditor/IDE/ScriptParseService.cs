@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using ICSharpCode.AvalonEdit.Highlighting;
+﻿using ICSharpCode.AvalonEdit.Highlighting;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.UnrealScript;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
@@ -11,6 +6,12 @@ using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorerCore.UnrealScript.Lexing;
 using LegendaryExplorerCore.UnrealScript.Parsing;
 using LegendaryExplorerCore.UnrealScript.Utilities;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.Composition.Primitives;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
 {
@@ -54,6 +55,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE
                                 }
                                 break;
                             case Function func when exportEntry.Parent is ExportEntry funcParent:
+                                if (exportEntry.ObjectName.Name.StartsWith("__lambda__", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    log.LogError("Lambdas cannot be edited on their own. You can edit them in the function they are defined in.");
+                                }
                                 ast = UnrealScriptCompiler.CompileNewFunctionBodyAST(funcParent, func, log, fileLib, usop);
                                 break;
                             case State state when exportEntry.Parent is ExportEntry stateParent:
