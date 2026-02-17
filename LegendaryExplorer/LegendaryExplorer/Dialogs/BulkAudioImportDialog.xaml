@@ -26,12 +26,25 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Label Grid.Row="0" Grid.Column="0" Content="Bank Name:" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="0" Grid.Column="1" x:Name="BankNameTextBox" Text="NewBank" Padding="4" Margin="5,2"/>
-                <Label Grid.Row="1" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
-                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
+                <Label Grid.Row="1" Grid.Column="0" Content="Volume (dB):" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" x:Name="VolumeTextBox" Text="-10" Padding="4" Margin="5,2"
+                         ToolTip="Volume offset in dB applied to the ActorMixer. Typical dialogue value is -10."/>
+                <Label Grid.Row="2" Grid.Column="0" Content="Output Bus:" VerticalAlignment="Center"/>
+                <ComboBox Grid.Row="2" Grid.Column="1" x:Name="OutputBusComboBox" IsEditable="False" Margin="5,2" Padding="4"
+                          ItemsSource="{Binding OutputBuses}" SelectedItem="{Binding SelectedOutputBus}"
+                          ToolTip="The Wwise output bus for the ActorMixer. Non-default buses will be injected into the template project automatically."/>
+                <Label Grid.Row="3" Grid.Column="0" Content="Dialogue Bank:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsDialogueBankCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
                           Content="Audio filenames contain TLK refs (e.g. VO_123456_m)" ToolTip="When checked, events and stream links will be set up using the VO dialogue naming convention."/>
+                <Label Grid.Row="4" Grid.Column="0" Content="Gendered Events:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="4" Grid.Column="1" x:Name="GenerateGenderedEventsCheckBox" IsChecked="True" VerticalAlignment="Center" Margin="5,4"
+                          Content="Create both _m and _f event variants" ToolTip="When checked, two WwiseEvents are created per audio file (e.g. VO_123456_m_Play and VO_123456_f_Play), both pointing to the same audio. If the filename already ends with _m or _f, it will be replaced for each variant."/>
             </Grid>
         </GroupBox>
 

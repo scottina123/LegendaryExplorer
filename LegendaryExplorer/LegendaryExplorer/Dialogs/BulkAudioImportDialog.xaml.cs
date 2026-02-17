@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -18,6 +19,57 @@ namespace LegendaryExplorer.Dialogs
     public partial class BulkAudioImportDialog : Window
     {
         public ObservableCollection<string> WavFiles { get; } = new();
+
+        /// <summary>
+        /// Known ME3/LE3 Wwise output buses. Master Audio Bus is always available in the template.
+        /// Other buses will be injected into the template's Master-Mixer Hierarchy when selected.
+        /// </summary>
+        public List<string> OutputBuses { get; } = new()
+        {
+            "Master Audio Bus",
+            "Env-VO-Conversation",
+            "Env-VO-Ambient-Duck",
+            "Env-VO-Ambient-NonDuck",
+            "Env-VO-Ambient-Critical",
+            "Env-VO-SoundSet-Duck",
+            "Env-VO-SoundSet-NonDuck",
+            "Env-VO-Exertions",
+            "Env-Music",
+            "Env-Snd-0-CineDesign",
+            "Env-Snd-0-CineAnim",
+            "Env-Snd-0-CineD-SkipKill",
+            "Env-Snd-0-CineD-SkipNoKill",
+            "Env-Snd-0-LevelEvents",
+            "Env-Snd-0-LevelTransitions",
+            "Env-Snd-0-ProceduralFoley",
+            "Env-Snd-1-Amb-Stream",
+            "Env-Snd-1-Amb-NonStream",
+            "Env-Snd-1-Creatures",
+            "Env-Snd-1-Foley",
+            "Env-Snd-1-Footsteps",
+            "Env-Snd-1-Physics",
+            "Env-Snd-1-Placeables",
+            "Env-Snd-1-Powers",
+            "Env-Snd-1-Vehicles",
+            "Env-Snd-1-VFX",
+            "Env-Snd-1-Weapons",
+            "Env-Snd-1-Bullets",
+            "Env-Snd-2-PlayerWeapons",
+            "Env-Snd-2-PlayerPowers",
+            "Env-Snd-3-CreatureCritical",
+            "Env-Snd-4-Explosions",
+            "Env-Snd-5-Critical",
+            "NonEnv-Snd-0-CineAnim",
+            "NonEnv-Snd-0-CineDes",
+            "NonEnv-Snd-0-LevelEvents",
+            "NonEnv-VO-Radio-Convo",
+            "NonEnv-VO-Radio-Critical",
+            "NonSlowdown-GUI Sounds",
+            "NonSlowdown-Music",
+            "NonSlowdown-Dialog",
+        };
+
+        public string SelectedOutputBus { get; set; } = "Env-VO-Conversation";
 
         private readonly IMEPackage _package;
 
@@ -90,7 +142,17 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
+            if (!double.TryParse(VolumeTextBox.Text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volume))
+            {
+                MessageBox.Show("Please enter a valid number for volume (e.g. -10).", "Invalid volume", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var selectedBusItem = OutputBusComboBox.SelectedItem as string;
+            var outputBusName = selectedBusItem ?? "Master Audio Bus";
+
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
+            var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
 
             ImportButton.IsEnabled = false;
             AddFilesButton.IsEnabled = false;
@@ -99,7 +161,7 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue));
+                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents));
                 if (result != null)
                 {
                     StatusTextBlock.Text = $"Error: {result}";
@@ -126,7 +188,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private string RunBulkAudioImport(string bankName, bool isDialogue)
+        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents)
         {
             var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
 
@@ -151,21 +213,40 @@ namespace LegendaryExplorer.Dialogs
                 string actorMixerPath = Path.Combine(projectDir, "Actor-Mixer Hierarchy", "Default Work Unit.wwu");
                 string eventsPath = Path.Combine(projectDir, "Events", "Default Work Unit.wwu");
                 string soundBanksPath = Path.Combine(projectDir, "SoundBanks", "Default Work Unit.wwu");
+                string masterMixerPath = Path.Combine(projectDir, "Master-Mixer Hierarchy", "Default Work Unit.wwu");
 
                 var actorMixerDoc = XDocument.Load(actorMixerPath);
                 var eventsDoc = XDocument.Load(eventsPath);
                 var soundBanksDoc = XDocument.Load(soundBanksPath);
+                var masterMixerDoc = XDocument.Load(masterMixerPath);
 
                 var actorMixerWuId = actorMixerDoc.Root.Attribute("ID")?.Value;
                 var eventsWuId = eventsDoc.Root.Attribute("ID")?.Value;
+                var masterMixerWuId = masterMixerDoc.Root.Attribute("ID")?.Value;
+
+                // Master Audio Bus is always present in the template
+                const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
+
+                // Determine the output bus ID/name for the ActorMixer
+                string outputBusId = masterBusId;
+                string outputBusWuId = masterMixerWuId;
+
+                if (outputBusName != "Master Audio Bus")
+                {
+                    // Inject the custom bus into the Master-Mixer Hierarchy as a child of Master Audio Bus
+                    outputBusId = $"{{{Guid.NewGuid()}}}";
+                    InjectBusIntoMasterMixer(masterMixerDoc, masterBusId, outputBusName, outputBusId);
+                    masterMixerDoc.Save(masterMixerPath);
+                }
 
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
-                var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles);
+                var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles,
+                    volume, outputBusName, outputBusId, outputBusWuId);
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
-                var eventsXml = BuildEventsXml(eventsWuId, actorMixerWuId, wavFiles);
+                var eventsXml = BuildEventsXml(eventsWuId, actorMixerWuId, wavFiles, generateGenderedEvents);
                 File.WriteAllText(eventsPath, eventsXml);
 
                 // 6. Build SoundBanks XML
@@ -244,14 +325,16 @@ namespace LegendaryExplorer.Dialogs
         /// each configured for streaming with Vorbis Quality High conversion.
         /// </summary>
         private static string BuildActorMixerXml(string workUnitId, string bankName, string actorMixerId,
-            System.Collections.Generic.List<string> wavFiles)
+            List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId)
         {
             // Factory "Vorbis Quality High" conversion setting (from Factory Conversion Settings.wwu in template)
             const string vorbisHighId = "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}";
             const string vorbisHighWuId = "{F6B2880C-85E5-47FA-A126-645B5DFD9ACC}";
-            // Master Audio Bus from the template's Master-Mixer Hierarchy
+            // Master Audio Bus from the template's Master-Mixer Hierarchy (used for individual Sound nodes)
             const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
             const string masterBusWuId = "{DC056BE9-DEF6-455F-87D6-60D9DF9D80AD}";
+
+            var volumeStr = volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var sb = new System.Text.StringBuilder();
             foreach (var wavPath in wavFiles)
@@ -299,7 +382,7 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t\t<Property Name=\"UseGameAuxSends\" Type=\"bool\" Value=\"True\"/>");
             xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Volume\" Type=\"Real64\">");
             xml.AppendLine("\t\t\t\t\t\t\t<ValueList>");
-            xml.AppendLine("\t\t\t\t\t\t\t\t<Value>-10</Value>");
+            xml.AppendLine($"\t\t\t\t\t\t\t\t<Value>{volumeStr}</Value>");
             xml.AppendLine("\t\t\t\t\t\t\t</ValueList>");
             xml.AppendLine("\t\t\t\t\t\t</Property>");
             xml.AppendLine("\t\t\t\t\t</PropertyList>");
@@ -308,7 +391,7 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
-            xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Master Audio Bus\" ID=\"{masterBusId}\" WorkUnitID=\"{masterBusWuId}\"/>");
+            xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"{outputBusName}\" ID=\"{outputBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
             xml.AppendLine("\t\t\t\t\t</ReferenceList>");
             xml.AppendLine("\t\t\t\t\t<ChildrenList>");
@@ -323,32 +406,30 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Builds the Events XML with a Play event per Sound.
-        /// Event names follow the format {SoundName}_Play.
+        /// Builds the Events XML with Play events per Sound.
+        /// When generateGenderedEvents is true, two events are created per sound:
+        /// {baseName}_m_Play and {baseName}_f_Play (both targeting the same Sound).
+        /// If the sound name already ends with _m or _f, the suffix is replaced for each variant.
         /// </summary>
         private static string BuildEventsXml(string workUnitId, string actorMixerWuId,
-            System.Collections.Generic.List<string> wavFiles)
+            List<string> wavFiles, bool generateGenderedEvents)
         {
             var sb = new System.Text.StringBuilder();
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                var eventName = $"{soundName}_Play";
-                var eventId = $"{{{Guid.NewGuid()}}}";
-                var actionId = $"{{{Guid.NewGuid()}}}";
                 var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
 
-                sb.AppendLine($"\t\t\t\t<Event Name=\"{eventName}\" ID=\"{eventId}\">");
-                sb.AppendLine("\t\t\t\t\t<ChildrenList>");
-                sb.AppendLine($"\t\t\t\t\t\t<Action Name=\"\" ID=\"{actionId}\" ShortID=\"{GenerateShortId(eventName)}\">");
-                sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Target\">");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"{soundName}\" ID=\"{soundId}\" WorkUnitID=\"{actorMixerWuId}\"/>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
-                sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
-                sb.AppendLine("\t\t\t\t\t\t</Action>");
-                sb.AppendLine("\t\t\t\t\t</ChildrenList>");
-                sb.AppendLine("\t\t\t\t</Event>");
+                if (generateGenderedEvents)
+                {
+                    var baseName = StripGenderSuffix(soundName);
+                    AppendEventXml(sb, $"{baseName}_m_Play", soundName, soundId, actorMixerWuId);
+                    AppendEventXml(sb, $"{baseName}_f_Play", soundName, soundId, actorMixerWuId);
+                }
+                else
+                {
+                    AppendEventXml(sb, $"{soundName}_Play", soundName, soundId, actorMixerWuId);
+                }
             }
 
             var xml = new System.Text.StringBuilder();
@@ -363,6 +444,43 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t</Events>");
             xml.AppendLine("</WwiseDocument>");
             return xml.ToString();
+        }
+
+        /// <summary>
+        /// Appends a single Event XML block targeting a Sound.
+        /// </summary>
+        private static void AppendEventXml(System.Text.StringBuilder sb, string eventName,
+            string soundName, string soundId, string actorMixerWuId)
+        {
+            var eventId = $"{{{Guid.NewGuid()}}}";
+            var actionId = $"{{{Guid.NewGuid()}}}";
+
+            sb.AppendLine($"\t\t\t\t<Event Name=\"{eventName}\" ID=\"{eventId}\">");
+            sb.AppendLine("\t\t\t\t\t<ChildrenList>");
+            sb.AppendLine($"\t\t\t\t\t\t<Action Name=\"\" ID=\"{actionId}\" ShortID=\"{GenerateShortId(eventName)}\">");
+            sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Target\">");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"{soundName}\" ID=\"{soundId}\" WorkUnitID=\"{actorMixerWuId}\"/>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
+            sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
+            sb.AppendLine("\t\t\t\t\t\t</Action>");
+            sb.AppendLine("\t\t\t\t\t</ChildrenList>");
+            sb.AppendLine("\t\t\t\t</Event>");
+        }
+
+        /// <summary>
+        /// Strips a trailing gender suffix (_m or _f) from a sound name to get the base name.
+        /// e.g. "VO_17250592_m" -> "VO_17250592", "VO_17250592_f" -> "VO_17250592",
+        /// "VO_17250592" -> "VO_17250592" (no suffix, returned as-is).
+        /// </summary>
+        private static string StripGenderSuffix(string soundName)
+        {
+            if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase) ||
+                soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+            {
+                return soundName[..^2];
+            }
+            return soundName;
         }
 
         /// <summary>
@@ -392,6 +510,36 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t</SoundBanks>");
             xml.AppendLine("</WwiseDocument>");
             return xml.ToString();
+        }
+
+        /// <summary>
+        /// Injects a custom bus as a child of "Master Audio Bus" in the template's Master-Mixer Hierarchy.
+        /// This is necessary because the template only defines "Master Audio Bus", but the game uses
+        /// many sub-buses for audio routing (e.g. Env-VO-Conversation). Without adding the bus to the
+        /// project, WwiseCLI would fail to resolve the bus reference in the Actor-Mixer XML.
+        /// </summary>
+        private static void InjectBusIntoMasterMixer(XDocument masterMixerDoc, string masterBusId, string busName, string busId)
+        {
+            // Find the Master Audio Bus element by its ID attribute
+            var masterBusElement = masterMixerDoc.Descendants("Bus")
+                .FirstOrDefault(e => e.Attribute("ID")?.Value == masterBusId);
+
+            if (masterBusElement == null)
+                return;
+
+            // Add or get the ChildrenList under Master Audio Bus
+            var childrenList = masterBusElement.Element("ChildrenList");
+            if (childrenList == null)
+            {
+                childrenList = new XElement("ChildrenList");
+                masterBusElement.Add(childrenList);
+            }
+
+            // Add the custom bus
+            var busElement = new XElement("Bus",
+                new XAttribute("Name", busName),
+                new XAttribute("ID", busId));
+            childrenList.Add(busElement);
         }
 
         /// <summary>

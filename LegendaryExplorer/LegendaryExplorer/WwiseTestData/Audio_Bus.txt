@@ -1,0 +1,170 @@
+Audio Bus	ID	Name			Wwise Object Path	Notes
+	78998992	Ducker-Shield-Down			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Shield-Down	
+	88173976	Env-Snd-0-CineAnim			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-CineAnim	For all cine anim sounds
+	88325593	Env-VO-Ambient-Duck			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Ambient-Duck	For ambient VO lines (i.e. not conversation) that you would like to duck the ambiences a little to ensure they cut through. This bus is usually used for henchmen ambience lines.
+	113282184	Slowdown and Bleedout UnAffected			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected	Most audio should NOT be placed in this bus. This is for sounds that should NOT be affected by time slowing down during adrenaline, etc or the bleedout filter. Examples are GUI sounds and the death music, both of which should always play regardless of conditions.
+	192878726	Env-Snd-0-ProceduralFoley			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-ProceduralFoley	
+	222669541	Env-Snd-1-Powers			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Powers	For any power related sounds  such as biotics and tech. The VFX bus is not for these sounds, that is for environmental VFX. 
+	301674290	Env-VO-Conversation			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Conversation	The standard conversation VO bus. Most conversation VO should go here.
+	370644045	Env-Snd-1-Weapons-Foley-Expand			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons-Foley-Expand	
+	373162680	Migrated			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated	
+	381320459	Mus-1-Moderate Ducking			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score\Mus-1-Moderate Ducking	
+	383753028	Env-Snd-5-Critical			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-5-Critical	For massive events such as a reaper landing on your head or nuclear weapons; use rarely. Causes ducking to 1, 2 and 3. 
+	420012082	Env-VO-Exertions			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Exertions	
+	440861076	Env-Music			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Music	For music that is emanating within the game world, will have the current reverb applied to it. Examples are nightclub music.
+	455854849	Env-Duck-VO-Amb-NonDuck-DuckedByConvo			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Ambient-NonDuck\Env-Duck-VO-Amb-NonDuck-DuckedByConvo	Send ambient VO here if it continues during conversations. An example is advertisements, news reports or the Blue Rose Krogan from ME2 who recites poetry in the background during a conversation. This bus is ducked by conversation VO so the VO doesn't get cluttered. 
+	589371832	NonEnv-Snd-0-CineDes			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-CineDes	For Cine Design sounds. Send to a child of this bus, do not send directly to this bus; we have code in place to kill sounds that trigger if the player skips the cine design line and it requires the sounds to be on the correct bus in order to function.
+	608083365	Ducker-MutePlayerGuns			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-MutePlayerGuns	
+	661759782	Env-Snd-0-CineD-SkipNoKill			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-CineDesign\Env-Snd-0-CineD-SkipNoKill	For cine design sounds that should NOT be killed if the player skips the line in the conversation. Most sounds should not be sent to this bus. An example of sounds that would be sent here are long or looping sounds that switch on during the conversation that you have a later stop event for.
+	750429206	PlayerWeapons-Fire			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerWeapons\PlayerWeapons-Fire	
+	796533304	Ducker-Weapons-PlayerBulletImpacts			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-PlayerBulletImpacts	
+	896595700	Env-Snd-1-Weapons-Foley-Collapse			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons-Foley-Collapse	
+	1241218641	Ducker-LevelUp			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-LevelUp	
+	1244205688	Ducker-CineAnim-FastRel			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CineAnim-FastRel	Ducks all level sounds for use in cine anims where you don't want to hear ambiences. Has a fast release time so it returns to normal very quickly after the scene has ended.
+	1304055404	NonEnv-Snd-0-LevelEvents			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-LevelEvents	
+	1320340349	Ducker-Weapons-Pistol			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-Pistol	
+	1333022690	Env-Snd-1-Weapons			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons	For gunshot sounds
+	1382909311	Ducker-LvlEvent-FullDuck			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-LvlEvent-FullDuck	
+	1384098367	Ducking Control Buses			\Default Work Unit\Master Audio Bus\Ducking Control Buses	
+	1428943757	Env-Snd-0-CineDesign			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-CineDesign	For Cine Design sounds. Send to a child of this bus, do not send directly to this bus; we have code in place to kill sounds that trigger if the player skips the cine design line and it requires the sounds to be on the correct bus in order to function.
+	1503374211	NonSlowdown-Music			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Music	The main music bus. Music cannot be pitched like sounds are so putting non-diagetic music in the 'slow down affected' buses makes no sense.
+	1578058874	Env-Snd-1-Bullets			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Bullets	For bullet impacts.
+	1589046909	NonEnv-VO-Radio-Convo			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-VO\NonEnv-VO-Radio-Convo	
+	1636967957	Ducker-Weapons-Assault			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-Assault	Ducker used by the player's Avenger to duck ambiences and non-player combat sounds.
+	1656579942	Env-Snd-1-Physics			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Physics	For sounds utilising the physics audio system
+	1708961637	Ducker-Foley-Power			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Foley-Power	
+	1712487096	Env-Snd-4-Explosions			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-4-Explosions	For explosions, large impacts and anything causing tinitus effects. Ducks 1 and 2.
+	1746439591	Env-Snd-1-Placeables			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Placeables	For any placeable sounds such as doors and consoles.
+	1778000592	Env-VO-Ambient-NonDuck			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Ambient-NonDuck	For ambient lines that should NOT duck sounds. This bus should be used for all non-henchmen/player ambient lines, such as background chatter in hubs from NPCs.  
+	1787345229	Music - Death			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Music - Death	
+	1996998374	Ducker-LevelTransitions			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-LevelTransitions	
+	2042131000	NonEnv-Snd-0-CineD-SkipKill			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-CineDes\NonEnv-Snd-0-CineD-SkipKill	For cine design sounds that should be killed if the player skips the line in the conversation. Most sounds should be placed here except sounds which you want to continue throughout the scene. This system was needed because all events are triggered in one go when skipping, causing a cluster funk of sound, sounds on this bus are killed as they play when skipped.
+	2052984724	Env-Snd-2-PlayerWeapons			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerWeapons	For player weapons. Ducks 1.
+	2072553425	NonSlowdown-PlayerCombat			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-PlayerCombat	Impacts on the player and other sounds that shouldn't be affected by bleedout
+	2091861047	NonEnv-VO-Radio-Critical			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-VO\NonEnv-VO-Radio-Critical	
+	2101962433	Non-Environmental			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental	Non-diegetic bus: for all sounds that are not part of the environment, e.g. 2D ambiences with reverb baked in. Sounds played through this bus will not have the current environmental reverb applied. Do NOT send sounds directly to this bus, instead send to am appropriate child further down.
+	2122765108	Ducker-CreatureLarge-Proximity			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CreatureLarge-Proximity	
+	2218411713	Mus-0-No Ducking - Hubs			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score\Mus-0-No Ducking - Hubs	Only for the quiet background music in cithub and normandy. Is muted by other music!
+	2238812953	NonSlowdown-FinaleBink			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-FinaleBink	
+	2253961981	NonSlowdown-GUI Sounds			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-GUI Sounds	
+	2262755739	Env-Snd-1-Creatures			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Creatures	For creature vocalisations and other miscillanious creature noises that don't fit in the other catagories.
+	2339288502	Env-Snd-1-Amb-Stream			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-SlowRel\Env-Snd-1-Amb-Stream	For streaming ambiences that require reverb.
+	2341776094	Env-VO			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO	For diegetic dialog coming from the game world. Please send VO to a child of this bus.
+	2413696188	NonSlowdown-SniperScopes			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-PlayerCombat\NonSlowdown-SniperScopes	
+	2590885273	Env-VO-SoundSet-NonDuck			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-SoundSet-NonDuck	For soundset VO of less important characters such as standard enemies. It has no ducking applied.
+	2612301291	Ducker-Galaxy Map Music			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Galaxy Map Music	
+	2645236474	Env-Snd-1-Norm-SlowRel			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-SlowRel	Most ambiences and looping sounds go in children of this bus. These sounds cause no ducking but will be ducked by VO and player actions. This should be the default bus for the level team. Ducking returns to normal volume at a slow speed, emphasizing the volume adjustment of the player actions.
+	2665178859	Ducker-LvlEvent-HeavyDuck			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-LvlEvent-HeavyDuck	
+	2679493409	Env-Snd-0-LevelEvents			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-LevelEvents	
+	2684598355	Env-Snd-1-Weapons-NonPlayer_Env			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons-NonPlayer_Env	
+	2690050209	Ducker-CineAnim-SlowRel-12			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CineAnim-SlowRel-12	
+	2724304647	Env-Snd-1-Amb-NonStream			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-SlowRel\Env-Snd-1-Amb-NonStream	For non-streaming ambiences that require reverb.
+	2732954577	Slowdown and Bleedout Affected			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected	Most sounds should go in a child of this bus. All sounds within this bus will be slowed/pitched down when the game 'time' slows down, such as during adrenaline. Also, as the player's health goes down the filter will increase on sounds in this bus, dulling all gameplay audio. Sounds should not be sent directly to this bus, but a child of it.  Slowdown is now set up lower down in the hierarchy so we have individual control over slowdown amount (VO was waaaay too pitchy).
+	2774044111	Ducker-Powers-HeavyDuck			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Powers-HeavyDuck	
+	2780884782	NonSlowdown-Dialog			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Dialog	For completely non-diegetic sounds such as codex
+	2836167243	Env-Snd-1-Bullets-Whizzes			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Bullets\Env-Snd-1-Bullets-Whizzes	
+	2869960671	Env-Snd-0-CineD-SkipKill			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-CineDesign\Env-Snd-0-CineD-SkipKill	For cine design sounds that should be killed if the player skips the line in the conversation. Most sounds should be placed here except sounds which you want to continue throughout the scene. This system was needed because all events are triggered in one go when skipping, causing a cluster funk of sound, sounds on this bus are killed as they play when skipped.
+	2940937671	NonEnv-Snd-0-CineAnim			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-CineAnim	For cutscene audio that has reverb pre-rendered into the audio.
+	2942448014	Env-Snd-0-NonDucking			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking	Sound effects outside of the ducking system. They aren't affected by ducking and don't cause ducking on other sounds. Examples are cine anim and cine design sounds that should play 'flat' regardless of what else is going on.
+	2982121192	Env-Snd-1-Bullets-Impacts			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Bullets\Env-Snd-1-Bullets-Impacts	
+	3033195755	PlayerWeapons-Env			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerWeapons\PlayerWeapons-Env	
+	3057727322	Env-Snd-1-Weapons-Foley-Reload			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons-Foley-Reload	
+	3121540630	Ducker-Weapons-AutoCompressor			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-AutoCompressor	
+	3131594682	Ducker-MuteAmbiences			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-MuteAmbiences	
+	3203258222	Mus-0-No Ducking			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score\Mus-0-No Ducking	
+	3217963062	SET YOUR BUS			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-SlowRel\SET YOUR BUS	Default bus for sound designers. This bus is muted to remind you to set you bus correctly.
+	3234900597	NonSlowdown-Sound Effects			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects	
+	3332344874	Mus-0-No Ducking - Intermittent			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score\Mus-0-No Ducking - Intermittent	For music pieces that play sporadically, such as explore pieces that come and go occasionally. There is a meter plug in  on this bus that can be used to turn the ambiences up and down so we have consistent volume. 
+	3366596028	NonEnv-Music-Score			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score	For non-environmental music that you want ducked by explosions, etc...
+	3402299164	Mus-2-Heavy Ducking			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Music-Score\Mus-2-Heavy Ducking	
+	3403562848	Env-Snd-1-Footsteps			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Footsteps	
+	3414654191	Ducker-CineAnim-SlowRel			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CineAnim-SlowRel	Ducks all level sounds for use in cine anims where you don't want to hear ambiences. Has a slow release time so it returns to normal slowly after the scene has ended.
+	3432369300	Ducker-Explosion-Grenade			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Explosion-Grenade	
+	3494370452	Env-Snd-1-Foley			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Foley	For character movement sounds; footsteps, armour, etc...
+	3553752469	Env-Snd-1-VFX			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-SlowRel\Env-Snd-1-VFX	For environmental vfx sounds. Do not send powers sounds here, send them to the powers bus.
+	3594844694	Ducker-Foley-Punch			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Foley-Punch	
+	3632094382	Env-Snd-0-LevelTransitions			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-0-NonDucking\Env-Snd-0-LevelTransitions	This is for ambiences and other sounds that are playing in the level transitions. The NS1 Kodiak ambiences should go here when there is a shuttle based level transition for instance. While these sounds are playing the other sounds are being ducked.
+	3658140751	NonEnv-Snd-0-AtlasInt			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-AtlasInt	
+	3698917345	NonEnv-Snd-0-NonDucking			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking	Sound effects outside of the ducking system. They aren't affected by ducking and don't cause ducking on other sounds. Examples are cine anim and cine design sounds that should play 'flat' regardless of what else is going on.
+	3703183838	Ducker-Weapons-Shotgun			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-Shotgun	
+	3707038729	Ducker-Weapons-Sniper			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-Sniper	
+	3803692087	Master Audio Bus			\Default Work Unit\Master Audio Bus	!NO SOUND SHOULD BE SENT TO THIS BUS!
+	3805802625	NonSlowdown-ShieldDown			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-PlayerCombat\NonSlowdown-ShieldDown	
+	3868293961	Ducker-LvlEvent-MedRel-6			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-LvlEvent-MedRel-6	
+	3869888268	Env-Snd-1-Vehicles			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Vehicles	For any vehicle related sounds.
+	3877006278	NonSlowdown-BulletWizzes			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\NonSlowdown-PlayerCombat\NonSlowdown-BulletWizzes	
+	3922907557	Enviromental			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental	Diegetic bus: for all sounds coming from the game environment. Sounds playing through a child of this bus will have the current environmental reverb applied. Do NOT send sounds directly to this bus, instead send to am appropriate child further down.
+	3923201285	Env-VO-Ambient-Critical			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-Ambient-Critical	This is the crtical bus that applies heavy ducking to various high level buses. It is for mission critical dialog that must be heard by the player. It can be used by either ambient or conversation lines.
+	3939795693	NonEnv-Snd-0-CineD-SkipNoKill			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-Snd-0-NonDucking\NonEnv-Snd-0-CineDes\NonEnv-Snd-0-CineD-SkipNoKill	For cine design sounds that should NOT be killed if the player skips the line in the conversation. Most sounds should not be sent to this bus. An example of sounds that would be sent here are long or looping sounds that switch on during the conversation that you have a later stop event for.
+	3964092493	Env-Snd-3-CreatureCritical			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-3-CreatureCritical	For important soundset reactions. To be used only on enemies directly in front or if very important. Ducks 1 and 2.
+	3965866029	Ducker-Placeables-FullDuck			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Placeables-FullDuck	
+	4023386529	Env-Snd-1-Norm-FastRel			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel	This is for for gameplay sounds that are not triggered by the player and are not critical sounds that cause ducking. The ducking on this bus returns to normal quicker than the 'slow release' bus. Examples of sounds that go hear are non-player weapons, foley and other gameplay sounds.
+	4026059347	Ducker-Weapons-Scorpion			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Weapons-Scorpion	
+	4048526902	Ducker-Creature-HeavyDuck			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-Creature-HeavyDuck	
+	4052811563	PlayerBulletImpacts			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerWeapons\PlayerBulletImpacts	
+	4054232556	LevelTransBinks-Duck			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout UnAffected\NonSlowdown-Sound Effects\LevelTransBinks-Duck	
+	4130147015	PlayerWeapons-Bass			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerWeapons\PlayerWeapons-Bass	
+	4134251608	Ducker-CineAnim-FastRel-12			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CineAnim-FastRel-12	
+	4204195724	Ducker-CreatureSmall-Proximity			\Default Work Unit\Master Audio Bus\Ducking Control Buses\Ducker-CreatureSmall-Proximity	
+	4244958222	Env-Snd-1-Weapons-NonPlayer_Fire			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-1-Norm-FastRel\Env-Snd-1-Weapons-NonPlayer_Fire	
+	4260460850	Env-VO-SoundSet-Duck			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-VO\Env-VO-SoundSet-Duck	For soundset VO of significant characters such as the player, henchmen or important enemies. Has slight duckinging on sound effects.
+	4265682411	Env-Snd-2-PlayerPowers			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Env-Snd-2-PlayerPowers	For player powers. Ducks 1.
+	4267684745	NonEnv-VO			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Non-Environmental\NonEnv-VO	For non-environmental sounds (which don't get reverb) that you want ducked by loud sounds. Urrrr... not sure when you'd use this, if a VO line is non-diegetic you'd probably not want it ducked... but whatev's.
+
+Auxiliary Bus	ID	Name			Wwise Object Path	Notes
+	120926382	ME3_Room_Medium			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Medium	
+	468968980	ME3_Hall_Large_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Hall_Large_MP	
+	545317294	ME3_Room_Medium_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Medium_Convolutional	
+	556828872	ME3_Corridor_Long_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor_Long_MP	
+	635534409	ME3_Geth_Consensus_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Geth_Consensus_Convolutional	
+	655148827	ME3_Shuttle_Interior			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Shuttle_Interior	
+	827113816	ME3_Room_Small_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Small_MP	
+	837294841	ME3_Dreams			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Dreams	
+	1304250057	ME3_NightClub			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_NightClub	
+	1428579193	ME3_Exterior_Courtyard_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Courtyard_MP	
+	1432615888	ME3_Arena_Huge			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Arena_Huge	
+	1464823481	ME3_Corridor_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor_MP	
+	1527779901	ME3_Exterior_Standard			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Standard	
+	1557846150	ME3_Exterior_Canyon_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Canyon_MP	
+	1667283322	ME3_Kro002_Mordin_Death_Room			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Kro002_Mordin_Death_Room	
+	1781980460	ME3_Catalyst			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Catalyst	
+	1989899712	ME3_Arena_Huge_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Arena_Huge_MP	
+	1997360143	ME3_Exterior_Standard_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Standard_MP	
+	2028684491	ME3_Shuttle_Interior_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Shuttle_Interior_Convolutional	
+	2214241157	ME3_Exterior_Standard_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Standard_Convolutional	
+	2501926782	ME3_Exterior_Canyon_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Canyon_Convolutional	
+	2748651872	ME3_Corridor_Normandy			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor_Normandy	
+	2759165293	ME3_Illusive_Man_Room			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Illusive_Man_Room	
+	2772265433	ME3_Normandy_Standard_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Normandy_Standard_Convolutional	
+	2805723065	ME3_Normandy_Standard			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Normandy_Standard	
+	2809586239	ME3_Corridor_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor_Convolutional	
+	2875380040	ME3_Corridor_Long			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor_Long	
+	3013457411	ME3_Conduit_Run			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Conduit_Run	
+	3090357960	ME3_Space_No_Atmosphere			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Space_No_Atmosphere	
+	3422808352	ME3_Room_Large			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Large	
+	3448330218	ME3_Arena_Small_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Arena_Small_MP	
+	3541675660	ME3_Hall_Large			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Hall_Large	
+	3564328856	ME3_Room_Large_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Large_Convolutional	
+	3596941993	ME3_Geth_Consensus			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Geth_Consensus	
+	3658469432	ME3_Room_Small			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Small	
+	3661805311	ME3_Exterior_Courtyard_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Courtyard_Convolutional	
+	3766353854	ME3_Exterior_Canyon			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Canyon	
+	3767861936	ME3_Room_Large_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Large_MP	
+	3781604906	ME3_Arena_Small			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Arena_Small	
+	3798919638	ME3_Room_Medium_MP			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Medium_MP	
+	3822083351	ME3_Corridor			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Corridor	
+	3980032103	ME3_Air_Vent			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Air_Vent	
+	4114592471	ME3_Exterior_Courtyard			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Exterior_Courtyard	
+	4228285632	ME3_Room_Small_Convolutional			\Default Work Unit\Master Audio Bus\Slowdown and Bleedout Affected\Enviromental\Migrated\ME3_Room_Small_Convolutional	
+
+Effect plug-ins	ID	Name	Type				Notes
+	5464329	Default (Custom)	Wwise Meter			
+	146988049	Default (Custom)	Wwise Meter			
+	545023152	Default (Custom)	Wwise Flanger			
+	971528848	Default (Custom)	Wwise Meter			
+	1017456935	Default (Custom)	Wwise Parametric EQ			
+
+Audio Devices	ID	Name	Type				Notes
+	2317455096	No_Output	No Output			
+	3859886410	System	System			
+
