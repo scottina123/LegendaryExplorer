@@ -218,7 +218,10 @@ namespace LegendaryExplorer.Misc
             
             // Apply dark mode to the scrollbar
             hexBox.ScrollBarDarkMode = isDarkMode;
-            
+
+            // Apply dark mode to the context menu
+            hexBox.ContextMenuDarkMode = isDarkMode;
+
             if (isDarkMode)
             {
                 // Dark theme colors - set all color properties explicitly

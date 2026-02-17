@@ -3402,6 +3402,22 @@ namespace Be.Windows.Forms
         }
 
         /// <summary>
+        /// Gets or sets whether the context menu uses dark mode rendering.
+        /// </summary>
+        [DefaultValue(false), Category("Appearance"), Description("Gets or sets whether the context menu uses dark mode rendering.")]
+        public bool ContextMenuDarkMode
+        {
+            get => _builtInContextMenu?.IsDarkMode ?? false;
+            set
+            {
+                if (_builtInContextMenu != null)
+                {
+                    _builtInContextMenu.IsDarkMode = value;
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets or sets the ByteProvider.
         /// </summary>
         [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]

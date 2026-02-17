@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.ComponentModel;
 using System.Windows.Forms;
 
@@ -37,6 +38,26 @@ namespace Be.Windows.Forms
         /// Contains the "Select All"-ToolStripMenuItem object.
         /// </summary>
         ToolStripMenuItem _selectAllToolStripMenuItem;
+
+        bool _isDarkMode;
+
+        /// <summary>
+        /// Gets or sets whether dark mode is enabled for the context menu.
+        /// </summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        internal bool IsDarkMode
+        {
+            get => _isDarkMode;
+            set
+            {
+                if (_isDarkMode != value)
+                {
+                    _isDarkMode = value;
+                    ApplyDarkMode();
+                }
+            }
+        }
+
         /// <summary>
         /// Initializes a new instance of BuildInContextMenu class.
         /// </summary>
@@ -80,6 +101,7 @@ namespace Be.Windows.Forms
                 cms.Opening += new CancelEventHandler(BuildInContextMenuStrip_Opening);
 
                 _contextMenuStrip = cms;
+                ApplyDarkMode();
             }
 
             if (this._hexBox.ByteProvider == null && this._hexBox.ContextMenuStrip == this._contextMenuStrip)
@@ -216,5 +238,111 @@ namespace Be.Windows.Forms
             get { return _selectAllMenuItemImage; }
             set { _selectAllMenuItemImage = value; }
         } Image _selectAllMenuItemImage = null;
+
+        /// <summary>
+        /// Applies dark or light mode colors to the context menu strip and its items.
+        /// </summary>
+        void ApplyDarkMode()
+        {
+            if (_contextMenuStrip == null)
+                return;
+
+            if (_isDarkMode)
+            {
+                _contextMenuStrip.Renderer = new DarkContextMenuRenderer();
+                _contextMenuStrip.BackColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+                _contextMenuStrip.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
+                foreach (ToolStripItem item in _contextMenuStrip.Items)
+                {
+                    item.BackColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+                    item.ForeColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
+                }
+            }
+            else
+            {
+                _contextMenuStrip.Renderer = null;
+                _contextMenuStrip.RenderMode = ToolStripRenderMode.ManagerRenderMode;
+                _contextMenuStrip.BackColor = SystemColors.Control;
+                _contextMenuStrip.ForeColor = SystemColors.ControlText;
+                foreach (ToolStripItem item in _contextMenuStrip.Items)
+                {
+                    item.BackColor = SystemColors.Control;
+                    item.ForeColor = SystemColors.ControlText;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Custom ToolStripRenderer for dark mode context menus.
+        /// </summary>
+        sealed class DarkContextMenuRenderer : ToolStripProfessionalRenderer
+        {
+            static readonly Color BackgroundColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+            static readonly Color BorderColor = Color.FromArgb(0x3F, 0x3F, 0x46);
+            static readonly Color SeparatorColor = Color.FromArgb(0x3F, 0x3F, 0x46);
+            static readonly Color HighlightColor = Color.FromArgb(0x3E, 0x3E, 0x42);
+            static readonly Color TextColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
+            static readonly Color DisabledTextColor = Color.FromArgb(0x65, 0x65, 0x69);
+            static readonly Color ImageMarginColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+
+            protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+            {
+                using (var brush = new SolidBrush(BackgroundColor))
+                {
+                    e.Graphics.FillRectangle(brush, e.AffectedBounds);
+                }
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                using (var pen = new Pen(BorderColor))
+                {
+                    var rect = new Rectangle(0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
+                    e.Graphics.DrawRectangle(pen, rect);
+                }
+            }
+
+            protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+            {
+                if (e.Item.Selected && e.Item.Enabled)
+                {
+                    using (var brush = new SolidBrush(HighlightColor))
+                    {
+                        var rect = new Rectangle(2, 0, e.Item.Width - 3, e.Item.Height);
+                        e.Graphics.FillRectangle(brush, rect);
+                    }
+                }
+                else
+                {
+                    using (var brush = new SolidBrush(BackgroundColor))
+                    {
+                        e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+                    }
+                }
+            }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                e.TextColor = e.Item.Enabled ? TextColor : DisabledTextColor;
+                base.OnRenderItemText(e);
+            }
+
+            protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+            {
+                int y = e.Item.Height / 2;
+                using (var pen = new Pen(SeparatorColor))
+                {
+                    e.Graphics.DrawLine(pen, 0, y, e.Item.Width, y);
+                }
+            }
+
+            protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+            {
+                using (var brush = new SolidBrush(ImageMarginColor))
+                {
+                    e.Graphics.FillRectangle(brush, e.AffectedBounds);
+                }
+            }
+        }
     }
 }
