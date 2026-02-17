@@ -35,7 +35,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,5">
                             <CheckBox x:Name="Global_DarkMode_Enabled" Margin="5,0"
                                       IsChecked="{Binding Path=(settings:Settings.Global_DarkMode_Enabled)}"/>
-                            <TextBlock>Enable Dark Mode (reduces eye strain)</TextBlock>
+                            <TextBlock>Toggle Dark Mode</TextBlock>
                         </StackPanel>
                         <TextBlock Margin="5,5,0,0">Mass Effect 1 (Original Trilogy) Directory:</TextBlock>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5" Tag="Global_ME1Directory">
