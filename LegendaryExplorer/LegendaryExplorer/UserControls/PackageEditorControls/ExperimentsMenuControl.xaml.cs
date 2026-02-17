@@ -842,6 +842,15 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             MessageBox.Show($"Extracted {combineNodeNames.Count} Combine_Node names and copied to clipboard.\n\nNames:\n{result}", "Extraction complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        private void BulkImportAudio_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Dialogs.BulkAudioImportDialog
+            {
+                Owner = GetPEWindow()
+            };
+            dialog.ShowDialog();
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))
