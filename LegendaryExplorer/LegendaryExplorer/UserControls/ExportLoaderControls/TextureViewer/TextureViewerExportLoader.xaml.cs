@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing.Imaging;
@@ -169,6 +169,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 SetProperty(ref _backgroundColor, value);
                 TextureContext.BackgroundColor = new Vector4(value.R / 255.0f, value.G / 255.0f, value.B / 255.0f, value.A / 255.0f);
+                Settings.TextureViewer_BackgroundColor = value.ToString();
+                Settings.Save();
                 RequestRender();
             }
         }
@@ -228,7 +230,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LoadCommands();
             InitializeComponent();
             this.PreviewRenderer.Context = this.TextureContext;
-            this.TextureContext.BackgroundColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+            if (ColorConverter.ConvertFromString(Settings.TextureViewer_BackgroundColor) is Color savedColor)
+            {
+                BackgroundColor = savedColor;
+            }
+            else
+            {
+                this.TextureContext.BackgroundColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+            }
             this.PreviewRenderer.Loaded += RendererLoaded;
             this.PreviewRenderer.Unloaded += RendererUnloaded;
 

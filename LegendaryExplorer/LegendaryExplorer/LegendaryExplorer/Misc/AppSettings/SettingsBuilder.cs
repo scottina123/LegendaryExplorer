@@ -261,6 +261,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _textureviewer_autoloadmip;
             set => SetProperty(ref _textureviewer_autoloadmip, value);
         }
+        private static string _textureviewer_backgroundcolor = "#808080";
+        public static string TextureViewer_BackgroundColor {
+            get => _textureviewer_backgroundcolor;
+            set => SetProperty(ref _textureviewer_backgroundcolor, value);
+        }
         private static bool _interpreter_limitarraypropertysize = true;
         public static bool Interpreter_LimitArrayPropertySize {
             get => _interpreter_limitarraypropertysize;
@@ -493,6 +498,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             WwiseGraphEditor_AutoSaveView = TryGetSetting(settingsJson, "wwisegrapheditor_autosaveview", false);
             BinaryInterpreter_SkipAutoParseSizeCheck = TryGetSetting(settingsJson, "binaryinterpreter_skipautoparsesizecheck", false);
             TextureViewer_AutoLoadMip = TryGetSetting(settingsJson, "textureviewer_autoloadmip", true);
+            TextureViewer_BackgroundColor = TryGetSetting(settingsJson, "textureviewer_backgroundcolor", "#808080");
             Interpreter_LimitArrayPropertySize = TryGetSetting(settingsJson, "interpreter_limitarraypropertysize", true);
             Interpreter_AdvancedDisplay = TryGetSetting(settingsJson, "interpreter_advanceddisplay", true);
             Interpreter_Colorize = TryGetSetting(settingsJson, "interpreter_colorize", true);
@@ -583,6 +589,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["wwisegrapheditor_autosaveview"] = WwiseGraphEditor_AutoSaveView.ToString();
             settingsJson["binaryinterpreter_skipautoparsesizecheck"] = BinaryInterpreter_SkipAutoParseSizeCheck.ToString();
             settingsJson["textureviewer_autoloadmip"] = TextureViewer_AutoLoadMip.ToString();
+            settingsJson["textureviewer_backgroundcolor"] = TextureViewer_BackgroundColor.ToString();
             settingsJson["interpreter_limitarraypropertysize"] = Interpreter_LimitArrayPropertySize.ToString();
             settingsJson["interpreter_advanceddisplay"] = Interpreter_AdvancedDisplay.ToString();
             settingsJson["interpreter_colorize"] = Interpreter_Colorize.ToString();
