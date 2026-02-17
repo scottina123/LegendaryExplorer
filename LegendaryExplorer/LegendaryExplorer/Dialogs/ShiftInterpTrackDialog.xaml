@@ -2,8 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Shift Interp Track Parameters" SizeToContent="WidthAndHeight"
-        WindowStartupLocation="CenterOwner" Background="{DynamicResource WindowBackgroundBrush}"
-        Foreground="{DynamicResource WindowForegroundBrush}" Padding="20">
+        WindowStartupLocation="CenterOwner" Padding="20">
     <StackPanel>
         <!-- Position Section -->
         <GroupBox Header="Position Offset (X, Y, Z)" Padding="10" Margin="0,0,0,10">
@@ -27,7 +26,7 @@
         <GroupBox Header="Rotation Offset" Padding="10" Margin="0,0,0,10">
             <StackPanel>
                 <TextBlock Text="(Roll = X rotation, Pitch = Y rotation, Yaw = Z rotation)" 
-                           Foreground="{DynamicResource WindowForegroundBrush}" Opacity="0.7" Margin="0,0,0,8"/>
+                           Opacity="0.7" Margin="0,0,0,8"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <Label Content="Roll (X):" Width="100"/>
                     <TextBox x:Name="RollTextBox" Width="150" Text="0" Padding="5"/>
@@ -47,7 +46,7 @@
         <GroupBox Header="Time Offset" Padding="10" Margin="0,0,0,10">
             <StackPanel>
                 <TextBlock Text="Adjust the timing of the interp track (in seconds)" 
-                           Foreground="{DynamicResource WindowForegroundBrush}" Opacity="0.7" Margin="0,0,0,8"/>
+                           Opacity="0.7" Margin="0,0,0,8"/>
                 <StackPanel Orientation="Horizontal">
                     <Label Content="Time Offset:" Width="100"/>
                     <TextBox x:Name="TimeOffsetTextBox" Width="150" Text="0" Padding="5"/>

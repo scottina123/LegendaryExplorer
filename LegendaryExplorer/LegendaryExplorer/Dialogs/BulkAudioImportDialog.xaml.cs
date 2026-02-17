@@ -14,6 +14,7 @@ using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -154,6 +155,7 @@ namespace LegendaryExplorer.Dialogs
 
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
+            var loopAudio = LoopAudioCheckBox.IsChecked == true;
 
             ImportButton.IsEnabled = false;
             AddFilesButton.IsEnabled = false;
@@ -162,7 +164,7 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents));
+                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents, loopAudio));
                 if (result != null)
                 {
                     StatusTextBlock.Text = $"Error: {result}";
@@ -189,7 +191,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents)
+        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents, bool loopAudio)
         {
             var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
 
@@ -243,7 +245,7 @@ namespace LegendaryExplorer.Dialogs
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
                 var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles,
-                    volume, outputBusName, outputBusId, outputBusWuId);
+                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio);
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
@@ -257,10 +259,12 @@ namespace LegendaryExplorer.Dialogs
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
 
-                // 7. Enable estimated duration in the Wwise project so SoundbanksInfo.xml
-                //    includes DurationMin/DurationMax for events.
+                // 7. Enable required project settings:
+                //    - SoundBankGenerateEstimatedDuration: includes DurationMin/DurationMax in SoundbanksInfo.xml
+                //    - SoundBankGenerateContentTXT: generates BankName.txt required by WwiseBankImport for
+                //      dialogue banks to map stream IDs to their Wwise object names
                 string projFile = Path.Combine(projectDir, "TemplateProject.wproj");
-                EnableEstimatedDuration(projFile);
+                EnableProjectSettings(projFile);
 
                 // 8. Run WwiseCLI to generate soundbanks
                 string wwiseCLIPath = WwiseCliHandler.GetWwiseCliPath(_package.Game);
@@ -307,9 +311,11 @@ namespace LegendaryExplorer.Dialogs
                 // 10. Import the bank into the package using existing WwiseBankImport
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package);
 
-                // 11. Set DurationSeconds on events if not already set by the importer.
-                //     WwiseBankImport sets it when SoundbanksInfo.xml has DurationMin/DurationMax,
-                //     but as a fallback we read the WAV file headers directly.
+                // 11. Set DurationSeconds on events from WAV file headers.
+                //     This is critical for dialogue: without DurationSeconds the game's dialogue
+                //     system cannot determine when a line has finished, causing nodes to get stuck.
+                //     We always override whatever WwiseBankImport set because the Wwise estimated
+                //     duration data is often missing for streaming sounds.
                 if (importResult == null)
                 {
                     var eventDurations = BuildEventDurationMap(wavFiles, generateGenderedEvents);
@@ -338,16 +344,20 @@ namespace LegendaryExplorer.Dialogs
         /// <summary>
         /// Builds the Actor-Mixer Hierarchy XML with an ActorMixer containing a Sound per WAV file,
         /// each configured for streaming with Vorbis Quality High conversion.
+        /// When generateGenderedEvents is true, two Sound nodes are created per WAV file
+        /// (baseName_m and baseName_f), each with a unique ID but referencing the same WAV.
+        /// This is necessary because in Wwise, each event must target its own Sound node —
+        /// sharing a Sound between events breaks event completion tracking in the bank.
         /// </summary>
         private static string BuildActorMixerXml(string workUnitId, string bankName, string actorMixerId,
-            List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId)
+            List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId,
+            bool generateGenderedEvents, bool loopAudio)
         {
             // Factory "Vorbis Quality High" conversion setting (from Factory Conversion Settings.wwu in template)
             const string vorbisHighId = "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}";
             const string vorbisHighWuId = "{F6B2880C-85E5-47FA-A126-645B5DFD9ACC}";
             // Master Audio Bus from the template's Master-Mixer Hierarchy (used for individual Sound nodes)
             const string masterBusId = "{1514A4D8-1DA6-412A-A17E-75CA0C2149F3}";
-            const string masterBusWuId = "{DC056BE9-DEF6-455F-87D6-60D9DF9D80AD}";
 
             var volumeStr = volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -355,35 +365,18 @@ namespace LegendaryExplorer.Dialogs
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
-                var sourceId = $"{{{Guid.NewGuid()}}}";
 
-                sb.AppendLine($"\t\t\t\t\t\t<Sound Name=\"{soundName}\" ID=\"{soundId}\" ShortID=\"{GenerateShortId(soundName)}\">");
-                sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsStreamingEnabled\" Type=\"bool\">");
-                sb.AppendLine("\t\t\t\t\t\t\t\t\t<ValueList>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t\t\t<Value>True</Value>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t\t</ValueList>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t</Property>");
-                sb.AppendLine("\t\t\t\t\t\t\t</PropertyList>");
-                sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Conversion\">");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Master Audio Bus\" ID=\"{masterBusId}\" WorkUnitID=\"{masterBusWuId}\"/>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
-                sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
-                sb.AppendLine("\t\t\t\t\t\t\t<ChildrenList>");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t<AudioFileSource Name=\"{soundName}\" ID=\"{sourceId}\" ShortID=\"{GenerateShortId(soundName + "_src")}\">");
-                sb.AppendLine("\t\t\t\t\t\t\t\t\t<Language>SFX</Language>");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t\t<AudioFile>{soundName}.wav</AudioFile>");
-                sb.AppendLine("\t\t\t\t\t\t\t\t</AudioFileSource>");
-                sb.AppendLine("\t\t\t\t\t\t\t</ChildrenList>");
-                sb.AppendLine("\t\t\t\t\t\t\t<ActiveSourceList>");
-                sb.AppendLine($"\t\t\t\t\t\t\t\t<ActiveSource Name=\"{soundName}\" ID=\"{sourceId}\" Platform=\"Linked\"/>");
-                sb.AppendLine("\t\t\t\t\t\t\t</ActiveSourceList>");
-                sb.AppendLine("\t\t\t\t\t\t</Sound>");
+                if (generateGenderedEvents)
+                {
+                    // Create separate Sound nodes for _m and _f so each event targets its own Sound
+                    var baseName = StripGenderSuffix(soundName);
+                    AppendSoundXml(sb, $"{baseName}_m", soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                    AppendSoundXml(sb, $"{baseName}_f", soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                }
+                else
+                {
+                    AppendSoundXml(sb, soundName, soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                }
             }
 
             var xml = new System.Text.StringBuilder();
@@ -421,10 +414,61 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
+        /// Appends a single Sound XML block to the Actor-Mixer hierarchy.
+        /// </summary>
+        /// <param name="sb">StringBuilder to append to.</param>
+        /// <param name="soundName">Name for the Sound node (used for ID generation and Wwise object name).</param>
+        /// <param name="wavFileName">Base name of the WAV file (without extension) this Sound references.</param>
+        /// <param name="vorbisHighId">Vorbis Quality High conversion ID.</param>
+        /// <param name="vorbisHighWuId">Vorbis Quality High WorkUnit ID.</param>
+        /// <param name="masterBusId">Master Audio Bus ID.</param>
+        /// <param name="outputBusWuId">Master-Mixer Hierarchy WorkUnit ID.</param>
+        private static void AppendSoundXml(System.Text.StringBuilder sb, string soundName, string wavFileName,
+            string vorbisHighId, string vorbisHighWuId, string masterBusId, string outputBusWuId, bool loopAudio)
+        {
+            var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
+            var sourceId = $"{{{Guid.NewGuid()}}}";
+
+            sb.AppendLine($"\t\t\t\t\t\t<Sound Name=\"{soundName}\" ID=\"{soundId}\" ShortID=\"{GenerateShortId(soundName)}\">");
+            sb.AppendLine("\t\t\t\t\t\t\t<PropertyList>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsStreamingEnabled\" Type=\"bool\">");
+            sb.AppendLine("\t\t\t\t\t\t\t\t\t<ValueList>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t\t\t<Value>True</Value>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t\t</ValueList>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t</Property>");
+            if (loopAudio)
+            {
+                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingEnabled\" Type=\"bool\" Value=\"True\"/>");
+                sb.AppendLine("\t\t\t\t\t\t\t\t<Property Name=\"IsLoopingInfinite\" Type=\"bool\" Value=\"True\"/>");
+            }
+            sb.AppendLine("\t\t\t\t\t\t\t</PropertyList>");
+            sb.AppendLine("\t\t\t\t\t\t\t<ReferenceList>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"Conversion\">");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<ObjectRef Name=\"Master Audio Bus\" ID=\"{masterBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t</Reference>");
+            sb.AppendLine("\t\t\t\t\t\t\t</ReferenceList>");
+            sb.AppendLine("\t\t\t\t\t\t\t<ChildrenList>");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t<AudioFileSource Name=\"{soundName}\" ID=\"{sourceId}\" ShortID=\"{GenerateShortId(soundName + "_src")}\">");
+            sb.AppendLine("\t\t\t\t\t\t\t\t\t<Language>SFX</Language>");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t\t<AudioFile>{wavFileName}.wav</AudioFile>");
+            sb.AppendLine("\t\t\t\t\t\t\t\t</AudioFileSource>");
+            sb.AppendLine("\t\t\t\t\t\t\t</ChildrenList>");
+            sb.AppendLine("\t\t\t\t\t\t\t<ActiveSourceList>");
+            sb.AppendLine($"\t\t\t\t\t\t\t\t<ActiveSource Name=\"{soundName}\" ID=\"{sourceId}\" Platform=\"Linked\"/>");
+            sb.AppendLine("\t\t\t\t\t\t\t</ActiveSourceList>");
+            sb.AppendLine("\t\t\t\t\t\t</Sound>");
+        }
+
+        /// <summary>
         /// Builds the Events XML with Play events per Sound.
-        /// When generateGenderedEvents is true, two events are created per sound:
-        /// {baseName}_m_Play and {baseName}_f_Play (both targeting the same Sound).
-        /// If the sound name already ends with _m or _f, the suffix is replaced for each variant.
+        /// When generateGenderedEvents is true, two events are created per WAV file:
+        /// {baseName}_m_Play targeting the {baseName}_m Sound, and
+        /// {baseName}_f_Play targeting the {baseName}_f Sound.
+        /// Each event must target its own Sound node — sharing a Sound between events
+        /// breaks event completion tracking in the generated Wwise bank.
         /// </summary>
         private static string BuildEventsXml(string workUnitId, string actorMixerWuId,
             List<string> wavFiles, bool generateGenderedEvents)
@@ -433,16 +477,20 @@ namespace LegendaryExplorer.Dialogs
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
-                var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
 
                 if (generateGenderedEvents)
                 {
                     var baseName = StripGenderSuffix(soundName);
-                    AppendEventXml(sb, $"{baseName}_m_Play", soundName, soundId, actorMixerWuId);
-                    AppendEventXml(sb, $"{baseName}_f_Play", soundName, soundId, actorMixerWuId);
+                    var mSoundName = $"{baseName}_m";
+                    var fSoundName = $"{baseName}_f";
+                    var mSoundId = $"{{{GenerateDeterministicGuid(mSoundName)}}}";
+                    var fSoundId = $"{{{GenerateDeterministicGuid(fSoundName)}}}";
+                    AppendEventXml(sb, $"{baseName}_m_Play", mSoundName, mSoundId, actorMixerWuId);
+                    AppendEventXml(sb, $"{baseName}_f_Play", fSoundName, fSoundId, actorMixerWuId);
                 }
                 else
                 {
+                    var soundId = $"{{{GenerateDeterministicGuid(soundName)}}}";
                     AppendEventXml(sb, $"{soundName}_Play", soundName, soundId, actorMixerWuId);
                 }
             }
@@ -558,11 +606,14 @@ namespace LegendaryExplorer.Dialogs
         }
 
         /// <summary>
-        /// Enables the "Generate Estimated Duration" setting in the Wwise project file (.wproj).
-        /// This causes WwiseCLI to include DurationMin/DurationMax attributes on events in
-        /// the generated SoundbanksInfo.xml, which WwiseBankImport uses to set DurationSeconds.
+        /// Enables required SoundBank generation settings in the Wwise project file (.wproj):
+        /// - SoundBankGenerateEstimatedDuration: includes DurationMin/DurationMax on events in
+        ///   the generated SoundbanksInfo.xml, used by WwiseBankImport to set DurationSeconds.
+        /// - SoundBankGenerateContentTXT: generates BankName.txt with Wwise object names mapped
+        ///   to stream IDs, required by WwiseBankImport for dialogue banks so events can be
+        ///   properly linked to their WwiseStream exports.
         /// </summary>
-        private static void EnableEstimatedDuration(string wprojPath)
+        private static void EnableProjectSettings(string wprojPath)
         {
             var doc = XDocument.Load(wprojPath);
             var propertyList = doc.Descendants("PropertyList").FirstOrDefault();
@@ -570,6 +621,10 @@ namespace LegendaryExplorer.Dialogs
             {
                 propertyList.Add(new XElement("Property",
                     new XAttribute("Name", "SoundBankGenerateEstimatedDuration"),
+                    new XAttribute("Type", "bool"),
+                    new XAttribute("Value", "True")));
+                propertyList.Add(new XElement("Property",
+                    new XAttribute("Name", "SoundBankGenerateContentTXT"),
                     new XAttribute("Type", "bool"),
                     new XAttribute("Value", "True")));
                 doc.Save(wprojPath);
@@ -605,20 +660,25 @@ namespace LegendaryExplorer.Dialogs
 
         /// <summary>
         /// Sets DurationSeconds on WwiseEvent exports in the package that match the given event names.
-        /// Only sets the property if it is not already present (i.e. not set by WwiseBankImport from
-        /// SoundbanksInfo.xml duration data).
+        /// This always overrides any value previously set by WwiseBankImport, because the Wwise
+        /// estimated duration data may be missing for streaming sounds and without DurationSeconds
+        /// the dialogue system cannot determine when a line has finished, causing nodes to get stuck.
         /// </summary>
         private void SetEventDurations(Dictionary<string, float> eventDurations)
         {
             foreach (var export in _package.Exports.Where(e => e.ClassName == "WwiseEvent"))
             {
-                if (eventDurations.TryGetValue(export.ObjectNameString, out var duration) && duration > 0f)
+                if (eventDurations.TryGetValue(export.ObjectNameString, out var duration))
                 {
-                    var props = export.GetProperties();
-                    if (!props.ContainsNamedProp("DurationSeconds"))
+                    if (duration > 0f)
                     {
+                        var props = export.GetProperties();
                         props.AddOrReplaceProp(new FloatProperty(duration, "DurationSeconds"));
                         export.WriteProperties(props);
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"BulkAudioImport: Could not determine WAV duration for event '{export.ObjectNameString}', DurationSeconds will not be set. Dialogue nodes using this event may get stuck.");
                     }
                 }
             }
