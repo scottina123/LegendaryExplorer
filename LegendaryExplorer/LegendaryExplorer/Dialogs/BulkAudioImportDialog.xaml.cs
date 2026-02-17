@@ -12,6 +12,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
 
 namespace LegendaryExplorer.Dialogs
@@ -256,8 +257,12 @@ namespace LegendaryExplorer.Dialogs
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
 
-                // 7. Run WwiseCLI to generate soundbanks
+                // 7. Enable estimated duration in the Wwise project so SoundbanksInfo.xml
+                //    includes DurationMin/DurationMax for events.
                 string projFile = Path.Combine(projectDir, "TemplateProject.wproj");
+                EnableEstimatedDuration(projFile);
+
+                // 8. Run WwiseCLI to generate soundbanks
                 string wwiseCLIPath = WwiseCliHandler.GetWwiseCliPath(_package.Game);
 
                 var process = new Process
@@ -283,7 +288,7 @@ namespace LegendaryExplorer.Dialogs
                     Debug.WriteLine($"WwiseCLI stderr: {stderr}");
                 }
 
-                // 8. Find the generated .bnk file
+                // 9. Find the generated .bnk file
                 string generatedDir = Path.Combine(projectDir, "GeneratedSoundBanks", "Windows");
                 if (!Directory.Exists(generatedDir))
                 {
@@ -299,8 +304,18 @@ namespace LegendaryExplorer.Dialogs
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
-                // 9. Import the bank into the package using existing WwiseBankImport
+                // 10. Import the bank into the package using existing WwiseBankImport
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package);
+
+                // 11. Set DurationSeconds on events if not already set by the importer.
+                //     WwiseBankImport sets it when SoundbanksInfo.xml has DurationMin/DurationMax,
+                //     but as a fallback we read the WAV file headers directly.
+                if (importResult == null)
+                {
+                    var eventDurations = BuildEventDurationMap(wavFiles, generateGenderedEvents);
+                    SetEventDurations(eventDurations);
+                }
+
                 return importResult;
             }
             finally
@@ -540,6 +555,134 @@ namespace LegendaryExplorer.Dialogs
                 new XAttribute("Name", busName),
                 new XAttribute("ID", busId));
             childrenList.Add(busElement);
+        }
+
+        /// <summary>
+        /// Enables the "Generate Estimated Duration" setting in the Wwise project file (.wproj).
+        /// This causes WwiseCLI to include DurationMin/DurationMax attributes on events in
+        /// the generated SoundbanksInfo.xml, which WwiseBankImport uses to set DurationSeconds.
+        /// </summary>
+        private static void EnableEstimatedDuration(string wprojPath)
+        {
+            var doc = XDocument.Load(wprojPath);
+            var propertyList = doc.Descendants("PropertyList").FirstOrDefault();
+            if (propertyList != null)
+            {
+                propertyList.Add(new XElement("Property",
+                    new XAttribute("Name", "SoundBankGenerateEstimatedDuration"),
+                    new XAttribute("Type", "bool"),
+                    new XAttribute("Value", "True")));
+                doc.Save(wprojPath);
+            }
+        }
+
+        /// <summary>
+        /// Builds a mapping from expected event names to their WAV file durations.
+        /// Used as a fallback to set DurationSeconds on events if SoundbanksInfo.xml
+        /// did not contain estimated duration data.
+        /// </summary>
+        private Dictionary<string, float> BuildEventDurationMap(List<string> wavFiles, bool generateGenderedEvents)
+        {
+            var map = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            foreach (var wavPath in wavFiles)
+            {
+                var soundName = Path.GetFileNameWithoutExtension(wavPath);
+                var duration = ReadWavDurationSeconds(wavPath);
+
+                if (generateGenderedEvents)
+                {
+                    var baseName = StripGenderSuffix(soundName);
+                    map[$"{baseName}_m_Play"] = duration;
+                    map[$"{baseName}_f_Play"] = duration;
+                }
+                else
+                {
+                    map[$"{soundName}_Play"] = duration;
+                }
+            }
+            return map;
+        }
+
+        /// <summary>
+        /// Sets DurationSeconds on WwiseEvent exports in the package that match the given event names.
+        /// Only sets the property if it is not already present (i.e. not set by WwiseBankImport from
+        /// SoundbanksInfo.xml duration data).
+        /// </summary>
+        private void SetEventDurations(Dictionary<string, float> eventDurations)
+        {
+            foreach (var export in _package.Exports.Where(e => e.ClassName == "WwiseEvent"))
+            {
+                if (eventDurations.TryGetValue(export.ObjectNameString, out var duration) && duration > 0f)
+                {
+                    var props = export.GetProperties();
+                    if (!props.ContainsNamedProp("DurationSeconds"))
+                    {
+                        props.AddOrReplaceProp(new FloatProperty(duration, "DurationSeconds"));
+                        export.WriteProperties(props);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads the duration in seconds from a WAV file by parsing its RIFF header.
+        /// Returns 0 if the file cannot be parsed.
+        /// </summary>
+        private static float ReadWavDurationSeconds(string wavPath)
+        {
+            try
+            {
+                using var fs = File.OpenRead(wavPath);
+                using var reader = new BinaryReader(fs);
+
+                // RIFF header: "RIFF" (4) + file size (4) + "WAVE" (4)
+                if (fs.Length < 12)
+                    return 0f;
+                reader.ReadBytes(4); // "RIFF"
+                reader.ReadInt32();  // file size
+                reader.ReadBytes(4); // "WAVE"
+
+                int byteRate = 0;
+
+                while (fs.Position + 8 <= fs.Length)
+                {
+                    var chunkId = new string(reader.ReadChars(4));
+                    var chunkSize = reader.ReadInt32();
+
+                    if (chunkId == "fmt ")
+                    {
+                        var startPos = fs.Position;
+                        reader.ReadInt16();  // audio format
+                        reader.ReadInt16();  // num channels
+                        reader.ReadInt32();  // sample rate
+                        byteRate = reader.ReadInt32();
+                        var bytesRead = (int)(fs.Position - startPos);
+                        if (chunkSize > bytesRead)
+                            reader.ReadBytes(chunkSize - bytesRead);
+                    }
+                    else if (chunkId == "data")
+                    {
+                        if (byteRate > 0)
+                            return (float)chunkSize / byteRate;
+                        return 0f;
+                    }
+                    else
+                    {
+                        if (fs.Position + chunkSize > fs.Length)
+                            return 0f;
+                        reader.ReadBytes(chunkSize);
+                    }
+
+                    // WAV chunks are word-aligned
+                    if (chunkSize % 2 != 0 && fs.Position < fs.Length)
+                        reader.ReadByte();
+                }
+            }
+            catch
+            {
+                // If we can't read the file, return 0
+            }
+            return 0f;
         }
 
         /// <summary>
