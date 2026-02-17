@@ -844,9 +844,16 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         private void BulkImportAudio_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new Dialogs.BulkAudioImportDialog
+            var peWindow = GetPEWindow();
+            if (peWindow.Pcc == null)
             {
-                Owner = GetPEWindow()
+                MessageBox.Show("No package is currently open.", "No package", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Dialogs.BulkAudioImportDialog(peWindow.Pcc)
+            {
+                Owner = peWindow
             };
             dialog.ShowDialog();
         }
