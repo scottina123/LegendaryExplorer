@@ -15,7 +15,9 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
     public static class AudioAnalyzer
     {
         /// <summary>
-        /// Gets the duration of audio from a WwiseStream or SoundNodeWave export
+        /// Gets the duration of audio from a WwiseStream or SoundNodeWave export.
+        /// Prefers reading the WEM header directly (sample count / sample rate) which
+        /// is more accurate than converting to WAV via vgmstream.
         /// </summary>
         /// <param name="audioExport">The audio export entry</param>
         /// <returns>Duration in seconds, or 0 if unable to determine</returns>
@@ -24,9 +26,33 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (audioExport == null)
                 return 0f;
 
+            // Preferred path: read duration straight from the WEM header.
+            // This avoids the vgmstream conversion pipeline which can add/trim
+            // samples and introduce small timing errors.
             try
             {
-                // Try to get the raw audio data and convert to PCM
+                if (audioExport.ClassName == "WwiseStream")
+                {
+                    var stream = audioExport.GetBinaryData<WwiseStream>();
+                    var audioInfo = stream?.GetAudioInfo();
+                    if (audioInfo != null)
+                    {
+                        var length = audioInfo.GetLength();
+                        if (length.TotalSeconds > 0)
+                        {
+                            return (float)length.TotalSeconds;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Fall through to WAV-based measurement
+            }
+
+            // Fallback: decode to WAV and measure
+            try
+            {
                 byte[] audioData = GetAudioAsWav(audioExport);
                 if (audioData == null || audioData.Length == 0)
                     return 0f;

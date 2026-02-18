@@ -987,16 +987,31 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             foreach (var viseme in visemeNames)
             {
                 var samples = visemeSamples[viseme];
-                
+
                 // Apply smoothing to reduce jitter - more smoothing for m_Open which gets many triggers
                 int smoothingPasses = viseme == "m_Open" ? 3 : 1;
                 for (int pass = 0; pass < smoothingPasses; pass++)
                 {
                     SmoothSamplesInPlace(samples);
                 }
-                
+
+                // Ramp the tail end of the curve to zero so the mouth closes
+                // at the end of the line (prevents open-mouth freeze).
+                int rampSamples = Math.Min((int)(0.15f * sampleRate), numSamples / 4);
+                if (rampSamples > 0)
+                {
+                    int rampStart = numSamples - 1 - rampSamples;
+                    for (int i = rampStart; i < numSamples; i++)
+                    {
+                        float t = (float)(i - rampStart) / rampSamples; // 0 → 1
+                        samples[i] *= 1f - t;
+                    }
+                }
+                // Ensure the very last sample is exactly zero
+                samples[numSamples - 1] = 0f;
+
                 var keyframes = ConvertSamplesToKeyframes(samples, sampleRate, duration);
-                
+
                 if (keyframes.Count >= 2)
                 {
                     AddAnimation(viseme, keyframes);
@@ -1034,11 +1049,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// <summary>
         /// Convert sampled curve to keyframes with intelligent decimation
         /// Only keeps keyframes at significant changes (peaks, valleys, inflection points)
+        /// Also enforces a maximum gap so that sustained regions always have enough density.
         /// </summary>
         private List<FaceFXControlPoint> ConvertSamplesToKeyframes(float[] samples, float sampleRate, float duration)
         {
             var keyframes = new List<FaceFXControlPoint>();
-            
+
             if (samples.Length < 2)
             {
                 keyframes.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
@@ -1047,29 +1063,43 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
 
             // Always start at 0
-            keyframes.Add(new FaceFXControlPoint { time = 0f, weight = samples[0], inTangent = 0f, leaveTangent = 0f });
+            keyframes.Add(new FaceFXControlPoint { time = 0f, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
-            // Faster keyframe interval for snappier animation
-            const float minKeyframeInterval = 0.08f; // 80ms between keyframes
-            const float significanceThreshold = 0.02f; // Lower threshold for more responsive animation
-            
+            float sampleInterval = 1f / sampleRate;
+
+            // Allow keyframes as close as one sample apart so peaks/valleys are never skipped
+            float minKeyframeInterval = sampleInterval;
+            const float significanceThreshold = 0.015f;
+            // Force a keyframe at least this often when the signal is non-zero
+            const float maxGap = 0.12f;
+
             float lastKeyframeTime = 0f;
-            float lastKeyframeWeight = samples[0];
-            
+            float lastKeyframeWeight = 0f;
+
             for (int i = 1; i < samples.Length - 1; i++)
             {
                 float time = i / sampleRate;
                 float weight = samples[i];
                 float prevWeight = samples[i - 1];
                 float nextWeight = samples[i + 1];
-                
-                // Check if this is a significant point
-                bool isPeak = prevWeight < weight && weight > nextWeight && weight > 0.015f;
-                bool isValley = prevWeight > weight && weight < nextWeight && lastKeyframeWeight > 0.015f;
+
+                float elapsed = time - lastKeyframeTime;
+                bool hasEnoughTime = elapsed >= minKeyframeInterval;
+
+                if (!hasEnoughTime)
+                    continue;
+
+                // Detect important curve features
+                bool isPeak = prevWeight < weight && weight >= nextWeight && weight > 0.01f;
+                bool isValley = prevWeight > weight && weight <= nextWeight;
                 bool isSignificantChange = Math.Abs(weight - lastKeyframeWeight) > significanceThreshold;
-                bool hasEnoughTime = time - lastKeyframeTime >= minKeyframeInterval;
-                
-                if (hasEnoughTime && (isPeak || isValley || isSignificantChange))
+                // Transitions to/from zero should always be captured
+                bool isZeroCrossing = (lastKeyframeWeight < 0.005f && weight > 0.01f) ||
+                                      (lastKeyframeWeight > 0.01f && weight < 0.005f);
+                // Enforce maximum gap when signal is active
+                bool gapTooLarge = elapsed >= maxGap && weight > 0.005f;
+
+                if (isPeak || isValley || isSignificantChange || isZeroCrossing || gapTooLarge)
                 {
                     keyframes.Add(new FaceFXControlPoint
                     {
@@ -1084,7 +1114,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             }
 
             // Always end at 0
-            keyframes.Add(new FaceFXControlPoint { time = duration, weight = samples[^1], inTangent = 0f, leaveTangent = 0f });
+            keyframes.Add(new FaceFXControlPoint { time = duration, weight = 0f, inTangent = 0f, leaveTangent = 0f });
 
             return keyframes;
         }
@@ -1189,79 +1219,70 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         }
 
         /// <summary>
-        /// Map text phonemes to audio timing based on speech segments
+        /// Map text phonemes to audio timing based on speech segments.
+        /// Every phoneme is guaranteed to be placed — they are distributed
+        /// proportionally across segments by duration.
         /// </summary>
         private List<TimedPhoneme> MapPhonemesToAudioTiming(List<PhonemeData> phonemes, List<AudioSegment> audioSegments, float duration)
         {
             var timedPhonemes = new List<TimedPhoneme>();
-            
+
             if (phonemes.Count == 0)
                 return timedPhonemes;
-            
+
             // Calculate total speech duration from audio segments
             float totalSpeechTime = audioSegments.Sum(s => s.EndTime - s.StartTime);
-            
-            // Calculate average phoneme duration based on audio
-            // Slightly faster range for snappier animation
-            float avgPhonemeDuration = totalSpeechTime / phonemes.Count;
-            avgPhonemeDuration = Math.Max(0.06f, Math.Min(avgPhonemeDuration, 0.15f)); // Clamp to 60-150ms range
-            
-            // Distribute phonemes across audio segments
+            if (totalSpeechTime <= 0)
+                totalSpeechTime = duration;
+
+            // Distribute ALL phonemes proportionally across segments.
+            // Each segment gets a share of phonemes proportional to its duration.
             int phonemeIndex = 0;
-            
-            foreach (var segment in audioSegments)
+            int totalPhonemes = phonemes.Count;
+
+            for (int s = 0; s < audioSegments.Count; s++)
             {
+                var segment = audioSegments[s];
                 float segmentDuration = segment.EndTime - segment.StartTime;
-                int phonemesInSegment = (int)Math.Round(segmentDuration / avgPhonemeDuration);
-                phonemesInSegment = Math.Max(1, Math.Min(phonemesInSegment, phonemes.Count - phonemeIndex));
-                
+
+                int phonemesInSegment;
+                if (s == audioSegments.Count - 1)
+                {
+                    // Last segment gets all remaining phonemes
+                    phonemesInSegment = totalPhonemes - phonemeIndex;
+                }
+                else
+                {
+                    // Proportional share, at least 1 if there are phonemes left
+                    phonemesInSegment = (int)Math.Round((double)totalPhonemes * segmentDuration / totalSpeechTime);
+                    phonemesInSegment = Math.Max(1, Math.Min(phonemesInSegment, totalPhonemes - phonemeIndex));
+                }
+
+                if (phonemesInSegment <= 0)
+                    continue;
+
                 float phonemeDuration = segmentDuration / phonemesInSegment;
-                // Ensure minimum duration - slightly faster
-                phonemeDuration = Math.Max(phonemeDuration, 0.06f);
-                
-                for (int i = 0; i < phonemesInSegment && phonemeIndex < phonemes.Count; i++)
+                phonemeDuration = Math.Max(phonemeDuration, 0.04f);
+
+                for (int i = 0; i < phonemesInSegment && phonemeIndex < totalPhonemes; i++)
                 {
                     var phoneme = phonemes[phonemeIndex];
-                    
-                    // Get local amplitude at this position
+
                     float localTime = segment.StartTime + i * phonemeDuration + phonemeDuration * 0.5f;
                     float localAmplitude = GetAmplitudeAtTime(localTime);
-                    
+
                     timedPhonemes.Add(new TimedPhoneme
                     {
                         Phoneme = phoneme.Phoneme,
                         StartTime = segment.StartTime + i * phonemeDuration,
                         Duration = phonemeDuration,
-                        Intensity = Math.Max(0.9f, localAmplitude) // High minimum intensity for full mouth movement
+                        Intensity = Math.Max(0.9f, localAmplitude)
                     });
-                    
+
                     phonemeIndex++;
                 }
             }
-            
-            // If we have remaining phonemes, distribute them evenly at the end
-            if (phonemeIndex < phonemes.Count)
-            {
-                float remainingTime = duration - (audioSegments.Count > 0 ? audioSegments[^1].EndTime : 0f);
-                if (remainingTime > 0.1f)
-                {
-                    int remaining = phonemes.Count - phonemeIndex;
-                    float startTime = audioSegments.Count > 0 ? audioSegments[^1].EndTime : 0f;
-                    float phonemeDuration = Math.Max(remainingTime / remaining, 0.08f);
-                    
-                    for (int i = phonemeIndex; i < phonemes.Count; i++)
-                    {
-                        timedPhonemes.Add(new TimedPhoneme
-                        {
-                            Phoneme = phonemes[i].Phoneme,
-                            StartTime = startTime + (i - phonemeIndex) * phonemeDuration,
-                            Duration = phonemeDuration,
-                            Intensity = 1.0f // Full intensity
-                        });
-                    }
-                }
-            }
-            
+
             return timedPhonemes;
         }
 

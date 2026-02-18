@@ -143,35 +143,29 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             if (allPhonemes.Count == 0)
                 return result;
 
-            // Calculate timing for each phoneme
-            // Use natural speaking rhythm - average phoneme is about 60-80ms
-            // But scale to fit the actual audio duration
-            
+            // Calculate timing for each phoneme.
+            // NOTE: MapPhonemesToAudioTiming later overrides the timing completely
+            // based on audio segments. The timing here is only a rough guide, so we
+            // must NOT drop phonemes early — the full phoneme list is needed for the
+            // audio-timed redistribution to produce enough mouth movements.
+
             float totalWeight = allPhonemes.Sum(p => GetPhonemeWeight(p));
             float availableDuration = duration - 0.1f; // Leave small buffer at start/end
-            
-            // Calculate minimum phoneme duration based on natural speech
-            // Natural speech is about 12-15 phonemes per second (faster rate for snappier lip sync)
-            float naturalPhonemeRate = 14f; // phonemes per second (increased from 12)
-            float naturalDuration = allPhonemes.Count / naturalPhonemeRate;
-            
-            // If the audio is longer than natural speech would take, 
-            // stretch phonemes but don't make them unnaturally long
-            float timeScale = availableDuration / Math.Max(naturalDuration, 0.1f);
-            timeScale = Math.Max(0.6f, Math.Min(timeScale, 2.5f)); // Clamp between 0.6x and 2.5x natural speed
-            
+
+            // Scale phoneme durations to fill the available audio duration
+            float timeScale = totalWeight > 0
+                ? availableDuration / totalWeight
+                : 0.07f; // fallback ~70ms per unit weight
+
             float currentTime = 0.05f; // Small offset from the start
 
             foreach (var phoneme in allPhonemes)
             {
                 float weight = GetPhonemeWeight(phoneme);
-                
-                // Base duration from natural speech timing
-                float baseDuration = (weight / naturalPhonemeRate) * timeScale;
-                
-                // Ensure minimum duration for visibility (at least 50ms for faster transitions)
-                float phonemeDuration = Math.Max(baseDuration, 0.05f);
-                
+
+                // Duration proportional to weight, scaled to fill the audio
+                float phonemeDuration = Math.Max(weight * timeScale, 0.04f);
+
                 if (phoneme != "PAUSE")
                 {
                     result.Add(new PhonemeData
@@ -181,12 +175,8 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                         Duration = phonemeDuration
                     });
                 }
-                
+
                 currentTime += phonemeDuration;
-                
-                // If we're running past the audio duration, stop adding phonemes
-                if (currentTime >= duration - 0.05f)
-                    break;
             }
 
             return result;

@@ -56,9 +56,9 @@
                        FontStyle="Italic" Opacity="0.8"/>
             
             <!-- Warning -->
-            <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1" 
+            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1" 
                     Padding="10" Margin="0,15,0,0" CornerRadius="3">
-                <TextBlock Text="? This operation cannot be undone." TextWrapping="Wrap"/>
+                <TextBlock Text="⚠ This operation cannot be undone." TextWrapping="Wrap"/>
             </Border>
         </StackPanel>
 
