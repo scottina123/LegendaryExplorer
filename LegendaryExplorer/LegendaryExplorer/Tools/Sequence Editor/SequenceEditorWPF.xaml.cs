@@ -46,6 +46,7 @@ using Color = System.Drawing.Color;
 using Image = System.Drawing.Image;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.DialogueEditor;
 using Xceed.Wpf.Toolkit;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using MessageBoxResult = System.Windows.MessageBoxResult;
@@ -2203,6 +2204,23 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
+                if (contextMenu.GetChild("bulkEditInterpGroupsMenuItem") is MenuItem bulkEditInterpGroupsMenuItem)
+                {
+                    string className = obj.Export.ClassName;
+                    if (className == "InterpData"
+                        || (className == "SeqAct_Interp" && obj is SAction action && action.Varlinks.Any() &&
+                            action.Varlinks[0].Links.Any()
+                            && Pcc.IsUExport(action.Varlinks[0].Links[0]) &&
+                            Pcc.GetUExport(action.Varlinks[0].Links[0]).ClassName == "InterpData"))
+                    {
+                        bulkEditInterpGroupsMenuItem.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        bulkEditInterpGroupsMenuItem.Visibility = Visibility.Collapsed;
+                    }
+                }
+
                 if (contextMenu.GetChild("plotEditorMenuItem") is MenuItem plotEditorMenuItem)
                 {
                     if (obj is SAction sAction &&
@@ -2980,6 +2998,31 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 p.Show();
                 p.LoadFile(Pcc.FilePath);
                 p.SelectedInterpData = Pcc.GetUExport(uIndex);
+            }
+        }
+
+        private void BulkEditInterpGroups_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is SObj obj)
+            {
+                ExportEntry exportEntry = obj.Export;
+                ExportEntry interpData = null;
+                if (exportEntry.IsA("InterpData"))
+                {
+                    interpData = exportEntry;
+                }
+                else if (obj is SAction sAction && sAction.Varlinks.Any() && sAction.Varlinks[0].Links.Any()
+                         && Pcc.IsUExport(sAction.Varlinks[0].Links[0])
+                         && Pcc.GetUExport(sAction.Varlinks[0].Links[0]).ClassName == "InterpData")
+                {
+                    interpData = Pcc.GetUExport(sAction.Varlinks[0].Links[0]);
+                }
+
+                if (interpData != null)
+                {
+                    var dialog = new BulkInterpEditorDialog(this, interpData);
+                    dialog.ShowDialog();
+                }
             }
         }
 

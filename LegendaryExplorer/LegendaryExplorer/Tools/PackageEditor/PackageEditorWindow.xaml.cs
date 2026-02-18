@@ -264,6 +264,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ApplyBulkPropEditsCommand { get; set; }
         public ICommand ViewReferenceGraphCommand { get; set; }
         public ICommand AddInterpTrackCommand { get; set; }
+        public ICommand BulkEditInterpGroupsCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -325,6 +326,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BulkImportSWFCommand = new GenericCommand(BulkImportSWFs, PackageIsLoaded);
             OpenExportInCommand = new RelayCommand(OpenExportIn, CanOpenExportIn);
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
+            BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -1169,6 +1171,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
         }
 
         private bool CanAddInterpTrack() => TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup");
+
+        private bool CanBulkEditInterpGroups() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData";
+
+        private void BulkEditInterpGroups()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData")
+            {
+                var dialog = new BulkInterpEditorDialog(this, exp);
+                dialog.ShowDialog();
+            }
+        }
 
         private void AddInterpTrack()
         {

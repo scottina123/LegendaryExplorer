@@ -23,8 +23,8 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock Text="Interp Groups in this dialogue node" FontWeight="Bold" FontSize="14"/>
-            <TextBlock Text="Edit the values below and click Apply to save changes. Group name changes will also update the associated SeqAct_Interp variable links." 
+            <TextBlock Text="Interp Groups in this InterpData" FontWeight="Bold" FontSize="14"/>
+            <TextBlock Text="Edit the values below and click Apply to save changes. Group name changes will also update the associated SeqAct_Interp variable links. Find/Replace values in the Bulk Edit section will be applied before saving." 
                        TextWrapping="Wrap" Margin="0,5,0,0"/>
         </StackPanel>
 
@@ -63,7 +63,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Find:" VerticalAlignment="Center" Margin="5"/>
@@ -76,9 +75,6 @@
                     <CheckBox x:Name="ReplaceSFXFindActor" Content="m_nmSFXFindActor" IsChecked="True" Margin="5,0"/>
                     <CheckBox x:Name="ReplaceTrackFindActor" Content="Track m_nmFindActor" IsChecked="True" Margin="5,0"/>
                 </StackPanel>
-
-                <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4" Content="Apply Bulk Replace" 
-                        Click="BulkReplace_Click" Padding="10,5" Margin="5" HorizontalAlignment="Left"/>
             </Grid>
         </GroupBox>
 

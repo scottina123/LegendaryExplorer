@@ -54,6 +54,7 @@
             <MenuItem Header="Open class definition in Package Editor" Click="OpenClassDefinitionInPackageEditor_Clicked"/>
             <MenuItem Header="Open Referenced Object in Package Editor" Click="OpenReferencedObjectInPackageEditor_Clicked" Name="openRefInPackEdMenuItem"/>
             <MenuItem Header="Open in Interp Editor" Click="OpenInInterpViewer_Clicked" Name="interpViewerMenuItem"/>
+            <MenuItem Header="Bulk Edit InterpGroups" Click="BulkEditInterpGroups_Clicked" Name="bulkEditInterpGroupsMenuItem" ToolTip="Bulk edit InterpGroup properties for this InterpData"/>
             <MenuItem Header="Open in Dialogue Editor" Click="OpenInDialogueEditor_Clicked" Name="dialogueEditorMenuItem"/>
             <MenuItem Header="Open Referenced State Event in Plot Editor" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
             <Separator />

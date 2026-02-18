@@ -116,20 +116,18 @@ namespace LegendaryExplorer.DialogueEditor
 
     /// <summary>
     /// Dialog for bulk editing InterpGroup properties (GroupName, m_nmSFXFindActor, m_nmFindActor)
-    /// in a dialogue node's InterpData.
+    /// in an InterpData.
     /// </summary>
     public partial class BulkInterpEditorDialog : Window
     {
         public ObservableCollectionExtended<InterpGroupItem> InterpGroupItems { get; } = new();
 
-        private readonly DialogueNodeExtended _dialogueNode;
-        private readonly ConversationExtended _conversation;
+        private readonly ExportEntry _interpData;
         private readonly IMEPackage _pcc;
 
         public BulkInterpEditorDialog(Window owner, DialogueNodeExtended dialogueNode, ConversationExtended conversation)
         {
-            _dialogueNode = dialogueNode;
-            _conversation = conversation;
+            _interpData = dialogueNode?.InterpData;
             _pcc = conversation.Export.FileRef;
 
             InitializeComponent();
@@ -139,19 +137,31 @@ namespace LegendaryExplorer.DialogueEditor
             LoadInterpGroups();
         }
 
+        public BulkInterpEditorDialog(Window owner, ExportEntry interpData)
+        {
+            _interpData = interpData;
+            _pcc = interpData.FileRef;
+
+            InitializeComponent();
+            CustomWindowChrome.ApplyCustomChrome(this);
+            Owner = owner;
+
+            LoadInterpGroups();
+        }
+
         /// <summary>
-        /// Loads all InterpGroups and tracks from the dialogue node's InterpData.
+        /// Loads all InterpGroups and tracks from the InterpData.
         /// </summary>
         private void LoadInterpGroups()
         {
             InterpGroupItems.ClearEx();
 
-            if (_dialogueNode?.InterpData == null)
+            if (_interpData == null)
             {
                 return;
             }
 
-            ExportEntry interpData = _dialogueNode.InterpData;
+            ExportEntry interpData = _interpData;
             ExportEntry seqActInterp = FindSeqActInterp(interpData);
 
             // Get the InterpGroups from the InterpData
@@ -231,67 +241,52 @@ namespace LegendaryExplorer.DialogueEditor
         }
 
         /// <summary>
-        /// Applies bulk find/replace to the selected properties.
-        /// </summary>
-        private void BulkReplace_Click(object sender, RoutedEventArgs e)
-        {
-            string findText = FindTextBox.Text;
-            string replaceText = ReplaceTextBox.Text;
-
-            if (string.IsNullOrEmpty(findText))
-            {
-                MessageBox.Show("Please enter text to find.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            int replacements = 0;
-
-            foreach (var item in InterpGroupItems)
-            {
-                if (item.Type == InterpGroupItem.ItemType.InterpGroup)
-                {
-                    if (ReplaceGroupName.IsChecked == true && !string.IsNullOrEmpty(item.GroupName))
-                    {
-                        string newValue = item.GroupName.Replace(findText, replaceText);
-                        if (newValue != item.GroupName)
-                        {
-                            item.GroupName = newValue;
-                            replacements++;
-                        }
-                    }
-
-                    if (ReplaceSFXFindActor.IsChecked == true && !string.IsNullOrEmpty(item.SFXFindActor))
-                    {
-                        string newValue = item.SFXFindActor.Replace(findText, replaceText);
-                        if (newValue != item.SFXFindActor)
-                        {
-                            item.SFXFindActor = newValue;
-                            replacements++;
-                        }
-                    }
-                }
-                else if (item.Type == InterpGroupItem.ItemType.Track)
-                {
-                    if (ReplaceTrackFindActor.IsChecked == true && !string.IsNullOrEmpty(item.TrackFindActor))
-                    {
-                        string newValue = item.TrackFindActor.Replace(findText, replaceText);
-                        if (newValue != item.TrackFindActor)
-                        {
-                            item.TrackFindActor = newValue;
-                            replacements++;
-                        }
-                    }
-                }
-            }
-
-            MessageBox.Show($"Made {replacements} replacement(s).", "Bulk Replace", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-
-        /// <summary>
-        /// Applies all changes to the package.
+        /// Applies bulk find/replace and then writes all changes to the package.
         /// </summary>
         private void Apply_Click(object sender, RoutedEventArgs e)
         {
+            // Apply bulk find/replace first if there is text in the find box
+            string findText = FindTextBox.Text;
+            string replaceText = ReplaceTextBox.Text;
+
+            if (!string.IsNullOrEmpty(findText))
+            {
+                foreach (var item in InterpGroupItems)
+                {
+                    if (item.Type == InterpGroupItem.ItemType.InterpGroup)
+                    {
+                        if (ReplaceGroupName.IsChecked == true && !string.IsNullOrEmpty(item.GroupName))
+                        {
+                            string newValue = item.GroupName.Replace(findText, replaceText);
+                            if (newValue != item.GroupName)
+                            {
+                                item.GroupName = newValue;
+                            }
+                        }
+
+                        if (ReplaceSFXFindActor.IsChecked == true && !string.IsNullOrEmpty(item.SFXFindActor))
+                        {
+                            string newValue = item.SFXFindActor.Replace(findText, replaceText);
+                            if (newValue != item.SFXFindActor)
+                            {
+                                item.SFXFindActor = newValue;
+                            }
+                        }
+                    }
+                    else if (item.Type == InterpGroupItem.ItemType.Track)
+                    {
+                        if (ReplaceTrackFindActor.IsChecked == true && !string.IsNullOrEmpty(item.TrackFindActor))
+                        {
+                            string newValue = item.TrackFindActor.Replace(findText, replaceText);
+                            if (newValue != item.TrackFindActor)
+                            {
+                                item.TrackFindActor = newValue;
+                            }
+                        }
+                    }
+                }
+            }
+
             int changesApplied = 0;
 
             foreach (var item in InterpGroupItems.Where(i => i.IsModified))
