@@ -4034,6 +4034,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     // Change the link instead
                     sourceItem.Entry.idxLink = targetItem?.Entry?.UIndex ?? 0;
+                    if (ShouldAddToInterpList(sourceItem.Entry))
+                    {
+                        AddToInterpList(sourceItem.Entry);
+                    }
                     return;
                 }
 
@@ -4131,6 +4135,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
 
                 TryAddToPersistentLevel(Pcc.Exports.Skip(numExports));
+
+                if (portingOption.PortingOptionChosen is not EntryImporter.PortingOption.ReplaceSingular
+                    and not EntryImporter.PortingOption.ReplaceSingularWithRelink
+                    && newEntry != null
+                    && ShouldAddToInterpList(newEntry))
+                {
+                    AddToInterpList(newEntry);
+                }
 
                 //sw.Stop();
                 //MessageBox.Show($"Took {sw.ElapsedMilliseconds}ms");
