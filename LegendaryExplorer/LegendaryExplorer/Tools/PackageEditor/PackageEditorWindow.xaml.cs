@@ -55,6 +55,7 @@ using MessageBoxResult = System.Windows.MessageBoxResult;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
+using LegendaryExplorerCore.Matinee;
 
 namespace LegendaryExplorer.Tools.PackageEditor
 {
@@ -262,6 +263,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ExportAllPropsCommand { get; set; }
         public ICommand ApplyBulkPropEditsCommand { get; set; }
         public ICommand ViewReferenceGraphCommand { get; set; }
+        public ICommand AddInterpTrackCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -322,6 +324,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BulkExportSWFCommand = new GenericCommand(BulkExportSWFs, PackageIsLoaded);
             BulkImportSWFCommand = new GenericCommand(BulkImportSWFs, PackageIsLoaded);
             OpenExportInCommand = new RelayCommand(OpenExportIn, CanOpenExportIn);
+            AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -1161,6 +1164,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     case "LevelEditor":
                         new LevelEditor.LevelEditor(exp).Show();
                         break;
+                }
+            }
+        }
+
+        private bool CanAddInterpTrack() => TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup");
+
+        private void AddInterpTrack()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup"))
+            {
+                if (ClassPickerDlg.GetClass(this, MatineeHelper.GetInterpTracks(Pcc.Game), "Choose Track to Add", "Add") is ClassInfo info)
+                {
+                    ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(exp, info.ClassName);
+                    MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
                 }
             }
         }
