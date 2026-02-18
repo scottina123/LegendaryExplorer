@@ -309,7 +309,11 @@ namespace LegendaryExplorer.Dialogs
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
                 // 10. Import the bank into the package using existing WwiseBankImport
-                var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package);
+                //     Place everything under a top-level "audio" folder:
+                //     - WwiseBank and WwiseEvents go directly under "audio"
+                //     - WwiseStreams go under "audio.int"
+                var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package,
+                    bankPackageName: "audio", bankStreamingAudioPackageName: "int");
 
                 // 11. Set DurationSeconds on events from WAV file headers.
                 //     This is critical for dialogue: without DurationSeconds the game's dialogue
