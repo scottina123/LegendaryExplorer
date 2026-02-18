@@ -2877,11 +2877,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (CurrentView == CurrentViewMode.Tree && TryGetSelectedEntry(out IEntry entry))
             {
                 int lastTreeRoot = 0;
+                bool? addToInterpList = null;
                 for (int i = 0; i < numClones; i++)
                 {
                     IEntry newTreeRoot = EntryCloner.CloneTree(entry);
                     TryAddToPersistentLevel(newTreeRoot);
                     TryAddToStaticCollectionActor(newTreeRoot, entry);
+                    addToInterpList ??= ShouldAddToInterpList(entry);
+                    if (addToInterpList == true)
+                    {
+                        AddToInterpList(newTreeRoot);
+                    }
                     lastTreeRoot = newTreeRoot.UIndex;
                 }
                 GoToNumber(lastTreeRoot);
@@ -2911,14 +2917,74 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (TryGetSelectedEntry(out IEntry entry))
             {
                 int lastClonedUIndex = 0;
+                bool? addToInterpList = null;
                 for (int i = 0; i < numClones; i++)
                 {
                     IEntry newEntry = EntryCloner.CloneEntry(entry);
                     TryAddToPersistentLevel(newEntry);
                     TryAddToStaticCollectionActor(newEntry, entry);
+                    addToInterpList ??= ShouldAddToInterpList(entry);
+                    if (addToInterpList == true)
+                    {
+                        AddToInterpList(newEntry);
+                    }
                     lastClonedUIndex = newEntry.UIndex;
                 }
                 GoToNumber(lastClonedUIndex);
+            }
+        }
+
+        /// <summary>
+        /// Prompts the user to add a cloned entry to the parent's InterpTracks or InterpGroups list.
+        /// Returns true if the user chose Yes, false otherwise.
+        /// </summary>
+        private bool ShouldAddToInterpList(IEntry originalEntry)
+        {
+            if (originalEntry.Parent is ExportEntry parentExport)
+            {
+                if (parentExport.IsA("InterpGroup"))
+                {
+                    return MessageBox.Show(this,
+                        "The cloned object is under an InterpGroup. Would you like to add it to the InterpTracks list?",
+                        "Add to InterpTracks",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                }
+
+                if (parentExport.IsA("InterpData"))
+                {
+                    return MessageBox.Show(this,
+                        "The cloned object is under an InterpData. Would you like to add it to the InterpGroups list?",
+                        "Add to InterpGroups",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Adds a cloned entry to its parent's InterpTracks or InterpGroups list.
+        /// </summary>
+        private void AddToInterpList(IEntry newEntry)
+        {
+            if (newEntry.Parent is ExportEntry parentExport)
+            {
+                if (parentExport.IsA("InterpGroup"))
+                {
+                    var props = parentExport.GetProperties();
+                    var tracksProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks");
+                    tracksProp.Add(new ObjectProperty(newEntry));
+                    props.AddOrReplaceProp(tracksProp);
+                    parentExport.WriteProperties(props);
+                }
+                else if (parentExport.IsA("InterpData"))
+                {
+                    var props = parentExport.GetProperties();
+                    var groupsProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups") ?? new ArrayProperty<ObjectProperty>("InterpGroups");
+                    groupsProp.Add(new ObjectProperty(newEntry));
+                    props.AddOrReplaceProp(groupsProp);
+                    parentExport.WriteProperties(props);
+                }
             }
         }
 
