@@ -22,7 +22,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     private MeshRenderContext _meshContext;
     private ModelPreview<WorldVertex> _meshPreview;
     private SkinnedMeshRenderer _skinnedRenderer;
-    private SkeletonAnimPlayer _animPlayer;
+    private AnimSequencePlayer _animPlayer;
     private bool _previewInitialized;
     private ExportEntry _lastAnimExport;
 
@@ -129,9 +129,10 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             _skinnedRenderer = new SkinnedMeshRenderer();
             _skinnedRenderer.BuildFromSkeletalMesh(skeletalMeshExport.FileRef.Game, skm.LODModels[0]);
 
-            _animPlayer = new SkeletonAnimPlayer();
-            _animPlayer.SetSkeleton(skm);
-            _animPlayer.PlaybackSpeed = (float)PlaybackSpeed;
+            _animPlayer = new AnimSequencePlayer(skm)
+            {
+                PlaybackSpeed = (float)PlaybackSpeed
+            };
 
             Mesh<WorldVertex> mesh = _meshPreview.LODs[0].Mesh;
             // Center camera on mesh
