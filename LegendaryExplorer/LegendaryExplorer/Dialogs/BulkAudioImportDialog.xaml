@@ -29,6 +29,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Label Grid.Row="0" Grid.Column="0" Content="Bank Name:" VerticalAlignment="Center"/>
                 <TextBox Grid.Row="0" Grid.Column="1" x:Name="BankNameTextBox" Text="NewBank" Padding="4" Margin="5,2"/>
@@ -48,6 +49,9 @@
                 <Label Grid.Row="5" Grid.Column="0" Content="Loop Audio:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="5" Grid.Column="1" x:Name="LoopAudioCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
                           Content="Loop imported audio infinitely" ToolTip="When checked, each Sound node will have looping enabled with an infinite loop count."/>
+                <Label Grid.Row="6" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="6" Grid.Column="1" x:Name="RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                          Content="Apply Dual_Filters_Radio_Comm effect" ToolTip="When checked, applies the Wwise Parametric EQ radio communication filter to the ActorMixer, simulating audio heard through a radio."/>
             </Grid>
         </GroupBox>
 

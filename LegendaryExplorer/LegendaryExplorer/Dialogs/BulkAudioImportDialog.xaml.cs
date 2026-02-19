@@ -156,6 +156,7 @@ namespace LegendaryExplorer.Dialogs
             var isDialogue = IsDialogueBankCheckBox.IsChecked == true;
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
+            var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
 
             ImportButton.IsEnabled = false;
             AddFilesButton.IsEnabled = false;
@@ -164,7 +165,7 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents, loopAudio));
+                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents, loopAudio, applyRadioEffect));
                 if (result != null)
                 {
                     StatusTextBlock.Text = $"Error: {result}";
@@ -191,7 +192,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents, bool loopAudio)
+        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect)
         {
             var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
 
@@ -242,10 +243,23 @@ namespace LegendaryExplorer.Dialogs
                     masterMixerDoc.Save(masterMixerPath);
                 }
 
+                // 3b. Create ShareSets work unit for the radio effect if needed
+                string effectWuId = null;
+                if (applyRadioEffect)
+                {
+                    effectWuId = "{E8613F7D-BAD3-45CD-A3ED-505576F31277}";
+                    string shareSetsDir = Path.Combine(projectDir, "ShareSets");
+                    Directory.CreateDirectory(shareSetsDir);
+                    string shareSetsPath = Path.Combine(shareSetsDir, "Default Work Unit.wwu");
+                    var shareSetsXml = BuildShareSetsWorkUnitXml(effectWuId);
+                    File.WriteAllText(shareSetsPath, shareSetsXml);
+                }
+
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
                 var actorMixerXml = BuildActorMixerXml(actorMixerWuId, bankName, actorMixerId, wavFiles,
-                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio);
+                    volume, outputBusName, outputBusId, outputBusWuId, generateGenderedEvents, loopAudio,
+                    applyRadioEffect, effectWuId);
                 File.WriteAllText(actorMixerPath, actorMixerXml);
 
                 // 5. Build Events XML
@@ -355,7 +369,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private static string BuildActorMixerXml(string workUnitId, string bankName, string actorMixerId,
             List<string> wavFiles, double volume, string outputBusName, string outputBusId, string outputBusWuId,
-            bool generateGenderedEvents, bool loopAudio)
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, string effectWuId)
         {
             // Factory "Vorbis Quality High" conversion setting (from Factory Conversion Settings.wwu in template)
             const string vorbisHighId = "{53A9DE0F-3F4F-4B59-8614-3F9E3C7358FC}";
@@ -402,6 +416,12 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"Conversion\">");
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Vorbis Quality High\" ID=\"{vorbisHighId}\" WorkUnitID=\"{vorbisHighWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
+            if (applyRadioEffect && effectWuId != null)
+            {
+                xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"Effect0\" PluginName=\"Wwise Parametric EQ\" CompanyID=\"0\" PluginID=\"105\" PluginType=\"3\">");
+                xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"Dual_Filters_Radio_Comm\" ID=\"{{69479ACD-2C87-4007-B83E-55210A3B36B7}}\" WorkUnitID=\"{effectWuId}\"/>");
+                xml.AppendLine("\t\t\t\t\t\t</Reference>");
+            }
             xml.AppendLine("\t\t\t\t\t\t<Reference Name=\"OutputBus\">");
             xml.AppendLine($"\t\t\t\t\t\t\t<ObjectRef Name=\"{outputBusName}\" ID=\"{outputBusId}\" WorkUnitID=\"{outputBusWuId}\"/>");
             xml.AppendLine("\t\t\t\t\t\t</Reference>");
@@ -607,6 +627,39 @@ namespace LegendaryExplorer.Dialogs
                 new XAttribute("Name", busName),
                 new XAttribute("ID", busId));
             childrenList.Add(busElement);
+        }
+
+        /// <summary>
+        /// Builds the ShareSets work unit XML containing the Dual_Filters_Radio_Comm Parametric EQ
+        /// effect. This ShareSet is referenced by the ActorMixer's Effect0 reference to apply the
+        /// radio communication filter to all sounds in the bank.
+        /// </summary>
+        private static string BuildShareSetsWorkUnitXml(string workUnitId)
+        {
+            const string effectId = "{69479ACD-2C87-4007-B83E-55210A3B36B7}";
+
+            var xml = new System.Text.StringBuilder();
+            xml.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+            xml.AppendLine($"<WwiseDocument Type=\"WorkUnit\" ID=\"{workUnitId}\" SchemaVersion=\"94\">");
+            xml.AppendLine("\t<ShareSets>");
+            xml.AppendLine($"\t\t<WorkUnit Name=\"Default Work Unit\" ID=\"{workUnitId}\" PersistMode=\"Standalone\">");
+            xml.AppendLine("\t\t\t<ChildrenList>");
+            xml.AppendLine($"\t\t\t\t<Effect Name=\"Dual_Filters_Radio_Comm\" ID=\"{effectId}\" PluginName=\"Wwise Parametric EQ\" CompanyID=\"0\" PluginID=\"105\" PluginType=\"3\">");
+            xml.AppendLine("\t\t\t\t\t<PropertyList>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1FilterType\" Type=\"int32\" Value=\"3\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1Frequency\" Type=\"Real64\" Value=\"300\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band1QFactor\" Type=\"Real64\" Value=\"0.707\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2FilterType\" Type=\"int32\" Value=\"4\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2Frequency\" Type=\"Real64\" Value=\"3000\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"Band2QFactor\" Type=\"Real64\" Value=\"0.707\"/>");
+            xml.AppendLine("\t\t\t\t\t\t<Property Name=\"OutputLevel\" Type=\"Real64\" Value=\"12\"/>");
+            xml.AppendLine("\t\t\t\t\t</PropertyList>");
+            xml.AppendLine("\t\t\t\t</Effect>");
+            xml.AppendLine("\t\t\t</ChildrenList>");
+            xml.AppendLine("\t\t</WorkUnit>");
+            xml.AppendLine("\t</ShareSets>");
+            xml.AppendLine("</WwiseDocument>");
+            return xml.ToString();
         }
 
         /// <summary>
