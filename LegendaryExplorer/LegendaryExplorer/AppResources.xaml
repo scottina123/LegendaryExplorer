@@ -317,14 +317,14 @@
         <Setter Property="ContentTemplate">
             <Setter.Value>
                 <DataTemplate>
-                    <Rectangle Name="rect1" Fill="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" Height="12" Width="12">
+                    <Rectangle Name="rect1" Fill="#FF7E8285" Height="12" Width="12">
                         <Rectangle.OpacityMask>
                             <ImageBrush ImageSource="{Binding Path=Source}"/>
                         </Rectangle.OpacityMask>
                     </Rectangle>
                     <DataTemplate.Triggers>
                         <DataTrigger Binding="{Binding Path=IsMouseOver, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" Value="True">
-                            <Setter TargetName="rect1" Property="Fill" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="rect1" Property="Fill" Value="White"/>
                         </DataTrigger>
                     </DataTemplate.Triggers>
                 </DataTemplate>

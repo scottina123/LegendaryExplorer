@@ -68,8 +68,8 @@
                 
                 <!-- Version -->
                 <DockPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Height="32">
-                            <Label Content="{Binding Source={x:Static misc:AppVersion.DisplayedVersion}}" FontFamily="{StaticResource Exo-Regular}" FontSize="17" 
-                                   Foreground="{DynamicResource ForegroundBrush}"  VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                            <TextBlock Text="{Binding Source={x:Static misc:AppVersion.DisplayedVersion}}" FontFamily="{StaticResource Exo-Regular}" FontSize="17" 
+                                   Foreground="{DynamicResource ForegroundBrush}" VerticalAlignment="Center" Margin="5,0"/>
                 </DockPanel>
                 
                 <DockPanel Margin="5,5,5,0" LastChildFill="True">
