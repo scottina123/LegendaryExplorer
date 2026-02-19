@@ -94,6 +94,7 @@ namespace LegendaryExplorer.Misc
                     if (darkTheme != null)
                     {
                         mergedDictionaries.Remove(darkTheme);
+                        _darkThemeDictionary = null; // Clear cache so a fresh instance is created next time
                     }
                     
                     // Ensure light theme is present
