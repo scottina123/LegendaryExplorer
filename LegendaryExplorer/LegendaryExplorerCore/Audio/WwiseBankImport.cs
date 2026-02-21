@@ -115,7 +115,10 @@ namespace LegendaryExplorerCore.Audio
 
             var referencedStreamingAudioIds = soundBankChunk.Element("ReferencedStreamedFiles")?.Descendants("File")
                 .Select(x => uint.Parse(x.Attribute("Id").Value));
-            var referencedStreamingAudio = referencedStreamingAudioIds != null ? allStreamedFiles.Where(x => referencedStreamingAudioIds.Contains(x.Id)) : null;
+            var referencedStreamingAudio = referencedStreamingAudioIds != null
+                ? allStreamedFiles.Where(x => referencedStreamingAudioIds.Contains(x.Id))
+                    .OrderBy(x => ExtractLargestNumber(x.Shortname))
+                : null;
 
             // Check if bank exists as an import - we can't import in this scenario!
             ImportEntry bankImport = package.Imports.FirstOrDefault(i => i.ObjectNameString == bankName);
@@ -388,6 +391,35 @@ namespace LegendaryExplorerCore.Audio
         {
             // Space, . -> _
             return shortname.Replace(".", "_").Replace(" ", "_"); // Add more rules here
+        }
+
+        /// <summary>
+        /// Extracts the largest numeric sequence from a name string (e.g. "VO_14242616_m" → 14242616).
+        /// Used to sort streamed files by TLK ID.
+        /// </summary>
+        private static long ExtractLargestNumber(string name)
+        {
+            long maxNum = 0;
+            long current = 0;
+            bool inNumber = false;
+            foreach (char c in name)
+            {
+                if (char.IsDigit(c))
+                {
+                    current = current * 10 + (c - '0');
+                    inNumber = true;
+                }
+                else
+                {
+                    if (inNumber && current > maxNum)
+                        maxNum = current;
+                    current = 0;
+                    inNumber = false;
+                }
+            }
+            if (inNumber && current > maxNum)
+                maxNum = current;
+            return maxNum;
         }
 
         /// <summary>

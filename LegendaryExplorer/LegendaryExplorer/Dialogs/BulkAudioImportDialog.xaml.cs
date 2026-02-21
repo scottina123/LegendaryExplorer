@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
@@ -195,6 +196,10 @@ namespace LegendaryExplorer.Dialogs
         private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect)
         {
             var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
+
+            // Sort WAV files by TLK number so exports are created in numerical order
+            wavFiles.Sort((a, b) => ExtractTlkNumber(Path.GetFileNameWithoutExtension(a))
+                .CompareTo(ExtractTlkNumber(Path.GetFileNameWithoutExtension(b))));
 
             // 1. Extract template project
             string templateZip = WwiseCliHandler.GetWwiseTemplateProject(_package.Game);
@@ -800,6 +805,22 @@ namespace LegendaryExplorer.Dialogs
                 // If we can't read the file, return 0
             }
             return 0f;
+        }
+
+        /// <summary>
+        /// Extracts the largest numeric sequence from a filename, which typically corresponds
+        /// to the TLK string ID (e.g. "VO_14242616_m" → 14242616).
+        /// Returns 0 if no number is found.
+        /// </summary>
+        private static long ExtractTlkNumber(string filename)
+        {
+            long maxNum = 0;
+            foreach (Match match in Regex.Matches(filename, @"\d+"))
+            {
+                if (long.TryParse(match.Value, out var num) && num > maxNum)
+                    maxNum = num;
+            }
+            return maxNum;
         }
 
         /// <summary>
