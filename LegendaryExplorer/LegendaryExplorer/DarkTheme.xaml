@@ -241,6 +241,11 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                             <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
                             <Setter TargetName="GlyphPanel" Property="Visibility" Value="Visible"/>
                         </Trigger>
+                        <!-- Show checkmark when IsChecked is True even without IsCheckable (some items toggle via Click handler) -->
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Icon" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="GlyphPanel" Property="Visibility" Value="Visible"/>
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="False">
                             <Setter TargetName="Glyph" Property="Visibility" Value="Collapsed"/>
                         </Trigger>
