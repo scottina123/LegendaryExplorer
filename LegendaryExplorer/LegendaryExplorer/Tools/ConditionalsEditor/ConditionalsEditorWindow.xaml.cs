@@ -134,9 +134,21 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             hexBox.ByteProvider = new ReadOptimizedByteProvider();
             this.bind(HexBoxMinWidthProperty, hexBox, nameof(hexBox.MinWidth));
             this.bind(HexBoxMaxWidthProperty, hexBox, nameof(hexBox.MaxWidth));
-            
+
             // Register HexBox for theme management
             Misc.ThemeManager.RegisterHexBox(hexBox);
+
+            hexBox.InsertActiveChanged += HexBox_InsertActiveChanged;
+        }
+
+        private void HexBox_InsertActiveChanged(object sender, EventArgs e)
+        {
+            ToggleInsertMode_Button.IsChecked = hexBox.InsertActive;
+        }
+
+        private void ToggleInsertMode_Click(object sender, RoutedEventArgs e)
+        {
+            hexBox.InsertActive = ToggleInsertMode_Button.IsChecked == true;
         }
 
         public ICommand OpenCommand { get; set; }

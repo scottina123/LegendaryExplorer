@@ -147,10 +147,13 @@
                     </Grid.ColumnDefinitions>
                     <Grid Grid.Column="0" Name="hexboxContainer">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="25" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <Button Grid.Row="0" Content="Save Hex Changes" Command="{Binding SaveHexChangesCommand}"/>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal">
+                            <Button Content="Save Hex Changes" Command="{Binding SaveHexChangesCommand}"/>
+                            <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click"/>
+                        </StackPanel>
                         <sharedUi:WindowsFormsHostEx Grid.Row="1" x:Name="hexbox_Host" HorizontalAlignment="Stretch"
                                                      VerticalAlignment="Stretch">
                             <forms:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True"

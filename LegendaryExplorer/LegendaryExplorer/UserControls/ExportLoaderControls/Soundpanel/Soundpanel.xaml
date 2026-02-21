@@ -269,6 +269,7 @@
                                     </Button.Style>
                                 </Button>
                                 <Button Name="ToggleHexboxWidth_Button" Content="Toggle Hexbox Width" ToolTip="Toggle between 4 and 16 byte widths" Click="HIRC_ToggleHexboxWidth_Click"/>
+                                <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click"/>
                                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                             </ToolBar>
                             <sharedUi:WindowsFormsHostEx x:Name="HIRC_Hexbox_Host" Grid.Row="1" Grid.Column="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">

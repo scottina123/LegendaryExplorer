@@ -2399,6 +2399,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Interpreter_Hexbox.SelectionStartChanged += hb1_SelectionChanged;
             Interpreter_Hexbox.SelectionLengthChanged += hb1_SelectionChanged;
 
+            Interpreter_Hexbox.InsertActiveChanged -= Interpreter_Hexbox_InsertActiveChanged;
+            Interpreter_Hexbox.InsertActiveChanged += Interpreter_Hexbox_InsertActiveChanged;
+
             // ??
             this.bind(HexBoxMinWidthProperty, Interpreter_Hexbox, nameof(Interpreter_Hexbox.MinWidth));
             this.bind(HexBoxMaxWidthProperty, Interpreter_Hexbox, nameof(Interpreter_Hexbox.MaxWidth));
@@ -2410,6 +2413,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 HasUnsavedChanges = true;
             }
+        }
+
+        private void Interpreter_Hexbox_InsertActiveChanged(object sender, EventArgs e)
+        {
+            ToggleInsertMode_Button.IsChecked = Interpreter_Hexbox.InsertActive;
+        }
+
+        private void ToggleInsertMode_Click(object sender, RoutedEventArgs e)
+        {
+            Interpreter_Hexbox.InsertActive = ToggleInsertMode_Button.IsChecked == true;
         }
 
         private void Interpreter_SaveHexChanges()

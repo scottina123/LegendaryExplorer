@@ -251,9 +251,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 // Register HexBox for theme management
                 Misc.ThemeManager.RegisterHexBox(SoundpanelHIRC_Hexbox);
-                
+
+                SoundpanelHIRC_Hexbox.InsertActiveChanged += SoundpanelHIRC_Hexbox_InsertActiveChanged;
+
                 ControlLoaded = true;
             }
+        }
+
+        private void SoundpanelHIRC_Hexbox_InsertActiveChanged(object sender, EventArgs e)
+        {
+            ToggleInsertMode_Button.IsChecked = SoundpanelHIRC_Hexbox.InsertActive;
+        }
+
+        private void ToggleInsertMode_Click(object sender, RoutedEventArgs e)
+        {
+            SoundpanelHIRC_Hexbox.InsertActive = ToggleInsertMode_Button.IsChecked == true;
         }
 
         #endregion

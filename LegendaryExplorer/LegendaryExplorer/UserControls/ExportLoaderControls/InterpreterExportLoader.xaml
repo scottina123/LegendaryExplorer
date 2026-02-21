@@ -52,6 +52,7 @@
                 <Button Name="ToggleHexbox_Button" ToolTip="Toggle Hexbox" Command="{Binding ToggleHexBoxCommand}">
                     <fa:ImageAwesome Icon="Solid_Microchip" Height="16" Width="16" Foreground="CornflowerBlue"/>
                 </Button>
+                <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Button Content="Add Property" ToolTip="Add a property from this class or a superclass to this object" Command="{Binding AddPropertyCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
 

@@ -531,9 +531,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             ScriptEditor_Hexbox = (HexBox)ScriptEditor_Hexbox_Host.Child;
             ControlLoaded = true;
-            
+
             // Register HexBox for theme management
             Misc.ThemeManager.RegisterHexBox(ScriptEditor_Hexbox);
+
+            ScriptEditor_Hexbox.InsertActiveChanged -= ScriptEditor_Hexbox_InsertActiveChanged;
+            ScriptEditor_Hexbox.InsertActiveChanged += ScriptEditor_Hexbox_InsertActiveChanged;
+        }
+
+        private void ScriptEditor_Hexbox_InsertActiveChanged(object sender, EventArgs e)
+        {
+            ToggleInsertMode_Button.IsChecked = ScriptEditor_Hexbox.InsertActive;
+        }
+
+        private void ToggleInsertMode_Click(object sender, RoutedEventArgs e)
+        {
+            ScriptEditor_Hexbox.InsertActive = ToggleInsertMode_Button.IsChecked == true;
         }
 
         private void ByteProviderBytesChanged(object sender, EventArgs e)

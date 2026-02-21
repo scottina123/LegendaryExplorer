@@ -1156,9 +1156,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             this.bind(HexBoxMinWidthProperty, BinaryInterpreter_Hexbox, nameof(BinaryInterpreter_Hexbox.MinWidth));
             this.bind(HexBoxMaxWidthProperty, BinaryInterpreter_Hexbox, nameof(BinaryInterpreter_Hexbox.MaxWidth));
-            
+
             // Register HexBox for theme management
             ThemeManager.RegisterHexBox(BinaryInterpreter_Hexbox);
+
+            BinaryInterpreter_Hexbox.InsertActiveChanged -= BinaryInterpreter_Hexbox_InsertActiveChanged;
+            BinaryInterpreter_Hexbox.InsertActiveChanged += BinaryInterpreter_Hexbox_InsertActiveChanged;
+        }
+
+        private void BinaryInterpreter_Hexbox_InsertActiveChanged(object sender, EventArgs e)
+        {
+            ToggleInsertMode_Button.IsChecked = BinaryInterpreter_Hexbox.InsertActive;
+        }
+
+        private void ToggleInsertMode_Click(object sender, RoutedEventArgs e)
+        {
+            BinaryInterpreter_Hexbox.InsertActive = ToggleInsertMode_Button.IsChecked == true;
         }
 
         private void hb1_SelectionChanged(object sender, EventArgs e)
