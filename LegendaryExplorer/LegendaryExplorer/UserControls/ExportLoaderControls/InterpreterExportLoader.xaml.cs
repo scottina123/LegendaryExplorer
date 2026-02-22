@@ -240,6 +240,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand SaveHexChangesCommand { get; set; }
         public ICommand ToggleHexBoxCommand { get; set; }
         public ICommand AddArrayElementCommand { get; set; }
+        public ICommand AddMultipleArrayElementsCommand { get; set; }
         public ICommand RemoveArrayElementCommand { get; set; }
         public ICommand ClearArrayCommand { get; set; }
         public ICommand CopyValueCommand { get; set; }
@@ -269,6 +270,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SaveHexChangesCommand = new GenericCommand(Interpreter_SaveHexChanges, IsExportLoaded);
             ToggleHexBoxCommand = new GenericCommand(ToggleHexbox);
             AddArrayElementCommand = new GenericCommand(AddArrayElement, CanAddArrayElement);
+            AddMultipleArrayElementsCommand = new GenericCommand(AddMultipleArrayElements, CanAddArrayElement);
             RemoveArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
             MoveArrayElementUpCommand = new GenericCommand(MoveArrayElementUp, CanMoveArrayElementUp);
             MoveArrayElementDownCommand = new GenericCommand(MoveArrayElementDown, CanMoveArrayElementDown);
@@ -2635,6 +2637,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void AddArrayElement()
         {
+            AddArrayElementsInternal(1);
+        }
+
+        private void AddMultipleArrayElements()
+        {
+            string result = PromptDialog.Prompt(this, "How many elements to add?", "Add Multiple Array Elements", "2", selectText: true,
+                validator: s =>
+                {
+                    if (int.TryParse(s, out int val) && val > 0 && val <= 10000)
+                        return (true, null);
+                    return (false, "Please enter a positive integer (max 10,000).");
+                });
+            if (result != null && int.TryParse(result, out int count) && count > 0)
+            {
+                AddArrayElementsInternal(count);
+            }
+        }
+
+        private void AddArrayElementsInternal(int count)
+        {
             if (Interpreter_TreeView.SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null)
             {
                 string containingType = CurrentLoadedExport.ClassName;
@@ -2665,80 +2687,83 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
 
-                switch (propertyToAddItemTo)
+                for (int i = 0; i < count; i++)
                 {
-                    case ArrayProperty<NameProperty> anp:
-                        NameProperty np = new NameProperty("None");
-                        anp.Insert(insertIndex, np);
-                        break;
-                    case ArrayProperty<ObjectProperty> aop:
-                        aop.Insert(insertIndex, new ObjectProperty(0));
-                        break;
-                    case ArrayProperty<DelegateProperty> aop:
-                        aop.Insert(insertIndex, new DelegateProperty("None", 0));
-                        break;
-                    case ArrayProperty<EnumProperty> aep:
-                        {
-                            PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, aep.Name, containingType);
-                            string typeName = p.Reference;
-                            EnumProperty ep = new EnumProperty(typeName, Pcc.Game);
-                            aep.Insert(insertIndex, ep);
-                        }
-                        break;
-                    case ArrayProperty<IntProperty> aip:
-                        aip.Insert(insertIndex, new IntProperty(0));
-                        break;
-                    case ArrayProperty<FloatProperty> afp:
-                        FloatProperty fp = new FloatProperty(0);
-                        afp.Insert(insertIndex, fp);
-                        break;
-                    case ArrayProperty<StrProperty> asp:
-                        asp.Insert(insertIndex, new StrProperty("Empty String"));
-                        break;
-                    case ArrayProperty<BoolProperty> abp:
-                        abp.Insert(insertIndex, new BoolProperty(false));
-                        break;
-                    case ArrayProperty<StringRefProperty> astrf:
-                        astrf.Insert(insertIndex, new StringRefProperty());
-                        break;
-                    case ArrayProperty<ByteProperty> abyte:
-                        abyte.Insert(insertIndex, new ByteProperty(0));
-                        break;
-                    case ArrayProperty<BioMask4Property> ab4:
-                        ab4.Insert(insertIndex, new BioMask4Property(0));
-                        break;
-                    case ArrayProperty<StructProperty> astructp:
-                        {
-                            if (astructp.Count > 0)
+                    switch (propertyToAddItemTo)
+                    {
+                        case ArrayProperty<NameProperty> anp:
+                            NameProperty np = new NameProperty("None");
+                            anp.Insert(insertIndex + i, np);
+                            break;
+                        case ArrayProperty<ObjectProperty> aop:
+                            aop.Insert(insertIndex + i, new ObjectProperty(0));
+                            break;
+                        case ArrayProperty<DelegateProperty> aop:
+                            aop.Insert(insertIndex + i, new DelegateProperty("None", 0));
+                            break;
+                        case ArrayProperty<EnumProperty> aep:
                             {
-                                astructp.Insert(insertIndex, astructp.Last()); //Bad form, but writing and reparse will correct it
-                                break;
-                            }
-
-                            PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType);
-                            if (p == null)
-                            {
-                                //Attempt dynamic lookup
-                                if (!(CurrentLoadedExport.Class is ExportEntry exportToBuildFor))
-                                {
-                                    exportToBuildFor = CurrentLoadedExport;
-                                }
-                                ClassInfo classInfo = GlobalUnrealObjectInfo.generateClassInfo(exportToBuildFor);
-                                p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType, classInfo);
-                            }
-                            if (p != null)
-                            {
+                                PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, aep.Name, containingType);
                                 string typeName = p.Reference;
-                                PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, typeName, true, Pcc);
-                                var isInImmutable = IsInImmutable(tvi);
-                                astructp.Insert(insertIndex, new StructProperty(typeName, props, isImmutable: isInImmutable || GlobalUnrealObjectInfo.IsImmutable(typeName, Pcc.Game)));
+                                EnumProperty ep = new EnumProperty(typeName, Pcc.Game);
+                                aep.Insert(insertIndex + i, ep);
                             }
-                        }
-                        break;
-                    default:
-                        MessageBox.Show("Can't add this property type yet.\nPlease pester Mgamerz to get it implemented");
-                        ArrayElementJustAdded = false;
-                        return;
+                            break;
+                        case ArrayProperty<IntProperty> aip:
+                            aip.Insert(insertIndex + i, new IntProperty(0));
+                            break;
+                        case ArrayProperty<FloatProperty> afp:
+                            FloatProperty fp = new FloatProperty(0);
+                            afp.Insert(insertIndex + i, fp);
+                            break;
+                        case ArrayProperty<StrProperty> asp:
+                            asp.Insert(insertIndex + i, new StrProperty("Empty String"));
+                            break;
+                        case ArrayProperty<BoolProperty> abp:
+                            abp.Insert(insertIndex + i, new BoolProperty(false));
+                            break;
+                        case ArrayProperty<StringRefProperty> astrf:
+                            astrf.Insert(insertIndex + i, new StringRefProperty());
+                            break;
+                        case ArrayProperty<ByteProperty> abyte:
+                            abyte.Insert(insertIndex + i, new ByteProperty(0));
+                            break;
+                        case ArrayProperty<BioMask4Property> ab4:
+                            ab4.Insert(insertIndex + i, new BioMask4Property(0));
+                            break;
+                        case ArrayProperty<StructProperty> astructp:
+                            {
+                                if (astructp.Count > 0)
+                                {
+                                    astructp.Insert(insertIndex + i, astructp.Last()); //Bad form, but writing and reparse will correct it
+                                    break;
+                                }
+
+                                PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType);
+                                if (p == null)
+                                {
+                                    //Attempt dynamic lookup
+                                    if (!(CurrentLoadedExport.Class is ExportEntry exportToBuildFor))
+                                    {
+                                        exportToBuildFor = CurrentLoadedExport;
+                                    }
+                                    ClassInfo classInfo = GlobalUnrealObjectInfo.generateClassInfo(exportToBuildFor);
+                                    p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType, classInfo);
+                                }
+                                if (p != null)
+                                {
+                                    string typeName = p.Reference;
+                                    PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, typeName, true, Pcc);
+                                    var isInImmutable = IsInImmutable(tvi);
+                                    astructp.Insert(insertIndex + i, new StructProperty(typeName, props, isImmutable: isInImmutable || GlobalUnrealObjectInfo.IsImmutable(typeName, Pcc.Game)));
+                                }
+                            }
+                            break;
+                        default:
+                            MessageBox.Show("Can't add this property type yet.\nPlease pester Mgamerz to get it implemented");
+                            ArrayElementJustAdded = false;
+                            return;
+                    }
                 }
 
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);

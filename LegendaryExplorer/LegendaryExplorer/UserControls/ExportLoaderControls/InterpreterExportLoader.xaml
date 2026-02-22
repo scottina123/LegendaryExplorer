@@ -63,6 +63,11 @@
                     VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_Plus"/>
                 </Button>
+                <Button Name="AddMultipleArrayElements_Button" ToolTip="Add multiple new elements to the selected array"
+                    Command="{Binding AddMultipleArrayElementsCommand}"
+                    VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <fa:FontAwesome Icon="Solid_PlusCircle"/>
+                </Button>
                 <Button Name="RemoveArrayElement_Button" ToolTip="Remove the selected element from the array"
                     Command="{Binding RemoveArrayElementCommand}"
                     VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
