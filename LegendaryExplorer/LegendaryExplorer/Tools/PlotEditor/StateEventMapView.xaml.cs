@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Windows.Controls;
@@ -26,6 +27,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
         }
         private KeyValuePair<int, BioStateEvent> _selectedStateEvent;
         private BioStateEventElement _selectedStateEventElement;
+        private BioStateEventElement _subscribedElement;
+        private bool _propagatingChanges;
         private ObservableCollection<KeyValuePair<int, BioStateEvent>> _stateEvents;
         
         public bool CanAddStateEventElement => StateEvents != null && SelectedStateEvent.Value != null;
@@ -62,7 +65,16 @@ namespace LegendaryExplorer.Tools.PlotEditor
             get => _selectedStateEventElement;
             set
             {
+                if (_subscribedElement != null)
+                {
+                    _subscribedElement.PropertyChanged -= SelectedElement_PropertyChanged;
+                }
                 SetProperty(ref _selectedStateEventElement, value);
+                _subscribedElement = value;
+                if (_subscribedElement != null)
+                {
+                    _subscribedElement.PropertyChanged += SelectedElement_PropertyChanged;
+                }
                 OnPropertyChanged(nameof(CanRemoveStateEventElement));
             }
         }
@@ -187,6 +199,64 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
                         break;
                     }
+            }
+        }
+
+        public void AddMultipleStateEventElements(BioStateEventElementType elementType)
+        {
+            if (StateEvents == null || SelectedStateEvent.Value == null)
+            {
+                return;
+            }
+
+            var dlg = new AddMultipleStateEventElementsDialog
+            {
+                ContentText = $"Add multiple {elementType} elements",
+                StartingValue = 0,
+                Count = 1
+            };
+
+            if (dlg.ShowDialog() == false || dlg.Count <= 0)
+            {
+                return;
+            }
+
+            int startValue = dlg.StartingValue;
+            int count = dlg.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                int value = startValue + i;
+                switch (elementType)
+                {
+                    case BioStateEventElementType.Bool:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementBool(globalBool: value));
+                        break;
+                    case BioStateEventElementType.Consequence:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementConsequence(consequence: value));
+                        break;
+                    case BioStateEventElementType.Float:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementFloat(globalFloat: value));
+                        break;
+                    case BioStateEventElementType.Function:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementFunction(parameter: value));
+                        break;
+                    case BioStateEventElementType.Int:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementInt(globalInt: value));
+                        break;
+                    case BioStateEventElementType.LocalBool:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementLocalBool());
+                        break;
+                    case BioStateEventElementType.LocalFloat:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementLocalFloat());
+                        break;
+                    case BioStateEventElementType.LocalInt:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementLocalInt(newValue: value));
+                        break;
+                    case BioStateEventElementType.Substate:
+                        SelectedStateEvent.Value.Elements.Add(new BioStateEventElementSubstate(globalBool: value, siblingIndices: InitCollection<int>()));
+                        break;
+                }
             }
         }
 
@@ -474,6 +544,41 @@ namespace LegendaryExplorer.Tools.PlotEditor
             return new ObservableCollection<T>(collection);
         }
 
+        private void SelectedElement_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (_propagatingChanges)
+                return;
+
+            _propagatingChanges = true;
+            try
+            {
+                var sourceElement = (BioStateEventElement)sender;
+                var sourceType = sourceElement.GetType();
+                System.Reflection.PropertyInfo propertyInfo = sourceType.GetProperty(e.PropertyName);
+
+                if (propertyInfo == null || !propertyInfo.CanRead || !propertyInfo.CanWrite)
+                    return;
+
+                Type propType = propertyInfo.PropertyType;
+                if (propType != typeof(int) && propType != typeof(float) && propType != typeof(bool) && propType != typeof(string))
+                    return;
+
+                object newValue = propertyInfo.GetValue(sourceElement);
+
+                foreach (BioStateEventElement element in StateEventElementsListBox.SelectedItems)
+                {
+                    if (element != sourceElement && element.GetType() == sourceType)
+                    {
+                        propertyInfo.SetValue(element, newValue);
+                    }
+                }
+            }
+            finally
+            {
+                _propagatingChanges = false;
+            }
+        }
+
         private int GetMaxStateEventId()
         {
             return StateEvents.Any() ? StateEvents.Max(pair => pair.Key) : -1;
@@ -524,6 +629,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private void AddStateEventElement_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             AddStateEventElement((BioStateEventElementType)NewStateEventElementComboBox.Tag);
+        }
+
+        private void AddMultipleStateEventElements_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            AddMultipleStateEventElements((BioStateEventElementType)NewStateEventElementComboBox.Tag);
         }
 
         private void AddSubstateSiblingIndex_Click(object sender, System.Windows.RoutedEventArgs e)

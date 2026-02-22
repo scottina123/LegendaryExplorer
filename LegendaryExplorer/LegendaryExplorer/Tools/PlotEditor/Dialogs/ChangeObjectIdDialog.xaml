@@ -7,6 +7,8 @@
 	mc:Ignorable="d"
 	d:DataContext="{d:DesignInstance dialogs:ChangeObjectIdDialog, IsDesignTimeCreatable=True}"
 	DataContext="{Binding RelativeSource={RelativeSource Self}}"
+	Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+	Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
 	ResizeMode="NoResize"
 	ShowInTaskbar="False"
 	Title="Change Object Id"

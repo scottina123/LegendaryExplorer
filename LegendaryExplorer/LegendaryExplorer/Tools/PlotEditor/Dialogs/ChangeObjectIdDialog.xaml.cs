@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows;
+using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Tools.PlotEditor.Dialogs
 {
@@ -27,6 +28,7 @@ namespace LegendaryExplorer.Tools.PlotEditor.Dialogs
 		public ChangeObjectIdDialog(string contentText = null, string headerText = null, string dialogTitle = null)
 		{
 			InitializeComponent();
+			CustomWindowChrome.ApplyCustomChrome(this);
 
 			ContentText = contentText ?? DefaultContentText;
 			HeaderText = headerText ?? DefaultHeaderText;

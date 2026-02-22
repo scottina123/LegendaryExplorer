@@ -125,9 +125,10 @@
 
 				<!-- State Event Elements ListBox -->
 				<ListBox x:Name="StateEventElementsListBox" Width="150" Style="{DynamicResource ListBoxStyle}"
-				    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+					Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
 					ItemsSource="{Binding SelectedStateEvent.Value.Elements, NotifyOnTargetUpdated=True}"
-					SelectedItem="{Binding SelectedStateEventElement, Mode=TwoWay}">
+					SelectedItem="{Binding SelectedStateEventElement, Mode=TwoWay}"
+					SelectionMode="Extended">
 					<!-- Resources -->
 					<ListBox.Resources>
 						<DataTemplate DataType="{x:Type stateEventMap:BioStateEventElementBool}">
@@ -207,6 +208,8 @@
 						<ColumnDefinition Width="*" />
 						<ColumnDefinition Width="5" />
 						<ColumnDefinition Width="*" />
+						<ColumnDefinition Width="5" />
+						<ColumnDefinition Width="*" />
 					</Grid.ColumnDefinitions>
 					<Grid.RowDefinitions>
 						<RowDefinition Height="Auto" />
@@ -215,7 +218,9 @@
 					<!-- Grid Content -->
 					<Button Grid.Column="0" Grid.Row="0" Content="Add" Click="AddStateEventElement_Click" />
 
-					<Button Grid.Column="2" Grid.Row="0" Content="Remove" Click="RemoveStateEventElement_Click"/>
+					<Button Grid.Column="2" Grid.Row="0" Content="Multi Add" Click="AddMultipleStateEventElements_Click" />
+
+					<Button Grid.Column="4" Grid.Row="0" Content="Remove" Click="RemoveStateEventElement_Click"/>
 				</Grid>
                 
                 <!-- Selected State Event Element Detail-->
