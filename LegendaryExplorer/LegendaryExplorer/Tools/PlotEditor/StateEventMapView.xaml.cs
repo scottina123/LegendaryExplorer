@@ -314,6 +314,17 @@ namespace LegendaryExplorer.Tools.PlotEditor
             AddStateEvent(dlg.ObjectId, new BioStateEvent(SelectedStateEvent.Value));
         }
 
+        public void CloneStateEvent()
+        {
+            if (StateEvents == null || SelectedStateEvent.Value == null)
+            {
+                return;
+            }
+
+            var newId = GetMaxStateEventId() + 1;
+            AddStateEvent(newId, new BioStateEvent(SelectedStateEvent.Value));
+        }
+
         public void CopyStateEventElement()
         {
             if (StateEvents == null || SelectedStateEvent.Value == null || SelectedStateEventElement == null)
@@ -604,6 +615,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private void CopyStateEvent_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             CopyStateEvent();
+        }
+
+        private void CloneStateEvent_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            CloneStateEvent();
         }
 
         private void RemoveStateEvent_Click(object sender, System.Windows.RoutedEventArgs e)
