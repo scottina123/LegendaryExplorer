@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:system="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
         d:DesignHeight="400" d:DesignWidth="600">
@@ -52,6 +53,12 @@
             </Border>
             <TextBlock Text="Status: " VerticalAlignment="Center" />
             <TextBlock x:Name="StatusText" Text="No mesh loaded" VerticalAlignment="Center" Foreground="Gray" />
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="2,0"/>
+            <xctk:DropDownButton Content="View options" Margin="0,3">
+                <xctk:DropDownButton.DropDownContent>
+                    <scene3D:SceneControlOptionsControl/>
+                </xctk:DropDownButton.DropDownContent>
+            </xctk:DropDownButton>
         </WrapPanel>
     </Grid>
 </misc:NotifyPropertyChangedControlBase>

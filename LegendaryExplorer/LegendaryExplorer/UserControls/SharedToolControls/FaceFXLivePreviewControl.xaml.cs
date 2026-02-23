@@ -7,8 +7,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -26,7 +28,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls;
 /// ME3/LE3 uses bone-based facial animation where FaceFX curves drive bone transforms.
 /// The curve names (m_Jaw+, m_Open, etc.) correspond to facial bones in the skeleton.
 /// </summary>
-public partial class FaceFXLivePreviewControl : NotifyPropertyChangedControlBase
+public partial class FaceFXLivePreviewControl : NotifyPropertyChangedControlBase, ISceneRenderContextConfigurable
 {
     private MeshRenderContext _meshContext;
     private ModelPreview<WorldVertex> _meshPreview;
@@ -64,6 +66,114 @@ public partial class FaceFXLivePreviewControl : NotifyPropertyChangedControlBase
 
     #endregion
 
+    #region ISceneRenderContextConfigurable
+
+    private bool _setAlphaToBlack = true;
+    public bool SetAlphaToBlack
+    {
+        get => _setAlphaToBlack;
+        set
+        {
+            if (SetProperty(ref _setAlphaToBlack, value))
+            {
+                if (value)
+                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.AlphaAsBlack;
+                else
+                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.AlphaAsBlack;
+            }
+        }
+    }
+
+    private bool _showRedChannel = true;
+    public bool ShowRedChannel
+    {
+        get => _showRedChannel;
+        set
+        {
+            if (SetProperty(ref _showRedChannel, value))
+            {
+                if (value)
+                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableRedChannel;
+                else
+                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableRedChannel;
+            }
+        }
+    }
+
+    private bool _showGreenChannel = true;
+    public bool ShowGreenChannel
+    {
+        get => _showGreenChannel;
+        set
+        {
+            if (SetProperty(ref _showGreenChannel, value))
+            {
+                if (value)
+                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableGreenChannel;
+                else
+                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableGreenChannel;
+            }
+        }
+    }
+
+    private bool _showBlueChannel = true;
+    public bool ShowBlueChannel
+    {
+        get => _showBlueChannel;
+        set
+        {
+            if (SetProperty(ref _showBlueChannel, value))
+            {
+                if (value)
+                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableBlueChannel;
+                else
+                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableBlueChannel;
+            }
+        }
+    }
+
+    private bool _showAlphaChannel = true;
+    public bool ShowAlphaChannel
+    {
+        get => _showAlphaChannel;
+        set
+        {
+            if (SetProperty(ref _showAlphaChannel, value))
+            {
+                if (value)
+                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableAlphaChannel;
+                else
+                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableAlphaChannel;
+            }
+        }
+    }
+
+    private System.Windows.Media.Color _backgroundColor;
+    public System.Windows.Media.Color BackgroundColor
+    {
+        get => _backgroundColor;
+        set
+        {
+            if (SetProperty(ref _backgroundColor, value))
+            {
+                _meshContext.BackgroundColor = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the default background color for the current theme.
+    /// Dark mode uses the same dark background as the Sequence Editor.
+    /// </summary>
+    public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
+    {
+        return Settings.Global_DarkMode_Enabled
+            ? System.Windows.Media.Color.FromRgb(30, 30, 30)
+            : System.Windows.Media.Color.FromRgb(128, 128, 128);
+    }
+
+    #endregion
+
     /// <summary>
     /// The package containing the FaceFX data - used to find compatible meshes
     /// </summary>
@@ -82,14 +192,23 @@ public partial class FaceFXLivePreviewControl : NotifyPropertyChangedControlBase
 
     public FaceFXLivePreviewControl()
     {
+        _backgroundColor = GetThemeDefaultBackgroundColor();
+
         InitializeComponent();
 
         _meshContext = new MeshRenderContext
         {
-            BackgroundColor = Colors.Gray
+            BackgroundColor = _backgroundColor
         };
         SceneViewer.Context = _meshContext;
         SceneViewer.Loaded += SceneViewer_Loaded;
+
+        ThemeManager.ThemeChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged(object sender, bool isDarkMode)
+    {
+        BackgroundColor = GetThemeDefaultBackgroundColor();
     }
 
     private void SceneViewer_Loaded(object sender, RoutedEventArgs e)
@@ -299,6 +418,7 @@ public partial class FaceFXLivePreviewControl : NotifyPropertyChangedControlBase
     /// </summary>
     public void Dispose()
     {
+        ThemeManager.ThemeChanged -= OnThemeChanged;
         if (_previewInitialized)
         {
             _meshContext.UpdateScene -= OnUpdateScene;

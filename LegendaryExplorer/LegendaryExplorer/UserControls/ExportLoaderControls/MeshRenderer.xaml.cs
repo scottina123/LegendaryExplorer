@@ -229,7 +229,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private System.Windows.Media.Color _backgroundColor = Colors.White;
+        private System.Windows.Media.Color _backgroundColor;
         public System.Windows.Media.Color BackgroundColor
         {
             get => _backgroundColor;
@@ -245,6 +245,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns the default background color for the current theme.
+        /// Dark mode uses the same dark background as the Sequence Editor.
+        /// </summary>
+        public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
+        {
+            return Settings.Global_DarkMode_Enabled
+                ? System.Windows.Media.Color.FromRgb(30, 30, 30)
+                : System.Windows.Media.Color.FromRgb(128, 128, 128);
         }
         #endregion
 
@@ -521,8 +532,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 BackgroundColor = color;
             }
+            else
+            {
+                BackgroundColor = GetThemeDefaultBackgroundColor();
+            }
             SceneViewer.Context = MeshContext;
-            //MeshContext.BackgroundColor = color is not null ? new Color(color.Value.R, color.Value.G, color.Value.B) : Color.FromRgba(0x999999);
             SceneViewer.Loaded += (sender, args) =>
             {
                 if (MeshContext.IsReady)
@@ -532,7 +546,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 this.ViewportLoadAction = null;
             };
 
+            ThemeManager.ThemeChanged += OnThemeChanged;
+
             startingUp = false;
+        }
+
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            BackgroundColor = GetThemeDefaultBackgroundColor();
         }
 
         public ICommand UModelExportCommand { get; set; }
@@ -1258,6 +1279,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
+            ThemeManager.ThemeChanged -= OnThemeChanged;
             if (Parent is TabItem { Parent: TabControl tc })
             {
                 tc.SelectionChanged -= MeshRendererWPF_HostingTabSelectionChanged;
