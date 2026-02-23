@@ -159,6 +159,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private int QueuedGotoNumber;
         private bool IsLoadingFile;
 
+        /// <summary>
+        /// Caches FaceFXAnimSet export UIndex -> ObjectName so we can detect renames in HandleUpdate.
+        /// </summary>
+        private Dictionary<int, string> _faceFXAnimSetNameCache = [];
+
         private string _searchHintText = "Object name";
 
         public string SearchHintText
@@ -2791,7 +2796,91 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     PromptDialog.Prompt(this, input, "Enter new name", defaultValue: name, selectText: true);
                 if (!string.IsNullOrEmpty(result))
                 {
+                    // Before renaming in the name table, find FaceFXAnimSet exports
+                    // that use this name, so we can update their internal binary names
+                    List<ExportEntry> affectedFxaExports = null;
+                    if (Pcc.Game is not MEGame.ME1)
+                    {
+                        affectedFxaExports = Pcc.Exports
+                            .Where(exp => exp.ClassName == "FaceFXAnimSet" && exp.ObjectName.Name == name)
+                            .ToList();
+                    }
+
                     Pcc.replaceName(LeftSide_ListView.SelectedIndex, result);
+
+                    // Update FaceFXAnimSet internal binary names to match
+                    if (affectedFxaExports is { Count: > 0 })
+                    {
+                        UpdateFaceFXAnimSetBinaryNames(affectedFxaExports, name, result);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the internal binary names of FaceFXAnimSet exports after a rename.
+        /// FaceFXAnimSet stores names internally as strings separate from the name table,
+        /// so they must be updated explicitly.
+        /// </summary>
+        private void UpdateFaceFXAnimSetBinaryNames(List<ExportEntry> fxaExports, string oldName, string newName)
+        {
+            foreach (var fxaExport in fxaExports)
+            {
+                try
+                {
+                    string oldInternalName = oldName;
+                    string newInternalName = newName;
+
+                    // FaceFXAnimSet binary stores names without the _M/_F suffix
+                    if (oldInternalName.Length >= 2 && oldInternalName[^2..].ToLower() is "_m" or "_f")
+                    {
+                        oldInternalName = oldInternalName[..^2];
+                    }
+                    if (newInternalName.Length >= 2 && newInternalName[^2..].ToLower() is "_m" or "_f")
+                    {
+                        newInternalName = newInternalName[..^2];
+                    }
+
+                    var faceFXAnimSet = fxaExport.GetBinaryData<FaceFXAnimSet>();
+
+                    // Update the internal Names list
+                    faceFXAnimSet.Names = faceFXAnimSet.Names
+                        .Select(n => n == oldInternalName ? newInternalName : n)
+                        .ToList();
+
+                    // Update line paths for sound event references
+                    var eventRefs = fxaExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues");
+                    if (eventRefs != null)
+                    {
+                        foreach (var line in faceFXAnimSet.Lines)
+                        {
+                            if (Pcc.Game.IsGame1())
+                            {
+                                line.ID = line.ID.Replace(oldName, newName);
+                            }
+
+                            ExportEntry soundEvent;
+                            if (Pcc.Game is MEGame.ME2)
+                            {
+                                if (string.IsNullOrEmpty(line.Path)) continue;
+                                soundEvent = Pcc.FindExport(line.Path.Replace(oldName, newName, StringComparison.OrdinalIgnoreCase));
+                            }
+                            else
+                            {
+                                if (line.Index < 0 || line.Index >= eventRefs.Count || eventRefs[line.Index].Value <= 0) continue;
+                                soundEvent = Pcc.GetUExport(eventRefs[line.Index].Value);
+                            }
+
+                            if (soundEvent == null) continue;
+                            line.Path = soundEvent.FullPath;
+                        }
+                    }
+
+                    fxaExport.WriteBinary(faceFXAnimSet);
+                }
+                catch
+                {
+                    // Skip if binary parsing fails
                 }
             }
         }
@@ -3327,7 +3416,26 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             QueuedGotoNumber = goToIndex;
 
+            BuildFaceFXNameCache();
             InitializeTreeView();
+        }
+
+        /// <summary>
+        /// Builds the FaceFXAnimSet name cache for detecting renames.
+        /// </summary>
+        private void BuildFaceFXNameCache()
+        {
+            _faceFXAnimSetNameCache.Clear();
+            if (Pcc is not null && Pcc.Game is not MEGame.ME1)
+            {
+                foreach (var exp in Pcc.Exports)
+                {
+                    if (exp.ClassName == "FaceFXAnimSet")
+                    {
+                        _faceFXAnimSetNameCache[exp.UIndex] = exp.ObjectName.Name;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -3654,6 +3762,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 InitClassDropDown();
                 MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
+
+                // Track newly added FaceFXAnimSet exports in the name cache
+                if (Pcc.Game is not MEGame.ME1)
+                {
+                    foreach (var change in addedChanges)
+                    {
+                        if (change.Index > 0 && change.Index <= Pcc.ExportCount)
+                        {
+                            var exp = Pcc.GetUExport(change.Index);
+                            if (exp.ClassName == "FaceFXAnimSet")
+                            {
+                                _faceFXAnimSetNameCache[exp.UIndex] = exp.ObjectName.Name;
+                            }
+                        }
+                    }
+                }
+
                 //Find nodes that haven't been generated and added yet
 
                 List<IEntry> entriesToAdd = addedChanges.ConvertAll(change => Pcc.GetEntry(change.Index));
@@ -3720,6 +3845,25 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             if (headerChanges.Count > 0)
             {
+                // Update FaceFXAnimSet binary names when ObjectName changes via metadata editor
+                if (Pcc.Game is not MEGame.ME1)
+                {
+                    foreach (int uIdx in headerChanges)
+                    {
+                        if (uIdx > 0 && uIdx <= Pcc.ExportCount)
+                        {
+                            var exp = Pcc.GetUExport(uIdx);
+                            if (exp.ClassName == "FaceFXAnimSet" &&
+                                _faceFXAnimSetNameCache.TryGetValue(uIdx, out string oldName) &&
+                                oldName != exp.ObjectName.Name)
+                            {
+                                UpdateFaceFXAnimSetBinaryNames([exp], oldName, exp.ObjectName.Name);
+                                _faceFXAnimSetNameCache[uIdx] = exp.ObjectName.Name;
+                            }
+                        }
+                    }
+                }
+
                 //List<TreeViewEntry> tree = AllTreeViewNodesX[0].FlattenTree();
                 var nodesNeedingResort = new List<TreeViewEntry>();
                 List<TreeViewEntry> tviWithChangedHeaders = uindexMap.Values.Where(x => x.UIndex != 0 && headerChanges.Contains(x.Entry.UIndex)).ToList();
