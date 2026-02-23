@@ -122,6 +122,12 @@
                     <ToggleButton Content="Show Volumes" ToolTip="Show volume wireframes" IsChecked="{Binding ShowVolumes}"/>
                     <ToggleButton Content="Show Volumetric Meshes" IsChecked="{Binding ShowVolumetrics}"
                                   ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <xctk:DropDownButton Content="View options">
+                        <xctk:DropDownButton.DropDownContent>
+                            <scene3D:SceneControlOptionsControl/>
+                        </xctk:DropDownButton.DropDownContent>
+                    </xctk:DropDownButton>
                 </ToolBar>
             </WrapPanel>
 

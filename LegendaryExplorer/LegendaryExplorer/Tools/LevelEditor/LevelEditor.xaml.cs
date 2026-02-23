@@ -1,7 +1,9 @@
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -48,7 +50,7 @@ public class RecentFileSet
     public string TooltipText => string.Join("\n", FilePaths.Select(Path.GetFileName));
 }
 
-public partial class LevelEditor : WPFBase
+public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable
 {
     public readonly LevelEditorRenderContext RenderContext;
 
@@ -109,6 +111,114 @@ public partial class LevelEditor : WPFBase
         set => SetProperty(ref _showVolumetrics, value);
     }
 
+    #region ISceneRenderContextConfigurable
+
+    private bool _setAlphaToBlack = true;
+    public bool SetAlphaToBlack
+    {
+        get => _setAlphaToBlack;
+        set
+        {
+            if (SetProperty(ref _setAlphaToBlack, value))
+            {
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.AlphaAsBlack;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.AlphaAsBlack;
+            }
+        }
+    }
+
+    private bool _showRedChannel = true;
+    public bool ShowRedChannel
+    {
+        get => _showRedChannel;
+        set
+        {
+            if (SetProperty(ref _showRedChannel, value))
+            {
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableRedChannel;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableRedChannel;
+            }
+        }
+    }
+
+    private bool _showGreenChannel = true;
+    public bool ShowGreenChannel
+    {
+        get => _showGreenChannel;
+        set
+        {
+            if (SetProperty(ref _showGreenChannel, value))
+            {
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableGreenChannel;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableGreenChannel;
+            }
+        }
+    }
+
+    private bool _showBlueChannel = true;
+    public bool ShowBlueChannel
+    {
+        get => _showBlueChannel;
+        set
+        {
+            if (SetProperty(ref _showBlueChannel, value))
+            {
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableBlueChannel;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableBlueChannel;
+            }
+        }
+    }
+
+    private bool _showAlphaChannel = true;
+    public bool ShowAlphaChannel
+    {
+        get => _showAlphaChannel;
+        set
+        {
+            if (SetProperty(ref _showAlphaChannel, value))
+            {
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableAlphaChannel;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableAlphaChannel;
+            }
+        }
+    }
+
+    private System.Windows.Media.Color _backgroundColor;
+    public System.Windows.Media.Color BackgroundColor
+    {
+        get => _backgroundColor;
+        set
+        {
+            if (SetProperty(ref _backgroundColor, value))
+            {
+                RenderContext.BackgroundColor = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the default background color for the current theme.
+    /// Dark mode uses the same dark background as the Sequence Editor.
+    /// </summary>
+    public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
+    {
+        return Settings.Global_DarkMode_Enabled
+            ? System.Windows.Media.Color.FromRgb(30, 30, 30)
+            : System.Windows.Media.Color.FromRgb(128, 128, 128);
+    }
+
+    #endregion
+
     public bool UseLocalCoordsForWidget
     {
         get => RenderContext.TransformWidget.UseLocalCoords;
@@ -125,6 +235,8 @@ public partial class LevelEditor : WPFBase
     {
         RenderContext = new LevelEditorRenderContext();
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
+        _backgroundColor = GetThemeDefaultBackgroundColor();
+        RenderContext.BackgroundColor = _backgroundColor;
         ActorsView = CollectionViewSource.GetDefaultView(Actors);
         ActorsView.Filter = ActorFilter;
         ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFileName)));
@@ -135,6 +247,12 @@ public partial class LevelEditor : WPFBase
 
         SceneViewer.Context = RenderContext;
         UndoHistory.PropertyChanged += UndoHistory_PropertyChanged;
+        ThemeManager.ThemeChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged(object sender, bool isDarkMode)
+    {
+        BackgroundColor = GetThemeDefaultBackgroundColor();
     }
 
     private string FileQueuedForLoad;
@@ -1132,6 +1250,7 @@ public partial class LevelEditor : WPFBase
             }
         }
 
+        ThemeManager.ThemeChanged -= OnThemeChanged;
         CloseAllFiles();
 
         RenderContext.UpdateScene -= UpdateScene;
