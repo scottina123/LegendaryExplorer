@@ -55,6 +55,7 @@ using MessageBoxResult = System.Windows.MessageBoxResult;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
+using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorerCore.Matinee;
 
 namespace LegendaryExplorer.Tools.PackageEditor
@@ -265,6 +266,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ViewReferenceGraphCommand { get; set; }
         public ICommand AddInterpTrackCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
+        public ICommand ShiftInterpTrackMoveCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -327,6 +329,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             OpenExportInCommand = new RelayCommand(OpenExportIn, CanOpenExportIn);
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
+            ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -1173,6 +1176,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool CanAddInterpTrack() => TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup");
 
         private bool CanBulkEditInterpGroups() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData";
+
+        private bool CanShiftInterpTrackMove() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove";
+
+        private void ShiftSelectedInterpTrackMove()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove")
+            {
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
+                {
+                    PackageEditorExperimentsM.ShiftInterpTrackMove(exp, dialog.Parameters);
+                }
+            }
+        }
 
         private void BulkEditInterpGroups()
         {

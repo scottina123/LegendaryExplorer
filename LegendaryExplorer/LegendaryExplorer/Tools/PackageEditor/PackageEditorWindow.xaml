@@ -118,6 +118,7 @@
             <MenuItem Header="Open in Interp Editor" Command="{Binding OpenExportInCommand}" CommandParameter="InterpViewer" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Add InterpTrack to group" ToolTip="Add a new InterpTrack to this InterpGroup" Command="{Binding AddInterpTrackCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Bulk Edit InterpGroups" ToolTip="Bulk edit InterpGroup properties for this InterpData" Command="{Binding BulkEditInterpGroupsCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Shift InterpTrackMove" ToolTip="Shift the position, rotation, and timing of this InterpTrackMove" Command="{Binding ShiftInterpTrackMoveCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Pathfinding Editor" Command="{Binding OpenExportInCommand}" CommandParameter="PathfindingEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in WwiseEditor" Command="{Binding OpenExportInCommand}" CommandParameter="WwiseEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Level Editor" Command="{Binding OpenExportInCommand}" CommandParameter="LevelEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
