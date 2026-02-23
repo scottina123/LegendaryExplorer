@@ -378,6 +378,107 @@ namespace LegendaryExplorer.SharedUI
                                     }
                                 }
                                 break;
+                            case "BioEvtSysTrackSubtitles":
+                                {
+                                    var subtitleData = ee.GetProperty<ArrayProperty<StructProperty>>("m_aSubtitleData");
+                                    if (subtitleData != null)
+                                    {
+                                        var lines = new List<string>();
+                                        foreach (var subtitle in subtitleData)
+                                        {
+                                            int strRef = subtitle.GetProp<IntProperty>("nStrRefID");
+                                            if (strRef != 0)
+                                            {
+                                                var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(strRef, ee.FileRef);
+                                                if (tlkStr != "No Data")
+                                                {
+                                                    lines.Add(tlkStr);
+                                                }
+                                            }
+                                        }
+                                        if (lines.Count > 0)
+                                        {
+                                            _subtext = string.Join("\n", lines);
+                                        }
+                                    }
+                                }
+                                break;
+                            case "InterpTrackWwiseEvent":
+                                {
+                                    var wwiseEvents = ee.GetProperty<ArrayProperty<StructProperty>>("WwiseEvents");
+                                    if (wwiseEvents != null)
+                                    {
+                                        var lines = new List<string>();
+                                        foreach (var wwiseEvent in wwiseEvents)
+                                        {
+                                            var eventRef = wwiseEvent.GetProp<ObjectProperty>("Event");
+                                            if (eventRef != null && ee.FileRef.TryGetEntry(eventRef.Value, out var eventEntry))
+                                            {
+                                                string name = eventEntry.ObjectName.Name;
+                                                if (name.StartsWith("VO_"))
+                                                {
+                                                    var parsing = name.Substring(3);
+                                                    var nextUnderScore = parsing.IndexOf("_");
+                                                    if (nextUnderScore > 0)
+                                                    {
+                                                        parsing = parsing.Substring(0, nextUnderScore);
+                                                    }
+                                                    if (int.TryParse(parsing, out var parsedInt))
+                                                    {
+                                                        var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(parsedInt, ee.FileRef);
+                                                        if (tlkStr != "No Data")
+                                                        {
+                                                            lines.Add(tlkStr);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (lines.Count > 0)
+                                        {
+                                            _subtext = string.Join("\n", lines.Distinct());
+                                        }
+                                    }
+                                }
+                                break;
+                            case "SFXInterpTrackPlayFaceOnlyVO":
+                                {
+                                    var fovoKeys = ee.GetProperty<ArrayProperty<StructProperty>>("m_aFOVOKeys");
+                                    if (fovoKeys != null)
+                                    {
+                                        var lines = new List<string>();
+                                        foreach (var key in fovoKeys)
+                                        {
+                                            int strRef = key.GetProp<IntProperty>("nLineStrRef");
+                                            if (strRef != 0)
+                                            {
+                                                var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(strRef, ee.FileRef);
+                                                if (tlkStr != "No Data")
+                                                {
+                                                    lines.Add(tlkStr);
+                                                }
+                                            }
+                                        }
+                                        if (lines.Count > 0)
+                                        {
+                                            _subtext = string.Join("\n", lines);
+                                        }
+                                    }
+                                }
+                                break;
+                            case "BioSeqAct_FaceOnlyVO":
+                                {
+                                    var strRefProp = ee.GetProperty<IntProperty>("m_nStrRefID");
+                                    if (strRefProp != null && strRefProp.Value != 0)
+                                    {
+                                        var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(strRefProp.Value, ee.FileRef);
+                                        if (tlkStr != "No Data")
+                                        {
+                                            _subtext = tlkStr;
+                                        }
+                                    }
+                                }
+                                break;
                         }
 
                         if (_subtext == null && ee.IsA("SequenceObject"))

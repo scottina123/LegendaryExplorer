@@ -1071,6 +1071,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             {
                                 editableValue = $"{index} {ExportToString(parsingExport.FileRef.GetUExport(index))}";
                             }
+                            if (entry.ClassName == "WwiseEvent" && entry.ObjectName.Name.StartsWith("VO_"))
+                            {
+                                var voStr = entry.ObjectName.Name.Substring(3);
+                                var underscoreIdx = voStr.IndexOf("_");
+                                if (underscoreIdx > 0)
+                                {
+                                    voStr = voStr.Substring(0, underscoreIdx);
+                                }
+                                if (int.TryParse(voStr, out var tlkId))
+                                {
+                                    var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, parsingExport.FileRef);
+                                    if (tlkStr != "No Data")
+                                    {
+                                        parsedValue += $"\n{tlkStr}";
+                                    }
+                                }
+                            }
                         }
                         else if (index == 0)
                         {
