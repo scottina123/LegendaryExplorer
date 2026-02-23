@@ -451,7 +451,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 lineEntry.Line.NameIndex = FaceFX.Names.FindOrAdd(sourceNames[lineEntry.Line.NameIndex]);
                 if (FaceFX.Binary is FaceFXAnimSet animSet) animSet.FixNodeTable();
                 lineEntry.Line.AnimationNames = lineEntry.Line.AnimationNames.Select(idx => FaceFX.Names.FindOrAdd(sourceNames[idx])).ToList();
-                lineEntry.Line.Index = FaceFX.Lines.Count;
                 FaceFX.Lines.Add(lineEntry.Line);
 
                 if (int.TryParse(lineEntry.Line.ID, out int tlkID))
@@ -460,7 +459,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 Lines.Add(lineEntry);
-                SaveChanges();
+                AutoIndexLines();
             }
         }
 
@@ -1544,6 +1543,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return lineSec;
         }
 
+        public void AutoIndexLines()
+        {
+            if (Lines?.Count is not > 0) return;
+
+            for (int i = 0; i < Lines.Count; i++)
+            {
+                Lines[i].Line.Index = i;
+            }
+            SaveChanges();
+            if (SelectedLineEntry != null)
+            {
+                UpdateTreeItems(FaceFX, SelectedLineEntry.Line);
+            }
+        }
+
         public void ReAssignLineIds()
         {
             if (Lines?.Count is not > 0) return;
@@ -1728,6 +1742,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void ReAssignLineIds_Click(object sender, RoutedEventArgs e)
         {
             ReAssignLineIds();
+        }
+
+        private void AutoIndexLines_Click(object sender, RoutedEventArgs e)
+        {
+            AutoIndexLines();
         }
 
         private void AddLinesFromXML_Click(object sender, RoutedEventArgs e)

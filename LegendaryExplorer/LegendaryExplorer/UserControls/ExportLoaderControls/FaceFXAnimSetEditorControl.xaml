@@ -42,6 +42,7 @@
                 <MenuItem Header="Tools ?">
                     <MenuItem Header="Add Line" Click="AddLine_Click"/>
                     <MenuItem Header="Re-assign Line IDs to new range" Click="ReAssignLineIds_Click"/>
+                    <MenuItem Header="Auto Index Lines" Click="AutoIndexLines_Click" ToolTip="Re-index all lines starting from 0, incrementing by 1"/>
                     <MenuItem Header="Add Lines from XML" Click="AddLinesFromXML_Click"/>
                     <MenuItem Header="Add Audio from Folder" Click="AddAudioFromFolder_Click" ToolTip="Add lines from WwiseEvents in a package folder"/>
                     <Separator/>
