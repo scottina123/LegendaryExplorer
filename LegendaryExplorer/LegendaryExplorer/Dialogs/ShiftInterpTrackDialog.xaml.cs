@@ -13,6 +13,7 @@ namespace LegendaryExplorer.Dialogs
         public float Pitch { get; set; }
         public float Yaw { get; set; }
         public float TimeOffset { get; set; }
+        public bool IncludeAnchorObjectMoves { get; set; }
 
         public ShiftInterpTrackParameters()
         {
@@ -23,6 +24,7 @@ namespace LegendaryExplorer.Dialogs
             Pitch = 0;
             Yaw = 0;
             TimeOffset = 0;
+            IncludeAnchorObjectMoves = false;
         }
     }
 
@@ -58,6 +60,7 @@ namespace LegendaryExplorer.Dialogs
             Parameters.Pitch = pitch;
             Parameters.Yaw = yaw;
             Parameters.TimeOffset = timeOffset;
+            Parameters.IncludeAnchorObjectMoves = IncludeAnchorCheckBox.IsChecked == true;
 
             DialogResult = true;
             Close();

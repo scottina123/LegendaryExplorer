@@ -267,6 +267,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand AddInterpTrackCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
+        public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
+        public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -330,6 +332,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
+            ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
+            ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -1187,6 +1191,56 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 if (dialog.ShowDialog() == true)
                 {
                     PackageEditorExperimentsM.ShiftInterpTrackMove(exp, dialog.Parameters);
+                }
+            }
+        }
+
+        private void ShiftInterpTrackMovesInSelectedPackage()
+        {
+            if (TryGetSelectedExport(out ExportEntry packageExp) && packageExp.ClassName == "Package")
+            {
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
+                {
+                    var interpTrackMoves = Pcc.Exports.Where(x =>
+                        x.ClassName == "InterpTrackMove" && x.IsDescendantOf(packageExp));
+
+                    foreach (var trackMove in interpTrackMoves)
+                    {
+                        if (!dialog.Parameters.IncludeAnchorObjectMoves)
+                        {
+                            var moveFrame = trackMove.GetProperty<EnumProperty>("MoveFrame");
+                            if (moveFrame != null && moveFrame.Value == "IMF_AnchorObject")
+                                continue;
+                        }
+
+                        PackageEditorExperimentsM.ShiftInterpTrackMove(trackMove, dialog.Parameters);
+                    }
+                }
+            }
+        }
+
+        private void ShiftInterpTrackMovesInSelectedInterpData()
+        {
+            if (TryGetSelectedExport(out ExportEntry interpDataExp) && interpDataExp.ClassName == "InterpData")
+            {
+                var dialog = new ShiftInterpTrackDialog();
+                if (dialog.ShowDialog() == true)
+                {
+                    var interpTrackMoves = Pcc.Exports.Where(x =>
+                        x.ClassName == "InterpTrackMove" && x.IsDescendantOf(interpDataExp));
+
+                    foreach (var trackMove in interpTrackMoves)
+                    {
+                        if (!dialog.Parameters.IncludeAnchorObjectMoves)
+                        {
+                            var moveFrame = trackMove.GetProperty<EnumProperty>("MoveFrame");
+                            if (moveFrame != null && moveFrame.Value == "IMF_AnchorObject")
+                                continue;
+                        }
+
+                        PackageEditorExperimentsM.ShiftInterpTrackMove(trackMove, dialog.Parameters);
+                    }
                 }
             }
         }
