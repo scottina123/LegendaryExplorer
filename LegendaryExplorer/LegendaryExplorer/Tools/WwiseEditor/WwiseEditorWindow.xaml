@@ -60,6 +60,27 @@
 
                 <MenuItem Header="View Options" Padding="4">
                     <MenuItem Name="AutoSaveView_MenuItem" Header="Auto-Save View" IsCheckable="True" />
+                    <Separator />
+                    <MenuItem Header="Adjust graph color settings">
+                        <TextBlock Text="Background Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_Background" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Box Fill Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxFill" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Title Box Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_TitleBox" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Comment Text Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_CommentText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Box Text Color: " />
+                        <xctk:ColorPicker Name="ClrPcker_BoxText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Connection Line Color: " ToolTip="Base connection line color for output links" />
+                        <xctk:ColorPicker Name="ClrPcker_Connection" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" ToolTip="Base connection line color for output links" />
+                    </MenuItem>
                 </MenuItem>
                 <MenuItem Header="Experiments" Padding="4">
                 </MenuItem>

@@ -289,7 +289,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             else
             {
                 const string msg = "Updating, please wait............";
-                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), SystemFonts.DefaultFont, Brushes.Black, Width - Width / 2, Height - Height / 2);
+                using var textBrush = new SolidBrush(WwiseHircObjNode.BoxTextColor);
+                e.Graphics.DrawString(msg.Substring(0, updatingCount + 21), SystemFonts.DefaultFont, textBrush, Width - Width / 2, Height - Height / 2);
                 updatingCount++;
                 if (updatingCount + 21 > msg.Length)
                 {

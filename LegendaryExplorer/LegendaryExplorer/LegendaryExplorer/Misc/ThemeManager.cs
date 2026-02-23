@@ -6,6 +6,7 @@ using System.Windows;
 using Be.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.SequenceObjects;
+using LegendaryExplorer.Tools.WwiseEditor;
 using Color = System.Drawing.Color;
 
 namespace LegendaryExplorer.Misc
@@ -141,6 +142,13 @@ namespace LegendaryExplorer.Misc
                 SObj.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
                 SObj.CommentTextColor = Color.FromArgb(87, 166, 74);
                 SObj.BoxTextColor = Color.FromArgb(220, 220, 220);
+
+                // Wwise Graph Editor dark theme
+                WwiseHircObjNode.NodeBrushColor = Color.FromArgb(45, 45, 48);
+                WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(37, 37, 38);
+                WwiseHircObjNode.CommentTextColor = Color.FromArgb(87, 166, 74);
+                WwiseHircObjNode.BoxTextColor = Color.FromArgb(220, 220, 220);
+                WwiseHircObjNode.ConnectionColor = Color.White;
             }
             else
             {
@@ -149,6 +157,13 @@ namespace LegendaryExplorer.Misc
                 SObj.TitleBoxBrushColor = Color.FromArgb(112, 112, 112);
                 SObj.CommentTextColor = Color.FromArgb(25, 25, 112);
                 SObj.BoxTextColor = Color.FromArgb(255, 255, 255);
+
+                // Wwise Graph Editor light theme (original colors)
+                WwiseHircObjNode.NodeBrushColor = Color.FromArgb(140, 140, 140);
+                WwiseHircObjNode.TitleBoxBrushColor = Color.FromArgb(112, 112, 112);
+                WwiseHircObjNode.CommentTextColor = Color.FromArgb(74, 63, 190);
+                WwiseHircObjNode.BoxTextColor = Color.FromArgb(255, 255, 128);
+                WwiseHircObjNode.ConnectionColor = Color.Black;
             }
         }
 

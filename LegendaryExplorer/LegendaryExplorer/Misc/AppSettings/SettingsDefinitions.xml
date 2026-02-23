@@ -85,7 +85,13 @@
   <!-- Wwise Graph Editor specific settings -->
   <setting name="WwiseGraphEditor_AutoSaveView" type="bool" defaultvalue="false" category="Audio"
            friendlyName="Wwise Graph Editor: Auto-save View"/>
-	
+  <setting name="WwiseGraphEditor_BackgroundColor" type="int" defaultvalue="-5789785"/>
+  <setting name="WwiseGraphEditor_BoxFillColor" type="int" defaultvalue="-7566196"/>
+  <setting name="WwiseGraphEditor_TitleBoxColor" type="int" defaultvalue="-9408400"/>
+  <setting name="WwiseGraphEditor_CommentTextColor" type="int" defaultvalue="-11911234"/>
+  <setting name="WwiseGraphEditor_BoxTextColor" type="int" defaultvalue="-128"/>
+  <setting name="WwiseGraphEditor_ConnectionColor" type="int" defaultvalue="-16777216"/>
+
   <!-- Export Loader Control settings -->
   <setting name="BinaryInterpreter_SkipAutoParseSizeCheck" type="bool" defaultvalue="false" category="Export Loaders"
            friendlyName="Binary Interpreter: Skip Auto-parse size limit (20KB)"/>

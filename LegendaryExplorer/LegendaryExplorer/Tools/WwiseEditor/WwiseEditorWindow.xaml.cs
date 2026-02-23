@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
 using LegendaryExplorer.SharedUI.Bases;
@@ -56,10 +57,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName=>LoadFile(fileName));
 
+            // Apply theme-appropriate colors based on current dark mode setting
+            ApplyThemeDefaults();
+
+            // Subscribe to theme changes to update graph colors dynamically
+            ThemeManager.ThemeChanged += OnThemeChanged;
+
             graphEditor = (WwiseGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
 
             AutoSaveView_MenuItem.IsChecked = Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView;
+
+            // Initialize color pickers with loaded colors
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
 
             soundPanel.SoundPanel_TabsControl.SelectedIndex = 1;
             soundPanel.HIRCObjectSelected += SoundPanel_HIRCObjectSelected;
@@ -86,9 +101,222 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         private readonly int UIndexQueuedForFocusing;
-        private static readonly Color GraphEditorBackColor = Color.FromArgb(167, 167, 167);
         public string CurrentFile;
         public string JSONpath;
+
+        #region Graph Color Properties
+
+        private Color _graphEditorBackColor = Color.FromArgb(167, 167, 167);
+        public Color GraphEditorBackColor
+        {
+            get => _graphEditorBackColor;
+            set
+            {
+                if (_graphEditorBackColor != value)
+                {
+                    _graphEditorBackColor = value;
+                    if (graphEditor != null)
+                    {
+                        graphEditor.BackColor = value;
+                        if (CurrentObjects.Any())
+                        {
+                            RefreshView();
+                        }
+                    }
+                }
+            }
+        }
+
+        private Color _boxFillColor = Color.FromArgb(140, 140, 140);
+        public Color BoxFillColor
+        {
+            get => _boxFillColor;
+            set
+            {
+                if (_boxFillColor != value)
+                {
+                    _boxFillColor = value;
+                    WwiseHircObjNode.NodeBrushColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _titleBoxColor = Color.FromArgb(112, 112, 112);
+        public Color TitleBoxColor
+        {
+            get => _titleBoxColor;
+            set
+            {
+                if (_titleBoxColor != value)
+                {
+                    _titleBoxColor = value;
+                    WwiseHircObjNode.TitleBoxBrushColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _commentTextColor = Color.FromArgb(74, 63, 190);
+        public Color CommentTextColor
+        {
+            get => _commentTextColor;
+            set
+            {
+                if (_commentTextColor != value)
+                {
+                    _commentTextColor = value;
+                    WwiseHircObjNode.CommentTextColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _boxTextColor = Color.FromArgb(255, 255, 128);
+        public Color BoxTextColor
+        {
+            get => _boxTextColor;
+            set
+            {
+                if (_boxTextColor != value)
+                {
+                    _boxTextColor = value;
+                    WwiseHircObjNode.BoxTextColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        private Color _connectionColor = Color.Black;
+        public Color ConnectionColor
+        {
+            get => _connectionColor;
+            set
+            {
+                if (_connectionColor != value)
+                {
+                    _connectionColor = value;
+                    WwiseHircObjNode.ConnectionColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Applies theme-appropriate default colors based on the current dark mode setting.
+        /// </summary>
+        private void ApplyThemeDefaults()
+        {
+            bool isDarkMode = Settings.Global_DarkMode_Enabled;
+
+            if (isDarkMode)
+            {
+                // Dark theme - matching Sequence Editor dark mode colors
+                _graphEditorBackColor = Color.FromArgb(30, 30, 30);
+                _boxFillColor = Color.FromArgb(45, 45, 48);
+                _titleBoxColor = Color.FromArgb(37, 37, 38);
+                _commentTextColor = Color.FromArgb(87, 166, 74);
+                _boxTextColor = Color.FromArgb(220, 220, 220);
+                _connectionColor = Color.White;
+            }
+            else
+            {
+                // Light theme defaults (original Wwise Editor colors)
+                _graphEditorBackColor = Color.FromArgb(167, 167, 167);
+                _boxFillColor = Color.FromArgb(140, 140, 140);
+                _titleBoxColor = Color.FromArgb(112, 112, 112);
+                _commentTextColor = Color.FromArgb(74, 63, 190);
+                _boxTextColor = Color.FromArgb(255, 255, 128);
+                _connectionColor = Color.Black;
+            }
+
+            // Apply to static properties used by WwiseHircObjNode
+            WwiseHircObjNode.NodeBrushColor = _boxFillColor;
+            WwiseHircObjNode.TitleBoxBrushColor = _titleBoxColor;
+            WwiseHircObjNode.CommentTextColor = _commentTextColor;
+            WwiseHircObjNode.BoxTextColor = _boxTextColor;
+            WwiseHircObjNode.ConnectionColor = _connectionColor;
+        }
+
+        /// <summary>
+        /// Handles theme changes from the ThemeManager.
+        /// </summary>
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            ApplyThemeDefaults();
+
+            if (graphEditor != null)
+            {
+                graphEditor.BackColor = GraphEditorBackColor;
+            }
+
+            // Update color pickers to reflect the new theme colors
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+            ClrPcker_BoxFill.SelectedColor = BoxFillColor.ToWPFColor();
+            ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
+            ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
+            ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+
+            if (CurrentObjects.Any())
+            {
+                RefreshView();
+            }
+        }
+
+        private void ColorPicker_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
+        {
+            var source = (Xceed.Wpf.Toolkit.ColorPicker)sender;
+            if (e.NewValue is not null)
+            {
+                var newColor = e.NewValue.Value.ToWinformsColor();
+                switch (source.Name)
+                {
+                    case "ClrPcker_Background":
+                        GraphEditorBackColor = newColor;
+                        Settings.WwiseGraphEditor_BackgroundColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_BoxFill":
+                        BoxFillColor = newColor;
+                        Settings.WwiseGraphEditor_BoxFillColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_TitleBox":
+                        TitleBoxColor = newColor;
+                        Settings.WwiseGraphEditor_TitleBoxColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_CommentText":
+                        CommentTextColor = newColor;
+                        Settings.WwiseGraphEditor_CommentTextColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_BoxText":
+                        BoxTextColor = newColor;
+                        Settings.WwiseGraphEditor_BoxTextColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_Connection":
+                        ConnectionColor = newColor;
+                        Settings.WwiseGraphEditor_ConnectionColor = newColor.ToArgb();
+                        break;
+                }
+                Settings.Save();
+            }
+        }
+
+        #endregion
 
         private ExportEntry _currentExport;
         public ExportEntry CurrentExport
@@ -832,6 +1060,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 SaveView();
 
             Misc.AppSettings.Settings.WwiseGraphEditor_AutoSaveView = AutoSaveView_MenuItem.IsChecked;
+            ThemeManager.ThemeChanged -= OnThemeChanged;
             soundPanel.HIRCObjectSelected -= SoundPanel_HIRCObjectSelected;
             soundPanel.Dispose();
             

@@ -251,6 +251,36 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _wwisegrapheditor_autosaveview;
             set => SetProperty(ref _wwisegrapheditor_autosaveview, value);
         }
+        private static int _wwisegrapheditor_backgroundcolor = -5789785;
+        public static int WwiseGraphEditor_BackgroundColor {
+            get => _wwisegrapheditor_backgroundcolor;
+            set => SetProperty(ref _wwisegrapheditor_backgroundcolor, value);
+        }
+        private static int _wwisegrapheditor_boxfillcolor = -7566196;
+        public static int WwiseGraphEditor_BoxFillColor {
+            get => _wwisegrapheditor_boxfillcolor;
+            set => SetProperty(ref _wwisegrapheditor_boxfillcolor, value);
+        }
+        private static int _wwisegrapheditor_titleboxcolor = -9408400;
+        public static int WwiseGraphEditor_TitleBoxColor {
+            get => _wwisegrapheditor_titleboxcolor;
+            set => SetProperty(ref _wwisegrapheditor_titleboxcolor, value);
+        }
+        private static int _wwisegrapheditor_commenttextcolor = -11911234;
+        public static int WwiseGraphEditor_CommentTextColor {
+            get => _wwisegrapheditor_commenttextcolor;
+            set => SetProperty(ref _wwisegrapheditor_commenttextcolor, value);
+        }
+        private static int _wwisegrapheditor_boxtextcolor = -128;
+        public static int WwiseGraphEditor_BoxTextColor {
+            get => _wwisegrapheditor_boxtextcolor;
+            set => SetProperty(ref _wwisegrapheditor_boxtextcolor, value);
+        }
+        private static int _wwisegrapheditor_connectioncolor = -16777216;
+        public static int WwiseGraphEditor_ConnectionColor {
+            get => _wwisegrapheditor_connectioncolor;
+            set => SetProperty(ref _wwisegrapheditor_connectioncolor, value);
+        }
         private static bool _binaryinterpreter_skipautoparsesizecheck = false;
         public static bool BinaryInterpreter_SkipAutoParseSizeCheck {
             get => _binaryinterpreter_skipautoparsesizecheck;
@@ -496,6 +526,12 @@ namespace LegendaryExplorer.Misc.AppSettings
             CoalescedEditor_SourcePath = TryGetSetting(settingsJson, "coalescededitor_sourcepath", "");
             CoalescedEditor_DestinationPath = TryGetSetting(settingsJson, "coalescededitor_destinationpath", "");
             WwiseGraphEditor_AutoSaveView = TryGetSetting(settingsJson, "wwisegrapheditor_autosaveview", false);
+            WwiseGraphEditor_BackgroundColor = TryGetSetting(settingsJson, "wwisegrapheditor_backgroundcolor", -5789785);
+            WwiseGraphEditor_BoxFillColor = TryGetSetting(settingsJson, "wwisegrapheditor_boxfillcolor", -7566196);
+            WwiseGraphEditor_TitleBoxColor = TryGetSetting(settingsJson, "wwisegrapheditor_titleboxcolor", -9408400);
+            WwiseGraphEditor_CommentTextColor = TryGetSetting(settingsJson, "wwisegrapheditor_commenttextcolor", -11911234);
+            WwiseGraphEditor_BoxTextColor = TryGetSetting(settingsJson, "wwisegrapheditor_boxtextcolor", -128);
+            WwiseGraphEditor_ConnectionColor = TryGetSetting(settingsJson, "wwisegrapheditor_connectioncolor", -16777216);
             BinaryInterpreter_SkipAutoParseSizeCheck = TryGetSetting(settingsJson, "binaryinterpreter_skipautoparsesizecheck", false);
             TextureViewer_AutoLoadMip = TryGetSetting(settingsJson, "textureviewer_autoloadmip", true);
             TextureViewer_BackgroundColor = TryGetSetting(settingsJson, "textureviewer_backgroundcolor", "#808080");
@@ -587,6 +623,12 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["coalescededitor_sourcepath"] = CoalescedEditor_SourcePath.ToString();
             settingsJson["coalescededitor_destinationpath"] = CoalescedEditor_DestinationPath.ToString();
             settingsJson["wwisegrapheditor_autosaveview"] = WwiseGraphEditor_AutoSaveView.ToString();
+            settingsJson["wwisegrapheditor_backgroundcolor"] = WwiseGraphEditor_BackgroundColor.ToString();
+            settingsJson["wwisegrapheditor_boxfillcolor"] = WwiseGraphEditor_BoxFillColor.ToString();
+            settingsJson["wwisegrapheditor_titleboxcolor"] = WwiseGraphEditor_TitleBoxColor.ToString();
+            settingsJson["wwisegrapheditor_commenttextcolor"] = WwiseGraphEditor_CommentTextColor.ToString();
+            settingsJson["wwisegrapheditor_boxtextcolor"] = WwiseGraphEditor_BoxTextColor.ToString();
+            settingsJson["wwisegrapheditor_connectioncolor"] = WwiseGraphEditor_ConnectionColor.ToString();
             settingsJson["binaryinterpreter_skipautoparsesizecheck"] = BinaryInterpreter_SkipAutoParseSizeCheck.ToString();
             settingsJson["textureviewer_autoloadmip"] = TextureViewer_AutoLoadMip.ToString();
             settingsJson["textureviewer_backgroundcolor"] = TextureViewer_BackgroundColor.ToString();

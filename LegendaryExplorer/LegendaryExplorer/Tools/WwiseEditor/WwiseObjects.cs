@@ -33,7 +33,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     public abstract class WwiseHircObjNode : PNode, IDisposable
     {
         public WwiseGraphEditor g;
-        protected static readonly Color commentColor = Color.FromArgb(74, 63, 190);
+        private static Color _commentColor = Color.FromArgb(74, 63, 190);
+        protected static Color commentColor => _commentColor;
         protected static readonly Color intColor = Color.FromArgb(34, 218, 218);//cyan
         protected static readonly Color floatColor = Color.FromArgb(23, 23, 213);//blue
         protected static readonly Color boolColor = Color.FromArgb(215, 37, 33); //red
@@ -42,10 +43,13 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         protected static readonly Color stringColor = Color.FromArgb(24, 219, 12);//lime green
         protected static readonly Color vectorColor = Color.FromArgb(127, 123, 32);//dark gold
         protected static readonly Color EventColor = Color.FromArgb(214, 30, 28);
-        protected static readonly Color titleColor = Color.FromArgb(255, 255, 128);
-        protected static readonly Brush titleBoxBrush = new SolidBrush(Color.FromArgb(112, 112, 112));
+        private static Color _boxTextColor = Color.FromArgb(255, 255, 128);
+        protected static Color titleColor => _boxTextColor;
+        private static Color _titleBoxColor = Color.FromArgb(112, 112, 112);
+        protected static Brush titleBoxBrush => new SolidBrush(_titleBoxColor);
         protected static readonly Brush mostlyTransparentBrush = new SolidBrush(Color.FromArgb(1, 255, 255, 255));
-        protected static readonly Brush nodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
+        private static Color _nodeBrushColor = Color.FromArgb(140, 140, 140);
+        protected static Brush nodeBrush => new SolidBrush(_nodeBrushColor);
         protected static readonly Pen selectedPen = new (Color.FromArgb(255, 255, 0));
         public static bool draggingOutlink;
         public static bool draggingVarlink;
@@ -135,7 +139,38 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         public List<InputLink> InLinks = new();
         public List<WwiseEdEdge> InputEdges = new();
 
-        protected static Brush outputBrush = new SolidBrush(Color.Black);
+        private static Color _connectionColor = Color.Black;
+        protected static Brush outputBrush => new SolidBrush(_connectionColor);
+
+        public static Color NodeBrushColor
+        {
+            get => _nodeBrushColor;
+            set => _nodeBrushColor = value;
+        }
+
+        public static Color TitleBoxBrushColor
+        {
+            get => _titleBoxColor;
+            set => _titleBoxColor = value;
+        }
+
+        public static Color CommentTextColor
+        {
+            get => _commentColor;
+            set => _commentColor = value;
+        }
+
+        public static Color BoxTextColor
+        {
+            get => _boxTextColor;
+            set => _boxTextColor = value;
+        }
+
+        public static Color ConnectionColor
+        {
+            get => _connectionColor;
+            set => _connectionColor = value;
+        }
 
         public struct OutputLink
         {
@@ -183,6 +218,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         {
                             PPath p1 = outLink.node;
                             var edge = new ActionEdge();
+                            edge.Pen = new Pen(_connectionColor);
                             p1.Tag ??= new List<ActionEdge>();
                             ((List<ActionEdge>)p1.Tag).Add(edge);
                             destObj.InputEdges.Add(edge);
@@ -205,6 +241,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                         {
                             PPath p1 = varLink.node;
                             var edge = new VarEdge();
+                            edge.Pen = new Pen(_connectionColor);
                             if (destVar.ChildrenCount > 1)
                                 edge.Pen = ((PPath)destVar[1]).Pen;
                             p1.Tag ??= new List<VarEdge>();
@@ -274,7 +311,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             {
                 "WwiseEvent" => boolColor,
                 "WwiseStream" => intColor,
-                _ => Color.Black
+                _ => ConnectionColor
             });
             shape.Pen = outlinePen;
             shape.Brush = nodeBrush;
@@ -532,7 +569,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         public override void Layout(float x, float y)
         {
-            outlinePen = new Pen(Color.Black);
+            outlinePen = new Pen(ConnectionColor);
             string s = GetTitle();
             float starty = 8;
             float w = 20;
