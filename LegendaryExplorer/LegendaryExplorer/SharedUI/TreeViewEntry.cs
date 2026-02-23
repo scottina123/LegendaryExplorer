@@ -481,6 +481,25 @@ namespace LegendaryExplorer.SharedUI
                                 break;
                         }
 
+                        {
+                            var findActor = ee.GetProperty<NameProperty>("m_nmSFXFindActor")
+                                         ?? ee.GetProperty<NameProperty>("m_nmFindActor");
+                            if (findActor != null && findActor.Value.Name != "None")
+                            {
+                                _subtext = _subtext != null
+                                    ? findActor.Value.Instanced + "\n" + _subtext
+                                    : findActor.Value.Instanced;
+                            }
+
+                            var groupName = ee.GetProperty<NameProperty>("GroupName");
+                            if (groupName != null && groupName.Value.Name != "None")
+                            {
+                                _subtext = _subtext != null
+                                    ? _subtext + "\n" + groupName.Value.Instanced
+                                    : groupName.Value.Instanced;
+                            }
+                        }
+
                         if (_subtext == null && ee.IsA("SequenceObject"))
                         {
                             _subtext = ee.GetProperty<StrProperty>("ObjName")?.Value;
