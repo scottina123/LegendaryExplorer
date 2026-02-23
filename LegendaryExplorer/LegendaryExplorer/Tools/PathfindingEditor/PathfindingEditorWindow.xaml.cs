@@ -584,6 +584,13 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             InitializeComponent();
             var contextMenu = (ContextMenu)FindResource("nodeContextMenu");
             contextMenu.DataContext = this;
+
+            // Apply theme-appropriate colors based on current dark mode setting
+            ApplyThemeDefaults();
+
+            // Subscribe to theme changes to update graph colors dynamically
+            ThemeManager.ThemeChanged += OnThemeChanged;
+
             graphEditor = (PathingGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
             AllowRefresh = true;
@@ -658,6 +665,40 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             ExportQueuedForFocus = export;
         }
 
+        /// <summary>
+        /// Applies theme-appropriate default background color based on the current dark mode setting.
+        /// </summary>
+        private void ApplyThemeDefaults()
+        {
+            if (Settings.Global_DarkMode_Enabled)
+            {
+                // Dark theme - match Sequence Editor dark mode background
+                _graphEditorBackColor = Color.FromArgb(30, 30, 30);
+            }
+            else
+            {
+                // Light theme - default color
+                _graphEditorBackColor = Color.FromArgb(130, 130, 130);
+            }
+
+            Settings.PathfindingEditor_BackgroundColor = _graphEditorBackColor.ToArgb();
+        }
+
+        /// <summary>
+        /// Handles theme changes from the ThemeManager.
+        /// </summary>
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            ApplyThemeDefaults();
+
+            if (graphEditor != null)
+            {
+                graphEditor.BackColor = GraphEditorBackColor;
+            }
+
+            ClrPcker_Background.SelectedColor = GraphEditorBackColor.ToWPFColor();
+        }
+
         private void PathfindingEditorWPF_Loaded(object sender, RoutedEventArgs e)
         {
             // Initialize color picker with saved color
@@ -697,6 +738,9 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             if (!e.Cancel)
             {
                 Settings.Save();
+
+                // Unsubscribe from theme changes to prevent memory leaks
+                ThemeManager.ThemeChanged -= OnThemeChanged;
 
                 graphEditor.RemoveInputEventListener(pathfindingMouseListener);
                 graphEditor.DragDrop -= GraphEditor_DragDrop;
