@@ -251,7 +251,10 @@ public partial class LevelEditor : WPFBase
         {
             CloseAllFiles();
             Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
-            IsBusy = true;
+
+
+            using var guard = new RenderGuard(this);
+
             await AddLevelFile(s).ConfigureAwait(true);
         }
         catch (Exception e)
@@ -311,9 +314,6 @@ public partial class LevelEditor : WPFBase
         {
             CenterView();
         }
-
-        SceneViewer.SetShouldRender(true);
-        IsBusy = false;
 
         if (ignoredClasses.Count > 0)
         {
@@ -626,6 +626,8 @@ public partial class LevelEditor : WPFBase
                 }
             }
             if (paths.Count is 0) return;
+
+            using var guard = new RenderGuard(this);
 
             foreach (string path in paths)
             {
@@ -1046,6 +1048,8 @@ public partial class LevelEditor : WPFBase
             try
             {
 #endif
+
+            using var guard = new RenderGuard(this);
             await AddLevelFile(d.FileName).ConfigureAwait(true);
 #if !DEBUG
             }
@@ -1102,6 +1106,8 @@ public partial class LevelEditor : WPFBase
                 }
                 else
                 {
+                    using var guard = new RenderGuard(this);
+
                     await AddLevelFile(file).ConfigureAwait(true);
                     isFirst = false;
                 }
@@ -1216,6 +1222,9 @@ public partial class LevelEditor : WPFBase
     private async void OpenRecentFileSet(RecentFileSet set)
     {
         CloseAllFiles();
+
+        using var guard = new RenderGuard(this);
+
         foreach (string path in set.FilePaths)
         {
             if (File.Exists(path))
@@ -1285,4 +1294,22 @@ public partial class LevelEditor : WPFBase
     }
 
     #endregion
+
+    private readonly struct RenderGuard : IDisposable
+    {
+        private readonly LevelEditor levelEditor;
+
+        public RenderGuard(LevelEditor levEd)
+        {
+            levelEditor = levEd;
+            levelEditor.SceneViewer.SetShouldRender(false);
+            levelEditor.SetBusy();
+        }
+
+        public readonly void Dispose()
+        {
+            levelEditor.SceneViewer.SetShouldRender(true);
+            levelEditor.EndBusy();
+        }
+    }
 }
