@@ -896,11 +896,16 @@
                                                         ToolTip="Length in secs of matinee interpdata.">
                                                 <TextBlock Text="InterpLength: " VerticalAlignment="Center"
                                                            FontSize="15" Margin="2" />
-                                                <TextBox Text="{Binding Path=SelectedDialogueNode.InterpLength}"
+                                                <TextBox Text="{Binding Path=SelectedDialogueNode.InterpLength, UpdateSourceTrigger=Explicit}"
                                                          Name="InterpLength_TxtBx" HorizontalAlignment="Stretch"
                                                          FontSize="15" VerticalAlignment="Center"
                                                          HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0" IsReadOnly="True" />
+                                                         BorderThickness="0"
+                                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                         Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                                         KeyUp="EditBox_Node_KeyUp" />
                                                 <TextBlock Text="seconds" VerticalAlignment="Center" FontSize="15"
                                                            Margin="2" />
                                             </StackPanel>

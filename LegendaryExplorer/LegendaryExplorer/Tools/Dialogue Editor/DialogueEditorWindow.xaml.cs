@@ -1330,6 +1330,12 @@ namespace LegendaryExplorer.DialogueEditor
                     node.InterpLength = lengthprop?.Value ?? -1;
                     needsRefresh = true;
                     break;
+                case "InterpLength":
+                    if (node.InterpData != null)
+                    {
+                        node.InterpData.WriteProperty(new FloatProperty(node.InterpLength, "InterpLength"));
+                    }
+                    break;
                 case "CameraIntimacy":
                     var CameraIntimacy = new IntProperty(node.CameraIntimacy, "nCameraIntimacy");
                     prop.Properties.AddOrReplaceProp(CameraIntimacy);
