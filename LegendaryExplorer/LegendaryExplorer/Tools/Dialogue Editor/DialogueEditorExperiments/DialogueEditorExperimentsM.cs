@@ -1,5 +1,6 @@
 ﻿using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Dialogue;
@@ -97,17 +98,63 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
 
             if (speakerTag.Equals("player", StringComparison.OrdinalIgnoreCase))
             {
-                var genderResult = MessageBox.Show(window as System.Windows.Window,
-                    "Which audio files would you like to extract?\n\n" +
-                    "Yes - Extract both male and female\n" +
-                    "No - Extract only male\n" +
-                    "Cancel - Extract only female",
-                    "Select Genders",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Question);
+                var genderDialog = new System.Windows.Window
+                {
+                    Title = "Select Genders",
+                    Width = 350,
+                    SizeToContent = SizeToContent.Height,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = window as System.Windows.Window,
+                    ResizeMode = ResizeMode.NoResize,
+                    WindowStyle = WindowStyle.ToolWindow
+                };
+                genderDialog.SetResourceReference(System.Windows.Window.BackgroundProperty, SystemColors.WindowBrushKey);
+                genderDialog.SetResourceReference(System.Windows.Window.ForegroundProperty, SystemColors.WindowTextBrushKey);
+                CustomWindowChrome.ApplyCustomChrome(genderDialog);
 
-                extractMale = genderResult != MessageBoxResult.Cancel;
-                extractFemale = genderResult != MessageBoxResult.No;
+                string genderChoice = null;
+
+                var textBlock = new System.Windows.Controls.TextBlock
+                {
+                    Text = "Which audio files would you like to extract?",
+                    Margin = new Thickness(10, 15, 10, 10),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                textBlock.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, SystemColors.WindowTextBrushKey);
+
+                var buttonPanel = new System.Windows.Controls.StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 10, 0, 10)
+                };
+
+                var bothBtn = new System.Windows.Controls.Button { Content = "Both", Width = 70, Margin = new Thickness(5) };
+                var maleBtn = new System.Windows.Controls.Button { Content = "Male", Width = 70, Margin = new Thickness(5) };
+                var femaleBtn = new System.Windows.Controls.Button { Content = "Female", Width = 70, Margin = new Thickness(5) };
+                var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Width = 70, Margin = new Thickness(5), IsCancel = true };
+
+                bothBtn.Click += (_, _) => { genderChoice = "both"; genderDialog.DialogResult = true; };
+                maleBtn.Click += (_, _) => { genderChoice = "male"; genderDialog.DialogResult = true; };
+                femaleBtn.Click += (_, _) => { genderChoice = "female"; genderDialog.DialogResult = true; };
+
+                buttonPanel.Children.Add(bothBtn);
+                buttonPanel.Children.Add(maleBtn);
+                buttonPanel.Children.Add(femaleBtn);
+                buttonPanel.Children.Add(cancelBtn);
+
+                var mainPanel = new System.Windows.Controls.StackPanel();
+                mainPanel.Children.Add(textBlock);
+                mainPanel.Children.Add(buttonPanel);
+                genderDialog.Content = mainPanel;
+
+                if (genderDialog.ShowDialog() != true)
+                {
+                    return; // User cancelled
+                }
+
+                extractMale = genderChoice is "both" or "male";
+                extractFemale = genderChoice is "both" or "female";
             }
 
             // Prompt for output folder
