@@ -794,17 +794,25 @@
                                                     <ComboBoxItem Content="Conditional" IsSelected="True" />
                                                 </ComboBox>
                                             </DockPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Name="Node_Text_Cnd" Text="Conditional :" FontSize="15"></TextBlock>
+                                            <DockPanel HorizontalAlignment="Stretch">
+                                                <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"
+                                                        Padding="3" DockPanel.Dock="Right"
+                                                        ToolTip="Open this conditional in the Conditionals Editor, or this bool in the Plot Database">
+                                                    <Button.Content>
+                                                        <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
+                                                                         Foreground="DarkBlue" />
+                                                    </Button.Content>
+                                                </Button>
+                                                <TextBlock Name="Node_Text_Cnd" Text="Conditional :" FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
                                                 <TextBox Text="{Binding Path=SelectedDialogueNode.ConditionalOrBool}"
                                                          HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
                                                          HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0"
+                                                         BorderThickness="0" VerticalAlignment="Center"
                                                          GotKeyboardFocus="EditBox_GotKeyboardFocus"
                                                          LostKeyboardFocus="EditBox_LostKeyboardFocus"
                                                          KeyUp="EditBox_Node_KeyUp"
                                                          PreviewTextInput="NumberValidationEditBox" />
-                                            </StackPanel>
+                                            </DockPanel>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Conditional Parameter:  " FontSize="15" />
                                                 <TextBox Name="Node_Text_CndParam"
@@ -822,18 +830,26 @@
                                                        TextWrapping="Wrap"/>
                                             <Separator />
                                             <TextBlock Text="Plot transitions" />
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Transition:  " FontSize="15" />
+                                            <DockPanel HorizontalAlignment="Stretch">
+                                                <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"
+                                                        Padding="3" DockPanel.Dock="Right"
+                                                        ToolTip="Open this transition in the Plot Editor">
+                                                    <Button.Content>
+                                                        <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
+                                                                         Foreground="DarkBlue" />
+                                                    </Button.Content>
+                                                </Button>
+                                                <TextBlock Text="Transition:  " FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
                                                 <TextBox Name="Node_Text_Trans"
                                                          Text="{Binding Path=SelectedDialogueNode.Transition}"
                                                          HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
                                                          HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0"
+                                                         BorderThickness="0" VerticalAlignment="Center"
                                                          GotKeyboardFocus="EditBox_GotKeyboardFocus"
                                                          LostKeyboardFocus="EditBox_LostKeyboardFocus"
                                                          KeyUp="EditBox_Node_KeyUp"
                                                          PreviewTextInput="NumberValidationEditBox" />
-                                            </StackPanel>
+                                            </DockPanel>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="Transition Parameter:  " FontSize="15" />
                                                 <TextBox Name="Node_Text_TransParam"

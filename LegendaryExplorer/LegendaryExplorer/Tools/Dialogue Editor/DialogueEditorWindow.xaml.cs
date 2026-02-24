@@ -6,9 +6,11 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
+using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.FaceFXEditor;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorer.Tools.Soundplorer;
 using LegendaryExplorer.Tools.TlkManagerNS;
@@ -22,9 +24,11 @@ using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.PlotDatabase;
+using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
+using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
 using Newtonsoft.Json;
 using Piccolo;
 using Piccolo.Event;
@@ -3450,6 +3454,120 @@ namespace LegendaryExplorer.DialogueEditor
                         OpenInInterpViewer_Clicked(SelectedDialogueNode.InterpData);
                     }
                     break;
+                case "PlotDbCnd":
+                    {
+                        int cndId = SelectedDialogueNode.ConditionalOrBool;
+                        if (cndId != 0)
+                        {
+                            if (SelectedDialogueNode.FiresConditional && Pcc.Game.IsGame3())
+                            {
+                                // Search .cnd files from highest-mounted DLC to basegame
+                                var cookedDirs = MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                                    .Select(dir => Path.Combine(dir, Pcc.Game.CookedDirName()))
+                                    .Append(MEDirectories.GetCookedPath(Pcc.Game))
+                                    .Where(Directory.Exists);
+
+                                var cndFiles = cookedDirs.SelectMany(dir => Directory.EnumerateFiles(dir, "*.cnd"));
+
+                                string matchedFile = null;
+                                foreach (var cndFile in cndFiles)
+                                {
+                                    var cnd = CNDFile.FromFile(cndFile);
+                                    if (cnd.ConditionalEntries.Any(c => c.ID == cndId))
+                                    {
+                                        matchedFile = cndFile;
+                                        break;
+                                    }
+                                }
+
+                                if (matchedFile != null)
+                                {
+                                    var cndEd = new ConditionalsEditorWindow();
+                                    cndEd.Show();
+                                    cndEd.LoadFile(matchedFile, cndId);
+                                }
+                                else
+                                {
+                                    MessageBox.Show($"Could not find conditional {cndId} in any mounted .cnd file.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                }
+                            }
+                            else
+                            {
+                                // Bool or non-Game3 conditional: open in Plot Database
+                                PlotElement element = SelectedDialogueNode.FiresConditional
+                                    ? PlotDatabases.FindPlotConditionalByID(cndId, Pcc.Game)
+                                    : PlotDatabases.FindPlotBoolByID(cndId, Pcc.Game);
+                                if (element != null)
+                                {
+                                    var plotDb = new Tools.PlotDatabase.PlotManagerWindow(Pcc.Game, element);
+                                    plotDb.Show();
+                                }
+                                else
+                                {
+                                    MessageBox.Show($"Could not find {(SelectedDialogueNode.FiresConditional ? "conditional" : "bool")} {cndId} in the plot database.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                case "PlotDbTrans":
+                    {
+                        int transId = SelectedDialogueNode.Transition;
+                        if (transId != 0)
+                        {
+                            IEnumerable<string> plotFiles = Pcc.Game switch
+                            {
+                                MEGame.ME3 or MEGame.LE3 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                                    .Select(dir => Path.Combine(dir, Pcc.Game.CookedDirName(), $"Startup_{MELoadedDLC.GetDLCNameFromDir(dir)}_INT.pcc"))
+                                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "SFXGameInfoSP_SF.pcc"))
+                                    .Where(File.Exists),
+                                MEGame.ME2 or MEGame.LE2 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                                    .Select(dir => Path.Combine(dir, Pcc.Game.CookedDirName(), $"Startup_{MELoadedDLC.GetDLCNameFromDir(dir)}_INT.pcc"))
+                                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "Startup_INT.pcc"))
+                                    .Where(File.Exists),
+                                MEGame.LE1 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "BIOC_Materials.pcc"))
+                                    .Where(File.Exists),
+                                MEGame.ME1 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                                    .Select(dir => Path.Combine(dir, Pcc.Game.CookedDirName(), $@"Packages\PlotManagerAuto{MELoadedDLC.GetDLCNameFromDir(dir)}.upk"))
+                                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), @"Packages\PlotManagerAuto.upk"))
+                                    .Where(File.Exists),
+                                _ => Enumerable.Empty<string>()
+                            };
+
+                            string matchedFile = null;
+                            foreach (var plotFile in plotFiles)
+                            {
+                                using IMEPackage pcc = MEPackageHandler.OpenMEPackage(plotFile);
+                                if (StateEventMapView.TryFindStateEventMap(pcc, out ExportEntry export))
+                                {
+                                    var stateEventMap = BinaryBioStateEventMap.Load(export);
+                                    if (stateEventMap.StateEvents.ContainsKey(transId))
+                                    {
+                                        matchedFile = plotFile;
+                                    }
+                                }
+                            }
+
+                            if (matchedFile != null)
+                            {
+                                var plotEd = new PlotEditorWindow();
+                                plotEd.Show();
+                                plotEd.LoadFile(matchedFile);
+                                plotEd.GoToStateEvent(transId);
+                            }
+                            else
+                            {
+                                MessageBox.Show($"Could not find transition {transId} in any mounted state event map.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            }
+                        }
+                    }
+                    break;
                 default:
                     OpenInToolkit(tool);
                     break;
@@ -3474,6 +3592,8 @@ namespace LegendaryExplorer.DialogueEditor
                 "SoundP_StreamM" => SelectedDialogueNode?.WwiseStream_Male != null,
                 "SoundP_StreamF" => SelectedDialogueNode?.WwiseStream_Female != null,
                 "InterpEdLine" => SelectedDialogueNode?.InterpData != null,
+                "PlotDbCnd" => SelectedDialogueNode != null && SelectedDialogueNode.ConditionalOrBool != 0,
+                "PlotDbTrans" => SelectedDialogueNode != null && SelectedDialogueNode.Transition != 0,
                 _ => true
             };
         }
