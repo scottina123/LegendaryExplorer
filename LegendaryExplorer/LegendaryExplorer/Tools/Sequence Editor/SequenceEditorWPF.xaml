@@ -57,6 +57,7 @@
             <MenuItem Header="Bulk Edit InterpGroups" Click="BulkEditInterpGroups_Clicked" Name="bulkEditInterpGroupsMenuItem" ToolTip="Bulk edit InterpGroup properties for this InterpData"/>
             <MenuItem Header="Open in Dialogue Editor" Click="OpenInDialogueEditor_Clicked" Name="dialogueEditorMenuItem"/>
             <MenuItem Header="Open Referenced State Event in Plot Editor" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
+            <MenuItem Header="Open Conditional in Conditionals Editor" Name="conditionalsEditorMenuItem" Click="ConditionalsEditorMenuItem_Click"/>
             <Separator />
             <MenuItem Header="Clone Object" Click="CloneObject_Clicked" ToolTip="Create a new node as a duplicate of this one"/>
             <MenuItem Header="Clone Object with Links" Click="CloneObjectWithLinks_Clicked" ToolTip="Create a new node as a duplicate of this one, preserving output and variable links"/>

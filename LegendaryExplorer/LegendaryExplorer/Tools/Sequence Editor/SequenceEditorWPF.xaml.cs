@@ -7,6 +7,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
+using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.CustomFilesManager;
 using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.Tools.Sequence_Editor.Experiments;
@@ -2235,6 +2236,20 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
+                if (contextMenu.GetChild("conditionalsEditorMenuItem") is MenuItem conditionalsEditorMenuItem)
+                {
+                    if (Pcc.Game.IsGame3() && obj is SAction sAction &&
+                        sAction.Export.ClassName == "BioSeqAct_PMCheckConditional" &&
+                        sAction.Export.GetProperty<IntProperty>("m_nIndex") != null)
+                    {
+                        conditionalsEditorMenuItem.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        conditionalsEditorMenuItem.Visibility = Visibility.Collapsed;
+                    }
+                }
+
                 if (contextMenu.GetChild("dialogueEditorMenuItem") is MenuItem dialogueEditorMenuItem)
                 {
                     if (obj is SAction sAction &&
@@ -3282,6 +3297,45 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     {
                         MessageBox.Show(this, $"Could not find State Event {stateEventKey}");
                     }
+                }
+            }
+        }
+
+        private void ConditionalsEditorMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is SAction sAction &&
+                sAction.Export.ClassName == "BioSeqAct_PMCheckConditional" &&
+                sAction.Export.GetProperty<IntProperty>("m_nIndex")?.Value is int cndId &&
+                cndId != 0 && Pcc.Game.IsGame3())
+            {
+                var cookedDirs = MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                    .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, Pcc.Game))
+                    .Select(dir => Path.Combine(dir, Pcc.Game.CookedDirName()))
+                    .Append(MEDirectories.GetCookedPath(Pcc.Game))
+                    .Where(Directory.Exists);
+
+                var cndFiles = cookedDirs.SelectMany(dir => Directory.EnumerateFiles(dir, "*.cnd"));
+
+                string matchedFile = null;
+                foreach (var cndFile in cndFiles)
+                {
+                    var cnd = CNDFile.FromFile(cndFile);
+                    if (cnd.ConditionalEntries.Any(c => c.ID == cndId))
+                    {
+                        matchedFile = cndFile;
+                        break;
+                    }
+                }
+
+                if (matchedFile != null)
+                {
+                    var cndEd = new ConditionalsEditorWindow();
+                    cndEd.Show();
+                    cndEd.LoadFile(matchedFile, cndId);
+                }
+                else
+                {
+                    MessageBox.Show(this, $"Could not find conditional {cndId} in any mounted .cnd file.");
                 }
             }
         }
