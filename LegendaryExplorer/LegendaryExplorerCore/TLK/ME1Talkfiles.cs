@@ -52,10 +52,10 @@ namespace LegendaryExplorerCore.TLK
                 }
             }
 
-            //Look in loaded list
-            foreach (ME1TalkFile tlk in LoadedTlks)
+            //Look in loaded list (reverse order so highest-mounted DLC TLKs are checked first)
+            for (int i = LoadedTlks.Count - 1; i >= 0; i--)
             {
-                s = tlk.FindDataById(strRefID, withFileName);
+                s = LoadedTlks[i].FindDataById(strRefID, withFileName);
                 if (s != "No Data")
                 {
                     return s;

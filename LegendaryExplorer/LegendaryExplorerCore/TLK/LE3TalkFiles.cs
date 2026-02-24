@@ -36,9 +36,9 @@ namespace LegendaryExplorerCore.TLK
         public static string FindDataById(int strRefID, bool withFileName = false)
         {
             string s = "No Data";
-            foreach (ME2ME3LazyTLK tlk in LoadedTlks)
+            for (int i = LoadedTlks.Count - 1; i >= 0; i--)
             {
-                s = tlk.FindDataById(strRefID, withFileName);
+                s = LoadedTlks[i].FindDataById(strRefID, withFileName);
                 if (s != "No Data")
                 {
                     return s;
