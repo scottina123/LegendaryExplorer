@@ -16,6 +16,7 @@ using Be.Windows.Forms;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
@@ -24,6 +25,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorer.Tools.ConditionalsEditor.GraphView;
 using Microsoft.Win32;
 using Xceed.Wpf.Toolkit;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -103,9 +105,14 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                     {
                         ConditionalTextBox.Text = "";
                         hexBox.ByteProvider = new ReadOptimizedByteProvider();
+                        GraphViewControl.DataContext = null;
                     }
                     else
                     {
+                        if (_isGraphViewActive)
+                        {
+                            SwitchToGraphView();
+                        }
                         DisplayCondition();
                     }
                     compilationMsgBox.Clear();
@@ -139,6 +146,8 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             Misc.ThemeManager.RegisterHexBox(hexBox);
 
             hexBox.InsertActiveChanged += HexBox_InsertActiveChanged;
+
+            GraphViewToggle.IsChecked = Settings.ConditionalsEditor_DefaultGraphView;
         }
 
         private void HexBox_InsertActiveChanged(object sender, EventArgs e)
@@ -384,9 +393,36 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             if (SelectedCond is not null)
             {
                 bool error = true;
-                compilationMsgBox.Text = SelectedCond?.Compile(ConditionalTextBox.Text, out error);
+                string textToCompile;
+                if (_isGraphViewActive && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
+                {
+                    if (!graphRoot.IsFullyParsed)
+                    {
+                        compilationMsgBox.Text = "This expression is too complex for the graph editor. Switch to text view to edit it.";
+                        return;
+                    }
+                    if (!graphRoot.TryValidate(out var validationMessage))
+                    {
+                        compilationMsgBox.Text = validationMessage;
+                        return;
+                    }
+                    textToCompile = graphRoot.Serialize();
+                    SelectedCond.GraphViewModel = graphRoot;
+                    SelectedCond.PreserveGraphView = true;
+                }
+                else
+                {
+                    textToCompile = ConditionalTextBox.Text;
+                    SelectedCond.GraphViewModel = null;
+                    SelectedCond.PreserveGraphView = false;
+                }
+                compilationMsgBox.Text = SelectedCond?.Compile(textToCompile, out error);
                 if (!error)
                 {
+                    // Don't re-parse the graph after compile. The graph is the user's
+                    // source of truth while in graph view. Re-parsing from the compiled
+                    // data would lose sub-groups with a single child because the bytecode
+                    // format cannot represent single-operand &&/|| groups.
                     DisplayCondition();
                 }
             }
@@ -545,6 +581,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
             public CNDFile.ConditionalEntry Conditional;
 
+            public ConditionGraphRootViewModel GraphViewModel { get; set; }
+
+            public bool PreserveGraphView { get; set; }
+
             public CondListEntry(CNDFile.ConditionalEntry conditional)
             {
                 Conditional = conditional;
@@ -575,6 +615,63 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
                 error = false;
                 return "Compiled!";
+            }
+        }
+
+        private bool _isGraphViewActive;
+
+        private void GraphViewToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            _isGraphViewActive = true;
+            SwitchToGraphView();
+            Settings.ConditionalsEditor_DefaultGraphView = true;
+            Settings.Save();
+        }
+
+        private void GraphViewToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            SwitchToTextView();
+            _isGraphViewActive = false;
+            Settings.ConditionalsEditor_DefaultGraphView = false;
+            Settings.Save();
+        }
+
+        private void SwitchToGraphView()
+        {
+            if (SelectedCond == null) return;
+
+            try
+            {
+                if (SelectedCond.PreserveGraphView && SelectedCond.GraphViewModel != null)
+                {
+                    GraphViewControl.DataContext = SelectedCond.GraphViewModel;
+                }
+                else
+                {
+                    string text = SelectedCond.Conditional.Decompile();
+                    var graphRoot = ConditionGraphRootViewModel.FromDecompiledText(text);
+                    SelectedCond.GraphViewModel = graphRoot;
+                    SelectedCond.PreserveGraphView = false;
+                    GraphViewControl.DataContext = graphRoot;
+                }
+                TextViewPanel.Visibility = Visibility.Collapsed;
+                GraphViewControl.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                compilationMsgBox.Text = $"Failed to parse conditional for graph view: {ex.Message}";
+                GraphViewToggle.IsChecked = false;
+            }
+        }
+
+        private void SwitchToTextView()
+        {
+            TextViewPanel.Visibility = Visibility.Visible;
+            GraphViewControl.Visibility = Visibility.Collapsed;
+
+            if (SelectedCond != null)
+            {
+                DisplayCondition();
             }
         }
 

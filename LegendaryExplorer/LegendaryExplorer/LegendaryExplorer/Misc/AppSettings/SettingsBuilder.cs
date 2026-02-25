@@ -381,6 +381,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_tlk_language;
             set => SetProperty(ref _global_tlk_language, value);
         }
+        private static bool _conditionalseditor_defaultgraphview = false;
+        public static bool ConditionalsEditor_DefaultGraphView {
+            get => _conditionalseditor_defaultgraphview;
+            set => SetProperty(ref _conditionalseditor_defaultgraphview, value);
+        }
         private static bool _global_tlk_ismale = true;
         public static bool Global_TLK_IsMale {
             get => _global_tlk_ismale;
@@ -558,6 +563,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             ScriptIDE_ActiveTheme = TryGetSetting(settingsJson, "scriptide_activetheme", "");
             ScriptIDE_SavedThemes = TryGetSetting(settingsJson, "scriptide_savedthemes", new Dictionary<string, ThemeData>());
 
+            ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
+
             // Settings Bridge Init
             LegendaryExplorerCoreLibSettings.Instance.ParseUnknownArrayTypesAsObject = Global_PropertyParsing_ParseUnknownArrayTypeAsObject;
             LegendaryExplorerCoreLibSettings.Instance.ME1Directory = Global_ME1Directory;
@@ -654,6 +661,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["customassetdirectories"] = CustomAssetDirectories;
             settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();
             settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
+
+            settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
 
             var settingsText = JsonConvert.SerializeObject(settingsJson, Formatting.Indented);
             try

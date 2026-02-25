@@ -82,6 +82,10 @@
   <setting name="CoalescedEditor_SourcePath" type="string" defaultvalue=""/>
   <setting name="CoalescedEditor_DestinationPath" type="string" defaultvalue=""/>
 
+  <!-- Conditionals Editor specific settings -->
+  <setting name="ConditionalsEditor_DefaultGraphView" type="bool" defaultvalue="false" category="Conditionals Editor"
+           friendlyName="Conditionals Editor: Default to Graph View"/>
+
   <!-- Wwise Graph Editor specific settings -->
   <setting name="WwiseGraphEditor_AutoSaveView" type="bool" defaultvalue="false" category="Audio"
            friendlyName="Wwise Graph Editor: Auto-save View"/>

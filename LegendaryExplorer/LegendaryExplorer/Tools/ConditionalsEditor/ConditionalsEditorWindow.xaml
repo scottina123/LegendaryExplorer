@@ -11,6 +11,7 @@
         xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
         xmlns:global="clr-namespace:LegendaryExplorer"
         xmlns:forms="clr-namespace:Be.Windows.Forms;assembly=Be.Windows.Forms.HexBox"
+        xmlns:graphView="clr-namespace:LegendaryExplorer.Tools.ConditionalsEditor.GraphView"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         mc:Ignorable="d"
         Loaded="ConditionalsEditorWindow_OnLoaded"
@@ -133,13 +134,21 @@
                           BorderBrush="Transparent"
                           HorizontalAlignment="Stretch" />
 
-            <Grid Grid.Column="2" Visibility="{Binding File, Converter={StaticResource NullVisibilityConverter}}">
+            <Grid Grid.Column="2" Visibility="{Binding File, Converter={StaticResource NullVisibilityConverter}}"
+                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0">
+                <!-- View toggle toolbar -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,3">
+                    <ToggleButton x:Name="GraphViewToggle" Content="Graph View" Padding="6,2" Margin="0,0,4,0"
+                                  Checked="GraphViewToggle_Checked" Unchecked="GraphViewToggle_Unchecked"/>
+                </StackPanel>
+                <!-- Text View -->
+                <Grid Grid.Row="1" x:Name="TextViewPanel">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition MinWidth="{Binding HexBoxMinWidth}" MaxWidth="{Binding HexBoxMaxWidth}" Width="{Binding HexBoxMinWidth, Mode=OneWay}" Name="HexboxColumnDefinition" />
                         <ColumnDefinition Width="1" Name="HexboxColumn_GridSplitter_ColumnDefinition"/>
@@ -155,10 +164,10 @@
                             <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click"/>
                         </StackPanel>
                         <sharedUi:WindowsFormsHostEx Grid.Row="1" x:Name="hexbox_Host" HorizontalAlignment="Stretch"
-                                                     VerticalAlignment="Stretch">
+                                                      VerticalAlignment="Stretch">
                             <forms:HexBox MinBytesPerLine="4" MaxBytesPerLine="16" ColumnInfoVisible="True"
-                                          LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10"
-                                          StringViewVisible="True" VScrollBarVisible="True" />
+                                           LineInfoVisible="True" Font="Courier New,10" BoldFont="Consolas,10"
+                                           StringViewVisible="True" VScrollBarVisible="True" />
                         </sharedUi:WindowsFormsHostEx>
                     </Grid>
                     <GridSplitter 
@@ -170,8 +179,10 @@
                         Panel.ZIndex="60"/>
                     <TextBox Grid.Column="2" x:Name="ConditionalTextBox" TextWrapping="Wrap" TextChanged="ConditionalTextBox_OnTextChanged" />
                 </Grid>
-                <Button Grid.Row="1" Content="Compile and Replace" Command="{Binding CompileCommand}"/>
-                <TextBox Name="compilationMsgBox" Grid.Row="2" TextWrapping="Wrap" IsReadOnly="True"/>
+                <!-- Graph View -->
+                <graphView:ConditionGraphView Grid.Row="1" x:Name="GraphViewControl" Visibility="Collapsed" />
+                <Button Grid.Row="2" Content="Compile and Replace" Command="{Binding CompileCommand}"/>
+                <TextBox Name="compilationMsgBox" Grid.Row="3" TextWrapping="Wrap" IsReadOnly="True"/>
             </Grid>
         </Grid>
     </DockPanel>
