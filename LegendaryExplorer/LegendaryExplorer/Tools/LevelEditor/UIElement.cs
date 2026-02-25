@@ -64,6 +64,22 @@ public class Widget : UIElement
     static readonly Vector4 ZColor = new Vector4(0, 0, 1, 1);
     static readonly Vector4 SelectedColor = new Vector4(1, 1, 0, 1);
 
+    private const float AxisLength = 40f;
+
+    // Snapping settings
+    public bool TranslateSnapEnabled = true;
+    public float TranslateSnapValue = 10f;      // world units
+    public bool RotateSnapEnabled = true;
+    public float RotateSnapValue = 5f;          // degrees
+    public bool ScaleSnapEnabled = true;
+    public float ScaleSnapValue = 10f;          // percent (10 = 0.1 step)
+
+    // Per-drag accumulators for snapping (reset on BeginDrag)
+    private Vector3 _accumulatedTranslationLocal;
+    private float _accumulatedRotation;         // radians
+    private float _accumulatedScaleUniform;
+    private Vector3 _accumulatedScale3D;
+
     public override void Draw(LevelEditorRenderContext context)
     {
         if (Attach is null) return;
@@ -77,7 +93,6 @@ public class Widget : UIElement
 
         if (Mode is EWidgetMode.Rotate)
         {
-            //currently disabled in UI because the rotation math is wrong and causes incorrect rotations when the widget is dragged
             DrawRotator(context, ltw, origin);
         }
         else
@@ -163,7 +178,7 @@ public class Widget : UIElement
     private static Vector2 DrawAxis(LevelEditorRenderContext context, float scale, Matrix4x4 matrix, Vector4 color, int hitId, bool useConeGrabber)
     {
         const float lineStart = 2f;
-        const float lineEnd = 40f;
+        const float lineEnd = AxisLength;
 
         const int numArrowSegments = 6;
         const float arrowRadius = 6f;
@@ -235,7 +250,7 @@ public class Widget : UIElement
 
     private static Vector2 DrawRingSegment(LevelEditorRenderContext context, float sweptAngle, float scale, Matrix4x4 matrix, Vector4 color, int hitId)
     {
-        int numRingSegments = (int)(48 / (MathF.PI / sweptAngle)); 
+        int numRingSegments = (int)(48 / (MathF.PI / sweptAngle));
         Span<float> radii = [70f, 60f];
 
         var ltw = Matrix4x4.CreateScale(scale) * matrix;
@@ -290,36 +305,53 @@ public class Widget : UIElement
             Vector2 mouseDir = Vector2.Normalize(mousePos - Origin);
             float theta = MathF.Atan2(startDir.X * mouseDir.Y - startDir.Y * mouseDir.X, Vector2.Dot(startDir, mouseDir));
 
-            if (UseLocalCoords)
+            Vector3 rotAxis = CurrentAxis switch
             {
-                switch (CurrentAxis)
+                EWidgetAxis.X => LocalRotation.X.AsVector3(),
+                EWidgetAxis.Y => LocalRotation.Y.AsVector3(),
+                EWidgetAxis.Z => LocalRotation.Z.AsVector3(),
+                _ => Vector3.Zero
+            };
+            if (Vector3.Dot(rotAxis, context.Camera.Position - Attach.Location) < 0)
+            {
+                theta = -theta;
+            }
+
+            if (RotateSnapEnabled)
+            {
+                _accumulatedRotation += theta;
+                float snapRad = RotateSnapValue * MathF.PI / 180f;
+                float snappedAngle = SnapF(_accumulatedRotation, snapRad);
+                Matrix4x4 startRot = ActorUtils.ComposeLocalToWorld(Vector3.Zero, _dragStartSnapshot.Rotation, Vector3.One);
+                Matrix4x4 deltaRot = CurrentAxis switch
                 {
-                    case EWidgetAxis.X:
-                        Attach.Rotation += new Rotator(0, 0, -theta.RadiansToUnrealRotationUnits());
-                        break;
-                    case EWidgetAxis.Y:
-                        Attach.Rotation += new Rotator(-theta.RadiansToUnrealRotationUnits(), 0, 0);
-                        break;
-                    case EWidgetAxis.Z:
-                        Attach.Rotation += new Rotator(0, theta.RadiansToUnrealRotationUnits(), 0);
-                        break;
-                }
+                    EWidgetAxis.X => Matrix4x4.CreateRotationX(snappedAngle),
+                    EWidgetAxis.Y => Matrix4x4.CreateRotationY(snappedAngle),
+                    EWidgetAxis.Z => Matrix4x4.CreateRotationZ(snappedAngle),
+                    _ => Matrix4x4.Identity
+                };
+                // Local coords: pre-multiply (rotate around actor's own axis)
+                // World coords: post-multiply (rotate around world axis)
+                Attach.Rotation = (UseLocalCoords ? deltaRot * startRot : startRot * deltaRot).GetRotator();
             }
             else
             {
-                var axis = LocalRotation.TransformNormal(CurrentAxis switch
+                Matrix4x4 currentRot = ActorUtils.ComposeLocalToWorld(Vector3.Zero, Attach.Rotation, Vector3.One);
+                Matrix4x4 deltaRot = CurrentAxis switch
                 {
-                    EWidgetAxis.X => Vector3.UnitX,
-                    EWidgetAxis.Y => Vector3.UnitY,
-                    EWidgetAxis.Z => Vector3.UnitZ,
-                });
-                Attach.Rotation += Rotator.FromQuaternion(Quaternion.CreateFromAxisAngle(axis, theta));
+                    EWidgetAxis.X => Matrix4x4.CreateRotationX(theta),
+                    EWidgetAxis.Y => Matrix4x4.CreateRotationY(theta),
+                    EWidgetAxis.Z => Matrix4x4.CreateRotationZ(theta),
+                    _ => Matrix4x4.Identity
+                };
+                // Local coords: pre-multiply (rotate around actor's own axis)
+                // World coords: post-multiply (rotate around world axis)
+                Matrix4x4 newRot = UseLocalCoords ? deltaRot * currentRot : currentRot * deltaRot;
+                Attach.Rotation = newRot.GetRotator();
             }
         }
         else
         {
-            float multiplier = (context.Camera.Position - Attach.Location).Length() / 256;
-
             Vector2 axisEnd = CurrentAxis switch
             {
                 EWidgetAxis.X => XAxisEnd,
@@ -332,11 +364,12 @@ public class Widget : UIElement
                 _ => XAxisEnd
             };
 
-
-            //dragDiff.Y *= -1;
             Vector2 axisDir = Vector2.Normalize(axisEnd - Origin);
 
-            float dragAmount = Vector2.Dot(dragDiff, axisDir);
+            float screenAxisLength = (axisEnd - Origin).Length();
+            float dragAmount = screenAxisLength > 0
+                ? Vector2.Dot(dragDiff, axisDir) * (GetScale(context, Attach.Location) * AxisLength / screenAxisLength)
+                : 0f;
 
             switch (Mode)
             {
@@ -351,25 +384,59 @@ public class Widget : UIElement
                         EWidgetAxis.XZ => throw new NotImplementedException(),
                         EWidgetAxis.YZ => throw new NotImplementedException(),
                         EWidgetAxis.XYZ => throw new NotImplementedException(),
+                        _ => throw new NotImplementedException(),
                     };
                     if (Mode is EWidgetMode.Translate)
                     {
-                        vecDiff = Vector3.Transform(vecDiff, LocalRotation);
-                        Attach.Location -= vecDiff;
+                        if (TranslateSnapEnabled)
+                        {
+                            _accumulatedTranslationLocal += vecDiff;
+                            Vector3 snapped = SnapVec(_accumulatedTranslationLocal, TranslateSnapValue);
+                            Attach.Location = _dragStartSnapshot.Location - Vector3.Transform(snapped, LocalRotation);
+                        }
+                        else
+                        {
+                            vecDiff = Vector3.Transform(vecDiff, LocalRotation);
+                            Attach.Location -= vecDiff;
+                        }
                     }
                     else
                     {
-                        Attach.DrawScale3D -= vecDiff / 100;
+                        if (ScaleSnapEnabled)
+                        {
+                            _accumulatedScale3D += vecDiff / 100;
+                            float snapStep = ScaleSnapValue / 100f;
+                            Attach.DrawScale3D = _dragStartSnapshot.DrawScale3D - SnapVec(_accumulatedScale3D, snapStep);
+                        }
+                        else
+                        {
+                            Attach.DrawScale3D -= vecDiff / 100;
+                        }
                     }
                     break;
                 case EWidgetMode.UniformScale:
-                    Attach.DrawScale -= dragAmount / 100;
+                    if (ScaleSnapEnabled)
+                    {
+                        _accumulatedScaleUniform += dragAmount / 100;
+                        float snapStep = ScaleSnapValue / 100f;
+                        Attach.DrawScale = _dragStartSnapshot.DrawScale - SnapF(_accumulatedScaleUniform, snapStep);
+                    }
+                    else
+                    {
+                        Attach.DrawScale -= dragAmount / 100;
+                    }
                     break;
             }
         }
 
         PrevDragPos = new Vector2(x, y);
     }
+
+    private static float SnapF(float value, float snapSize) =>
+        MathF.Round(value / snapSize) * snapSize;
+
+    private static Vector3 SnapVec(Vector3 v, float snapSize) =>
+        new(SnapF(v.X, snapSize), SnapF(v.Y, snapSize), SnapF(v.Z, snapSize));
 
     /// <summary>
     /// Called when a drag completes with the before and after transform snapshots.
@@ -381,6 +448,10 @@ public class Widget : UIElement
     {
         IsDragging = true;
         PrevDragPos = DragStart = new Vector2(x, y);
+        _accumulatedTranslationLocal = Vector3.Zero;
+        _accumulatedRotation = 0f;
+        _accumulatedScaleUniform = 0f;
+        _accumulatedScale3D = Vector3.Zero;
         if (Attach is not null)
         {
             _dragStartSnapshot = Attach.SnapshotTransform();

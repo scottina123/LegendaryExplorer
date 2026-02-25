@@ -114,6 +114,37 @@ public partial class LevelEditor : WPFBase
         set => SetProperty(ref RenderContext.TransformWidget.UseLocalCoords, value);
     }
 
+    public bool TranslateSnapEnabled
+    {
+        get => RenderContext.TransformWidget.TranslateSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.TranslateSnapEnabled, value);
+    }
+    public float TranslateSnapValue
+    {
+        get => RenderContext.TransformWidget.TranslateSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.TranslateSnapValue, value);
+    }
+    public bool RotateSnapEnabled
+    {
+        get => RenderContext.TransformWidget.RotateSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.RotateSnapEnabled, value);
+    }
+    public float RotateSnapValue
+    {
+        get => RenderContext.TransformWidget.RotateSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.RotateSnapValue, value);
+    }
+    public bool ScaleSnapEnabled
+    {
+        get => RenderContext.TransformWidget.ScaleSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.ScaleSnapEnabled, value);
+    }
+    public float ScaleSnapValue
+    {
+        get => RenderContext.TransformWidget.ScaleSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.ScaleSnapValue, value);
+    }
+
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
     private static string RecentSetsFile => Path.Combine(
@@ -498,7 +529,7 @@ public partial class LevelEditor : WPFBase
 
     public ICommand OpenFileCommand { get; set; }
     public ICommand AddFileCommand { get; set; }
-    public ICommand SaveFileCommand { get; set; }
+    public ICommand SaveAllCommand { get; set; }
     public ICommand SaveAsCommand { get; set; }
     public ICommand SaveSingleFileCommand { get; set; }
     public ICommand CloseFileCommand { get; set; }
@@ -519,7 +550,7 @@ public partial class LevelEditor : WPFBase
     {
         OpenFileCommand = new GenericCommand(OpenFile);
         AddFileCommand = new GenericCommand(AddFile);
-        SaveFileCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
+        SaveAllCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
         SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
         SaveSingleFileCommand = new RelayCommand(SaveSingleFileExecute, _ => PackageIsLoaded());
         CloseFileCommand = new RelayCommand(CloseFileExecute);
