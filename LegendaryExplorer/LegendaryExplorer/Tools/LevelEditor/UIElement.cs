@@ -80,6 +80,13 @@ public class Widget : UIElement
     private float _accumulatedScaleUniform;
     private Vector3 _accumulatedScale3D;
 
+    private enum EAxisType
+    {
+        ReadOnly,
+        Cube,
+        Cone
+    }
+
     public override void Draw(LevelEditorRenderContext context)
     {
         if (Attach is null) return;
@@ -91,7 +98,7 @@ public class Widget : UIElement
 
         LocalRotation = UseLocalCoords || Mode is EWidgetMode.Scale ? ActorUtils.ComposeLocalToWorld(Vector3.Zero, Attach.Rotation, Vector3.One) : Matrix4x4.Identity;
 
-        if (Mode is EWidgetMode.Rotate)
+        if (Mode is EWidgetMode.Rotate && !Attach.IsReadOnly)
         {
             DrawRotator(context, ltw, origin);
         }
@@ -102,16 +109,18 @@ public class Widget : UIElement
             ZMatrix = Matrix4x4.CreateRotationY(-MathF.PI / 2) * LocalRotation * Matrix4x4.CreateTranslation(origin);
 
             (Vector4 xColor, Vector4 yColor, Vector4 zColor) = GetAxisColors();
-            bool useConeGrabber = Mode is EWidgetMode.Translate;
+            EAxisType axistype = Attach.IsReadOnly ? EAxisType.ReadOnly
+                                 : Mode is EWidgetMode.Translate ? EAxisType.Cone
+                                 : EAxisType.Cube;
             if (Mode is EWidgetMode.UniformScale)
             {
                 yColor = zColor = xColor = CurrentAxis == EWidgetAxis.None ? XColor : SelectedColor;
             }
 
             float scale = GetScale(context, origin);
-            XAxisEnd = DrawAxis(context, scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X], useConeGrabber);
-            YAxisEnd = DrawAxis(context, scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y], useConeGrabber);
-            ZAxisEnd = DrawAxis(context, scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z], useConeGrabber);
+            XAxisEnd = DrawAxis(context, scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X], axistype);
+            YAxisEnd = DrawAxis(context, scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y], axistype);
+            ZAxisEnd = DrawAxis(context, scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z], axistype);
         }
     }
 
@@ -175,10 +184,10 @@ public class Widget : UIElement
         }
     }
 
-    private static Vector2 DrawAxis(LevelEditorRenderContext context, float scale, Matrix4x4 matrix, Vector4 color, int hitId, bool useConeGrabber)
+    private static Vector2 DrawAxis(LevelEditorRenderContext context, float scale, Matrix4x4 matrix, Vector4 color, int hitId, EAxisType axisType)
     {
-        const float lineStart = 2f;
-        const float lineEnd = AxisLength;
+        float lineStart = axisType is EAxisType.ReadOnly ? (AxisLength / -2) : 2f;
+        float lineEnd = axisType is EAxisType.ReadOnly ? (AxisLength / 2) : AxisLength;
 
         const int numArrowSegments = 6;
         const float arrowRadius = 6f;
@@ -195,9 +204,14 @@ public class Widget : UIElement
 
         context.Primitives.AddLine(p1, p2, color, hitId);
 
+        if (axisType is EAxisType.ReadOnly)
+        {
+            return axisEnd;
+        }
+
         var mesh = context.Primitives.BuildMesh(color, hitId, ltw);
 
-        if (useConeGrabber)
+        if (axisType is EAxisType.Cone)
         {
             //base ring
             for (int i = 0; i < numArrowSegments; i++)
