@@ -134,9 +134,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// <summary>
         /// The extra playhead position line in the curve graph
         /// </summary>
-        private readonly ExtraCurveGraphLine PlayheadPositionLine = new() { Label = "Playhead", LabelOffset = 15, Color = new SolidColorBrush(Colors.Aqua) };
+        private readonly ExtraCurveGraphLine PlayheadPositionLine = new() { LabelOffset = 15, Color = new SolidColorBrush(Colors.Aqua) };
 
-        public ObservableCollectionExtended<Animation> Animations { get; } = new();
+        public ObservableCollectionExtended<Animation> Animations { get; } = [];
 
         Animation _selectedAnimation;
         public Animation SelectedAnimation
@@ -1299,7 +1299,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             // Called when the control is no longer visible.
             graph?.ExtraXLines.Remove(PlayheadPositionLine);
-
+            PlayheadPositionLine.existingLine = null;
+            PlayheadPositionLine.existingLabel = null;
             if (audioPlayer != null)
                 audioPlayer.SeekbarPositionChanged -= AudioPositionChanged;
             audioPlayer?.StopPlaying();
@@ -1319,7 +1320,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void AudioPositionChanged(object sender, AudioPlayheadEventArgs e)
         {
             PlayheadPositionLine.Position = e.PlayheadTime;
-            graph.Paint();
+            if (PlayheadPositionLine.existingLabel is not null && PlayheadPositionLine.existingLine is not null)
+            {
+                Canvas.SetLeft(PlayheadPositionLine.existingLine, graph.toLocalX(PlayheadPositionLine.Position));
+                Canvas.SetLeft(PlayheadPositionLine.existingLabel, graph.toLocalX(PlayheadPositionLine.Position));
+                PlayheadPositionLine.existingLabel.Content = PlayheadPositionLine.Position.ToString("0.00");
+            }
+            else
+            {
+                graph.Paint();
+            }
         }
 
         private void NameDoubleClick()
