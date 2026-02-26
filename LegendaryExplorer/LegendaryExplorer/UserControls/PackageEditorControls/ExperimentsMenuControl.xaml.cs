@@ -822,14 +822,14 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             }
 
             var faceFxAsset = ObjectBinary.From<FaceFXAsset>(export);
-            if (faceFxAsset.CombinerNodes == null || faceFxAsset.CombinerNodes.Count == 0)
+            if (faceFxAsset.CompiledFaceGraph == null || faceFxAsset.CompiledFaceGraph.Count == 0)
             {
                 MessageBox.Show("No Combine_Nodes found in this FaceFXAsset.", "No nodes", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             var combineNodeNames = new List<string>();
-            foreach (var node in faceFxAsset.CombinerNodes)
+            foreach (var node in faceFxAsset.CompiledFaceGraph)
             {
                 if (node.Name >= 0 && node.Name < faceFxAsset.Names.Count)
                 {
@@ -905,22 +905,22 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
                 faceGraphElement.AppendChild(bonesElement);
 
                 // Add bone data
-                foreach (var boneNode in faceFxAsset.BoneNodes)
+                foreach (var boneNode in faceFxAsset.RefBones)
                 {
-                    var boneName = boneNode.BoneName >= 0 && boneNode.BoneName < faceFxAsset.Names.Count
-                        ? faceFxAsset.Names[boneNode.BoneName]
-                        : $"Unknown_{boneNode.BoneName}";
+                    var boneName = boneNode.RefBone.BoneName >= 0 && boneNode.RefBone.BoneName < faceFxAsset.Names.Count
+                        ? faceFxAsset.Names[boneNode.RefBone.BoneName]
+                        : $"Unknown_{boneNode.RefBone.BoneName}";
 
                     var boneElement = xmlDoc.CreateElement("bone");
                     boneElement.SetAttribute("name", boneName);
 
-                    // Format: X Y Z (position) + first 4 unkFloats (rotation quaternion) + next 3 unkFloats (scale)
-                    var boneData = $"{boneNode.X:F6} {boneNode.Y:F6} {boneNode.Z:F6}";
-                    if (boneNode.unkFloats != null && boneNode.unkFloats.Length >= 7)
-                    {
-                        boneData += $" {boneNode.unkFloats[0]:F6} {boneNode.unkFloats[1]:F6} {boneNode.unkFloats[2]:F6} {boneNode.unkFloats[3]:F6}";
-                        boneData += $" {boneNode.unkFloats[4]:F6} {boneNode.unkFloats[5]:F6} {boneNode.unkFloats[6]:F6}";
-                    }
+                    // Format: X Y Z (position) + rotation quaternion (X Y Z W) + scale (X Y Z)
+                    var pos = boneNode.RefBone.Position;
+                    var rot = boneNode.RefBone.Rotation;
+                    var scale = boneNode.RefBone.Scale;
+                    var boneData = $"{pos.X:F6} {pos.Y:F6} {pos.Z:F6}";
+                    boneData += $" {rot.X:F6} {rot.Y:F6} {rot.Z:F6} {rot.W:F6}";
+                    boneData += $" {scale.X:F6} {scale.Y:F6} {scale.Z:F6}";
                     boneElement.InnerText = boneData;
                     bonesElement.AppendChild(boneElement);
                 }
@@ -930,31 +930,29 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
                 actorElement.AppendChild(mappingElement);
 
                 // Add mapping entries from bone children
-                foreach (var boneNode in faceFxAsset.BoneNodes)
+                foreach (var boneNode in faceFxAsset.RefBones)
                 {
-                    var phonemeName = boneNode.BoneName >= 0 && boneNode.BoneName < faceFxAsset.Names.Count
-                        ? faceFxAsset.Names[boneNode.BoneName]
-                        : $"Unknown_{boneNode.BoneName}";
+                    var phonemeName = boneNode.RefBone.BoneName >= 0 && boneNode.RefBone.BoneName < faceFxAsset.Names.Count
+                        ? faceFxAsset.Names[boneNode.RefBone.BoneName]
+                        : $"Unknown_{boneNode.RefBone.BoneName}";
 
-                    if (boneNode.Children != null)
+                    if (boneNode.Links != null)
                     {
-                        foreach (var child in boneNode.Children)
+                        foreach (var child in boneNode.Links)
                         {
-                            // Get target name from combiner nodes
+                            // Get target name from compiled face graph nodes
                             var targetName = "Unknown";
-                            if (child.CombinerIndex >= 0 && child.CombinerIndex < faceFxAsset.CombinerNodes.Count)
+                            if (child.GraphIndex >= 0 && child.GraphIndex < faceFxAsset.CompiledFaceGraph.Count)
                             {
-                                var combinerNode = faceFxAsset.CombinerNodes[child.CombinerIndex];
+                                var combinerNode = faceFxAsset.CompiledFaceGraph[child.GraphIndex];
                                 if (combinerNode.Name >= 0 && combinerNode.Name < faceFxAsset.Names.Count)
                                 {
                                     targetName = faceFxAsset.Names[combinerNode.Name];
                                 }
                             }
 
-                            // Use first float from unkFloats as amount (this appears to be the weight/amount value)
-                            var amount = child.unkFloats != null && child.unkFloats.Length > 0
-                                ? child.unkFloats[0]
-                                : 0f;
+                            // Use the bone's reference weight as the amount
+                            var amount = boneNode.RefWeight;
 
                             var entryElement = xmlDoc.CreateElement("entry");
                             entryElement.SetAttribute("phoneme", phonemeName);

@@ -39,7 +39,7 @@ namespace LegendaryExplorerCore.Unreal
         private const bool ExportCollision = false;
 
         [GeneratedRegex(@"\.\d+$")]
-        private static partial Regex BlenderNameSuffixRegex();
+        private static partial Regex BlenderNameSuffixRegex { get; }
 
         #region export
         public enum MaterialExportLevel
@@ -405,9 +405,14 @@ namespace LegendaryExplorerCore.Unreal
                     if (LODInfo != null && LODInfo.Count > i)
                     {
                         var matMap = LODInfo[i].GetProp<ArrayProperty<IntProperty>>("LODMaterialMap");
-                        if (matMap != null && matMap.Count > 0)
+                        if (matMap != null)
                         {
-                            materialMapping = [.. matMap.Select(x => x.Value)];
+                            int j = 0;
+                            foreach (var idx in matMap.Select(x => x.Value))
+                            {
+                                materialMapping[i] = idx;
+                                j++;
+                            }
                         }
                     }
                 }
@@ -1594,7 +1599,7 @@ namespace LegendaryExplorerCore.Unreal
             {
                 return name;
             }
-            var match = BlenderNameSuffixRegex().Match(name);
+            var match = BlenderNameSuffixRegex.Match(name);
             if (match.Success)
             {
                 return name[..match.Index];

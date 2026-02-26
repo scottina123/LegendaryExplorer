@@ -7,6 +7,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace LegendaryExplorerCore.Misc
 {
@@ -51,7 +52,7 @@ namespace LegendaryExplorerCore.Misc
         /// </summary> 
         public void AddRange(IEnumerable<T> collection)
         {
-            if (collection == null) throw new ArgumentNullException(nameof(collection));
+            ArgumentNullException.ThrowIfNull(collection);
             int oldcount = Count;
             lock (_syncLock)
             {
@@ -71,7 +72,7 @@ namespace LegendaryExplorerCore.Misc
         /// </summary> 
         public void RemoveRange(IEnumerable<T> collection)
         {
-            if (collection == null) throw new ArgumentNullException(nameof(collection));
+            ArgumentNullException.ThrowIfNull(collection);
             // ReSharper disable once PossibleUnintendedReferenceComparison
             if (collection == Items) throw new Exception(@"Cannot remove range of same collection");
             int oldcount = Count;
@@ -122,7 +123,7 @@ namespace LegendaryExplorerCore.Misc
         /// </summary> 
         public void ReplaceAll(IEnumerable<T> collection)
         {
-            if (collection == null) throw new ArgumentNullException(nameof(collection));
+            ArgumentNullException.ThrowIfNull(collection);
             int oldcount = Count;
 
             lock (_syncLock)
@@ -227,7 +228,7 @@ namespace LegendaryExplorerCore.Misc
 
         #endregion // Sorting
 
-        private readonly object _syncLock = new();
+        private readonly Lock _syncLock = new();
         /// <summary> 
         /// Initializes a new instance of the System.Collections.ObjectModel.ObservableCollection(Of T) class. 
         /// </summary> 

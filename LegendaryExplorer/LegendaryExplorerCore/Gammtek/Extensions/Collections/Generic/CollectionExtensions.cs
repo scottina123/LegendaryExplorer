@@ -77,7 +77,7 @@ namespace LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic
         /// </summary>
         public static void ReplaceAll<TSource>(this ICollection<TSource> oldCollection, IEnumerable<TSource> newCollection)
         {
-            if (newCollection == null) throw new ArgumentNullException(nameof(newCollection));
+            ArgumentNullException.ThrowIfNull(newCollection);
 			oldCollection.Clear();
             oldCollection.AddRange(newCollection);
         }

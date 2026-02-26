@@ -37,7 +37,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
     {
         #region Properties and Startup
 
-        private static readonly Dictionary<MEGame, LiveLevelEditorWindow> Instances = new();
+        private static readonly Dictionary<MEGame, LiveLevelEditorWindow> Instances = [];
         public static LiveLevelEditorWindow Instance(MEGame game)
         {
             if (!GameController.GetInteropTargetForGame(game)?.CanUseLLE ?? true)
@@ -306,7 +306,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
                             break;
                         }
                     }
-                    pos = new Vector3(floats[0], floats[1], floats[2]);
+                    pos = new Vector3(floats);
 
                 }
                 noUpdate = true;
@@ -335,7 +335,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
                             break;
                         }
                     }
-                    rot = Rotator.FromDirectionVector(new Vector3(floats[0], floats[1], floats[2]));
+                    rot = Rotator.FromDirectionVector(new Vector3(floats));
                     if (msg.IndexOf("int") is int rollIdx && rollIdx > 0 &&
                         msg.Substring(rollIdx + 4).Split(' ') is string[] { Length: >= 1 } rollStrings &&  int.TryParse(rollStrings[0], out int roll))
                     {
@@ -379,7 +379,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
             }
         }
 
-        public ObservableDictionary<string, ObservableCollectionExtended<ActorEntry>> ActorDict { get; } = new();
+        public ObservableDictionary<string, ObservableCollectionExtended<ActorEntry>> ActorDict { get; } = [];
 
         private void BuildActorDict()
         {
