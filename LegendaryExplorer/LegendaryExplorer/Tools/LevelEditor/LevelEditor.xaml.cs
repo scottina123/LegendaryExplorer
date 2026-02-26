@@ -34,6 +34,7 @@ public class RecentFileSet
 {
     public MEGame Game { get; set; }
     public List<string> FilePaths { get; set; } = [];
+    public List<string> ReadOnlyFilePaths { get; set; } = [];
 
     [JsonIgnore]
     public string DisplayName => FilePaths.Count switch
@@ -47,7 +48,7 @@ public class RecentFileSet
     public string TooltipText => string.Join("\n", FilePaths.Select(Path.GetFileName));
 }
 
-public partial class LevelEditor : WPFBase
+public partial class LevelEditor : NotifyPropertyChangedWindowBase
 {
     public readonly LevelEditorRenderContext RenderContext;
 
@@ -114,19 +115,50 @@ public partial class LevelEditor : WPFBase
         set => SetProperty(ref RenderContext.TransformWidget.UseLocalCoords, value);
     }
 
+    public bool TranslateSnapEnabled
+    {
+        get => RenderContext.TransformWidget.TranslateSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.TranslateSnapEnabled, value);
+    }
+    public float TranslateSnapValue
+    {
+        get => RenderContext.TransformWidget.TranslateSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.TranslateSnapValue, value);
+    }
+    public bool RotateSnapEnabled
+    {
+        get => RenderContext.TransformWidget.RotateSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.RotateSnapEnabled, value);
+    }
+    public float RotateSnapValue
+    {
+        get => RenderContext.TransformWidget.RotateSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.RotateSnapValue, value);
+    }
+    public bool ScaleSnapEnabled
+    {
+        get => RenderContext.TransformWidget.ScaleSnapEnabled;
+        set => SetProperty(ref RenderContext.TransformWidget.ScaleSnapEnabled, value);
+    }
+    public float ScaleSnapValue
+    {
+        get => RenderContext.TransformWidget.ScaleSnapValue;
+        set => SetProperty(ref RenderContext.TransformWidget.ScaleSnapValue, value);
+    }
+
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
     private static string RecentSetsFile => Path.Combine(
         Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, "LevelEditor")).FullName,
         "RECENTSETS");
 
-    public LevelEditor() : base("LevelEditor")
+    public LevelEditor()
     {
         RenderContext = new LevelEditorRenderContext();
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
         ActorsView = CollectionViewSource.GetDefaultView(Actors);
         ActorsView.Filter = ActorFilter;
-        ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFileName)));
+        ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFile)));
 
         LoadCommands();
         InitializeComponent();
@@ -498,7 +530,7 @@ public partial class LevelEditor : WPFBase
 
     public ICommand OpenFileCommand { get; set; }
     public ICommand AddFileCommand { get; set; }
-    public ICommand SaveFileCommand { get; set; }
+    public ICommand SaveAllCommand { get; set; }
     public ICommand SaveAsCommand { get; set; }
     public ICommand SaveSingleFileCommand { get; set; }
     public ICommand CloseFileCommand { get; set; }
@@ -519,7 +551,7 @@ public partial class LevelEditor : WPFBase
     {
         OpenFileCommand = new GenericCommand(OpenFile);
         AddFileCommand = new GenericCommand(AddFile);
-        SaveFileCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
+        SaveAllCommand = new GenericCommand(SaveAllFiles, PackageIsLoaded);
         SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
         SaveSingleFileCommand = new RelayCommand(SaveSingleFileExecute, _ => PackageIsLoaded());
         CloseFileCommand = new RelayCommand(CloseFileExecute);
@@ -559,6 +591,7 @@ public partial class LevelEditor : WPFBase
     public readonly UndoHistory UndoHistory = new();
     private TransformSnapshot? _preEditSnapshot;
     private bool _isApplyingUndoRedo;
+    internal bool IsApplyingUndoRedo => _isApplyingUndoRedo;
 
     public bool CanUndo => UndoHistory.CanUndo;
     public bool CanRedo => UndoHistory.CanRedo;
@@ -646,7 +679,8 @@ public partial class LevelEditor : WPFBase
 
         foreach (var file in OpenFiles)
         {
-            CommitChangesForFile(file);
+            if (!file.IsReadOnly)
+                CommitChangesForFile(file);
         }
         IsDirty = false;
     }
@@ -687,7 +721,7 @@ public partial class LevelEditor : WPFBase
     private void CommitSingleFileExecute(object parameter)
     {
         OpenLevelFile file = ResolveFileParameter(parameter);
-        if (file is not null)
+        if (file is not null && !file.IsReadOnly)
         {
             CommitChangesForFile(file);
         }
@@ -711,7 +745,7 @@ public partial class LevelEditor : WPFBase
         }
         foreach (var file in OpenFiles)
         {
-            if (file.Package.IsModified)
+            if (!file.IsReadOnly && file.Package.IsModified)
             {
                 await file.Package.SaveAsync();
             }
@@ -721,7 +755,7 @@ public partial class LevelEditor : WPFBase
     private async void SaveSingleFileExecute(object parameter)
     {
         OpenLevelFile file = ResolveFileParameter(parameter);
-        if (file is null) return;
+        if (file is null || file.IsReadOnly) return;
 
         if (file.IsDirty)
         {
@@ -820,11 +854,6 @@ public partial class LevelEditor : WPFBase
     #endregion
 
     #region HandleUpdate
-
-    public override void HandleUpdate(List<PackageUpdate> updates)
-    {
-        // No-op: updates are handled per-file via OpenLevelFile.HandleUpdate
-    }
 
     public void HandleFileUpdate(OpenLevelFile file, List<PackageUpdate> updates)
     {
@@ -983,6 +1012,7 @@ public partial class LevelEditor : WPFBase
 
     private void OnWidgetDragComplete(ActorProxy actor, TransformSnapshot before, TransformSnapshot after)
     {
+        if (before.Equals(after)) return;
         UndoHistory.Push(new TransformAction(actor, before, after, $"Drag {actor.Export.ObjectName.Instanced}"));
         _preEditSnapshot = after;
     }
@@ -1211,7 +1241,12 @@ public partial class LevelEditor : WPFBase
             }
         }
 
-        RecentSets.Insert(0, new RecentFileSet { Game = Game, FilePaths = currentPaths });
+        RecentSets.Insert(0, new RecentFileSet
+        {
+            Game = Game,
+            FilePaths = currentPaths,
+            ReadOnlyFilePaths = OpenFiles.Where(f => f.IsReadOnly).Select(f => f.FilePath).ToList()
+        });
 
         while (RecentSets.Count > 10)
             RecentSets.RemoveAt(RecentSets.Count - 1);
@@ -1230,6 +1265,9 @@ public partial class LevelEditor : WPFBase
             if (File.Exists(path))
             {
                 await AddLevelFile(path).ConfigureAwait(true);
+                var openFile = OpenFiles.LastOrDefault(f => f.FilePath == path);
+                if (openFile is not null && set.ReadOnlyFilePaths.Contains(path))
+                    openFile.IsReadOnly = true;
             }
         }
     }
@@ -1290,6 +1328,58 @@ public partial class LevelEditor : WPFBase
             {
                 ReloadFile(file);
             }
+        }
+    }
+
+    #endregion
+
+
+
+    #region Busy variables
+
+    private bool _isBusy;
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set => SetProperty(ref _isBusy, value);
+    }
+
+    private bool _isBusyTaskbar;
+
+    public bool IsBusyTaskbar
+    {
+        get => _isBusyTaskbar;
+        set => SetProperty(ref _isBusyTaskbar, value);
+    }
+
+    private string _busyText;
+
+    public string BusyText
+    {
+        get => _busyText;
+        set => SetProperty(ref _busyText, value);
+    }
+
+    public virtual void SetBusy(string text = null)
+    {
+        BusyText = text;
+        IsBusy = true;
+    }
+    public virtual void EndBusy()
+    {
+        IsBusy = false;
+    }
+
+    public void HandleSaveStateChange(bool isSaving)
+    {
+        if (isSaving)
+        {
+            SetBusy("Saving");
+        }
+        else
+        {
+            EndBusy();
         }
     }
 

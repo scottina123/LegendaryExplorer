@@ -16,7 +16,7 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 {
     public LevelEditor Editor;
-    public OpenLevelFile OwningFile;
+    public OpenLevelFile OwningFile { get; set; }
 
     public Matrix4x4 LocalToWorld;
 
@@ -69,6 +69,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => rotation;
         set
         {
+            if (IsReadOnly) return;
             var oldValue = rotation;
             if (rotation != value)
             {
@@ -90,6 +91,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => location;
         set
         {
+            if (IsReadOnly) return;
             var oldValue = location;
             if (location != value)
             {
@@ -112,6 +114,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => drawScale3D;
         set
         {
+            if (IsReadOnly) return;
             var oldValue = drawScale3D;
             if (drawScale3D != value)
             {
@@ -133,6 +136,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => drawScale;
         set
         {
+            if (IsReadOnly) return;
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
@@ -145,6 +149,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         get => prePivot;
         set
         {
+            if (IsReadOnly) return;
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
@@ -152,6 +157,9 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             }
         }
     }
+
+    public bool IsReadOnly =>
+        OwningFile?.IsReadOnly == true && !(Editor?.IsApplyingUndoRedo ?? false);
 
     public virtual bool IsVolume => false;
     public bool IsVolumetricMesh { get; protected set; }
