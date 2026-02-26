@@ -1305,28 +1305,37 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ToggleButton}">
-                    <Border x:Name="ExpanderButtonBorder"
-                            Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                            BorderThickness="1"
-                            CornerRadius="9"
-                            Width="19"
-                            Height="19"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                        <Path x:Name="Arrow"
-                              Data="M 1,1.5 L 4.5,5 L 8,1.5"
-                              Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                              StrokeThickness="2"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              RenderTransformOrigin="0.5,0.5">
-                            <Path.RenderTransform>
-                                <RotateTransform Angle="0"/>
-                            </Path.RenderTransform>
-                        </Path>
+                    <Border Background="Transparent">
+                        <StackPanel>
+                            <Border x:Name="ExpanderButtonBorder"
+                                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Width="19"
+                                    Height="19"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="Arrow"
+                                      Data="M 1,1.5 L 4.5,5 L 8,1.5"
+                                      Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                      StrokeThickness="2"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      RenderTransformOrigin="0.5,0.5">
+                                    <Path.RenderTransform>
+                                        <RotateTransform Angle="0"/>
+                                    </Path.RenderTransform>
+                                </Path>
+                            </Border>
+                            <ContentPresenter Margin="0,4,0,0"
+                                              RecognizesAccessKey="True"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Default Down direction: collapsed=down, expanded=up -->
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Arrow" Property="RenderTransform">
                                 <Setter.Value>
@@ -1334,6 +1343,66 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
+                        <!-- Right direction: collapsed=right arrow -->
+                        <Trigger Property="Tag" Value="Right">
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="-90"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <!-- Right direction + expanded: left arrow -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Tag" Value="Right"/>
+                                <Condition Property="IsChecked" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="90"/>
+                                </Setter.Value>
+                            </Setter>
+                        </MultiTrigger>
+                        <!-- Left direction: collapsed=left arrow -->
+                        <Trigger Property="Tag" Value="Left">
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="90"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <!-- Left direction + expanded: right arrow -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Tag" Value="Left"/>
+                                <Condition Property="IsChecked" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="-90"/>
+                                </Setter.Value>
+                            </Setter>
+                        </MultiTrigger>
+                        <!-- Up direction: collapsed=up arrow -->
+                        <Trigger Property="Tag" Value="Up">
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="180"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <!-- Up direction + expanded: down arrow -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Tag" Value="Up"/>
+                                <Condition Property="IsChecked" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Arrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="0"/>
+                                </Setter.Value>
+                            </Setter>
+                        </MultiTrigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="ExpanderButtonBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
                             <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
@@ -1389,14 +1458,17 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                         <Trigger Property="ExpandDirection" Value="Right">
                             <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Right"/>
                             <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Left"/>
+                            <Setter TargetName="HeaderSite" Property="Tag" Value="Right"/>
                         </Trigger>
                         <Trigger Property="ExpandDirection" Value="Up">
                             <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Top"/>
                             <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Bottom"/>
+                            <Setter TargetName="HeaderSite" Property="Tag" Value="Up"/>
                         </Trigger>
                         <Trigger Property="ExpandDirection" Value="Left">
                             <Setter TargetName="ExpandSite" Property="DockPanel.Dock" Value="Left"/>
                             <Setter TargetName="HeaderSite" Property="DockPanel.Dock" Value="Right"/>
+                            <Setter TargetName="HeaderSite" Property="Tag" Value="Left"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
