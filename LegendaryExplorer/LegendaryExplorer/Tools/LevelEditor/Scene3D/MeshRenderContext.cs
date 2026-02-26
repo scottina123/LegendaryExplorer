@@ -664,6 +664,8 @@ public class MeshRenderContext : RenderContext
         return handled;
     }
 
+    public override bool IsActivelyUpdating() => PressedKeys != KeyStates.None || PressedMouseButton != MouseButtons.None;
+
     public Vector4 WorldToScreen(Vector3 point)
     {
         return Vector4.Transform(point, Camera.ViewProjectionMatrix);

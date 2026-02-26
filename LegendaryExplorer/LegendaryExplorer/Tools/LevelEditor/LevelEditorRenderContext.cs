@@ -28,6 +28,10 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public readonly Widget TransformWidget;
 
+    private Texture2D _hitStagingTexture;
+
+    public override bool IsActivelyUpdating() => base.IsActivelyUpdating() || TransformWidget.IsDragging;
+
     public readonly BatchedPrimitives Primitives = new();
 
     public bool ShowVolumes;
@@ -153,28 +157,15 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private unsafe SharpDX.Color[] ReadHitTestData(int minX, int minY, int maxX, int maxY)
     {
+        if (_hitStagingTexture is null) return [];
+
         int sizeX = maxX - minX + 1;
         int sizeY = maxY - minY + 1;
 
         var data = new SharpDX.Color[sizeX * sizeY];
 
-
-        using var tempTex = new Texture2D(Device, new Texture2DDescription
-        {
-            ArraySize = 1,
-            BindFlags = BindFlags.None,
-            CpuAccessFlags = CpuAccessFlags.Read,
-            Format = Format.B8G8R8A8_UNorm,
-            Height = sizeY,
-            Width = sizeX,
-            MipLevels = 1,
-            OptionFlags = ResourceOptionFlags.None,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Staging
-        });
-
-        ImmediateContext.CopySubresourceRegion(HitBuffer, 0, new ResourceRegion(minX, minY, 0, maxX + 1, maxY + 1, 1), tempTex, 0);
-        var lockedData = ImmediateContext.MapSubresource(tempTex, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+        ImmediateContext.CopySubresourceRegion(HitBuffer, 0, new ResourceRegion(minX, minY, 0, maxX + 1, maxY + 1, 1), _hitStagingTexture, 0);
+        var lockedData = ImmediateContext.MapSubresource(_hitStagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
 
         for (int y = 0; y < sizeY; y++)
         {
@@ -187,7 +178,7 @@ public class LevelEditorRenderContext : MeshRenderContext
             }
         }
 
-        ImmediateContext.UnmapSubresource(tempTex, 0);
+        ImmediateContext.UnmapSubresource(_hitStagingTexture, 0);
 
         return data;
     }
@@ -246,10 +237,26 @@ public class LevelEditorRenderContext : MeshRenderContext
     public override void CreateSizeDependentResources(int width, int height, Texture2D newBackBuffer)
     {
         base.CreateSizeDependentResources(width, height, newBackBuffer);
+        _hitStagingTexture?.Dispose();
+        _hitStagingTexture = new Texture2D(Device, new Texture2DDescription
+        {
+            ArraySize = 1,
+            BindFlags = BindFlags.None,
+            CpuAccessFlags = CpuAccessFlags.Read,
+            Format = SharpDX.DXGI.Format.B8G8R8A8_UNorm,
+            Height = HitTestSize * 2 + 1,
+            Width = HitTestSize * 2 + 1,
+            MipLevels = 1,
+            OptionFlags = ResourceOptionFlags.None,
+            SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
+            Usage = ResourceUsage.Staging
+        });
     }
 
     public override void DisposeSizeDependentResources()
     {
+        _hitStagingTexture?.Dispose();
+        _hitStagingTexture = null;
         base.DisposeSizeDependentResources();
     }
 

@@ -112,21 +112,33 @@ LevelEditorRenderContext RenderContext;
     public bool ShowCollision
     {
         get => _showCollision;
-        set => SetProperty(ref _showCollision, value);
+        set
+        {
+            if (SetProperty(ref _showCollision, value))
+                SceneViewer?.MarkRenderDirty();
+        }
     }
 
     private bool _showVolumes = false;
     public bool ShowVolumes
     {
         get => _showVolumes;
-        set => SetProperty(ref _showVolumes, value);
+        set
+        {
+            if (SetProperty(ref _showVolumes, value))
+                SceneViewer?.MarkRenderDirty();
+        }
     }
 
     private bool _showVolumetrics = false;
     public bool ShowVolumetrics
     {
         get => _showVolumetrics;
-        set => SetProperty(ref _showVolumetrics, value);
+        set
+        {
+            if (SetProperty(ref _showVolumetrics, value))
+                SceneViewer?.MarkRenderDirty();
+        }
     }
 
     #region ISceneRenderContextConfigurable
@@ -362,6 +374,7 @@ LevelEditorRenderContext RenderContext;
         var prev = selectedActor;
         if (SetProperty(ref selectedActor, actor, nameof(SelectedActor)))
         {
+            SceneViewer?.MarkRenderDirty();
             if (prev is not null)
             {
                 prev.PropertyChanged -= OnActorPropertyChanged;
@@ -548,9 +561,10 @@ LevelEditorRenderContext RenderContext;
             SelectedActor = null;
         }
 
-        foreach (var actor in file.Actors)
+        var actorsToRemove = file.Actors.ToList();
+        Actors.RemoveRange(actorsToRemove);
+        foreach (var actor in actorsToRemove)
         {
-            Actors.Remove(actor);
             RenderContext.RemoveActor(actor);
             actor.Dispose();
         }
@@ -1092,9 +1106,10 @@ LevelEditorRenderContext RenderContext;
             SelectedActor = null;
         }
 
-        foreach (var actor in file.Actors.ToList())
+        var actorsToReload = file.Actors.ToList();
+        Actors.RemoveRange(actorsToReload);
+        foreach (var actor in actorsToReload)
         {
-            Actors.Remove(actor);
             RenderContext.RemoveActor(actor);
             actor.Dispose();
         }
@@ -1137,6 +1152,7 @@ LevelEditorRenderContext RenderContext;
         if (_isApplyingUndoRedo || RenderContext.TransformWidget.IsDragging) return;
         if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
 
+        SceneViewer?.MarkRenderDirty();
         if (sender is ActorProxy actor && _preEditSnapshot is { } before)
         {
             var after = actor.SnapshotTransform();

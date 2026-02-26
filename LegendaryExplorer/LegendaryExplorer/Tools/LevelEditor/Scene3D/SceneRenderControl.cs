@@ -279,8 +279,14 @@ public abstract class RenderContext
 
     public virtual void EmptyCaches()
     {
-        
+
     }
+
+    /// <summary>
+    /// Returns true when the scene is actively changing (camera moving, widget dragging, etc.)
+    /// and must be re-rendered every frame.
+    /// </summary>
+    public virtual bool IsActivelyUpdating() => false;
 }
 
 /// <summary>
@@ -292,6 +298,7 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private Image Image;
     private readonly Stopwatch Stopwatch = new();
     private bool _shouldRender;
+    private volatile bool _renderDirty = true;
     private RenderContext _context;
     private Action _onImageRendered;
     private bool _captureNextFrame;
@@ -313,6 +320,11 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     public int RenderWidth => (int)RenderSize.Width;
     public int RenderHeight => (int)RenderSize.Height;
+
+    /// <summary>
+    /// Signals that the scene has changed and a new frame must be rendered.
+    /// </summary>
+    public void MarkRenderDirty() => _renderDirty = true;
 
     public bool CaptureNextFrame
     {
@@ -458,14 +470,18 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
     private void SceneRenderControlWPF_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         D3DImage.SetPixelSize(RenderWidth, RenderHeight);
+        _renderDirty = true;
     }
 
     private void CompositionTarget_Rendering(object sender, EventArgs e)
     {
         if (_shouldRender && Context is { IsReady: true })
         {
-            //Debug.WriteLine("Rendering");
-            D3DImage?.RequestRender();
+            if (_renderDirty || Context.IsActivelyUpdating())
+            {
+                _renderDirty = false;
+                D3DImage?.RequestRender();
+            }
         }
     }
 
@@ -527,16 +543,9 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     public void SetShouldRender(bool shouldRender)
     {
-        //if (!_shouldRender && shouldRender && D3DImage != null) // Not rendering, but we should start
-        //{
-        //    D3DImage.OnRender = D3DImage_OnRender;
-        //}
-        //else if (_shouldRender && !shouldRender && D3DImage != null) // Currently rendering, but we should stop
-        //{
-        //    D3DImage.OnRender = null;
-        //}
-
         _shouldRender = shouldRender;
+        if (shouldRender)
+            _renderDirty = true;
     }
 
     #region Input Events
@@ -554,6 +563,7 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
             return;
         Point position = e.GetPosition(this);
         e.Handled = Context.MouseDown(buttons, (int)position.X, (int)position.Y);
+        _renderDirty = true;
     }
 
     private void SceneRenderControlWPF_PreviewMouseUp(object sender, MouseButtonEventArgs e)
@@ -569,17 +579,20 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
             return;
         Point position = e.GetPosition(this);
         e.Handled = Context.MouseUp(buttons, (int)position.X, (int)position.Y);
+        _renderDirty = true;
     }
 
     private void SceneRenderControlWPF_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         Point position = e.GetPosition(this);
         e.Handled = Context.MouseMove((int)position.X, (int)position.Y);
+        _renderDirty = true;
     }
 
     private void SceneRenderControlWPF_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         e.Handled = Context.MouseScroll(e.Delta);
+        _renderDirty = true;
     }
 
     public void OnKeyDown(object sender, KeyEventArgs e)
@@ -593,21 +606,25 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
         {
             e.Handled = Context.KeyDown(e.Key);
         }
+        _renderDirty = true;
     }
 
     public void OnKeyUp(object sender, KeyEventArgs e)
     {
         e.Handled = Context.KeyUp(e.Key);
+        _renderDirty = true;
     }
 
     private void SceneRenderControl_LostMouseCapture(object sender, MouseEventArgs e)
     {
         e.Handled = Context.LostMouseFocus();
+        _renderDirty = true;
     }
 
     private void SceneRenderControl_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         e.Handled = Context.LostKeyboardFocus();
+        _renderDirty = true;
     }
     #endregion
 
