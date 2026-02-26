@@ -23,7 +23,9 @@ public class AnimSequencePlayer(SkeletalMesh skeletalMesh) : AnimPlayer(skeletal
     public int TotalFrames => _animSequence?.NumFrames ?? 0;
     public override float Duration => _animSequence?.SequenceLength ?? 0f;
 
-    public override float StartOffset => 0;
+    public override float StartTime => 0;
+
+    public override float EndTime => Duration;
 
     public override bool HasAnimation => _animSequence != null;
 
@@ -102,26 +104,6 @@ public class AnimSequencePlayer(SkeletalMesh skeletalMesh) : AnimPlayer(skeletal
             {
                 _animToSkelMap[i] = -1; // no match
             }
-        }
-    }
-
-    /// <summary>
-    /// Advances playback time by the given delta in seconds.
-    /// </summary>
-    public void AdvanceTime(float dt)
-    {
-        if (_animSequence == null || Duration <= 0) return;
-
-        CurrentTime += dt * PlaybackSpeed;
-
-        if (IsLooping)
-        {
-            while (CurrentTime >= Duration) CurrentTime -= Duration;
-            while (CurrentTime < 0) CurrentTime += Duration;
-        }
-        else
-        {
-            CurrentTime = Math.Clamp(CurrentTime, 0, Duration);
         }
     }
 

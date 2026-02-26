@@ -21,8 +21,10 @@ public class FaceFxPlayer : AnimPlayer
     private float length = 0;
     public override float Duration => length;
 
-    private float startOffset = 0;
-    public override float StartOffset => startOffset;
+    private float startTime = 0;
+    public override float StartTime => startTime;
+
+    public override float EndTime => startTime + length;
 
     public FaceFXAsset FxActor
     {
@@ -64,8 +66,9 @@ public class FaceFxPlayer : AnimPlayer
             ThrowHelper.ThrowArgumentException("Line is not in AnimSet");
         }
         Line = line;
-        startOffset = -Line.Points.Min(p => p.time) - line.FadeInTime;
-        length = line.Points.Max(p => p.time) + line.FadeOutTime - startOffset;
+        startTime = Line.Points.Min(p => p.time);
+        length = line.Points.Max(p => p.time) - startTime;
+        CurrentTime = startTime;
     }
 
     public override void SetCurrentTime(float time)
@@ -307,11 +310,11 @@ public class FaceFxPlayer : AnimPlayer
             {
                 return 0;
             }
-            if (keys.Length is 1 || time < keys[0].time)
+            if (keys.Length is 1 || time <= keys[0].time)
             {
                 return keys[0].weight;
             }
-            if (keys[^1].time < time)
+            if (time >= keys[^1].time)
             {
                 return keys[^1].weight;
             }

@@ -19,10 +19,28 @@ public abstract class AnimPlayer
 
     public abstract bool HasAnimation { get; }
     public abstract float Duration { get; }
-    public abstract float StartOffset { get; }
+    public abstract float StartTime { get; }
+    public abstract float EndTime { get; }
     public abstract void SetCurrentTime(float time);
 
     public abstract Matrix4x4[] ComputeSkinningMatrices();
+
+  public void AdvanceTime(float dt)
+    {
+        if (!HasAnimation || Duration <= 0) return;
+
+        CurrentTime += dt * PlaybackSpeed;
+
+        if (IsLooping)
+        {
+            while (CurrentTime >= EndTime) CurrentTime -= Duration;
+            while (CurrentTime < StartTime) CurrentTime += Duration;
+        }
+        else
+        {
+            CurrentTime = Math.Clamp(CurrentTime, StartTime, EndTime);
+        }
+    }
 
     protected AnimPlayer(SkeletalMesh skeletalMesh)
     {
