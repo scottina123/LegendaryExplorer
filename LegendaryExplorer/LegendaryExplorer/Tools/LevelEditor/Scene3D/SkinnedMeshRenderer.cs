@@ -4,7 +4,6 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using DeviceContext = SharpDX.Direct3D11.DeviceContext;
-using Device = SharpDX.Direct3D11.Device;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
@@ -144,38 +143,6 @@ public class SkinnedMeshRenderer
         }
 
         mesh.UpdateVertices(context);
-    }
-
-    /// <summary>
-    /// Performs CPU skinning with pre-computed matrices: blends skinning matrices per vertex,
-    /// transforms bind-pose position/normal, writes results to the mesh vertex list,
-    /// then rebuilds the D3D vertex buffer.
-    /// </summary>
-    public void UpdateSkinningWithMatrices(Device device, Mesh<WorldVertex> mesh, Matrix4x4[] skinningMatrices)
-    {
-        NeedsUpdate = false;
-        if (_skinVertices == null || mesh == null || skinningMatrices == null) return;
-
-        int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
-        for (int i = 0; i < vertexCount; i++)
-        {
-            ref var sv = ref _skinVertices[i];
-
-            var blended = BlendMatrix(
-                skinningMatrices, sv.Bone0, sv.Weight0,
-                sv.Bone1, sv.Weight1,
-                sv.Bone2, sv.Weight2,
-                sv.Bone3, sv.Weight3);
-
-            var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
-            var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
-
-            var rendererNormal = new Vector4(skinnedNormal.X, skinnedNormal.Z, skinnedNormal.Y, 1);
-
-            mesh.Vertices[i] = new WorldVertex(skinnedPos, rendererNormal, sv.UV);
-        }
-
-        mesh.UpdateVertices(device.ImmediateContext);
     }
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)

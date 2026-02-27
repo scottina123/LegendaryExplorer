@@ -234,6 +234,9 @@ public abstract class RenderContext
     public abstract void Update(float timestep);
     public virtual void Render()
     {
+        // Flush submits all queued GPU commands to the driver.
+        // Required by D3D11Image so the shared surface is ready
+        // for WPF composition when OnRender returns.
         ImmediateContext.Flush();
     }
 

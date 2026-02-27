@@ -101,6 +101,9 @@ public class LevelEditorRenderContext : MeshRenderContext
         return base.MouseDown(button, x, y);
     }
 
+    private int _lastHitTestX = -100;
+    private int _lastHitTestY = -100;
+
     public override bool MouseMove(int x, int y)
     {
         if (TransformWidget.IsDragging)
@@ -116,8 +119,15 @@ public class LevelEditorRenderContext : MeshRenderContext
         }
         if (base.MouseMove(x, y)) return true;
 
-        if (HitBufferView is not null)
+        // Only run the GPU hit-test readback when the cursor has moved enough
+        // to potentially pick a different widget axis. This avoids a costly
+        // GPU→CPU sync (MapSubresource) on every single mouse-move event.
+        int dx = x - _lastHitTestX;
+        int dy = y - _lastHitTestY;
+        if (HitBufferView is not null && dx * dx + dy * dy >= 9)
         {
+            _lastHitTestX = x;
+            _lastHitTestY = y;
             IHitProxy selected = GetHitProxy(x, y);
 
             TransformWidget.CurrentAxis = EWidgetAxis.None;

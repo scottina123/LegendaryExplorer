@@ -171,12 +171,9 @@
                 <RowDefinition/>
                 <RowDefinition Name="lineTextRowDef" Height="40"/>
             </Grid.RowDefinitions>
-            <TabControl x:Name="ViewTabControl" SelectionChanged="ViewTabControl_SelectionChanged">
+            <TabControl>
                 <TabItem Header="Graph">
                     <sharedToolControls:CurveGraph x:Name="graph" KeyDown="Graph_KeyDown"/>
-                </TabItem>
-                <TabItem Header="Live Preview">
-                    <sharedToolControls:FaceFXLivePreviewControl x:Name="livePreviewControl"/>
                 </TabItem>
             </TabControl>
             <TextBlock Text="{Binding SelectedLineEntry.TLKString}" Grid.Row="1" TextWrapping="Wrap"/>

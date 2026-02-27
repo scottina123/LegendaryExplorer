@@ -485,7 +485,10 @@ LevelEditorRenderContext RenderContext;
         IsBusy = true;
         BusyText = $"Loading {Path.GetFileName(path)}...";
 
-        var (actors, ignoredClasses) = await Task.Run(() => LoadActors(levelBin, openFile)).ConfigureAwait(true);
+        // Yield to let the BusyIndicator paint before the heavy work begins
+        await Task.Delay(1).ConfigureAwait(true);
+
+        var (actors, ignoredClasses) = LoadActors(levelBin, openFile);
         var sorted = actors.OrderBy(actor => actor.Export.UIndex).ToList();
         openFile.Actors.AddRange(sorted);
         Actors.AddRange(sorted);

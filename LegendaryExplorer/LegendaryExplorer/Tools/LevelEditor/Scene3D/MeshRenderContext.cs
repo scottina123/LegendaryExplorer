@@ -21,7 +21,6 @@ using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
-using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
@@ -66,7 +65,7 @@ public class MeshRenderContext : RenderContext
         E = 0b100000
     }
 
-    public Color BackgroundColor = Color.FromArgb(255,255,255,255); //Default
+    public Color BackgroundColor = Color.FromArgb(255, 255, 255, 255); //Default
 
     #region Size-Dependent Resources
     public RenderTargetView BackbufferView { get; private set; }
@@ -115,7 +114,7 @@ public class MeshRenderContext : RenderContext
             }
         }
     }
-    private KeyStates PressedKeys; 
+    private KeyStates PressedKeys;
     private MouseButtons PressedMouseButton;
     public float CameraSpeed { get; set; } = 500.0f; // Units per second
     public float Time { get; private set; }
@@ -294,7 +293,7 @@ public class MeshRenderContext : RenderContext
         whiteCubeData[0] = whiteCubeData[1] = whiteCubeData[2] = whiteCubeData[3] = whiteCubeData[4] = whiteCubeData[5] = [255, 255, 255, 255];
         WhiteTextureCube = this.LoadTextureCube(1, Format.R8G8B8A8_UNorm, whiteCubeData);
         WhiteTextureCubeView = new ShaderResourceView(Device, WhiteTextureCube);
-        WhiteTex = new Texture2D(Device, new Texture2DDescription{ Width = 1, Height = 1, MipLevels = 1, ArraySize = 1, Format = Format.R8G8B8A8_UNorm, SampleDescription = new SampleDescription(1, 0), BindFlags = BindFlags.ShaderResource});
+        WhiteTex = new Texture2D(Device, new Texture2DDescription { Width = 1, Height = 1, MipLevels = 1, ArraySize = 1, Format = Format.R8G8B8A8_UNorm, SampleDescription = new SampleDescription(1, 0), BindFlags = BindFlags.ShaderResource });
         int white = int.MaxValue;
         Device.ImmediateContext.UpdateSubresource(ref white, WhiteTex, rowPitch: 8);
         WhiteTexView = new ShaderResourceView(Device, WhiteTex);
@@ -573,7 +572,7 @@ public class MeshRenderContext : RenderContext
     {
         if (Camera.FirstPerson)
         {
-            Camera.Position += Camera.CameraForward * (CameraSpeed / FPS ) * (delta / 10f);
+            Camera.Position += Camera.CameraForward * (CameraSpeed / FPS) * (delta / 10f);
         }
         else
         {
@@ -664,8 +663,6 @@ public class MeshRenderContext : RenderContext
         return handled;
     }
 
-    public override bool IsActivelyUpdating() => PressedKeys != KeyStates.None || PressedMouseButton != MouseButtons.None;
-
     public Vector4 WorldToScreen(Vector3 point)
     {
         return Vector4.Transform(point, Camera.ViewProjectionMatrix);
@@ -731,8 +728,8 @@ file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>
     public bool Equals(RenderTargetBlendDescription x, RenderTargetBlendDescription y)
     {
         return x.IsBlendEnabled.Equals(y.IsBlendEnabled)
-               && x.SourceBlend == y.SourceBlend 
-               && x.DestinationBlend == y.DestinationBlend 
+               && x.SourceBlend == y.SourceBlend
+               && x.DestinationBlend == y.DestinationBlend
                && x.BlendOperation == y.BlendOperation
                && x.SourceAlphaBlend == y.SourceAlphaBlend
                && x.DestinationAlphaBlend == y.DestinationAlphaBlend
@@ -743,7 +740,7 @@ file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>
     public int GetHashCode(RenderTargetBlendDescription obj)
     {
         return HashCode.Combine(obj.IsBlendEnabled, (int)obj.SourceBlend,
-            (int)obj.DestinationBlend, (int)obj.BlendOperation, 
+            (int)obj.DestinationBlend, (int)obj.BlendOperation,
             (int)obj.SourceAlphaBlend, (int)obj.DestinationAlphaBlend,
             (int)obj.AlphaBlendOperation, (int)obj.RenderTargetWriteMask);
     }

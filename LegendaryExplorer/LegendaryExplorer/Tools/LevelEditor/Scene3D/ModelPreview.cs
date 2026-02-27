@@ -153,10 +153,7 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             var texObjectName = textureEntry.InstancedFullPath.ToLower();
             if ((matPackage == null || texObjectName.StartsWith(matPackage)) && texObjectName.Contains("diff"))
             {
-                // we have found the diffuse texture!
-                diffuseIFP = textureEntry.InstancedFullPath;
-                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
-                return diffuseIFP;
+                return textureEntry.InstancedFullPath;
             }
         }
 
@@ -165,22 +162,15 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             var texObjectName = textureEntry.ObjectName.Name.ToLower();
             if (texObjectName.Contains("diff") || texObjectName.Contains("tex"))
             {
-                // we have found the diffuse texture!
-                diffuseIFP = textureEntry.InstancedFullPath;
-                Debug.WriteLine("Diffuse texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
-                return diffuseIFP;
+                return textureEntry.InstancedFullPath;
             }
         }
         foreach (var texparam in mat.Textures)
         {
             var texObjectName = texparam.ObjectName.Name.ToLower();
-
             if (texObjectName.Contains("detail"))
             {
-                // I guess a detail texture is good enough if we didn't return for a diffuse texture earlier...
-                diffuseIFP = texparam.InstancedFullPath;
-                Debug.WriteLine("Diffuse (Detail) texture of new material <" + Properties["Name"] + "> is " + diffuseIFP);
-                return diffuseIFP;
+                return texparam.InstancedFullPath;
             }
         }
         foreach (var texparam in mat.Textures)
@@ -188,10 +178,7 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
             var texObjectName = texparam.ObjectName.Name.ToLower();
             if (!texObjectName.Contains("norm") && !texObjectName.Contains("opac"))
             {
-                //Anything is better than nothing I suppose
-                diffuseIFP = texparam.InstancedFullPath;
-                Debug.WriteLine("Using first found texture (last resort)  of new material <" + Properties["Name"] + "> as diffuse: " + diffuseIFP);
-                return diffuseIFP;
+                return texparam.InstancedFullPath;
             }
         }
         return null;
