@@ -42,6 +42,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                 if (!_animPlayer.IsPlaying)
                 {
                     UpdateSkinningOneShot();
+                    SceneViewer.MarkRenderDirty();
                 }
             }
         }
@@ -318,12 +319,15 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     {
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = !_animPlayer.IsPlaying;
+        if (_animPlayer.IsPlaying)
+            SceneViewer.MarkRenderDirty();
     }
 
     public void Play()
     {
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = true;
+        SceneViewer.MarkRenderDirty();
     }
 
     public void Pause()
@@ -366,6 +370,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             // Update frame slider without triggering setter logic
             _animCurrentFrame = _animPlayer.CurrentFrame;
             OnPropertyChanged(nameof(AnimCurrentFrame));
+
+            // Ensure the render loop keeps running while animation is playing
+            SceneViewer.MarkRenderDirty();
         }
     }
 
