@@ -90,8 +90,6 @@ public class FaceFxPlayer : AnimPlayer
         EvalFaceFxGraph();
 
         int numBones = _bones.Length;
-        var animatedCS = new Matrix4x4[numBones];
-
         for (int i = 0; i < numBones; i++)
         {
             Matrix4x4 localTransform;
@@ -126,14 +124,14 @@ public class FaceFxPlayer : AnimPlayer
 
             if (bone.ParentIndex >= 0 && bone.ParentIndex < i)
             {
-                animatedCS[i] = localTransform * animatedCS[bone.ParentIndex];
+                _boneComponentSpace[i] = localTransform * _boneComponentSpace[bone.ParentIndex];
             }
             else
             {
-                animatedCS[i] = localTransform;
+                _boneComponentSpace[i] = localTransform;
             }
 
-            _skinningMatrices[i] = _inverseBindPose[i] * animatedCS[i];
+            _skinningMatrices[i] = _inverseBindPose[i] * _boneComponentSpace[i];
         }
 
         return _skinningMatrices;
@@ -155,13 +153,11 @@ public class FaceFxPlayer : AnimPlayer
         {
             string lineName = namesList[Line.AnimationNames[i]];
             int numKeys = Line.NumKeys[i];
-            if (!FaceGraphNodeLookup.TryGetValue(lineName, out var nodeIndex))
+            //If the node is not in the FaceFxAsset, FaceFx ignores it
+            if (FaceGraphNodeLookup.TryGetValue(lineName, out var nodeIndex))
             {
-                //node not in the FaceFxAsset! FaceFx just ignores it, but perhaps we ought to throw so the user knows something's busted?
-                continue;
+                nodes[nodeIndex].TrackValue = EvaluateAnim(time, CollectionsMarshal.AsSpan(Line.Points).Slice(firstKey, numKeys));
             }
-
-            nodes[nodeIndex].TrackValue = EvaluateAnim(time, CollectionsMarshal.AsSpan(Line.Points).Slice(firstKey, numKeys));
             firstKey += numKeys;
         }
 

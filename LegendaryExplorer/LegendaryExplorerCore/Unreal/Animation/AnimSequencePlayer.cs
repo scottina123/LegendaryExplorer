@@ -126,7 +126,6 @@ public class AnimSequencePlayer(SkeletalMesh skeletalMesh) : AnimPlayer(skeletal
         if (_bones == null || _skinningMatrices == null) return null;
 
         int numBones = _bones.Length;
-        var animatedCS = new Matrix4x4[numBones];
 
         float frame = 0;
         if (TotalFrames > 1 && Duration > 0)
@@ -171,14 +170,14 @@ public class AnimSequencePlayer(SkeletalMesh skeletalMesh) : AnimPlayer(skeletal
 
             if (bone.ParentIndex >= 0 && bone.ParentIndex < i)
             {
-                animatedCS[i] = localTransform * animatedCS[bone.ParentIndex];
+                _boneComponentSpace[i] = localTransform * _boneComponentSpace[bone.ParentIndex];
             }
             else
             {
-                animatedCS[i] = localTransform;
+                _boneComponentSpace[i] = localTransform;
             }
 
-            _skinningMatrices[i] = _inverseBindPose[i] * animatedCS[i];
+            _skinningMatrices[i] = _inverseBindPose[i] * _boneComponentSpace[i];
         }
 
         return _skinningMatrices;

@@ -185,6 +185,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             audioPlayer?.StopPlaying();
             audioPlayer?.UnloadExport();
             animPreview?.ClearAnimation();
+            faceGraphPanel?.LoadFxActor(null);
             CurrentLoadedExport = null;
             FaceFX = null;
             _fxActorForPreview = null;
@@ -236,6 +237,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     _fxActorForPreview = (FaceFXAsset)FaceFX.Binary;
                     break;
             }
+
+            faceGraphPanel?.LoadFxActor(_fxActorForPreview);
 
             // Load the first available SkeletalMesh in the package into the animation preview.
             var skelMeshExport = CurrentLoadedExport.FileRef.Exports
@@ -1333,6 +1336,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 animPreview.AnimTimeChanged -= OnAnimPreviewTimeChanged;
                 animPreview.IsPlayingChanged -= OnAnimPreviewIsPlayingChanged;
+                animPreview.FaceFxGraphEvaluated -= OnFaceFxGraphEvaluated;
             }
         }
 
@@ -1350,7 +1354,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 animPreview.AnimTimeChanged += OnAnimPreviewTimeChanged;
                 animPreview.IsPlayingChanged += OnAnimPreviewIsPlayingChanged;
+                animPreview.FaceFxGraphEvaluated += OnFaceFxGraphEvaluated;
             }
+        }
+
+        private void OnFaceFxGraphEvaluated()
+        {
+            faceGraphPanel.RefreshValues();
         }
 
         private void AudioPositionChanged(object sender, AudioPlayheadEventArgs e)
@@ -1390,8 +1400,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            FaceFXAnimSet? animSet = FaceFX.Binary as FaceFXAnimSet;
-            animPreview.LoadFaceFxAnimation(_fxActorForPreview, animSet, SelectedLineEntry.Line);
+            animPreview.LoadFaceFxAnimation(_fxActorForPreview, FaceFX.Binary as FaceFXAnimSet, SelectedLineEntry.Line);
         }
 
         private void UpdatePlayheadLine(double position)

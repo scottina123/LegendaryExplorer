@@ -166,7 +166,14 @@
                 <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="250"/>
             </Grid.ColumnDefinitions>
-            <sharedToolControls:CurveGraph x:Name="graph" Grid.Column="0" KeyDown="Graph_KeyDown"/>
+            <TabControl Grid.Column="0">
+                <TabItem Header="Curves">
+                    <sharedToolControls:CurveGraph x:Name="graph" KeyDown="Graph_KeyDown"/>
+                </TabItem>
+                <TabItem Header="Face Graph">
+                    <sharedToolControls:FaceGraphControl x:Name="faceGraphPanel"/>
+                </TabItem>
+            </TabControl>
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
             <sharedToolControls:AnimationPreviewControl x:Name="animPreview" Grid.Column="2"/>
             <TextBlock Text="{Binding SelectedLineEntry.TLKString}" Grid.Row="1" TextWrapping="Wrap"/>

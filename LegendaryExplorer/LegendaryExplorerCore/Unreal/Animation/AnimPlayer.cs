@@ -1,6 +1,7 @@
-﻿using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 
@@ -11,6 +12,11 @@ public abstract class AnimPlayer
     protected readonly MeshBone[] _bones;
     protected Matrix4x4[] _inverseBindPose;
     protected Matrix4x4[] _skinningMatrices;
+    protected Matrix4x4[] _boneComponentSpace;
+
+    public Matrix4x4[] BoneComponentSpaceTransforms => _boneComponentSpace;
+
+    public string[] GetBoneNames() => _bones.Select(b => b.Name.Instanced).ToArray();
 
     public float CurrentTime { get; set; }
     public bool IsPlaying { get; set; }
@@ -49,6 +55,7 @@ public abstract class AnimPlayer
         var bindPose = new Matrix4x4[numBones];
         _inverseBindPose = new Matrix4x4[numBones];
         _skinningMatrices = new Matrix4x4[numBones];
+        _boneComponentSpace = new Matrix4x4[numBones];
 
         for (int i = 0; i < numBones; i++)
         {
