@@ -74,4 +74,23 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor.GraphView
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
             => value is Visibility.Collapsed;
     }
+
+    /// <summary>
+    /// Returns <see cref="Visibility.Visible"/> when the item is NOT the last child,
+    /// <see cref="Visibility.Collapsed"/> when it IS the last. Used for tree-connector bottom segments.
+    /// Values[0] = <see cref="ItemsControl.AlternationIndex"/> (int),
+    /// Values[1] = Items.Count (int).
+    /// </summary>
+    public class TreeLineVisibilityConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length == 2 && values[0] is int index && values[1] is int count)
+                return index < count - 1 ? Visibility.Visible : Visibility.Collapsed;
+            return Visibility.Visible;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+            => throw new NotSupportedException();
+    }
 }

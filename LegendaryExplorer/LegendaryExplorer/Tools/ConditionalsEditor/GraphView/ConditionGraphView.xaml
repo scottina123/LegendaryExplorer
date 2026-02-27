@@ -15,6 +15,48 @@
         <local:ArithmeticOperatorListConverter x:Key="ArithmeticOperatorListConverter"/>
         <local:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+        <local:TreeLineVisibilityConverter x:Key="TreeLineVisConverter"/>
+
+        <!-- Tree-branch connector wrapping each child item -->
+        <DataTemplate x:Key="TreeBranchItemTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <!-- Vertical connector segments -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <!-- Top segment (always visible) -->
+                    <Rectangle Grid.Row="0" Width="2" HorizontalAlignment="Center"
+                               Fill="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                               Opacity="0.5"/>
+                    <!-- Bottom segment (hidden for last item) -->
+                    <Rectangle Grid.Row="1" Width="2" HorizontalAlignment="Center"
+                               Fill="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                               Opacity="0.5">
+                        <Rectangle.Visibility>
+                            <MultiBinding Converter="{StaticResource TreeLineVisConverter}">
+                                <Binding RelativeSource="{RelativeSource AncestorType=ContentPresenter}"
+                                         Path="(ItemsControl.AlternationIndex)"/>
+                                <Binding RelativeSource="{RelativeSource AncestorType=ItemsControl}"
+                                         Path="Items.Count"/>
+                            </MultiBinding>
+                        </Rectangle.Visibility>
+                    </Rectangle>
+                </Grid>
+                <!-- Horizontal branch tick -->
+                <Rectangle Grid.Column="0" Height="2" Width="7"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Fill="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                           Opacity="0.5"/>
+                <!-- Item content (resolved via implicit DataTemplate by type) -->
+                <ContentPresenter Grid.Column="1" Content="{Binding}"/>
+            </Grid>
+        </DataTemplate>
 
         <!-- Shared styles -->
         <Style x:Key="SmallComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
@@ -254,8 +296,10 @@
                                 Command="{Binding DeleteGroupCommand}"/>
                     </StackPanel>
 
-                    <!-- Children (recursive via ContentPresenter auto-template) -->
-                    <ItemsControl ItemsSource="{Binding Children}" Margin="16,0,0,0"
+                    <!-- Children (recursive via tree-branch connectors) -->
+                    <ItemsControl ItemsSource="{Binding Children}" Margin="6,0,0,0"
+                                  AlternationCount="1000"
+                                  ItemTemplate="{StaticResource TreeBranchItemTemplate}"
                                   local:ConditionDragDropBehavior.EnableDrop="True"/>
                 </StackPanel>
             </Border>
@@ -293,7 +337,9 @@
                 </StackPanel>
 
                 <!-- Root children -->
-                <ItemsControl ItemsSource="{Binding RootGroup.Children}" Margin="4,0"
+                <ItemsControl ItemsSource="{Binding RootGroup.Children}" Margin="6,0,0,0"
+                              AlternationCount="1000"
+                              ItemTemplate="{StaticResource TreeBranchItemTemplate}"
                               local:ConditionDragDropBehavior.EnableDrop="True"/>
             </StackPanel>
         </ScrollViewer>
