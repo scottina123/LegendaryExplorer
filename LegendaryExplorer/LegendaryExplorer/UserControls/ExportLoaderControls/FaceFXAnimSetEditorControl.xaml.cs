@@ -88,9 +88,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public IFaceFXBinary FaceFX;
 
         /// <summary>
-        /// The FaceFXAsset (face graph actor) found in the current package, used to drive the animation preview.
+        /// The FaceFXAsset (face graph actor) used to drive the animation preview.
         /// </summary>
         private FaceFXAsset _fxActorForPreview;
+
+        private string _previewFxAssetLabel = "(none)";
+        public string PreviewFxAssetLabel
+        {
+            get => _previewFxAssetLabel;
+            set => SetProperty(ref _previewFxAssetLabel, value);
+        }
+
+        private string _previewSkelMeshLabel = "(none)";
+        public string PreviewSkelMeshLabel
+        {
+            get => _previewSkelMeshLabel;
+            set => SetProperty(ref _previewSkelMeshLabel, value);
+        }
 
         public ObservableCollectionExtended<FaceFXLineEntry> Lines { get; } = new();
 
@@ -174,7 +188,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (CurrentLoadedExport != exportEntry || !IsKeyboardFocusWithin)
             {
+                bool samePackage = CurrentLoadedExport?.FileRef == exportEntry.FileRef;
+                if (!samePackage)
+                {
+                    // Discard manual preview selections from the previous file
+                    _fxActorForPreview = null;
+                    animPreview?.Clear();
+                    PreviewFxAssetLabel = "(none)";
+                    PreviewSkelMeshLabel = "(none)";
+                }
+
+                // UnloadExport clears _fxActorForPreview; save manual selections so they survive it
+                var savedFxActor = _fxActorForPreview;
+                var savedFxAssetLabel = PreviewFxAssetLabel;
+                var savedSkelMeshLabel = PreviewSkelMeshLabel;
+
                 UnloadExport();
+
+                _fxActorForPreview = savedFxActor;
+                PreviewFxAssetLabel = savedFxAssetLabel;
+                PreviewSkelMeshLabel = savedSkelMeshLabel;
+
                 CurrentLoadedExport = exportEntry;
                 LoadFaceFXAnimset();
             }
@@ -185,7 +219,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             audioPlayer?.StopPlaying();
             audioPlayer?.UnloadExport();
             animPreview?.ClearAnimation();
-            faceGraphPanel?.LoadFxActor(null);
             CurrentLoadedExport = null;
             FaceFX = null;
             _fxActorForPreview = null;
@@ -217,36 +250,87 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         #endregion
 
+        private void BrowseFxAsset_Click(object sender, RoutedEventArgs e)
+        {
+            var ofd = AppDirectories.GetOpenPackageDialog();
+            if (ofd.ShowDialog() != true) return;
+
+            using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
+            var export = EntrySelector.GetEntry<ExportEntry>(
+                Window.GetWindow(this), pkg,
+                "Select FaceFX Asset",
+                x => x.ClassName == "FaceFXAsset" && !x.IsDefaultObject);
+
+            if (export != null)
+            {
+                _fxActorForPreview = export.GetBinaryData<FaceFXAsset>();
+                PreviewFxAssetLabel = $"{Path.GetFileName(ofd.FileName)}: {export.ObjectNameString}";
+                UpdateAnimationPreview();
+            }
+        }
+
+        private void BrowseSkelMesh_Click(object sender, RoutedEventArgs e)
+        {
+            var ofd = AppDirectories.GetOpenPackageDialog();
+            if (ofd.ShowDialog() != true) return;
+
+            using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
+            var export = EntrySelector.GetEntry<ExportEntry>(
+                Window.GetWindow(this), pkg,
+                "Select Skeletal Mesh",
+                x => x.ClassName == "SkeletalMesh" && !x.IsDefaultObject);
+
+            if (export != null)
+            {
+                animPreview?.LoadSkeletalMesh(export);
+                PreviewSkelMeshLabel = $"{Path.GetFileName(ofd.FileName)}: {export.ObjectNameString}";
+                UpdateAnimationPreview();
+            }
+        }
+
         private void LoadFaceFXAnimset()
         {
             Lines.Clear();
-            _fxActorForPreview = null;
             switch (CurrentLoadedExport.ClassName)
             {
                 case "FaceFXAnimSet":
                     FaceFX = new FaceFXAnimSetHandler(CurrentLoadedExport);
-                    // Find the companion FaceFXAsset in the same package for the animation preview.
-                    var fxAssetExport = CurrentLoadedExport.FileRef.Exports
-                        .FirstOrDefault(exp => exp.ClassName == "FaceFXAsset" && !exp.IsDefaultObject);
-                    if (fxAssetExport != null)
-                        _fxActorForPreview = fxAssetExport.GetBinaryData<FaceFXAsset>();
+                    // Auto-detect only if no manual selection is active.
+                    if (_fxActorForPreview == null)
+                    {
+                        var fxAssetExport = CurrentLoadedExport.FileRef.Exports
+                            .FirstOrDefault(exp => exp.ClassName == "FaceFXAsset" && !exp.IsDefaultObject);
+                        if (fxAssetExport != null)
+                        {
+                            _fxActorForPreview = fxAssetExport.GetBinaryData<FaceFXAsset>();
+                            PreviewFxAssetLabel = fxAssetExport.ObjectNameString;
+                        }
+                    }
                     break;
                 case "FaceFXAsset":
                     FaceFX = new FaceFXAssetHandler(CurrentLoadedExport);
                     // The loaded export itself is the face actor.
                     _fxActorForPreview = (FaceFXAsset)FaceFX.Binary;
+                    PreviewFxAssetLabel = CurrentLoadedExport.ObjectNameString;
                     break;
             }
 
-            faceGraphPanel?.LoadFxActor(_fxActorForPreview);
-
-            // Load the first available SkeletalMesh in the package into the animation preview.
-            var skelMeshExport = CurrentLoadedExport.FileRef.Exports
-                .FirstOrDefault(exp => exp.ClassName == "SkeletalMesh" && exp.ObjectNameString.Contains("HED"));
-            if (skelMeshExport != null)
-                animPreview?.LoadSkeletalMesh(skelMeshExport);
-            else
-                animPreview?.Clear();
+            // Auto-detect SkeletalMesh only if no external mesh was manually picked.
+            if (animPreview?.CurrentMesh == null)
+            {
+                var skelMeshExport = CurrentLoadedExport.FileRef.Exports
+                    .FirstOrDefault(exp => exp.ClassName == "SkeletalMesh" && exp.ObjectNameString.Contains("HED"));
+                if (skelMeshExport != null)
+                {
+                    animPreview?.LoadSkeletalMesh(skelMeshExport);
+                    PreviewSkelMeshLabel = skelMeshExport.ObjectNameString;
+                }
+                else
+                {
+                    animPreview?.Clear();
+                    PreviewSkelMeshLabel = "(none)";
+                }
+            }
 
             foreach (var faceFXLine in FaceFX.Lines)
             {
@@ -259,7 +343,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     // Cut off the start of the string
                     idStr = idStr.Substring(voPos + 3);
 
-                    idStr = idStr.TrimEnd('M', 'F').TrimEnd('_'); // Hack
+                    idStr = idStr.TrimEnd('M', 'F').TrimEnd('_'); // strips trailing gender indicator (M/F) and separator
                 }
                 LineEntry.IsMale = !isFemale;
                 if (int.TryParse(idStr, out int tlkID))
@@ -1336,7 +1420,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 animPreview.AnimTimeChanged -= OnAnimPreviewTimeChanged;
                 animPreview.IsPlayingChanged -= OnAnimPreviewIsPlayingChanged;
-                animPreview.FaceFxGraphEvaluated -= OnFaceFxGraphEvaluated;
             }
         }
 
@@ -1354,13 +1437,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 animPreview.AnimTimeChanged += OnAnimPreviewTimeChanged;
                 animPreview.IsPlayingChanged += OnAnimPreviewIsPlayingChanged;
-                animPreview.FaceFxGraphEvaluated += OnFaceFxGraphEvaluated;
             }
-        }
-
-        private void OnFaceFxGraphEvaluated()
-        {
-            faceGraphPanel.RefreshValues();
         }
 
         private void AudioPositionChanged(object sender, AudioPlayheadEventArgs e)

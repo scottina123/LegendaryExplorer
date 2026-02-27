@@ -33,6 +33,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     private FaceFXAnimSet _lastFxAnimSet;
     private FaceFXLine _lastFxLine;
 
+    public SkeletalMesh CurrentMesh => _skm;
+
     #region Bindable Properties
 
     private double _animSliderValue;
@@ -118,15 +120,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         set => SetProperty(ref removeOffset, value);
     }
 
-    public ObservableCollection<BoneTransformRow> BoneTransforms { get; } = new();
-
-    private bool _showBonePanel;
-    public bool ShowBonePanel
-    {
-        get => _showBonePanel;
-        set => SetProperty(ref _showBonePanel, value);
-    }
-
     #endregion
 
     #region Commands
@@ -145,11 +138,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     /// Fires when the playing state changes. True = started playing, False = paused/stopped.
     /// </summary>
     public event Action<bool> IsPlayingChanged;
-
-    /// <summary>
-    /// Fires after each FaceFx skinning evaluation (playback tick, slider scrub, or new line loaded).
-    /// </summary>
-    public event Action FaceFxGraphEvaluated;
 
     public AnimationPreviewControl()
     {
@@ -203,10 +191,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             _skinnedRenderer.BuildFromSkeletalMesh(skeletalMeshExport.FileRef.Game, skm.LODModels[0]);
 
             _skm = skm;
-
-            BoneTransforms.Clear();
-            foreach (var bone in skm.RefSkeleton)
-                BoneTransforms.Add(new BoneTransformRow(bone.Name.Instanced));
 
             Mesh<WorldVertex> mesh = _meshPreview.LODs[0].Mesh;
             // Center camera on mesh
@@ -284,10 +268,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     /// </summary>
     public void LoadFaceFxAnimation(FaceFXAsset fxActor, FaceFXAnimSet animSet, FaceFXLine line)
     {
-        bool resume = false;
         if(_animPlayer?.IsPlaying is true)
         {
-            resume = true;
             Pause();
         }
         _lastAnimExport = null;
@@ -313,14 +295,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             OnPropertyChanged(nameof(AnimSliderValue));
             OnPropertyChanged(nameof(AnimPositionText));
 
-            if (resume)
-            {
-                Play();
-            }
-            else
-            {
-                UpdateSkinningOneShot();
-            }
+            UpdateSkinningOneShot();
         }
         catch (Exception ex)
         {
@@ -344,7 +319,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         _animSliderValue = 0;
         OnPropertyChanged(nameof(AnimSliderValue));
         OnPropertyChanged(nameof(AnimPositionText));
-        BoneTransforms.Clear();
     }
 
     public void Clear()
@@ -364,7 +338,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         _animSliderValue = 0;
         OnPropertyChanged(nameof(AnimSliderValue));
         OnPropertyChanged(nameof(AnimPositionText));
-        BoneTransforms.Clear();
     }
 
     public void TogglePlayPause()
@@ -412,8 +385,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         if (!_meshContext.IsReady || _meshPreview.LODs.Count == 0) return;
 
         _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
-        RefreshBoneTable();
-        if (_animPlayer is FaceFxPlayer) FaceFxGraphEvaluated?.Invoke();
     }
 
     private void OnUpdateScene(object sender, float timestep)
@@ -435,8 +406,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             if (isPlaying || _animPlayer is FaceFxPlayer)
             {
                 _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
-                RefreshBoneTable();
-                if (_animPlayer is FaceFxPlayer) FaceFxGraphEvaluated?.Invoke();
             }
 
             if (isPlaying)
@@ -468,17 +437,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         {
             _meshPreview.Render(renderPass, _meshContext, 0);
         }
-    }
-
-    private void RefreshBoneTable()
-    {
-        if (!_showBonePanel || _animPlayer?.BoneComponentSpaceTransforms is not { } transforms) return;
-        var rows = BoneTransforms;
-        this.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
-        {
-            for (int i = 0; i < Math.Min(rows.Count, transforms.Length); i++)
-                rows[i].Update(transforms[i]);
-        });
     }
 
     #endregion
