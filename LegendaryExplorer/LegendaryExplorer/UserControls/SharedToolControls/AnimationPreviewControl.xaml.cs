@@ -114,6 +114,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         _meshPreview?.Dispose();
         _meshPreview = null;
         _skinnedRenderer = null;
+        var oldIsPlaying = _animPlayer?.IsPlaying ?? false;
+        var oldFrame = _animPlayer?.CurrentFrame ?? 0;
         _animPlayer = null;
 
         try
@@ -143,6 +145,13 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             if (_lastAnimExport != null)
             {
                 LoadAnimSequence(_lastAnimExport);
+                // set to the same frame as before
+                this.AnimCurrentFrame = oldFrame;
+                // keep playing if it was playing before
+                if (oldIsPlaying)
+                {
+                    Play();
+                }
             }
         }
         catch (Exception ex)

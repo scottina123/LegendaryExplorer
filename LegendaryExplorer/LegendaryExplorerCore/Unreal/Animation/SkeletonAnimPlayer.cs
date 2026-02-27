@@ -1,6 +1,9 @@
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace LegendaryExplorerCore.Unreal.Animation;
@@ -20,6 +23,9 @@ public class SkeletonAnimPlayer
     private int[] _animToSkelMap; // animTrack[i] -> skeleton bone index
     private int[] _skelToAnimMap; // skeleton bone index -> animTrack[i] or -1 if no track
     private float _currentTime;
+    private bool _animRotationOnly; // animSequence => animSetData.bAnimRotationOnly; default true; if true, bones will ignore position tracks, only using the rotation
+    private HashSet<string> _useTranslationBones; // animSequence => animSetData.UseTranslationBoneNames; these bones will use the positions from the animation even if _animRotationOnly in true
+    private HashSet<string> _forceMeshTranslationBoneNames; // animSequence => animSetData.ForceMeshTranslationBoneNames; these bones will use the position from the mesh even if _animRotationOnly is false
 
     public NameReference AnimName => _animSequence?.Name ?? "None";
     public int TotalFrames => _animSequence?.NumFrames ?? 0;
@@ -88,6 +94,9 @@ public class SkeletonAnimPlayer
         _animSequence = null;
         _animToSkelMap = null;
         _skelToAnimMap = null;
+        _useTranslationBones = [];
+        _animRotationOnly = true;
+        _forceMeshTranslationBoneNames = [];
         _currentTime = 0;
     }
 
@@ -145,6 +154,35 @@ public class SkeletonAnimPlayer
                 _animToSkelMap[i] = -1; // no match
             }
         }
+
+        // look up the animData from the AnimSequence, look up the UseTranslationBoneNames property, save it
+        var animSetData = GetAnimSetData(animSequence);
+        _animRotationOnly = animSetData?.GetProperty<BoolProperty>("bAnimRotationOnly")?.Value ?? true;
+        _useTranslationBones = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("UseTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
+        _forceMeshTranslationBoneNames = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("ForceMeshTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
+    }
+
+    private static ExportEntry GetAnimSetData(AnimSequence animSequence)
+    {
+        var animDataEntry = animSequence?.Export.GetProperty<ObjectProperty>("m_pBioAnimSetData").ResolveToEntry(animSequence.Export.FileRef);
+        return animDataEntry is ExportEntry ? animDataEntry as ExportEntry : EntryImporter.ResolveImport(animDataEntry as ImportEntry, new PackageCache());
+    }
+
+    private bool ShouldBoneUsePositionTrack(string boneName)
+    {
+        // anything in this list should always use the mesh position rather than the animation position
+        if (_forceMeshTranslationBoneNames.Contains(boneName))
+        {
+            return false;
+        }
+        // if animRotationOnly is set (it almost always will be)
+        if (_animRotationOnly)
+        {
+            // then return false unless it is in the list of UseTranslationBoneNames
+            return _useTranslationBones.Contains(boneName);
+        }
+        // otherwise, return true
+        return true;
     }
 
     /// <summary>
@@ -206,10 +244,8 @@ public class SkeletonAnimPlayer
             {
                 var track = _animSequence.RawAnimationData[trackIdx];
 
-                // Use animation position if track has keys, otherwise fall back to bind pose position.
-                // Many bones only have rotation animation, so position tracks are often empty.
-                var pos = (track.Positions is { Count: > 0 })
-                    ? SamplePosition(track, frame)
+                var pos = ShouldBoneUsePositionTrack(bone.Name)
+                    ? SamplePosition(track, frame, bone.Position)
                     : bone.Position;
 
                 // UE3 stores animation rotations conjugated relative to RefSkeleton bone orientations.
@@ -244,10 +280,12 @@ public class SkeletonAnimPlayer
         return _skinningMatrices;
     }
 
-    private static Vector3 SamplePosition(AnimTrack track, float frame)
+    private static Vector3 SamplePosition(AnimTrack track, float frame, Vector3 bonePosition)
     {
+        // Use animation position if track has keys, otherwise fall back to bind pose position.
+        // Many bones only have rotation animation, so position tracks are often empty.
         if (track.Positions == null || track.Positions.Count == 0)
-            return Vector3.Zero;
+            return bonePosition;
         if (track.Positions.Count == 1)
             return track.Positions[0];
 
