@@ -161,7 +161,14 @@
                 <RowDefinition/>
                 <RowDefinition Name="lineTextRowDef" Height="40"/>
             </Grid.RowDefinitions>
-            <sharedToolControls:CurveGraph x:Name="graph" DockPanel.Dock="Right" KeyDown="Graph_KeyDown"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="250"/>
+            </Grid.ColumnDefinitions>
+            <sharedToolControls:CurveGraph x:Name="graph" Grid.Column="0" KeyDown="Graph_KeyDown"/>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+            <sharedToolControls:AnimationPreviewControl x:Name="animPreview" Grid.Column="2"/>
             <TextBlock Text="{Binding SelectedLineEntry.TLKString}" Grid.Row="1" TextWrapping="Wrap"/>
         </Grid>
         <exportLoaderControls:Soundpanel x:Name="audioPlayer" Grid.Row="2" Grid.Column="4" MiniPlayerMode="True" GenerateWaveformGraph="True" SeekbarUpdatePeriod="66"/>

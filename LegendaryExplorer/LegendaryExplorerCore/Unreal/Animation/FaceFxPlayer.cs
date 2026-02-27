@@ -45,7 +45,7 @@ public class FaceFxPlayer : AnimPlayer
 
     private FaceFXLine Line;
 
-    private Dictionary<string, int> FaceGraphNodeLookup = [];
+    private CaseInsensitiveDictionary<int> FaceGraphNodeLookup = [];
     private FaceFXBoneListEntry[] SkelMeshRefSkeletonToFaceFxBoneLookup;
 
     public FaceFxPlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
@@ -61,9 +61,11 @@ public class FaceFxPlayer : AnimPlayer
             length = 0;
             return;
         }
-        if (AnimSet is null || !AnimSet.Lines.Contains(line))
+        bool inAnimSet = AnimSet != null && AnimSet.Lines.Contains(line);
+        bool inActor = AnimSet is null && FxActor != null && FxActor.Lines.Contains(line);
+        if (!inAnimSet && !inActor)
         {
-            ThrowHelper.ThrowArgumentException("Line is not in AnimSet");
+            ThrowHelper.ThrowArgumentException("Line is not in AnimSet or FxActor");
         }
         Line = line;
         startTime = Line.Points.Min(p => p.time);
@@ -83,7 +85,7 @@ public class FaceFxPlayer : AnimPlayer
 
     public override Matrix4x4[] ComputeSkinningMatrices()
     {
-        if (FxActor is null || AnimSet is null || Line is null) return null;
+        if (FxActor is null || Line is null) return null;
 
         EvalFaceFxGraph();
 
@@ -147,10 +149,11 @@ public class FaceFxPlayer : AnimPlayer
         var nodes = FxActor.CompiledFaceGraph;
         int firstKey = 0;
 
-        //evaluate all curves 
+        var namesList = AnimSet?.Names ?? FxActor.Names;
+        //evaluate all curves
         for (int i = 0; i < Line.AnimationNames.Count; i++)
         {
-            string lineName = AnimSet.Names[Line.AnimationNames[i]];
+            string lineName = namesList[Line.AnimationNames[i]];
             int numKeys = Line.NumKeys[i];
             if (!FaceGraphNodeLookup.TryGetValue(lineName, out var nodeIndex))
             {
@@ -293,14 +296,14 @@ public class FaceFxPlayer : AnimPlayer
                             break;
                     }
                 }
-
-                value += node.TrackValue;
-                node.TrackValue = 0;
-
-                value *= (1f - correction);
-
-                node.FinalValue = float.Clamp(value, node.MinVal, node.MaxVal);
             }
+
+            value += node.TrackValue;
+            node.TrackValue = 0;
+
+            value *= (1f - correction);
+
+            node.FinalValue = float.Clamp(value, node.MinVal, node.MaxVal);
         }
 
 
@@ -318,7 +321,7 @@ public class FaceFxPlayer : AnimPlayer
             {
                 return keys[^1].weight;
             }
-            for (int i = keys.Length - 2; i >= 0; i++)
+            for (int i = keys.Length - 2; i >= 0; i--)
             {
                 if (keys[i].time <= time)
                 {

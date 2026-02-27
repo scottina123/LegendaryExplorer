@@ -87,6 +87,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public IFaceFXBinary FaceFX;
 
+        /// <summary>
+        /// The FaceFXAsset (face graph actor) found in the current package, used to drive the animation preview.
+        /// </summary>
+        private FaceFXAsset _fxActorForPreview;
+
         public ObservableCollectionExtended<FaceFXLineEntry> Lines { get; } = new();
 
         FaceFXLineEntry _selectedLineEntry;
@@ -101,6 +106,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     SelectedLineEntry.UpdateLength();
                     UpdateAnimListBox();
                     UpdateAudioPlayer();
+                    UpdateAnimationPreview();
                     UpdateTreeItems(FaceFX, SelectedLineEntry.Line);
                 }
             }
@@ -178,8 +184,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             audioPlayer?.StopPlaying();
             audioPlayer?.UnloadExport();
+            animPreview?.ClearAnimation();
             CurrentLoadedExport = null;
             FaceFX = null;
+            _fxActorForPreview = null;
             Lines.Clear();
             Animations.Clear();
             TreeNodes.ClearEx();
@@ -203,6 +211,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UnloadExport();
             graph.Dispose();
             audioPlayer?.Dispose();
+            animPreview?.Dispose();
         }
 
         #endregion
@@ -210,16 +219,32 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void LoadFaceFXAnimset()
         {
             Lines.Clear();
+            _fxActorForPreview = null;
             switch (CurrentLoadedExport.ClassName)
             {
                 case "FaceFXAnimSet":
                     FaceFX = new FaceFXAnimSetHandler(CurrentLoadedExport);
+                    // Find the companion FaceFXAsset in the same package for the animation preview.
+                    var fxAssetExport = CurrentLoadedExport.FileRef.Exports
+                        .FirstOrDefault(exp => exp.ClassName == "FaceFXAsset" && !exp.IsDefaultObject);
+                    if (fxAssetExport != null)
+                        _fxActorForPreview = fxAssetExport.GetBinaryData<FaceFXAsset>();
                     break;
                 case "FaceFXAsset":
                     FaceFX = new FaceFXAssetHandler(CurrentLoadedExport);
+                    // The loaded export itself is the face actor.
+                    _fxActorForPreview = (FaceFXAsset)FaceFX.Binary;
                     break;
-
             }
+
+            // Load the first available SkeletalMesh in the package into the animation preview.
+            var skelMeshExport = CurrentLoadedExport.FileRef.Exports
+                .FirstOrDefault(exp => exp.ClassName == "SkeletalMesh" && exp.ObjectNameString.Contains("HED"));
+            if (skelMeshExport != null)
+                animPreview?.LoadSkeletalMesh(skelMeshExport);
+            else
+                animPreview?.Clear();
+
             foreach (var faceFXLine in FaceFX.Lines)
             {
                 var LineEntry = new FaceFXLineEntry(faceFXLine);
@@ -1304,6 +1329,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (audioPlayer != null)
                 audioPlayer.SeekbarPositionChanged -= AudioPositionChanged;
             audioPlayer?.StopPlaying();
+            if (animPreview != null)
+            {
+                animPreview.AnimTimeChanged -= OnAnimPreviewTimeChanged;
+                animPreview.IsPlayingChanged -= OnAnimPreviewIsPlayingChanged;
+            }
         }
 
         private void FaceFXAnimSetEditorControl_OnLoaded(object sender, RoutedEventArgs e)
@@ -1315,11 +1345,58 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (audioPlayer != null)
                 audioPlayer.SeekbarPositionChanged += AudioPositionChanged;
+
+            if (animPreview != null)
+            {
+                animPreview.AnimTimeChanged += OnAnimPreviewTimeChanged;
+                animPreview.IsPlayingChanged += OnAnimPreviewIsPlayingChanged;
+            }
         }
 
         private void AudioPositionChanged(object sender, AudioPlayheadEventArgs e)
         {
-            PlayheadPositionLine.Position = e.PlayheadTime;
+            UpdatePlayheadLine(e.PlayheadTime);
+        }
+
+        private void OnAnimPreviewTimeChanged(float time)
+        {
+            UpdatePlayheadLine(time);
+            if (audioPlayer.IsPaused && time >= 0 && time < audioPlayer.CurrentTrackLength)
+            {
+                audioPlayer.StartOrPausePlaying(time);
+            }
+        }
+
+        private void OnAnimPreviewIsPlayingChanged(bool isPlaying)
+        {
+            if (isPlaying)
+            {
+                if (!audioPlayer.IsPlaying && audioPlayer.CanStartPlayback())
+                {
+                    audioPlayer.InitAudio();
+                }
+            }
+            else
+            {
+                audioPlayer.StopPlaying();
+            }
+        }
+
+        private void UpdateAnimationPreview()
+        {
+            if (animPreview == null || SelectedLineEntry == null || _fxActorForPreview == null)
+            {
+                animPreview?.ClearAnimation();
+                return;
+            }
+
+            FaceFXAnimSet? animSet = FaceFX.Binary as FaceFXAnimSet;
+            animPreview.LoadFaceFxAnimation(_fxActorForPreview, animSet, SelectedLineEntry.Line);
+        }
+
+        private void UpdatePlayheadLine(double position)
+        {
+            PlayheadPositionLine.Position = position;
             if (PlayheadPositionLine.existingLabel is not null && PlayheadPositionLine.existingLine is not null)
             {
                 Canvas.SetLeft(PlayheadPositionLine.existingLine, graph.toLocalX(PlayheadPositionLine.Position));

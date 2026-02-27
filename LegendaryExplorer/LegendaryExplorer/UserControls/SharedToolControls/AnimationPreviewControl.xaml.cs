@@ -46,7 +46,10 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
             if (SetProperty(ref _animSliderValue, value) && _animPlayer != null)
             {
                 if (IsTimeMode)
+                {
                     _animPlayer.CurrentTime = (float)value;
+                    AnimTimeChanged?.Invoke((float)value);
+                }
                 else
                     ((AnimSequencePlayer)_animPlayer).CurrentFrame = (int)value;
 
@@ -121,6 +124,17 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     public ICommand PlayPauseCommand { get; }
 
     #endregion
+
+    /// <summary>
+    /// Fires when the animation time changes, either during playback or when the slider is scrubbed.
+    /// Only fires in time mode (FaceFx animations).
+    /// </summary>
+    public event Action<float> AnimTimeChanged;
+
+    /// <summary>
+    /// Fires when the playing state changes. True = started playing, False = paused/stopped.
+    /// </summary>
+    public event Action<bool> IsPlayingChanged;
 
     public AnimationPreviewControl()
     {
@@ -234,6 +248,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
     /// <summary>
     /// Loads a FaceFx animation line for playback. The slider will be time-based (in seconds),
     /// with minimum at <see cref="FaceFxPlayer.StartTime"/> (which may be negative).
+    /// When <paramref name="animSet"/> is null the line is expected to come from <paramref name="fxActor"/> directly
     /// </summary>
     public void LoadFaceFxAnimation(FaceFXAsset fxActor, FaceFXAnimSet animSet, FaceFXLine line)
     {
@@ -310,6 +325,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = !_animPlayer.IsPlaying;
         OnPropertyChanged(nameof(PlayPauseIcon));
+        IsPlayingChanged?.Invoke(_animPlayer.IsPlaying);
     }
 
     public void Play()
@@ -317,6 +333,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = true;
         OnPropertyChanged(nameof(PlayPauseIcon));
+        IsPlayingChanged?.Invoke(true);
     }
 
     public void Pause()
@@ -324,6 +341,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = false;
         OnPropertyChanged(nameof(PlayPauseIcon));
+        IsPlayingChanged?.Invoke(false);
     }
 
     public void Dispose()
@@ -351,17 +369,37 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase
 
     private void OnUpdateScene(object sender, float timestep)
     {
-        if (_animPlayer is { IsPlaying: true } && _skinnedRenderer != null && _meshPreview is { LODs.Count: > 0 })
+        bool isPlaying = _animPlayer is { IsPlaying: true };
+        if (_skinnedRenderer != null && _meshPreview is { LODs.Count: > 0 })
         {
-            _animPlayer.AdvanceTime(timestep);
-            _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
+            if (isPlaying)
+            {
+                var oldTime = _animPlayer.CurrentTime;
+                _animPlayer.AdvanceTime(timestep);
+                if (_animPlayer.CurrentTime < oldTime)
+                {
+                    IsPlayingChanged?.Invoke(true);
+                }
+            }
 
-            // Mirror back to slider without triggering setter logic
-            _animSliderValue = IsTimeMode
+            //FaceFx must be re-calced every frame, even when not playing, so that preview works properly in the editor
+            if (isPlaying || _animPlayer is FaceFxPlayer)
+            {
+                _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
+            }
+
+            if (isPlaying)
+            {
+                // Mirror back to slider without triggering setter logic
+                _animSliderValue = IsTimeMode
                 ? _animPlayer.CurrentTime
                 : ((AnimSequencePlayer)_animPlayer).CurrentFrame;
-            OnPropertyChanged(nameof(AnimSliderValue));
-            OnPropertyChanged(nameof(AnimPositionText));
+                OnPropertyChanged(nameof(AnimSliderValue));
+                OnPropertyChanged(nameof(AnimPositionText));
+
+                if (IsTimeMode)
+                    AnimTimeChanged?.Invoke(_animPlayer.CurrentTime);
+            }
         }
     }
 
