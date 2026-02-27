@@ -41,6 +41,17 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor.GraphView
     }
 
     /// <summary>
+    /// Returns the list of <see cref="ArithmeticOperator"/> values for ComboBox binding.
+    /// </summary>
+    public class ArithmeticOperatorListConverter : IValueConverter
+    {
+        private static readonly ArithmeticOperator[] _values = Enum.GetValues<ArithmeticOperator>();
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => _values;
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
+    }
+
+    /// <summary>
     /// Converts a boolean to <see cref="Visibility"/>. True = Visible, False = Collapsed.
     /// </summary>
     public class BoolToVisibilityConverter : IValueConverter

@@ -12,6 +12,7 @@
         <local:PlotVarTypeListConverter x:Key="PlotVarTypeListConverter"/>
         <local:ComparisonOperatorListConverter x:Key="ComparisonOperatorListConverter"/>
         <local:LogicalOperatorListConverter x:Key="LogicalOperatorListConverter"/>
+        <local:ArithmeticOperatorListConverter x:Key="ArithmeticOperatorListConverter"/>
         <local:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
 
@@ -105,6 +106,114 @@
             </Border>
         </DataTemplate>
 
+        <!-- Plot reference expression (inline: type dropdown + index + path) -->
+        <DataTemplate DataType="{x:Type local:PlotRefExpressionViewModel}">
+            <StackPanel Orientation="Horizontal" Margin="2,1">
+                <ComboBox Style="{StaticResource SmallComboBox}"
+                          ItemsSource="{Binding Source={StaticResource PlotVarTypeListConverter}, Converter={StaticResource PlotVarTypeListConverter}}"
+                          SelectedItem="{Binding PlotType, Mode=TwoWay}"/>
+                <TextBlock Text="[" VerticalAlignment="Center" Margin="2,0,0,0"
+                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                <TextBox Style="{StaticResource SmallTextBox}" MinWidth="50"
+                         Text="{Binding PlotIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Text="]" VerticalAlignment="Center" Margin="0,0,4,0"
+                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                <TextBlock Text="{Binding PlotPath}" VerticalAlignment="Center" Margin="4,0"
+                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           TextWrapping="Wrap"
+                           ToolTip="{Binding PlotPath}"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Literal expression (editable text: i5, f3.5, a0, Bool true, etc.) -->
+        <DataTemplate DataType="{x:Type local:LiteralExpressionViewModel}">
+            <TextBox Style="{StaticResource SmallTextBox}" MinWidth="40"
+                     Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     FontFamily="Consolas"/>
+        </DataTemplate>
+
+        <!-- Arithmetic expression (group-like: + or * with nested operands) -->
+        <DataTemplate DataType="{x:Type local:ArithmeticExpressionViewModel}">
+            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                    BorderThickness="1" CornerRadius="2" Padding="4,2" Margin="2,1">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                        <ComboBox Style="{StaticResource SmallComboBox}" MinWidth="55"
+                                  ItemsSource="{Binding Source={StaticResource ArithmeticOperatorListConverter}, Converter={StaticResource ArithmeticOperatorListConverter}}"
+                                  SelectedItem="{Binding Operator, Mode=TwoWay}"/>
+                        <TextBlock Text="Expression" VerticalAlignment="Center" Margin="4,0"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding Operands}" Margin="12,0,0,0"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Comparison condition with expression sides -->
+        <DataTemplate DataType="{x:Type local:ConditionComparisonViewModel}">
+            <Border Margin="4,2" Padding="4,3" CornerRadius="2"
+                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                    BorderThickness="1"
+                    local:ConditionDragDropBehavior.EnableDrag="True">
+                <StackPanel>
+                    <ContentPresenter Content="{Binding LeftSide}" Margin="0,0,0,2"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                        <ComboBox Style="{StaticResource SmallComboBox}"
+                                  ItemsSource="{Binding Source={StaticResource ComparisonOperatorListConverter}, Converter={StaticResource ComparisonOperatorListConverter}}"
+                                  SelectedItem="{Binding Operator, Mode=TwoWay}"/>
+                        <Button Style="{StaticResource DeleteButton}" Command="{Binding DeleteCommand}"/>
+                    </StackPanel>
+                    <ContentPresenter Content="{Binding RightSide}" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Function call condition -->
+        <DataTemplate DataType="{x:Type local:ConditionFunctionViewModel}">
+            <Border Margin="4,2" Padding="3,2" CornerRadius="2"
+                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                    local:ConditionDragDropBehavior.EnableDrag="True">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Function" VerticalAlignment="Center" Margin="2,0,4,0"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <TextBlock Text=":" VerticalAlignment="Center" Margin="0,0,2,0"
+                               Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <TextBox Style="{StaticResource SmallTextBox}" MinWidth="100"
+                             Text="{Binding FunctionName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Function name"/>
+                    <TextBlock Text="Value:" VerticalAlignment="Center" Margin="4,0,2,0"
+                               Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <TextBox Style="{StaticResource SmallTextBox}" MinWidth="50"
+                             Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Function value"/>
+                    <Button Style="{StaticResource DeleteButton}" Command="{Binding DeleteCommand}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Complex expression fallback (editable inline text) -->
+        <DataTemplate DataType="{x:Type local:ConditionComplexLeafViewModel}">
+            <Border Margin="4,2" Padding="3,2" CornerRadius="2"
+                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                    local:ConditionDragDropBehavior.EnableDrag="True">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚙" VerticalAlignment="Center" Margin="2,0,4,0"
+                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                               ToolTip="Complex expression"/>
+                    <TextBox Text="{Binding RawExpression, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center" Margin="2,1" Padding="4,2"
+                             MinWidth="200"
+                             FontFamily="Consolas"
+                             AcceptsReturn="False"
+                             ToolTip="Complex expression — edit directly or switch to text view"/>
+                    <Button Style="{StaticResource DeleteButton}" Command="{Binding DeleteCommand}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- Group template (recursive) -->
         <DataTemplate DataType="{x:Type local:ConditionGroupViewModel}">
             <Border Style="{StaticResource GroupBorder}"
@@ -127,6 +236,14 @@
                         <!-- Add condition button -->
                         <Button Style="{StaticResource LinkButton}" Content="+ Condition"
                                 Command="{Binding AddConditionCommand}"/>
+
+                        <!-- Add expression button -->
+                        <Button Style="{StaticResource LinkButton}" Content="+ Expression"
+                                Command="{Binding AddExpressionCommand}"/>
+
+                        <!-- Add function button -->
+                        <Button Style="{StaticResource LinkButton}" Content="+ Function"
+                                Command="{Binding AddFunctionCommand}"/>
 
                         <!-- Add group button -->
                         <Button Style="{StaticResource LinkButton}" Content="+ Group"
@@ -167,6 +284,10 @@
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     <Button Style="{StaticResource LinkButton}" Content="+ Condition"
                             Command="{Binding AddConditionCommand}"/>
+                    <Button Style="{StaticResource LinkButton}" Content="+ Expression"
+                            Command="{Binding AddExpressionCommand}"/>
+                    <Button Style="{StaticResource LinkButton}" Content="+ Function"
+                            Command="{Binding AddFunctionCommand}"/>
                     <Button Style="{StaticResource LinkButton}" Content="+ Group"
                             Command="{Binding AddGroupCommand}"/>
                 </StackPanel>
