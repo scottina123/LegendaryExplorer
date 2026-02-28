@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using Be.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Tools.SequenceObjects;
 using LegendaryExplorer.Tools.WwiseEditor;
 using Color = System.Drawing.Color;
@@ -68,19 +69,21 @@ namespace LegendaryExplorer.Misc
 
                     if (!darkThemeAlreadyApplied)
                     {
-                        // Remove light theme first to avoid resource conflicts
+                        // Add dark theme BEFORE removing light theme to avoid an intermediate
+                        // "no theme" state. Removing first causes all controls to re-template
+                        // to defaults, and the subsequent Add re-templates again on controls
+                        // in an inconsistent state, triggering an internal WPF NullReferenceException.
+                        if (!mergedDictionaries.Contains(_darkThemeDictionary))
+                        {
+                            mergedDictionaries.Add(_darkThemeDictionary);
+                        }
+
+                        // Now safely remove light theme — controls already have dark styles
                         var lightTheme = mergedDictionaries.FirstOrDefault(rd => 
                             rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
                         if (lightTheme != null)
                         {
                             mergedDictionaries.Remove(lightTheme);
-                        }
-
-                        // Re-check after removal - WPF resource system may cause re-entrancy
-                        // that adds the dictionary during Remove operations
-                        if (!mergedDictionaries.Contains(_darkThemeDictionary))
-                        {
-                            mergedDictionaries.Add(_darkThemeDictionary);
                         }
                     }
                     
@@ -89,16 +92,8 @@ namespace LegendaryExplorer.Misc
                 }
                 else
                 {
-                    // Remove dark theme to revert to light theme
-                    var darkTheme = mergedDictionaries.FirstOrDefault(rd => 
-                        rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
-                    if (darkTheme != null)
-                    {
-                        mergedDictionaries.Remove(darkTheme);
-                        _darkThemeDictionary = null; // Clear cache so a fresh instance is created next time
-                    }
-                    
-                    // Ensure light theme is present
+                    // Add light theme BEFORE removing dark theme to avoid an intermediate
+                    // "no theme" state that triggers internal WPF NullReferenceException.
                     bool lightThemePresent = mergedDictionaries.Any(rd => 
                         rd.Source?.OriginalString?.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
                     if (!lightThemePresent)
@@ -108,7 +103,16 @@ namespace LegendaryExplorer.Misc
                             Source = new Uri(LightThemeUri, UriKind.Relative)
                         });
                     }
-                    
+
+                    // Now safely remove dark theme — controls already have light styles
+                    var darkTheme = mergedDictionaries.FirstOrDefault(rd => 
+                        rd.Source?.OriginalString?.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) == true);
+                    if (darkTheme != null)
+                    {
+                        mergedDictionaries.Remove(darkTheme);
+                        _darkThemeDictionary = null; // Clear cache so a fresh instance is created next time
+                    }
+
                     // Reset static HexBox colors to light theme
                     HexBox.SetColors(Color.White, Color.Black);
                 }
@@ -149,6 +153,24 @@ namespace LegendaryExplorer.Misc
                 WwiseHircObjNode.CommentTextColor = Color.FromArgb(87, 166, 74);
                 WwiseHircObjNode.BoxTextColor = Color.FromArgb(220, 220, 220);
                 WwiseHircObjNode.ConnectionColor = Color.White;
+
+                // Dialogue Editor dark theme
+                DBox.lineColor = Color.FromArgb(130, 180, 255);
+                DObj.linkTextColor = Color.White;
+                DObj.paraintColor = Color.FromArgb(100, 149, 237);
+                DObj.renintColor = Color.FromArgb(255, 99, 71);
+                DObj.agreeColor = Color.FromArgb(135, 206, 250);
+                DObj.disagreeColor = Color.FromArgb(255, 160, 122);
+                DObj.friendlyColor = Color.FromArgb(100, 149, 237);
+                DObj.hostileColor = Color.FromArgb(205, 92, 92);
+                DObj.connectionColor = Color.White;
+                DObj.entryColor = Color.FromArgb(218, 165, 32);
+                DObj.entryPenColor = Color.FromArgb(220, 220, 220);
+                DObj.replyColor = Color.FromArgb(95, 158, 160);
+                DObj.replyPenColor = Color.FromArgb(220, 220, 220);
+                DObj.graphBackgroundColor = Color.FromArgb(30, 30, 30);
+                DObj.boxColor = Color.FromArgb(45, 45, 48);
+                DObj.boxTextColor = Color.FromArgb(220, 220, 220);
             }
             else
             {
@@ -164,6 +186,24 @@ namespace LegendaryExplorer.Misc
                 WwiseHircObjNode.CommentTextColor = Color.FromArgb(74, 63, 190);
                 WwiseHircObjNode.BoxTextColor = Color.FromArgb(255, 255, 128);
                 WwiseHircObjNode.ConnectionColor = Color.Black;
+
+                // Dialogue Editor light theme
+                DBox.lineColor = Color.White;
+                DObj.linkTextColor = Color.Black;
+                DObj.paraintColor = Color.Blue;
+                DObj.renintColor = Color.Red;
+                DObj.agreeColor = Color.DodgerBlue;
+                DObj.disagreeColor = Color.Tomato;
+                DObj.friendlyColor = Color.FromArgb(3, 3, 116);
+                DObj.hostileColor = Color.FromArgb(116, 3, 3);
+                DObj.connectionColor = Color.Black;
+                DObj.entryColor = Color.FromArgb(218, 165, 32);
+                DObj.entryPenColor = Color.Black;
+                DObj.replyColor = Color.FromArgb(64, 224, 208);
+                DObj.replyPenColor = Color.Black;
+                DObj.graphBackgroundColor = Color.FromArgb(115, 115, 115);
+                DObj.boxColor = Color.FromArgb(80, 80, 80);
+                DObj.boxTextColor = Color.White;
             }
         }
 

@@ -338,108 +338,121 @@ namespace LegendaryExplorer.DialogueEditor
 
             Node_Combo_GUIStyle.ItemsSource = Enums.GetValues<EConvGUIStyles>();
             Node_Combo_ReplyType.ItemsSource = Enums.GetValues<EReplyTypes>();
+            // Detect if theme changed while editor was closed so we skip stale saved colors
+            bool themeChangedWhileEditorClosed = false;
             if (File.Exists(OptionsPath)) //Handle options
             {
                 var options = JsonConvert.DeserializeObject<Dictionary<string, object>>(File.ReadAllText(OptionsPath));
+                if (options.TryGetValue("LastThemeDarkMode", out var lastThemeValue)
+                    && bool.TryParse(lastThemeValue?.ToString(), out var lastThemeDarkMode))
+                {
+                    themeChangedWhileEditorClosed = lastThemeDarkMode != Settings.Global_DarkMode_Enabled;
+                }
                 if (options.ContainsKey("LineTextSize"))
                 {
                     ChangeLineSize(null);
                 }
-                if (options.ContainsKey("LineTextColor"))
+                // Only load saved color settings if the theme hasn't changed since last save.
+                // If theme changed, the correct colors were already set by ThemeManager.ApplyGraphEditorTheme
+                // and ApplyThemeDefaults above — loading stale colors would override them.
+                if (!themeChangedWhileEditorClosed)
                 {
-                    var c = ColorTranslator.FromHtml((string)options["LineTextColor"]);
-                    DBox.lineColor = c;
-                    ClrPcker_Line.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("LinkTextColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["LinkTextColor"]);
-                    DObj.linkTextColor = c;
-                    ClrPcker_LinkText.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("ParaIntRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["ParaIntRColor"]);
-                    DObj.paraintColor = c;
-                    ClrPcker_ParaInt.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("RenIntRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["RenIntRColor"]);
-                    DObj.renintColor = c;
-                    ClrPcker_RenInt.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("AgreeRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["AgreeRColor"]);
-                    DObj.agreeColor = c;
-                    ClrPcker_Agree.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("DisagreeRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["DisagreeRColor"]);
-                    DObj.disagreeColor = c;
-                    ClrPcker_Disagree.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("FriendlyRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["FriendlyRColor"]);
-                    DObj.friendlyColor = c;
-                    ClrPcker_Friendly.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("HostileRColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["HostileRColor"]);
-                    DObj.hostileColor = c;
-                    ClrPcker_Hostile.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("ConnectionColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["ConnectionColor"]);
-                    DObj.connectionColor = c;
-                    ClrPcker_Connection.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("EntryPenColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["EntryPenColor"]);
-                    DObj.entryPenColor = c;
-                    ClrPcker_EntryPen.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("EntryColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["EntryColor"]);
-                    DObj.entryColor = c;
-                    ClrPcker_Entry.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("ReplyColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["ReplyColor"]);
-                    DObj.replyColor = c;
-                    ClrPcker_Reply.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("ReplyPenColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["ReplyPenColor"]);
-                    DObj.replyPenColor = c;
-                    ClrPcker_ReplyPen.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("GraphBackgroundColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["GraphBackgroundColor"]);
-                    GraphBackgroundColor = c;
-                    ClrPcker_GraphBackground.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("BoxColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["BoxColor"]);
-                    BoxColor = c;
-                    ClrPcker_BoxColor.SelectedColor = c.ToWPFColor();
-                }
-                if (options.ContainsKey("BoxTextColor"))
-                {
-                    var c = ColorTranslator.FromHtml((string)options["BoxTextColor"]);
-                    DObj.boxTextColor = c;
-                    ClrPcker_BoxText.SelectedColor = c.ToWPFColor();
+                    if (options.ContainsKey("LineTextColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["LineTextColor"]);
+                        DBox.lineColor = c;
+                        ClrPcker_Line.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("LinkTextColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["LinkTextColor"]);
+                        DObj.linkTextColor = c;
+                        ClrPcker_LinkText.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("ParaIntRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["ParaIntRColor"]);
+                        DObj.paraintColor = c;
+                        ClrPcker_ParaInt.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("RenIntRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["RenIntRColor"]);
+                        DObj.renintColor = c;
+                        ClrPcker_RenInt.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("AgreeRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["AgreeRColor"]);
+                        DObj.agreeColor = c;
+                        ClrPcker_Agree.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("DisagreeRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["DisagreeRColor"]);
+                        DObj.disagreeColor = c;
+                        ClrPcker_Disagree.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("FriendlyRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["FriendlyRColor"]);
+                        DObj.friendlyColor = c;
+                        ClrPcker_Friendly.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("HostileRColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["HostileRColor"]);
+                        DObj.hostileColor = c;
+                        ClrPcker_Hostile.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("ConnectionColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["ConnectionColor"]);
+                        DObj.connectionColor = c;
+                        ClrPcker_Connection.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("EntryPenColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["EntryPenColor"]);
+                        DObj.entryPenColor = c;
+                        ClrPcker_EntryPen.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("EntryColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["EntryColor"]);
+                        DObj.entryColor = c;
+                        ClrPcker_Entry.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("ReplyColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["ReplyColor"]);
+                        DObj.replyColor = c;
+                        ClrPcker_Reply.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("ReplyPenColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["ReplyPenColor"]);
+                        DObj.replyPenColor = c;
+                        ClrPcker_ReplyPen.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("GraphBackgroundColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["GraphBackgroundColor"]);
+                        GraphBackgroundColor = c;
+                        ClrPcker_GraphBackground.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("BoxColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["BoxColor"]);
+                        BoxColor = c;
+                        ClrPcker_BoxColor.SelectedColor = c.ToWPFColor();
+                    }
+                    if (options.ContainsKey("BoxTextColor"))
+                    {
+                        var c = ColorTranslator.FromHtml((string)options["BoxTextColor"]);
+                        DObj.boxTextColor = c;
+                        ClrPcker_BoxText.SelectedColor = c.ToWPFColor();
+                    }
                 }
                 if (options.ContainsKey("AutoSaveMode"))
                 {
@@ -471,7 +484,11 @@ namespace LegendaryExplorer.DialogueEditor
                 if (options.ContainsKey("OutputNumbers"))
                     HideEntryOutput_MenuItem.IsChecked = (bool)options["OutputNumbers"];
             }
-            else
+
+            // If theme changed while editor was closed, or no options file exists,
+            // sync color pickers to the current (correct) static color values.
+            // ApplyThemeDefaults() + ThemeManager already set the right static colors.
+            if (themeChangedWhileEditorClosed || !File.Exists(OptionsPath))
             {
                 Menu_LineSize_10.IsChecked = true;
                 ClrPcker_Line.SelectedColor = DBox.lineColor.ToWPFColor();
@@ -490,7 +507,13 @@ namespace LegendaryExplorer.DialogueEditor
                 ClrPcker_GraphBackground.SelectedColor = GraphBackgroundColor.ToWPFColor();
                 ClrPcker_BoxColor.SelectedColor = BoxColor.ToWPFColor();
                 ClrPcker_BoxText.SelectedColor = DObj.boxTextColor.ToWPFColor();
+                // Also update instance fields to match theme-set static fields
+                _graphBackgroundColor = DObj.graphBackgroundColor;
+                if (graphEditor != null) graphEditor.BackColor = _graphBackgroundColor;
+                _boxColor = DObj.boxColor;
+                UpdateNodeBrush();
             }
+
             UpdateLayoutDefaults("startup");
         }
         public DialogueEditorWindow(ExportEntry export) : this()
@@ -711,6 +734,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {"RowSpace", RowSpace},
                 {"ColumnSpace", ColumnSpace},
                 {"WaterfallSpace", WaterfallSpace},
+                {"LastThemeDarkMode", Settings.Global_DarkMode_Enabled},
             };
             await Task.Run(() =>
             {
