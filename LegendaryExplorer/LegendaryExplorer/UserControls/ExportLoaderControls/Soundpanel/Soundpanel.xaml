@@ -91,11 +91,19 @@
                     </Button>
                     <Button Content="Export" ToolTip="Export audio to Wave file" VerticalContentAlignment="Center" VerticalAlignment="Center" Margin="0,8,5,0" Command="{Binding ExportAudioCommand}"/>
                 </StackPanel>
-                <Button Grid.Column="3" ToolTip="Start or pause playback" Command="{Binding StartPlaybackCommand}">
-                    <fa:ImageAwesome Icon="{Binding PlayPauseIcon}" Height="24" Width="24"/>
+                <Button Grid.Column="3" ToolTip="Start or pause playback" Command="{Binding StartPlaybackCommand}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                        Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <fa:ImageAwesome Icon="{Binding PlayPauseIcon}" Height="24" Width="24"
+                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Button>
-                <Button Grid.Column="5" ToolTip="Stop playback" Command="{Binding StopPlaybackCommand}">
-                    <fa:ImageAwesome Icon="Solid_Stop" Height="24" Width="24"/>
+                <Button Grid.Column="5" ToolTip="Stop playback" Command="{Binding StopPlaybackCommand}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                        Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <fa:ImageAwesome Icon="Solid_Stop" Height="24" Width="24"
+                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Button>
 
                 <StackPanel Grid.Column="6" Grid.Row="1" Margin="5,0,0,0" VerticalAlignment="Center">
