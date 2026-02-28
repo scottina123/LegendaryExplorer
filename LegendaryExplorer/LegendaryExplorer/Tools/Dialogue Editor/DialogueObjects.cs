@@ -343,6 +343,19 @@ namespace LegendaryExplorer.DialogueEditor
                 ((List<DiagEdEdge>)p2.Tag).Add(edge);
                 edge.start = p1;
                 edge.end = p2;
+                Color dragColor = global::LegendaryExplorer.DialogueEditor.DObj.connectionColor;
+                if (p1 is PPath startPath)
+                {
+                    if (startPath.Pen is not null)
+                    {
+                        dragColor = startPath.Pen.Color;
+                    }
+                    else if (startPath.Brush is SolidBrush brush)
+                    {
+                        dragColor = brush.Color;
+                    }
+                }
+                edge.Pen = new Pen(dragColor);
                 edge.originator = DObj;
                 ConvGraphEditor.addEdge(edge);
                 base.OnStartDrag(sender, e);
@@ -440,11 +453,13 @@ namespace LegendaryExplorer.DialogueEditor
             l.Links.Add(linkedOp);
             l.InputIndices = 0;
             l.node = CreateActionLinkBox();
-            l.node.Brush = outputBrush;
+            l.node.Brush = new SolidBrush(connectionColor);
+            l.node.Pen = new Pen(connectionColor);
             l.node.Pickable = false;
 
             PPath dragger = CreateActionLinkBox();
             dragger.Brush = mostlyTransparentBrush;
+            dragger.Pen = new Pen(connectionColor);
             dragger.X = l.node.X;
             dragger.Y = l.node.Y;
             dragger.AddInputEventListener(outputDragHandler);
@@ -710,7 +725,8 @@ namespace LegendaryExplorer.DialogueEditor
                     node = CreateActionLinkBox(),
                     Edges = new List<DiagEdEdge>()
                 };
-                l.node.Brush = outputBrush;
+                l.node.Brush = new SolidBrush(connectionColor);
+                l.node.Pen = new Pen(connectionColor);
                 l.node.MouseEnter += OnMouseEnter;
                 l.node.MouseLeave += OnMouseLeave;
                 l.node.AddInputEventListener(inputDragHandler);
@@ -966,10 +982,12 @@ namespace LegendaryExplorer.DialogueEditor
                         node = CreateActionLinkBox()
                     };
 
-                    l.node.Brush = outputBrush;
+                    l.node.Brush = new SolidBrush(connectionColor);
+                    l.node.Pen = new Pen(connectionColor);
                     l.node.Pickable = false;
                     PPath dragger = CreateActionLinkBox();
                     dragger.Brush = mostlyTransparentBrush;
+                    dragger.Pen = new Pen(connectionColor);
                     dragger.X = l.node.X;
                     dragger.Y = l.node.Y;
                     dragger.AddInputEventListener(outputDragHandler);
@@ -1094,10 +1112,12 @@ namespace LegendaryExplorer.DialogueEditor
 
                             l.Desc = "E" + linkedOp;
                             l.node = CreateActionLinkBox();
-                            l.node.Brush = outputBrush;
+                            l.node.Brush = new SolidBrush(connectionColor);
+                            l.node.Pen = new Pen(connectionColor);
                             l.node.Pickable = false;
                             PPath dragger = CreateActionLinkBox();
                             dragger.Brush = mostlyTransparentBrush;
+                            dragger.Pen = new Pen(connectionColor);
                             dragger.X = l.node.X;
                             dragger.Y = l.node.Y;
                             dragger.AddInputEventListener(outputDragHandler);
@@ -1122,10 +1142,12 @@ namespace LegendaryExplorer.DialogueEditor
                             node = CreateActionLinkBox()
                         };
 
-                        l.node.Brush = outputBrush;
+                        l.node.Brush = new SolidBrush(connectionColor);
+                        l.node.Pen = new Pen(connectionColor);
                         l.node.Pickable = false;
                         PPath dragger = CreateActionLinkBox();
                         dragger.Brush = mostlyTransparentBrush;
+                        dragger.Pen = new Pen(connectionColor);
                         dragger.X = l.node.X;
                         dragger.Y = l.node.Y;
                         dragger.AddInputEventListener(outputDragHandler);
