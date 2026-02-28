@@ -1045,8 +1045,8 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                         Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                         BorderThickness="1"
                                         BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-                                <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True">
-                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True" CanContentScroll="True">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
                             </Grid>
                         </Popup>
@@ -1071,7 +1071,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
             </Setter.Value>
         </Setter>
     </Style>
-    
+
     <Style TargetType="{x:Type ComboBoxItem}">
         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
@@ -2084,8 +2084,8 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                                 Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                                 BorderThickness="1"
                                                 BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-                                        <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True">
-                                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                        <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True" CanContentScroll="True">
+                                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                         </ScrollViewer>
                                     </Grid>
                                 </Popup>
@@ -2223,8 +2223,8 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                         Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                         BorderThickness="1"
                                         BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-                                <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True">
-                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True" CanContentScroll="True">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
                             </Grid>
                         </Popup>

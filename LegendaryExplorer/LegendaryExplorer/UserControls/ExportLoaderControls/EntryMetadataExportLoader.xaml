@@ -28,13 +28,13 @@
         <DataTemplate DataType="{x:Type packages:ImportEntry}">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="Gray"/>
-                <TextBlock Text="{Binding Path=InstancedFullPath, Mode=OneTime}" Margin="5,0,0,0" Foreground="Gray"/>
+                <TextBlock Text="{Binding Path=ObjectName.Instanced, Mode=OneTime}" Margin="5,0,0,0" Foreground="Gray"/>
             </StackPanel>
         </DataTemplate>
         <DataTemplate DataType="{x:Type packages:ExportEntry}">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Path=UIndex, Mode=OneTime}" Foreground="Gray"/>
-                <TextBlock Margin="5,0,0,0" Text="{Binding InstancedFullPath}"/>
+                <TextBlock Margin="5,0,0,0" Text="{Binding ObjectName.Instanced, Mode=OneTime}"/>
             </StackPanel>
         </DataTemplate>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -124,6 +124,8 @@
                   ItemsPanel="{StaticResource VSP}" KeyUp="InfoTab_Objectname_ComboBox_KeyUp" 
                   GotFocus="InfoTab_Objectname_ComboBox_GotFocus" SelectionChanged="Info_ObjectNameComboBox_SelectionChanged" 
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name" IsEditable="True"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ToolTip="Name for this entry&#10;Type a name value to automatically select it&#10;Type in a new name and press enter to add a new name"/>
         
         <TextBox Name="InfoTab_ObjectnameIndex_TextBox"  VerticalAlignment="Center" Grid.Row="1" 
@@ -147,6 +149,8 @@
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Class_ComboBox_GotFocus" 
                   SelectionChanged="Info_ClassComboBox_SelectionChanged" IsTextSearchEnabled="True" TextSearch.TextPath="UIndex" 
                   ToolTip="Class for this entry&#10;Type a UIndex value to automatically select it"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ItemsSource="{Binding AllClassesList, Mode=OneTime}"/>
         
         <ComboBox Name="InfoTab_ImpClass_ComboBox" VerticalAlignment="Center" Grid.Row="5" Grid.Column="1" 
@@ -154,6 +158,8 @@
                   ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_ImpClass_ComboBox_GotFocus" 
                   SelectionChanged="Info_ImpClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ToolTip="Class for this entry&#10;Type a name value to automatically select it"/>
 
         <ComboBox Name="InfoTab_Superclass_ComboBox" VerticalAlignment="Center" Grid.Row="6" Grid.Column="1" 
@@ -161,6 +167,8 @@
                   SelectionChanged="Info_SuperClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
                   ToolTip="Superclass for this entry&#10;Type a UIndex value to automatically select it"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
 
         <ComboBox Name="InfoTab_PackageLink_ComboBox" VerticalAlignment="Center" Grid.Row="7" Grid.Column="1" 
@@ -168,6 +176,8 @@
                   SelectionChanged="Info_PackageLinkClassComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
                   ToolTip="Parent for this entry&#10;Set to 0 to make this item a top level entry&#10;Type a UIndex value to automatically select it"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
         
         <ComboBox Name="InfoTab_PackageFile_ComboBox" VerticalAlignment="Center" Grid.Row="8" Grid.Column="1" 
@@ -175,6 +185,8 @@
                   ItemsPanel="{StaticResource VSP}" 
                   GotFocus="InfoTab_PackageFile_ComboBox_GotFocus" SelectionChanged="Info_PackageFileComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="Name"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ToolTip="Filename (without extension) that contains the class for this import&#10;Type a name value to automatically select it"/>
 
         <ComboBox Name="InfoTab_Archetype_ComboBox" VerticalAlignment="Center" Grid.Row="9" 
@@ -182,6 +194,8 @@
                   SelectionChanged="Info_ArchetypeComboBox_SelectionChanged"
                   IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
                   ToolTip="Archetype for this entry&#10;Set to 0 to indicate no archetype&#10;Type a UIndex value to automatically select it"
+                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
 
         <controls:FlagsComboBox x:Name="InfoTab_Flags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="10" Grid.Column="1"
