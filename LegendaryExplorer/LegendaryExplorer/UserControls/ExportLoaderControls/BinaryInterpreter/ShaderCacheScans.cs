@@ -340,7 +340,7 @@ public partial class BinaryInterpreterWPF
         return subnodes;
     }
 
-    private BinInterpNode ReadShaderParameters(EndianReader bin, string shaderType, out Exception exception)
+    public BinInterpNode ReadShaderParameters(EndianReader bin, string shaderType, out Exception exception)
     {
         exception = null;
         if (!CurrentLoadedExport.Game.IsLEGame())
