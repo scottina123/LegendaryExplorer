@@ -246,19 +246,29 @@ namespace LegendaryExplorer.DialogueEditor
 
         protected float GetTitlePlusLineBox(string s, string l, string n, float w)
         {
-            DText title = new DText(s, boxTextColor)
+            DText nodeID = new DText(n, boxTextColor) //Add node count to left side
             {
-                TextAlignment = StringAlignment.Center,
+                TextAlignment = StringAlignment.Near,
                 ConstrainWidthToTextWidth = false,
                 X = 0,
                 Y = 3,
                 Pickable = false
             };
-            if (title.Width + 60 > w)
+            float nodeIDWidth = nodeID.Width + 4;
+
+            DText title = new DText(s, boxTextColor)
             {
-                w = title.Width + 60;
+                TextAlignment = StringAlignment.Center,
+                ConstrainWidthToTextWidth = false,
+                X = nodeIDWidth,
+                Y = 3,
+                Pickable = false
+            };
+            if (title.Width + nodeIDWidth + 20 > w)
+            {
+                w = title.Width + nodeIDWidth + 20;
             }
-            title.Width = w;
+            title.Width = w - nodeIDWidth;
 
             float lineX = w / LineScaleOption + 5;
             float lineY = 3;
@@ -280,15 +290,6 @@ namespace LegendaryExplorer.DialogueEditor
                     Pickable = false
                 };
             }
-
-            DText nodeID = new DText(n, boxTextColor) //Add node count to left side
-            {
-                TextAlignment = StringAlignment.Near,
-                ConstrainWidthToTextWidth = false,
-                X = 0,
-                Y = 3,
-                Pickable = false
-            };
 
             titleBox = PPath.CreateRectangle(0, 0, w, title.Height + 5);
             titleBox.Pen = new Pen(entryPenColor);
