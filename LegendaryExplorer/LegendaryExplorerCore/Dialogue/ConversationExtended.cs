@@ -22,7 +22,7 @@ namespace LegendaryExplorerCore.Dialogue
     ///  - Speakers have FaceFX Objects
     ///  - DialogueNodeExtended has InterpData, WwiseStream_M, WwiseStream_F, FaceFX_ID_M, FaceFX_ID_F
     /// </remarks>
-    [DebuggerDisplay("ConversationExtended {ExportUID} {ConvName}")]
+    [DebuggerDisplay("ConversationExtended {UIndex} {ConvName}")]
     public class ConversationExtended : INotifyPropertyChanged
     {
         /// <summary>The UIndex of this BioConversation</summary>

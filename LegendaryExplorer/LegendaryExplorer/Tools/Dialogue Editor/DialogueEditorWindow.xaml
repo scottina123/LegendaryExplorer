@@ -51,6 +51,9 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
+            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
+            <MenuItem Header="Unskippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsUnskippable}" />
+            <Separator/>
             <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
             <MenuItem Header="Open in Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
             <MenuItem Header="Open in Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
@@ -58,6 +61,10 @@
             <MenuItem Header="Open Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
             <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
             <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+            <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
         </ContextMenu>
         <ContextMenu x:Key="entrynodeContextMenu" Closed="ContextMenu_Closed">
@@ -80,6 +87,9 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
+            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
+            <MenuItem Header="Skippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsSkippable}" />
+            <Separator/>
             <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
             <MenuItem Header="Open in Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
             <MenuItem Header="Open in Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
@@ -87,6 +97,10 @@
             <MenuItem Header="Open Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
             <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
             <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+            <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
         </ContextMenu>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
@@ -1072,25 +1086,45 @@
                                                                ToolTip="Male audio for this line."
                                                                DockPanel.Dock="Left" FontSize="15" Margin="3" />
                                                     <Button Name="WwStreamMPackEd_Button"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="PackEd_StreamM" Padding="3"
-                                                            ToolTip="Open this stream in Package Editor"
-                                                            DockPanel.Dock="Right">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <Button Name="Open_WwStreamM_Button" Padding="3"
-                                                            DockPanel.Dock="Right"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="SoundP_StreamM"
-                                                            ToolTip="Open In Sound Explorer">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
+                                                             Command="{Binding OpenInCommand}"
+                                                             CommandParameter="PackEd_StreamM" Padding="3"
+                                                             ToolTip="Open this stream in Package Editor"
+                                                             DockPanel.Dock="Right">
+                                                         <Button.Content>
+                                                             <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                                              Foreground="{DynamicResource IconForegroundBrush}" />
+                                                         </Button.Content>
+                                                     </Button>
+                                                     <Button Name="ReplaceAudioM_Button" Padding="3"
+                                                             DockPanel.Dock="Right"
+                                                             Click="ReplaceAudioM_Click"
+                                                             IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
+                                                             ToolTip="Replace male audio from wave file">
+                                                         <Button.Content>
+                                                             <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
+                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                         </Button.Content>
+                                                     </Button>
+                                                     <Button Name="Open_WwStreamM_Button" Padding="3"
+                                                             DockPanel.Dock="Right"
+                                                             Command="{Binding OpenInCommand}"
+                                                             CommandParameter="SoundP_StreamM"
+                                                             ToolTip="Open In Sound Explorer">
+                                                         <Button.Content>
+                                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
+                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                         </Button.Content>
+                                                     </Button>
+                                                     <Button Name="PlayAudioM_Button" Padding="3"
+                                                             DockPanel.Dock="Right"
+                                                             Click="PlayAudioM_Click"
+                                                             IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
+                                                             ToolTip="Play/pause male audio">
+                                                         <Button.Content>
+                                                             <fa:ImageAwesome Icon="Solid_Play" Width="16"
+                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                         </Button.Content>
+                                                     </Button>
                                                     <TextBlock
                                                         Text="{Binding Path=SelectedDialogueNode.WwiseStream_Male.UIndex, TargetNullValue=None, FallbackValue=None}"
                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -1135,6 +1169,16 @@
                                                                              Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
+                                                    <Button Name="ReplaceAudioF_Button" Padding="3"
+                                                            DockPanel.Dock="Right"
+                                                            Click="ReplaceAudioF_Click"
+                                                            IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
+                                                            ToolTip="Replace female audio from wave file">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                        </Button.Content>
+                                                    </Button>
                                                     <Button Name="Open_WwStreamF_Button" Padding="3"
                                                             DockPanel.Dock="Right"
                                                             Command="{Binding OpenInCommand}"
@@ -1142,6 +1186,16 @@
                                                             ToolTip="Open this stream in Soundplorer">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                        </Button.Content>
+                                                    </Button>
+                                                    <Button Name="PlayAudioF_Button" Padding="3"
+                                                            DockPanel.Dock="Right"
+                                                            Click="PlayAudioF_Click"
+                                                            IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
+                                                            ToolTip="Play/pause female audio">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_Play" Width="16"
                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
@@ -1418,7 +1472,7 @@
                                         <ColumnDefinition Width="40" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Path=ExportUID}" />
+                                    <TextBlock Grid.Column="0" Text="{Binding Path=UIndex}" />
                                     <TextBlock Grid.Column="1" Text="{Binding Path=ConvName}">
                                     </TextBlock>
                                 </Grid>

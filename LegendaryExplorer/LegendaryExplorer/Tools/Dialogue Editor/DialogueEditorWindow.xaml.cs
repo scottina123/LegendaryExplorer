@@ -4877,6 +4877,40 @@ namespace LegendaryExplorer.DialogueEditor
 
         #endregion Helpers
 
+        #region Assets Tab Audio
+        private void PlayAudioM_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.WwiseStream_Male != null)
+            {
+                SoundpanelWPF_M.StartOrPausePlaying();
+            }
+        }
+
+        private void PlayAudioF_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.WwiseStream_Female != null)
+            {
+                SoundpanelWPF_F.StartOrPausePlaying();
+            }
+        }
+
+        private async void ReplaceAudioM_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.WwiseStream_Male != null)
+            {
+                await SoundpanelWPF_M.ReplaceAudioFromWave();
+            }
+        }
+
+        private async void ReplaceAudioF_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.WwiseStream_Female != null)
+            {
+                await SoundpanelWPF_F.ReplaceAudioFromWave();
+            }
+        }
+        #endregion
+
         #region IRecents interface
         public void PropogateRecentsChange(string propogationSource, IEnumerable<RecentsControl.RecentItem> newRecents)
         {
