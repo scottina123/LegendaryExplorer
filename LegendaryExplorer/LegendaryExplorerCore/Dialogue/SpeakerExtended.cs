@@ -20,6 +20,20 @@ namespace LegendaryExplorerCore.Dialogue
             set => SpeakerNameRef = NameReference.FromInstancedString(value);
         }
 
+        /// <summary>
+        /// Gets a display-friendly name for this speaker, appending the resolved FriendlyName in parentheses
+        /// for built-in speakers (owner/player) when available.
+        /// </summary>
+        public string DisplayName
+        {
+            get
+            {
+                if (SpeakerID == -1 && !string.IsNullOrEmpty(FriendlyName) && FriendlyName != "No data")
+                    return $"{SpeakerName} ({FriendlyName})";
+                return SpeakerName;
+            }
+        }
+
         /// <summary>Reference to this speaker's male FaceFXAnimSet</summary>
         public IEntry FaceFX_Male { get; set; }
         /// <summary>Reference to this speaker's female FaceFXAnimSet</summary>

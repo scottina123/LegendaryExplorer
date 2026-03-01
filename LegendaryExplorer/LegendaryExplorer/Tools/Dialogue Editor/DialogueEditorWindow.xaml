@@ -680,6 +680,9 @@
                                          HorizontalContentAlignment="Left" BorderBrush="LightGray" BorderThickness="0"
                                          KeyUp="EnterName_Speaker_KeyUp" GotKeyboardFocus="EditBox_GotKeyboardFocus"
                                          LostKeyboardFocus="EditBox_LostKeyboardFocus" />
+                                <TextBlock Text="{Binding Path=SelectedSpeaker.DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                                           FontSize="15" HorizontalAlignment="Left" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                           ToolTip="Display name with resolved tag" />
                                 <TextBlock Text="" FontSize="10" />
                                 <DockPanel>
                                     <TextBlock Text="TLKString:" DockPanel.Dock="Left" HorizontalAlignment="Left"
@@ -796,14 +799,14 @@
                                                   ItemsSource="{Binding SelectedSpeakerList, Mode=OneWay}"
                                                   SelectedValue="{Binding Path=SelectedDialogueNode.SpeakerIndex}"
                                                   SelectedValuePath="SpeakerID" IsSynchronizedWithCurrentItem="True"
-                                                  TextSearch.TextPath="SpeakerName" IsEditable="True"
+                                                  TextSearch.TextPath="DisplayName" IsEditable="True"
                                                   HorizontalAlignment="Stretch" ToolTip="Line speaker" Margin="3"
                                                   DockPanel.Dock="Right">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="{Binding Path=SpeakerID}" Width="30" />
-                                                        <TextBlock Text="{Binding Path=SpeakerName}" />
+                                                        <TextBlock Text="{Binding Path=DisplayName}" />
                                                     </StackPanel>
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
@@ -819,12 +822,12 @@
                                                   SelectedValuePath="SpeakerID" IsSynchronizedWithCurrentItem="True"
                                                   IsEditable="True" HorizontalAlignment="Stretch"
                                                   ToolTip="Line speaker" Margin="3" DockPanel.Dock="Right"
-                                                  TextSearch.TextPath="SpeakerName">
+                                                  TextSearch.TextPath="DisplayName">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="{Binding Path=SpeakerID}" Width="30" />
-                                                        <TextBlock Text="{Binding Path=SpeakerName}" />
+                                                        <TextBlock Text="{Binding Path=DisplayName}" />
                                                     </StackPanel>
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
@@ -1371,7 +1374,7 @@
                                     <TextBlock Grid.Column="0"
                                                Text="{Binding SpeakerID, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Grid.Column="1"
-                                               Text="{Binding SpeakerName, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

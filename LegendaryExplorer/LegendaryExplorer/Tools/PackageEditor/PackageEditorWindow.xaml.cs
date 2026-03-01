@@ -26,6 +26,7 @@ using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.Meshplorer;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
@@ -3500,6 +3501,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
             else
             {
                 IsBusy = false;
+            }
+
+            var loadedPackage = Pcc;
+            if (loadedPackage != null)
+            {
+                Task.Run(() => ConversationExtended.WarmOwnerTagCacheForPackage(loadedPackage));
             }
         }
 

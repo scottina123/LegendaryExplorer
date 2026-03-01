@@ -2,13 +2,16 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorerCore.Dialogue
 {
@@ -64,6 +67,9 @@ namespace LegendaryExplorerCore.Dialogue
         public IEntry Sequence { get; set; }
         /// <summary>Reference to the NonSpeaker FaceFXAnimset for this BioConversation</summary>
         public IEntry NonSpkrFFX { get; set; }
+
+        private static readonly object OwnerTagCacheLock = new();
+        private static readonly Dictionary<string, string> OwnerTagResolutionCache = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Creates a ConversationExtended from a BioConversation export
@@ -140,6 +146,7 @@ namespace LegendaryExplorerCore.Dialogue
             parseLinesFaceFX();
             parseLinesAudioStreams();
             parseLinesScripts();
+            ResolveOwnerTag();
 
             IsParsed = true;
         }
@@ -320,6 +327,32 @@ namespace LegendaryExplorerCore.Dialogue
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Best-effort background warm-up for owner tag resolution cache in a package.
+        /// </summary>
+        public static void WarmOwnerTagCacheForPackage(IMEPackage pcc)
+        {
+            if (pcc == null)
+                return;
+
+            try
+            {
+                foreach (var exp in pcc.Exports)
+                {
+                    var findActor = exp.GetProperty<NameProperty>("m_nmSFXFindActor")
+                                    ?? exp.GetProperty<NameProperty>("m_nmFindActor");
+                    if (findActor?.Value.Name != "Owner")
+                        continue;
+
+                    ResolveOwnerTagFromExport(exp);
+                }
+            }
+            catch
+            {
+                // Best-effort warm-up
+            }
         }
 
         /// <summary>
@@ -736,6 +769,595 @@ namespace LegendaryExplorerCore.Dialogue
             {
                 Sequence = null;
             }
+        }
+
+        /// <summary>
+        /// Attempts to resolve the owner tag from the StartConversation sequence node.
+        /// Updates the owner speaker's FriendlyName with the resolved tag.
+        /// </summary>
+        public void ResolveOwnerTag()
+        {
+            var ownerSpeaker = Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+            if (ownerSpeaker == null)
+                return;
+
+            try
+            {
+                string ownerTag = null;
+
+                // Strategy 1: If Sequence resolved to an ExportEntry, search its parent sequence
+                if (Sequence is ExportEntry sequenceExport)
+                {
+                    ownerTag = FindOwnerTagInPackage(sequenceExport.FileRef, sequenceExport);
+                }
+
+                // Strategy 2: Search the current package for StartConversation nodes
+                if (ownerTag == null)
+                {
+                    ownerTag = FindOwnerTagBySearchingPackage(Export.FileRef);
+                }
+
+                // Strategy 3: Search sibling files in the same directory (for LOC files where the sequence is in the base file)
+                if (ownerTag == null)
+                {
+                    ownerTag = FindOwnerTagInSiblingFiles();
+                }
+
+                if (!string.IsNullOrEmpty(ownerTag))
+                {
+                    ownerSpeaker.FriendlyName = ownerTag;
+                }
+            }
+            catch
+            {
+                // Silently fail - owner resolution is best-effort
+            }
+        }
+
+        /// <summary>
+        /// Finds the owner tag by looking in the parent sequence of the MatineeSequence export.
+        /// </summary>
+        private string FindOwnerTagInPackage(IMEPackage pcc, ExportEntry sequenceExport)
+        {
+            var parentSequence = KismetHelper.GetParentSequence(sequenceExport);
+            if (parentSequence == null)
+                return null;
+
+            var seqObjects = parentSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+            if (seqObjects == null)
+                return null;
+
+            foreach (var objProp in seqObjects)
+            {
+                if (objProp.Value < 1 || !pcc.IsUExport(objProp.Value))
+                    continue;
+
+                var seqObj = pcc.GetUExport(objProp.Value);
+
+                if (seqObj.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
+                    continue;
+
+                if (!StartConvReferencesThisConversation(seqObj))
+                    continue;
+
+                string ownerTag = ResolveOwnerFromStartConv(seqObj);
+                if (!string.IsNullOrEmpty(ownerTag))
+                    return ownerTag;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Searches all exports in a package for StartConversation nodes referencing this conversation.
+        /// </summary>
+        private string FindOwnerTagBySearchingPackage(IMEPackage pcc)
+        {
+            foreach (var exp in pcc.Exports)
+            {
+                if (exp.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
+                    continue;
+
+                if (!StartConvReferencesThisConversation(exp))
+                    continue;
+
+                string ownerTag = ResolveOwnerFromStartConv(exp);
+                if (!string.IsNullOrEmpty(ownerTag))
+                    return ownerTag;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Searches sibling files in the same directory for the owner tag.
+        /// This handles LOC files where the StartConversation is in the base file.
+        /// Uses the highest mounted file when available.
+        /// </summary>
+        private string FindOwnerTagInSiblingFiles()
+        {
+            var filePath = Export.FileRef.FilePath;
+            if (string.IsNullOrEmpty(filePath))
+                return null;
+
+            var game = Export.FileRef.Game;
+            var fileName = Path.GetFileNameWithoutExtension(filePath);
+
+            // Try to find the base file by looking for files with a matching prefix
+            // LOC files typically have language suffixes like _LOC_INT, or voice suffixes like _v_
+            // The base file would be a shorter name or have _d_ instead of _v_
+            var candidateFileNames = new List<string>();
+
+            // Try replacing _v_ with nothing to get base name (e.g., n7_cer_hackett_norm_v_dlg -> n7_cer_hackett_norm)
+            // and _v_ with _d_ to get the non-voice variant
+            var ext = Path.GetExtension(filePath);
+            var dir = Path.GetDirectoryName(filePath);
+
+            // Gather candidate base filenames
+            if (fileName.Contains("_LOC_"))
+            {
+                var baseName = fileName[..fileName.IndexOf("_LOC_")];
+                candidateFileNames.Add(baseName + ext);
+            }
+
+            // For voice/localized files like name_v_dlg, try name_dlg or name_d_dlg
+            // The pattern is typically: baseName_v_convName -> baseName_convName or baseName_d_convName
+            // Use game files to find files that share a common prefix
+            var convName = Export.ObjectName.Instanced;
+
+            // Search game files for the highest mounted version
+            var gameFiles = MELoadedFiles.GetFilesLoadedInGame(game, forceUseCached: true);
+            foreach (var (gameFileName, gameFilePath) in gameFiles)
+            {
+                if (string.Equals(gameFileName, Path.GetFileName(filePath), StringComparison.OrdinalIgnoreCase))
+                    continue; // Skip the current file
+
+                // Check if this could be a base file (same directory or shares the conversation name pattern)
+                var gameFileNameNoExt = Path.GetFileNameWithoutExtension(gameFileName);
+
+                // Check if the candidate file could contain our conversation's sequence
+                // Files for the same conversation typically share a common prefix
+                if (!SharesConversationPrefix(fileName, gameFileNameNoExt))
+                    continue;
+
+                candidateFileNames.Add(gameFileName);
+            }
+
+            // Also check local directory for non-indexed files
+            if (dir != null)
+            {
+                try
+                {
+                    foreach (var localFile in Directory.GetFiles(dir, "*" + ext))
+                    {
+                        var localFileName = Path.GetFileName(localFile);
+                        if (string.Equals(localFileName, Path.GetFileName(filePath), StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        var localFileNameNoExt = Path.GetFileNameWithoutExtension(localFileName);
+                        if (SharesConversationPrefix(fileName, localFileNameNoExt))
+                        {
+                            if (!candidateFileNames.Contains(localFileName, StringComparer.OrdinalIgnoreCase))
+                                candidateFileNames.Add(localFile); // Add full path for local files
+                            }
+                    }
+                }
+                catch
+                {
+                    // Directory access may fail
+                }
+            }
+
+            // Search candidate files for StartConversation nodes
+            foreach (var candidate in candidateFileNames)
+            {
+                string fullPath = candidate;
+                if (!Path.IsPathRooted(fullPath))
+                {
+                    if (!gameFiles.TryGetValue(candidate, out fullPath))
+                        continue;
+                }
+
+                if (!File.Exists(fullPath))
+                    continue;
+
+                try
+                {
+                    using var package = MEPackageHandler.OpenMEPackage(fullPath);
+                    var ownerTag = FindOwnerTagBySearchingPackage(package);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
+                catch
+                {
+                    // Skip files that can't be opened
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks if two filenames share a common conversation prefix, indicating they are related files.
+        /// </summary>
+        private static bool SharesConversationPrefix(string fileName1, string fileName2)
+        {
+            // Find common prefix
+            int commonLen = 0;
+            int minLen = Math.Min(fileName1.Length, fileName2.Length);
+            for (int i = 0; i < minLen; i++)
+            {
+                if (char.ToLowerInvariant(fileName1[i]) == char.ToLowerInvariant(fileName2[i]))
+                    commonLen++;
+                else
+                    break;
+            }
+
+            // The common prefix should be substantial (more than just a few characters)
+            // and end at a word boundary (underscore)
+            if (commonLen < 5)
+                return false;
+
+            // Ensure we're not just matching a coincidental prefix
+            string prefix = fileName1[..commonLen];
+            return prefix.Contains('_');
+        }
+
+        /// <summary>
+        /// Checks if a StartConversation node references this conversation by comparing object names.
+        /// </summary>
+        private bool StartConvReferencesThisConversation(ExportEntry startConvNode)
+        {
+            var convProp = startConvNode.GetProperty<ObjectProperty>("Conv");
+            if (convProp == null || convProp.Value == 0)
+                return false;
+
+            var convEntry = startConvNode.FileRef.GetEntry(convProp.Value);
+            if (convEntry == null)
+                return false;
+
+            return convEntry.ObjectName.Instanced == Export.ObjectName.Instanced;
+        }
+
+        /// <summary>
+        /// Resolves the owner tag from a StartConversation sequence action by examining its Owner variable link.
+        /// </summary>
+        /// <param name="startConvNode">The StartConversation sequence action export</param>
+        /// <returns>The owner tag string, or null if not found</returns>
+        public static string ResolveOwnerFromStartConv(ExportEntry startConvNode)
+        {
+            var links = startConvNode.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (links == null)
+                return null;
+
+            int ownerObjIdx = 0;
+            foreach (var link in links)
+            {
+                var desc = link.GetProp<StrProperty>("LinkDesc");
+                if (desc?.Value == "Owner")
+                {
+                    var linkedVars = link.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                    if (linkedVars != null && linkedVars.Count > 0)
+                    {
+                        ownerObjIdx = linkedVars[0].Value;
+                    }
+                    break;
+                }
+            }
+
+            if (ownerObjIdx <= 0)
+                return null;
+
+            var pcc = startConvNode.FileRef;
+            ExportEntry ownerVar;
+            try
+            {
+                ownerVar = pcc.GetUExport(ownerObjIdx);
+            }
+            catch
+            {
+                return null;
+            }
+
+            switch (ownerVar.ClassName)
+            {
+                case "SeqVar_Object":
+                {
+                    var objValue = ownerVar.GetProperty<ObjectProperty>("ObjValue");
+                    if (objValue != null && objValue.Value > 0)
+                    {
+                        var actor = pcc.GetUExport(objValue.Value);
+                        var tag = actor.GetProperty<NameProperty>("Tag");
+                        if (tag != null)
+                            return tag.Value.Instanced;
+
+                        // Try archetype
+                        if (actor.HasArchetype && actor.Archetype is ExportEntry archetype)
+                        {
+                            var archTag = archetype.GetProperty<NameProperty>("Tag");
+                            if (archTag != null)
+                                return archTag.Value.Instanced;
+                        }
+                    }
+                    break;
+                }
+                case "BioSeqVar_ObjectFindByTag":
+                {
+                    if (pcc.Game.IsGame3())
+                    {
+                        var tagProp = ownerVar.GetProperty<NameProperty>("m_sObjectTagToFind");
+                        if (tagProp != null)
+                            return tagProp.Value.Instanced;
+                    }
+                    else
+                    {
+                        var tagProp = ownerVar.GetProperty<StrProperty>("m_sObjectTagToFind");
+                        if (tagProp != null)
+                            return tagProp.Value;
+                    }
+                    break;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves the "Owner" actor tag from any export that is part of an InterpData/Sequence tree.
+        /// Walks up the parent chain to find a Sequence, then searches for StartConversation nodes to resolve the owner.
+        /// </summary>
+        /// <param name="export">Any export (InterpTrack, InterpGroup, InterpData, etc.)</param>
+        /// <returns>The resolved owner tag, or null if not found</returns>
+        public static string ResolveOwnerTagFromExport(ExportEntry export)
+        {
+            try
+            {
+                var pcc = export.FileRef;
+                string exportCacheKey = $"{pcc.FilePath}|EXP|{export.UIndex}";
+                if (TryGetOwnerTagCache(exportCacheKey, out var cachedOwnerTag))
+                    return cachedOwnerTag;
+
+                string conversationName = null;
+                string sequenceCacheKey = null;
+
+                // Walk up the parent chain to find a Sequence
+                ExportEntry current = export;
+                while (current != null)
+                {
+                    if (current.ClassName == "Sequence" || current.IsA("Sequence"))
+                    {
+                        conversationName ??= FindConversationNameForSequence(current);
+                        sequenceCacheKey = !string.IsNullOrEmpty(conversationName)
+                            ? $"{pcc.FilePath}|CONV|{conversationName}"
+                            : $"{pcc.FilePath}|SEQ|{current.ObjectName.Instanced}|{conversationName}";
+
+                        if (TryGetOwnerTagCache(sequenceCacheKey, out cachedOwnerTag))
+                        {
+                            SetOwnerTagCache(exportCacheKey, cachedOwnerTag);
+                            return cachedOwnerTag;
+                        }
+
+                        // Search this sequence and its parent for StartConversation nodes
+                        var seqOwnerTag = SearchSequenceForOwnerTag(current, conversationName);
+                        if (!string.IsNullOrEmpty(seqOwnerTag))
+                        {
+                            SetOwnerTagCache(sequenceCacheKey, seqOwnerTag);
+                            SetOwnerTagCache(exportCacheKey, seqOwnerTag);
+                            return seqOwnerTag;
+                        }
+                    }
+
+                    if (current.idxLink > 0 && pcc.IsUExport(current.idxLink))
+                        current = pcc.GetUExport(current.idxLink);
+                    else
+                        break;
+                }
+
+                // Fallback: search all StartConversation nodes in this package
+                var ownerTag = SearchStartConversationsInPackage(pcc, conversationName);
+                if (!string.IsNullOrEmpty(ownerTag))
+                {
+                    SetOwnerTagCache(sequenceCacheKey, ownerTag);
+                    SetOwnerTagCache(exportCacheKey, ownerTag);
+                    return ownerTag;
+                }
+
+                // Fallback: search related sibling/highest-mounted files
+                ownerTag = SearchOwnerTagInSiblingFiles(export, conversationName);
+                if (!string.IsNullOrEmpty(ownerTag))
+                {
+                    SetOwnerTagCache(sequenceCacheKey, ownerTag);
+                    SetOwnerTagCache(exportCacheKey, ownerTag);
+                    return ownerTag;
+                }
+
+                SetOwnerTagCache(sequenceCacheKey, null);
+                SetOwnerTagCache(exportCacheKey, null);
+            }
+            catch
+            {
+                // Best-effort resolution
+            }
+
+            return null;
+        }
+
+        private static bool TryGetOwnerTagCache(string key, out string ownerTag)
+        {
+            ownerTag = null;
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            lock (OwnerTagCacheLock)
+            {
+                if (!OwnerTagResolutionCache.TryGetValue(key, out var cachedValue))
+                    return false;
+
+                ownerTag = string.IsNullOrEmpty(cachedValue) ? null : cachedValue;
+                return true;
+            }
+        }
+
+        private static void SetOwnerTagCache(string key, string ownerTag)
+        {
+            if (string.IsNullOrEmpty(key))
+                return;
+
+            lock (OwnerTagCacheLock)
+            {
+                OwnerTagResolutionCache[key] = ownerTag ?? string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Searches a sequence and its parent sequence for StartConversation nodes and resolves the owner tag.
+        /// </summary>
+        private static string SearchSequenceForOwnerTag(ExportEntry sequence, string conversationName)
+        {
+            // Search this sequence for StartConversation nodes
+            var ownerTag = SearchExportsForOwnerTag(sequence, conversationName);
+            if (ownerTag != null)
+                return ownerTag;
+
+            // Try parent sequence
+            var parentSeqProp = sequence.GetProperty<ObjectProperty>("ParentSequence");
+            if (parentSeqProp != null && parentSeqProp.Value > 0 && sequence.FileRef.IsUExport(parentSeqProp.Value))
+            {
+                var parentSeq = sequence.FileRef.GetUExport(parentSeqProp.Value);
+                ownerTag = SearchExportsForOwnerTag(parentSeq, conversationName);
+                if (ownerTag != null)
+                    return ownerTag;
+            }
+
+            return null;
+        }
+
+        private static string SearchStartConversationsInPackage(IMEPackage pcc, string conversationName)
+        {
+            foreach (var exp in pcc.Exports)
+            {
+                if (exp.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
+                    continue;
+
+                if (!StartConvMatchesConversationName(exp, conversationName))
+                    continue;
+
+                var ownerTag = ResolveOwnerFromStartConv(exp);
+                if (!string.IsNullOrEmpty(ownerTag))
+                    return ownerTag;
+            }
+
+            return null;
+        }
+
+        private static string SearchOwnerTagInSiblingFiles(ExportEntry export, string conversationName)
+        {
+            var pcc = export.FileRef;
+            var filePath = pcc.FilePath;
+            if (string.IsNullOrEmpty(filePath))
+                return null;
+
+            var gameFiles = MELoadedFiles.GetFilesLoadedInGame(pcc.Game, forceUseCached: true);
+            var currentNameNoExt = Path.GetFileNameWithoutExtension(filePath);
+
+            foreach (var kvp in gameFiles)
+            {
+                var candidateFileName = kvp.Key;
+                var candidatePath = kvp.Value;
+
+                if (string.Equals(candidatePath, filePath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var candidateNoExt = Path.GetFileNameWithoutExtension(candidateFileName);
+                if (!SharesConversationPrefix(currentNameNoExt, candidateNoExt))
+                    continue;
+
+                try
+                {
+                    using var candidatePackage = MEPackageHandler.OpenMEPackage(candidatePath);
+                    var ownerTag = SearchStartConversationsInPackage(candidatePackage, conversationName);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
+                catch
+                {
+                    // Best-effort
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Searches a sequence's SequenceObjects for StartConversation nodes and resolves the owner.
+        /// </summary>
+        private static string SearchExportsForOwnerTag(ExportEntry sequence, string conversationName)
+        {
+            var seqObjects = sequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+            if (seqObjects == null)
+                return null;
+
+            foreach (var objProp in seqObjects)
+            {
+                if (objProp.Value < 1 || !sequence.FileRef.IsUExport(objProp.Value))
+                    continue;
+
+                var seqObj = sequence.FileRef.GetUExport(objProp.Value);
+                if (seqObj.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
+                    continue;
+
+                if (!StartConvMatchesConversationName(seqObj, conversationName))
+                    continue;
+
+                string ownerTag = ResolveOwnerFromStartConv(seqObj);
+                if (!string.IsNullOrEmpty(ownerTag))
+                    return ownerTag;
+            }
+
+            return null;
+        }
+
+        private static string FindConversationNameForSequence(ExportEntry sequence)
+        {
+            var pcc = sequence.FileRef;
+            string propName = pcc.Game.IsGame1() ? "m_pEvtSystemSeq" : "MatineeSequence";
+
+            foreach (var exp in pcc.Exports)
+            {
+                if (exp.ClassName != "BioConversation")
+                    continue;
+
+                var seqProp = exp.GetProperty<ObjectProperty>(propName);
+                if (seqProp == null || seqProp.Value == 0)
+                    continue;
+
+                var seqEntry = pcc.GetEntry(seqProp.Value);
+                if (seqEntry is ImportEntry sequenceImport)
+                {
+                    seqEntry = EntryImporter.ResolveImport(sequenceImport, null);
+                }
+
+                if (seqEntry is ExportEntry seqExport && seqExport == sequence)
+                    return exp.ObjectName.Instanced;
+
+                if (seqEntry != null && seqEntry.ObjectName.Instanced == sequence.ObjectName.Instanced)
+                    return exp.ObjectName.Instanced;
+            }
+
+            return null;
+        }
+
+        private static bool StartConvMatchesConversationName(ExportEntry startConvNode, string conversationName)
+        {
+            if (string.IsNullOrEmpty(conversationName))
+                return true;
+
+            var convProp = startConvNode.GetProperty<ObjectProperty>("Conv");
+            if (convProp == null || convProp.Value == 0)
+                return false;
+
+            var convEntry = startConvNode.FileRef.GetEntry(convProp.Value);
+            return convEntry?.ObjectName.Instanced == conversationName;
         }
 
         /// <summary>

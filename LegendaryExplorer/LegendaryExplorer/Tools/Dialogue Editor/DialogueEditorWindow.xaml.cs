@@ -2757,7 +2757,11 @@ namespace LegendaryExplorer.DialogueEditor
                     if (SelectedSpeaker.StrRefID <= 0)
                     {
                         SelectedSpeaker.StrRefID = LookupTagRef(SelectedSpeaker.SpeakerName);
-                        SelectedSpeaker.FriendlyName = GlobalFindStrRefbyID(SelectedSpeaker.StrRefID, Pcc);
+                        // Don't overwrite FriendlyName for owner if it was already resolved from the sequence
+                        if (SelectedSpeaker.SpeakerID != -1 || string.IsNullOrEmpty(SelectedSpeaker.FriendlyName) || SelectedSpeaker.FriendlyName == "No data")
+                        {
+                            SelectedSpeaker.FriendlyName = GlobalFindStrRefbyID(SelectedSpeaker.StrRefID, Pcc);
+                        }
                     }
 
                     TextBox_Speaker_Name.IsEnabled = SelectedSpeaker.SpeakerID >= 0;

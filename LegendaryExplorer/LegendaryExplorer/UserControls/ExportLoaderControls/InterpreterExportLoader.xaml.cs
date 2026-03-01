@@ -19,6 +19,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Gammtek.IO;
@@ -1198,6 +1199,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case NameProperty np:
                     editableValue = $"{parsingExport.FileRef.findName(np.Value.Name)}_{np.Value.Number}";
                     parsedValue = np.Value.Instanced;
+                    if (np.Value.Name == "Owner" && prop.Name.Name is "m_nmSFXFindActor" or "m_nmFindActor")
+                    {
+                        var resolvedOwner = ConversationExtended.ResolveOwnerTagFromExport(parsingExport);
+                        if (!string.IsNullOrEmpty(resolvedOwner))
+                        {
+                            parsedValue = $"Owner ({resolvedOwner})";
+                        }
+                    }
                     break;
                 case ByteProperty bp:
                     editableValue = parsedValue = bp.Value.ToString();

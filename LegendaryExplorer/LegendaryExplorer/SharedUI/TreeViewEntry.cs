@@ -9,6 +9,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.ME1.Unreal.UnhoodBytecode;
 using LegendaryExplorerCore.Misc;
@@ -499,9 +500,19 @@ namespace LegendaryExplorer.SharedUI
                                          ?? ee.GetProperty<NameProperty>("m_nmFindActor");
                             if (findActor != null && findActor.Value.Name != "None")
                             {
+                                string actorName = findActor.Value.Instanced;
+                                if (actorName == "Owner")
+                                {
+                                    var resolvedOwner = ConversationExtended.ResolveOwnerTagFromExport(ee);
+                                    if (!string.IsNullOrEmpty(resolvedOwner))
+                                    {
+                                        actorName = $"Owner ({resolvedOwner})";
+                                    }
+                                }
+
                                 _subtext = _subtext != null
-                                    ? findActor.Value.Instanced + "\n" + _subtext
-                                    : findActor.Value.Instanced;
+                                    ? actorName + "\n" + _subtext
+                                    : actorName;
                             }
 
                             var groupName = ee.GetProperty<NameProperty>("GroupName");

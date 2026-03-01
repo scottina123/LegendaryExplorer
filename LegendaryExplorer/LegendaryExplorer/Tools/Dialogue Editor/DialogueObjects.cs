@@ -645,7 +645,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (inW + outW + 10 > w) w = inW + outW + 10;
 
             //TitleBox
-            string s = $"{Node.SpeakerTag?.SpeakerName ?? "Unknown"}";
+            string s = $"{Node.SpeakerTag?.DisplayName ?? "Unknown"}";
             string l = $"{Node.Line}";
             string n = $"E{Node.NodeCount}";
             if (Node.IsReply)
