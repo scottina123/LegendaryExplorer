@@ -1156,6 +1156,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new ActionEdge();
+                edge.Pen = new Pen(ConnectionColor);
                 p1.Tag ??= new List<ActionEdge>();
                 p2.Tag ??= new List<ActionEdge>();
                 ((List<ActionEdge>)p1.Tag).Add(edge);
@@ -1214,6 +1215,10 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new VarEdge();
+                if (p1 is PPath parentPath)
+                {
+                    edge.Pen = (Pen)parentPath.Pen.Clone();
+                }
                 p1.Tag ??= new List<VarEdge>();
                 p2.Tag ??= new List<VarEdge>();
                 ((List<VarEdge>)p1.Tag).Add(edge);
@@ -1272,6 +1277,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 PNode p1 = ((PNode)sender).Parent;
                 PNode p2 = (PNode)sender;
                 var edge = new EventEdge();
+                edge.Pen = new Pen(EventColor);
                 p1.Tag ??= new List<EventEdge>();
                 p2.Tag ??= new List<EventEdge>();
                 ((List<EventEdge>)p1.Tag).Add(edge);
