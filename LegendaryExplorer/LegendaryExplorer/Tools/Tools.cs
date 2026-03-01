@@ -165,6 +165,20 @@ public static class ToolSet
             category = "Toolset Devs",
             description = "SFAR Explorer allows you to explore and extract ME3 DLC archive files (SFAR).",
         });
+
+        set.Add(new Tool
+        {
+            name = "Shader Comparison",
+            type = typeof(ToolsetDev.ShaderComparisonWindow),
+            icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
+            open = () =>
+            {
+                (new ToolsetDev.ShaderComparisonWindow()).Show();
+            },
+            tags = ["utility", "toolsetdev", "shader", "compare", "material", "hlsl"],
+            category = "Toolset Devs",
+            description = "Shader Comparison allows you to compare shaders from two different package files side-by-side, showing decompiled HLSL and parameter bindings from the shader cache."
+        });
 #endif
         #endregion
 
