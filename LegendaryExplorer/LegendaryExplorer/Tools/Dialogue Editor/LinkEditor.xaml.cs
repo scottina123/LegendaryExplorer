@@ -114,13 +114,15 @@ namespace LegendaryExplorer.DialogueEditor
         {
             datagrid_Links.ItemsSource = linkTable;
 
+            var readOnlyBrush = (Brush)FindResource("ReadOnlyColumnTextBrush");
+
             var clnO = new DataGridTextColumn
             {
                 Header = "#",
                 Binding = new Binding(nameof(ReplyChoiceNode.Ordinal)),
                 Width = 30,
                 IsReadOnly = true,
-                Foreground = Brushes.DarkSlateGray
+                Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnO);
 
@@ -152,18 +154,35 @@ namespace LegendaryExplorer.DialogueEditor
                     Binding = new Binding(nameof(ReplyChoiceNode.ReplyLine)),
                     IsReadOnly = true,
                     Width = 120,
-                    Foreground = Brushes.DarkSlateGray
+                    Foreground = readOnlyBrush
                 };
                 datagrid_Links.Columns.Add(clnC);
 
-                var clnD = new DataGridComboBoxColumn
+                var clnD = new DataGridTemplateColumn
                 {
                     Header = "GUI Category",
-                    ItemsSource = GetReplyCategoryValues(),
-                    SelectedItemBinding = new Binding(nameof(ReplyChoiceNode.RCategory)),
-                    IsReadOnly = false,
                     Width = 150
                 };
+
+                var categoryValues = GetReplyCategoryValues();
+
+                // CellTemplate: display the current value as text
+                var cellTemplate = new DataTemplate();
+                var cellTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+                cellTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyChoiceNode.RCategory)));
+                cellTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+                cellTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
+                cellTemplate.VisualTree = cellTextBlock;
+                clnD.CellTemplate = cellTemplate;
+
+                // CellEditingTemplate: show a ComboBox when editing
+                var editTemplate = new DataTemplate();
+                var cellComboBox = new FrameworkElementFactory(typeof(ComboBox));
+                cellComboBox.SetValue(ComboBox.ItemsSourceProperty, categoryValues);
+                cellComboBox.SetBinding(ComboBox.SelectedItemProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+                cellComboBox.SetValue(ComboBox.IsDropDownOpenProperty, true);
+                editTemplate.VisualTree = cellComboBox;
+                clnD.CellEditingTemplate = editTemplate;
                 clnB.FontWeight = FontWeights.Bold;
                 datagrid_Links.Columns.Add(clnD);
             }
@@ -174,7 +193,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Binding = new Binding(nameof(ReplyChoiceNode.TgtFireCnd)),
                 IsReadOnly = true,
                 Width = 80,
-                Foreground = Brushes.DarkSlateGray
+                Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnE);
 
@@ -184,7 +203,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Binding = new Binding(nameof(ReplyChoiceNode.TgtCondition)),
                 IsReadOnly = true,
                 Width = 65,
-                Foreground = Brushes.DarkSlateGray
+                Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnF);
 
@@ -194,7 +213,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Binding = new Binding(nameof(ReplyChoiceNode.TgtSpeaker)),
                 IsReadOnly = true,
                 Width = 100,
-                Foreground = Brushes.DarkSlateGray
+                Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnH);
 
@@ -203,7 +222,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Header = "Target Line",
                 Binding = new Binding(nameof(ReplyChoiceNode.TgtLine)),
                 IsReadOnly = true,
-                Foreground = Brushes.DarkSlateGray
+                Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnG);
 

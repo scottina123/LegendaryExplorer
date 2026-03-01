@@ -1298,6 +1298,12 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     
     <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
     <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#FF3E7B98"/>
+
+    <!-- Icon foreground color - used for FontAwesome icons in tool buttons -->
+    <SolidColorBrush x:Key="IconForegroundBrush" Color="White"/>
+
+    <!-- Read-only column text color - used for secondary/read-only DataGrid columns -->
+    <SolidColorBrush x:Key="ReadOnlyColumnTextBrush" Color="#FFB0B0B0"/>
     
     <!-- Expander Toggle Button style for dark theme -->
     <Style x:Key="ExpanderToggleButtonStyle" TargetType="{x:Type ToggleButton}">

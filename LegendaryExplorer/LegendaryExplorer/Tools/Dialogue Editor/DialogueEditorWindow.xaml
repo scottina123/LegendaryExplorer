@@ -482,7 +482,7 @@
                                                 DockPanel.Dock="Right">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                         <TextBlock Name="Convo_UID" Text="{Binding Path=SelectedConv.UIndex}"
@@ -511,7 +511,7 @@
                                                 Padding="2" ToolTip="Open the Actor's level in Package Editor">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                         <Button Name="OpenLevelSeqEd_Button" Grid.Column="1"
@@ -519,7 +519,7 @@
                                                 Padding="3" ToolTip="Open the Actor's level in Sequence Editor">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                     </Grid>
@@ -538,7 +538,7 @@
                                             ToolTip="Open this dialogue's sequence">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <TextBlock Text="" FontSize="10" />
@@ -564,7 +564,7 @@
                                             ToolTip="Open In Sound Explorer">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <TextBlock Text="" FontSize="10" />
@@ -590,7 +590,7 @@
                                             ToolTip="Open Non-speaker's AnimSet in FaceFX Editor">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <TextBlock Text="" />
@@ -624,14 +624,14 @@
                                             ToolTip="Add a new script">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <Button Name="ScriptDeleteButton" Command="{Binding ScriptDeleteCommand}"
                                             Padding="3" Grid.Column="2" Margin="2" ToolTip="Delete selected script">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                 </Grid>
@@ -689,7 +689,7 @@
                                             ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <TextBlock Text="" FontSize="10" />
@@ -719,7 +719,7 @@
                                             ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
                                         <Button.Content>
                                             <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="DarkBlue" />
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                         </Button.Content>
                                     </Button>
                                     <TextBlock Text="" />
@@ -837,7 +837,7 @@
                                                         ToolTip="Open this conditional in the Conditionals Editor, or this bool in the Plot Database">
                                                     <Button.Content>
                                                         <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
-                                                                         Foreground="DarkBlue" />
+                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
                                                     </Button.Content>
                                                 </Button>
                                                 <TextBlock Name="Node_Text_Cnd" Text="Conditional :" FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
@@ -873,7 +873,7 @@
                                                         ToolTip="Open this transition in the Plot Editor">
                                                     <Button.Content>
                                                         <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
-                                                                         Foreground="DarkBlue" />
+                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
                                                     </Button.Content>
                                                 </Button>
                                                 <TextBlock Text="Transition:  " FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
@@ -919,7 +919,7 @@
                                                         ToolTip="Open this line's interpdata in Package editor">
                                                     <Button.Content>
                                                         <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                         Foreground="DarkBlue" />
+                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
                                                     </Button.Content>
                                                 </Button>
                                                 <Button Name="OpenLineSE_Button" Command="{Binding OpenInCommand}"
@@ -927,7 +927,7 @@
                                                         ToolTip="Open this line's sequence">
                                                     <Button.Content>
                                                         <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16"
-                                                                         Height="16" Foreground="DarkBlue" />
+                                                                         Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                     </Button.Content>
                                                 </Button>
                                                 <Button Name="OpenLineIE_Button" Command="{Binding OpenInCommand}"
@@ -935,7 +935,7 @@
                                                         DockPanel.Dock="Right" ToolTip="Open this line in interpeditor">
                                                     <Button.Content>
                                                         <fa:ImageAwesome Icon="Solid_SlidersH" Width="16" Height="16"
-                                                                         Foreground="DarkBlue" />
+                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
                                                     </Button.Content>
                                                 </Button>
                                                 <TextBlock
@@ -1078,7 +1078,7 @@
                                                             DockPanel.Dock="Right">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                             Foreground="DarkBlue" />
+                                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <Button Name="Open_WwStreamM_Button" Padding="3"
@@ -1088,7 +1088,7 @@
                                                             ToolTip="Open In Sound Explorer">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
-                                                                             Height="16" Foreground="DarkBlue" />
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <TextBlock
@@ -1107,7 +1107,7 @@
                                                             ToolTip="Open this line in FaceFX Editor">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
-                                                                             Height="16" Foreground="DarkBlue" />
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <TextBlock
@@ -1132,7 +1132,7 @@
                                                             DockPanel.Dock="Right">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                             Foreground="DarkBlue" />
+                                                                             Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <Button Name="Open_WwStreamF_Button" Padding="3"
@@ -1142,7 +1142,7 @@
                                                             ToolTip="Open this stream in Soundplorer">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
-                                                                             Height="16" Foreground="DarkBlue" />
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <TextBlock
@@ -1161,7 +1161,7 @@
                                                             ToolTip="Open this line in FaceFX Editor">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
-                                                                             Height="16" Foreground="DarkBlue" />
+                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                         </Button.Content>
                                                     </Button>
                                                     <TextBlock
@@ -1196,7 +1196,7 @@
                                                 IsEnabled="True" Grid.Column="2" Margin="2" ToolTip="Add a new start">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                         <Button Name="StartDeleteButton" Command="{Binding StartDeleteCommand}"
@@ -1204,7 +1204,7 @@
                                                 Margin="2" ToolTip="Delete selected start">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                         <Button Name="StartUpButton" Command="{Binding StartUpCommand}"
@@ -1213,7 +1213,7 @@
                                                 ToolTip="Move selected start up">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_ArrowCircleUp" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                         <Button Name="StartDownButton" Command="{Binding StartDownCommand}"
@@ -1222,7 +1222,7 @@
                                                 ToolTip="Move selected start down">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_ArrowCircleDown" Width="16" Height="16"
-                                                                 Foreground="DarkBlue" />
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
                                     </Grid>
@@ -1287,7 +1287,7 @@
                                 Padding="3" DockPanel.Dock="Right" IsEnabled="True" Grid.Column="2" Margin="2">
                             <Button.Content>
                                 <fa:ImageAwesome Icon="Solid_ArrowCircleUp" Width="16" Height="16"
-                                                 Foreground="DarkBlue" />
+                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                             </Button.Content>
                         </Button>
                         <Button Name="SpkrDownButton" Command="{Binding SpeakerMoveDownCommand}"
@@ -1295,7 +1295,7 @@
                                 Grid.Column="3" Margin="2">
                             <Button.Content>
                                 <fa:ImageAwesome Icon="Solid_ArrowCircleDown" Width="16" Height="16"
-                                                 Foreground="DarkBlue" />
+                                                 Foreground="{DynamicResource IconForegroundBrush}" />
                             </Button.Content>
                         </Button>
                     </Grid>

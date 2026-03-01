@@ -10,6 +10,12 @@
     <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
     <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="Orange"/>
 
+    <!-- Icon foreground color - used for FontAwesome icons in tool buttons -->
+    <SolidColorBrush x:Key="IconForegroundBrush" Color="DarkBlue"/>
+
+    <!-- Read-only column text color - used for secondary/read-only DataGrid columns -->
+    <SolidColorBrush x:Key="ReadOnlyColumnTextBrush" Color="DarkSlateGray"/>
+
     <!-- Soundpanel-specific brushes for light mode -->
     <SolidColorBrush x:Key="AudioEntryTextBrush" Color="DarkBlue"/>
     <SolidColorBrush x:Key="DataChangedBackgroundBrush" Color="Yellow"/>
