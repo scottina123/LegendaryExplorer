@@ -274,6 +274,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
+        public ICommand AddAllAssetsToReferencerCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -339,6 +340,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
+            AddAllAssetsToReferencerCommand = new GenericCommand(AddAllAssetsToReferencer, ObjectReferencerIsSelected);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -3286,6 +3288,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             TryGetSelectedEntry(out IEntry entry);
             return entry?.ClassName == "Package";
         }
+
+        private bool ObjectReferencerIsSelected() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "ObjectReferencer";
+
+        private void AddAllAssetsToReferencer() => PackageEditorExperimentsK.AddAllAssetsToReferencer(this);
 
         private bool ImportIsSelected() => TryGetSelectedImport(out _);
 
