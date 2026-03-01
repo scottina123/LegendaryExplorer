@@ -585,10 +585,10 @@ namespace LegendaryExplorer.DialogueEditor
                 DObj.friendlyColor = Color.FromArgb(100, 149, 237);  // Cornflower blue
                 DObj.hostileColor = Color.FromArgb(205, 92, 92);  // Indian red
                 DObj.connectionColor = Color.White;  // White connection lines for dark mode
-                DObj.entryColor = Color.FromArgb(218, 165, 32);  // Goldenrod
-                DObj.entryPenColor = Color.FromArgb(220, 220, 220);  // Light gray
-                DObj.replyColor = Color.FromArgb(95, 158, 160);  // Cadet blue
-                DObj.replyPenColor = Color.FromArgb(220, 220, 220);  // Light gray
+                DObj.entryColor = Color.FromArgb(75, 0, 130);  // Indigo
+                DObj.entryPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
+                DObj.replyColor = Color.FromArgb(85, 107, 47);  // Dark olive green
+                DObj.replyPenColor = Color.FromArgb(80, 80, 80);  // Dark grey
                 GraphBackgroundColor = Color.FromArgb(30, 30, 30);  // Dark background
                 BoxColor = Color.FromArgb(45, 45, 48);  // VS dark box color
                 DObj.boxTextColor = Color.FromArgb(220, 220, 220);  // Light text
