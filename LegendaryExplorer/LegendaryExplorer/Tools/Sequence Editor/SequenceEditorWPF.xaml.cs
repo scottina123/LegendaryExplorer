@@ -37,6 +37,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -46,14 +47,18 @@ using System.Windows.Threading;
 using Color = System.Drawing.Color;
 using Image = System.Drawing.Image;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.DialogueEditor;
+using LegendaryExplorerCore.Matinee;
 using Xceed.Wpf.Toolkit;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using MessageBoxResult = System.Windows.MessageBoxResult;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
-using WindowStartupLocation = System.Windows.WindowStartupLocation;using LegendaryExplorer.Tools.PackageEditor;
+using WindowStartupLocation = System.Windows.WindowStartupLocation;
 
 namespace LegendaryExplorer.Tools.Sequence_Editor
 {
@@ -67,6 +72,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ObservableCollectionExtended<SObj> SelectedObjects { get; } = new();
         public ObservableCollectionExtended<ExportEntry> SequenceExports { get; } = new();
         public ObservableCollectionExtended<TreeViewEntry> TreeViewRootNodes { get; } = new();
+        public ObservableCollectionExtended<TreeViewEntry> InterpDataTreeNodes { get; } = new();
         public string CurrentFile;
         public string JSONpath;
 
@@ -2695,8 +2701,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             });
             CurrentObjects.Clear();
             ResetTreeView();
+            ClearInterpDataTree();
             graphEditor.Dispose();
             Properties_InterpreterWPF.Dispose();
+            InterpData_InterpreterWPF.Dispose();
             GraphHost.Child = null; //This seems to be required to clear OnChildGotFocus handler from WinFormsHost
             GraphHost.Dispose();
             DataContext = null;
@@ -2909,6 +2917,23 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (SelectedObjects.Count == 1)
             {
                 Properties_InterpreterWPF.LoadExport(SelectedObjects[0].Export);
+
+                var interpData = GetInterpDataForSelectedObject(SelectedObjects[0]);
+                if (interpData != null)
+                {
+                    BuildInterpDataTree(interpData);
+                    InterpDataTab.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    ClearInterpDataTree();
+                    InterpData_InterpreterWPF.UnloadExport();
+                    InterpDataTab.Visibility = Visibility.Collapsed;
+                    if (BottomTabControl.SelectedItem == InterpDataTab)
+                    {
+                        BottomTabControl.SelectedIndex = 0;
+                    }
+                }
             }
             else if (!(Properties_InterpreterWPF.CurrentLoadedExport?.IsSequence() ?? false))
             {
@@ -3818,6 +3843,527 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 Settings.Save();
             }
         }
+
+        #region InterpData Tree
+
+        /// <summary>
+        /// Resolves the InterpData export for the currently selected graph object, if applicable.
+        /// Handles both InterpData directly and SeqAct_Interp (which links to InterpData via its first var link).
+        /// </summary>
+        private ExportEntry GetInterpDataForSelectedObject(SObj obj)
+        {
+            if (obj?.Export == null) return null;
+            if (obj.Export.ClassName == "InterpData") return obj.Export;
+            if (obj.Export.ClassName == "SeqAct_Interp" && obj is SAction action
+                && action.Varlinks.Any() && action.Varlinks[0].Links.Any()
+                && Pcc.IsUExport(action.Varlinks[0].Links[0]))
+            {
+                var linked = Pcc.GetUExport(action.Varlinks[0].Links[0]);
+                if (linked.ClassName == "InterpData") return linked;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Builds the InterpData tree view for the given InterpData export.
+        /// </summary>
+        private void BuildInterpDataTree(ExportEntry interpDataExport)
+        {
+            ClearInterpDataTree();
+
+            if (interpDataExport == null || Pcc == null)
+            {
+                InterpData_InterpreterWPF.UnloadExport();
+                return;
+            }
+
+            var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>());
+            if (root == null)
+            {
+                InterpData_InterpreterWPF.UnloadExport();
+                return;
+            }
+
+            root.IsExpanded = true;
+            InterpDataTreeNodes.Add(root);
+            root.IsSelected = true;
+            InterpData_InterpreterWPF.LoadExport(interpDataExport);
+        }
+
+        private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes)
+        {
+            if (!visitedUIndexes.Add(exportEntry.UIndex))
+            {
+                return null;
+            }
+
+            var node = new TreeViewEntry(exportEntry) { Parent = parent };
+            foreach (var child in Pcc.Exports.Where(x => x.idxLink == exportEntry.UIndex).OrderBy(x => x.UIndex))
+            {
+                var childNode = BuildInterpDataTreeNode(child, node, visitedUIndexes);
+                if (childNode != null)
+                {
+                    node.Sublinks.Add(childNode);
+                }
+            }
+
+            return node;
+        }
+
+        private void ClearInterpDataTree()
+        {
+            foreach (var root in InterpDataTreeNodes.ToList())
+            {
+                foreach (var node in root.FlattenTree())
+                {
+                    node.Dispose();
+                }
+            }
+
+            InterpDataTreeNodes.ClearEx();
+        }
+
+        private ExportEntry GetSelectedInterpDataTreeExport()
+        {
+            return InterpDataTreeView?.SelectedItem is TreeViewEntry { Entry: ExportEntry export } ? export : null;
+        }
+
+        private void InterpDataTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is TreeViewEntry { Entry: ExportEntry export })
+            {
+                InterpData_InterpreterWPF.LoadExport(export);
+            }
+            else
+            {
+                InterpData_InterpreterWPF.UnloadExport();
+            }
+        }
+
+        private void RefreshInterpDataTreePreserveState(int? preferredSelectedUIndex = null)
+        {
+            var expanded = InterpDataTreeNodes
+                .SelectMany(root => root.FlattenTree())
+                .Where(node => node.IsExpanded && node.Entry is ExportEntry)
+                .Select(node => node.UIndex)
+                .ToHashSet();
+
+            int? selectedUIndex = preferredSelectedUIndex;
+            if (!selectedUIndex.HasValue && InterpDataTreeView?.SelectedItem is TreeViewEntry selected && selected.Entry is ExportEntry)
+            {
+                selectedUIndex = selected.UIndex;
+            }
+
+            // Find current InterpData root to rebuild
+            ExportEntry interpDataRoot = null;
+            if (InterpDataTreeNodes.Count > 0 && InterpDataTreeNodes[0].Entry is ExportEntry rootExport)
+            {
+                interpDataRoot = rootExport;
+            }
+
+            BuildInterpDataTree(interpDataRoot);
+
+            TreeViewEntry selectedNode = null;
+            foreach (var node in InterpDataTreeNodes.SelectMany(root => root.FlattenTree()))
+            {
+                if (expanded.Contains(node.UIndex))
+                {
+                    node.IsExpanded = true;
+                }
+
+                if (selectedUIndex.HasValue && node.UIndex == selectedUIndex.Value)
+                {
+                    selectedNode = node;
+                }
+            }
+
+            if (selectedNode != null)
+            {
+                selectedNode.IsSelected = true;
+                selectedNode.ExpandParents();
+            }
+        }
+
+        private void InterpDataTreeView_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not TreeViewItem && source != null)
+            {
+                source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is TreeViewItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+            }
+        }
+
+        private void InterpDataTreeContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu menu)
+            {
+                return;
+            }
+
+            var selectedExport = GetSelectedInterpDataTreeExport();
+            bool isInterpData = selectedExport?.ClassName == "InterpData";
+            bool isInterpTrackMove = selectedExport?.ClassName == "InterpTrackMove";
+
+            SetInterpDataContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
+            SetInterpDataContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
+        }
+
+        private static void SetInterpDataContextMenuItemVisibility(ItemsControl parent, string tag, Visibility visibility)
+        {
+            foreach (var item in parent.Items)
+            {
+                if (item is MenuItem menuItem)
+                {
+                    if ((menuItem.Tag as string) == tag)
+                    {
+                        menuItem.Visibility = visibility;
+                    }
+
+                    if (menuItem.Items.Count > 0)
+                    {
+                        SetInterpDataContextMenuItemVisibility(menuItem, tag, visibility);
+                    }
+                }
+            }
+        }
+
+        private void InterpDataTree_OpenInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetSelectedInterpDataTreeExport() is ExportEntry export)
+            {
+                AllowWindowRefocus = false;
+                var p = new PackageEditorWindow();
+                p.Show();
+                p.LoadFile(export.FileRef.FilePath, export.UIndex);
+                p.Activate();
+            }
+        }
+
+        private void InterpDataTree_OpenInInterpEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetSelectedInterpDataTreeExport() is ExportEntry export)
+            {
+                // Find the InterpData root for this export
+                ExportEntry interpDataExport = export;
+                while (interpDataExport != null && interpDataExport.ClassName != "InterpData")
+                {
+                    interpDataExport = interpDataExport.Parent as ExportEntry;
+                }
+
+                if (interpDataExport != null)
+                {
+                    AllowWindowRefocus = false;
+                    var p = new InterpEditor.InterpEditorWindow();
+                    p.Show();
+                    p.LoadFile(Pcc.FilePath);
+                    p.SelectedInterpData = interpDataExport;
+                }
+            }
+        }
+
+        private void InterpDataTree_CopyUIndex_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetSelectedInterpDataTreeExport() is ExportEntry export)
+            {
+                Clipboard.SetText(export.UIndex.ToString());
+            }
+        }
+
+        private void InterpDataTree_PackageEditorAction_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: string actionName })
+            {
+                return;
+            }
+
+            if (GetSelectedInterpDataTreeExport() is not ExportEntry export)
+            {
+                return;
+            }
+
+            ExecuteInterpDataTreeAction(actionName, export);
+        }
+
+        private void ExecuteInterpDataTreeAction(string actionName, ExportEntry export)
+        {
+            switch (actionName)
+            {
+                case "ViewReferenceGraph":
+                    new ObjectReferenceViewerWindow(export, null).Show();
+                    break;
+                case "AddInterpTrack":
+                    if (!export.IsA("InterpGroup"))
+                    {
+                        MessageBox.Show(this, "Select an InterpGroup to add a track.");
+                        return;
+                    }
+
+                    if (Dialogs.ClassPickerDlg.GetClass(this, MatineeHelper.GetInterpTracks(export.Game), "Choose Track to Add", "Add") is ClassInfo info)
+                    {
+                        ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(export, info.ClassName);
+                        MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
+                        RefreshInterpDataTreePreserveState(trackExport.UIndex);
+                    }
+                    break;
+                case "ShiftInterpTrackMovesInInterpData":
+                    if (export.ClassName == "InterpData")
+                    {
+                        var dialog = new Dialogs.ShiftInterpTrackDialog();
+                        if (dialog.ShowDialog() == true)
+                        {
+                            var interpTrackMoves = export.FileRef.Exports.Where(x => x.ClassName == "InterpTrackMove" && x.IsDescendantOf(export));
+                            foreach (var trackMove in interpTrackMoves)
+                            {
+                                if (!dialog.Parameters.IncludeAnchorObjectMoves)
+                                {
+                                    var moveFrame = trackMove.GetProperty<EnumProperty>("MoveFrame");
+                                    if (moveFrame != null && moveFrame.Value == "IMF_AnchorObject")
+                                    {
+                                        continue;
+                                    }
+                                }
+
+                                PackageEditorExperimentsM.ShiftInterpTrackMove(trackMove, dialog.Parameters);
+                            }
+
+                            RefreshInterpDataTreePreserveState(export.UIndex);
+                        }
+                    }
+                    break;
+                case "ShiftSelectedInterpTrackMove":
+                    if (export.ClassName == "InterpTrackMove")
+                    {
+                        var dialog = new Dialogs.ShiftInterpTrackDialog();
+                        if (dialog.ShowDialog() == true)
+                        {
+                            PackageEditorExperimentsM.ShiftInterpTrackMove(export, dialog.Parameters);
+                            RefreshInterpDataTreePreserveState(export.UIndex);
+                        }
+                    }
+                    break;
+                case "FindReferences":
+                    SetBusy("Finding references...");
+                    Task.Run(() => export.GetEntriesThatReferenceThisOne()).ContinueWith(prevTask =>
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            EndBusy();
+                            var dlg = new ListDialog(
+                                prevTask.Result.SelectMany(kvp => kvp.Value.Select(refName =>
+                                    new EntryStringPair(kvp.Key, $"#{kvp.Key.UIndex} {kvp.Key.ObjectName.Instanced}: {refName}"))).ToList(),
+                                $"{prevTask.Result.Count} Objects that reference #{export.UIndex} {export.InstancedFullPath}",
+                                "There may be additional references to this object in the unparsed binary of some objects",
+                                this);
+                            dlg.Show();
+                        });
+                    });
+                    break;
+                case "Reindex":
+                    if (export.FullPath.StartsWith(UnrealPackageFile.TrashPackageName))
+                    {
+                        MessageBox.Show("Cannot reindex exports that are part of trash package.");
+                        return;
+                    }
+
+                    string prefixToReindex = export.ParentInstancedFullPath;
+                    string objectName = export.ObjectName.Name;
+                    if (MessageBox.Show(
+                            $"Confirm reindexing of all exports named {objectName} within:\n{(string.IsNullOrEmpty(prefixToReindex) ? "Package file root" : prefixToReindex)}",
+                            "Confirm Reindexing", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                    {
+                        int index = 1;
+                        foreach (ExportEntry e in export.FileRef.Exports)
+                        {
+                            if (objectName == e.ObjectName.Name && e.ParentInstancedFullPath == prefixToReindex && !e.IsClass)
+                            {
+                                e.indexValue = index++;
+                            }
+                        }
+                        RefreshInterpDataTreePreserveState(export.UIndex);
+                    }
+                    break;
+                case "ExtractToFile":
+                    SharedPackageTools.ExtractEntryToNewPackage(export, x => IsBusy = x, x => BusyText = x, null, this);
+                    break;
+                case "Clone":
+                {
+                    var newEntry = EntryCloner.CloneEntry(export);
+                    if (ShouldAddToInterpList(export))
+                    {
+                        AddToInterpList(newEntry);
+                    }
+                    RefreshInterpDataTreePreserveState(newEntry?.UIndex);
+                    break;
+                }
+                case "CloneTree":
+                {
+                    var newTreeRoot = EntryCloner.CloneTree(export);
+                    if (ShouldAddToInterpList(export))
+                    {
+                        AddToInterpList(newTreeRoot);
+                    }
+                    RefreshInterpDataTreePreserveState(newTreeRoot?.UIndex);
+                    break;
+                }
+                case "MultiClone":
+                {
+                    var result = PromptDialog.Prompt(this, "How many times do you want to clone this entry?", "Multiple entry cloning", "2", true);
+                    if (int.TryParse(result, out var count) && count > 0)
+                    {
+                        int lastUIndex = export.UIndex;
+                        bool addToInterpList = ShouldAddToInterpList(export);
+                        for (int i = 0; i < count; i++)
+                        {
+                            var newEntry = EntryCloner.CloneEntry(export);
+                            if (addToInterpList)
+                            {
+                                AddToInterpList(newEntry);
+                            }
+                            lastUIndex = newEntry.UIndex;
+                        }
+                        RefreshInterpDataTreePreserveState(lastUIndex);
+                    }
+                    break;
+                }
+                case "MultiCloneTree":
+                {
+                    var result = PromptDialog.Prompt(this, "How many times do you want to clone this tree?", "Multiple tree cloning", "2", true);
+                    if (int.TryParse(result, out var count) && count > 0)
+                    {
+                        int lastUIndex = export.UIndex;
+                        bool addToInterpList = ShouldAddToInterpList(export);
+                        for (int i = 0; i < count; i++)
+                        {
+                            var newTreeRoot = EntryCloner.CloneTree(export);
+                            if (addToInterpList)
+                            {
+                                AddToInterpList(newTreeRoot);
+                            }
+                            lastUIndex = newTreeRoot.UIndex;
+                        }
+                        RefreshInterpDataTreePreserveState(lastUIndex);
+                    }
+                    break;
+                }
+                case "Trash":
+                    if (InterpDataTreeView?.SelectedItem is TreeViewEntry selected)
+                    {
+                        int fallbackUIndex = selected.Parent?.UIndex ?? export.UIndex;
+                        var itemsToTrash = selected.FlattenTree().Select(tv => tv.Entry).Where(x => x is not null).ToList();
+                        EntryPruner.TrashEntries(export.FileRef, itemsToTrash);
+                        RefreshInterpDataTreePreserveState(fallbackUIndex);
+                    }
+                    break;
+                case "SetIndicesInTreeToZero":
+                    if (InterpDataTreeView?.SelectedItem is TreeViewEntry selectedForZero)
+                    {
+                        foreach (var entry in selectedForZero.FlattenTree().Select(tv => tv.Entry).Where(x => x is not null))
+                        {
+                            entry.indexValue = 0;
+                        }
+                        RefreshInterpDataTreePreserveState(selectedForZero.UIndex);
+                    }
+                    break;
+                case "ExportAllData":
+                case "ExportBinaryData":
+                {
+                    bool binaryOnly = actionName == "ExportBinaryData";
+                    var d = new SaveFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin" };
+                    if (d.ShowDialog() == true)
+                    {
+                        File.WriteAllBytes(d.FileName, binaryOnly ? export.GetBinaryData() : export.Data);
+                        MessageBox.Show("Done.");
+                    }
+                    break;
+                }
+                case "ImportAllData":
+                case "ImportBinaryData":
+                {
+                    bool binaryOnly = actionName == "ImportBinaryData";
+                    var d = new OpenFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin" };
+                    if (d.ShowDialog() == true)
+                    {
+                        byte[] data = File.ReadAllBytes(d.FileName);
+                        if (binaryOnly)
+                        {
+                            export.WriteBinary(data);
+                        }
+                        else
+                        {
+                            export.Data = data;
+                        }
+                        MessageBox.Show("Done.");
+                        RefreshInterpDataTreePreserveState(export.UIndex);
+                    }
+                    break;
+                }
+            }
+        }
+
+        private bool ShouldAddToInterpList(IEntry originalEntry)
+        {
+            if (originalEntry.Parent is not ExportEntry parentExport)
+            {
+                return false;
+            }
+
+            if (parentExport.IsA("InterpGroup"))
+            {
+                return MessageBox.Show(this,
+                    "The cloned object is under an InterpGroup. Would you like to add it to the InterpTracks list?",
+                    "Add to InterpTracks",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) == MessageBoxResult.Yes;
+            }
+
+            if (parentExport.IsA("InterpData"))
+            {
+                return MessageBox.Show(this,
+                    "The cloned object is under an InterpData. Would you like to add it to the InterpGroups list?",
+                    "Add to InterpGroups",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) == MessageBoxResult.Yes;
+            }
+
+            return false;
+        }
+
+        private static void AddToInterpList(IEntry newEntry)
+        {
+            if (newEntry.Parent is not ExportEntry parentExport)
+            {
+                return;
+            }
+
+            if (parentExport.IsA("InterpGroup"))
+            {
+                var props = parentExport.GetProperties();
+                var tracksProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks");
+                tracksProp.Add(new ObjectProperty(newEntry));
+                props.AddOrReplaceProp(tracksProp);
+                parentExport.WriteProperties(props);
+            }
+            else if (parentExport.IsA("InterpData"))
+            {
+                var props = parentExport.GetProperties();
+                var groupsProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups") ?? new ArrayProperty<ObjectProperty>("InterpGroups");
+                groupsProp.Add(new ObjectProperty(newEntry));
+                props.AddOrReplaceProp(groupsProp);
+                parentExport.WriteProperties(props);
+            }
+        }
+
+        #endregion
     }
 
     static class SequenceEditorExtensions

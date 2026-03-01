@@ -31,6 +31,36 @@
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
+        <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
+            <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
+            <MenuItem Header="Add InterpTrack to group" Tag="AddInterpTrack" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Shift currently selected InterpTrackMove" Tag="ShiftSelectedInterpTrackMove" Click="InterpDataTree_PackageEditorAction_Click" />
+            <Separator />
+            <MenuItem Header="Find references" Tag="FindReferences" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Reindex objects with this name" Tag="Reindex" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Extract to file" Tag="ExtractToFile" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Clone" Tag="Clone" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Clone Tree" Tag="CloneTree" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Multi-cloning">
+                <MenuItem Header="Multi-clone entry" Tag="MultiClone" Click="InterpDataTree_PackageEditorAction_Click" />
+                <MenuItem Header="Multi-clone Tree" Tag="MultiCloneTree" Click="InterpDataTree_PackageEditorAction_Click" />
+            </MenuItem>
+            <MenuItem Header="Trash entry and children" Tag="Trash" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Set all object indexes in this tree to 0" Tag="SetIndicesInTreeToZero" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Export...">
+                <MenuItem Header="Complete export data" Tag="ExportAllData" Click="InterpDataTree_PackageEditorAction_Click" />
+                <MenuItem Header="Binary data only" Tag="ExportBinaryData" Click="InterpDataTree_PackageEditorAction_Click" />
+            </MenuItem>
+            <MenuItem Header="Import...">
+                <MenuItem Header="Complete export data*" Tag="ImportAllData" Click="InterpDataTree_PackageEditorAction_Click" />
+                <MenuItem Header="Binary data only*" Tag="ImportBinaryData" Click="InterpDataTree_PackageEditorAction_Click" />
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
+            <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
+        </ContextMenu>
         <ContextMenu x:Key="nodeContextMenu" Closed="ContextMenu_Closed">
             <MenuItem Header="Goto sequence" Name="sequenceRefGotoMenuItem" Click="GotoSequenceReference_Clicked" />
             <MenuItem Header="Extract sequence (EXPERIMENTAL)" Name="extractSequenceMenuItem" Click="ExtractSequence_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
@@ -479,9 +509,59 @@
                     </TreeView>
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                     Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
-                    <exportLoaderControls:InterpreterExportLoader x:Name="Properties_InterpreterWPF" Grid.Row="0" Grid.Column="2"
-                                            Grid.ColumnSpan="2" HideHexBox="True"
-                                            Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    <TabControl x:Name="BottomTabControl" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
+                                Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}">
+                        <TabItem Header="Properties">
+                            <exportLoaderControls:InterpreterExportLoader x:Name="Properties_InterpreterWPF" HideHexBox="True" />
+                        </TabItem>
+                        <TabItem Header="InterpData" x:Name="InterpDataTab">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="300" />
+                                    <ColumnDefinition Width="5" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TreeView x:Name="InterpDataTreeView" Grid.Column="0" FontFamily="Consolas"
+                                          ItemsSource="{Binding InterpDataTreeNodes}"
+                                          SelectedItemChanged="InterpDataTreeView_SelectedItemChanged"
+                                          PreviewMouseRightButtonDown="InterpDataTreeView_PreviewMouseRightButtonDown"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          ContextMenu="{StaticResource interpDataTreeContextMenu}">
+                                    <TreeView.Resources>
+                                        <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}"
+                                                                  ItemsSource="{Binding Sublinks}">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Bottom"
+                                                           Text="{Binding SubText}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="{Binding SubText, Converter={StaticResource NullVisibilityConverter}}" />
+                                                <TextBlock Text="{Binding DisplayName}" />
+                                            </DockPanel>
+                                        </HierarchicalDataTemplate>
+                                    </TreeView.Resources>
+                                    <TreeView.ItemContainerStyle>
+                                        <Style TargetType="{x:Type TreeViewItem}">
+                                            <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
+                                            <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="True">
+                                                    <Setter Property="Background" Value="#50D4A020" />
+                                                    <Setter Property="ToolTip" Value="This export has been modified but the file has not yet been saved" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TreeView.ItemContainerStyle>
+                                </TreeView>
+                                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
+                                <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF" Grid.Column="2" HideHexBox="True" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </Grid>
                 <Grid Grid.Column="0" Grid.Row="0" Name="graphGrid">
                     <Grid.ColumnDefinitions>
