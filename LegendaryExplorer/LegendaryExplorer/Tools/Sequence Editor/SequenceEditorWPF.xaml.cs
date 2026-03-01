@@ -158,6 +158,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+            ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
         }
         
         /// <summary>
@@ -182,6 +183,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
+            ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
 
             // Refresh the view if there are objects loaded
             if (CurrentObjects.Any())
@@ -1933,6 +1935,24 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private Color _varLinkColor = Color.Black;
+        public Color VarLinkColor
+        {
+            get => _varLinkColor;
+            set
+            {
+                if (_varLinkColor != value)
+                {
+                    _varLinkColor = value;
+                    SObj.VarLinkColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
 
 
 
@@ -1958,6 +1978,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 _commentTextColor = Color.FromArgb(87, 166, 74);
                 _boxTextColor = Color.FromArgb(220, 220, 220);
                 _connectionColor = Color.White;  // White connection lines for dark mode
+                _varLinkColor = Color.White;  // White var link lines for dark mode
             }
             else
             {
@@ -1968,6 +1989,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 _commentTextColor = Color.FromArgb(25, 25, 112);
                 _boxTextColor = Color.FromArgb(255, 255, 255);
                 _connectionColor = Color.Black;  // Black connection lines for light mode
+                _varLinkColor = Color.Black;  // Black var link lines for light mode
             }
 
             // Apply to static properties used by SObj
@@ -1976,6 +1998,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SObj.CommentTextColor = _commentTextColor;
             SObj.BoxTextColor = _boxTextColor;
             SObj.ConnectionColor = _connectionColor;
+            SObj.VarLinkColor = _varLinkColor;
         }
 
         private void saveView(bool toFile = true)
@@ -3786,6 +3809,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     case "ClrPcker_Connection":
                         ConnectionColor = newColor;
                         Settings.SequenceEditor_ConnectionColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_VarLink":
+                        VarLinkColor = newColor;
+                        Settings.SequenceEditor_VarLinkColor = newColor.ToArgb();
                         break;
                 }
                 Settings.Save();

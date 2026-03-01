@@ -112,6 +112,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _sequenceeditor_connectioncolor;
             set => SetProperty(ref _sequenceeditor_connectioncolor, value);
         }
+        private static int _sequenceeditor_varlinkcolor = -16777216; // Black (0xFF000000)
+        public static int SequenceEditor_VarLinkColor {
+            get => _sequenceeditor_varlinkcolor;
+            set => SetProperty(ref _sequenceeditor_varlinkcolor, value);
+        }
         private static string _sequenceeditor_favorites_me1 = "Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent";
         public static string SequenceEditor_Favorites_ME1 {
             get => _sequenceeditor_favorites_me1;
@@ -504,6 +509,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             SequenceEditor_CommentTextColor = TryGetSetting(settingsJson, "sequenceeditor_commenttextcolor", -5978694);
             SequenceEditor_BoxTextColor = TryGetSetting(settingsJson, "sequenceeditor_boxtextcolor", -1);
             SequenceEditor_ConnectionColor = TryGetSetting(settingsJson, "sequenceeditor_connectioncolor", -16777216);
+            SequenceEditor_VarLinkColor = TryGetSetting(settingsJson, "sequenceeditor_varlinkcolor", -16777216);
             SequenceEditor_Favorites_ME1 = TryGetSetting(settingsJson, "sequenceeditor_favorites_me1", "Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent");
             SequenceEditor_Favorites_ME2 = TryGetSetting(settingsJson, "sequenceeditor_favorites_me2", "Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent");
             SequenceEditor_Favorites_ME3 = TryGetSetting(settingsJson, "sequenceeditor_favorites_me3", "Sequence;SeqAct_Interp;InterpData;BioSeqAct_EndCurrentConvNode;BioSeqEvt_ConvNode;BioSeqVar_ObjectFindByTag;SeqVar_Object;SeqAct_ActivateRemoteEvent;SeqEvent_SequenceActivated;SeqAct_Delay;SeqAct_Gate;BioSeqAct_PMCheckState;BioSeqAct_PMExecuteTransition;SeqAct_FinishSequence;SeqEvent_RemoteEvent");
@@ -603,6 +609,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["sequenceeditor_titleboxcolor"] = SequenceEditor_TitleBoxColor.ToString();
             settingsJson["sequenceeditor_commenttextcolor"] = SequenceEditor_CommentTextColor.ToString();
             settingsJson["sequenceeditor_boxtextcolor"] = SequenceEditor_BoxTextColor.ToString();
+            settingsJson["sequenceeditor_connectioncolor"] = SequenceEditor_ConnectionColor.ToString();
+            settingsJson["sequenceeditor_varlinkcolor"] = SequenceEditor_VarLinkColor.ToString();
             settingsJson["sequenceeditor_favorites_me1"] = SequenceEditor_Favorites_ME1.ToString();
             settingsJson["sequenceeditor_favorites_me2"] = SequenceEditor_Favorites_ME2.ToString();
             settingsJson["sequenceeditor_favorites_me3"] = SequenceEditor_Favorites_ME3.ToString();

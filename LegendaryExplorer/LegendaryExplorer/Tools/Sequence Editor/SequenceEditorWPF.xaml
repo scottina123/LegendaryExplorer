@@ -182,6 +182,9 @@
                         <TextBlock Text="Connection Line Color: " ToolTip="Base connection line color for output links" />
                         <xctk:ColorPicker Name="ClrPcker_Connection" SelectedColorChanged="ColorPicker_SelectedColorChanged"
                                           HorizontalAlignment="Stretch" ToolTip="Base connection line color for output links" />
+                        <TextBlock Text="Variable Link Color: " ToolTip="Default color for untyped variable link connections (Extern, etc.)" />
+                        <xctk:ColorPicker Name="ClrPcker_VarLink" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" ToolTip="Default color for untyped variable link connections (Extern, etc.)" />
                     </MenuItem>
                 </MenuItem>
 

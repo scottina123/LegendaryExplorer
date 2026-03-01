@@ -67,7 +67,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
           protected static readonly Pen SelectedPen = new(Color.FromArgb(255, 255, 0));
           private static Color _boxTextColor = Color.FromArgb(0, 0, 0); // Black text
           private static Color _connectionColor = Color.Black; // Base connection line color (black for light mode, white for dark mode)
-          protected static bool draggingOutlink;
+          private static Color _varLinkColor = Color.Black; // Default color for untyped variable links (Extern, etc.)
+           protected static bool draggingOutlink;
           protected static bool draggingVarlink;
           protected static bool draggingEventlink;
           protected static PNode DragTarget;
@@ -101,6 +102,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
          {
              get => _connectionColor;
              set => _connectionColor = value;
+         }
+
+         public static Color VarLinkColor
+         {
+             get => _varLinkColor;
+             set => _varLinkColor = value;
          }
 
          protected IMEPackage Pcc;
@@ -356,7 +363,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 VarTypes.String => StringColor,
                 VarTypes.Vector => VectorColor,
                 VarTypes.Rotator => RotatorColor,
-                _ => Color.Black
+                _ => _varLinkColor
             };
         }
 
@@ -867,6 +874,10 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                             if (destVar.ChildrenCount > 1)
                             {
                                 edge.Pen = ((PPath)destVar[1]).Pen;
+                            }
+                            else
+                            {
+                                edge.Pen = new Pen(VarLinkColor);
                             }
                             p1.Tag ??= new List<VarEdge>();
                             ((List<VarEdge>)p1.Tag).Add(edge);
