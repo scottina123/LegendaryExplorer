@@ -479,6 +479,19 @@ namespace LegendaryExplorer.SharedUI
                                     }
                                 }
                                 break;
+                            case "BioEvtSysTrackVOElements":
+                                {
+                                    var strRefProp = ee.GetProperty<IntProperty>("m_nStrRefID");
+                                    if (strRefProp != null && strRefProp.Value != 0)
+                                    {
+                                        var tlkStr = TLKManagerWPF.GlobalFindStrRefbyID(strRefProp.Value, ee.FileRef);
+                                        if (tlkStr != "No Data")
+                                        {
+                                            _subtext = tlkStr;
+                                        }
+                                    }
+                                }
+                                break;
                         }
 
                         {
