@@ -660,7 +660,6 @@ namespace LegendaryExplorer.DialogueEditor
             titleBox.Y = 0;
             float h = titleBox.Height + 2;
             inputLinkBox.TranslateBy(0, h);
-            outLinkBox.TranslateBy(w, h);
             h += starty + 8;
 
             //Inside Text +  Box
@@ -697,6 +696,7 @@ namespace LegendaryExplorer.DialogueEditor
             h += insidetext.Height;
             float iw = insidetext.Width;
             if (iw > w) { w = iw; }
+            outLinkBox.TranslateBy(w, titleBox.Height + 2);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
             box.Brush = nodeBrush;
             box.Pen = outlinePen;
