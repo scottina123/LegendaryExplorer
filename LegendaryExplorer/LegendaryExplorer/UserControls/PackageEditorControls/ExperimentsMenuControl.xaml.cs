@@ -858,6 +858,25 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             dialog.ShowDialog();
         }
 
+        private void GestureAnimationImporter_Click(object sender, RoutedEventArgs e)
+        {
+            var peWindow = GetPEWindow();
+            if (!peWindow.TryGetSelectedExport(out var export))
+            {
+                MessageBox.Show("Please select a BioEvtSysTrackGesture export.", "No export selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (export.ClassName != "BioEvtSysTrackGesture")
+            {
+                MessageBox.Show("Selected export is not a BioEvtSysTrackGesture.", "Invalid export type", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Dialogs.GestureAnimationImporterDialog(export, peWindow);
+            dialog.ShowDialog();
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))

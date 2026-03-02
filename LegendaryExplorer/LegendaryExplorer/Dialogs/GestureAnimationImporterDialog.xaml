@@ -1,0 +1,273 @@
+<Window x:Class="LegendaryExplorer.Dialogs.GestureAnimationImporterDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
+        Title="Gesture Animation Importer" Width="1250" Height="700"
+        WindowStartupLocation="CenterOwner"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Closing="Window_Closing">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top: Target Info -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock Text="Import animations into BioEvtSysTrackGesture" FontWeight="Bold" FontSize="14"/>
+            <TextBlock Text="{Binding TargetExportInfo}" Opacity="0.7" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <!-- Middle: Split between animation list and gesture editor -->
+        <TabControl Grid.Row="1">
+            <!-- Tab 1: Import Animation -->
+            <TabItem Header="Import Animation">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300" MinWidth="200"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Animation Preview -->
+                    <DockPanel Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top" Text="Animation Preview" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Mesh: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="PreviewMeshComboBox" DisplayMemberPath="MeshName" SelectionChanged="PreviewMesh_SelectionChanged"/>
+                        </DockPanel>
+                        <sharedToolControls:AnimationPreviewControl x:Name="AnimPreviewControl"/>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <!-- Middle: Animation List -->
+                    <DockPanel Grid.Column="2">
+                        <TextBlock DockPanel.Dock="Top" Text="Animations from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
+                        </DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding AnimationStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
+                        <ListBox x:Name="AnimationListBox" 
+                                 ItemsSource="{Binding FilteredAnimations}"
+                                 SelectedItem="{Binding SelectedAnimation}"
+                                 SelectionChanged="AnimationListBox_SelectionChanged"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding AnimSequence}" FontWeight="DemiBold"/>
+                                        <TextBlock Opacity="0.7" FontSize="10">
+                                            <Run Text="{Binding SeqName, Mode=OneWay}"/>
+                                            <Run Text=" | "/>
+                                            <Run Text="{Binding AnimData, Mode=OneWay}"/>
+                                            <Run Text=" | "/>
+                                            <Run Text="{Binding Length, StringFormat={}{0:F2}s, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <!-- Right: Import Settings -->
+                    <DockPanel Grid.Column="4" Margin="5,0,0,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Import Settings" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- Group Selection -->
+                                <GroupBox Header="Animation Property Groups" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="Select which property groups this animation should be assigned to:" TextWrapping="Wrap" Margin="0,0,0,8" Opacity="0.7"/>
+                                        <CheckBox x:Name="CbPoseGroup" Content="Pose (nmPoseSet / nmPoseAnim)" Margin="0,2" IsChecked="True"/>
+                                        <CheckBox x:Name="CbGestureGroup" Content="Gesture (nmGestureSet / nmGestureAnim)" Margin="0,2"/>
+                                        <CheckBox x:Name="CbTransitionGroup" Content="Transition (nmTransitionSet / nmTransitionAnim)" Margin="0,2"/>
+                                        <CheckBox x:Name="CbStartingPoseGroup" Content="Starting Pose (nmStartingPoseSet / nmStartingPoseAnim)" Margin="0,2"/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Gesture Key Settings -->
+                                <GroupBox Header="Gesture Key Settings" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,2">
+                                            <TextBlock Text="Key Time: " VerticalAlignment="Center" DockPanel.Dock="Left" Width="80"/>
+                                            <xctk:SingleUpDown x:Name="KeyTimeUpDown" Value="0" Minimum="0" Increment="0.1" FormatString="F2"/>
+                                        </DockPanel>
+                                        <DockPanel Margin="0,2">
+                                            <TextBlock Text="Play Rate: " VerticalAlignment="Center" DockPanel.Dock="Left" Width="80"/>
+                                            <xctk:SingleUpDown x:Name="PlayRateUpDown" Value="1" Minimum="0" Increment="0.1" FormatString="F2"/>
+                                        </DockPanel>
+                                        <CheckBox x:Name="CbOneShotAnim" Content="One-Shot Animation" Margin="0,4"/>
+                                        <CheckBox x:Name="CbSnapToPose" Content="Snap To Pose" Margin="0,2"/>
+                                        <CheckBox x:Name="CbPlayUntilNext" Content="Play Until Next" Margin="0,2"/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Selected Animation Info -->
+                                <GroupBox Header="Selected Animation Details" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding SelectedAnimationDetails}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <Button Content="Import Animation and Add Gesture" 
+                                        Padding="8,4" Margin="0,4"
+                                        Click="ImportAnimation_Click"
+                                        IsEnabled="{Binding CanImport}"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 2: Edit Existing Gestures -->
+            <TabItem Header="Edit Existing Gestures">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Gesture list -->
+                    <DockPanel Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top" Text="Gestures (m_aGestures)" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <Button DockPanel.Dock="Bottom" Content="Remove Selected Gesture" Margin="0,4,0,0" Click="RemoveGesture_Click"/>
+                        <ListBox x:Name="GestureListBox" 
+                                 ItemsSource="{Binding GestureEntries}"
+                                 SelectedItem="{Binding SelectedGestureEntry}"
+                                 SelectionChanged="GestureListBox_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <!-- Right: Gesture property editor -->
+                    <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Margin="5,0,0,0">
+                        <StackPanel IsEnabled="{Binding HasSelectedGesture}">
+                            <TextBlock Text="Gesture Properties" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                            <GroupBox Header="Pose" Padding="8" Margin="0,0,0,5">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="nmPoseSet:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding EditPoseSet}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="nmPoseAnim:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EditPoseAnim}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <Button Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Content="Browse..." Margin="4,2" Padding="6,2" VerticalAlignment="Center" Click="BrowsePoseAnim_Click"/>
+                                    <Button Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Content="Clear" Margin="2,2" Padding="6,2" VerticalAlignment="Center" Click="ClearPoseAnim_Click"/>
+                                </Grid>
+                            </GroupBox>
+
+                            <GroupBox Header="Gesture" Padding="8" Margin="0,0,0,5">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="nmGestureSet:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding EditGestureSet}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="nmGestureAnim:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EditGestureAnim}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <Button Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Content="Browse..." Margin="4,2" Padding="6,2" VerticalAlignment="Center" Click="BrowseGestureAnim_Click"/>
+                                    <Button Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Content="Clear" Margin="2,2" Padding="6,2" VerticalAlignment="Center" Click="ClearGestureAnim_Click"/>
+                                </Grid>
+                            </GroupBox>
+
+                            <GroupBox Header="Transition" Padding="8" Margin="0,0,0,5">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="nmTransitionSet:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding EditTransitionSet}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="nmTransitionAnim:" VerticalAlignment="Center" Margin="0,2,8,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EditTransitionAnim}" VerticalAlignment="Center" Margin="0,2"/>
+                                    <Button Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Content="Browse..." Margin="4,2" Padding="6,2" VerticalAlignment="Center" Click="BrowseTransitionAnim_Click"/>
+                                    <Button Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Content="Clear" Margin="2,2" Padding="6,2" VerticalAlignment="Center" Click="ClearTransitionAnim_Click"/>
+                                </Grid>
+                            </GroupBox>
+
+                            <GroupBox Header="Playback" Padding="8" Margin="0,0,0,5">
+                                <StackPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fPlayRate:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditPlayRate, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fStartOffset:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditStartOffset, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fEndOffset:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditEndOffset, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fStartBlendDuration:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditStartBlendDuration, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fEndBlendDuration:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditEndBlendDuration, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="fWeight:" VerticalAlignment="Center" DockPanel.Dock="Left" Width="120"/>
+                                        <TextBox Text="{Binding EditWeight, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DockPanel>
+                                    <CheckBox Content="bOneShotAnim" IsChecked="{Binding EditOneShotAnim}" Margin="0,4"/>
+                                    <CheckBox Content="bSnapToPose" IsChecked="{Binding EditSnapToPose}" Margin="0,2"/>
+                                    <CheckBox Content="bPlayUntilNext" IsChecked="{Binding EditPlayUntilNext}" Margin="0,2"/>
+                                    <CheckBox Content="bUseDynAnimSets" IsChecked="{Binding EditUseDynAnimSets}" Margin="0,2"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <Button Content="Save Changes to Selected Gesture" Padding="8,4" Margin="0,4" Click="SaveGesture_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Bottom: Status / Close -->
+        <DockPanel Grid.Row="2" Margin="0,8,0,0">
+            <Button Content="Close" DockPanel.Dock="Right" Padding="16,4" Click="Close_Click"/>
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Text="{Binding StatusMessage}" Opacity="0.7"/>
+        </DockPanel>
+    </Grid>
+</Window>
