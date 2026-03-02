@@ -726,6 +726,17 @@ namespace LegendaryExplorer.DialogueEditor
             box.Brush = nodeBrush;
             box.Pen = outlinePen;
             box.Pickable = false;
+
+            bool hasTlkSection = !string.IsNullOrWhiteSpace(Node.Line) || Node.LineStrRef >= 0;
+            if (hasTlkSection)
+            {
+                float dividerY = titleBox.Height + starty + 2;
+                PPath tlkDivider = PPath.CreateLine(4, dividerY, w - 4, dividerY);
+                tlkDivider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+                tlkDivider.Pickable = false;
+                box.AddChild(tlkDivider);
+            }
+
             insidetext.TranslateBy((w - iw) / 2, 0);
             box.AddChild(insidetext);
             Bounds = new RectangleF(0, 0, w, h);
