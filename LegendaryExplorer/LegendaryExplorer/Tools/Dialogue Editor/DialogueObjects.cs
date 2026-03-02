@@ -617,7 +617,10 @@ namespace LegendaryExplorer.DialogueEditor
                     outLinkText = $"{outLinkText} {Outlinks[i].Detail}";
                 }
 
-                DText t2 = new DText(outLinkText);
+                Color outLinkTextColor = Outlinks[i].RCat == EReplyCategory.REPLY_CATEGORY_DEFAULT
+                    ? boxTextColor
+                    : getColor(Outlinks[i].RCat);
+                DText t2 = new DText(outLinkText, outLinkTextColor);
                 if (!string.IsNullOrWhiteSpace(Outlinks[i].Detail))
                 {
                     t2.ConstrainWidthToTextWidth = false;
