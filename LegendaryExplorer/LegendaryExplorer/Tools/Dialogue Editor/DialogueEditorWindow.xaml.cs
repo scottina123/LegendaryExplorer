@@ -2021,9 +2021,66 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
 
+            EnsureWaterfallLayoutHasNoOverlaps();
+
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
                 ConvGraphEditor.UpdateEdge(edge);
+            }
+        }
+
+        private void EnsureWaterfallLayoutHasNoOverlaps()
+        {
+            const float overlapPadding = 8f;
+            var positionedNodes = CurrentObjects
+                .Where(o => o is DiagNode or DStart)
+                .OrderBy(o => o.X)
+                .ThenBy(o => o.Y)
+                .ToList();
+
+            var settledNodes = new List<DObj>(positionedNodes.Count);
+            foreach (var node in positionedNodes)
+            {
+                bool moved;
+                int safetyCounter = 0;
+                do
+                {
+                    moved = false;
+                    float shiftDown = 0f;
+                    var nodeBounds = node.GlobalFullBounds;
+
+                    foreach (var settledNode in settledNodes)
+                    {
+                        var settledBounds = settledNode.GlobalFullBounds;
+                        bool horizontalOverlap = nodeBounds.Left < settledBounds.Right + overlapPadding
+                                                 && nodeBounds.Right + overlapPadding > settledBounds.Left;
+                        if (!horizontalOverlap)
+                        {
+                            continue;
+                        }
+
+                        bool verticalOverlap = nodeBounds.Top < settledBounds.Bottom + overlapPadding
+                                               && nodeBounds.Bottom + overlapPadding > settledBounds.Top;
+                        if (!verticalOverlap)
+                        {
+                            continue;
+                        }
+
+                        float thisShift = settledBounds.Bottom + overlapPadding - nodeBounds.Top;
+                        if (thisShift > shiftDown)
+                        {
+                            shiftDown = thisShift;
+                        }
+                    }
+
+                    if (shiftDown > 0)
+                    {
+                        node.OffsetBy(0, shiftDown);
+                        moved = true;
+                    }
+                } while (moved && ++safetyCounter < positionedNodes.Count + 4);
+
+                settledNodes.Add(node);
             }
         }
 
