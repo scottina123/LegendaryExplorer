@@ -734,6 +734,7 @@ namespace LegendaryExplorer.Dialogs
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this
             };
+            CustomWindowChrome.ApplyCustomChrome(pickerWindow);
 
             AnimationRecord selectedAnim = null;
             IMEPackage pickerAnimPcc = null;
