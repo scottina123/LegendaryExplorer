@@ -124,6 +124,7 @@ namespace LegendaryExplorer.DialogueEditor
             public List<int> Links;
             public int InputIndices;
             public string Desc;
+            public string Detail;
             public List<DiagEdEdge> Edges;
             public EReplyCategory RCat;
         }
@@ -610,7 +611,19 @@ namespace LegendaryExplorer.DialogueEditor
             float outW = 0;
             for (int i = 0; i < Outlinks.Count; i++)
             {
-                DText t2 = new DText(Outlinks[i].Desc);
+                string outLinkText = Outlinks[i].Desc;
+                if (!string.IsNullOrWhiteSpace(Outlinks[i].Detail))
+                {
+                    outLinkText = $"{outLinkText} {Outlinks[i].Detail}";
+                }
+
+                DText t2 = new DText(outLinkText);
+                if (!string.IsNullOrWhiteSpace(Outlinks[i].Detail))
+                {
+                    t2.ConstrainWidthToTextWidth = false;
+                    t2.ConstrainHeightToTextHeight = true;
+                    t2.Width = 180;
+                }
                 if (t2.Width + 10 > outW) outW = t2.Width + 10;
                 t2.X = 0 - t2.Width;
                 t2.Y = starty;
@@ -647,11 +660,10 @@ namespace LegendaryExplorer.DialogueEditor
 
             //TitleBox
             string s = $"{Node.SpeakerTag?.DisplayName ?? "Unknown"}";
-            string l = $"{Node.Line}";
             string n = $"E{Node.NodeCount}";
             if (Node.IsReply)
             { n = $"R{Node.NodeCount}"; }
-            float tW = GetTitlePlusLineBox(s, l, n, w);
+            float tW = GetTitlePlusLineBox(s, string.Empty, n, w);
             if (tW > w)
             {
                 w = tW;
@@ -683,7 +695,8 @@ namespace LegendaryExplorer.DialogueEditor
                 string t = Node.ReplyType.ToString().Substring(6);
                 type = $"{t}";
             }
-            string d = $"{Node.LineStrRef}\r\n{plotCnd}{trans}{type}";
+            string spokenLine = string.IsNullOrWhiteSpace(Node.Line) ? string.Empty : $"{Node.Line}\r\n";
+            string d = $"{spokenLine}{Node.LineStrRef}\r\n{plotCnd}{trans}{type}";
 
             DText insidetext = new DText(d, boxTextColor, true)
             {
@@ -694,6 +707,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Y = titleBox.Height + starty + 5,
                 Pickable = false
             };
+            insidetext.Width = MathF.Min(MathF.Max(w - 12, 140), 220);
             h += insidetext.Height;
             float iw = insidetext.Width;
             if (iw > w) { w = iw; }
@@ -923,6 +937,7 @@ namespace LegendaryExplorer.DialogueEditor
                             InputIndices = new int(),
                             Edges = new List<DiagEdEdge>(),
                             Desc = n.ToString(),
+                            Detail = null,
                             RCat = reply.RCategory
                         };
 
@@ -931,34 +946,15 @@ namespace LegendaryExplorer.DialogueEditor
                         l.InputIndices = 0;
 
                         l.Desc = "R" + reply.Index;
+                            if (!OutputNumbers)
+                            {
+                                l.Detail = reply.ReplyLine;
+                            }
                         l.node = CreateActionLinkBox();
                         var linkcolor = getColor(reply.RCategory);
                         l.node.Brush = new SolidBrush(linkcolor);
                         l.node.Pen = new Pen(getColor(reply.RCategory));
                         l.node.Pickable = false;
-                        if (!OutputNumbers)
-                        {
-                            // Use category-specific color for special reply types, otherwise use linkTextColor
-                            var textColor = reply.RCategory switch
-                            {
-                                EReplyCategory.REPLY_CATEGORY_AGREE => agreeColor,
-                                EReplyCategory.REPLY_CATEGORY_DISAGREE => disagreeColor,
-                                EReplyCategory.REPLY_CATEGORY_FRIENDLY => friendlyColor,
-                                EReplyCategory.REPLY_CATEGORY_HOSTILE => hostileColor,
-                                _ => linkTextColor
-                            };
-                            DText paraphrase = new DText(reply.ReplyLine, textColor, false, 0.8f)
-                            {
-                                TextAlignment = StringAlignment.Near,
-                                ConstrainWidthToTextWidth = true,
-                                ConstrainHeightToTextHeight = true,
-                                X = 15,
-                                Y = -8,
-                                Pickable = false
-                            };
-                            l.node.AddChild(paraphrase);
-                            paraphrase.TranslateBy(0, 0);
-                        }
 
                         PPath dragger = CreateActionLinkBox();
                         dragger.Brush = mostlyTransparentBrush;
