@@ -632,6 +632,16 @@ namespace LegendaryExplorer.DialogueEditor
                 Outlinks[i].node.TranslateBy(0, t2.Y + t2.Height / 2);
                 t2.AddChild(Outlinks[i].node);
                 outLinkBox.AddChild(t2);
+
+                if (i < Outlinks.Count - 1)
+                {
+                    float dividerY = t2.Y + t2.Height + 1;
+                    PPath divider = PPath.CreateLine(-t2.Width, dividerY, 0, dividerY);
+                    divider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+                    divider.Pickable = false;
+                    outLinkBox.AddChild(divider);
+                    starty += 3;
+                }
             }
             outLinkBox.Pickable = false;
             float outY = starty;
