@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Globalization;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorerCore.Dialogue;
@@ -23,6 +24,7 @@ namespace LegendaryExplorer.DialogueEditor
     /// </summary>
     public partial class LinkEditor : Window
     {
+        private static readonly IValueConverter ReplyCategoryBrushConverter = new ReplyCategoryToBrushConverter();
         private readonly DialogueEditorWindow ParentWindow;
         private readonly DiagNode Dnode;
         private readonly bool IsReply;
@@ -148,14 +150,20 @@ namespace LegendaryExplorer.DialogueEditor
                 };
                 datagrid_Links.Columns.Add(clnB);
 
-                var clnC = new DataGridTextColumn
+                var clnC = new DataGridTemplateColumn
                 {
                     Header = "GUI Choice Line",
-                    Binding = new Binding(nameof(ReplyChoiceNode.ReplyLine)),
-                    IsReadOnly = true,
-                    Width = 120,
-                    Foreground = readOnlyBrush
+                    Width = 120
                 };
+
+                var choiceLineTemplate = new DataTemplate();
+                var choiceLineTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+                choiceLineTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyChoiceNode.ReplyLine)));
+                choiceLineTextBlock.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryBrushConverter });
+                choiceLineTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+                choiceLineTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
+                choiceLineTemplate.VisualTree = choiceLineTextBlock;
+                clnC.CellTemplate = choiceLineTemplate;
                 datagrid_Links.Columns.Add(clnC);
 
                 var clnD = new DataGridTemplateColumn
@@ -170,6 +178,7 @@ namespace LegendaryExplorer.DialogueEditor
                 var cellTemplate = new DataTemplate();
                 var cellTextBlock = new FrameworkElementFactory(typeof(TextBlock));
                 cellTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyChoiceNode.RCategory)));
+                cellTextBlock.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryBrushConverter });
                 cellTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
                 cellTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
                 cellTemplate.VisualTree = cellTextBlock;
@@ -427,6 +436,31 @@ namespace LegendaryExplorer.DialogueEditor
                 };
             }
             return Enums.GetValues<EReplyCategory>();
+        }
+
+        private sealed class ReplyCategoryToBrushConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var category = value is EReplyCategory eReplyCategory ? eReplyCategory : EReplyCategory.REPLY_CATEGORY_DEFAULT;
+                var color = category switch
+                {
+                    EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => DObj.paraintColor,
+                    EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT => DObj.renintColor,
+                    EReplyCategory.REPLY_CATEGORY_AGREE => DObj.agreeColor,
+                    EReplyCategory.REPLY_CATEGORY_DISAGREE => DObj.disagreeColor,
+                    EReplyCategory.REPLY_CATEGORY_FRIENDLY => DObj.friendlyColor,
+                    EReplyCategory.REPLY_CATEGORY_HOSTILE => DObj.hostileColor,
+                    _ => DObj.connectionColor
+                };
+
+                return new SolidColorBrush(System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B));
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }
