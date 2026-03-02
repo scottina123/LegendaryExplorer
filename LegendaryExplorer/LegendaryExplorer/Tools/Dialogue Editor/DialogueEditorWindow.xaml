@@ -1511,7 +1511,7 @@
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <!--Tab Control -->
-                    <TabControl TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
+                    <TabControl x:Name="BottomViewportTabControl" TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}">
                         <TabControl.Resources>
                             <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource {x:Type TabItem}}">
@@ -1623,6 +1623,84 @@
                                     <exportLoaderControls:Soundpanel x:Name="SoundpanelWPF_M" MiniPlayerMode="True" />
                                 </StackPanel>
                             </Grid>
+                        </TabItem>
+                        <TabItem x:Name="LinkEditorTab" Header="Links">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock x:Name="InlineLinkEditor_LineText" DockPanel.Dock="Top" TextWrapping="WrapWithOverflow" FontSize="12" Margin="5" />
+                                <DockPanel DockPanel.Dock="Top" Margin="0,5,0,0">
+                                    <Button Content="Apply" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Right" Click="InlineLinkEditor_Apply_Click"/>
+                                    <Button Content="Clone to new link" Padding="3" Margin="5,2,5,2" Width="120" DockPanel.Dock="Left" Click="InlineLinkEditor_Clone_Click"/>
+                                    <Button Content="Edit link" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Left" Click="InlineLinkEditor_Edit_Click"/>
+                                </DockPanel>
+                                <DataGrid x:Name="InlineLinkEditor_DataGrid"
+                                          VerticalContentAlignment="Stretch"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                          AutoGenerateColumns="False"
+                                          CanUserSortColumns="False"
+                                          CanUserAddRows="False"
+                                          CanUserDeleteRows="False"
+                                          CellEditEnding="InlineLinkEditor_DataGrid_CellEditEnding">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="Del" Width="35">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Click="InlineLinkEditor_Delete_Click" CommandParameter="{Binding}" Margin="2">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Regular_TrashAlt" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                                        </Button.Content>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Top" Width="35">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Top" Margin="2">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_ArrowUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                                        </Button.Content>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Up" Width="35">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Up" Margin="2">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_AngleUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                                        </Button.Content>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Down" Width="40">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Down" Margin="2">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_AngleDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                                        </Button.Content>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Bottom" Width="49">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Bottom" Margin="2">
+                                                        <Button.Content>
+                                                            <fa:ImageAwesome Icon="Solid_ArrowDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
+                                                        </Button.Content>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
                         </TabItem>
                     </TabControl>
                 </Grid>

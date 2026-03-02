@@ -108,6 +108,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ObservableCollectionExtended<SpeakerExtended> SelectedSpeakerList { get; } = new();
         public ObservableCollectionExtended<SpeakerExtended> ListenersList { get; } = new();
         public ObservableCollectionExtended<TreeViewEntry> InterpDataTreeNodes { get; } = new();
+        public ObservableCollectionExtended<ReplyChoiceNode> InlineLinkEditorLinks { get; } = new();
         private DialogueNodeExtended _SelectedDialogueNode;
         public DialogueNodeExtended SelectedDialogueNode
         {
@@ -157,6 +158,9 @@ namespace LegendaryExplorer.DialogueEditor
         public ObservableCollectionExtended<DObj> SelectedObjects { get; } = new();
         private readonly List<SaveData> extraSaveData = new();
         private bool panToSelection = true;
+        private DiagNode inlineLinkEditorNode;
+        private bool inlineLinkEditorIsReply;
+        private bool inlineLinkEditorNeedsSave;
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         public string CurrentFile;
@@ -320,6 +324,8 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedSpeaker = new SpeakerExtended(-3, "None");
 
             InitializeComponent();
+            InlineLinkEditor_DataGrid.ItemsSource = InlineLinkEditorLinks;
+            InlineLinkEditor_DataGrid.MouseDoubleClick += InlineLinkEditor_DataGrid_MouseDoubleClick;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
             // Apply theme-appropriate colors based on current dark mode setting
@@ -2105,6 +2111,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void RefreshExportLoaders()
         {
             BuildInterpDataTree();
+            LoadInlineLinkEditor(SelectedObjects.FirstOrDefault() as DiagNode);
 
             if (SelectedDialogueNode.WwiseStream_Female == null)
             {
@@ -2798,6 +2805,7 @@ namespace LegendaryExplorer.DialogueEditor
                 FaceFXAnimSetEditorControl_F.UnloadExport();
                 FaceFXAnimSetEditorControl_M.UnloadExport();
                 ClearInterpDataTree();
+                ClearInlineLinkEditor();
                 Convo_Panel.Visibility = Visibility.Collapsed;
             }
             else
@@ -3321,18 +3329,431 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void DialogueNode_OpenLinkEditor(object obj)
         {
-            var linkEdDlg = new LinkEditor(this, SelectedObjects[0] as DiagNode)
+            if (SelectedObjects.FirstOrDefault() is not DiagNode node)
             {
-                Owner = this,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner
-            };
-            linkEdDlg.ShowDialog();
+                return;
+            }
 
-            if (linkEdDlg.NeedsPush)
+            LoadInlineLinkEditor(node);
+            BottomViewportTabControl.SelectedItem = LinkEditorTab;
+        }
+
+        private void ClearInlineLinkEditor()
+        {
+            inlineLinkEditorNode = null;
+            inlineLinkEditorNeedsSave = false;
+            InlineLinkEditorLinks.ClearEx();
+            InlineLinkEditor_LineText.Text = string.Empty;
+        }
+
+        private void LoadInlineLinkEditor(DiagNode node)
+        {
+            if (node == null)
             {
-                RecreateNodesToProperties(SelectedConv);
+                ClearInlineLinkEditor();
+                return;
+            }
+
+            if (inlineLinkEditorNeedsSave && inlineLinkEditorNode != null && inlineLinkEditorNode != node)
+            {
+                SaveInlineLinkEditorChanges(false);
+            }
+
+            inlineLinkEditorNode = node;
+            inlineLinkEditorIsReply = node.Node.IsReply;
+            inlineLinkEditorNeedsSave = false;
+
+            InlineLinkEditor_LineText.Text = node.Node.Line;
+            BuildInlineLinkEditorColumns();
+            InlineLinkEditorLinks.ClearEx();
+
+            int order = 0;
+            foreach (var link in node.Links)
+            {
+                link.Order = order;
+                ParseInlineLink(link);
+                InlineLinkEditorLinks.Add(link);
+                order++;
             }
         }
+
+        private void BuildInlineLinkEditorColumns()
+        {
+            while (InlineLinkEditor_DataGrid.Columns.Count > 5)
+            {
+                InlineLinkEditor_DataGrid.Columns.RemoveAt(5);
+            }
+
+            var readOnlyBrush = (System.Windows.Media.Brush)FindResource("ReadOnlyColumnTextBrush");
+
+            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "#",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.Ordinal)),
+                Width = 30,
+                IsReadOnly = true,
+                Foreground = readOnlyBrush
+            });
+
+            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Link",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.NodeIDLink)),
+                IsReadOnly = true,
+                Width = 40,
+                FontWeight = FontWeights.Heavy
+            });
+
+            if (!inlineLinkEditorIsReply)
+            {
+                InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = "GUI StrRef",
+                    Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.ReplyStrRef)),
+                    IsReadOnly = false,
+                    Width = 70,
+                    FontWeight = FontWeights.Bold
+                });
+
+                InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = "GUI Choice Line",
+                    Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.ReplyLine)),
+                    IsReadOnly = true,
+                    Width = 120,
+                    Foreground = readOnlyBrush
+                });
+
+                var categoryValues = GetInlineReplyCategoryValues();
+                var categoryColumn = new DataGridTemplateColumn
+                {
+                    Header = "GUI Category",
+                    Width = 150
+                };
+
+                var cellTemplate = new DataTemplate();
+                var cellTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+                cellTextBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(ReplyChoiceNode.RCategory)));
+                cellTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+                cellTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
+                cellTemplate.VisualTree = cellTextBlock;
+                categoryColumn.CellTemplate = cellTemplate;
+
+                var editTemplate = new DataTemplate();
+                var comboBoxFactory = new FrameworkElementFactory(typeof(ComboBox));
+                comboBoxFactory.SetValue(ComboBox.ItemsSourceProperty, categoryValues);
+                comboBoxFactory.SetBinding(ComboBox.SelectedItemProperty, new System.Windows.Data.Binding(nameof(ReplyChoiceNode.RCategory))
+                {
+                    UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged
+                });
+                comboBoxFactory.SetValue(ComboBox.IsDropDownOpenProperty, true);
+                editTemplate.VisualTree = comboBoxFactory;
+                categoryColumn.CellEditingTemplate = editTemplate;
+
+                InlineLinkEditor_DataGrid.Columns.Add(categoryColumn);
+            }
+
+            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Target Check",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtFireCnd)),
+                IsReadOnly = true,
+                Width = 80,
+                Foreground = readOnlyBrush
+            });
+
+            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Plot Check",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtCondition)),
+                IsReadOnly = true,
+                Width = 65,
+                Foreground = readOnlyBrush
+            });
+
+            var speakerColumn = new DataGridTextColumn
+            {
+                Header = "Speaker",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtSpeaker)),
+                IsReadOnly = true,
+                Width = inlineLinkEditorIsReply ? 100 : 60,
+                Foreground = readOnlyBrush
+            };
+            InlineLinkEditor_DataGrid.Columns.Add(speakerColumn);
+
+            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Target Line",
+                Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtLine)),
+                IsReadOnly = true,
+                Foreground = readOnlyBrush
+            });
+        }
+
+        private void ParseInlineLink(ReplyChoiceNode link)
+        {
+            string nodePrefix = inlineLinkEditorIsReply ? "E" : "R";
+            int targetUID = inlineLinkEditorIsReply ? link.Index : link.Index + 1000;
+            link.NodeIDLink = $"{nodePrefix}{link.Index}";
+            link.ReplyLine = GlobalFindStrRefbyID(link.ReplyStrRef, Pcc);
+
+            var targetNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(t => t.NodeUID == targetUID);
+            if (targetNode is null)
+            {
+                link.TgtFireCnd = "Unknown";
+                link.TgtCondition = 0;
+                link.TgtLine = "<target node not found>";
+                link.TgtSpeaker = "Unknown";
+                link.Ordinal = AddOrdinal(link.Order + 1);
+                return;
+            }
+
+            link.TgtFireCnd = targetNode.Node.FiresConditional ? "Conditional" : "Bool";
+            link.TgtCondition = targetNode.Node.ConditionalOrBool;
+            link.TgtLine = targetNode.Node.Line;
+            link.Ordinal = AddOrdinal(link.Order + 1);
+            link.TgtSpeaker = targetNode.Node.SpeakerTag.SpeakerName;
+        }
+
+        private void InlineLinkEditor_Apply_Click(object sender, RoutedEventArgs e)
+        {
+            SaveInlineLinkEditorChanges();
+        }
+
+        private void SaveInlineLinkEditorChanges(bool focusEditedNode = true)
+        {
+            if (!inlineLinkEditorNeedsSave || inlineLinkEditorNode is null)
+            {
+                return;
+            }
+
+            if (inlineLinkEditorIsReply)
+            {
+                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(InlineLinkEditorLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
+            }
+            else
+            {
+                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(InlineLinkEditorLinks.Select(link =>
+                    new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                    {
+                        new IntProperty(link.Index, "nIndex"),
+                        new StringRefProperty(link.ReplyStrRef, "srParaphrase"),
+                        new StrProperty("", "sParaphrase"),
+                        new EnumProperty(link.RCategory.ToString(), "EReplyCategory", Pcc.Game, "Category"),
+                        new NoneProperty()
+                    })
+                ), "ReplyListNew"));
+            }
+
+            int nodeCount = inlineLinkEditorNode.Node.NodeCount;
+            bool isReply = inlineLinkEditorNode.Node.IsReply;
+            inlineLinkEditorNeedsSave = false;
+            RecreateNodesToProperties(SelectedConv);
+
+            if (focusEditedNode)
+            {
+                DialogueNode_SelectByIndex(nodeCount, isReply);
+                BottomViewportTabControl.SelectedItem = LinkEditorTab;
+            }
+        }
+
+        private void InlineLinkEditor_Delete_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode link)
+            {
+                InlineLinkEditor_DataGrid.SelectedItem = link;
+                InlineLinkEditorLinks.Remove(link);
+                ReOrderInlineLinkEditorLinks();
+                inlineLinkEditorNeedsSave = true;
+            }
+        }
+
+        private void InlineLinkEditor_Clone_Click(object sender, RoutedEventArgs e)
+        {
+            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode selectedLink)
+            {
+                return;
+            }
+
+            InlineLinkEditorLinks.Add(new ReplyChoiceNode(selectedLink) { Order = InlineLinkEditorLinks.Count + 1 });
+            ReOrderInlineLinkEditorLinks();
+            inlineLinkEditorNeedsSave = true;
+        }
+
+        private void InlineLinkEditor_Move_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode selectedLink)
+            {
+                InlineLinkEditor_DataGrid.SelectedItem = selectedLink;
+            }
+
+            if (InlineLinkEditor_DataGrid.SelectedIndex < 0 || sender is not Button button || button.CommandParameter is not string direction)
+            {
+                return;
+            }
+
+            int moveLinkID = InlineLinkEditor_DataGrid.SelectedIndex;
+            if ((moveLinkID == 0 && direction is "Up" or "Top") || (moveLinkID >= InlineLinkEditorLinks.Count - 1 && direction is "Down" or "Bottom"))
+            {
+                return;
+            }
+
+            int numSwaps = direction switch
+            {
+                "Top" => moveLinkID,
+                "Bottom" => InlineLinkEditorLinks.Count - 1 - moveLinkID,
+                _ => 1
+            };
+
+            int swapDir = direction is "Up" or "Top" ? -1 : 1;
+            for (int i = 0; Math.Abs(i) < numSwaps; i += swapDir)
+            {
+                ReplyChoiceNode moveNode = InlineLinkEditorLinks[moveLinkID];
+                ReplyChoiceNode swapNode = InlineLinkEditorLinks[moveLinkID + i + swapDir];
+                (moveNode.Order, swapNode.Order) = (swapNode.Order, moveNode.Order);
+            }
+
+            ReOrderInlineLinkEditorLinks();
+            inlineLinkEditorNeedsSave = true;
+        }
+
+        private void InlineLinkEditor_Edit_Click(object sender, RoutedEventArgs e)
+        {
+            EditInlineSelectedLink();
+        }
+
+        private void InlineLinkEditor_DataGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            EditInlineSelectedLink();
+        }
+
+        private void EditInlineSelectedLink()
+        {
+            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode editLink)
+            {
+                return;
+            }
+
+            var links = new List<string>();
+            int currentTarget = editLink.Index;
+            if (inlineLinkEditorIsReply)
+            {
+                foreach (var entry in SelectedConv.EntryList)
+                {
+                    links.Add($"{entry.NodeCount}: {entry.LineStrRef} {entry.Line}");
+                }
+            }
+            else
+            {
+                foreach (var entry in SelectedConv.ReplyList)
+                {
+                    links.Add($"{entry.NodeCount}: {entry.LineStrRef} {entry.Line}");
+                }
+            }
+
+            string currentSelection = currentTarget >= 0 && currentTarget < links.Count ? links[currentTarget] : links.FirstOrDefault();
+            if (currentSelection is null)
+            {
+                return;
+            }
+
+            string selectedLink = InputComboBoxDialog.GetValue(this, "Pick the next dialogue node to link to", "Dialogue Editor", links, currentSelection);
+            if (string.IsNullOrEmpty(selectedLink))
+            {
+                return;
+            }
+
+            editLink.Index = links.FindIndex(selectedLink.Equals);
+
+            if (!inlineLinkEditorIsReply)
+            {
+                int strRef;
+                while (true)
+                {
+                    var response = PromptDialog.Prompt(this, "Enter the TLK String Reference for the dialogue wheel:", "Link Editor", editLink.ReplyStrRef.ToString());
+                    if (response == null || response == "0")
+                    {
+                        return;
+                    }
+
+                    if (int.TryParse(response, out strRef) && strRef > 0)
+                    {
+                        break;
+                    }
+
+                    var warning = MessageBox.Show("The string reference must be a positive whole number.", "Dialogue Editor", MessageBoxButton.OKCancel);
+                    if (warning == MessageBoxResult.Cancel)
+                    {
+                        return;
+                    }
+                }
+
+                editLink.ReplyStrRef = strRef;
+
+                string selectedCategory = InputComboBoxDialog.GetValue(this,
+                    "Pick the wheel position or interrupt:",
+                    "Dialogue Editor",
+                    GetInlineReplyCategoryValues().Select(v => v.ToString()),
+                    editLink.RCategory.ToString());
+
+                if (string.IsNullOrEmpty(selectedCategory))
+                {
+                    return;
+                }
+
+                editLink.RCategory = Enums.Parse<EReplyCategory>(selectedCategory);
+            }
+
+            ParseInlineLink(editLink);
+            ReOrderInlineLinkEditorLinks();
+            InlineLinkEditor_DataGrid.Items.Refresh();
+            inlineLinkEditorNeedsSave = true;
+        }
+
+        private void ReOrderInlineLinkEditorLinks()
+        {
+            InlineLinkEditorLinks.Sort(l => l.Order);
+            int order = 0;
+            foreach (var link in InlineLinkEditorLinks)
+            {
+                link.Order = order;
+                link.Ordinal = AddOrdinal(link.Order + 1);
+                order++;
+            }
+            InlineLinkEditor_DataGrid.Items.Refresh();
+        }
+
+        private void InlineLinkEditor_DataGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (e.Row.Item is ReplyChoiceNode link)
+                {
+                    ParseInlineLink(link);
+                    inlineLinkEditorNeedsSave = true;
+                    InlineLinkEditor_DataGrid.Items.Refresh();
+                }
+            }), DispatcherPriority.Background);
+        }
+
+        private EReplyCategory[] GetInlineReplyCategoryValues()
+        {
+            if (Pcc.Game.IsGame1())
+            {
+                return new[]
+                {
+                    EReplyCategory.REPLY_CATEGORY_DEFAULT,
+                    EReplyCategory.REPLY_CATEGORY_AGREE,
+                    EReplyCategory.REPLY_CATEGORY_DISAGREE,
+                    EReplyCategory.REPLY_CATEGORY_FRIENDLY,
+                    EReplyCategory.REPLY_CATEGORY_HOSTILE,
+                    EReplyCategory.REPLY_CATEGORY_INVESTIGATE,
+                };
+            }
+
+            return Enums.GetValues<EReplyCategory>();
+        }
+
         private void DialogueNode_Add(object obj)
         {
             string command = obj as string;
