@@ -150,6 +150,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         private BlockingCollection<ConversationExtended> BackQueue = new();
         private BackgroundWorker BackParser = new();
+        private readonly ConcurrentDictionary<int, byte> ownerResolutionInProgress = new();
         private bool NoUIRefresh; //stops graph refresh on update.
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
@@ -815,6 +816,11 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedConv = null;
 
                 LoadMEPackage(fileName);
+                var loadedPackage = Pcc;
+                if (loadedPackage != null)
+                {
+                    Task.Run(() => ConversationExtended.WarmOwnerTagCacheForPackage(loadedPackage));
+                }
                 CurrentFile = Path.GetFileName(fileName);
                 LoadConversations();
                 if (Conversations.IsEmpty())
@@ -951,7 +957,60 @@ namespace LegendaryExplorer.DialogueEditor
             Debug.WriteLine("FirstParse Done");
 #endif
             BackQueue.CompleteAdding();
+
+            foreach (var conv in Conversations)
+            {
+                QueueOwnerFriendlyNameResolution(conv);
+            }
         }
+
+        private static bool NeedsOwnerFriendlyName(SpeakerExtended speaker)
+        {
+            if (speaker == null)
+                return false;
+
+            var friendlyName = speaker.FriendlyName;
+            return string.IsNullOrWhiteSpace(friendlyName)
+                   || friendlyName == "No data"
+                   || friendlyName.Contains("no_owner", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async void QueueOwnerFriendlyNameResolution(ConversationExtended sourceConv)
+        {
+            if (sourceConv == null)
+                return;
+
+            var ownerSpeaker = sourceConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+            if (!NeedsOwnerFriendlyName(ownerSpeaker))
+                return;
+
+            if (!ownerResolutionInProgress.TryAdd(sourceConv.UIndex, 0))
+                return;
+
+            try
+            {
+                await Task.Run(() => sourceConv.ResolveOwnerTag());
+
+                if (SelectedConv != null && SelectedConv.UIndex == sourceConv.UIndex)
+                {
+                    var sourceOwner = sourceConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+                    var selectedOwner = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+                    if (sourceOwner != null && selectedOwner != null && !NeedsOwnerFriendlyName(sourceOwner))
+                    {
+                        selectedOwner.FriendlyName = sourceOwner.FriendlyName;
+                        GenerateSpeakerList();
+                        Speakers_ListBox.Items.Refresh();
+                        Node_Combo_Spkr.Items.Refresh();
+                        Node_Combo_Lstnr.Items.Refresh();
+                    }
+                }
+            }
+            finally
+            {
+                ownerResolutionInProgress.TryRemove(sourceConv.UIndex, out _);
+            }
+        }
+
         private void BackParse(object sender, DoWorkEventArgs e)
         {
 #if DEBUG
@@ -2043,7 +2102,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>());
+            var childrenByParent = Pcc.Exports
+                .GroupBy(x => x.idxLink)
+                .ToDictionary(g => g.Key, g => g.OrderBy(x => x.UIndex).ToList());
+
+            var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>(), childrenByParent);
             if (root == null)
             {
                 InterpData_InterpreterWPF.UnloadExport();
@@ -2056,7 +2119,7 @@ namespace LegendaryExplorer.DialogueEditor
             InterpData_InterpreterWPF.LoadExport(interpDataExport);
         }
 
-        private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes)
+        private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes, IReadOnlyDictionary<int, List<ExportEntry>> childrenByParent)
         {
             if (!visitedUIndexes.Add(exportEntry.UIndex))
             {
@@ -2064,9 +2127,14 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var node = new TreeViewEntry(exportEntry) { Parent = parent };
-            foreach (var child in Pcc.Exports.Where(x => x.idxLink == exportEntry.UIndex).OrderBy(x => x.UIndex))
+            if (!childrenByParent.TryGetValue(exportEntry.UIndex, out var children))
             {
-                var childNode = BuildInterpDataTreeNode(child, node, visitedUIndexes);
+                return node;
+            }
+
+            foreach (var child in children)
+            {
+                var childNode = BuildInterpDataTreeNode(child, node, visitedUIndexes, childrenByParent);
                 if (childNode != null)
                 {
                     node.Sublinks.Add(childNode);
@@ -2682,6 +2750,21 @@ namespace LegendaryExplorer.DialogueEditor
                 graphEditor.UseWaitCursor = true;
                 var nconv = Conversations[Conversations_ListBox.SelectedIndex];
                 SelectedConv = new ConversationExtended(nconv);
+
+                var sourceOwner = nconv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+                var selectedOwner = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
+                if (sourceOwner != null && selectedOwner != null)
+                {
+                    if (!NeedsOwnerFriendlyName(sourceOwner))
+                    {
+                        selectedOwner.FriendlyName = sourceOwner.FriendlyName;
+                    }
+                    else
+                    {
+                        QueueOwnerFriendlyNameResolution(nconv);
+                    }
+                }
+
                 CurrentLoadedExport = SelectedConv.Export;
                 SetupConvJSON(CurrentLoadedExport);
                 if (Pcc.Game == MEGame.ME1)
@@ -2754,6 +2837,11 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (Speakers_ListBox.SelectedIndex >= 0)
                 {
+                    if (SelectedSpeaker.SpeakerID == -1 && (string.IsNullOrEmpty(SelectedSpeaker.FriendlyName) || SelectedSpeaker.FriendlyName == "No data"))
+                    {
+                        SelectedConv?.ResolveOwnerTag();
+                    }
+
                     if (SelectedSpeaker.StrRefID <= 0)
                     {
                         SelectedSpeaker.StrRefID = LookupTagRef(SelectedSpeaker.SpeakerName);

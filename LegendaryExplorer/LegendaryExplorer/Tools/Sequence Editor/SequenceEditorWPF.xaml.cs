@@ -52,6 +52,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.DialogueEditor;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Matinee;
 using Xceed.Wpf.Toolkit;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -1060,6 +1061,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 RecentsController.SaveRecentList(true);
 
                 postloadPackage(fileName);
+
+                var loadedPackage = Pcc;
+                if (loadedPackage != null)
+                {
+                    Task.Run(() => ConversationExtended.WarmOwnerTagCacheForPackage(loadedPackage));
+                }
             }
             catch (Exception ex) when (!App.IsDebug)
             {
@@ -3877,7 +3884,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
-            var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>());
+            var childrenByParent = Pcc.Exports
+                .GroupBy(x => x.idxLink)
+                .ToDictionary(g => g.Key, g => g.OrderBy(x => x.UIndex).ToList());
+
+            var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>(), childrenByParent);
             if (root == null)
             {
                 InterpData_InterpreterWPF.UnloadExport();
@@ -3890,7 +3901,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             InterpData_InterpreterWPF.LoadExport(interpDataExport);
         }
 
-        private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes)
+        private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes, IReadOnlyDictionary<int, List<ExportEntry>> childrenByParent)
         {
             if (!visitedUIndexes.Add(exportEntry.UIndex))
             {
@@ -3898,9 +3909,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             var node = new TreeViewEntry(exportEntry) { Parent = parent };
-            foreach (var child in Pcc.Exports.Where(x => x.idxLink == exportEntry.UIndex).OrderBy(x => x.UIndex))
+            if (!childrenByParent.TryGetValue(exportEntry.UIndex, out var children))
             {
-                var childNode = BuildInterpDataTreeNode(child, node, visitedUIndexes);
+                return node;
+            }
+
+            foreach (var child in children)
+            {
+                var childNode = BuildInterpDataTreeNode(child, node, visitedUIndexes, childrenByParent);
                 if (childNode != null)
                 {
                     node.Sublinks.Add(childNode);

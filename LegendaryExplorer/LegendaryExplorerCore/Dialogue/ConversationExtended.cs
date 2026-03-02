@@ -146,7 +146,6 @@ namespace LegendaryExplorerCore.Dialogue
             parseLinesFaceFX();
             parseLinesAudioStreams();
             parseLinesScripts();
-            ResolveOwnerTag();
 
             IsParsed = true;
         }
