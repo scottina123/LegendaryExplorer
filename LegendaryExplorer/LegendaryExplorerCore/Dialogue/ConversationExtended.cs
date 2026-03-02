@@ -1239,6 +1239,14 @@ namespace LegendaryExplorerCore.Dialogue
                 ExportEntry current = export;
                 while (current != null)
                 {
+                    // When we encounter an InterpData in the parent chain, try to resolve
+                    // the conversation name via the Kismet graph (InterpData → SeqAct_Interp → Sequence → BioConversation).
+                    // This is more reliable than sequence name matching when multiple conversations share a parent sequence.
+                    if (current.ClassName == "InterpData")
+                    {
+                        conversationName ??= FindConversationNameViaInterpData(current);
+                    }
+
                     if (current.ClassName == "Sequence" || current.IsA("Sequence"))
                     {
                         conversationName ??= FindConversationNameForSequence(current);
@@ -1500,6 +1508,81 @@ namespace LegendaryExplorerCore.Dialogue
 
                 if (seqEntry != null && seqEntry.ObjectName.Instanced == sequence.ObjectName.Instanced)
                     return exp.ObjectName.Instanced;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Finds the conversation name by tracing the Kismet graph backwards from an InterpData:
+        /// InterpData → SeqAct_Interp (via VariableLinks "Data") → parent Sequence → BioConversation (via MatineeSequence).
+        /// This is more reliable than sequence name matching when multiple conversations exist in the same package.
+        /// </summary>
+        private static string FindConversationNameViaInterpData(ExportEntry interpData)
+        {
+            var pcc = interpData.FileRef;
+            string matineeSeqPropName = pcc.Game.IsGame1() ? "m_pEvtSystemSeq" : "MatineeSequence";
+
+            // Find SeqAct_Interp exports that reference this InterpData through VariableLinks
+            foreach (var exp in pcc.Exports)
+            {
+                if (exp.ClassName != "SeqAct_Interp")
+                    continue;
+
+                var varLinks = exp.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+                if (varLinks == null)
+                    continue;
+
+                bool referencesInterpData = false;
+                foreach (var varLink in varLinks)
+                {
+                    var desc = varLink.GetProp<StrProperty>("LinkDesc")?.Value;
+                    if (desc != "Data")
+                        continue;
+
+                    var linkedVars = varLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                    if (linkedVars != null && linkedVars.Any(lv => lv.Value == interpData.UIndex))
+                    {
+                        referencesInterpData = true;
+                        break;
+                    }
+                }
+
+                if (!referencesInterpData)
+                    continue;
+
+                // Found a SeqAct_Interp referencing our InterpData.
+                // Find which Sequence contains this SeqAct_Interp, then match to a BioConversation.
+                if (exp.idxLink > 0 && pcc.IsUExport(exp.idxLink))
+                {
+                    var parentSeq = pcc.GetUExport(exp.idxLink);
+                    if (parentSeq.ClassName == "Sequence" || parentSeq.IsA("Sequence"))
+                    {
+                        // Check each BioConversation to see if its MatineeSequence is this sequence
+                        foreach (var convExp in pcc.Exports)
+                        {
+                            if (convExp.ClassName != "BioConversation")
+                                continue;
+
+                            var seqProp = convExp.GetProperty<ObjectProperty>(matineeSeqPropName);
+                            if (seqProp == null || seqProp.Value == 0)
+                                continue;
+
+                            if (seqProp.Value == parentSeq.UIndex)
+                                return convExp.ObjectName.Instanced;
+
+                            // Handle imports
+                            var seqEntry = pcc.GetEntry(seqProp.Value);
+                            if (seqEntry is ImportEntry seqImport)
+                            {
+                                seqEntry = EntryImporter.ResolveImport(seqImport, null);
+                            }
+
+                            if (seqEntry is ExportEntry seqExport && seqExport == parentSeq)
+                                return convExp.ObjectName.Instanced;
+                        }
+                    }
+                }
             }
 
             return null;
