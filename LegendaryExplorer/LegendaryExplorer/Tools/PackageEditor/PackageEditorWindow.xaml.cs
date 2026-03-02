@@ -272,6 +272,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ViewReferenceGraphCommand { get; set; }
         public ICommand AddInterpTrackCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
+        public ICommand OpenGestureImporterCommand { get; set; }
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
@@ -338,6 +339,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             OpenExportInCommand = new RelayCommand(OpenExportIn, CanOpenExportIn);
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
+            OpenGestureImporterCommand = new GenericCommand(OpenGestureImporter, CanOpenGestureImporter);
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
@@ -1190,6 +1192,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool CanBulkEditInterpGroups() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData";
 
         private bool CanShiftInterpTrackMove() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove";
+
+        private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "BioEvtSysTrackGesture";
+
+        private void OpenGestureImporter()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "BioEvtSysTrackGesture")
+            {
+                var dialog = new Dialogs.GestureAnimationImporterDialog(exp, this);
+                dialog.ShowDialog();
+            }
+        }
 
         private void ShiftSelectedInterpTrackMove()
         {
