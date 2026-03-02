@@ -826,6 +826,8 @@ namespace LegendaryExplorerCore.Dialogue
             if (seqObjects == null)
                 return null;
 
+            bool foundMatchingStartConversation = false;
+
             foreach (var objProp in seqObjects)
             {
                 if (objProp.Value < 1 || !pcc.IsUExport(objProp.Value))
@@ -839,9 +841,28 @@ namespace LegendaryExplorerCore.Dialogue
                 if (!StartConvReferencesThisConversation(seqObj))
                     continue;
 
+                foundMatchingStartConversation = true;
+
                 string ownerTag = ResolveOwnerFromStartConv(seqObj);
                 if (!string.IsNullOrEmpty(ownerTag))
                     return ownerTag;
+            }
+
+            if (!foundMatchingStartConversation)
+            {
+                foreach (var objProp in seqObjects)
+                {
+                    if (objProp.Value < 1 || !pcc.IsUExport(objProp.Value))
+                        continue;
+
+                    var seqObj = pcc.GetUExport(objProp.Value);
+                    if (!SequenceObjectReferencesConversation(seqObj, Export.ObjectName.Instanced))
+                        continue;
+
+                    string ownerTag = ResolveOwnerFromConversationReferenceNode(seqObj);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
             }
 
             return null;
@@ -852,6 +873,8 @@ namespace LegendaryExplorerCore.Dialogue
         /// </summary>
         private string FindOwnerTagBySearchingPackage(IMEPackage pcc)
         {
+            bool foundMatchingStartConversation = false;
+
             foreach (var exp in pcc.Exports)
             {
                 if (exp.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
@@ -860,9 +883,27 @@ namespace LegendaryExplorerCore.Dialogue
                 if (!StartConvReferencesThisConversation(exp))
                     continue;
 
+                foundMatchingStartConversation = true;
+
                 string ownerTag = ResolveOwnerFromStartConv(exp);
                 if (!string.IsNullOrEmpty(ownerTag))
                     return ownerTag;
+            }
+
+            if (!foundMatchingStartConversation)
+            {
+                foreach (var exp in pcc.Exports)
+                {
+                    if (!exp.IsA("SequenceObject"))
+                        continue;
+
+                    if (!SequenceObjectReferencesConversation(exp, Export.ObjectName.Instanced))
+                        continue;
+
+                    string ownerTag = ResolveOwnerFromConversationReferenceNode(exp);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
             }
 
             return null;
@@ -1025,29 +1066,40 @@ namespace LegendaryExplorerCore.Dialogue
         /// <returns>The owner tag string, or null if not found</returns>
         public static string ResolveOwnerFromStartConv(ExportEntry startConvNode)
         {
-            var links = startConvNode.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
-            if (links == null)
-                return null;
+            int ownerObjIdx = GetFirstLinkedVariableIndex(startConvNode, "Owner");
+            return ResolveTagFromVariableExport(startConvNode.FileRef, ownerObjIdx);
+        }
 
-            int ownerObjIdx = 0;
-            foreach (var link in links)
+        private static int GetFirstLinkedVariableIndex(ExportEntry sequenceObject, params string[] linkDescriptions)
+        {
+            var links = sequenceObject.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (links == null)
+                return 0;
+
+            foreach (var linkDescription in linkDescriptions)
             {
-                var desc = link.GetProp<StrProperty>("LinkDesc");
-                if (desc?.Value == "Owner")
+                foreach (var link in links)
                 {
+                    var desc = link.GetProp<StrProperty>("LinkDesc");
+                    if (!string.Equals(desc?.Value, linkDescription, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     var linkedVars = link.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
                     if (linkedVars != null && linkedVars.Count > 0)
                     {
-                        ownerObjIdx = linkedVars[0].Value;
+                        return linkedVars[0].Value;
                     }
-                    break;
                 }
             }
 
+            return 0;
+        }
+
+        private static string ResolveTagFromVariableExport(IMEPackage pcc, int ownerObjIdx)
+        {
             if (ownerObjIdx <= 0)
                 return null;
 
-            var pcc = startConvNode.FileRef;
             ExportEntry ownerVar;
             try
             {
@@ -1099,6 +1151,70 @@ namespace LegendaryExplorerCore.Dialogue
             }
 
             return null;
+        }
+
+        private static string ResolveOwnerFromConversationReferenceNode(ExportEntry sequenceObject)
+        {
+            int actorVarIdx = GetFirstLinkedVariableIndex(sequenceObject, "Owner", "Actor", "Speaker", "Target");
+            return ResolveTagFromVariableExport(sequenceObject.FileRef, actorVarIdx);
+        }
+
+        private static bool SequenceObjectReferencesConversation(ExportEntry sequenceObject, string conversationName)
+        {
+            if (string.IsNullOrEmpty(conversationName))
+                return false;
+
+            var props = sequenceObject.GetProperties();
+            return PropertiesReferenceConversation(props, sequenceObject.FileRef, conversationName);
+        }
+
+        private static bool PropertiesReferenceConversation(PropertyCollection props, IMEPackage pcc, string conversationName)
+        {
+            foreach (var prop in props)
+            {
+                switch (prop)
+                {
+                    case ObjectProperty objProp:
+                    {
+                        if (objProp.Value == 0)
+                            break;
+
+                        var entry = pcc.GetEntry(objProp.Value);
+                        if (entry?.ClassName == "BioConversation" && string.Equals(entry.ObjectName.Instanced, conversationName, StringComparison.Ordinal))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    }
+                    case StructProperty structProp:
+                        if (PropertiesReferenceConversation(structProp.Properties, pcc, conversationName))
+                            return true;
+                        break;
+                    case ArrayProperty<ObjectProperty> objArray:
+                        foreach (var arrayObj in objArray)
+                        {
+                            if (arrayObj.Value == 0)
+                                continue;
+
+                            var entry = pcc.GetEntry(arrayObj.Value);
+                            if (entry?.ClassName == "BioConversation" && string.Equals(entry.ObjectName.Instanced, conversationName, StringComparison.Ordinal))
+                            {
+                                return true;
+                            }
+                        }
+                        break;
+                    case ArrayProperty<StructProperty> structArray:
+                        foreach (var structItem in structArray)
+                        {
+                            if (PropertiesReferenceConversation(structItem.Properties, pcc, conversationName))
+                                return true;
+                        }
+                        break;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -1233,6 +1349,8 @@ namespace LegendaryExplorerCore.Dialogue
 
         private static string SearchStartConversationsInPackage(IMEPackage pcc, string conversationName)
         {
+            bool foundMatchingStartConversation = false;
+
             foreach (var exp in pcc.Exports)
             {
                 if (exp.ClassName is not ("BioSeqAct_StartConversation" or "SFXSeqAct_StartConversation" or "SFXSeqAct_StartAmbientConv"))
@@ -1241,9 +1359,29 @@ namespace LegendaryExplorerCore.Dialogue
                 if (!StartConvMatchesConversationName(exp, conversationName))
                     continue;
 
+                foundMatchingStartConversation = true;
+
                 var ownerTag = ResolveOwnerFromStartConv(exp);
                 if (!string.IsNullOrEmpty(ownerTag))
                     return ownerTag;
+            }
+
+            // Fallback for conversations not started by StartConversation nodes (e.g. FaceOnlyVO chains).
+            // Only attempt this if no matching StartConversation node exists in the current package.
+            if (!foundMatchingStartConversation)
+            {
+                foreach (var exp in pcc.Exports)
+                {
+                    if (!exp.IsA("SequenceObject"))
+                        continue;
+
+                    if (!SequenceObjectReferencesConversation(exp, conversationName))
+                        continue;
+
+                    var ownerTag = ResolveOwnerFromConversationReferenceNode(exp);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
             }
 
             return null;
@@ -1296,6 +1434,8 @@ namespace LegendaryExplorerCore.Dialogue
             if (seqObjects == null)
                 return null;
 
+            bool foundMatchingStartConversation = false;
+
             foreach (var objProp in seqObjects)
             {
                 if (objProp.Value < 1 || !sequence.FileRef.IsUExport(objProp.Value))
@@ -1308,9 +1448,28 @@ namespace LegendaryExplorerCore.Dialogue
                 if (!StartConvMatchesConversationName(seqObj, conversationName))
                     continue;
 
+                foundMatchingStartConversation = true;
+
                 string ownerTag = ResolveOwnerFromStartConv(seqObj);
                 if (!string.IsNullOrEmpty(ownerTag))
                     return ownerTag;
+            }
+
+            if (!foundMatchingStartConversation)
+            {
+                foreach (var objProp in seqObjects)
+                {
+                    if (objProp.Value < 1 || !sequence.FileRef.IsUExport(objProp.Value))
+                        continue;
+
+                    var seqObj = sequence.FileRef.GetUExport(objProp.Value);
+                    if (!SequenceObjectReferencesConversation(seqObj, conversationName))
+                        continue;
+
+                    string ownerTag = ResolveOwnerFromConversationReferenceNode(seqObj);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
             }
 
             return null;
