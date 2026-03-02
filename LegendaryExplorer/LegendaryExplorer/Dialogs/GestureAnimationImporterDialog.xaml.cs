@@ -143,6 +143,12 @@ namespace LegendaryExplorer.Dialogs
         private bool _editUseDynAnimSets;
         public bool EditUseDynAnimSets { get => _editUseDynAnimSets; set { _editUseDynAnimSets = value; OnPropertyChanged(); } }
 
+        // Starting pose — track-level properties (not per-gesture)
+        private string _editStartingPoseSet = "None";
+        public string EditStartingPoseSet { get => _editStartingPoseSet; set { _editStartingPoseSet = value; OnPropertyChanged(); } }
+        private string _editStartingPoseAnim = "None";
+        public string EditStartingPoseAnim { get => _editStartingPoseAnim; set { _editStartingPoseAnim = value; OnPropertyChanged(); } }
+
         #endregion
 
         // File list from DB for resolving paths
@@ -229,6 +235,10 @@ namespace LegendaryExplorer.Dialogs
                     });
                 }
             }
+
+            // Load track-level starting pose properties
+            EditStartingPoseSet = _gestureTrackExport.GetProperty<NameProperty>("nmStartingPoseSet")?.Value.Instanced ?? "None";
+            EditStartingPoseAnim = _gestureTrackExport.GetProperty<NameProperty>("nmStartingPoseAnim")?.Value.Instanced ?? "None";
         }
 
         private void LoadGestureProperties()
@@ -905,6 +915,36 @@ namespace LegendaryExplorer.Dialogs
         {
             EditTransitionSet = "None";
             EditTransitionAnim = "None";
+        }
+
+        private void BrowseStartingPoseAnim_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var result = BrowseAndImportAnimation();
+                if (result == null) return;
+                EditStartingPoseSet = result.Value.setName;
+                EditStartingPoseAnim = result.Value.seqName;
+                SaveStartingPose();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error importing animation: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ClearStartingPoseAnim_Click(object sender, RoutedEventArgs e)
+        {
+            EditStartingPoseSet = "None";
+            EditStartingPoseAnim = "None";
+            SaveStartingPose();
+        }
+
+        private void SaveStartingPose()
+        {
+            _gestureTrackExport.WriteProperty(new NameProperty(EditStartingPoseSet, "nmStartingPoseSet"));
+            _gestureTrackExport.WriteProperty(new NameProperty(EditStartingPoseAnim, "nmStartingPoseAnim"));
+            StatusMessage = "Starting pose saved.";
         }
 
         private void SaveGesture_Click(object sender, RoutedEventArgs e)
