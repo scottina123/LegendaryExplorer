@@ -841,7 +841,7 @@ namespace LegendaryExplorer.DialogueEditor
                     return;
                 }
                 FirstParse();
-                RightBarColumn.Width = new GridLength(260);
+                RightBarColumn.Width = new GridLength(0);
                 graphEditor.nodeLayer.RemoveAllChildren();
                 graphEditor.edgeLayer.RemoveAllChildren();
 
@@ -2752,12 +2752,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
             CurrentUIMode = mode;
 
-            Speaker_Panel.Visibility = Visibility.Collapsed;
             Node_Panel.Visibility = Visibility.Collapsed;
             switch (CurrentUIMode)
             {
                 case 1:
-                    Speaker_Panel.Visibility = Visibility.Visible;
+                    BottomViewportTabControl.SelectedItem = BottomViewportTabControl.Items
+                        .OfType<TabItem>()
+                        .FirstOrDefault(t => t.Header?.ToString() == "Speaker Details");
                     break;
                 case 2:
                     Node_Panel.Visibility = Visibility.Visible;

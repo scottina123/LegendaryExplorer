@@ -450,114 +450,16 @@
                 </Grid.ColumnDefinitions>
                 <!-- Right side panel - Speakers/Nodes -->
                 <DockPanel Name="RightSide_Dock" LastChildFill="True" Grid.Column="2" Grid.Row="0"
-                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
+                           Visibility="Collapsed"
                            ScrollViewer.CanContentScroll="False">
                     <!--Switchable Panels -->
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <StackPanel DockPanel.Dock="Top" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                            <!--Speaker Panel-->
-                            <StackPanel Name="Speaker_Panel" HorizontalAlignment="Stretch" Margin="3"
-                                        Visibility="Collapsed">
-                                <TextBlock Text="Speaker Details" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                           FontWeight="Bold" FontSize="18" DockPanel.Dock="Left" />
-                                <DockPanel HorizontalAlignment="Stretch">
-                                    <TextBlock Name="Speaker_ID"
-                                               Text="{Binding Path=SelectedSpeaker.SpeakerID, UpdateSourceTrigger=PropertyChanged}"
-                                               HorizontalAlignment="Right" FontWeight="Bold" FontSize="18"
-                                               DockPanel.Dock="Right" Padding="5" />
-                                    <TextBlock Text="ID:" VerticalAlignment="Center" HorizontalAlignment="Stretch"
-                                               TextAlignment="Right" FontWeight="Bold" FontSize="15" />
-                                </DockPanel>
-                                <TextBlock Text="Actor's Tag:" HorizontalAlignment="Left" FontWeight="Bold"
-                                           FontSize="15" />
-                                <TextBox Name="TextBox_Speaker_Name"
-                                         Text="{Binding Path=SelectedSpeaker.SpeakerName, UpdateSourceTrigger=PropertyChanged}"
-                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="20"
-                                         HorizontalContentAlignment="Left" BorderBrush="LightGray" BorderThickness="0"
-                                         KeyUp="EnterName_Speaker_KeyUp" GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                         LostKeyboardFocus="EditBox_LostKeyboardFocus" />
-                                <TextBlock Text="{Binding Path=SelectedSpeaker.DisplayName, UpdateSourceTrigger=PropertyChanged}"
-                                           FontSize="15" HorizontalAlignment="Left" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                                           ToolTip="Display name with resolved tag" />
-                                <TextBlock Text="" FontSize="10" />
-                                <DockPanel>
-                                    <TextBlock Text="TLKString:" DockPanel.Dock="Left" HorizontalAlignment="Left"
-                                               ToolTip="Actor's named TLK string." FontSize="15" />
-                                    <TextBlock Name="TextBox_Speaker_TLK"
-                                               Text="{Binding Path=SelectedSpeaker.StrRefID, UpdateSourceTrigger=PropertyChanged}"
-                                               FontSize="15" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                               ToolTip="Actor's named TLK string. Possibly." />
-                                </DockPanel>
-                                <TextBlock Name="TextBox_Speaker_FriendlyName"
-                                           Text="{Binding Path=SelectedSpeaker.FriendlyName, UpdateSourceTrigger=PropertyChanged}"
-                                           FontSize="20" HorizontalAlignment="Left" ToolTip="Actor's name. Possibly." />
-                                <TextBlock Text="" FontSize="10" />
-                                <DockPanel HorizontalAlignment="Stretch">
-                                    <TextBlock Text="Male FaceFX Animation Set:" VerticalAlignment="Bottom"
-                                               HorizontalAlignment="Left"
-                                               ToolTip="Facial Animations for when the Player is Male"
-                                               DockPanel.Dock="Left" />
-                                    <Button Name="Button_Spkr_OpenFFXM" Padding="3" DockPanel.Dock="Right"
-                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrM"
-                                            ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <TextBlock Text="" FontSize="10" />
-                                </DockPanel>
-                                <ComboBox Name="ComboBox_Speaker_FFXM" ItemsSource="{Binding Path=FFXAnimsets}"
-                                          SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Male}"
-                                          HorizontalAlignment="Stretch"
-                                          ToolTip="Facial Animations for when the Player is Male" Margin="3"
-                                          DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
-                                                           FontStretch="Condensed" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <TextBlock Text="" FontSize="10" />
-                                <DockPanel HorizontalAlignment="Stretch">
-                                    <TextBlock Text="Female FaceFX Animation Set:" VerticalAlignment="Bottom"
-                                               HorizontalAlignment="Left"
-                                               ToolTip="Facial Animations for when the Player is Female"
-                                               DockPanel.Dock="Left" />
-                                    <Button Name="Button_Spkr_OpenFFXF" Padding="3" DockPanel.Dock="Right"
-                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrF"
-                                            ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <TextBlock Text="" />
-                                </DockPanel>
-                                <ComboBox Name="ComboBox_Speaker_FFXF" ItemsSource="{Binding Path=FFXAnimsets}"
-                                          SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Female}"
-                                          HorizontalAlignment="Stretch"
-                                          ToolTip="Facial Animations for when the Player is Female" Margin="3"
-                                          DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
-                                                           FontStretch="Condensed" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <TextBlock Text="" FontSize="10" />
-                            </StackPanel>
                             <!--Node Panel-->
                             <StackPanel Name="Node_Panel" Visibility="Collapsed"
                                         ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                    <DockPanel HorizontalAlignment="Stretch">
+                                    <DockPanel HorizontalAlignment="Stretch" Visibility="Collapsed">
                                         <TextBlock Name="Node_Text_Type" Text="Dialogue Node"
                                                    HorizontalAlignment="Left" FontWeight="Bold" FontSize="18"
                                                    DockPanel.Dock="Left" Padding="5" />
@@ -571,10 +473,11 @@
                                                TextWrapping="Wrap" HorizontalAlignment="Left" FontWeight="Bold"
                                                FontSize="15" DockPanel.Dock="Left" Padding="5"
                                                ToolTip="Right mouse click to copy"
-                                               MouseRightButtonUp="CopyStringToClipboard_Click">
+                                               MouseRightButtonUp="CopyStringToClipboard_Click"
+                                               Visibility="Collapsed">
 
                                     </TextBlock>
-                                    <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal" Visibility="Collapsed">
                                         <TextBlock Text="Line String Ref:  " FontSize="15" />
                                         <TextBox Name="Node_Text_StrRef"
                                                  Text="{Binding Path=SelectedDialogueNode.LineStrRef, UpdateSourceTrigger=Explicit}"
@@ -584,7 +487,7 @@
                                                  LostKeyboardFocus="EditBox_LostKeyboardFocus"
                                                  KeyUp="EditBox_Node_KeyUp" PreviewTextInput="NumberValidationEditBox" />
                                     </StackPanel>
-                                    <DockPanel ToolTip="The speaker of the line.  Replies are always player">
+                                    <DockPanel ToolTip="The speaker of the line.  Replies are always player" Visibility="Collapsed">
                                         <TextBlock Text="Speaker: " FontSize="15" DockPanel.Dock="Left"
                                                    VerticalAlignment="Center" />
                                         <ComboBox Name="Node_Combo_Spkr"
@@ -605,7 +508,7 @@
                                         </ComboBox>
                                     </DockPanel>
                                     <DockPanel
-                                        ToolTip="To whom the speaker is addressing. The speaker will look at the listener.">
+                                        ToolTip="To whom the speaker is addressing. The speaker will look at the listener." Visibility="Collapsed">
                                         <TextBlock Text="Listener: " FontSize="15" DockPanel.Dock="Left"
                                                    VerticalAlignment="Center" />
                                         <ComboBox Name="Node_Combo_Lstnr"
@@ -632,7 +535,7 @@
 
                 <!-- Speaker List -->
                 <DockPanel LastChildFill="True" Grid.Row="2" Grid.Column="2"
-                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                           Visibility="Collapsed">
                     <Grid DockPanel.Dock="Top" Height="30">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="40"></ColumnDefinition>
@@ -1718,6 +1621,104 @@
                                         </ListBox.ContextMenu>
                                     </ListBox>
                                 </DockPanel>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem x:Name="SpeakerDetailsTab" Header="Speaker Details">
+                            <StackPanel Name="Speaker_Panel" HorizontalAlignment="Stretch" Margin="3">
+                                <TextBlock Text="Speaker Details" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                           FontWeight="Bold" FontSize="18" DockPanel.Dock="Left" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Name="Speaker_ID"
+                                               Text="{Binding Path=SelectedSpeaker.SpeakerID, UpdateSourceTrigger=PropertyChanged}"
+                                               HorizontalAlignment="Right" FontWeight="Bold" FontSize="18"
+                                               DockPanel.Dock="Right" Padding="5" />
+                                    <TextBlock Text="ID:" VerticalAlignment="Center" HorizontalAlignment="Stretch"
+                                               TextAlignment="Right" FontWeight="Bold" FontSize="15" />
+                                </DockPanel>
+                                <TextBlock Text="Actor's Tag:" HorizontalAlignment="Left" FontWeight="Bold"
+                                           FontSize="15" />
+                                <TextBox Name="TextBox_Speaker_Name"
+                                         Text="{Binding Path=SelectedSpeaker.SpeakerName, UpdateSourceTrigger=PropertyChanged}"
+                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="20"
+                                         HorizontalContentAlignment="Left" BorderBrush="LightGray" BorderThickness="0"
+                                         KeyUp="EnterName_Speaker_KeyUp" GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="EditBox_LostKeyboardFocus" />
+                                <TextBlock Text="{Binding Path=SelectedSpeaker.DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                                           FontSize="15" HorizontalAlignment="Left" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                           ToolTip="Display name with resolved tag" />
+                                <TextBlock Text="" FontSize="10" />
+                                <DockPanel>
+                                    <TextBlock Text="TLKString:" DockPanel.Dock="Left" HorizontalAlignment="Left"
+                                               ToolTip="Actor's named TLK string." FontSize="15" />
+                                    <TextBlock Name="TextBox_Speaker_TLK"
+                                               Text="{Binding Path=SelectedSpeaker.StrRefID, UpdateSourceTrigger=PropertyChanged}"
+                                               FontSize="15" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                               ToolTip="Actor's named TLK string. Possibly." />
+                                </DockPanel>
+                                <TextBlock Name="TextBox_Speaker_FriendlyName"
+                                           Text="{Binding Path=SelectedSpeaker.FriendlyName, UpdateSourceTrigger=PropertyChanged}"
+                                           FontSize="20" HorizontalAlignment="Left" ToolTip="Actor's name. Possibly." />
+                                <TextBlock Text="" FontSize="10" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Male FaceFX Animation Set:" VerticalAlignment="Bottom"
+                                               HorizontalAlignment="Left"
+                                               ToolTip="Facial Animations for when the Player is Male"
+                                               DockPanel.Dock="Left" />
+                                    <Button Name="Button_Spkr_OpenFFXM" Padding="3" DockPanel.Dock="Right"
+                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrM"
+                                            ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="" FontSize="10" />
+                                </DockPanel>
+                                <ComboBox Name="ComboBox_Speaker_FFXM" ItemsSource="{Binding Path=FFXAnimsets}"
+                                          SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Male}"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Facial Animations for when the Player is Male" Margin="3"
+                                          DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
+                                                           FontStretch="Condensed" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="" FontSize="10" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Female FaceFX Animation Set:" VerticalAlignment="Bottom"
+                                               HorizontalAlignment="Left"
+                                               ToolTip="Facial Animations for when the Player is Female"
+                                               DockPanel.Dock="Left" />
+                                    <Button Name="Button_Spkr_OpenFFXF" Padding="3" DockPanel.Dock="Right"
+                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrF"
+                                            ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="" />
+                                </DockPanel>
+                                <ComboBox Name="ComboBox_Speaker_FFXF" ItemsSource="{Binding Path=FFXAnimsets}"
+                                          SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Female}"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Facial Animations for when the Player is Female" Margin="3"
+                                          DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
+                                                           FontStretch="Condensed" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="" FontSize="10" />
                             </StackPanel>
                         </TabItem>
                     </TabControl>
