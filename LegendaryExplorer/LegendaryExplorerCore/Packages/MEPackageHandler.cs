@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -29,7 +30,7 @@ namespace LegendaryExplorerCore.Packages
 
         // Package loading for ME games
         static Func<string, MEGame, MEPackage> MEBlankPackageCreatorDelegate;
-        static Func<Stream, string, bool, Func<ExportEntry, bool>, MEPackage> MEStreamConstructorDelegate;
+        static Func<MEPackage.PackageLoadParameters, MEPackage> MEStreamConstructorDelegate;
 
         public static void Initialize()
         {
@@ -132,7 +133,7 @@ namespace LegendaryExplorerCore.Packages
         /// <param name="quickLoad">Only load the header. Meant for when you just need to get info about a package without caring about the contents.</param>
         /// <param name="diskIOSyncLock">If provided, all I/O will be done inside a lock on this object</param>
         /// <returns></returns>
-        public static IMEPackage OpenMEPackage(string pathToFile, IPackageUser user = null, bool forceLoadFromDisk = false, bool quickLoad = false, object diskIOSyncLock = null)
+        public static IMEPackage OpenMEPackage(string pathToFile, IPackageUser user = null, bool forceLoadFromDisk = false, bool quickLoad = false, Lock diskIOSyncLock = null)
         {
             //Debug.WriteLine($"Opening package {pathToFile}");
             if (File.Exists(pathToFile))
@@ -246,6 +247,43 @@ namespace LegendaryExplorerCore.Packages
             return LoadPackage(packageStream, packagePath, false, false, exportPredicate);
         }
 
+
+        /// <summary>
+        /// Partially opens an ME package file. Name, Export, and Import tables will be fully read, but export data will not be, until <see cref="ILazyLoadPackage.LoadExport(int)"/> is called.
+        /// Attempting to access the Data for any unloaded <see cref="ExportEntry"/> will cause a <see cref="NullReferenceException"/>. Use with caution in performance critical situations only!
+        /// This will hold a reference to the file on disk, <see cref="UnsafePartialLoad"/> is preferred when you already know which exports you need.
+        /// The file is loaded from disk, and does not participate in package sharing.
+        /// </summary>
+        /// <param name="pathToFile"></param>
+        /// <returns></returns>
+        public static ILazyLoadPackage UnsafeLazyLoad(string pathToFile)
+        {
+            //Debug.WriteLine($"Partially loading package {pathToFile}");
+            //can't dispose stream, since it will be needed for lazy loading. finalizer will clean it up eventually
+            var fs = new FileStream(pathToFile, FileMode.Open, FileAccess.Read);
+            return UnsafeLazyLoadFromStream(fs, pathToFile);
+        }
+
+        /// <summary>
+        /// Partially opens an ME package file from the stream. Name, Export, and Import tables will be fully read, but export data will not be, until <see cref="ILazyLoadPackage.LoadExport(int)"/> is called.
+        /// Attempting to access the Data for any unloaded <see cref="ExportEntry"/> will cause a <see cref="NullReferenceException"/>. Use with caution in performance critical situations only!
+        /// This will hold a reference to the source stream until disposed, <see cref="UnsafePartialLoad"/> is preferred when you already know which exports you need.
+        /// The file does not participate in package sharing.
+        /// </summary>
+        /// <param name="packageStream">Stream to load data from. If it needs disposing, do not do so until you have finished loading exports!</param>
+        /// <param name="packagePath">Path or name of the package file. Used for associating with the package.</param>
+        /// <returns></returns>
+        public static ILazyLoadPackage UnsafeLazyLoadFromStream(Stream packageStream, string packagePath)
+        {
+            //Debug.WriteLine($"Partially loading package {pathToFile}");
+            var pcc = LoadPackage(packageStream, packagePath, false, false, null, true);
+            if (pcc is not ILazyLoadPackage lazyPcc)
+            {
+                throw new InvalidOperationException("Package type does not support lazy loading.");
+            }
+            return lazyPcc;
+        }
+
         /// <summary>
         /// Essentially just <code>new MemoryStream(File.ReadAllBytes(<paramref name="filePath"/>))</code>, but with some setup that improves decompression performance 
         /// </summary>
@@ -286,7 +324,7 @@ namespace LegendaryExplorerCore.Packages
             return LoadPackage(fs, pathToFile, false, true);
         }
 
-        private static IMEPackage LoadPackage(Stream stream, string filePath = null, bool useSharedCache = false, bool quickLoad = false, Func<ExportEntry, bool> dataLoadPredicate = null)
+        private static IMEPackage LoadPackage(Stream stream, string filePath = null, bool useSharedCache = false, bool quickLoad = false, Func<ExportEntry, bool> dataLoadPredicate = null, bool lazyLoad = false)
         {
 #if DEBUG && !AZURE
             // This is only for net5-packagecache branch to trace package opening
@@ -349,7 +387,14 @@ namespace LegendaryExplorerCore.Packages
                 )
             {
                 stream.Position -= 8; //reset to start
-                pkg = MEStreamConstructorDelegate(stream, filePath, quickLoad, dataLoadPredicate);
+                pkg = MEStreamConstructorDelegate(new MEPackage.PackageLoadParameters
+                {
+                    Stream = stream,
+                    AssociatedFilePath = filePath,
+                    OnlyHeader = quickLoad,
+                    DataLoadPredicate = dataLoadPredicate,
+                    LazyLoad = lazyLoad
+                });
                 MemoryAnalyzer.AddTrackedMemoryItem($"{pkg.Game} MEPackage {Path.GetFileName(filePath)}", new WeakReference(pkg));
             }
             else if (version is UDKPackage.UDKUnrealVersion2015 or UDKPackage.UDKUnrealVersion2014 or UDKPackage.UDKUnrealVersion2011 or UDKPackage.UDKUnrealVersion2010_09 && licenseVersion == 0)

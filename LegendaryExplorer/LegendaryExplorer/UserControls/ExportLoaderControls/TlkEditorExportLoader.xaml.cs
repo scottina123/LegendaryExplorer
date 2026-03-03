@@ -59,6 +59,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand DeleteStringCommand { get; set; }
         public ICommand SearchCommand { get; set; }
         public ICommand AddStringCommand { get; set; }
+        public ICommand AddStringRangeCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -69,6 +70,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             SearchCommand = new GenericCommand(TextSearch, HasTLKLoaded);
             AddStringCommand = new GenericCommand(AddString, HasTLKLoaded);
+            AddStringRangeCommand = new GenericCommand(AddStringRange, HasTLKLoaded);
 
             ExportXmlCommand = new GenericCommand(ExportToXml, HasTLKLoaded);
             ImportXmlCommand = new GenericCommand(ImportFromXml, HasTLKLoaded);
@@ -233,6 +235,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             FileModified = true;
         }
 
+        private void AddStringRange()
+        {
+            // Get set of existing string IDs for efficient duplicate checking
+            var existingIDs = LoadedStrings.Select(x => x.StringID).ToHashSet();
+
+            // Show dialog
+            var dialog = new AddStringRangeDialog(existingIDs)
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                int startID = dialog.StartStringID;
+                int endID = dialog.EndStringID;
+
+                // Add strings in the range
+                var newStrings = new List<TLKStringRef>();
+                for (int id = startID; id <= endID; id++)
+                {
+                    var blankstringref = new TLKStringRef(id, "", 1);
+                    newStrings.Add(blankstringref);
+                }
+
+                // Add all strings at once for better performance
+                LoadedStrings.AddRange(newStrings);
+                CleanedStrings.AddRange(newStrings);
+
+                // Select the first added string
+                DisplayedString_ListBox.SelectedItem = newStrings[0];
+                DisplayedString_ListBox.ScrollIntoView(newStrings[0]);
+
+                FileModified = true;
+            }
+        }
+
         private void ExportToXml()
         {
             var fnameBase = CurrentLoadedExport?.ObjectName.Name;
@@ -391,11 +429,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             editBox.Text = NO_STRING_SELECTED; //Reset ability to save, reset edit box if export changed.
         }
 
-        public void LoadFileFromStream(Stream stream)
+        public void LoadFileFromStream(Stream stream, string source)
         {
             UnloadExport();
             CurrentLoadedFile = null;
-            _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(stream);
+            _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(stream, source);
 
             // Need way to load a file without having it show up in the recents
 

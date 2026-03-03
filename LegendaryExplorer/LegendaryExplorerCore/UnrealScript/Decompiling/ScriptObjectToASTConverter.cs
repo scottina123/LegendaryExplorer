@@ -9,6 +9,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.UnrealScript.Analysis.Symbols;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
+using LegendaryExplorerCore.UnrealScript.Lexing;
 using LegendaryExplorerCore.UnrealScript.Utilities;
 using static LegendaryExplorerCore.Unreal.UnrealFlags;
 
@@ -88,9 +89,18 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
             }
             foreach (int uIndex in uClass.LocalFunctionMap.Values)
             {
-                if (pcc.GetEntry(uIndex) is ExportEntry funcExp && fileLib.GetCachedObjectBinary<UFunction>(funcExp, usop) is UFunction uFunction)
+                if (pcc.GetEntry(uIndex) is ExportEntry funcExp)
                 {
-                    Funcs.Add(ConvertFunction(uFunction, fileLib, usop, uClass, decompileBytecodeAndDefaults));
+                    if (funcExp.ObjectName.Name.StartsWith($"__lambda__", StringComparison.OrdinalIgnoreCase))
+                    {
+                        //TODO: SHOULD THESE BE SKIPPED?
+                        //skip lambda functions
+                        continue;
+                    }
+                    if (fileLib.GetCachedObjectBinary<UFunction>(funcExp, usop) is UFunction uFunction)
+                    {
+                        Funcs.Add(ConvertFunction(uFunction, fileLib, usop, uClass, decompileBytecodeAndDefaults));
+                    }
                 }
             }
             DefaultPropertiesBlock defaultProperties = null;
@@ -101,7 +111,7 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 defaultProperties = ConvertExportProperties(propExport, fileLib, usop);
                 if (uClass.ScriptBytecodeSize > 0)
                 {
-                    replicationBlock = new ByteCodeDecompiler(uClass, uClass, fileLib, replicatedProperties: replicatedProperties).Decompile();
+                    replicationBlock = new ByteCodeDecompiler(uClass, uClass, fileLib, usop, replicatedProperties: replicatedProperties).Decompile();
                 }
             }
 
@@ -192,7 +202,7 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 nextItem = uFunction.Next;
             }
 
-            var body = decompileBytecode ? new ByteCodeDecompiler(obj, containingClass, fileLib).Decompile() : null;
+            var body = decompileBytecode ? new ByteCodeDecompiler(obj, containingClass, fileLib, usop).Decompile() : null;
 
             return new State(obj.Export.ObjectName.Instanced, body, obj.StateFlags, parent, funcs, new List<Label>(), -1, -1)
             {
@@ -552,22 +562,55 @@ namespace LegendaryExplorerCore.UnrealScript.Decompiling
                 }
             }
 
-            CodeBody body = null;
-            if (decompileBytecode)
-            {
-                body = new ByteCodeDecompiler(obj, containingClass, fileLib, parameters, returnVal?.VarType).Decompile();
-            }
-
-            var func = new Function(obj.Export.ObjectName.Instanced, obj.FunctionFlags, returnVal, body, parameters)
+            var func = new Function(obj.Export.ObjectName.Instanced, obj.FunctionFlags, returnVal, null, parameters)
             {
                 NativeIndex = obj.NativeIndex,
                 FilePath = pcc.FilePath,
                 UIndex = obj.Export.UIndex,
             };
+            if (func.Name.StartsWith("__lambda__", StringComparison.OrdinalIgnoreCase))
+            {
+                func.IsLambda = true;
+            }
+            if (decompileBytecode)
+            {
+                var body = new ByteCodeDecompiler(obj, containingClass, fileLib, usop, parameters, returnVal?.VarType)
+                {
+                    Function = func
+                }.Decompile();
+                body.Outer = func;
+                func.Body = body;
+            }
+
             if (!obj.Export.Game.IsGame3())
             {
                 func.OperatorPrecedence = obj.OperatorPrecedence;
-                func.FriendlyName = obj.FriendlyName;
+                func.FriendlyName = obj.FriendlyName.Name;
+            }
+            else if (func.IsOperator)
+            {
+                string[] parts = func.Name.Split('_');
+                if (parts.Length is 3 && byte.TryParse(parts[2], out byte precedence))
+                {
+                    func.OperatorPrecedence = precedence;
+                }
+                if (OperatorHelper.VerboseNameToOperatorType.TryGetValue(parts[0], out TokenType operatorType))
+                {
+                    func.FriendlyName = OperatorHelper.OperatorTypeToString(operatorType);
+                    //handle built-in operators in ME3/LE3, which does not store precedence
+                    if (func.OperatorPrecedence is 0)
+                    {
+                        func.OperatorPrecedence = OperatorHelper.DefaultPrecedence(operatorType);
+                        if (func.Name is "SubtractEqual_StrStr")
+                        {
+                            func.OperatorPrecedence = 45;
+                        }
+                    }
+                }
+                else if (parts.Length is > 1)
+                {
+                    func.FriendlyName = parts[0];
+                }
             }
 
             foreach (var local in locals)

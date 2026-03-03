@@ -25,7 +25,8 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
     {
         private readonly UStruct Target;
         private IContainsByteCode CompilationUnit;
-        private readonly IEntry ContainingClass;
+        private readonly IEntry ContainingClassEntry;
+        private Class ContainingClass;
 
         private readonly CaseInsensitiveDictionary<ExportEntry> parameters = [];
         private readonly CaseInsensitiveDictionary<ExportEntry> locals = [];
@@ -95,7 +96,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 containingClass = containingClass.Parent;
             }
 
-            ContainingClass = containingClass;
+            ContainingClassEntry = containingClass;
         }
 
         public static void Compile(Function func, UFunction target, UnrealScriptOptionsPackage usop)
@@ -118,6 +119,12 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 QueueComments(func.Tokens.Comments, func.StartPos);
 
                 CompilationUnit = func;
+                var outer = func.Outer;
+                while (outer is not Class)
+                {
+                    outer = outer.Outer;
+                }
+                ContainingClass = (Class)outer;
                 int nextItem = uFunction.Children;
                 UProperty returnValue = null;
                 while (uFunction.Export.FileRef.TryGetUExport(nextItem, out ExportEntry nextChild))
@@ -229,6 +236,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 QueueComments(state.Tokens.Comments, state.Body.StartPos);
 
                 CompilationUnit = state;
+                ContainingClass = (Class)state.Outer;
                 uState.LabelTableOffset = ushort.MaxValue;
                 Emit(state.Body);
 
@@ -302,7 +310,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             {
                 throw new Exception("Cannot compile a replication block to a non-class");
             }
-            CompilationUnit = cls;
+            CompilationUnit = ContainingClass = cls;
 
             Emit(cls.ReplicationBlock);
             WriteOpCode(OpCodes.EndOfScript);
@@ -687,6 +695,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 FunctionCall functionCall => (Function)functionCall.Function.Node,
                 InOpReference inOpReference => inOpReference.Operator.Implementer,
                 PreOpReference preOpReference => preOpReference.Operator.Implementer,
+                PostOpReference postOpReference => postOpReference.Operator.Implementer,
                 _ => null
             } is { RetValNeedsDestruction: true } func)
             {
@@ -731,6 +740,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 FunctionCall functionCall => (Function)functionCall.Function.Node,
                 InOpReference inOpReference => inOpReference.Operator.Implementer,
                 PreOpReference preOpReference => preOpReference.Operator.Implementer,
+                PostOpReference postOpReference => postOpReference.Operator.Implementer,
                 CompositeSymbolRef compositeSymbolRef => GetAffector(compositeSymbolRef.InnerSymbol),
                 _ => null
             };
@@ -755,18 +765,43 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             return true;
         }
 
-        public bool VisitNode(InOpReference node)
+        private void EmitOperatorStart(OperatorDeclaration op, out SkipPlaceholder skip)
         {
-            InOpDeclaration op = node.Operator;
+            skip = null;
             if (op.NativeIndex > 0)
             {
                 WriteNativeOpCode(op.NativeIndex);
             }
             else
             {
+                //we allow usage of operators from anywhere, since they're static,
+                //so we need to add an implicit "class'ClassName'.static." to operator calls from outside the current class heirarchy
+                if (op.Implementer.Outer is Class operatorClass && !ContainingClass.SameAsOrSubClassOf(operatorClass))
+                {
+                    WriteOpCode(OpCodes.ClassContext);
+
+                    WriteOpCode(OpCodes.ObjectConst);
+                    WriteObjectRef(CompilerUtils.ResolveClass(operatorClass, Pcc, USOP));
+
+                    skip = WriteSkipPlaceholder();
+
+                    if (Game >= MEGame.ME3)
+                    {
+                        WriteObjectRef(ResolveReturnValue(op.Implementer));
+                    }
+                    WriteByte(0);
+
+                    skip.ResetStart();
+                }
                 WriteOpCode(OpCodes.FinalFunction);
                 WriteObjectRef(ResolveFunction(op.Implementer));
             }
+        }
+
+        public bool VisitNode(InOpReference node)
+        {
+            InOpDeclaration op = node.Operator;
+            EmitOperatorStart(op, out SkipPlaceholder skip);
 
             VariableType lType = node.Operator.LeftOperand.VarType;
             VariableType rType = node.Operator.RightOperand.VarType;
@@ -781,10 +816,10 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             }
             Emit(AddConversion(lType, node.LeftOperand));
             inAssignTarget = false;
-            SkipPlaceholder skip = null;
             if (op.RightOperand.Flags.Has(EPropertyFlags.SkipParm))
             {
                 WriteOpCode(OpCodes.Skip);
+                //only native functions can use SkipParm, so skip will be null and can be safely reused
                 skip = WriteSkipPlaceholder();
             }
 
@@ -794,19 +829,34 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             return true;
         }
 
+        private void EmitSingleArgumentOperator(OperatorDeclaration op, FunctionParameter param, Expression operand)
+        {
+            EmitOperatorStart(op, out SkipPlaceholder skip);
+            VariableType type = param.VarType;
+            if (type is Class { IsInterface: true } c)
+            {
+                type = operand.ResolveType() ?? c;
+            }
+
+            if (param.IsOut)
+            {
+                inAssignTarget = true;
+            }
+            Emit(AddConversion(type, operand));
+            inAssignTarget = false;
+            WriteOpCode(OpCodes.EndFunctionParms);
+            skip?.End();
+        }
+
         public bool VisitNode(PreOpReference node)
         {
-            WriteNativeOpCode(node.Operator.NativeIndex);
-            Emit(node.Operand);
-            WriteOpCode(OpCodes.EndFunctionParms);
+            EmitSingleArgumentOperator(node.Operator, node.Operator.Operand, node.Operand);
             return true;
         }
 
         public bool VisitNode(PostOpReference node)
         {
-            WriteNativeOpCode(node.Operator.NativeIndex);
-            Emit(node.Operand);
-            WriteOpCode(OpCodes.EndFunctionParms);
+            EmitSingleArgumentOperator(node.Operator, node.Operator.Operand, node.Operand);
             return true;
         }
 
@@ -886,7 +936,16 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
         public bool VisitNode(FunctionCall node)
         {
             var func = (Function)node.Function.Node;
-            if (func.NativeIndex > 0)
+            if (func.Flags.Has(EFunctionFlags.Delegate))
+            {
+                //If we're here instead of DelegateCall, it's because we're directly calling a delegate function
+                //Calls to delegate functions should be emitted as a DelegateCall on the auto-generated delegate variable
+                WriteOpCode(OpCodes.DelegateFunction);
+                WriteByte(0); //auto-generated delegate variables are always instance variables
+                WriteObjectRef(ResolveDelegateProperty(func));
+                WriteName(func.Name);
+            }
+            else if (func.NativeIndex > 0)
             {
                 WriteNativeOpCode(func.NativeIndex);
             }
@@ -915,7 +974,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 }
                 else
                 {
-                    throw new Exception($"Line {CompilationUnit.Tokens.LineLookup.GetLineFromCharIndex(node.StartPos)}: Could not find '{func.Name}' in #{ContainingClass.UIndex} {ContainingClass.ObjectName}'s Virtual Function Table!");
+                    throw new Exception($"Line {CompilationUnit.Tokens.LineLookup.GetLineFromCharIndex(node.StartPos)}: Could not find '{func.Name}' in #{ContainingClassEntry.UIndex} {ContainingClassEntry.ObjectName}'s Virtual Function Table!");
                 }
             }
             InContext.Push(null);
@@ -926,8 +985,8 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
 
         public bool VisitNode(DelegateCall node)
         {
-            WriteOpCode(OpCodes.DelegateFunction);
             var varDecl = (VariableDeclaration)node.DelegateReference.Node;
+            WriteOpCode(OpCodes.DelegateFunction);
             if (varDecl.Outer is Function)
             {
                 WriteByte(1);
@@ -1091,12 +1150,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                     WriteName(func.Name);
                     return true;
                 case Function func:
-                    WriteOpCode(OpCodes.DelegateProperty);
-                    WriteName(func.Name);
-                    if (Game >= MEGame.ME3)
-                    {
-                        WriteObjectRef(func.Flags.Has(EFunctionFlags.Delegate) ? ResolveDelegateProperty(func) : null);
-                    }
+                    WriteDelegateProperty(func);
                     return true;
             }
 
@@ -1174,6 +1228,16 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             return true;
         }
 
+        private void WriteDelegateProperty(Function func)
+        {
+            WriteOpCode(OpCodes.DelegateProperty);
+            WriteName(func.Name);
+            if (Game >= MEGame.ME3)
+            {
+                WriteObjectRef(func.Flags.Has(EFunctionFlags.Delegate) ? ResolveDelegateProperty(func) : null);
+            }
+        }
+
         public bool VisitNode(DefaultReference node)
         {
             if (node.Node is VariableDeclaration decl && decl.VarType == SymbolTable.BoolType)
@@ -1228,6 +1292,12 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
                 WriteObjectRef(CompilerUtils.ResolveClass((Class)node.CastType, Pcc, USOP));
             }
             Emit(node.CastTarget);
+            return true;
+        }
+
+        public bool VisitNode(LambdaExpression node)
+        {
+            WriteDelegateProperty(node.Lambda);
             return true;
         }
 
@@ -1460,7 +1530,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             }
             else
             {
-                IEntry entry = ResolveObject($"{ContainingClass.InstancedFullPath}.{node.Name.Value}", node.Class.Name) 
+                IEntry entry = ResolveObject($"{ContainingClassEntry.InstancedFullPath}.{node.Name.Value}", node.Class.Name) 
                                ?? ResolveObject(node.Name.Value, node.Class.Name) 
                                ?? USOP.MissingObjectResolver?.Invoke(Pcc, node.Name.Value, node.Class.Name);
                 if (entry is null)
@@ -1518,7 +1588,7 @@ namespace LegendaryExplorerCore.UnrealScript.Compiling
             return true;
         }
 
-        //TODO: remove? alreaty done in parser. doing again should have no effect
+        //TODO: remove? already done in parser. doing again should have no effect
         static Expression AddConversion(VariableType destType, Expression expr)
         {
             if (expr is NoneLiteral noneLit)

@@ -84,12 +84,12 @@ namespace LegendaryExplorerCore.Packages
         /// <summary>
         /// For concurrency when rebuilding the lookup table
         /// </summary>
-        private readonly object _packageSyncObj = new(); //TODO NET9: use System.Threading.Lock
+        private readonly Lock _packageSyncObj = new();
 
         /// <summary>
         /// For concurrency when accessing FindExport/Import/Entry, and the table needs regenerated. This prevents multi-threading use from searching a currently rebuilding lookup table
         /// </summary>
-        private readonly object _findEntrySyncObj = new(); //TODO NET9: use System.Threading.Lock
+        private readonly Lock _findEntrySyncObj = new();
 
         public bool IsCompressed => Flags.Has(UnrealFlags.EPackageFlags.Compressed);
 
@@ -335,6 +335,10 @@ namespace LegendaryExplorerCore.Packages
             exportEntry.DataChanged = true;
             exportEntry.HeaderOffset = 1; //This will make it so when setting idxLink it knows the export has been attached to the tree, even though this doesn't do anything. Find by offset may be confused by this. Updates on save
             exportEntry.Index = exports.Count;
+            if (exportEntry.Parent is ExportEntry parent)
+            {
+                exportEntry.ExportFlags = parent.ExportFlags;
+            }
             exportEntry.PropertyChanged += exportChanged;
             exports.Add(exportEntry);
 
@@ -376,7 +380,15 @@ namespace LegendaryExplorerCore.Packages
                 return matchingEntry;
             }
 
-            // No matching entry.
+            var dotIndex = instancedPath.LastIndexOf('.');
+            var objName = dotIndex > 0 ? instancedPath.AsSpan(dotIndex + 1) : instancedPath.AsSpan();
+            foreach (IEntry entry in Exports.Concat<IEntry>(Imports))
+            {
+                if (entry.ObjectName.EqualsInstancedString(objName) && entry.InstancedFullPath.CaseInsensitiveEquals(instancedPath) && entry.ClassName.CaseInsensitiveEquals(className))
+                {
+                    return entry;
+                }
+            }
             return null;
         }
 
@@ -986,8 +998,8 @@ namespace LegendaryExplorerCore.Packages
             }
         }
 
-        private readonly object _updatelock = new();
-        private readonly HashSet<PackageUpdate> pendingUpdates = new();
+        private readonly Lock _updatelock = new();
+        private readonly HashSet<PackageUpdate> pendingUpdates = [];
 
         //Once this many milliseconds have gone by without a new change being queued, all the pending updates will be broadcast to the Users and WeakUsers
         private const int QUEUING_DELAY = 50;

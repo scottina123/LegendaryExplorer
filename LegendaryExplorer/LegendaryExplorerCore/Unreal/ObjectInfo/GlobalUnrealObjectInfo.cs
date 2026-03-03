@@ -103,6 +103,30 @@ namespace LegendaryExplorerCore.Unreal.ObjectInfo
             return false;
         }
 
+        public static bool IsA(this IEntry entry, ISet<string> baseClasses)
+        {
+            if (entry is null) return false;
+
+            if (baseClasses.Contains("Object")) return true;
+
+            string className = entry.ClassName;
+            var classes = GetClasses(entry.Game);
+            while (className != "Object")
+            {
+                if (baseClasses.Contains(className)) return true;
+
+                if (classes.TryGetValue(className, out ClassInfo info))
+                {
+                    className = info.baseClass;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            return false;
+        }
+
         /// <summary>
         /// Checks if the full path name of this entry is known to be defined in native only
         /// </summary>
@@ -258,7 +282,7 @@ namespace LegendaryExplorerCore.Unreal.ObjectInfo
 
                             foreach (var prop in defaults.GetProperties())
                             {
-                                if (!props.ContainsNamedProp(prop.Name))
+                                if (!props.ContainsNamedProp(prop.Name, prop.StaticArrayIndex))
                                 {
                                     props.Add(prop);
                                 }
@@ -1180,7 +1204,7 @@ namespace LegendaryExplorerCore.Unreal.ObjectInfo
             AddCore("DelegateProperty", "Property");
             AddCore("StringRefProperty", "Property");
 
-            if (game == MEGame.LE3)
+            if (game.IsLEGame())
             {
                 // Exists in executable but is not in any package file, so was not exposed to packages.
                 AddCore("ObjectRedirector", "Object");

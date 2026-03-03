@@ -332,6 +332,25 @@ namespace LegendaryExplorerCore.Helpers
             stream.Write(buffer);
         }
 
+        /// <summary>
+        /// Writes a padded string to the stream. If padLen is smaller than the string length, an exception is thrown.
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="str"></param>
+        /// <param name="padLen">Number of bytes to ensure are written</param>
+        public static void WritePaddedStringUnicodeNull(this Stream stream, string str, int padLen)
+        {
+            if (padLen < (str.Length + 1) * 2)
+            {
+                throw new Exception($@"The given string '{str}' exceeds the padding length of {padLen}");
+            }
+
+            var posStart = stream.Position;
+            stream.WriteStringUnicodeNull(str);
+            var sizeWritten = stream.Position - posStart;
+            stream.WriteZeros(padLen - (int) sizeWritten);
+        }
+
         public static void WriteStringUnicode(this EndianWriter stream, string str)
         {
             stream.BaseStream.WriteStringUnicode(str);
@@ -532,10 +551,7 @@ namespace LegendaryExplorerCore.Helpers
         /// <returns>The data read from the stream</returns>
         public static byte[] ReadFully(this Stream input, IBuffer buffer)
         {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
+            ArgumentNullException.ThrowIfNull(buffer);
             return ReadFully(input, buffer.Bytes);
         }
 
@@ -554,14 +570,8 @@ namespace LegendaryExplorerCore.Helpers
         /// <returns>The data read from the stream</returns>
         public static byte[] ReadFully(this Stream input, byte[] buffer)
         {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-            if (input == null)
-            {
-                throw new ArgumentNullException(nameof(input));
-            }
+            ArgumentNullException.ThrowIfNull(buffer);
+            ArgumentNullException.ThrowIfNull(input);
             if (buffer.Length == 0)
             {
                 throw new ArgumentException("Buffer has length of 0");
@@ -594,20 +604,9 @@ namespace LegendaryExplorerCore.Helpers
         /// <exception cref="IOException">An error occurs while reading or writing</exception>
         public static void Copy(this Stream input, Stream output, byte[] buffer)
         {
-            if (buffer == null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-
-            if (input == null)
-            {
-                throw new ArgumentNullException(nameof(input));
-            }
-
-            if (output == null)
-            {
-                throw new ArgumentNullException(nameof(output));
-            }
+            ArgumentNullException.ThrowIfNull(buffer);
+            ArgumentNullException.ThrowIfNull(input);
+            ArgumentNullException.ThrowIfNull(output);
 
             if (buffer.Length == 0)
             {

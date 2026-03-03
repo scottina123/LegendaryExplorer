@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.UnrealScript.Analysis.Symbols;
 using LegendaryExplorerCore.UnrealScript.Analysis.Visitors;
 using LegendaryExplorerCore.UnrealScript.Compiling.Errors;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorerCore.UnrealScript.Lexing;
 using LegendaryExplorerCore.UnrealScript.Utilities;
+using static LegendaryExplorerCore.Unreal.UnrealFlags;
 using static LegendaryExplorerCore.UnrealScript.Utilities.Keywords;
 
 namespace LegendaryExplorerCore.UnrealScript.Parsing
@@ -49,7 +51,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         protected ParseException ParseError(string msg, ScriptToken token)
         {
-            token.SyntaxType = EF.ERROR;
+            token.SyntaxType = ST.ERROR;
             return ParseError(msg, token.StartPos, token.EndPos);
         }
 
@@ -63,7 +65,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         protected void TypeError(string msg, ScriptToken token)
         {
-            token.SyntaxType = EF.ERROR;
+            token.SyntaxType = ST.ERROR;
             TypeError(msg, token.StartPos, token.EndPos);
         }
 
@@ -76,7 +78,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         protected void LogWarning(string msg, ScriptToken token)
         {
-            token.SyntaxType = EF.ERROR;
+            token.SyntaxType = ST.ERROR;
             LogWarning(msg, token.StartPos, token.EndPos);
         }
 
@@ -128,7 +130,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         public VariableType ParseTypeRef()
         {
-            if (Matches(ARRAY, EF.Keyword))
+            if (MatchesKeyword(ARRAY))
             {
                 var arrayToken = Tokens.Prev();
                 if (Consume(TokenType.LeftArrow) is null)
@@ -152,7 +154,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 return new DynamicArrayType(elementType, arrayToken.StartPos, CurrentPosition);
             }
 
-            if (Matches(DELEGATE, EF.Keyword))
+            if (MatchesKeyword(DELEGATE))
             {
                 var delegateToken = Tokens.Prev();
                 if (Consume(TokenType.LeftArrow) is null)
@@ -165,7 +167,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 {
                     if (Consume(TokenType.Word) is ScriptToken identifier)
                     {
-                        identifier.SyntaxType = EF.Function;
+                        identifier.SyntaxType = ST.Function;
                         if (functionName.Length > 0)
                         {
                             functionName += ".";
@@ -176,7 +178,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                     {
                         throw ParseError("Expected function name for delegate!", CurrentPosition);
                     }
-                } while (Matches(TokenType.Dot, EF.Function));
+                } while (Matches(TokenType.Dot, ST.Function));
                 if (Consume(TokenType.RightArrow) is null)
                 {
                     throw ParseError("Expected '>' after function name!", CurrentPosition);
@@ -186,7 +188,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
             if (Consume(CLASS) is { } classToken)
             {
-                classToken.SyntaxType = EF.Keyword;
+                classToken.SyntaxType = ST.Keyword;
                 if (Consume(TokenType.LeftArrow) is null)
                 {
                     return new ClassType(new VariableType(OBJECT), classToken.StartPos, classToken.EndPos);
@@ -197,7 +199,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                     throw ParseError("Expected class name!", CurrentPosition);
                 }
 
-                classNameToken.SyntaxType = EF.Class;
+                classNameToken.SyntaxType = ST.Class;
 
                 if (Consume(TokenType.RightArrow) is null)
                 {
@@ -212,21 +214,37 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
                 return null;
             }
 
-            type.SyntaxType = type.Value is INT or FLOAT or BOOL or BYTE or BIOMASK4 or STRING or STRINGREF or NAME ? EF.Keyword : EF.Class;
+            type.SyntaxType = type.Value is INT or FLOAT or BOOL or BYTE or BIOMASK4 or STRING or STRINGREF or NAME ? ST.Keyword : ST.Class;
             return new VariableType(type.Value, type.StartPos, type.EndPos);
         }
 
         #region Helpers
 
-        public bool Matches(string str, EF syntaxType = EF.None)
+        public bool Matches(string str, ST syntaxType = ST.None)
         {
             bool matches = CurrentIs(str);
             if (matches)
             {
-                if (syntaxType != EF.None)
+                if (syntaxType != ST.None)
                 {
                     CurrentToken.SyntaxType = syntaxType;
                 }
+                Tokens.Advance();
+            }
+            return matches;
+        }
+
+        public bool MatchesKeyword(string str)
+        {
+            bool matches = CurrentIs(str);
+            if (matches)
+            {
+                var token = CurrentToken;
+                if (token.IsLiteralIdentifier)
+                {
+                    return false;
+                }
+                token.SyntaxType = ST.Keyword;
                 Tokens.Advance();
             }
             return matches;
@@ -242,11 +260,11 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             return matches;
         }
 
-        public bool Matches(TokenType tokenType, EF syntaxType = EF.None)
+        public bool Matches(TokenType tokenType, ST syntaxType = ST.None)
         {
             if (Tokens.CurrentItem.Type == tokenType)
             {
-                if (syntaxType != EF.None)
+                if (syntaxType != ST.None)
                 {
                     CurrentToken.SyntaxType = syntaxType;
                 }
@@ -420,25 +438,25 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
             if (Matches(TRUE, FALSE))
             {
-                token.SyntaxType = EF.Keyword;
+                token.SyntaxType = ST.Keyword;
                 return new BooleanLiteral(bool.Parse(token.Value), token.StartPos, token.EndPos);
             }
 
-            if (Matches(NONE, EF.Keyword))
+            if (MatchesKeyword(NONE))
             {
                 return new NoneLiteral(token.StartPos, token.EndPos);
             }
 
             if (CurrentIs(VECT) && Tokens.LookAhead(1).Type == TokenType.LeftParenth)
             {
-                token.SyntaxType = EF.Keyword;
+                token.SyntaxType = ST.Keyword;
                 Tokens.Advance();
                 return ParseVectorLiteral();
             }
 
             if (CurrentIs(ROT) && Tokens.LookAhead(1).Type == TokenType.LeftParenth)
             {
-                token.SyntaxType = EF.Keyword;
+                token.SyntaxType = ST.Keyword;
                 Tokens.Advance();
                 return ParseRotatorLiteral();
             }
@@ -536,7 +554,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         protected ObjectLiteral ParseObjectLiteral(ScriptToken className, ScriptToken objName, bool noActors = true)
         {
-            className.SyntaxType = EF.Class;
+            className.SyntaxType = ST.Class;
             bool isClassLiteral = className.Value.CaseInsensitiveEquals(CLASS);
 
             var classType = new VariableType((isClassLiteral ? objName : className).Value);
@@ -571,6 +589,10 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
 
         protected SymbolReference NewSymbolReference(ASTNode symbol, ScriptToken token, bool isDefaultRef)
         {
+            if (token.Value.StartsWith("__lambda__", StringComparison.OrdinalIgnoreCase))
+            {
+                TypeError("Lambda functions cannot be referenced directly!", token);
+            }
             SymbolReference symRef;
             if (isDefaultRef)
             {
@@ -591,7 +613,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             }
             if (symRef.Node is Function)
             {
-                token.SyntaxType = EF.Function;
+                token.SyntaxType = ST.Function;
                 if (isDefaultRef)
                 {
                     TypeError("Expected property name!", token);
@@ -633,6 +655,61 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             }
 
             return literal;
+        }
+
+        protected bool IsInfixOperator(out bool isRightShift, out TokenType opType)
+        {
+            //Lexer can't recognize >> as the right-shift operator, because of the conflicting array<delegate<delName>> syntax, so do it manually here
+            isRightShift = false;
+            if (CurrentTokenType == TokenType.RightArrow && Tokens.LookAhead(1).Type == TokenType.RightArrow)
+            {
+                //check to see if there is any whitespace between them. Otherwise > > would be recognized as the right shift operator! 
+                isRightShift = Tokens.LookAhead(1).StartPos == CurrentToken.StartPos + 1;
+                if (isRightShift)
+                {
+                    opType = TokenType.RightShift;
+                    return true;
+                }
+            }
+            if (Symbols is null)
+            {
+                opType = CurrentTokenType;
+                return OperatorHelper.IsOperatorToken(opType);
+            }
+            return Symbols.IsInfixOperator(CurrentToken, out opType);
+        }
+
+        protected bool IsOperator(out bool isRightShift, out TokenType opType)
+        {
+            if (IsInfixOperator(out isRightShift, out opType))
+            {
+                return true;
+            }
+            return opType is TokenType.Increment or TokenType.Decrement or TokenType.Complement or TokenType.MinusSign or TokenType.ExclamationMark;
+        }
+
+        protected bool ParseScopeSpan(bool isPartialScope, out int startPos, out int endPos, out List<ScriptToken> scopeTokens)
+        {
+            scopeTokens = new List<ScriptToken>();
+            startPos = -1;
+            endPos = -1;
+            if (!isPartialScope && Consume(TokenType.LeftBracket) == null)
+            {
+                Log.LogError($"Expected '{TokenType.LeftBracket}'!", CurrentPosition);
+                return false;
+            }
+            startPos = Tokens.CurrentItem.StartPos;
+
+            var tokens = Tokens.GetRestOfScope();
+            if (tokens is null)
+            {
+                Log.LogError("Scope ended prematurely, are your scopes unbalanced?", CurrentPosition);
+                return false;
+            }
+            scopeTokens = tokens;
+            endPos = Tokens.CurrentItem.StartPos;
+            Tokens.Advance();
+            return true;
         }
     }
 

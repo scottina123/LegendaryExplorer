@@ -19,8 +19,9 @@ using Resource = SharpDX.Direct3D11.Resource;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
+using LegendaryExplorer.Dialogs;
 
-namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
+namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 {
     using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
 
@@ -33,7 +34,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
     public static class RenderContextExtensions
     {
-        public static unsafe Texture2D LoadTexture(this RenderContext renderContext, uint width, uint height, Format format, byte[] pixelData)
+        public static unsafe Texture2D LoadTexture(this LegacyRenderContext renderContext, uint width, uint height, Format format, byte[] pixelData)
         {
             Texture2DDescription texture2DDescription = GetTextureDescription(width, height, format, false, out int pitch);
             fixed (byte* pixelDataPointer = pixelData)
@@ -73,7 +74,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return texture2DDescription;
         }
 
-        public static Texture2D LoadTextureCube(this RenderContext renderContext, uint size, Format format, Fixed6<byte[]> faceData)
+        public static Texture2D LoadTextureCube(this LegacyRenderContext renderContext, uint size, Format format, Fixed6<byte[]> faceData)
         {
             Texture2DDescription texture2DDescription = GetTextureDescription(size, size, format, true, out int pitch);
             var tex = new Texture2D(renderContext.Device, texture2DDescription);
@@ -86,7 +87,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return tex;
         }
 
-        public static unsafe Texture2D LoadFile(this RenderContext renderContext, string filename)
+        public static unsafe Texture2D LoadFile(this LegacyRenderContext renderContext, string filename)
         {
             var pixelFormat = LegendaryExplorerCore.Textures.PixelFormat.ARGB;
             byte[] pixelData = LegendaryExplorerCore.Textures.TexConverter.LoadTexture(filename, out uint width, out uint height, ref pixelFormat); // NEEDS WAY TO HAVE ALPHA AS BLACK!
@@ -94,7 +95,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTexture(width, height, format, pixelData);
         }
 
-        public static Texture2D LoadUnrealMip(this RenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip, LegendaryExplorerCore.Textures.PixelFormat pixelFormat)
+        public static Texture2D LoadUnrealMip(this LegacyRenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip, LegendaryExplorerCore.Textures.PixelFormat pixelFormat)
         {
             // Todo: Needs way to set black alpha
             var imagebytes = LECTexture2D.GetTextureData(mip, mip.Export.Game);
@@ -109,13 +110,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             return renderContext.LoadTexture(mipWidth, mipHeight, mipFormat, imagebytes);
         }
 
-        public static Texture2D LoadUnrealTexture(this RenderContext renderContext, ExportEntry texture2DExport)
+        public static Texture2D LoadUnrealTexture(this LegacyRenderContext renderContext, ExportEntry texture2DExport)
         {
             var unrealTexture = new LECTexture2D(texture2DExport);
-            return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperties().GetProp<EnumProperty>("Format").Value.Name));
+            return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
         }
 
-        public static Texture2D LoadUnrealTextureCube(this RenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)
+        public static Texture2D LoadUnrealTextureCube(this LegacyRenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)
         {
             if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
 
@@ -140,7 +141,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         }
     }
 
-    public abstract class RenderContext
+    public abstract class LegacyRenderContext
     {
         public int Width { get; private set; } = 0;
         public int Height { get; private set; } = 0;
@@ -247,19 +248,21 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
     }
 
     /// <summary>
-    /// Hosts a <see cref="RenderContext"/> in a WPF control.
+    /// Hosts a <see cref="LegacyRenderContext"/> in a WPF control.
     /// </summary>
-    public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPropertyChanged
+    [Obsolete("This control is legacy and should not be used for new development. It is still used by the mesh and texture preview controls, due to users getting unexplainable crashes otherwise." +
+        "Any new rendering work should be done with the LevelEditor renderer.")]
+    public sealed class LegacySceneRenderControl : ContentControl, IDisposable, INotifyPropertyChanged
     {
         private Microsoft.Wpf.Interop.DirectX.D3D11Image D3DImage;
         private Image Image;
         private readonly Stopwatch Stopwatch = new();
         private bool _shouldRender;
-        private RenderContext _context;
+        private LegacyRenderContext _context;
         private Action _onImageRendered;
         private bool _captureNextFrame;
 
-        public RenderContext Context
+        public LegacyRenderContext Context
         {
             get => _context;
             set => SetProperty(ref _context, value);
@@ -283,25 +286,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             set => SetProperty(ref _captureNextFrame, value);
         }
 
-        public SceneRenderControl()
+        public LegacySceneRenderControl()
         {
             InitializeComponent();
-            Loaded += (s, e) =>
-            {
-                // only at this point the control is ready
-                var window = Window.GetWindow(this); // get the parent window
-                //this will obviously always be true at runtime, but is NOT true in the designer.
-                if (window is not null)
-                {
-                    window.Closing += (s1, e1) =>
-                    {
-                        if (!e1.Cancel)
-                        {
-                            Dispose();
-                        }
-                    };
-                }
-            };
         }
 
         private void InitializeComponent()
@@ -317,6 +304,19 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         {
             if (!InitiallyLoaded)
             {
+                // only at this point the control is ready
+                var window = Window.GetWindow(this); // get the parent window
+                //this will obviously always be true at runtime, but is NOT true in the designer.
+                if (window is not null)
+                {
+                    window.Closing += (s1, e1) =>
+                    {
+                        if (!e1.Cancel)
+                        {
+                            Dispose();
+                        }
+                    };
+                }
                 // Debug.WriteLine("SceneRenderControl_Loaded");
                 D3DImage = new Microsoft.Wpf.Interop.DirectX.D3D11Image
                 {
@@ -339,16 +339,19 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 }
                 catch (Exception exception)
                 {
+                    SetShouldRender(false);
                     Content = Image = new ImageAwesome
                     {
                         Icon = EFontAwesomeIcon.Solid_Ban,
                         Foreground = Brushes.DarkRed
                     };
+                    new ExceptionHandlerDialog(exception).Show();
                     return;
                 }
 
                 CompositionTarget.Rendering += CompositionTarget_Rendering;
                 InitiallyLoaded = true;
+                D3DImage.SetPixelSize(RenderWidth, RenderHeight);
             }
             else
             {
@@ -444,7 +447,20 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
                 IntPtr sharedHandle = resource.SharedHandle;
                 resource.Dispose();
                 var d3dres = Context.Device.OpenSharedResource<Resource>(sharedHandle);
-                Context.CreateSizeDependentResources(RenderWidth, RenderHeight, d3dres.QueryInterface<Texture2D>());
+                try
+                {
+                    Context.CreateSizeDependentResources(RenderWidth, RenderHeight, d3dres.QueryInterface<Texture2D>());
+                }
+                catch (Exception exception)
+                {
+                    SetShouldRender(false);
+                    Content = Image = new ImageAwesome
+                    {
+                        Icon = EFontAwesomeIcon.Solid_Ban,
+                        Foreground = Brushes.DarkRed
+                    };
+                    new ExceptionHandlerDialog(exception).Show();
+                }
                 d3dres.Dispose();
             }
 
@@ -548,7 +564,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         #endregion
 
         // MEMORY GC
-        ~SceneRenderControl()
+        ~LegacySceneRenderControl()
         {
             Dispose();
         }

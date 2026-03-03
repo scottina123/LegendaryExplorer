@@ -15,6 +15,7 @@ using LegendaryExplorer.Tools.CustomFilesManager;
 using LegendaryExplorer.Tools.LiveLevelEditor;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -407,6 +408,21 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             new CustomFilesManagerWindow().Show();
         }
 
+        private void TestTLKSystem_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.TestTLKSystem(GetPEWindow());
+        }
+        
+        private void DetectInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.FindBadForcedExport(GetPEWindow());
+        }
+
+        private void FixInconsistentForcedExport_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.FixBadForcedExport(GetPEWindow());
+        }
+
         private void GenerateTextureToInstancesMap_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsM.GenerateTextureToInstancesMap(GetPEWindow());
@@ -693,6 +709,16 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsM.ValidateNavpointChain(GetPEWindow().Pcc);
         }
 
+        private void MakeLE1MakoMap_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void OpenHostedExportLoader_Shader_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsM.OpenHostedExportLoader(new ShaderExportLoader());
+        }
+
         private void TriggerObjBinGetNames_Clicked(object sender, RoutedEventArgs e)
         {
             if (GetPEWindow().TryGetSelectedExport(out var exp))
@@ -819,7 +845,12 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         private void DumpAllShaders_Click(object sender, RoutedEventArgs e)
         {
             if (GetPEWindow().Pcc == null) return;
-            PackageEditorExperimentsS.DumpAllShaders(GetPEWindow().Pcc);
+            PackageEditorExperimentsS.DumpAllShaders(GetPEWindow());
+        }
+
+        private void DumpGlobalShaders_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsS.DumpGlobalShaders(GetPEWindow());
         }
 
         private void DumpMaterialShaders_Click(object sender, RoutedEventArgs e)
@@ -1323,6 +1354,17 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
 
         // EXPERIMENTS: DropTheSquid
         #region DropTheSquid's Experiments
+
+        private void MakeLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.MakeLODs(GetPEWindow());
+        }
+
+        private void RemoveLODs_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.RemoveLODs(GetPEWindow());
+        }
+
         private void ImportAnimSet_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportAnimSet(GetPEWindow());
@@ -1339,10 +1381,23 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         }
 
         // export mesh
+        private void ExportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow());
+        }
 
+        private void ExportGltf_Textures_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ExportMeshToGltf(GetPEWindow(), GLTF.MaterialExportLevel.Basic);
+        }
         private void ExportSelectedToPsx_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ExportSelectedToPsx(GetPEWindow());
+        }
+
+        private void ExportSelectedMaterial_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ExportTexturesFromMaterial(GetPEWindow());
         }
 
         private void ExportRonToPsx_Click(object sender, RoutedEventArgs e)
@@ -1350,12 +1405,20 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsSquid.RonFileToPskx(GetPEWindow());
         }
 
+        private void ImportPskOverMesh_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.ImportPskOverMesh(GetPEWindow());
+        }
+
         // import a mesh like object
         private void ImportPskAsNewMesh_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.ImportPskAsNewMesh(GetPEWindow());
         }
-
+        private void ImportGltf_Click(object sender, RoutedEventArgs args)
+        {
+            PackageEditorExperimentsSquid.ImportGltf(GetPEWindow());
+        }
 
         private void MakeHeterochromia_Click(object sender, RoutedEventArgs e)
         {
@@ -1395,6 +1458,31 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         private void SmoothMeshSeams_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsSquid.SmoothMeshSeams(GetPEWindow());
+        }
+
+        private void CalculateNormalBlue_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.CalculateNormalMapBlueChannel(GetPEWindow());
+        }
+
+        private void InvertGreenChannel_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.InvertGreenChannel(GetPEWindow());
+        }
+
+        private void MakeTransparent_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.MakeTransparent(GetPEWindow());
+        }
+
+        private void RemoveTranparency_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.RemoveTransparency(GetPEWindow());
+        }
+
+        private void FixMisalignedSkeleton_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsSquid.FixMisallignedSkeleton(GetPEWindow());
         }
 
         #endregion
@@ -1549,6 +1637,10 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
         private void StreamFile_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsO.StreamFileExperiment(GetPEWindow());
+        }
+        private void CreateConvo_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsO.CreateConversationExperiment(GetPEWindow());
         }
         #endregion
 

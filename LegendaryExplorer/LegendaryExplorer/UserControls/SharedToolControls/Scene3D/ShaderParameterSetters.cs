@@ -11,7 +11,7 @@ using SharpDX.Direct3D11;
 using Vector3 = System.Numerics.Vector3;
 using Vector4 = System.Numerics.Vector4;
 
-namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
+namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 {
     internal static class ShaderParameterSetters
     {
@@ -71,7 +71,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
+                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
             {
@@ -95,7 +95,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
 
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
+                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
             {
@@ -144,12 +144,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             }
             if (p.ScreenDoorNoiseTexture.IsBound())
             {
-                Debugger.Break();
+                //Debugger.Break();
                 context.ImmediateContext.PixelShader.SetShaderResource(p.ScreenDoorNoiseTexture.BaseIndex, null);
             }
             if (p.WrapLightingParameters.IsBound())
             {
-                Debugger.Break();
+                //Debugger.Break();
             }
         }
 
@@ -157,12 +157,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
         {
             if (p.SceneColorTexture.IsBound())
             {
-                Debugger.Break();
+                //Debugger.Break();
                 context.ImmediateContext.PixelShader.SetShaderResource(p.SceneColorTexture.BaseIndex, null);
             }
             if (p.SceneDepthTexture.IsBound())
             {
-                Debugger.Break();
+                //Debugger.Break();
                 context.ImmediateContext.PixelShader.SetShaderResource(p.SceneDepthTexture.BaseIndex, null);
             }
 
@@ -213,12 +213,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D
             {
                 return;
             }
-            if (sizeof(T) != param.NumBytes 
-                && !(typeof(T) == typeof(Matrix3x3) && param.NumBytes == 44) 
-                && Debugger.IsAttached)
-            {
-                Debugger.Break();
-            }
+            //if (sizeof(T) != param.NumBytes 
+            //    && !(typeof(T) == typeof(Matrix3x3) && param.NumBytes == 44) 
+            //    && Debugger.IsAttached)
+            //{
+            //    Debugger.Break();
+            //}
             int bytesToWrite = Math.Min(sizeof(T), param.NumBytes);
             val.AsBytes()[..bytesToWrite].CopyTo(buff[param.BaseIndex..]);
         }

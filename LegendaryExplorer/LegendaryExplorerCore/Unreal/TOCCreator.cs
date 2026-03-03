@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using LegendaryExplorerCore.DebugTools;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -154,7 +155,7 @@ namespace LegendaryExplorerCore.Unreal
 
                         //This is a sfar - code ported from M3
                         var fi = new FileInfo(sfar);
-                        if (tocTarget.EndsWith(".sfar") ||
+                        if (tocTarget.EndsWith(".sfar") || // ends with .sfar will detect Patch_001.sfar
                             (fi.Exists &&
                              fi.Length != 32)) //endswith .sfar is for TESTPATCH as it doesn't follow other naming system
                         {
@@ -169,9 +170,11 @@ namespace LegendaryExplorerCore.Unreal
                                 var tocFileLocation = Path.Combine(tocTarget, "PCConsoleTOC.bin");
                                 CreateDLCTOCForDirectory(tocTarget, game).WriteToFile(tocFileLocation);
                             }
-                            // Don't do next check; we have performed it already
+                        }
+                        else
+                        {
+                            // Perform the next code branch as we didn't do the above one
                             doSfarCheck = false;
-
                         }
                     }
 
@@ -294,7 +297,9 @@ namespace LegendaryExplorerCore.Unreal
             string[] dlcList = Directory.GetDirectories(Path.Combine(biogameDirectory, "DLC"), "*.*", SearchOption.TopDirectoryOnly);
             foreach (var dlcFolder in dlcList)
             {
-                if (!(new DirectoryInfo(dlcFolder).Name).StartsWith("DLC_", StringComparison.OrdinalIgnoreCase))
+                var dlcName = Path.GetFileName(dlcFolder);
+                // 01/25/2026 - TOC for LE1 only works on DLC_MOD_ instead of just DLC_
+                if (!dlcName.StartsWith("DLC_MOD_", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 string autoLoadPath = Path.Combine(dlcFolder, "autoload.ini");  //CHECK IF FILE EXISTS?
@@ -302,7 +307,10 @@ namespace LegendaryExplorerCore.Unreal
                 {
                     DuplicatingIni dlcAutoload = DuplicatingIni.LoadIni(autoLoadPath);
                     int mount = Convert.ToInt32(dlcAutoload["ME1DLCMOUNT"]["ModMount"].Value);
-                    dlcMounts.Add(mount, dlcFolder);
+                    if (!dlcMounts.TryAdd(mount, dlcFolder))
+                    {
+                        LECLog.Warning($"Duplicate mounts used in game: ${mount}, by {dlcName}");
+                    }
                 }
             }
 

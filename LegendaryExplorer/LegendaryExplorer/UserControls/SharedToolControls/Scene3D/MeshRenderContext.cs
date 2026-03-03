@@ -1,5 +1,4 @@
-﻿//#define FPS_OVERLAY
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Windows.Input;
@@ -17,17 +16,26 @@ using SharpDX.Direct3D11;
 using SharpDX.Direct3D;
 using SharpDX.Mathematics.Interop;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
-#if FPS_OVERLAY
 using D2D = SharpDX.Direct2D1;
 using DW = SharpDX.DirectWrite;
-#endif
+using System.Runtime.InteropServices;
 
-namespace LegendaryExplorer.UserControls.SharedToolControls.Scene3D;
+namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
+
+/// <summary>
+/// A text label to be drawn at a screen-space position as a D2D overlay.
+/// </summary>
+public struct ScreenLabel(float x, float y, string text)
+{
+    public float X = x;
+    public float Y = y;
+    public string Text = text;
+}
 
 /// <summary>
 /// Handles rendering of mesh data
 /// </summary>
-public class MeshRenderContext : RenderContext
+public class MeshRenderContext : LegacyRenderContext
 {
     /// <summary>
     /// The current flags for rendering textures. This renderer does not support 'SetAlphaAsBlack' or 'ReconstructZ'
@@ -61,11 +69,14 @@ public class MeshRenderContext : RenderContext
     public Texture2D DepthBuffer { get; private set; } // also called Depth-Stencil, but we don't use stencil at the moment.
     public DepthStencilView DepthBufferView { get; private set; }
 
-#if FPS_OVERLAY
     private D2D.RenderTarget renderTarget2D;
-    private DW.TextFormat textFormat;
-    private D2D.SolidColorBrush defaultForegroundBrush;
-#endif
+    private DW.TextFormat statsTextFormat;
+    private DW.TextFormat errorTextFormat;
+    private DW.TextFormat labelTextFormat;
+    private D2D.SolidColorBrush statsTextBrush;
+    private D2D.SolidColorBrush errorTextBrush;
+    private D2D.SolidColorBrush labelTextBrush;
+    private D2D.SolidColorBrush labelBackgroundBrush;
     #endregion
     public GenericEffect<WorldConstants, WorldVertex> DefaultEffect { get; private set; }
     public LEEffect LEEffect { get; private set; }
@@ -105,6 +116,15 @@ public class MeshRenderContext : RenderContext
     public uint NumFrames { get; private set; }
 
     private float FPS;
+    private float lastFPSTime;
+    private float lastFPSFrame;
+    public string ErrorText;
+
+    /// <summary>
+    /// Screen-space labels to be rendered as a D2D text overlay after 3D rendering.
+    /// Populated by scene renderers, cleared each frame after drawing.
+    /// </summary>
+    public List<ScreenLabel> ScreenLabels { get; } = [];
 
     public event EventHandler<float> UpdateScene;
     public event EventHandler RenderScene;
@@ -122,7 +142,15 @@ public class MeshRenderContext : RenderContext
     public override void Update(float timestep)
     {
         Time += timestep;
-        FPS = 1f / timestep;
+        float fpsDelta = Time - lastFPSTime;
+        if (fpsDelta >= 1f)
+        {
+            float frameDelta = NumFrames - lastFPSFrame;
+            lastFPSTime = Time;
+            lastFPSFrame = NumFrames;
+
+            FPS = MathF.Round(frameDelta / fpsDelta);
+        }
 
         if (Camera.FirstPerson)
         {
@@ -156,18 +184,50 @@ public class MeshRenderContext : RenderContext
             ImmediateContext.ClearDepthStencilView(DepthBufferView, DepthStencilClearFlags.Depth, 1.0f, 0);
             ImmediateContext.ClearRenderTargetView(BackbufferView, new RawColor4(BackgroundColor.R / 255.0f, BackgroundColor.G / 255.0f, BackgroundColor.B / 255.0f, BackgroundColor.A / 255.0f));
 
-            // Do whatever event handlers want
-            RenderScene?.Invoke(null, EventArgs.Empty);
-
-#if FPS_OVERLAY
-            //render D2D overlay
-            renderTarget2D.BeginDraw();
+            if (ErrorText is not null)
             {
-                var size = renderTarget2D.Size;
-                renderTarget2D.DrawText($"{FPS} fps", textFormat, new RawRectangleF(0, 0, size.Width, size.Height), defaultForegroundBrush);
+                renderTarget2D.BeginDraw();
+                {
+                    var size = renderTarget2D.Size;
+                    renderTarget2D.DrawText($"{ErrorText}", errorTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), errorTextBrush);
+                }
+                renderTarget2D.EndDraw();
             }
-            renderTarget2D.EndDraw();
-#endif
+            else
+            {
+                try
+                {
+                    RenderScene?.Invoke(null, EventArgs.Empty);
+                }
+                catch (Exception e)
+                {
+                    ErrorText = e.FlattenException();
+                }
+            }
+
+            if (App.IsDebug || ScreenLabels.Count > 0)
+            {
+                renderTarget2D.BeginDraw();
+                {
+                    if (App.IsDebug)
+                    {
+                        var size = renderTarget2D.Size;
+                        renderTarget2D.DrawText($"{FPS} fps", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
+                    }
+
+                    foreach (ref readonly var label in CollectionsMarshal.AsSpan(ScreenLabels))
+                    {
+                        const float labelW = 20;
+                        const float labelH = 12;
+                        var rect = new RawRectangleF(label.X - labelW * 0.5f, label.Y - labelH * 0.5f,
+                                                     label.X + labelW * 0.5f, label.Y + labelH * 0.5f);
+                        renderTarget2D.FillRectangle(rect, labelBackgroundBrush);
+                        renderTarget2D.DrawText(label.Text, labelTextFormat, rect, labelTextBrush);
+                    }
+                    ScreenLabels.Clear();
+                }
+                renderTarget2D.EndDraw();
+            }
         }
 
         base.Render();
@@ -260,28 +320,43 @@ public class MeshRenderContext : RenderContext
         Camera.aspect = (float)Width / Height;
 
 
-#if FPS_OVERLAY
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
         renderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
-        defaultForegroundBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        statsTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        errorTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
         using var dwFactory = new DW.Factory(DW.FactoryType.Shared);
-        textFormat = new DW.TextFormat(dwFactory, "Verdana", 12);
-        textFormat.TextAlignment = DW.TextAlignment.Trailing;
-        textFormat.ParagraphAlignment = DW.ParagraphAlignment.Near;
-#endif
+        statsTextFormat = new DW.TextFormat(dwFactory, "Verdana", 12)
+        {
+            TextAlignment = DW.TextAlignment.Trailing,
+            ParagraphAlignment = DW.ParagraphAlignment.Near
+        };
+        errorTextFormat = new DW.TextFormat(dwFactory, "Verdana", 18)
+        {
+            TextAlignment = DW.TextAlignment.Leading,
+            ParagraphAlignment = DW.ParagraphAlignment.Center
+        };
+        labelTextFormat = new DW.TextFormat(dwFactory, "Verdana", 8)
+        {
+            TextAlignment = DW.TextAlignment.Center,
+            ParagraphAlignment = DW.ParagraphAlignment.Center
+        };
+        labelTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(1, 1, 1, 1), new D2D.BrushProperties { Opacity = 1 });
+        labelBackgroundBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0, 0, 0, 0.65f), new D2D.BrushProperties { Opacity = 1 });
     }
 
     public override void DisposeSizeDependentResources()
     {
-        ImmediateContext.OutputMerger.SetRenderTargets((RenderTargetView)null);
-        BackbufferView.Dispose();
-        DepthBufferView.Dispose();
-        DepthBuffer.Dispose();
-#if FPS_OVERLAY
-        renderTarget2D.Dispose();
-        textFormat.Dispose();
-        defaultForegroundBrush.Dispose();
-#endif
+        ImmediateContext?.OutputMerger?.SetRenderTargets((RenderTargetView)null);
+        BackbufferView?.Dispose();
+        DepthBufferView?.Dispose();
+        DepthBuffer?.Dispose();
+        statsTextFormat?.Dispose();
+        errorTextFormat?.Dispose();
+        labelTextFormat?.Dispose();
+        statsTextBrush?.Dispose();
+        errorTextBrush?.Dispose();
+        labelTextBrush?.Dispose();
+        labelBackgroundBrush?.Dispose();
         base.DisposeSizeDependentResources();
     }
 
@@ -406,7 +481,7 @@ public class MeshRenderContext : RenderContext
 
     public override bool MouseUp(MouseButtons button, int x, int y)
     {
-        bool handled = Orbiting | Panning | Zooming;
+        bool handled = Orbiting || Panning || Zooming;
 
         Orbiting = false;
         Panning = false;
@@ -505,8 +580,8 @@ file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>
     public bool Equals(RenderTargetBlendDescription x, RenderTargetBlendDescription y)
     {
         return x.IsBlendEnabled.Equals(y.IsBlendEnabled)
-               && x.SourceBlend == y.SourceBlend 
-               && x.DestinationBlend == y.DestinationBlend 
+               && x.SourceBlend == y.SourceBlend
+               && x.DestinationBlend == y.DestinationBlend
                && x.BlendOperation == y.BlendOperation
                && x.SourceAlphaBlend == y.SourceAlphaBlend
                && x.DestinationAlphaBlend == y.DestinationAlphaBlend
@@ -517,7 +592,7 @@ file class BlendDescComparer : IEqualityComparer<RenderTargetBlendDescription>
     public int GetHashCode(RenderTargetBlendDescription obj)
     {
         return HashCode.Combine(obj.IsBlendEnabled, (int)obj.SourceBlend,
-            (int)obj.DestinationBlend, (int)obj.BlendOperation, 
+            (int)obj.DestinationBlend, (int)obj.BlendOperation,
             (int)obj.SourceAlphaBlend, (int)obj.DestinationAlphaBlend,
             (int)obj.AlphaBlendOperation, (int)obj.RenderTargetWriteMask);
     }
