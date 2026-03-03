@@ -1,4 +1,8 @@
-﻿namespace LegendaryExplorerCore.UnrealScript.Utilities
+﻿using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+
+namespace LegendaryExplorerCore.UnrealScript.Utilities
 {
 	public static class Keywords
 	{
@@ -69,5 +73,49 @@
         public const string GOTO = "goto";
         public const string REPLICATION = "replication";
         public const string __IN_EDITOR = "__<>IN_EDITOR";
+
+        //primitive typenames intentionally omitted
+        public static readonly FrozenSet<string> ReservedWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "array",
+            "delegate",
+            "class",
+            "var",
+            "struct",
+            "enum",
+            "const",
+            "function",
+            "state",
+            "ignores",
+            "defaultproperties",
+            "structdefaultproperties",
+            "extends",
+            "within",
+            "local",
+            "if",
+            "else",
+            "switch",
+            "while",
+            "do",
+            "until",
+            "for",
+            "foreach",
+            "break",
+            "continue",
+            "stop",
+            "return",
+            "case",
+            "default",
+            "true",
+            "false",
+            "operator",
+            "preoperator",
+            "postoperator",
+            "none",
+            "static",
+            "new",
+            "goto",
+            "replication"
+        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 	}
 }

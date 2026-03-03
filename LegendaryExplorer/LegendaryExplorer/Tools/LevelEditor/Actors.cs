@@ -236,7 +236,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         "BioPawn",
         "Pawn",
         "PrefabInstance",
-    }.ToFrozenSet();
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool CanCreate(ExportEntry actorExport)
     {
