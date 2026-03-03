@@ -140,6 +140,36 @@
             <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
             <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
         </ContextMenu>
+        <Style x:Key="ScrollableLeftTabControlStyle" TargetType="{x:Type TabControl}" BasedOn="{StaticResource {x:Type TabControl}}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabControl}">
+                        <Grid KeyboardNavigation.TabNavigation="Local" ClipToBounds="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="1"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Background="{TemplateBinding Background}">
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  Margin="2"
+                                                  ContentSource="SelectedContent" />
+                            </Border>
+                            <ScrollViewer Grid.Column="0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Focusable="False">
+                                <TabPanel x:Name="HeaderPanel"
+                                          IsItemsHost="True"
+                                          KeyboardNavigation.TabIndex="1" />
+                            </ScrollViewer>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <system:Boolean x:Key="True">True</system:Boolean>
     </Window.Resources>
     <Window.InputBindings>
@@ -784,6 +814,7 @@
                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <!--Tab Control -->
                     <TabControl x:Name="BottomViewportTabControl" TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
+                                Style="{StaticResource ScrollableLeftTabControlStyle}"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}">
                         <TabControl.Resources>
                             <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource {x:Type TabItem}}">
