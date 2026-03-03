@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -1056,6 +1057,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             bool isExpanded = false;
+            bool needsAsyncOwnerResolution = false;
             string editableValue = ""; //editable value
             string parsedValue = ""; //human formatted item. Will most times be blank
             switch (prop)
@@ -1201,10 +1203,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     parsedValue = np.Value.Instanced;
                     if (np.Value.Name == "Owner" && prop.Name.Name is "m_nmSFXFindActor" or "m_nmFindActor")
                     {
-                        var resolvedOwner = ConversationExtended.ResolveOwnerTagFromExport(parsingExport);
-                        if (!string.IsNullOrEmpty(resolvedOwner))
+                        if (ConversationExtended.TryGetCachedOwnerTag(parsingExport, out var cachedOwnerTag))
                         {
-                            parsedValue = $"Owner ({resolvedOwner})";
+                            if (!string.IsNullOrEmpty(cachedOwnerTag))
+                            {
+                                parsedValue = $"Owner ({cachedOwnerTag})";
+                            }
+                        }
+                        else
+                        {
+                            needsAsyncOwnerResolution = true;
                         }
                     }
                     break;
@@ -1548,6 +1556,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 item.PropertyChanged += PropertyChangedHandler;
             }
             parent.ChildrenProperties.Add(item);
+
+            // Fire async Owner tag resolution after item is in the tree
+            if (needsAsyncOwnerResolution)
+            {
+                var capturedExport = parsingExport;
+                var capturedItem = item;
+                Task.Run(() =>
+                {
+                    var resolved = ConversationExtended.ResolveOwnerTagFromExport(capturedExport);
+                    if (!string.IsNullOrEmpty(resolved))
+                    {
+                        Application.Current?.Dispatcher?.BeginInvoke(() =>
+                        {
+                            capturedItem.ParsedValue = $"Owner ({resolved})";
+                        }, DispatcherPriority.Background);
+                    }
+                });
+            }
+
             return item;
         }
 

@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.TlkManagerNS;
@@ -503,10 +505,37 @@ namespace LegendaryExplorer.SharedUI
                                 string actorName = findActor.Value.Instanced;
                                 if (actorName == "Owner")
                                 {
-                                    var resolvedOwner = ConversationExtended.ResolveOwnerTagFromExport(ee);
-                                    if (!string.IsNullOrEmpty(resolvedOwner))
+                                    if (ConversationExtended.TryGetCachedOwnerTag(ee, out var cachedOwnerTag))
                                     {
-                                        actorName = $"Owner ({resolvedOwner})";
+                                        if (!string.IsNullOrEmpty(cachedOwnerTag))
+                                        {
+                                            actorName = $"Owner ({cachedOwnerTag})";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Resolve in background and surgically update the subtext
+                                        // without re-computing the entire subtext (avoids layout thrashing)
+                                        var capturedExport = ee;
+                                        Task.Run(() =>
+                                        {
+                                            var resolved = ConversationExtended.ResolveOwnerTagFromExport(capturedExport);
+                                            if (!string.IsNullOrEmpty(resolved))
+                                            {
+                                                var resolvedName = $"Owner ({resolved})";
+                                                Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                                {
+                                                    // Only update if subtext still starts with unresolved "Owner"
+                                                    if (_subtext != null &&
+                                                        _subtext.StartsWith("Owner", StringComparison.Ordinal) &&
+                                                        !_subtext.StartsWith("Owner (", StringComparison.Ordinal))
+                                                    {
+                                                        _subtext = resolvedName + _subtext.Substring("Owner".Length);
+                                                        OnPropertyChanged(nameof(SubText));
+                                                    }
+                                                }, DispatcherPriority.Background);
+                                            }
+                                        });
                                     }
                                 }
 

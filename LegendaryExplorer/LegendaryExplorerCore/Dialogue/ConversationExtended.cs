@@ -70,6 +70,7 @@ namespace LegendaryExplorerCore.Dialogue
 
         private static readonly object OwnerTagCacheLock = new();
         private static readonly Dictionary<string, string> OwnerTagResolutionCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, object> OwnerTagResolutionInProgress = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Creates a ConversationExtended from a BioConversation export
@@ -1225,84 +1226,180 @@ namespace LegendaryExplorerCore.Dialogue
         /// <returns>The resolved owner tag, or null if not found</returns>
         public static string ResolveOwnerTagFromExport(ExportEntry export)
         {
+            object resolutionGate = null;
+            string resolutionScopeKey = null;
+            bool ownsResolutionGate = false;
+
             try
             {
+                if (export?.FileRef == null)
+                    return null;
+
                 var pcc = export.FileRef;
                 string exportCacheKey = $"{pcc.FilePath}|EXP|{export.UIndex}";
                 if (TryGetOwnerTagCache(exportCacheKey, out var cachedOwnerTag))
                     return cachedOwnerTag;
 
-                string conversationName = null;
-                string sequenceCacheKey = null;
-
-                // Walk up the parent chain to find a Sequence
-                ExportEntry current = export;
-                while (current != null)
+                resolutionScopeKey = GetOwnerTagResolutionScopeKey(export);
+                lock (OwnerTagCacheLock)
                 {
-                    // When we encounter an InterpData in the parent chain, try to resolve
-                    // the conversation name via the Kismet graph (InterpData → SeqAct_Interp → Sequence → BioConversation).
-                    // This is more reliable than sequence name matching when multiple conversations share a parent sequence.
-                    if (current.ClassName == "InterpData")
+                    if (!OwnerTagResolutionInProgress.TryGetValue(resolutionScopeKey, out resolutionGate))
                     {
-                        conversationName ??= FindConversationNameViaInterpData(current);
+                        resolutionGate = new object();
+                        OwnerTagResolutionInProgress[resolutionScopeKey] = resolutionGate;
+                        ownsResolutionGate = true;
+                    }
+                }
+
+                if (!ownsResolutionGate)
+                {
+                    lock (resolutionGate)
+                    {
                     }
 
-                    if (current.ClassName == "Sequence" || current.IsA("Sequence"))
-                    {
-                        conversationName ??= FindConversationNameForSequence(current);
-                        sequenceCacheKey = !string.IsNullOrEmpty(conversationName)
-                            ? $"{pcc.FilePath}|CONV|{conversationName}"
-                            : $"{pcc.FilePath}|SEQ|{current.ObjectName.Instanced}|{conversationName}";
+                    if (TryGetOwnerTagCache(exportCacheKey, out cachedOwnerTag))
+                        return cachedOwnerTag;
 
-                        if (TryGetOwnerTagCache(sequenceCacheKey, out cachedOwnerTag))
-                        {
-                            SetOwnerTagCache(exportCacheKey, cachedOwnerTag);
-                            return cachedOwnerTag;
-                        }
-
-                        // Search this sequence and its parent for StartConversation nodes
-                        var seqOwnerTag = SearchSequenceForOwnerTag(current, conversationName);
-                        if (!string.IsNullOrEmpty(seqOwnerTag))
-                        {
-                            SetOwnerTagCache(sequenceCacheKey, seqOwnerTag);
-                            SetOwnerTagCache(exportCacheKey, seqOwnerTag);
-                            return seqOwnerTag;
-                        }
-                    }
-
-                    if (current.idxLink > 0 && pcc.IsUExport(current.idxLink))
-                        current = pcc.GetUExport(current.idxLink);
-                    else
-                        break;
+                    // Another export in the same sequence may have populated only
+                    // sequence-level cache entries. Re-run core logic to bind this
+                    // export's cache key to the already-resolved sequence value.
+                    return ResolveOwnerTagFromExportCore(export);
                 }
 
-                // Fallback: search all StartConversation nodes in this package
-                var ownerTag = SearchStartConversationsInPackage(pcc, conversationName);
-                if (!string.IsNullOrEmpty(ownerTag))
+                lock (resolutionGate)
                 {
-                    SetOwnerTagCache(sequenceCacheKey, ownerTag);
-                    SetOwnerTagCache(exportCacheKey, ownerTag);
-                    return ownerTag;
-                }
+                    if (TryGetOwnerTagCache(exportCacheKey, out cachedOwnerTag))
+                        return cachedOwnerTag;
 
-                // Fallback: search related sibling/highest-mounted files
-                ownerTag = SearchOwnerTagInSiblingFiles(export, conversationName);
-                if (!string.IsNullOrEmpty(ownerTag))
-                {
-                    SetOwnerTagCache(sequenceCacheKey, ownerTag);
-                    SetOwnerTagCache(exportCacheKey, ownerTag);
-                    return ownerTag;
+                    return ResolveOwnerTagFromExportCore(export);
                 }
-
-                SetOwnerTagCache(sequenceCacheKey, null);
-                SetOwnerTagCache(exportCacheKey, null);
             }
             catch
             {
                 // Best-effort resolution
             }
+            finally
+            {
+                if (ownsResolutionGate && !string.IsNullOrEmpty(resolutionScopeKey))
+                {
+                    lock (OwnerTagCacheLock)
+                    {
+                        OwnerTagResolutionInProgress.Remove(resolutionScopeKey);
+                    }
+                }
+            }
 
             return null;
+        }
+
+        private static string ResolveOwnerTagFromExportCore(ExportEntry export)
+        {
+            var pcc = export.FileRef;
+            string exportCacheKey = $"{pcc.FilePath}|EXP|{export.UIndex}";
+
+            if (TryGetOwnerTagCache(exportCacheKey, out var cachedOwnerTag))
+                return cachedOwnerTag;
+
+            string conversationName = null;
+            string sequenceCacheKey = null;
+
+            // Walk up the parent chain to find a Sequence
+            ExportEntry current = export;
+            while (current != null)
+            {
+                // When we encounter an InterpData in the parent chain, try to resolve
+                // the conversation name via the Kismet graph (InterpData → SeqAct_Interp → Sequence → BioConversation).
+                // This is more reliable than sequence name matching when multiple conversations share a parent sequence.
+                if (current.ClassName == "InterpData")
+                {
+                    conversationName ??= FindConversationNameViaInterpData(current);
+                }
+
+                if (current.ClassName == "Sequence" || current.IsA("Sequence"))
+                {
+                    conversationName ??= FindConversationNameForSequence(current);
+                    sequenceCacheKey = !string.IsNullOrEmpty(conversationName)
+                        ? $"{pcc.FilePath}|CONV|{conversationName}"
+                        : $"{pcc.FilePath}|SEQ|{current.ObjectName.Instanced}|{conversationName}";
+
+                    if (TryGetOwnerTagCache(sequenceCacheKey, out cachedOwnerTag))
+                    {
+                        SetOwnerTagCache(exportCacheKey, cachedOwnerTag);
+                        return cachedOwnerTag;
+                    }
+
+                    // Search this sequence and its parent for StartConversation nodes
+                    var seqOwnerTag = SearchSequenceForOwnerTag(current, conversationName);
+                    if (!string.IsNullOrEmpty(seqOwnerTag))
+                    {
+                        SetOwnerTagCache(sequenceCacheKey, seqOwnerTag);
+                        SetOwnerTagCache(exportCacheKey, seqOwnerTag);
+                        return seqOwnerTag;
+                    }
+                }
+
+                if (current.idxLink > 0 && pcc.IsUExport(current.idxLink))
+                    current = pcc.GetUExport(current.idxLink);
+                else
+                    break;
+            }
+
+            // Fallback: search all StartConversation nodes in this package
+            var ownerTag = SearchStartConversationsInPackage(pcc, conversationName);
+            if (!string.IsNullOrEmpty(ownerTag))
+            {
+                SetOwnerTagCache(sequenceCacheKey, ownerTag);
+                SetOwnerTagCache(exportCacheKey, ownerTag);
+                return ownerTag;
+            }
+
+            // Fallback: search related sibling/highest-mounted files
+            ownerTag = SearchOwnerTagInSiblingFiles(export, conversationName);
+            if (!string.IsNullOrEmpty(ownerTag))
+            {
+                SetOwnerTagCache(sequenceCacheKey, ownerTag);
+                SetOwnerTagCache(exportCacheKey, ownerTag);
+                return ownerTag;
+            }
+
+            SetOwnerTagCache(sequenceCacheKey, null);
+            SetOwnerTagCache(exportCacheKey, null);
+
+            return null;
+        }
+
+        private static string GetOwnerTagResolutionScopeKey(ExportEntry export)
+        {
+            var pcc = export.FileRef;
+            ExportEntry current = export;
+            while (current != null)
+            {
+                if (current.ClassName == "Sequence" || current.IsA("Sequence"))
+                {
+                    return $"{pcc.FilePath}|SEQUID|{current.UIndex}";
+                }
+
+                if (current.idxLink > 0 && pcc.IsUExport(current.idxLink))
+                    current = pcc.GetUExport(current.idxLink);
+                else
+                    break;
+            }
+
+            return $"{pcc.FilePath}|EXP|{export.UIndex}";
+        }
+
+        /// <summary>
+        /// Checks the cache for a previously resolved owner tag without performing expensive resolution.
+        /// Returns true if the cache contains a result (even if the resolved tag is null).
+        /// </summary>
+        public static bool TryGetCachedOwnerTag(ExportEntry export, out string ownerTag)
+        {
+            ownerTag = null;
+            if (export?.FileRef == null)
+                return false;
+
+            string exportCacheKey = $"{export.FileRef.FilePath}|EXP|{export.UIndex}";
+            return TryGetOwnerTagCache(exportCacheKey, out ownerTag);
         }
 
         private static bool TryGetOwnerTagCache(string key, out string ownerTag)
@@ -1404,6 +1501,26 @@ namespace LegendaryExplorerCore.Dialogue
 
             var gameFiles = MELoadedFiles.GetFilesLoadedInGame(pcc.Game, forceUseCached: true);
             var currentNameNoExt = Path.GetFileNameWithoutExtension(filePath);
+            var currentFileName = Path.GetFileName(filePath);
+
+            // Fast path for localized files: directly try the corresponding base conversation package
+            // (e.g. Foo_LOC_INT.pcc -> Foo.pcc) before broad prefix scanning.
+            if (TryGetLikelyBaseConversationFileName(currentFileName, out var baseFileName)
+                && TryGetGameFilePath(gameFiles, baseFileName, out var baseFilePath)
+                && !string.Equals(baseFilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var basePackage = MEPackageHandler.OpenMEPackage(baseFilePath);
+                    var ownerTag = SearchStartConversationsInPackage(basePackage, conversationName);
+                    if (!string.IsNullOrEmpty(ownerTag))
+                        return ownerTag;
+                }
+                catch
+                {
+                    // Best-effort
+                }
+            }
 
             foreach (var kvp in gameFiles)
             {
@@ -1431,6 +1548,40 @@ namespace LegendaryExplorerCore.Dialogue
             }
 
             return null;
+        }
+
+        private static bool TryGetLikelyBaseConversationFileName(string currentFileName, out string baseFileName)
+        {
+            baseFileName = null;
+            if (string.IsNullOrEmpty(currentFileName))
+                return false;
+
+            var noExt = Path.GetFileNameWithoutExtension(currentFileName);
+            var ext = Path.GetExtension(currentFileName);
+            int locMarkerIdx = noExt.LastIndexOf("_LOC_", StringComparison.OrdinalIgnoreCase);
+            if (locMarkerIdx <= 0)
+                return false;
+
+            baseFileName = noExt[..locMarkerIdx] + ext;
+            return true;
+        }
+
+        private static bool TryGetGameFilePath(IReadOnlyDictionary<string, string> gameFiles, string fileName, out string filePath)
+        {
+            if (gameFiles.TryGetValue(fileName, out filePath))
+                return true;
+
+            foreach (var kvp in gameFiles)
+            {
+                if (string.Equals(kvp.Key, fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    filePath = kvp.Value;
+                    return true;
+                }
+            }
+
+            filePath = null;
+            return false;
         }
 
         /// <summary>

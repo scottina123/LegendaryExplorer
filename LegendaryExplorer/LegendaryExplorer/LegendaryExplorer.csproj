@@ -550,10 +550,6 @@
 		</ContentWithTargetPath>
 	</ItemGroup>
 
-	<ItemGroup>
-	  <Folder Include="LegendaryExplorer\UserControls\ExportLoaderControls\" />
-	</ItemGroup>
-
 	<PropertyGroup>
 		<!-- Trimming variables -->
 		<CurrentRuntime>$(TargetFramework.Replace('-windows', ''))</CurrentRuntime>

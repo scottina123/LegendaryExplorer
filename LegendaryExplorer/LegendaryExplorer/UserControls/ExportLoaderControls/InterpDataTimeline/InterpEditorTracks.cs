@@ -1,8 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -296,7 +300,52 @@ namespace LegendaryExplorer.Tools.InterpEditor
         {
             Export = export;
             TrackTitle = Export.GetProperty<StrProperty>("TrackTitle")?.Value ?? Export.ObjectName.Instanced;
+            ResolveOwnerInTrackTitle();
             LoadTrack();
+        }
+
+        /// <summary>
+        /// If the track title contains "Owner" from the m_nmFindActor property,
+        /// resolve it to the friendly name asynchronously.
+        /// </summary>
+        private void ResolveOwnerInTrackTitle()
+        {
+            if (TrackTitle == null || !TrackTitle.Contains("Owner"))
+                return;
+
+            var findActor = Export.GetProperty<NameProperty>("m_nmSFXFindActor")
+                         ?? Export.GetProperty<NameProperty>("m_nmFindActor");
+            if (findActor == null || findActor.Value.Instanced != "Owner")
+                return;
+
+            if (ConversationExtended.TryGetCachedOwnerTag(Export, out var cachedOwnerTag))
+            {
+                if (!string.IsNullOrEmpty(cachedOwnerTag))
+                {
+                    TrackTitle = TrackTitle.Replace("Owner", $"Owner ({cachedOwnerTag})");
+                }
+            }
+            else
+            {
+                var capturedExport = Export;
+                Task.Run(() =>
+                {
+                    var resolved = ConversationExtended.ResolveOwnerTagFromExport(capturedExport);
+                    if (!string.IsNullOrEmpty(resolved))
+                    {
+                        var resolvedName = $"Owner ({resolved})";
+                        Application.Current?.Dispatcher?.BeginInvoke(() =>
+                        {
+                            if (TrackTitle != null &&
+                                TrackTitle.Contains("Owner", StringComparison.Ordinal) &&
+                                !TrackTitle.Contains("Owner (", StringComparison.Ordinal))
+                            {
+                                TrackTitle = TrackTitle.Replace("Owner", resolvedName);
+                            }
+                        }, DispatcherPriority.Background);
+                    }
+                });
+            }
         }
 
         public abstract void LoadTrack();
