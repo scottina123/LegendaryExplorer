@@ -2750,9 +2750,7 @@ namespace LegendaryExplorer.DialogueEditor
             CurrentUIMode = mode;
 
             Speaker_Panel.Visibility = Visibility.Collapsed;
-            Convo_Panel.Visibility = Visibility.Collapsed;
             Node_Panel.Visibility = Visibility.Collapsed;
-            Start_Panel.Visibility = Visibility.Collapsed;
             switch (CurrentUIMode)
             {
                 case 1:
@@ -2762,15 +2760,15 @@ namespace LegendaryExplorer.DialogueEditor
                     Node_Panel.Visibility = Visibility.Visible;
                     break;
                 case 3:
-                    Start_Panel.Visibility = Visibility.Visible;
+                    BottomViewportTabControl.SelectedItem = StartingNodesTab;
                     break;
                 default:
-                    Convo_Panel.Visibility = Visibility.Visible;
+                    BottomViewportTabControl.SelectedItem = ConversationDetailsTab;
                     break;
 
             }
 
-            StageDirections_Expander.Visibility = Pcc.Game.IsGame3() ? Visibility.Visible : Visibility.Collapsed;
+            StageDirections_Tab.Visibility = Pcc?.Game.IsGame3() == true ? Visibility.Visible : Visibility.Collapsed;
         }
         private void ListBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
@@ -2808,7 +2806,6 @@ namespace LegendaryExplorer.DialogueEditor
                 FaceFXAnimSetEditorControl_M.UnloadExport();
                 ClearInterpDataTree();
                 ClearInlineLinkEditor();
-                Convo_Panel.Visibility = Visibility.Collapsed;
             }
             else
             {

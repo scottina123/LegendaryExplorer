@@ -418,247 +418,14 @@
                     <ColumnDefinition Width="5" />
                     <ColumnDefinition Width="0" Name="RightBarColumn" />
                 </Grid.ColumnDefinitions>
-                <!-- Right side panel - Convo/Speakers/Nodes -->
+                <!-- Right side panel - Speakers/Nodes -->
                 <DockPanel Name="RightSide_Dock" LastChildFill="True" Grid.Column="2" Grid.Row="0"
                            Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
                            ScrollViewer.CanContentScroll="False">
-                    <!--Stage Directions ME3 -->
-                    <Expander Name="StageDirections_Expander" ExpandDirection="Up" IsExpanded="False"
-                              Background="{DynamicResource ToolBoxAccentBrush}" Padding="2" Panel.ZIndex="250" DockPanel.Dock="Bottom"
-                              Visibility="Collapsed">
-                        <Expander.Header>
-                            <TextBlock Text="Stage Directions" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
-                        </Expander.Header>
-                        <DockPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Margin="0,3,4,3" LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Top" Text="Stage Directions" Margin="5,5,5,0" FontWeight="Bold"
-                                       TextAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
-                            <TextBlock DockPanel.Dock="Top" Text="Add stage directions or notes" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                                       FontSize="10" TextWrapping="Wrap" TextAlignment="Center" />
-                            <ListBox Name="StageDirs_ListBox" DockPanel.Dock="Bottom"
-                                     ItemsSource="{Binding Path=SelectedConv.StageDirections}"
-                                     VerticalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     ScrollViewer.VerticalScrollBarVisibility="Visible"
-                                     MouseDoubleClick="StageDirs_ListBox_OnMouseDoubleClick">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid HorizontalAlignment="Stretch">
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
-                                            <StackPanel Orientation="Horizontal" Grid.Row="0">
-                                                <TextBlock Text="{Binding StageStrRef}" FontWeight="DemiBold" />
-                                                <TextBlock Text=" : " />
-                                                <TextBlock Text="{Binding StageLine}" />
-                                            </StackPanel>
-                                            <TextBox Grid.Row="1"
-                                                     Text="{Binding Direction, Mode=TwoWay, UpdateSourceTrigger=Explicit}"
-                                                     TextWrapping="Wrap" HorizontalAlignment="Stretch"
-                                                     KeyUp="StageDirections_TextChanged"
-                                                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                                                     Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                                <ListBox.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Go to node" Command="{Binding StageDirectionsModCommand}"
-                                                  CommandParameter="Goto" />
-                                        <MenuItem Header="Add" Command="{Binding StageDirectionsModCommand}"
-                                                  CommandParameter="Add" />
-                                        <MenuItem Header="Delete" Command="{Binding StageDirectionsModCommand}"
-                                                  CommandParameter="Delete" />
-                                    </ContextMenu>
-                                </ListBox.ContextMenu>
-                            </ListBox>
-                        </DockPanel>
-                    </Expander>
                     <!--Switchable Panels -->
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <StackPanel DockPanel.Dock="Top" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                            <!--Convo Panel-->
-                            <StackPanel Name="Convo_Panel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                        Margin="2" Visibility="Collapsed"
-                                        ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <DockPanel>
-                                    <TextBlock Name="ConvoDet_Header" Text="Conversation Details"
-                                               HorizontalAlignment="Left" FontWeight="Bold" FontSize="18"
-                                               DockPanel.Dock="Top" />
-                                    <DockPanel HorizontalAlignment="Stretch" DockPanel.Dock="Bottom">
-                                        <TextBlock Text="Export:" HorizontalAlignment="Stretch" TextAlignment="Left"
-                                                   VerticalAlignment="Center" FontWeight="Bold" FontSize="15"
-                                                   DockPanel.Dock="Left" />
-                                        <Button Name="OpenConvPackEd_Button" Command="{Binding OpenInCommand}"
-                                                CommandParameter="PackEdConv" Padding="2"
-                                                ToolTip="Open the conversation in Package Editor"
-                                                DockPanel.Dock="Right">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                        <TextBlock Name="Convo_UID" Text="{Binding Path=SelectedConv.UIndex}"
-                                                   VerticalAlignment="Center" TextAlignment="Right" FontWeight="Bold"
-                                                   FontSize="20" Margin="6,0,10,0" />
-                                    </DockPanel>
-                                </DockPanel>
-                                <TextBlock Name="Convo_Name" Text="{Binding Path=SelectedConv.ConvName}"
-                                           HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="20"
-                                           TextWrapping="Wrap" TextAlignment="Left" Margin="2,4,2,4" />
-                                <DockPanel HorizontalAlignment="Stretch">
-                                    <TextBlock Name="LevelHeader" Text="Level:" HorizontalAlignment="Left"
-                                               VerticalAlignment="Bottom"
-                                               ToolTip="File with the Persistant level that uses the conversation"
-                                               DockPanel.Dock="Left" FontWeight="Normal" FontSize="15" />
-                                    <Grid DockPanel.Dock="Right" MaxWidth="50" VerticalAlignment="Bottom">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="25" />
-                                        </Grid.RowDefinitions>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="25" />
-                                            <ColumnDefinition Width="25" />
-                                        </Grid.ColumnDefinitions>
-                                        <Button Name="OpenLevelPackEd_Button" Grid.Column="0"
-                                                Command="{Binding OpenInCommand}" CommandParameter="PackEdLvl"
-                                                Padding="2" ToolTip="Open the Actor's level in Package Editor">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                        <Button Name="OpenLevelSeqEd_Button" Grid.Column="1"
-                                                Command="{Binding OpenInCommand}" CommandParameter="SeqEdLvl"
-                                                Padding="3" ToolTip="Open the Actor's level in Sequence Editor">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                    </Grid>
-                                    <TextBlock Text="" />
-                                </DockPanel>
-                                <TextBlock Name="Level_Textbox" Text="{Binding Level}" HorizontalAlignment="Left"
-                                           VerticalAlignment="Bottom"
-                                           ToolTip="File with the Persistant level that uses the conversation"
-                                           FontSize="15" Margin="5" FontWeight="DemiBold" />
-                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,0,0">
-                                    <TextBlock Text="Dialogue Sequence:" Name="Data" VerticalAlignment="Bottom"
-                                               HorizontalAlignment="Left" ToolTip="Sequence for this conversation."
-                                               DockPanel.Dock="Left" FontWeight="Normal" FontSize="15" />
-                                    <Button Name="OpenSeqEd_Button" Command="{Binding OpenInCommand}"
-                                            CommandParameter="SeqEdNode" Padding="3" DockPanel.Dock="Right"
-                                            ToolTip="Open this dialogue's sequence">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <TextBlock Text="" FontSize="10" />
-                                </DockPanel>
-                                <DockPanel Margin="0,0,5,0">
-                                    <TextBlock Name="SequenceUID_TextBox"
-                                               Text="{Binding Path=SelectedConv.Sequence.UIndex}"
-                                               HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                               ToolTip="Main conversation sequence" FontSize="15" DockPanel.Dock="Left"
-                                               Margin="3" FontWeight="DemiBold" />
-                                    <TextBlock Name="Sequence_TextBox"
-                                               Text="{Binding Path=SelectedConv.Sequence.ObjectName.Instanced}"
-                                               HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                               ToolTip="Main conversation sequence" FontSize="15" Margin="3"
-                                               FontWeight="DemiBold" />
-                                </DockPanel>
-                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,0,0">
-                                    <TextBlock Text="Wwisebank:" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                               ToolTip="Main conversation Wwisebank" DockPanel.Dock="Left"
-                                               FontWeight="Normal" FontSize="15" />
-                                    <Button Name="OpenWWbnk_Button" Padding="3" DockPanel.Dock="Right"
-                                            Command="{Binding OpenInCommand}" CommandParameter="SoundP_Bank"
-                                            ToolTip="Open In Sound Explorer">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <TextBlock Text="" FontSize="10" />
-                                </DockPanel>
-                                <StackPanel Name="Wwisebank_Stack" Orientation="Horizontal" HorizontalAlignment="Left"
-                                            VerticalAlignment="Top" ToolTip="Main conversation audiobank"
-                                            Margin="0,0,5,0">
-                                    <TextBlock Text="{Binding Path=SelectedConv.WwiseBank.UIndex}"
-                                               HorizontalAlignment="Left" ToolTip="Main conversation audiobank"
-                                               FontSize="15" Margin="3" FontWeight="DemiBold" />
-                                    <TextBlock
-                                        Text="{Binding Path=SelectedConv.WwiseBank.ObjectName.Instanced, TargetNullValue=None, FallbackValue=None}"
-                                        HorizontalAlignment="Left" ToolTip="Main conversation audiobank" FontSize="15"
-                                        Margin="3" FontWeight="DemiBold" />
-                                </StackPanel>
-                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,2,0">
-                                    <TextBlock Text="Non-Speaker FaceFX:" HorizontalAlignment="Left"
-                                               VerticalAlignment="Bottom"
-                                               ToolTip="Conversation animations for non-speakers" DockPanel.Dock="Left"
-                                               FontWeight="Normal" FontSize="15" />
-                                    <Button Name="OpenFFX_Button" Padding="3" DockPanel.Dock="Right"
-                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXNS"
-                                            ToolTip="Open Non-speaker's AnimSet in FaceFX Editor">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <TextBlock Text="" />
-                                </DockPanel>
-                                <ComboBox Name="ComboBox_Conv_NSFFX" ItemsSource="{Binding Path=FFXAnimsets}"
-                                          SelectedItem="{Binding Path=SelectedConv.NonSpkrFFX}"
-                                          HorizontalAlignment="Stretch"
-                                          ToolTip="Conversation animations for non-speakers" Margin="2,2,5,5"
-                                          DropDownClosed="Convo_NSFFX_DropDownClosed">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
-                                                           FontStretch="Condensed" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <Grid Margin="0,0,3,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="50*" />
-                                        <ColumnDefinition Width="31" />
-                                        <ColumnDefinition Width="31" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Scripted Events:" HorizontalAlignment="Left"
-                                               VerticalAlignment="Bottom"
-                                               ToolTip="Scripted Events that can be called from lines to start new sequences."
-                                               FontWeight="Normal" FontSize="15" />
-                                    <Button Name="ScriptAddButton" Command="{Binding ScriptAddCommand}"
-                                            CommandParameter="Add" Padding="3" Grid.Column="1" Margin="2"
-                                            ToolTip="Add a new script">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                    <Button Name="ScriptDeleteButton" Command="{Binding ScriptDeleteCommand}"
-                                            Padding="3" Grid.Column="2" Margin="2" ToolTip="Delete selected script">
-                                        <Button.Content>
-                                            <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
-                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                        </Button.Content>
-                                    </Button>
-                                </Grid>
-                                <ListView Name="Script_ListBox"
-                                          ItemsSource="{Binding Path=SelectedConv.ScriptList, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
-                                          ScrollViewer.VerticalScrollBarVisibility="Visible" MinHeight="30">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Instanced}" />
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </StackPanel>
                             <!--Speaker Panel-->
                             <StackPanel Name="Speaker_Panel" HorizontalAlignment="Stretch" Margin="3"
                                         Visibility="Collapsed">
@@ -758,13 +525,8 @@
                                 <TextBlock Text="" FontSize="10" />
                             </StackPanel>
                             <!--Node Panel-->
-                            <Grid Name="Node_Panel" Visibility="Collapsed"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="3*" MinHeight="160" />
-                                    <RowDefinition MinHeight="210" />
-                                </Grid.RowDefinitions>
-                                <StackPanel Grid.Row="0">
+                            <StackPanel Name="Node_Panel" Visibility="Collapsed"
+                                        ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DockPanel HorizontalAlignment="Stretch">
                                         <TextBlock Name="Node_Text_Type" Text="Dialogue Node"
                                                    HorizontalAlignment="Left" FontWeight="Bold" FontSize="18"
@@ -833,496 +595,6 @@
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
                                     </DockPanel>
-                                </StackPanel>
-                                <TabControl Name="Node_Tab_Detail" Grid.Row="1">
-                                    <TabItem Header="Plot Control"
-                                             ToolTip="Set which plots determine if this line is played, and which plots are set if it does.">
-                                        <StackPanel Margin="4">
-                                            <TextBlock Text="Plot checks" />
-                                            <DockPanel HorizontalAlignment="Stretch">
-                                                <TextBlock Text="Conditional/Bool: " DockPanel.Dock="Left"
-                                                           FontSize="15" />
-                                                <ComboBox HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                                          SelectedIndex="{Binding Path=SelectedDialogueNode.FiresConditional, Converter={StaticResource BoolToIndexConverter}}">
-                                                    <ComboBoxItem Content="Bool" IsSelected="False" />
-                                                    <ComboBoxItem Content="Conditional" IsSelected="True" />
-                                                </ComboBox>
-                                            </DockPanel>
-                                            <DockPanel HorizontalAlignment="Stretch">
-                                                <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"
-                                                        Padding="3" DockPanel.Dock="Right"
-                                                        ToolTip="Open this conditional in the Conditionals Editor, or this bool in the Plot Database">
-                                                    <Button.Content>
-                                                        <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
-                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
-                                                    </Button.Content>
-                                                </Button>
-                                                <TextBlock Name="Node_Text_Cnd" Text="Conditional :" FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
-                                                <TextBox Text="{Binding Path=SelectedDialogueNode.ConditionalOrBool}"
-                                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
-                                                         HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0" VerticalAlignment="Center"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp"
-                                                         PreviewTextInput="NumberValidationEditBox" />
-                                            </DockPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Conditional Parameter:  " FontSize="15" />
-                                                <TextBox Name="Node_Text_CndParam"
-                                                         Text="{Binding Path=SelectedDialogueNode.ConditionalParam}"
-                                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
-                                                         HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp"
-                                                         PreviewTextInput="NumberValidationEditBox" />
-                                            </StackPanel>
-                                            <TextBlock Name="Node_Text_CndPath" Text="{Binding Path=SelectedDialogueNode.ConditionalPlotPath}"
-                                                       Visibility="{Binding Path=SelectedDialogueNode.ConditionalPlotPath, Converter={StaticResource NullVisibilityConverter}}"
-                                                       TextWrapping="Wrap"/>
-                                            <Separator />
-                                            <TextBlock Text="Plot transitions" />
-                                            <DockPanel HorizontalAlignment="Stretch">
-                                                <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"
-                                                        Padding="3" DockPanel.Dock="Right"
-                                                        ToolTip="Open this transition in the Plot Editor">
-                                                    <Button.Content>
-                                                        <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
-                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
-                                                    </Button.Content>
-                                                </Button>
-                                                <TextBlock Text="Transition:  " FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
-                                                <TextBox Name="Node_Text_Trans"
-                                                         Text="{Binding Path=SelectedDialogueNode.Transition}"
-                                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
-                                                         HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0" VerticalAlignment="Center"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp"
-                                                         PreviewTextInput="NumberValidationEditBox" />
-                                            </DockPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="Transition Parameter:  " FontSize="15" />
-                                                <TextBox Name="Node_Text_TransParam"
-                                                         Text="{Binding Path=SelectedDialogueNode.TransitionParam}"
-                                                         HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
-                                                         HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp"
-                                                         PreviewTextInput="NumberValidationEditBox" />
-                                            </StackPanel>
-                                            <TextBlock Name="Node_Text_TransPath" Text="{Binding Path=SelectedDialogueNode.TransitionPlotPath}"
-                                                       Visibility="{Binding Path=SelectedDialogueNode.TransitionPlotPath, Converter={StaticResource NullVisibilityConverter}}"
-                                                       TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                    </TabItem>
-                                    <TabItem Header="Matinee"
-                                             ToolTip="Line settings for cutscene, animation and camera control."
-                                             FocusManager.FocusedElement="{Binding}">
-                                        <StackPanel>
-                                            <DockPanel HorizontalAlignment="Stretch">
-                                                <TextBlock Text="Line InterpData: " HorizontalAlignment="Left"
-                                                           VerticalAlignment="Center"
-                                                           ToolTip="Matinee object for this line."
-                                                           DockPanel.Dock="Left" FontSize="15" Margin="2" />
-                                                <Button Name="OpenLinePE_Button" Command="{Binding OpenInCommand}"
-                                                        CommandParameter="PackEdLine" Padding="3"
-                                                        DockPanel.Dock="Right"
-                                                        ToolTip="Open this line's interpdata in Package editor">
-                                                    <Button.Content>
-                                                        <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
-                                                    </Button.Content>
-                                                </Button>
-                                                <Button Name="OpenLineSE_Button" Command="{Binding OpenInCommand}"
-                                                        CommandParameter="SeqEdLine" Padding="3" DockPanel.Dock="Right"
-                                                        ToolTip="Open this line's sequence">
-                                                    <Button.Content>
-                                                        <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16"
-                                                                         Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                    </Button.Content>
-                                                </Button>
-                                                <Button Name="OpenLineIE_Button" Command="{Binding OpenInCommand}"
-                                                        CommandParameter="InterpEdLine" Padding="3"
-                                                        DockPanel.Dock="Right" ToolTip="Open this line in interpeditor">
-                                                    <Button.Content>
-                                                        <fa:ImageAwesome Icon="Solid_SlidersH" Width="16" Height="16"
-                                                                         Foreground="{DynamicResource IconForegroundBrush}" />
-                                                    </Button.Content>
-                                                </Button>
-                                                <TextBlock
-                                                    Text="{Binding Path=SelectedDialogueNode.InterpData.UIndex, TargetNullValue=None, FallbackValue=None}"
-                                                    Name="Interpdata_TxtBx" HorizontalAlignment="Left"
-                                                    VerticalAlignment="Bottom"
-                                                    ToolTip="Matinee interpdata for this line." FontSize="15"
-                                                    Margin="2" MouseRightButtonUp="CopyStringToClipboard_Click" />
-                                            </DockPanel>
-                                            <StackPanel Orientation="Horizontal"
-                                                        ToolTip="Length in secs of matinee interpdata.">
-                                                <TextBlock Text="InterpLength: " VerticalAlignment="Center"
-                                                           FontSize="15" Margin="2" />
-                                                <TextBox Text="{Binding Path=SelectedDialogueNode.InterpLength, UpdateSourceTrigger=Explicit}"
-                                                         Name="InterpLength_TxtBx" HorizontalAlignment="Stretch"
-                                                         FontSize="15" VerticalAlignment="Center"
-                                                         HorizontalContentAlignment="Left" BorderBrush="LightGray"
-                                                         BorderThickness="0"
-                                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                                                         Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp" />
-                                                <TextBlock Text="seconds" VerticalAlignment="Center" FontSize="15"
-                                                           Margin="2" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal"
-                                                        ToolTip="Link to Matinee via BioSeqEvent_Conv">
-                                                <TextBlock Name="Node_Text_Export" Text="ExportID:  "
-                                                           VerticalAlignment="Center" FontSize="15" Margin="2" />
-                                                <TextBox Text="{Binding Path=SelectedDialogueNode.ExportID}"
-                                                         HorizontalAlignment="Stretch" FontSize="15"
-                                                         VerticalAlignment="Center" HorizontalContentAlignment="Left"
-                                                         BorderBrush="LightGray" BorderThickness="0"
-                                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                                                         Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                                                         GotKeyboardFocus="EditBox_GotKeyboardFocus"
-                                                         LostKeyboardFocus="EditBox_LostKeyboardFocus"
-                                                         KeyUp="EditBox_Node_KeyUp"
-                                                         PreviewTextInput="NumberValidationEditBox" />
-                                            </StackPanel>
-                                            <Separator />
-
-                                            <CheckBox Name="Node_CB_NonTextline" Content="Non vocal line"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.IsNonTextLine, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      FontSize="15" VerticalAlignment="Center"
-                                                      ToolTip="Non-textline where only Matinee plays no vocals." />
-                                            <CheckBox Name="Node_CB_bAmbient" Content="Ambient line"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.IsAmbient, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      VerticalAlignment="Center"
-                                                      ToolTip="Ambient line. Camera remains under player control."
-                                                      FontSize="15" />
-                                            <CheckBox Name="Node_CB_BdyGesture" Content="Ignore Body Gestures"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.IgnoreBodyGesture, Mode=TwoWay}"
-                                                      ToolTip="Ignore non-facial matinee gestures." FontSize="15"
-                                                      VerticalAlignment="Center" />
-                                            <StackPanel Orientation="Horizontal"
-                                                        ToolTip="1-5. Controls how far the camera is away from the speakers face during autoconversations.">
-                                                <TextBlock Text="Camera Intimacy:  " FontSize="15" />
-                                                <xctk:IntegerUpDown Name="Node_Text_CamInt"
-                                                                    Value="{Binding Path=SelectedDialogueNode.CameraIntimacy}"
-                                                                    HorizontalAlignment="Stretch" FontSize="12"
-                                                                    Margin="2"
-                                                                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                                                                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-                                            </StackPanel>
-                                            <DockPanel ToolTip="Links to event scripts that fire new sequences. ">
-                                                <TextBlock Text="Script: " VerticalAlignment="Center" FontSize="15"
-                                                           DockPanel.Dock="Left" />
-                                                <ComboBox Name="Node_Combo_ScriptIndex" MinWidth="80"
-                                                          ItemsSource="{Binding Path=SelectedConv.ScriptList}"
-                                                          SelectedItem="{Binding Path=SelectedDialogueNode.Script }"
-                                                          IsSynchronizedWithCurrentItem="False"
-                                                          VerticalAlignment="Center"
-                                                          Style="{StaticResource {x:Type ComboBox}}"
-                                                          IsTextSearchEnabled="True" HorizontalAlignment="Stretch"
-                                                          Margin="2" />
-                                            </DockPanel>
-                                        </StackPanel>
-                                    </TabItem>
-                                    <TabItem Header="GUI Control" ToolTip="Settings for the line's user interaction.">
-                                        <StackPanel ScrollViewer.VerticalScrollBarVisibility="Visible">
-                                            <CheckBox Name="Node_CB_HideSubs" Content="Hide Subtitle"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.HideSubtitle}"
-                                                      FontSize="15" VerticalAlignment="Center"
-                                                      ToolTip="Always hide the subtitles." Margin="2" />
-                                            <ComboBox Name="Node_Combo_GUIStyle" MinWidth="80"
-                                                      SelectedItem="{Binding Path=SelectedDialogueNode.GUIStyle}"
-                                                      VerticalAlignment="Center"
-                                                      ToolTip="Determines how the GUI looks. Primarily used in ME1."
-                                                      Style="{StaticResource {x:Type ComboBox}}"
-                                                      IsTextSearchEnabled="True" />
-                                            <Separator />
-                                            <TextBlock Text="Entry:" FontSize="12" />
-                                            <CheckBox Name="Node_CB_ESkippable" Content="Skippable"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.IsSkippable}"
-                                                      FontSize="15" VerticalAlignment="Center"
-                                                      ToolTip="Player can skip this entry." Margin="2" />
-                                            <Separator />
-                                            <TextBlock Text="Reply:" FontSize="12" />
-                                            <ComboBox Name="Node_Combo_ReplyType" MinWidth="80"
-                                                      SelectedItem="{Binding Path=SelectedDialogueNode.ReplyType}"
-                                                      VerticalAlignment="Center"
-                                                      Style="{StaticResource {x:Type ComboBox}}"
-                                                      IsTextSearchEnabled="True"
-                                                      ToolTip="Autocontinue: the reply moves straight to the reply list.&#x0a;Standard: Dialogue is played as normal.&#x0a;DialogEnd: The conversation is ended."
-                                                      Margin="2" />
-                                            <CheckBox Name="Node_CB_RUnskippable" Content="Unskippable"
-                                                      IsChecked="{Binding Path=SelectedDialogueNode.IsUnskippable}"
-                                                      FontSize="15" VerticalAlignment="Center"
-                                                      ToolTip="Player can never skip this reply." Margin="2" />
-                                            <DockPanel>
-                                                <CheckBox Name="Node_CB_RDefault" Content="Default Reply"
-                                                          IsChecked="{Binding Path=SelectedDialogueNode.IsDefaultAction}"
-                                                          VerticalAlignment="Center" FontSize="15"
-                                                          ToolTip="ME3: On action mode this reply is always selected."
-                                                          Margin="2" DockPanel.Dock="Left" />
-                                                <CheckBox Name="Node_CB_RMajor" Content="Major Decision"
-                                                          IsChecked="{Binding Path=SelectedDialogueNode.IsMajorDecision}"
-                                                          HorizontalAlignment="Center"
-                                                          ToolTip="ME3: decision forced on player in all story modes."
-                                                          FontSize="15" VerticalAlignment="Center" Margin="2"
-                                                          DockPanel.Dock="Right" />
-                                            </DockPanel>
-                                        </StackPanel>
-                                    </TabItem>
-                                    <TabItem Header="Assets" ToolTip="Audio and animation assets used by this line">
-                                        <StackPanel>
-                                            <StackPanel>
-                                                <TextBlock Text="Male:" FontSize="12" />
-                                                <DockPanel HorizontalAlignment="Stretch">
-                                                    <TextBlock Text="Wwisestream:" VerticalAlignment="Bottom"
-                                                               HorizontalAlignment="Left"
-                                                               ToolTip="Male audio for this line."
-                                                               DockPanel.Dock="Left" FontSize="15" Margin="3" />
-                                                    <Button Name="WwStreamMPackEd_Button"
-                                                             Command="{Binding OpenInCommand}"
-                                                             CommandParameter="PackEd_StreamM" Padding="3"
-                                                             ToolTip="Open this stream in Package Editor"
-                                                             DockPanel.Dock="Right">
-                                                         <Button.Content>
-                                                             <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                              Foreground="{DynamicResource IconForegroundBrush}" />
-                                                         </Button.Content>
-                                                     </Button>
-                                                     <Button Name="ReplaceAudioM_Button" Padding="3"
-                                                             DockPanel.Dock="Right"
-                                                             Click="ReplaceAudioM_Click"
-                                                             IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
-                                                             ToolTip="Replace male audio from wave file">
-                                                         <Button.Content>
-                                                             <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
-                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                         </Button.Content>
-                                                     </Button>
-                                                     <Button Name="Open_WwStreamM_Button" Padding="3"
-                                                             DockPanel.Dock="Right"
-                                                             Command="{Binding OpenInCommand}"
-                                                             CommandParameter="SoundP_StreamM"
-                                                             ToolTip="Open In Sound Explorer">
-                                                         <Button.Content>
-                                                             <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
-                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                         </Button.Content>
-                                                     </Button>
-                                                     <Button Name="PlayAudioM_Button" Padding="3"
-                                                             DockPanel.Dock="Right"
-                                                             Click="PlayAudioM_Click"
-                                                             IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
-                                                             ToolTip="Play/pause male audio">
-                                                         <Button.Content>
-                                                             <fa:ImageAwesome Icon="Solid_Play" Width="16"
-                                                                              Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                         </Button.Content>
-                                                     </Button>
-                                                    <TextBlock
-                                                        Text="{Binding Path=SelectedDialogueNode.WwiseStream_Male.UIndex, TargetNullValue=None, FallbackValue=None}"
-                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                        ToolTip="Male audio for this line." FontSize="15" Margin="2" />
-                                                </DockPanel>
-                                                <DockPanel HorizontalAlignment="Stretch">
-                                                    <TextBlock Text="FaceFX:" VerticalAlignment="Bottom"
-                                                               HorizontalAlignment="Left"
-                                                               ToolTip="Male facial animations for this line."
-                                                               DockPanel.Dock="Left" FontSize="15" Margin="3" />
-                                                    <Button Name="Open_ffxM_Button" Padding="3" DockPanel.Dock="Right"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="FaceFXLineM"
-                                                            ToolTip="Open this line in FaceFX Editor">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <TextBlock
-                                                        Text="{Binding Path=SelectedDialogueNode.FaceFX_Male, TargetNullValue=None, FallbackValue=None}"
-                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                        ToolTip="Male facial animations for this line." FontSize="15"
-                                                        Margin="2" />
-                                                </DockPanel>
-                                            </StackPanel>
-                                            <Separator />
-                                            <StackPanel>
-                                                <TextBlock Text="Female:" FontSize="12" />
-                                                <DockPanel HorizontalAlignment="Stretch">
-                                                    <TextBlock Text="Wwisestream:" VerticalAlignment="Bottom"
-                                                               HorizontalAlignment="Left"
-                                                               ToolTip="Female audio for this line."
-                                                               DockPanel.Dock="Left" FontSize="15" Margin="3" />
-                                                    <Button Name="WwStreamFPackEd_Button"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="PackEd_StreamF" Padding="3"
-                                                            ToolTip="Open this stream in Package Editor"
-                                                            DockPanel.Dock="Right">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
-                                                                             Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <Button Name="ReplaceAudioF_Button" Padding="3"
-                                                            DockPanel.Dock="Right"
-                                                            Click="ReplaceAudioF_Click"
-                                                            IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
-                                                            ToolTip="Replace female audio from wave file">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <Button Name="Open_WwStreamF_Button" Padding="3"
-                                                            DockPanel.Dock="Right"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="SoundP_StreamF"
-                                                            ToolTip="Open this stream in Soundplorer">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <Button Name="PlayAudioF_Button" Padding="3"
-                                                            DockPanel.Dock="Right"
-                                                            Click="PlayAudioF_Click"
-                                                            IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
-                                                            ToolTip="Play/pause female audio">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_Play" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <TextBlock
-                                                        Text="{Binding Path=SelectedDialogueNode.WwiseStream_Female.UIndex, TargetNullValue=None, FallbackValue=None}"
-                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                        ToolTip="Female audio for this line." FontSize="15" Margin="2" />
-                                                </DockPanel>
-                                                <DockPanel HorizontalAlignment="Stretch">
-                                                    <TextBlock Text="FaceFX:" VerticalAlignment="Bottom"
-                                                               HorizontalAlignment="Left"
-                                                               ToolTip="Female facial animations for this line."
-                                                               DockPanel.Dock="Left" FontSize="15" Margin="3" />
-                                                    <Button Name="Open_ffxF_Button" Padding="3" DockPanel.Dock="Right"
-                                                            Command="{Binding OpenInCommand}"
-                                                            CommandParameter="FaceFXLineF"
-                                                            ToolTip="Open this line in FaceFX Editor">
-                                                        <Button.Content>
-                                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
-                                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
-                                                        </Button.Content>
-                                                    </Button>
-                                                    <TextBlock
-                                                        Text="{Binding Path=SelectedDialogueNode.FaceFX_Female, TargetNullValue=None, FallbackValue=None}"
-                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                        ToolTip="Female facial animations for this line." FontSize="15"
-                                                        Margin="2" />
-                                                </DockPanel>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </TabItem>
-                                </TabControl>
-                            </Grid>
-                            <!-- Start List -->
-                            <StackPanel Name="Start_Panel" Visibility="Collapsed">
-                                <TextBlock Text="Starting Nodes" HorizontalAlignment="Left" FontWeight="Bold"
-                                           FontSize="18" DockPanel.Dock="Top" Padding="5" />
-                                <DockPanel LastChildFill="False">
-                                    <Grid Height="30" DockPanel.Dock="Top">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="40"></ColumnDefinition>
-                                            <ColumnDefinition Width="*"></ColumnDefinition>
-                                            <ColumnDefinition Width="31"></ColumnDefinition>
-                                            <ColumnDefinition Width="31"></ColumnDefinition>
-                                            <ColumnDefinition Width="31"></ColumnDefinition>
-                                            <ColumnDefinition Width="31"></ColumnDefinition>
-                                        </Grid.ColumnDefinitions>
-                                        <Label Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Order</Label>
-                                        <Label Grid.Column="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Entry Link</Label>
-                                        <Button Name="StartAddButton" Command="{Binding StartAddCommand}"
-                                                CommandParameter="Add" Padding="3" DockPanel.Dock="Right"
-                                                IsEnabled="True" Grid.Column="2" Margin="2" ToolTip="Add a new start">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                        <Button Name="StartDeleteButton" Command="{Binding StartDeleteCommand}"
-                                                Padding="3" DockPanel.Dock="Right" IsEnabled="True" Grid.Column="3"
-                                                Margin="2" ToolTip="Delete selected start">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                        <Button Name="StartUpButton" Command="{Binding StartUpCommand}"
-                                                CommandParameter="Up" Padding="3" DockPanel.Dock="Right"
-                                                IsEnabled="True" Grid.Column="4" Margin="2"
-                                                ToolTip="Move selected start up">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_ArrowCircleUp" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                        <Button Name="StartDownButton" Command="{Binding StartDownCommand}"
-                                                CommandParameter="Down" Padding="3" DockPanel.Dock="Right"
-                                                IsEnabled="True" Grid.Column="5" Margin="2"
-                                                ToolTip="Move selected start down">
-                                            <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_ArrowCircleDown" Width="16" Height="16"
-                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
-                                            </Button.Content>
-                                        </Button>
-                                    </Grid>
-                                    <ListBox Name="Start_ListBox" DockPanel.Dock="Bottom"
-                                             VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                             ScrollViewer.VerticalScrollBarVisibility="Visible"
-                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             SelectionChanged="Start_ListBox_SelectionChanged" MinHeight="250">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,5,0" ScrollViewer.CanContentScroll="True"
-                                                      ScrollViewer.VerticalScrollBarVisibility="Visible">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="40" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0"
-                                                               Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                        <ListBox.ItemContainerStyle>
-                                            <Style>
-                                                <Style.Triggers>
-                                                    <Trigger Property="Selector.IsSelected" Value="True">
-                                                        <Setter Property="TextElement.FontWeight" Value="Bold" />
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </ListBox.ItemContainerStyle>
-                                        <ListBox.ContextMenu>
-                                            <ContextMenu>
-                                                <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}"
-                                                          CommandParameter="Add" />
-                                                <MenuItem Header="Delete Start" Command="{Binding StartDeleteCommand}" />
-                                                <MenuItem Header="Edit Link" Command="{Binding StartEditCommand}"
-                                                          CommandParameter="Edit" />
-                                            </ContextMenu>
-                                        </ListBox.ContextMenu>
-                                    </ListBox>
-                                </DockPanel>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -1701,6 +973,721 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </DockPanel>
+                        </TabItem>
+                        <TabItem x:Name="ConversationDetailsTab" Header="Conversation Details">
+                            <StackPanel Name="Convo_Panel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                        Margin="2" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <DockPanel>
+                                    <TextBlock Name="ConvoDet_Header" Text="Conversation Details"
+                                               HorizontalAlignment="Left" FontWeight="Bold" FontSize="18"
+                                               DockPanel.Dock="Top" />
+                                    <DockPanel HorizontalAlignment="Stretch" DockPanel.Dock="Bottom">
+                                        <TextBlock Text="Export:" HorizontalAlignment="Stretch" TextAlignment="Left"
+                                                   VerticalAlignment="Center" FontWeight="Bold" FontSize="15"
+                                                   DockPanel.Dock="Left" />
+                                        <Button Name="OpenConvPackEd_Button" Command="{Binding OpenInCommand}"
+                                                CommandParameter="PackEdConv" Padding="2"
+                                                ToolTip="Open the conversation in Package Editor"
+                                                DockPanel.Dock="Right">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <TextBlock Name="Convo_UID" Text="{Binding Path=SelectedConv.UIndex}"
+                                                   VerticalAlignment="Center" TextAlignment="Right" FontWeight="Bold"
+                                                   FontSize="20" Margin="6,0,10,0" />
+                                    </DockPanel>
+                                </DockPanel>
+                                <TextBlock Name="Convo_Name" Text="{Binding Path=SelectedConv.ConvName}"
+                                           HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="20"
+                                           TextWrapping="Wrap" TextAlignment="Left" Margin="2,4,2,4" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Name="LevelHeader" Text="Level:" HorizontalAlignment="Left"
+                                               VerticalAlignment="Bottom"
+                                               ToolTip="File with the Persistant level that uses the conversation"
+                                               DockPanel.Dock="Left" FontWeight="Normal" FontSize="15" />
+                                    <Grid DockPanel.Dock="Right" MaxWidth="50" VerticalAlignment="Bottom">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="25" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="25" />
+                                            <ColumnDefinition Width="25" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Name="OpenLevelPackEd_Button" Grid.Column="0"
+                                                Command="{Binding OpenInCommand}" CommandParameter="PackEdLvl"
+                                                Padding="2" ToolTip="Open the Actor's level in Package Editor">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="OpenLevelSeqEd_Button" Grid.Column="1"
+                                                Command="{Binding OpenInCommand}" CommandParameter="SeqEdLvl"
+                                                Padding="3" ToolTip="Open the Actor's level in Sequence Editor">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Text="" />
+                                </DockPanel>
+                                <TextBlock Name="Level_Textbox" Text="{Binding Level}" HorizontalAlignment="Left"
+                                           VerticalAlignment="Bottom"
+                                           ToolTip="File with the Persistant level that uses the conversation"
+                                           FontSize="15" Margin="5" FontWeight="DemiBold" />
+                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,0,0">
+                                    <TextBlock Text="Dialogue Sequence:" Name="Data" VerticalAlignment="Bottom"
+                                               HorizontalAlignment="Left" ToolTip="Sequence for this conversation."
+                                               DockPanel.Dock="Left" FontWeight="Normal" FontSize="15" />
+                                    <Button Name="OpenSeqEd_Button" Command="{Binding OpenInCommand}"
+                                            CommandParameter="SeqEdNode" Padding="3" DockPanel.Dock="Right"
+                                            ToolTip="Open this dialogue's sequence">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="" FontSize="10" />
+                                </DockPanel>
+                                <DockPanel Margin="0,0,5,0">
+                                    <TextBlock Name="SequenceUID_TextBox"
+                                               Text="{Binding Path=SelectedConv.Sequence.UIndex}"
+                                               HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                               ToolTip="Main conversation sequence" FontSize="15" DockPanel.Dock="Left"
+                                               Margin="3" FontWeight="DemiBold" />
+                                    <TextBlock Name="Sequence_TextBox"
+                                               Text="{Binding Path=SelectedConv.Sequence.ObjectName.Instanced}"
+                                               HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                               ToolTip="Main conversation sequence" FontSize="15" Margin="3"
+                                               FontWeight="DemiBold" />
+                                </DockPanel>
+                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,0,0">
+                                    <TextBlock Text="Wwisebank:" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                               ToolTip="Main conversation Wwisebank" DockPanel.Dock="Left"
+                                               FontWeight="Normal" FontSize="15" />
+                                    <Button Name="OpenWWbnk_Button" Padding="3" DockPanel.Dock="Right"
+                                            Command="{Binding OpenInCommand}" CommandParameter="SoundP_Bank"
+                                            ToolTip="Open In Sound Explorer">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="" FontSize="10" />
+                                </DockPanel>
+                                <StackPanel Name="Wwisebank_Stack" Orientation="Horizontal" HorizontalAlignment="Left"
+                                            VerticalAlignment="Top" ToolTip="Main conversation audiobank"
+                                            Margin="0,0,5,0">
+                                    <TextBlock Text="{Binding Path=SelectedConv.WwiseBank.UIndex}"
+                                               HorizontalAlignment="Left" ToolTip="Main conversation audiobank"
+                                               FontSize="15" Margin="3" FontWeight="DemiBold" />
+                                    <TextBlock
+                                        Text="{Binding Path=SelectedConv.WwiseBank.ObjectName.Instanced, TargetNullValue=None, FallbackValue=None}"
+                                        HorizontalAlignment="Left" ToolTip="Main conversation audiobank" FontSize="15"
+                                        Margin="3" FontWeight="DemiBold" />
+                                </StackPanel>
+                                <DockPanel HorizontalAlignment="Stretch" Margin="0,5,2,0">
+                                    <TextBlock Text="Non-Speaker FaceFX:" HorizontalAlignment="Left"
+                                               VerticalAlignment="Bottom"
+                                               ToolTip="Conversation animations for non-speakers" DockPanel.Dock="Left"
+                                               FontWeight="Normal" FontSize="15" />
+                                    <Button Name="OpenFFX_Button" Padding="3" DockPanel.Dock="Right"
+                                            Command="{Binding OpenInCommand}" CommandParameter="FaceFXNS"
+                                            ToolTip="Open Non-speaker's AnimSet in FaceFX Editor">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="" />
+                                </DockPanel>
+                                <ComboBox Name="ComboBox_Conv_NSFFX" ItemsSource="{Binding Path=FFXAnimsets}"
+                                          SelectedItem="{Binding Path=SelectedConv.NonSpkrFFX}"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTip="Conversation animations for non-speakers" Margin="2,2,5,5"
+                                          DropDownClosed="Convo_NSFFX_DropDownClosed">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Path=ObjectName.Instanced}"
+                                                           FontStretch="Condensed" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Grid Margin="0,0,3,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="50*" />
+                                        <ColumnDefinition Width="31" />
+                                        <ColumnDefinition Width="31" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Scripted Events:" HorizontalAlignment="Left"
+                                               VerticalAlignment="Bottom"
+                                               ToolTip="Scripted Events that can be called from lines to start new sequences."
+                                               FontWeight="Normal" FontSize="15" />
+                                    <Button Name="ScriptAddButton" Command="{Binding ScriptAddCommand}"
+                                            CommandParameter="Add" Padding="3" Grid.Column="1" Margin="2"
+                                            ToolTip="Add a new script">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <Button Name="ScriptDeleteButton" Command="{Binding ScriptDeleteCommand}"
+                                            Padding="3" Grid.Column="2" Margin="2" ToolTip="Delete selected script">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                </Grid>
+                                <ListView Name="Script_ListBox"
+                                          ItemsSource="{Binding Path=SelectedConv.ScriptList, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"
+                                          ScrollViewer.VerticalScrollBarVisibility="Visible" MinHeight="30">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Instanced}" />
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem Header="Plot Control"
+                                 ToolTip="Set which plots determine if this line is played, and which plots are set if it does.">
+                            <StackPanel Margin="4">
+                                <TextBlock Text="Plot checks" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Conditional/Bool: " DockPanel.Dock="Left"
+                                               FontSize="15" />
+                                    <ComboBox HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                              SelectedIndex="{Binding Path=SelectedDialogueNode.FiresConditional, Converter={StaticResource BoolToIndexConverter}}">
+                                        <ComboBoxItem Content="Bool" IsSelected="False" />
+                                        <ComboBoxItem Content="Conditional" IsSelected="True" />
+                                    </ComboBox>
+                                </DockPanel>
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"
+                                            Padding="3" DockPanel.Dock="Right"
+                                            ToolTip="Open this conditional in the Conditionals Editor, or this bool in the Plot Database">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Name="Node_Text_Cnd" Text="Conditional :" FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
+                                    <TextBox Text="{Binding Path=SelectedDialogueNode.ConditionalOrBool}"
+                                             HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
+                                             HorizontalContentAlignment="Left" BorderBrush="LightGray"
+                                             BorderThickness="0" VerticalAlignment="Center"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp"
+                                             PreviewTextInput="NumberValidationEditBox" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Conditional Parameter:  " FontSize="15" />
+                                    <TextBox Name="Node_Text_CndParam"
+                                             Text="{Binding Path=SelectedDialogueNode.ConditionalParam}"
+                                             HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
+                                             HorizontalContentAlignment="Left" BorderBrush="LightGray"
+                                             BorderThickness="0"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp"
+                                             PreviewTextInput="NumberValidationEditBox" />
+                                </StackPanel>
+                                <TextBlock Name="Node_Text_CndPath" Text="{Binding Path=SelectedDialogueNode.ConditionalPlotPath}"
+                                           Visibility="{Binding Path=SelectedDialogueNode.ConditionalPlotPath, Converter={StaticResource NullVisibilityConverter}}"
+                                           TextWrapping="Wrap"/>
+                                <Separator />
+                                <TextBlock Text="Plot transitions" />
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <Button Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"
+                                            Padding="3" DockPanel.Dock="Right"
+                                            ToolTip="Open this transition in the Plot Editor">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_ExternalLinkAlt" Width="14" Height="14"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock Text="Transition:  " FontSize="15" VerticalAlignment="Center" DockPanel.Dock="Left" />
+                                    <TextBox Name="Node_Text_Trans"
+                                             Text="{Binding Path=SelectedDialogueNode.Transition}"
+                                             HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
+                                             HorizontalContentAlignment="Left" BorderBrush="LightGray"
+                                             BorderThickness="0" VerticalAlignment="Center"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp"
+                                             PreviewTextInput="NumberValidationEditBox" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Transition Parameter:  " FontSize="15" />
+                                    <TextBox Name="Node_Text_TransParam"
+                                             Text="{Binding Path=SelectedDialogueNode.TransitionParam}"
+                                             HorizontalAlignment="Stretch" FontWeight="Bold" FontSize="15"
+                                             HorizontalContentAlignment="Left" BorderBrush="LightGray"
+                                             BorderThickness="0"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp"
+                                             PreviewTextInput="NumberValidationEditBox" />
+                                </StackPanel>
+                                <TextBlock Name="Node_Text_TransPath" Text="{Binding Path=SelectedDialogueNode.TransitionPlotPath}"
+                                           Visibility="{Binding Path=SelectedDialogueNode.TransitionPlotPath, Converter={StaticResource NullVisibilityConverter}}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem Header="Matinee"
+                                 ToolTip="Line settings for cutscene, animation and camera control."
+                                 FocusManager.FocusedElement="{Binding}">
+                            <StackPanel>
+                                <DockPanel HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Line InterpData: " HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               ToolTip="Matinee object for this line."
+                                               DockPanel.Dock="Left" FontSize="15" Margin="2" />
+                                    <Button Name="OpenLinePE_Button" Command="{Binding OpenInCommand}"
+                                            CommandParameter="PackEdLine" Padding="3"
+                                            DockPanel.Dock="Right"
+                                            ToolTip="Open this line's interpdata in Package editor">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <Button Name="OpenLineSE_Button" Command="{Binding OpenInCommand}"
+                                            CommandParameter="SeqEdLine" Padding="3" DockPanel.Dock="Right"
+                                            ToolTip="Open this line's sequence">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_ProjectDiagram" Width="16"
+                                                             Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <Button Name="OpenLineIE_Button" Command="{Binding OpenInCommand}"
+                                            CommandParameter="InterpEdLine" Padding="3"
+                                            DockPanel.Dock="Right" ToolTip="Open this line in interpeditor">
+                                        <Button.Content>
+                                            <fa:ImageAwesome Icon="Solid_SlidersH" Width="16" Height="16"
+                                                             Foreground="{DynamicResource IconForegroundBrush}" />
+                                        </Button.Content>
+                                    </Button>
+                                    <TextBlock
+                                        Text="{Binding Path=SelectedDialogueNode.InterpData.UIndex, TargetNullValue=None, FallbackValue=None}"
+                                        Name="Interpdata_TxtBx" HorizontalAlignment="Left"
+                                        VerticalAlignment="Bottom"
+                                        ToolTip="Matinee interpdata for this line." FontSize="15"
+                                        Margin="2" MouseRightButtonUp="CopyStringToClipboard_Click" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="Length in secs of matinee interpdata.">
+                                    <TextBlock Text="InterpLength: " VerticalAlignment="Center"
+                                               FontSize="15" Margin="2" />
+                                    <TextBox Text="{Binding Path=SelectedDialogueNode.InterpLength, UpdateSourceTrigger=Explicit}"
+                                             Name="InterpLength_TxtBx" HorizontalAlignment="Stretch"
+                                             FontSize="15" VerticalAlignment="Center"
+                                             HorizontalContentAlignment="Left" BorderBrush="LightGray"
+                                             BorderThickness="0"
+                                             Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                             Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp" />
+                                    <TextBlock Text="seconds" VerticalAlignment="Center" FontSize="15"
+                                               Margin="2" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="Link to Matinee via BioSeqEvent_Conv">
+                                    <TextBlock Name="Node_Text_Export" Text="ExportID:  "
+                                               VerticalAlignment="Center" FontSize="15" Margin="2" />
+                                    <TextBox Text="{Binding Path=SelectedDialogueNode.ExportID}"
+                                             HorizontalAlignment="Stretch" FontSize="15"
+                                             VerticalAlignment="Center" HorizontalContentAlignment="Left"
+                                             BorderBrush="LightGray" BorderThickness="0"
+                                             Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                             Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                             GotKeyboardFocus="EditBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="EditBox_LostKeyboardFocus"
+                                             KeyUp="EditBox_Node_KeyUp"
+                                             PreviewTextInput="NumberValidationEditBox" />
+                                </StackPanel>
+                                <Separator />
+
+                                <CheckBox Name="Node_CB_NonTextline" Content="Non vocal line"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.IsNonTextLine, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          FontSize="15" VerticalAlignment="Center"
+                                          ToolTip="Non-textline where only Matinee plays no vocals." />
+                                <CheckBox Name="Node_CB_bAmbient" Content="Ambient line"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.IsAmbient, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="Ambient line. Camera remains under player control."
+                                          FontSize="15" />
+                                <CheckBox Name="Node_CB_BdyGesture" Content="Ignore Body Gestures"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.IgnoreBodyGesture, Mode=TwoWay}"
+                                          ToolTip="Ignore non-facial matinee gestures." FontSize="15"
+                                          VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="1-5. Controls how far the camera is away from the speakers face during autoconversations.">
+                                    <TextBlock Text="Camera Intimacy:  " FontSize="15" />
+                                    <xctk:IntegerUpDown Name="Node_Text_CamInt"
+                                                        Value="{Binding Path=SelectedDialogueNode.CameraIntimacy}"
+                                                        HorizontalAlignment="Stretch" FontSize="12"
+                                                        Margin="2"
+                                                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                        Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                </StackPanel>
+                                <DockPanel ToolTip="Links to event scripts that fire new sequences. ">
+                                    <TextBlock Text="Script: " VerticalAlignment="Center" FontSize="15"
+                                               DockPanel.Dock="Left" />
+                                    <ComboBox Name="Node_Combo_ScriptIndex" MinWidth="80"
+                                              ItemsSource="{Binding Path=SelectedConv.ScriptList}"
+                                              SelectedItem="{Binding Path=SelectedDialogueNode.Script }"
+                                              IsSynchronizedWithCurrentItem="False"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource {x:Type ComboBox}}"
+                                              IsTextSearchEnabled="True" HorizontalAlignment="Stretch"
+                                              Margin="2" />
+                                </DockPanel>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem Header="GUI Control" ToolTip="Settings for the line's user interaction.">
+                            <StackPanel ScrollViewer.VerticalScrollBarVisibility="Visible">
+                                <CheckBox Name="Node_CB_HideSubs" Content="Hide Subtitle"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.HideSubtitle}"
+                                          FontSize="15" VerticalAlignment="Center"
+                                          ToolTip="Always hide the subtitles." Margin="2" />
+                                <ComboBox Name="Node_Combo_GUIStyle" MinWidth="80"
+                                          SelectedItem="{Binding Path=SelectedDialogueNode.GUIStyle}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="Determines how the GUI looks. Primarily used in ME1."
+                                          Style="{StaticResource {x:Type ComboBox}}"
+                                          IsTextSearchEnabled="True" />
+                                <Separator />
+                                <TextBlock Text="Entry:" FontSize="12" />
+                                <CheckBox Name="Node_CB_ESkippable" Content="Skippable"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.IsSkippable}"
+                                          FontSize="15" VerticalAlignment="Center"
+                                          ToolTip="Player can skip this entry." Margin="2" />
+                                <Separator />
+                                <TextBlock Text="Reply:" FontSize="12" />
+                                <ComboBox Name="Node_Combo_ReplyType" MinWidth="80"
+                                          SelectedItem="{Binding Path=SelectedDialogueNode.ReplyType}"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource {x:Type ComboBox}}"
+                                          IsTextSearchEnabled="True"
+                                          ToolTip="Autocontinue: the reply moves straight to the reply list.&#x0a;Standard: Dialogue is played as normal.&#x0a;DialogEnd: The conversation is ended."
+                                          Margin="2" />
+                                <CheckBox Name="Node_CB_RUnskippable" Content="Unskippable"
+                                          IsChecked="{Binding Path=SelectedDialogueNode.IsUnskippable}"
+                                          FontSize="15" VerticalAlignment="Center"
+                                          ToolTip="Player can never skip this reply." Margin="2" />
+                                <DockPanel>
+                                    <CheckBox Name="Node_CB_RDefault" Content="Default Reply"
+                                              IsChecked="{Binding Path=SelectedDialogueNode.IsDefaultAction}"
+                                              VerticalAlignment="Center" FontSize="15"
+                                              ToolTip="ME3: On action mode this reply is always selected."
+                                              Margin="2" DockPanel.Dock="Left" />
+                                    <CheckBox Name="Node_CB_RMajor" Content="Major Decision"
+                                              IsChecked="{Binding Path=SelectedDialogueNode.IsMajorDecision}"
+                                              HorizontalAlignment="Center"
+                                              ToolTip="ME3: decision forced on player in all story modes."
+                                              FontSize="15" VerticalAlignment="Center" Margin="2"
+                                              DockPanel.Dock="Right" />
+                                </DockPanel>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem Header="Assets" ToolTip="Audio and animation assets used by this line">
+                            <StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Male:" FontSize="12" />
+                                    <DockPanel HorizontalAlignment="Stretch">
+                                        <TextBlock Text="Wwisestream:" VerticalAlignment="Bottom"
+                                                   HorizontalAlignment="Left"
+                                                   ToolTip="Male audio for this line."
+                                                   DockPanel.Dock="Left" FontSize="15" Margin="3" />
+                                        <Button Name="WwStreamMPackEd_Button"
+                                                 Command="{Binding OpenInCommand}"
+                                                 CommandParameter="PackEd_StreamM" Padding="3"
+                                                 ToolTip="Open this stream in Package Editor"
+                                                 DockPanel.Dock="Right">
+                                             <Button.Content>
+                                                 <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                                  Foreground="{DynamicResource IconForegroundBrush}" />
+                                             </Button.Content>
+                                         </Button>
+                                         <Button Name="ReplaceAudioM_Button" Padding="3"
+                                                 DockPanel.Dock="Right"
+                                                 Click="ReplaceAudioM_Click"
+                                                 IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
+                                                 ToolTip="Replace male audio from wave file">
+                                             <Button.Content>
+                                                 <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
+                                                                  Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                             </Button.Content>
+                                         </Button>
+                                         <Button Name="Open_WwStreamM_Button" Padding="3"
+                                                 DockPanel.Dock="Right"
+                                                 Command="{Binding OpenInCommand}"
+                                                 CommandParameter="SoundP_StreamM"
+                                                 ToolTip="Open In Sound Explorer">
+                                             <Button.Content>
+                                                 <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
+                                                                  Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                             </Button.Content>
+                                         </Button>
+                                         <Button Name="PlayAudioM_Button" Padding="3"
+                                                 DockPanel.Dock="Right"
+                                                 Click="PlayAudioM_Click"
+                                                 IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"
+                                                 ToolTip="Play/pause male audio">
+                                             <Button.Content>
+                                                 <fa:ImageAwesome Icon="Solid_Play" Width="16"
+                                                                  Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                             </Button.Content>
+                                         </Button>
+                                        <TextBlock
+                                            Text="{Binding Path=SelectedDialogueNode.WwiseStream_Male.UIndex, TargetNullValue=None, FallbackValue=None}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            ToolTip="Male audio for this line." FontSize="15" Margin="2" />
+                                    </DockPanel>
+                                    <DockPanel HorizontalAlignment="Stretch">
+                                        <TextBlock Text="FaceFX:" VerticalAlignment="Bottom"
+                                                   HorizontalAlignment="Left"
+                                                   ToolTip="Male facial animations for this line."
+                                                   DockPanel.Dock="Left" FontSize="15" Margin="3" />
+                                        <Button Name="Open_ffxM_Button" Padding="3" DockPanel.Dock="Right"
+                                                Command="{Binding OpenInCommand}"
+                                                CommandParameter="FaceFXLineM"
+                                                ToolTip="Open this line in FaceFX Editor">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <TextBlock
+                                            Text="{Binding Path=SelectedDialogueNode.FaceFX_Male, TargetNullValue=None, FallbackValue=None}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            ToolTip="Male facial animations for this line." FontSize="15"
+                                            Margin="2" />
+                                    </DockPanel>
+                                </StackPanel>
+                                <Separator />
+                                <StackPanel>
+                                    <TextBlock Text="Female:" FontSize="12" />
+                                    <DockPanel HorizontalAlignment="Stretch">
+                                        <TextBlock Text="Wwisestream:" VerticalAlignment="Bottom"
+                                                   HorizontalAlignment="Left"
+                                                   ToolTip="Female audio for this line."
+                                                   DockPanel.Dock="Left" FontSize="15" Margin="3" />
+                                        <Button Name="WwStreamFPackEd_Button"
+                                                Command="{Binding OpenInCommand}"
+                                                CommandParameter="PackEd_StreamF" Padding="3"
+                                                ToolTip="Open this stream in Package Editor"
+                                                DockPanel.Dock="Right">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_Cube" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="ReplaceAudioF_Button" Padding="3"
+                                                DockPanel.Dock="Right"
+                                                Click="ReplaceAudioF_Click"
+                                                IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
+                                                ToolTip="Replace female audio from wave file">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="Open_WwStreamF_Button" Padding="3"
+                                                DockPanel.Dock="Right"
+                                                Command="{Binding OpenInCommand}"
+                                                CommandParameter="SoundP_StreamF"
+                                                ToolTip="Open this stream in Soundplorer">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_VolumeUp" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="PlayAudioF_Button" Padding="3"
+                                                DockPanel.Dock="Right"
+                                                Click="PlayAudioF_Click"
+                                                IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"
+                                                ToolTip="Play/pause female audio">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_Play" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <TextBlock
+                                            Text="{Binding Path=SelectedDialogueNode.WwiseStream_Female.UIndex, TargetNullValue=None, FallbackValue=None}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            ToolTip="Female audio for this line." FontSize="15" Margin="2" />
+                                    </DockPanel>
+                                    <DockPanel HorizontalAlignment="Stretch">
+                                        <TextBlock Text="FaceFX:" VerticalAlignment="Bottom"
+                                                   HorizontalAlignment="Left"
+                                                   ToolTip="Female facial animations for this line."
+                                                   DockPanel.Dock="Left" FontSize="15" Margin="3" />
+                                        <Button Name="Open_ffxF_Button" Padding="3" DockPanel.Dock="Right"
+                                                Command="{Binding OpenInCommand}"
+                                                CommandParameter="FaceFXLineF"
+                                                ToolTip="Open this line in FaceFX Editor">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <TextBlock
+                                            Text="{Binding Path=SelectedDialogueNode.FaceFX_Female, TargetNullValue=None, FallbackValue=None}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            ToolTip="Female facial animations for this line." FontSize="15"
+                                            Margin="2" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </TabItem>
+                        <TabItem x:Name="StageDirections_Tab" Header="Stage Directions" Visibility="Collapsed">
+                            <DockPanel Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" Margin="0,3,4,3" LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Top" Text="Stage Directions" Margin="5,5,5,0" FontWeight="Bold"
+                                           TextAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                                <TextBlock DockPanel.Dock="Top" Text="Add stage directions or notes" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                           FontSize="10" TextWrapping="Wrap" TextAlignment="Center" />
+                                <ListBox Name="StageDirs_ListBox" DockPanel.Dock="Bottom"
+                                         ItemsSource="{Binding Path=SelectedConv.StageDirections}"
+                                         VerticalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                         MouseDoubleClick="StageDirs_ListBox_OnMouseDoubleClick">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid HorizontalAlignment="Stretch">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Orientation="Horizontal" Grid.Row="0">
+                                                    <TextBlock Text="{Binding StageStrRef}" FontWeight="DemiBold" />
+                                                    <TextBlock Text=" : " />
+                                                    <TextBlock Text="{Binding StageLine}" />
+                                                </StackPanel>
+                                                <TextBox Grid.Row="1"
+                                                         Text="{Binding Direction, Mode=TwoWay, UpdateSourceTrigger=Explicit}"
+                                                         TextWrapping="Wrap" HorizontalAlignment="Stretch"
+                                                         KeyUp="StageDirections_TextChanged"
+                                                         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                         Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                    <ListBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Go to node" Command="{Binding StageDirectionsModCommand}"
+                                                      CommandParameter="Goto" />
+                                            <MenuItem Header="Add" Command="{Binding StageDirectionsModCommand}"
+                                                      CommandParameter="Add" />
+                                            <MenuItem Header="Delete" Command="{Binding StageDirectionsModCommand}"
+                                                      CommandParameter="Delete" />
+                                        </ContextMenu>
+                                    </ListBox.ContextMenu>
+                                </ListBox>
+                            </DockPanel>
+                        </TabItem>
+                        <TabItem x:Name="StartingNodesTab" Header="Starting Nodes">
+                            <StackPanel Name="Start_Panel">
+                                <TextBlock Text="Starting Nodes" HorizontalAlignment="Left" FontWeight="Bold"
+                                           FontSize="18" DockPanel.Dock="Top" Padding="5" />
+                                <DockPanel LastChildFill="False">
+                                    <Grid Height="30" DockPanel.Dock="Top">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40"></ColumnDefinition>
+                                            <ColumnDefinition Width="*"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
+                                        </Grid.ColumnDefinitions>
+                                        <Label Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Order</Label>
+                                        <Label Grid.Column="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Entry Link</Label>
+                                        <Button Name="StartAddButton" Command="{Binding StartAddCommand}"
+                                                CommandParameter="Add" Padding="3" DockPanel.Dock="Right"
+                                                IsEnabled="True" Grid.Column="2" Margin="2" ToolTip="Add a new start">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_PlusCircle" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="StartDeleteButton" Command="{Binding StartDeleteCommand}"
+                                                Padding="3" DockPanel.Dock="Right" IsEnabled="True" Grid.Column="3"
+                                                Margin="2" ToolTip="Delete selected start">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_MinusCircle" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="StartUpButton" Command="{Binding StartUpCommand}"
+                                                CommandParameter="Up" Padding="3" DockPanel.Dock="Right"
+                                                IsEnabled="True" Grid.Column="4" Margin="2"
+                                                ToolTip="Move selected start up">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_ArrowCircleUp" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="StartDownButton" Command="{Binding StartDownCommand}"
+                                                CommandParameter="Down" Padding="3" DockPanel.Dock="Right"
+                                                IsEnabled="True" Grid.Column="5" Margin="2"
+                                                ToolTip="Move selected start down">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_ArrowCircleDown" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                    </Grid>
+                                    <ListBox Name="Start_ListBox" DockPanel.Dock="Bottom"
+                                             VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                             ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             SelectionChanged="Start_ListBox_SelectionChanged" MinHeight="250">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,5,0" ScrollViewer.CanContentScroll="True"
+                                                      ScrollViewer.VerticalScrollBarVisibility="Visible">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="40" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                        <ListBox.ItemContainerStyle>
+                                            <Style>
+                                                <Style.Triggers>
+                                                    <Trigger Property="Selector.IsSelected" Value="True">
+                                                        <Setter Property="TextElement.FontWeight" Value="Bold" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}"
+                                                          CommandParameter="Add" />
+                                                <MenuItem Header="Delete Start" Command="{Binding StartDeleteCommand}" />
+                                                <MenuItem Header="Edit Link" Command="{Binding StartEditCommand}"
+                                                          CommandParameter="Edit" />
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                    </ListBox>
+                                </DockPanel>
+                            </StackPanel>
                         </TabItem>
                     </TabControl>
                 </Grid>
