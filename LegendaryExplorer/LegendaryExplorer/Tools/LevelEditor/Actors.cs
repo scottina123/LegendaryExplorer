@@ -236,6 +236,9 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         "BioPawn",
         "Pawn",
         "PrefabInstance",
+        "SFXDroppedGrenade",
+        "SFXDroppedAmmo",
+        "SFXDroppedPickup"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool CanCreate(ExportEntry actorExport)
@@ -282,6 +285,18 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         if (GlobalUnrealObjectInfo.IsA(className, "PrefabInstance", actorExport.Game))
         {
             return new PrefabInstanceProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SFXDroppedGrenade", actorExport.Game))
+        {
+            return new SFXDroppedGrenadeProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SFXDroppedAmmo", actorExport.Game))
+        {
+            return new SFXDroppedAmmoProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SFXDroppedPickup", actorExport.Game))
+        {
+            return new SFXDroppedPickupProxy(context, actorExport);
         }
         return null;
         //return new ActorProxy(context, actorExport);
@@ -730,5 +745,32 @@ public class PrefabInstanceProxy : ActorProxy
             }
             isDisposed = true;
         }
+    }
+
+}
+public class SFXDroppedPickupProxy : ActorProxy
+{
+    public SkeletalMeshComponentProxy PickupMesh;
+    public SFXDroppedPickupProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref PickupMesh);
+    }
+}
+
+public class SFXDroppedAmmoProxy : ActorProxy
+{
+    public StaticMeshComponentProxy AmmoMesh;
+    public SFXDroppedAmmoProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref AmmoMesh);
+    }
+}
+
+public class SFXDroppedGrenadeProxy : ActorProxy
+{
+    public StaticMeshComponentProxy GrenadeMesh;
+    public SFXDroppedGrenadeProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref GrenadeMesh);
     }
 }
