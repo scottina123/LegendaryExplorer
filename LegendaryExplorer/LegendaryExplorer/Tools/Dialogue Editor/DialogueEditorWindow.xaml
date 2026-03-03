@@ -1518,11 +1518,11 @@
                                 <Setter Property="HeaderTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <ContentPresenter Content="{TemplateBinding Content}">
-                                                <ContentPresenter.LayoutTransform>
-                                                    <RotateTransform Angle="270" />
-                                                </ContentPresenter.LayoutTransform>
-                                            </ContentPresenter>
+                                                <ContentPresenter Content="{TemplateBinding Content}">
+                                                    <ContentPresenter.LayoutTransform>
+                                                        <RotateTransform Angle="0" />
+                                                    </ContentPresenter.LayoutTransform>
+                                                </ContentPresenter>
                                         </DataTemplate>
                                     </Setter.Value>
                                 </Setter>
