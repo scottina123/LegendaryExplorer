@@ -163,6 +163,9 @@ namespace LegendaryExplorer.DialogueEditor
         private DiagNode inlineLinkEditorNode;
         private bool inlineLinkEditorIsReply;
         private bool inlineLinkEditorNeedsSave;
+        private System.Windows.Forms.TextBox inlineLineStrRefEditor;
+        private DiagNode inlineLineStrRefNode;
+        private bool inlineLineStrRefEditClosing;
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         public string CurrentFile;
@@ -3356,6 +3359,138 @@ namespace LegendaryExplorer.DialogueEditor
             RecreateNodesToProperties(SelectedConv);
             RefreshView();
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
+        public void UpdateNodeLineStrRefFromGraph(DialogueNodeExtended node, int lineStrRef)
+        {
+            if (node == null || SelectedConv == null || node.LineStrRef == lineStrRef)
+            {
+                return;
+            }
+
+            node.LineStrRef = lineStrRef;
+            node.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(lineStrRef, "srText"));
+
+            RecreateNodesToProperties(SelectedConv);
+            ForceRefresh(null);
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
+        public void BeginInlineLineStrRefEdit(DiagNode node, System.Drawing.Point editorScreenPoint, float editorWidth, float editorHeight, PointF clickOffsetInEditor)
+        {
+            if (node == null || graphEditor == null)
+            {
+                return;
+            }
+
+            EndInlineLineStrRefEdit(false);
+
+            inlineLineStrRefNode = node;
+            var editor = new System.Windows.Forms.TextBox
+            {
+                Text = node.Node.LineStrRef.ToString(),
+                BorderStyle = System.Windows.Forms.BorderStyle.None,
+                Multiline = false,
+                ShortcutsEnabled = false
+            };
+            inlineLineStrRefEditor = editor;
+
+            if (Settings.Global_DarkMode_Enabled)
+            {
+                editor.BackColor = System.Drawing.Color.FromArgb(45, 45, 48);
+                editor.ForeColor = System.Drawing.Color.FromArgb(224, 224, 224);
+            }
+
+            int width = Math.Max((int)Math.Ceiling(editorWidth) - 6, 70);
+            int height = Math.Max((int)Math.Ceiling(editorHeight) - 2, 18);
+            System.Drawing.Point clientPoint = graphEditor.PointToClient(editorScreenPoint);
+            int x = (int)Math.Round(clientPoint.X - clickOffsetInEditor.X) + 3;
+            int y = (int)Math.Round(clientPoint.Y - clickOffsetInEditor.Y) + 1;
+            editor.SetBounds(x, y, width, height);
+
+            editor.KeyDown += (_, e) =>
+            {
+                if (e.KeyCode == System.Windows.Forms.Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    EndInlineLineStrRefEdit(true);
+                }
+                else if (e.KeyCode == System.Windows.Forms.Keys.Escape)
+                {
+                    e.SuppressKeyPress = true;
+                    EndInlineLineStrRefEdit(false);
+                }
+            };
+
+            editor.LostFocus += (_, _) => EndInlineLineStrRefEdit(true);
+
+            graphEditor.Controls.Add(editor);
+            if (editor.IsDisposed || inlineLineStrRefEditor != editor)
+            {
+                return;
+            }
+
+            editor.BringToFront();
+            editor.Focus();
+            editor.SelectAll();
+        }
+
+        private void EndInlineLineStrRefEdit(bool commit)
+        {
+            if (inlineLineStrRefEditClosing)
+            {
+                return;
+            }
+
+            var editor = inlineLineStrRefEditor;
+            if (editor == null)
+            {
+                return;
+            }
+
+            inlineLineStrRefEditClosing = true;
+
+            string text = editor.Text;
+            var node = inlineLineStrRefNode;
+
+            if (graphEditor?.Controls.Contains(editor) == true)
+            {
+                graphEditor.Controls.Remove(editor);
+            }
+            editor.Dispose();
+            inlineLineStrRefEditor = null;
+            inlineLineStrRefNode = null;
+            inlineLineStrRefEditClosing = false;
+
+            if (!commit || node == null)
+            {
+                if (node != null)
+                {
+                    RefreshView();
+                    DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
+                }
+                else
+                {
+                    graphEditor?.Refresh();
+                }
+                return;
+            }
+
+            if (int.TryParse(text, out int newRef))
+            {
+                bool valueChanged = node.Node.LineStrRef != newRef;
+                UpdateNodeLineStrRefFromGraph(node.Node, newRef);
+                if (!valueChanged)
+                {
+                    RefreshView();
+                    DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
+                }
+            }
+            else
+            {
+                RefreshView();
+                DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
+            }
         }
 
         private void DialogueNode_OpenLinkEditor(object obj)

@@ -796,6 +796,61 @@ namespace LegendaryExplorer.DialogueEditor
             return titleWidth;
         }
 
+        private PNode CreateLineStringRefEditor(float width, float y)
+        {
+            float editorX = 4;
+            float editorWidth = MathF.Max(width - 8, 80);
+
+            var text = new DText(Node.LineStrRef.ToString(), boxTextColor)
+            {
+                X = editorX + 4,
+                Pickable = false,
+                ConstrainWidthToTextWidth = false,
+                Width = editorWidth - 8
+            };
+
+            float editorHeight = MathF.Max(18, text.Height + 4);
+            text.Y = y + ((editorHeight - text.Height) / 2);
+
+            var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
+            editorBox.Brush = nodeBrush;
+            editorBox.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+
+            editorBox.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left)
+                {
+                    return;
+                }
+
+                e.Handled = true;
+                PointF relativeToNode = e.GetPositionRelativeTo(this);
+                var clickOffsetInEditor = new PointF(relativeToNode.X - editorX, relativeToNode.Y - y);
+                clickOffsetInEditor.X = MathF.Max(0, MathF.Min(editorWidth, clickOffsetInEditor.X));
+                clickOffsetInEditor.Y = MathF.Max(0, MathF.Min(editorHeight, clickOffsetInEditor.Y));
+                Editor.BeginInlineLineStrRefEdit(this, Cursor.Position, editorWidth, editorHeight, clickOffsetInEditor);
+            };
+
+            var container = new PNode();
+            container.AddChild(editorBox);
+            container.AddChild(text);
+            container.Pickable = true;
+            return container;
+        }
+
+        private float GetLineStringRefEditorHeight(float width)
+        {
+            float editorWidth = MathF.Max(width - 8, 80);
+            var text = new DText(Node.LineStrRef.ToString(), boxTextColor)
+            {
+                ConstrainWidthToTextWidth = false,
+                Width = editorWidth - 8,
+                Pickable = false
+            };
+
+            return MathF.Max(18, text.Height + 4);
+        }
+
         private bool _isSelected;
         public override bool IsSelected
         {
@@ -935,7 +990,7 @@ namespace LegendaryExplorer.DialogueEditor
                 type = $"{t}";
             }
             string spokenLine = string.IsNullOrWhiteSpace(Node.Line) ? string.Empty : $"{Node.Line}\r\n";
-            string d = $"{spokenLine}{Node.LineStrRef}\r\n{plotCnd}{trans}{type}";
+            string d = $"{spokenLine}{plotCnd}{trans}{type}";
 
             DText insidetext = new DText(d, boxTextColor, true)
             {
@@ -950,6 +1005,8 @@ namespace LegendaryExplorer.DialogueEditor
             h += insidetext.Height;
             float iw = insidetext.Width;
             if (iw > w) { w = iw; }
+            float lineStrRefEditorHeight = GetLineStringRefEditorHeight(w);
+            h += lineStrRefEditorHeight;
             outLinkBox.TranslateBy(w, titleBox.Height + 2);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
             box.Brush = nodeBrush;
@@ -968,6 +1025,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             insidetext.TranslateBy((w - iw) / 2, 0);
             box.AddChild(insidetext);
+            float lineStrRefY = insidetext.Y + insidetext.Height + 3;
+            box.AddChild(CreateLineStringRefEditor(w, lineStrRefY));
             Bounds = new RectangleF(0, 0, w, h);
             AddChild(box);
             AddChild(titleBox);
