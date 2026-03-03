@@ -153,9 +153,13 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     Background="{TemplateBinding Background}">
-                                <ContentPresenter x:Name="PART_SelectedContentHost"
-                                                  Margin="2"
-                                                  ContentSource="SelectedContent" />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              CanContentScroll="False">
+                                    <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                      Margin="2"
+                                                      ContentSource="SelectedContent" />
+                                </ScrollViewer>
                             </Border>
                             <ScrollViewer Grid.Column="0"
                                           VerticalScrollBarVisibility="Auto"
@@ -841,7 +845,7 @@
                                 <DataGrid x:Name="InlineLinkEditor_DataGrid"
                                           VerticalContentAlignment="Stretch"
                                           ScrollViewer.CanContentScroll="True"
-                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Visible"
                                           AutoGenerateColumns="False"
                                           CanUserSortColumns="False"

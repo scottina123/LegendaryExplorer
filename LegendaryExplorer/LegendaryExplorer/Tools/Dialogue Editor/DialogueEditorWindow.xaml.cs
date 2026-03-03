@@ -329,6 +329,7 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedSpeaker = new SpeakerExtended(-3, "None");
 
             InitializeComponent();
+            SortBottomViewportTabsAlphabetically();
             InlineLinkEditor_DataGrid.ItemsSource = InlineLinkEditorLinks;
             InlineLinkEditor_DataGrid.MouseDoubleClick += InlineLinkEditor_DataGrid_MouseDoubleClick;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
@@ -528,6 +529,32 @@ namespace LegendaryExplorer.DialogueEditor
 
             UpdateLayoutDefaults("startup");
         }
+
+        private void SortBottomViewportTabsAlphabetically()
+        {
+            var selectedTab = BottomViewportTabControl?.SelectedItem as TabItem;
+            var orderedTabs = BottomViewportTabControl?.Items
+                .OfType<TabItem>()
+                .OrderBy(t => t.Header?.ToString(), StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (orderedTabs == null || orderedTabs.Count == 0)
+            {
+                return;
+            }
+
+            BottomViewportTabControl.Items.Clear();
+            foreach (var tab in orderedTabs)
+            {
+                BottomViewportTabControl.Items.Add(tab);
+            }
+
+            if (selectedTab != null && orderedTabs.Contains(selectedTab))
+            {
+                BottomViewportTabControl.SelectedItem = selectedTab;
+            }
+        }
+
         public DialogueEditorWindow(ExportEntry export) : this()
         {
             FileQueuedForLoad = export.FileRef.FilePath;
