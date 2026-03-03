@@ -2906,7 +2906,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     if (SelectedSpeaker.SpeakerID == -1 && (string.IsNullOrEmpty(SelectedSpeaker.FriendlyName) || SelectedSpeaker.FriendlyName == "No data"))
                     {
-                        SelectedConv?.ResolveOwnerTag();
+                        QueueOwnerFriendlyNameResolution(SelectedConv);
                     }
 
                     if (SelectedSpeaker.StrRefID <= 0)
