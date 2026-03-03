@@ -116,7 +116,7 @@ namespace LegendaryExplorerCore.UnrealScript.Parsing
             }
             foreach (var param in func.Parameters)
             {
-                func.Tokens.AddDefinitionLink(param, param.StartPos, param.TextLength);
+                func.Tokens?.AddDefinitionLink(param, param.StartPos, param.TextLength);
             }
             if (hasStructDefaults)
             {
