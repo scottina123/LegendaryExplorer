@@ -566,6 +566,236 @@ namespace LegendaryExplorer.DialogueEditor
             originalY = y;
         }
 
+        private string GetListenerDisplayName()
+        {
+            var listener = Editor?.ListenersList?.FirstOrDefault(s => s.SpeakerID == Node.Listener);
+            if (listener != null)
+            {
+                return listener.DisplayName;
+            }
+
+            return Node.Listener.ToString();
+        }
+
+        private PPath CreateNodeParticipantSelectorButton(float x, float y, bool isSpeaker)
+        {
+            var button = PPath.CreateRectangle(x, y, 12, 12);
+            button.Brush = new SolidBrush(Color.FromArgb(30, boxTextColor));
+            button.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+
+            button.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left)
+                {
+                    return;
+                }
+
+                e.Handled = true;
+                ShowNodeParticipantSelectorMenu(isSpeaker);
+            };
+
+            titleBox.AddChild(button);
+            return button;
+        }
+
+        private void ShowNodeParticipantSelectorMenu(bool isSpeaker)
+        {
+            if (Editor?.SelectedConv == null)
+            {
+                return;
+            }
+
+            var menu = new ContextMenuStrip();
+            var source = isSpeaker ? Editor.SelectedSpeakerList : Editor.ListenersList;
+
+            foreach (var speaker in source)
+            {
+                int speakerId = speaker.SpeakerID;
+                var item = new ToolStripMenuItem(speaker.DisplayName)
+                {
+                    Checked = (isSpeaker ? Node.SpeakerIndex : Node.Listener) == speakerId
+                };
+
+                item.Click += (_, __) =>
+                {
+                    if (isSpeaker)
+                    {
+                        Editor.UpdateNodeSpeakerFromGraph(Node, speakerId);
+                    }
+                    else
+                    {
+                        Editor.UpdateNodeListenerFromGraph(Node, speakerId);
+                    }
+                };
+
+                menu.Items.Add(item);
+            }
+
+            ApplyThemeToSelectorMenu(menu);
+
+            if (menu.Items.Count > 0)
+            {
+                menu.Show(Cursor.Position);
+            }
+            else
+            {
+                menu.Dispose();
+            }
+        }
+
+        private static void ApplyThemeToSelectorMenu(ContextMenuStrip menu)
+        {
+            bool isDarkMode = LegendaryExplorer.Misc.AppSettings.Settings.Global_DarkMode_Enabled;
+            if (isDarkMode)
+            {
+                Color bg = Color.FromArgb(0x2D, 0x2D, 0x30);
+                Color fg = Color.FromArgb(0xE0, 0xE0, 0xE0);
+                menu.Renderer = new DarkSelectorMenuRenderer();
+                menu.BackColor = bg;
+                menu.ForeColor = fg;
+                foreach (ToolStripItem item in menu.Items)
+                {
+                    item.BackColor = bg;
+                    item.ForeColor = fg;
+                }
+            }
+            else
+            {
+                menu.Renderer = null;
+                menu.RenderMode = ToolStripRenderMode.ManagerRenderMode;
+                menu.BackColor = SystemColors.Control;
+                menu.ForeColor = SystemColors.ControlText;
+                foreach (ToolStripItem item in menu.Items)
+                {
+                    item.BackColor = SystemColors.Control;
+                    item.ForeColor = SystemColors.ControlText;
+                }
+            }
+        }
+
+        private sealed class DarkSelectorMenuRenderer : ToolStripProfessionalRenderer
+        {
+            private static readonly Color BackgroundColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+            private static readonly Color BorderColor = Color.FromArgb(0x3F, 0x3F, 0x46);
+            private static readonly Color SeparatorColor = Color.FromArgb(0x3F, 0x3F, 0x46);
+            private static readonly Color HighlightColor = Color.FromArgb(0x3E, 0x3E, 0x42);
+            private static readonly Color TextColor = Color.FromArgb(0xE0, 0xE0, 0xE0);
+            private static readonly Color DisabledTextColor = Color.FromArgb(0x65, 0x65, 0x69);
+
+            protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+            {
+                using var brush = new SolidBrush(BackgroundColor);
+                e.Graphics.FillRectangle(brush, e.AffectedBounds);
+            }
+
+            protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+            {
+                using var pen = new Pen(BorderColor);
+                var rect = new Rectangle(0, 0, e.AffectedBounds.Width - 1, e.AffectedBounds.Height - 1);
+                e.Graphics.DrawRectangle(pen, rect);
+            }
+
+            protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+            {
+                using var brush = new SolidBrush(e.Item.Selected && e.Item.Enabled ? HighlightColor : BackgroundColor);
+                e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+            }
+
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+            {
+                e.TextColor = e.Item.Enabled ? TextColor : DisabledTextColor;
+                base.OnRenderItemText(e);
+            }
+
+            protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+            {
+                int y = e.Item.Height / 2;
+                using var pen = new Pen(SeparatorColor);
+                e.Graphics.DrawLine(pen, 0, y, e.Item.Width, y);
+            }
+        }
+
+        private float BuildSpeakerListenerTitleBox(float minimumWidth)
+        {
+            string nodeIdText = Node.IsReply ? $"R{Node.NodeCount}" : $"E{Node.NodeCount}";
+            string speakerText = $"Speaker: {Node.SpeakerTag?.DisplayName ?? "Unknown"}";
+            string listenerText = $"Listener: {GetListenerDisplayName()}";
+
+            const float rowTextPadding = 2f;
+            const float leftPadding = 4f;
+            const float buttonSize = 12f;
+            const float buttonMargin = 4f;
+
+            var nodeId = new DText(nodeIdText, boxTextColor)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = leftPadding,
+                Y = rowTextPadding,
+                Pickable = false
+            };
+
+            var speaker = new DText(speakerText, boxTextColor)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = nodeId.Width + 10,
+                Y = rowTextPadding,
+                Pickable = false
+            };
+
+            float row1Height = MathF.Max(nodeId.Height, speaker.Height) + (rowTextPadding * 2);
+
+            var listener = new DText(listenerText, boxTextColor)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = leftPadding,
+                Y = row1Height + 1 + rowTextPadding,
+                Pickable = false
+            };
+
+            float row2Height = listener.Height + (rowTextPadding * 2);
+
+            float contentWidth = MathF.Max(speaker.X + speaker.Width, listener.X + listener.Width);
+            float requiredWidth = contentWidth + buttonSize + (buttonMargin * 2);
+            float titleWidth = MathF.Max(minimumWidth, requiredWidth);
+            float titleHeight = row1Height + 1 + row2Height;
+
+            titleBox = PPath.CreateRectangle(0, 0, titleWidth, titleHeight);
+            titleBox.Pen = new Pen(entryPenColor);
+            if (NodeUID < 1000)
+            {
+                titleBox.Brush = new SolidBrush(entryColor);
+            }
+            else if (NodeUID < 2000)
+            {
+                titleBox.Brush = new SolidBrush(replyColor);
+            }
+            else
+            {
+                titleBox.Brush = titleBoxBrush;
+            }
+
+            var divider = PPath.CreateLine(3, row1Height, titleWidth - 3, row1Height);
+            divider.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+            divider.Pickable = false;
+
+            titleBox.AddChild(nodeId);
+            titleBox.AddChild(speaker);
+            titleBox.AddChild(listener);
+            titleBox.AddChild(divider);
+
+            float buttonX = titleWidth - buttonSize - buttonMargin;
+            float row1ButtonY = rowTextPadding + MathF.Max((MathF.Max(nodeId.Height, speaker.Height) - buttonSize) / 2, 0);
+            float row2ButtonY = row1Height + 1 + rowTextPadding + MathF.Max((listener.Height - buttonSize) / 2, 0);
+            CreateNodeParticipantSelectorButton(buttonX, row1ButtonY, true);
+            CreateNodeParticipantSelectorButton(buttonX, row2ButtonY, false);
+
+            titleBox.Pickable = false;
+            return titleWidth;
+        }
+
         private bool _isSelected;
         public override bool IsSelected
         {
@@ -672,11 +902,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (inW + outW + 10 > w) w = inW + outW + 10;
 
             //TitleBox
-            string s = $"{Node.SpeakerTag?.DisplayName ?? "Unknown"}";
-            string n = $"E{Node.NodeCount}";
-            if (Node.IsReply)
-            { n = $"R{Node.NodeCount}"; }
-            float tW = GetTitlePlusLineBox(s, string.Empty, n, w);
+            float tW = BuildSpeakerListenerTitleBox(w);
             if (tW > w)
             {
                 w = tW;

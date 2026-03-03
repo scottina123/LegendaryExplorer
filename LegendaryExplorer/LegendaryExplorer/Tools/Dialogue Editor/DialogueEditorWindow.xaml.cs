@@ -3326,6 +3326,38 @@ namespace LegendaryExplorer.DialogueEditor
                 Node_Text_Cnd.Text = "Bool: ";
 
         }
+
+        public void UpdateNodeSpeakerFromGraph(DialogueNodeExtended node, int speakerId)
+        {
+            if (node == null || SelectedConv == null || node.SpeakerIndex == speakerId)
+            {
+                return;
+            }
+
+            node.SpeakerIndex = speakerId;
+            node.SpeakerTag = SelectedSpeakerList.FirstOrDefault(s => s.SpeakerID == speakerId);
+            node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(speakerId, "nSpeakerIndex"));
+
+            RecreateNodesToProperties(SelectedConv);
+            RefreshView();
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
+        public void UpdateNodeListenerFromGraph(DialogueNodeExtended node, int listenerId)
+        {
+            if (node == null || SelectedConv == null || node.Listener == listenerId)
+            {
+                return;
+            }
+
+            node.Listener = listenerId;
+            node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(listenerId, "nListenerIndex"));
+
+            RecreateNodesToProperties(SelectedConv);
+            RefreshView();
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
         private void DialogueNode_OpenLinkEditor(object obj)
         {
             if (SelectedObjects.FirstOrDefault() is not DiagNode node)
