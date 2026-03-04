@@ -111,6 +111,19 @@ namespace LegendaryExplorer.DialogueEditor
         /// </summary>
         public class NodeDragHandler : PDragEventHandler
         {
+            private static DObj GetDraggedNode(PNode pickedNode)
+            {
+                for (PNode node = pickedNode; node is not null; node = node.Parent)
+                {
+                    if (node is DObj dObj)
+                    {
+                        return dObj;
+                    }
+                }
+
+                return null;
+            }
+
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
                 return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave);
@@ -120,7 +133,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 base.OnStartDrag(sender, e);
                 e.Handled = true;
-                e.PickedNode.MoveToFront();
+                (GetDraggedNode(e.PickedNode) ?? e.PickedNode).MoveToFront();
             }
 
             protected override void OnDrag(object sender, PInputEventArgs e)
@@ -128,12 +141,22 @@ namespace LegendaryExplorer.DialogueEditor
                 if (!e.Handled)
                 {
                     var edgesToUpdate = new HashSet<DiagEdEdge>();
-                    base.OnDrag(sender, e);
-                    if (e.PickedNode is DObj DObj)
+                    DObj draggedNode = GetDraggedNode(e.PickedNode);
+                    PNode nodeToMove = draggedNode ?? e.PickedNode;
+                    SizeF dragDelta = e.GetDeltaRelativeTo(nodeToMove);
+                    dragDelta = nodeToMove.LocalToParent(dragDelta);
+                    nodeToMove.OffsetBy(dragDelta.Width, dragDelta.Height);
+
+                    if (draggedNode is not null)
                     {
-                        foreach (DiagEdEdge edge in DObj.Edges)
+                        foreach (DiagEdEdge edge in draggedNode.Edges)
                         {
                             edgesToUpdate.Add(edge);
+                        }
+
+                        if (draggedNode is DiagNode draggedDiagNode)
+                        {
+                            draggedDiagNode.SyncInlineLineStrRefEditorPosition();
                         }
                     }
 
@@ -141,11 +164,15 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         foreach (PNode node in g.nodeLayer)
                         {
-                            if (node is DObj { IsSelected: true } obj && obj != e.PickedNode)
+                            if (node is DObj { IsSelected: true } obj && obj != draggedNode)
                             {
                                 SizeF s = e.GetDeltaRelativeTo(obj);
                                 s = obj.LocalToParent(s);
                                 obj.OffsetBy(s.Width, s.Height);
+                                if (obj is DiagNode selectedDiagNode)
+                                {
+                                    selectedDiagNode.SyncInlineLineStrRefEditorPosition();
+                                }
                                 foreach (DiagEdEdge edge in obj.Edges)
                                 {
                                     edgesToUpdate.Add(edge);

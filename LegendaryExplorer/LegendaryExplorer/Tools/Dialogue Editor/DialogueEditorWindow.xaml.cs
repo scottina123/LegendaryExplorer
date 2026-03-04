@@ -3458,9 +3458,31 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            UpdateInlineLineStrRefEditorPosition(node);
+
             editor.BringToFront();
             editor.Focus();
             editor.SelectAll();
+        }
+
+        public void UpdateInlineLineStrRefEditorPosition(DiagNode node)
+        {
+            if (node == null || inlineLineStrRefEditor == null || inlineLineStrRefNode != node)
+            {
+                return;
+            }
+
+            Rectangle bounds = node.GetLineStrRefEditorViewBounds();
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            int width = Math.Max(bounds.Width - 6, 70);
+            int height = Math.Max(bounds.Height - 2, 18);
+            int x = bounds.X + 3;
+            int y = bounds.Y + 1;
+            inlineLineStrRefEditor.SetBounds(x, y, width, height);
         }
 
         private void EndInlineLineStrRefEdit(bool commit)

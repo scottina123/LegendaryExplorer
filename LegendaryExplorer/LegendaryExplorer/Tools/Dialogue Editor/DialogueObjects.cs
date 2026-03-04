@@ -553,6 +553,7 @@ namespace LegendaryExplorer.DialogueEditor
         static readonly Color insideTextColor = Color.FromArgb(213, 213, 213);//white
         protected InputDragHandler inputDragHandler = new InputDragHandler();
         protected DialogueEditorWindow Editor;
+        private RectangleF lineStrRefEditorBounds;
 
         public DiagNode(DialogueEditorWindow editor, DialogueNodeExtended node, float x, float y, ConvGraphEditor ConvGraphEditor)
             : base(ConvGraphEditor)
@@ -810,6 +811,7 @@ namespace LegendaryExplorer.DialogueEditor
             };
 
             float editorHeight = MathF.Max(18, text.Height + 4);
+            lineStrRefEditorBounds = new RectangleF(editorX, y, editorWidth, editorHeight);
             text.Y = y + ((editorHeight - text.Height) / 2);
 
             var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
@@ -836,6 +838,24 @@ namespace LegendaryExplorer.DialogueEditor
             container.AddChild(text);
             container.Pickable = true;
             return container;
+        }
+
+        public Rectangle GetLineStrRefEditorViewBounds()
+        {
+            if (g?.Camera == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            RectangleF globalBounds = LocalToGlobal(lineStrRefEditorBounds);
+            RectangleF cameraLocalBounds = g.Camera.GlobalToLocal(globalBounds);
+            RectangleF viewBounds = g.Camera.LocalToView(cameraLocalBounds);
+            return Rectangle.Round(viewBounds);
+        }
+
+        public void SyncInlineLineStrRefEditorPosition()
+        {
+            Editor?.UpdateInlineLineStrRefEditorPosition(this);
         }
 
         private float GetLineStringRefEditorHeight(float width)
