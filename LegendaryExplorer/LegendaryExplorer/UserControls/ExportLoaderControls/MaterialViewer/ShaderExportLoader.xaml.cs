@@ -234,8 +234,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void LoadExport(ExportEntry exportEntry)
         {
             CurrentLoadedExport = exportEntry;
+            ForceHideRecents = true;
             OnDemand_Panel.Visibility = Visibility.Visible;
             LoadedContent_Panel.Visibility = Visibility.Collapsed;
+            if (AutoLoad)
+            {
+                LoadShaders();
+            }
         }
 
         public IEnumerable<TreeViewMeshShaderMap> GetMeshShaderMaps(MaterialShaderMap msm, ShaderCache localShaderCache = null)
@@ -274,6 +279,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void UnloadExport()
         {
             CurrentLoadedExport = null;
+            ForceHideRecents = false;
             MeshShaderMaps.ClearEx();
             ShaderText = "";
             TopInfoText = "";
@@ -869,7 +875,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (!ControlLoaded)
             {
                 ControlLoaded = true;
-                if (AutoLoad)
+                // the export may not be loaded if this is a file hosted window
+                if (AutoLoad && CurrentLoadedExport != null)
                 {
                     LoadShaders();
                     AutoLoad = false;
