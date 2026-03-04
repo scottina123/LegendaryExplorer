@@ -344,6 +344,7 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.BackColor = GraphBackgroundColor;
             graphEditor.Camera.MouseDown += backMouseDown_Handler;
             graphEditor.Camera.MouseUp += back_MouseUp;
+            graphEditor.Camera.ViewTransformChanged += graphEditor_ViewTransformChanged;
 
             this.graphEditor.Click += graphEditor_Click;
             this.graphEditor.DragDrop += DialogueEditor_DragDrop;
@@ -789,6 +790,7 @@ namespace LegendaryExplorer.DialogueEditor
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
             graphEditor.Camera.MouseUp -= back_MouseUp;
+            graphEditor.Camera.ViewTransformChanged -= graphEditor_ViewTransformChanged;
             graphEditor.Click -= graphEditor_Click;
             graphEditor.DragDrop -= DialogueEditor_DragDrop;
             graphEditor.DragEnter -= DialogueEditor_DragEnter;
@@ -813,6 +815,15 @@ namespace LegendaryExplorer.DialogueEditor
             DispatcherHelper.EmptyQueue();
             RecentsController?.Dispose();
         }
+
+        private void graphEditor_ViewTransformChanged(object sender, PPropertyEventArgs e)
+        {
+            if (inlineLineStrRefNode != null)
+            {
+                UpdateInlineLineStrRefEditorPosition(inlineLineStrRefNode);
+            }
+        }
+
         private void OpenPackage()
         {
             OpenFileDialog d = AppDirectories.GetOpenPackageDialog();
@@ -3429,13 +3440,6 @@ namespace LegendaryExplorer.DialogueEditor
                 editor.ForeColor = System.Drawing.Color.FromArgb(224, 224, 224);
             }
 
-            int width = Math.Max((int)Math.Ceiling(editorWidth) - 6, 70);
-            int height = Math.Max((int)Math.Ceiling(editorHeight) - 2, 18);
-            System.Drawing.Point clientPoint = graphEditor.PointToClient(editorScreenPoint);
-            int x = (int)Math.Round(clientPoint.X - clickOffsetInEditor.X) + 3;
-            int y = (int)Math.Round(clientPoint.Y - clickOffsetInEditor.Y) + 1;
-            editor.SetBounds(x, y, width, height);
-
             editor.KeyDown += (_, e) =>
             {
                 if (e.KeyCode == System.Windows.Forms.Keys.Enter)
@@ -3475,14 +3479,19 @@ namespace LegendaryExplorer.DialogueEditor
             Rectangle bounds = node.GetLineStrRefEditorViewBounds();
             if (bounds.Width <= 0 || bounds.Height <= 0)
             {
+                inlineLineStrRefEditor.Visible = false;
                 return;
             }
 
-            int width = Math.Max(bounds.Width - 6, 70);
-            int height = Math.Max(bounds.Height - 2, 18);
-            int x = bounds.X + 3;
-            int y = bounds.Y + 1;
-            inlineLineStrRefEditor.SetBounds(x, y, width, height);
+            inlineLineStrRefEditor.Visible = true;
+            inlineLineStrRefEditor.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+
+            float viewScale = graphEditor.Camera.ViewScale;
+            float fontSize = Math.Max(12f * viewScale, 1f);
+            if (inlineLineStrRefEditor.Font.SizeInPoints != fontSize)
+            {
+                inlineLineStrRefEditor.Font = new System.Drawing.Font("Arial", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+            }
         }
 
         private void EndInlineLineStrRefEdit(bool commit)

@@ -842,15 +842,14 @@ namespace LegendaryExplorer.DialogueEditor
 
         public Rectangle GetLineStrRefEditorViewBounds()
         {
-            if (g?.Camera == null)
+            if (g?.Camera == null || box == null)
             {
                 return Rectangle.Empty;
             }
 
-            RectangleF globalBounds = LocalToGlobal(lineStrRefEditorBounds);
-            RectangleF cameraLocalBounds = g.Camera.GlobalToLocal(globalBounds);
-            RectangleF viewBounds = g.Camera.LocalToView(cameraLocalBounds);
-            return Rectangle.Round(viewBounds);
+            RectangleF globalBounds = box.LocalToGlobal(lineStrRefEditorBounds);
+            RectangleF screenBounds = g.Camera.ViewToLocal(globalBounds);
+            return Rectangle.Round(screenBounds);
         }
 
         public void SyncInlineLineStrRefEditorPosition()
