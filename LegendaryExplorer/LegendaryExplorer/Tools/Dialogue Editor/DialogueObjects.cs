@@ -749,20 +749,18 @@ namespace LegendaryExplorer.DialogueEditor
         private float BuildSpeakerListenerTitleBox(float minimumWidth)
         {
             string nodeIdText = Node.IsReply ? $"R{Node.NodeCount}" : $"E{Node.NodeCount}";
-            string speakerText = $"Speaker: {Node.SpeakerTag?.DisplayName ?? "Unknown"}";
-            string listenerText = $"Listener: {GetListenerDisplayName()}";
+            string speakerText = $"S: {Node.SpeakerTag?.DisplayName ?? "Unknown"}";
+            string listenerText = $"L: {GetListenerDisplayName()}";
 
             const float rowTextPadding = 2f;
             const float leftPadding = 4f;
-            const float buttonSize = 12f;
-            const float buttonMargin = 4f;
+            const float rightPadding = 4f;
+            const float segmentSpacing = 8f;
 
             var nodeId = new DText(nodeIdText, boxTextColor)
             {
                 TextAlignment = StringAlignment.Near,
                 ConstrainWidthToTextWidth = false,
-                X = leftPadding,
-                Y = rowTextPadding,
                 Pickable = false
             };
 
@@ -770,28 +768,47 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 TextAlignment = StringAlignment.Near,
                 ConstrainWidthToTextWidth = false,
-                X = nodeId.Width + 10,
-                Y = rowTextPadding,
-                Pickable = false
+                Pickable = true
             };
-
-            float row1Height = MathF.Max(nodeId.Height, speaker.Height) + (rowTextPadding * 2);
+            speaker.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                ShowNodeParticipantSelectorMenu(true);
+            };
 
             var listener = new DText(listenerText, boxTextColor)
             {
                 TextAlignment = StringAlignment.Near,
                 ConstrainWidthToTextWidth = false,
-                X = leftPadding,
-                Y = row1Height + 1 + rowTextPadding,
-                Pickable = false
+                Pickable = true
+            };
+            listener.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                ShowNodeParticipantSelectorMenu(false);
             };
 
-            float row2Height = listener.Height + (rowTextPadding * 2);
+            float rowHeight = MathF.Max(nodeId.Height, MathF.Max(speaker.Height, listener.Height)) + (rowTextPadding * 2);
 
-            float contentWidth = MathF.Max(speaker.X + speaker.Width, listener.X + listener.Width);
-            float requiredWidth = contentWidth + buttonSize + (buttonMargin * 2);
-            float titleWidth = MathF.Max(minimumWidth, requiredWidth);
-            float titleHeight = row1Height + 1 + row2Height;
+            float x = leftPadding;
+            nodeId.X = x;
+            nodeId.Y = rowTextPadding;
+            x += nodeId.Width + segmentSpacing;
+            float divider1X = x - (segmentSpacing / 2);
+
+            speaker.X = x;
+            speaker.Y = rowTextPadding;
+            x += speaker.Width + segmentSpacing;
+            float divider2X = x - (segmentSpacing / 2);
+
+            listener.X = x;
+            listener.Y = rowTextPadding;
+            x += listener.Width + rightPadding;
+
+            float titleWidth = MathF.Max(minimumWidth, x);
+            float titleHeight = rowHeight;
 
             titleBox = PPath.CreateRectangle(0, 0, titleWidth, titleHeight);
             titleBox.Pen = new Pen(entryPenColor);
@@ -808,20 +825,19 @@ namespace LegendaryExplorer.DialogueEditor
                 titleBox.Brush = titleBoxBrush;
             }
 
-            var divider = PPath.CreateLine(3, row1Height, titleWidth - 3, row1Height);
-            divider.Pen = new Pen(Color.FromArgb(150, boxTextColor));
-            divider.Pickable = false;
+            var divider1 = PPath.CreateLine(divider1X, 2, divider1X, titleHeight - 2);
+            divider1.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+            divider1.Pickable = false;
+
+            var divider2 = PPath.CreateLine(divider2X, 2, divider2X, titleHeight - 2);
+            divider2.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+            divider2.Pickable = false;
 
             titleBox.AddChild(nodeId);
             titleBox.AddChild(speaker);
             titleBox.AddChild(listener);
-            titleBox.AddChild(divider);
-
-            float buttonX = titleWidth - buttonSize - buttonMargin;
-            float row1ButtonY = rowTextPadding + MathF.Max((MathF.Max(nodeId.Height, speaker.Height) - buttonSize) / 2, 0);
-            float row2ButtonY = row1Height + 1 + rowTextPadding + MathF.Max((listener.Height - buttonSize) / 2, 0);
-            CreateNodeParticipantSelectorButton(buttonX, row1ButtonY, true);
-            CreateNodeParticipantSelectorButton(buttonX, row2ButtonY, false);
+            titleBox.AddChild(divider1);
+            titleBox.AddChild(divider2);
 
             titleBox.Pickable = false;
             return titleWidth;
