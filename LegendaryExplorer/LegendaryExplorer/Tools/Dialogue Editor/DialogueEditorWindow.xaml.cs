@@ -163,6 +163,7 @@ namespace LegendaryExplorer.DialogueEditor
         private DiagNode inlineLinkEditorNode;
         private bool inlineLinkEditorIsReply;
         private bool inlineLinkEditorNeedsSave;
+        private readonly Dictionary<string, DataGridLength> inlineLinkEditorColumnWidths = new();
         private System.Windows.Forms.TextBox inlineLineStrRefEditor;
         private DiagNode inlineLineStrRefNode;
         private bool inlineLineStrRefEditClosing;
@@ -3888,6 +3889,8 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void BuildInlineLinkEditorColumns()
         {
+            CacheInlineLinkEditorColumnWidths();
+
             while (InlineLinkEditor_DataGrid.Columns.Count > 5)
             {
                 InlineLinkEditor_DataGrid.Columns.RemoveAt(5);
@@ -3895,34 +3898,40 @@ namespace LegendaryExplorer.DialogueEditor
 
             var readOnlyBrush = (System.Windows.Media.Brush)FindResource("ReadOnlyColumnTextBrush");
 
-            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            var ordinalColumn = new DataGridTextColumn
             {
                 Header = "#",
                 Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.Ordinal)),
                 Width = 30,
                 IsReadOnly = true,
                 Foreground = readOnlyBrush
-            });
+            };
+            ApplyInlineLinkEditorColumnWidth(ordinalColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(ordinalColumn);
 
-            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            var linkColumn = new DataGridTextColumn
             {
                 Header = "Link",
                 Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.NodeIDLink)),
                 IsReadOnly = true,
                 Width = 40,
                 FontWeight = FontWeights.Heavy
-            });
+            };
+            ApplyInlineLinkEditorColumnWidth(linkColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(linkColumn);
 
             if (!inlineLinkEditorIsReply)
             {
-                InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+                var guiStrRefColumn = new DataGridTextColumn
                 {
                     Header = "GUI StrRef",
                     Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.ReplyStrRef)),
                     IsReadOnly = false,
                     Width = 70,
                     FontWeight = FontWeights.Bold
-                });
+                };
+                ApplyInlineLinkEditorColumnWidth(guiStrRefColumn);
+                InlineLinkEditor_DataGrid.Columns.Add(guiStrRefColumn);
 
                 var choiceLineColumn = new DataGridTemplateColumn
                 {
@@ -3938,6 +3947,7 @@ namespace LegendaryExplorer.DialogueEditor
                 choiceLineTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
                 choiceLineTemplate.VisualTree = choiceLineTextBlock;
                 choiceLineColumn.CellTemplate = choiceLineTemplate;
+                ApplyInlineLinkEditorColumnWidth(choiceLineColumn);
                 InlineLinkEditor_DataGrid.Columns.Add(choiceLineColumn);
 
                 var categoryValues = GetInlineReplyCategoryValues();
@@ -3967,26 +3977,31 @@ namespace LegendaryExplorer.DialogueEditor
                 editTemplate.VisualTree = comboBoxFactory;
                 categoryColumn.CellEditingTemplate = editTemplate;
 
+                ApplyInlineLinkEditorColumnWidth(categoryColumn);
                 InlineLinkEditor_DataGrid.Columns.Add(categoryColumn);
             }
 
-            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            var targetCheckColumn = new DataGridTextColumn
             {
                 Header = "Target Check",
                 Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtFireCnd)),
                 IsReadOnly = true,
                 Width = 80,
                 Foreground = readOnlyBrush
-            });
+            };
+            ApplyInlineLinkEditorColumnWidth(targetCheckColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(targetCheckColumn);
 
-            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            var plotCheckColumn = new DataGridTextColumn
             {
                 Header = "Plot Check",
                 Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtCondition)),
                 IsReadOnly = true,
                 Width = 65,
                 Foreground = readOnlyBrush
-            });
+            };
+            ApplyInlineLinkEditorColumnWidth(plotCheckColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(plotCheckColumn);
 
             var speakerColumn = new DataGridTextColumn
             {
@@ -3996,15 +4011,42 @@ namespace LegendaryExplorer.DialogueEditor
                 Width = inlineLinkEditorIsReply ? 100 : 60,
                 Foreground = readOnlyBrush
             };
+            ApplyInlineLinkEditorColumnWidth(speakerColumn);
             InlineLinkEditor_DataGrid.Columns.Add(speakerColumn);
 
-            InlineLinkEditor_DataGrid.Columns.Add(new DataGridTextColumn
+            var targetLineColumn = new DataGridTextColumn
             {
                 Header = "Target Line",
                 Binding = new System.Windows.Data.Binding(nameof(ReplyChoiceNode.TgtLine)),
                 IsReadOnly = true,
                 Foreground = readOnlyBrush
-            });
+            };
+            ApplyInlineLinkEditorColumnWidth(targetLineColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(targetLineColumn);
+        }
+
+        private void CacheInlineLinkEditorColumnWidths()
+        {
+            foreach (var column in InlineLinkEditor_DataGrid.Columns.Skip(5))
+            {
+                if (column.Header is string header)
+                {
+                    inlineLinkEditorColumnWidths[GetInlineLinkEditorColumnWidthKey(header)] = column.Width;
+                }
+            }
+        }
+
+        private void ApplyInlineLinkEditorColumnWidth(DataGridColumn column)
+        {
+            if (column.Header is string header && inlineLinkEditorColumnWidths.TryGetValue(GetInlineLinkEditorColumnWidthKey(header), out DataGridLength width))
+            {
+                column.Width = width;
+            }
+        }
+
+        private string GetInlineLinkEditorColumnWidthKey(string header)
+        {
+            return $"{(inlineLinkEditorIsReply ? "Reply" : "Entry")}::{header}";
         }
 
         private void ParseInlineLink(ReplyChoiceNode link)

@@ -15,10 +15,11 @@
         <TextBlock Name="LineString_TextBlock" DockPanel.Dock="Top" TextWrapping="WrapWithOverflow" FontSize="12" Margin="5"/>
         <FrameworkElement x:Name="dummyElement" Visibility="Collapsed"/>
         <DockPanel DockPanel.Dock="Bottom" Margin="0,5,0,0">
-            <Button FlowDirection="LeftToRight" Command="{Binding FinishedCommand}"  Content="Save and Close" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Right"/>
-            <Button FlowDirection="LeftToRight" Command="{Binding AddCommand}"  Content="Clone to new link" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Left"/>
-            <Button FlowDirection="LeftToRight" Command="{Binding EditCommand}"  Content="Edit link" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Left"/>
-            <TextBlock Text=""/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <Button FlowDirection="LeftToRight" Command="{Binding AddCommand}"  Content="Clone to new link" Padding="3" Margin="5,2,5,2" Width="100" />
+                <Button FlowDirection="LeftToRight" Command="{Binding EditCommand}"  Content="Edit link" Padding="3" Margin="5,2,5,2" Width="100" />
+                <Button FlowDirection="LeftToRight" Command="{Binding FinishedCommand}"  Content="Save and Close" Padding="3" Margin="5,2,5,2" Width="100" />
+            </StackPanel>
         </DockPanel>
         <DataGrid x:Name="datagrid_Links" VerticalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Visible" AutoGenerateColumns="False" CanUserSortColumns="False" CanUserAddRows="True" CanUserDeleteRows="True" >
             <DataGrid.Columns>

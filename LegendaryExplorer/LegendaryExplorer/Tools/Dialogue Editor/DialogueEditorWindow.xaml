@@ -762,9 +762,11 @@
                             <DockPanel LastChildFill="True">
                                 <TextBlock x:Name="InlineLinkEditor_LineText" DockPanel.Dock="Top" TextWrapping="WrapWithOverflow" FontSize="12" Margin="5" />
                                 <DockPanel DockPanel.Dock="Top" Margin="0,5,0,0">
-                                    <Button Content="Apply" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Right" Click="InlineLinkEditor_Apply_Click"/>
-                                    <Button Content="Clone to new link" Padding="3" Margin="5,2,5,2" Width="120" DockPanel.Dock="Left" Click="InlineLinkEditor_Clone_Click"/>
-                                    <Button Content="Edit link" Padding="3" Margin="5,2,5,2" Width="100" DockPanel.Dock="Left" Click="InlineLinkEditor_Edit_Click"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                        <Button Content="Clone to new link" Padding="3" Margin="5,2,5,2" Width="120" Click="InlineLinkEditor_Clone_Click"/>
+                                        <Button Content="Edit link" Padding="3" Margin="5,2,5,2" Width="100" Click="InlineLinkEditor_Edit_Click"/>
+                                        <Button Content="Apply" Padding="3" Margin="5,2,5,2" Width="100" Click="InlineLinkEditor_Apply_Click"/>
+                                    </StackPanel>
                                 </DockPanel>
                                 <DataGrid x:Name="InlineLinkEditor_DataGrid"
                                           VerticalContentAlignment="Stretch"
