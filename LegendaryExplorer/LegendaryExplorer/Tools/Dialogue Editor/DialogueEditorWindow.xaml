@@ -52,6 +52,9 @@
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
             <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
+            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" />
+            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" />
+            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" />
             <MenuItem Header="Unskippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsUnskippable}" />
             <Separator/>
             <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
@@ -88,6 +91,9 @@
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
             <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
+            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" />
+            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" />
+            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" />
             <MenuItem Header="Skippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsSkippable}" />
             <Separator/>
             <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
