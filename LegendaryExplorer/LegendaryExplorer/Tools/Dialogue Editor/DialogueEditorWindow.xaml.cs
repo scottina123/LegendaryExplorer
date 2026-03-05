@@ -1366,6 +1366,20 @@ namespace LegendaryExplorer.DialogueEditor
                 return; //nothing is loaded
             }
             List<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.HasFlag(PackageChange.Export)).ToList();
+            HashSet<int> updatedExportIndexes = relevantUpdates.Select(x => x.Index).ToHashSet();
+
+            if (InterpDataTreeNodes.Count > 0)
+            {
+                var interpTreeIndexes = InterpDataTreeNodes
+                    .SelectMany(root => root.FlattenTree())
+                    .Select(node => node.UIndex)
+                    .ToHashSet();
+
+                if (updatedExportIndexes.Overlaps(interpTreeIndexes))
+                {
+                    RefreshInterpDataTreePreserveState();
+                }
+            }
 
             if (SelectedConv != null && CurrentLoadedExport.ClassName != "BioConversation")
             {
@@ -1401,9 +1415,9 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (SelectedDialogueNode != null) //Update any changes to live dialogue node
             {
-                if (relevantUpdates.Select(x => x.Index).Any(update => Pcc.GetEntry(update) == SelectedDialogueNode.InterpData))
+                if (SelectedDialogueNode.InterpData != null && updatedExportIndexes.Contains(SelectedDialogueNode.InterpData.UIndex))
                 {
-                    if (SelectedDialogueNode.InterpData.ClassName == "Interpdata") //If changed??
+                    if (SelectedDialogueNode.InterpData.ClassName == "InterpData")
                     {
                         var lengthprop = SelectedDialogueNode.InterpData.GetProperty<FloatProperty>("InterpLength");
                         if (lengthprop != null)
@@ -2390,9 +2404,11 @@ namespace LegendaryExplorer.DialogueEditor
             var selectedExport = GetSelectedInterpDataTreeExport();
             bool isInterpData = selectedExport?.ClassName == "InterpData";
             bool isInterpTrackMove = selectedExport?.ClassName == "InterpTrackMove";
+            bool isGestureTrack = selectedExport?.ClassName == "BioEvtSysTrackGesture";
 
             SetContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
             SetContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
+            SetContextMenuItemVisibility(menu, "OpenGestureAnimationImporter", isGestureTrack ? Visibility.Visible : Visibility.Collapsed);
         }
 
         private static void SetContextMenuItemVisibility(ItemsControl parent, string tag, Visibility visibility)
@@ -2516,6 +2532,13 @@ namespace LegendaryExplorer.DialogueEditor
                             PackageEditorExperimentsM.ShiftInterpTrackMove(export, dialog.Parameters);
                             RefreshInterpDataTreePreserveState(export.UIndex);
                         }
+                    }
+                    break;
+                case "OpenGestureAnimationImporter":
+                    if (export.ClassName == "BioEvtSysTrackGesture")
+                    {
+                        var dialog = new GestureAnimationImporterDialog(export, this);
+                        dialog.ShowDialog();
                     }
                     break;
                 case "FindReferences":

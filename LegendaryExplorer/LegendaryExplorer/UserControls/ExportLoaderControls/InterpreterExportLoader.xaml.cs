@@ -482,6 +482,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (SelectedItem?.Property != null && !SelectedItem.HasTooManyChildrenToDisplay)
             {
                 var araryProperty = (ArrayPropertyBase)SelectedItem.Property;
+                ForcedRescanOffset = (int)araryProperty.StartOffset;
                 araryProperty.Clear();
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
@@ -2842,6 +2843,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
                 if (index >= 0)
                 {
+                    if (index >= arrayProperty.Count)
+                    {
+                        Debug.WriteLine($"Array/tree desync while removing element. Tree index={index}, array count={arrayProperty.Count}. Rescanning tree.");
+                        ForcedRescanOffset = (int)arrayProperty.StartOffset;
+                        StartScan();
+                        return;
+                    }
+
                     if (arrayProperty.Properties.HasExactly(1))
                     {
                         ForcedRescanOffset = (int)arrayProperty.StartOffset;

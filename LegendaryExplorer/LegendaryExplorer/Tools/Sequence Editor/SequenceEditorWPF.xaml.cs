@@ -1789,6 +1789,20 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
             List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
+
+            if (InterpDataTreeNodes.Count > 0)
+            {
+                var interpTreeIndexes = InterpDataTreeNodes
+                    .SelectMany(root => root.FlattenTree())
+                    .Select(node => node.UIndex)
+                    .ToHashSet();
+
+                if (updatedExports.Any(interpTreeIndexes.Contains))
+                {
+                    RefreshInterpDataTreePreserveState();
+                }
+            }
+
             if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
             {
                 //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
@@ -4029,9 +4043,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             var selectedExport = GetSelectedInterpDataTreeExport();
             bool isInterpData = selectedExport?.ClassName == "InterpData";
             bool isInterpTrackMove = selectedExport?.ClassName == "InterpTrackMove";
+            bool isGestureTrack = selectedExport?.ClassName == "BioEvtSysTrackGesture";
 
             SetInterpDataContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
             SetInterpDataContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
+            SetInterpDataContextMenuItemVisibility(menu, "OpenGestureAnimationImporter", isGestureTrack ? Visibility.Visible : Visibility.Collapsed);
         }
 
         private static void SetInterpDataContextMenuItemVisibility(ItemsControl parent, string tag, Visibility visibility)
@@ -4165,6 +4181,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                             PackageEditorExperimentsM.ShiftInterpTrackMove(export, dialog.Parameters);
                             RefreshInterpDataTreePreserveState(export.UIndex);
                         }
+                    }
+                    break;
+                case "OpenGestureAnimationImporter":
+                    if (export.ClassName == "BioEvtSysTrackGesture")
+                    {
+                        var dialog = new GestureAnimationImporterDialog(export, this);
+                        dialog.ShowDialog();
                     }
                     break;
                 case "FindReferences":

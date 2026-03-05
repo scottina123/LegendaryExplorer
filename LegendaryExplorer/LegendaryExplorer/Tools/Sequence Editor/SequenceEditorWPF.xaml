@@ -34,6 +34,7 @@
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
             <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
+            <MenuItem Header="Open Gesture Animation Importer" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
             <MenuItem Header="Add InterpTrack to group" Tag="AddInterpTrack" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift currently selected InterpTrackMove" Tag="ShiftSelectedInterpTrackMove" Click="InterpDataTree_PackageEditorAction_Click" />
