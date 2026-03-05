@@ -2168,6 +2168,19 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor?.BeginInvoke(RefreshView);
         }
 
+        public void OpenPlotToolFromGraph(DiagNode node, bool isTransition)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            if (DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply) != null)
+            {
+                OpenInAction(isTransition ? "PlotDbTrans" : "PlotDbCnd");
+            }
+        }
+
         private void RefreshExportLoaders()
         {
             BuildInterpDataTree();

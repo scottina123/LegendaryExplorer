@@ -1038,6 +1038,12 @@ namespace LegendaryExplorer.DialogueEditor
                         overlay.Pickable = true;
                         overlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(displayPath, Cursor.Position);
                         overlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                        overlay.MouseDown += (_, e) =>
+                        {
+                            if (e.Button != MouseButtons.Left) return;
+                            e.Handled = true;
+                            Editor?.OpenPlotToolFromGraph(this, false);
+                        };
                         container.AddChild(overlay);
                     }
                 }
@@ -1160,6 +1166,12 @@ namespace LegendaryExplorer.DialogueEditor
                         overlay.Pickable = true;
                         overlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(displayPath, Cursor.Position);
                         overlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                        overlay.MouseDown += (_, e) =>
+                        {
+                            if (e.Button != MouseButtons.Left) return;
+                            e.Handled = true;
+                            Editor?.OpenPlotToolFromGraph(this, true);
+                        };
                         container.AddChild(overlay);
                     }
                 }
