@@ -1,6 +1,7 @@
 ﻿using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.Unreal;
 using Piccolo;
 using Piccolo.Event;
@@ -18,6 +19,13 @@ using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.DialogueEditor
 {
+    public class PlotFieldEditorInfo
+    {
+        public string FieldTag;
+        public RectangleF Bounds;
+        public bool IsConditionalSection;
+    }
+
     [DebuggerDisplay("DiagEdEdge | {originator} to {inputIndex}")]
     public class DiagEdEdge : PPath
     {
@@ -554,6 +562,9 @@ namespace LegendaryExplorer.DialogueEditor
         protected InputDragHandler inputDragHandler = new InputDragHandler();
         protected DialogueEditorWindow Editor;
         private RectangleF lineStrRefEditorBounds;
+        private readonly List<PlotFieldEditorInfo> plotFieldEditors = [];
+        private static readonly Dictionary<string, (bool checksExpanded, bool transitionsExpanded)> plotSectionStates = [];
+        private readonly string plotSectionStateKey;
 
         public DiagNode(DialogueEditorWindow editor, DialogueNodeExtended node, float x, float y, ConvGraphEditor ConvGraphEditor)
             : base(ConvGraphEditor)
@@ -565,6 +576,25 @@ namespace LegendaryExplorer.DialogueEditor
             pcc = editor.Pcc;
             originalX = x;
             originalY = y;
+
+            plotSectionStateKey = $"{editor.SelectedConv?.Export?.UIndex}:{node.IsReply}:{node.NodeCount}";
+            if (plotSectionStates.TryGetValue(plotSectionStateKey, out var savedState))
+            {
+                Node.PlotChecksExpanded = savedState.checksExpanded;
+                Node.PlotTransitionsExpanded = savedState.transitionsExpanded;
+            }
+            else
+            {
+                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded);
+            }
+        }
+
+        private void SavePlotSectionState()
+        {
+            if (!string.IsNullOrEmpty(plotSectionStateKey))
+            {
+                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded);
+            }
         }
 
         private string GetListenerDisplayName()
@@ -870,6 +900,347 @@ namespace LegendaryExplorer.DialogueEditor
             return MathF.Max(18, text.Height + 4);
         }
 
+        private static readonly Color PlotHeaderColor = Color.FromArgb(218, 165, 32);
+        private static readonly Color PlotLabelColor = Color.FromArgb(180, 180, 180);
+
+        private static string GetLastPathSection(string fullPath)
+        {
+            if (string.IsNullOrEmpty(fullPath))
+            {
+                return "No data";
+            }
+
+            int lastDot = fullPath.LastIndexOf('.');
+            return lastDot >= 0 && lastDot < fullPath.Length - 1
+                ? fullPath[(lastDot + 1)..]
+                : fullPath;
+        }
+
+        private PNode CreatePlotChecksSection(float y, float width, out float sectionHeight)
+        {
+            var container = new PNode();
+            float innerY = y;
+
+            // Divider line
+            var divider = PPath.CreateLine(4, innerY, width - 4, innerY);
+            divider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+            divider.Pickable = false;
+            container.AddChild(divider);
+            innerY += 3;
+
+            // Clickable header — toggle collapse
+            string arrow = Node.PlotChecksExpanded ? "\u25BE" : "\u25B8";
+            var header = new DText($"{arrow} Plot checks", PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
+                X = 6, Y = innerY, Pickable = false, Width = width - 12
+            };
+
+            var headerHitBox = PPath.CreateRectangle(0, innerY, width, header.Height);
+            headerHitBox.Brush = mostlyTransparentBrush;
+            headerHitBox.Pen = null;
+            headerHitBox.Pickable = true;
+            headerHitBox.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                Node.PlotChecksExpanded = !Node.PlotChecksExpanded;
+                SavePlotSectionState();
+                Editor?.ForceRefreshFromGraph();
+            };
+
+            container.AddChild(header);
+            container.AddChild(headerHitBox);
+            innerY += header.Height;
+
+            // Always-visible summary in header area for quick glance
+            if (string.IsNullOrEmpty(Node.ConditionalPlotPath) && Node.ConditionalOrBool >= 0 && pcc != null)
+            {
+                Node.ConditionalPlotPath = Node.FiresConditional
+                    ? PlotDatabases.FindPlotConditionalByID(Node.ConditionalOrBool, pcc.Game)?.Path
+                    : PlotDatabases.FindPlotBoolByID(Node.ConditionalOrBool, pcc.Game)?.Path;
+            }
+
+            string condKind = Node.FiresConditional ? "Cnd" : "Bool";
+            string condSummary = Node.ConditionalOrBool < 0
+                ? $"{condKind}:{Node.ConditionalOrBool}"
+                : $"{condKind}:{Node.ConditionalOrBool} ({Node.ConditionalParam}) {GetLastPathSection(Node.ConditionalPlotPath)}";
+            var condSummaryText = new DText(condSummary, PlotLabelColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                ConstrainHeightToTextHeight = true,
+                X = 6,
+                Y = innerY,
+                Pickable = false,
+                Width = width - 12
+            };
+            container.AddChild(condSummaryText);
+
+            if (!string.IsNullOrEmpty(Node.ConditionalPlotPath))
+            {
+                var summaryOverlay = PPath.CreateRectangle(6, condSummaryText.Y, width - 12, condSummaryText.Height);
+                summaryOverlay.Brush = mostlyTransparentBrush;
+                summaryOverlay.Pen = null;
+                summaryOverlay.Pickable = true;
+                string fullPath = Node.ConditionalPlotPath;
+                summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
+                summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                container.AddChild(summaryOverlay);
+            }
+
+            innerY += condSummaryText.Height;
+
+            if (Node.PlotChecksExpanded)
+            {
+                // Conditional/Bool type — inline editable dropdown
+                string typeLabel = Node.FiresConditional ? "Conditional" : "Bool";
+                container.AddChild(CreatePlotFieldEditor("Cnd/Bool:", typeLabel,
+                    "FiresConditional", ref innerY, width, true));
+
+                // Conditional ID — inline editable box
+                string cndLabel = Node.FiresConditional ? "Conditional" : "Bool";
+                container.AddChild(CreatePlotFieldEditor($"{cndLabel}:", Node.ConditionalOrBool.ToString(),
+                    "ConditionalOrBool", ref innerY, width, true));
+
+                // Conditional Parameter — inline editable box
+                container.AddChild(CreatePlotFieldEditor("Cnd Param:", Node.ConditionalParam.ToString(),
+                    "ConditionalParam", ref innerY, width, true));
+
+                // Plot path (always shown, resolved live from plot database)
+                {
+                    // Resolve now if not already cached
+                    if (string.IsNullOrEmpty(Node.ConditionalPlotPath) && Node.ConditionalOrBool >= 0 && pcc != null)
+                    {
+                        Node.ConditionalPlotPath = Node.FiresConditional
+                            ? PlotDatabases.FindPlotConditionalByID(Node.ConditionalOrBool, pcc.Game)?.Path
+                            : PlotDatabases.FindPlotBoolByID(Node.ConditionalOrBool, pcc.Game)?.Path;
+                    }
+
+                    string displayPath = !string.IsNullOrEmpty(Node.ConditionalPlotPath)
+                        ? Node.ConditionalPlotPath
+                        : "No data";
+                    var pathLine = new DText(displayPath, PlotLabelColor, false)
+                    {
+                        TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
+                        ConstrainHeightToTextHeight = true,
+                        X = 6, Y = innerY, Pickable = false, Width = width - 12
+                    };
+                    container.AddChild(pathLine);
+                    innerY += pathLine.Height;
+
+                    // Tooltip overlay (only when a real path exists)
+                    if (!string.IsNullOrEmpty(Node.ConditionalPlotPath))
+                    {
+                        var overlay = PPath.CreateRectangle(6, pathLine.Y, width - 12, pathLine.Height);
+                        overlay.Brush = mostlyTransparentBrush;
+                        overlay.Pen = null;
+                        overlay.Pickable = true;
+                        overlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(displayPath, Cursor.Position);
+                        overlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                        container.AddChild(overlay);
+                    }
+                }
+            }
+
+            innerY += 3;
+            sectionHeight = innerY - y;
+            container.Pickable = false;
+            return container;
+        }
+
+        private PNode CreatePlotTransitionsSection(float y, float width, out float sectionHeight)
+        {
+            var container = new PNode();
+            float innerY = y;
+
+            // Divider line
+            var divider = PPath.CreateLine(4, innerY, width - 4, innerY);
+            divider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+            divider.Pickable = false;
+            container.AddChild(divider);
+            innerY += 3;
+
+            // Clickable header — toggle collapse
+            string arrow = Node.PlotTransitionsExpanded ? "\u25BE" : "\u25B8";
+            var header = new DText($"{arrow} Plot transitions", PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
+                X = 6, Y = innerY, Pickable = false, Width = width - 12
+            };
+
+            var headerHitBox = PPath.CreateRectangle(0, innerY, width, header.Height);
+            headerHitBox.Brush = mostlyTransparentBrush;
+            headerHitBox.Pen = null;
+            headerHitBox.Pickable = true;
+            headerHitBox.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                Node.PlotTransitionsExpanded = !Node.PlotTransitionsExpanded;
+                SavePlotSectionState();
+                Editor?.ForceRefreshFromGraph();
+            };
+
+            container.AddChild(header);
+            container.AddChild(headerHitBox);
+            innerY += header.Height;
+
+            // Always-visible summary in header area for quick glance
+            if (string.IsNullOrEmpty(Node.TransitionPlotPath) && Node.Transition >= 0 && pcc != null)
+            {
+                Node.TransitionPlotPath = PlotDatabases.FindPlotTransitionByID(Node.Transition, pcc.Game)?.Path;
+            }
+
+            string transSummary = Node.Transition < 0
+                ? $"Trans:{Node.Transition}"
+                : $"Trans:{Node.Transition} ({Node.TransitionParam}) {GetLastPathSection(Node.TransitionPlotPath)}";
+            var transSummaryText = new DText(transSummary, PlotLabelColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                ConstrainHeightToTextHeight = true,
+                X = 6,
+                Y = innerY,
+                Pickable = false,
+                Width = width - 12
+            };
+            container.AddChild(transSummaryText);
+
+            if (!string.IsNullOrEmpty(Node.TransitionPlotPath))
+            {
+                var summaryOverlay = PPath.CreateRectangle(6, transSummaryText.Y, width - 12, transSummaryText.Height);
+                summaryOverlay.Brush = mostlyTransparentBrush;
+                summaryOverlay.Pen = null;
+                summaryOverlay.Pickable = true;
+                string fullPath = Node.TransitionPlotPath;
+                summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
+                summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                container.AddChild(summaryOverlay);
+            }
+
+            innerY += transSummaryText.Height;
+
+            if (Node.PlotTransitionsExpanded)
+            {
+                // Transition ID — inline editable box
+                container.AddChild(CreatePlotFieldEditor("Transition:", Node.Transition.ToString(),
+                    "Transition", ref innerY, width, false));
+
+                // Transition Parameter — inline editable box
+                container.AddChild(CreatePlotFieldEditor("Trans Param:", Node.TransitionParam.ToString(),
+                    "TransitionParam", ref innerY, width, false));
+
+                // Plot path (always shown, resolved live from plot database)
+                {
+                    // Resolve now if not already cached
+                    if (string.IsNullOrEmpty(Node.TransitionPlotPath) && Node.Transition >= 0 && pcc != null)
+                    {
+                        Node.TransitionPlotPath = PlotDatabases.FindPlotTransitionByID(Node.Transition, pcc.Game)?.Path;
+                    }
+
+                    string displayPath = !string.IsNullOrEmpty(Node.TransitionPlotPath)
+                        ? Node.TransitionPlotPath
+                        : "No data";
+                    var pathLine = new DText(displayPath, PlotLabelColor, false)
+                    {
+                        TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
+                        ConstrainHeightToTextHeight = true,
+                        X = 6, Y = innerY, Pickable = false, Width = width - 12
+                    };
+                    container.AddChild(pathLine);
+                    innerY += pathLine.Height;
+
+                    // Tooltip overlay (only when a real path exists)
+                    if (!string.IsNullOrEmpty(Node.TransitionPlotPath))
+                    {
+                        var overlay = PPath.CreateRectangle(6, pathLine.Y, width - 12, pathLine.Height);
+                        overlay.Brush = mostlyTransparentBrush;
+                        overlay.Pen = null;
+                        overlay.Pickable = true;
+                        overlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(displayPath, Cursor.Position);
+                        overlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                        container.AddChild(overlay);
+                    }
+                }
+            }
+
+            innerY += 3;
+            sectionHeight = innerY - y;
+            container.Pickable = false;
+            return container;
+        }
+
+        /// <summary>
+        /// Creates an inline editable field box (like the LineStrRef editor) for a plot field.
+        /// The box renders in the Piccolo graph; clicking it spawns a WinForms TextBox overlay at the exact position.
+        /// </summary>
+        private PNode CreatePlotFieldEditor(string label, string value, string fieldTag, ref float y, float width, bool isConditionalSection)
+        {
+            float editorX = 4;
+            float editorWidth = MathF.Max(width - 8, 80);
+
+            var labelText = new DText($"{label} ", PlotLabelColor, false)
+            {
+                X = editorX + 2, Pickable = false,
+                ConstrainWidthToTextWidth = true
+            };
+            float labelWidth = labelText.Width;
+
+            var valueText = new DText(value, boxTextColor, false)
+            {
+                X = editorX + labelWidth + 4, Pickable = false,
+                ConstrainWidthToTextWidth = false,
+                Width = editorWidth - labelWidth - 8
+            };
+
+            float editorHeight = MathF.Max(18, MathF.Max(labelText.Height, valueText.Height) + 4);
+            var bounds = new RectangleF(editorX, y, editorWidth, editorHeight);
+
+            // Track this field's bounds for inline editing
+            var fieldInfo = new PlotFieldEditorInfo { FieldTag = fieldTag, Bounds = bounds, IsConditionalSection = isConditionalSection };
+            plotFieldEditors.Add(fieldInfo);
+
+            labelText.Y = y + ((editorHeight - labelText.Height) / 2);
+            valueText.Y = y + ((editorHeight - valueText.Height) / 2);
+
+            var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
+            editorBox.Brush = nodeBrush;
+            editorBox.Pen = new Pen(Color.FromArgb(80, boxTextColor));
+
+            // On click, spawn a TextBox overlay at this exact position (like LineStrRef editor)
+            editorBox.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                Editor?.BeginInlinePlotFieldEdit(this, fieldInfo);
+            };
+
+            var container = new PNode();
+            container.AddChild(editorBox);
+            container.AddChild(labelText);
+            container.AddChild(valueText);
+            container.Pickable = true;
+
+            y += editorHeight;
+            return container;
+        }
+
+        /// <summary>Gets the screen-space bounds for a plot field editor, for positioning a WinForms TextBox overlay.</summary>
+        public Rectangle GetPlotFieldEditorViewBounds(PlotFieldEditorInfo fieldInfo)
+        {
+            if (g?.Camera == null || box == null) return Rectangle.Empty;
+            RectangleF globalBounds = box.LocalToGlobal(fieldInfo.Bounds);
+            RectangleF screenBounds = g.Camera.ViewToLocal(globalBounds);
+            return Rectangle.Round(screenBounds);
+        }
+
+        /// <summary>Syncs the position of any active inline plot field editor when the node is dragged.</summary>
+        public void SyncInlinePlotFieldEditorPosition()
+        {
+            Editor?.UpdateInlinePlotFieldEditorPosition(this);
+        }
+
         private bool _isSelected;
         public override bool IsSelected
         {
@@ -895,6 +1266,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         public override void Layout(float x, float y)
         {
+            plotFieldEditors.Clear();
             if (NodeUID < 1000)
             {
                 outlinePen = new Pen(entryPenColor);
@@ -989,27 +1361,14 @@ namespace LegendaryExplorer.DialogueEditor
             h += starty + 8;
 
             //Inside Text +  Box
-            string plotCnd = "";
-            string trans = "";
             string type = "";
-            if (Node.ConditionalOrBool >= 0)
-            {
-                string cnd = "Cnd:";
-                if (Node.FiresConditional == false)
-                    cnd = "Bool:";
-                plotCnd = $"{cnd} {Node.ConditionalOrBool}\r\n";
-            }
-            if (Node.Transition >= 0)
-            {
-                trans = $"Trans:{Node.Transition}\r\n";
-            }
             if (Node.IsReply)
             {
                 string t = Node.ReplyType.ToString().Substring(6);
                 type = $"{t}";
             }
             string spokenLine = string.IsNullOrWhiteSpace(Node.Line) ? string.Empty : $"{Node.Line}\r\n";
-            string d = $"{spokenLine}{plotCnd}{trans}{type}";
+            string d = $"{spokenLine}{type}";
 
             DText insidetext = new DText(d, boxTextColor, true)
             {
@@ -1024,8 +1383,33 @@ namespace LegendaryExplorer.DialogueEditor
             h += insidetext.Height;
             float iw = insidetext.Width;
             if (iw > w) { w = iw; }
+
+            // String ref editor (placed before plot sections)
+            float nextSectionY = insidetext.Y + insidetext.Height;
             float lineStrRefEditorHeight = GetLineStringRefEditorHeight(w);
             h += lineStrRefEditorHeight;
+            float lineStrRefY = nextSectionY + 3;
+            nextSectionY += lineStrRefEditorHeight + 3;
+
+            // Plot conditional/bool and transition sections
+            var plotSections = new List<PNode>();
+
+            // Always show plot checks section (matches Plot Control tab)
+            {
+                var section = CreatePlotChecksSection(nextSectionY, w, out float sectionHeight);
+                plotSections.Add(section);
+                h += sectionHeight;
+                nextSectionY += sectionHeight;
+            }
+
+            // Always show plot transitions section (matches Plot Control tab)
+            {
+                var section = CreatePlotTransitionsSection(nextSectionY, w, out float sectionHeight);
+                plotSections.Add(section);
+                h += sectionHeight;
+                nextSectionY += sectionHeight;
+            }
+
             outLinkBox.TranslateBy(w, titleBox.Height + 2);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
             box.Brush = nodeBrush;
@@ -1044,8 +1428,11 @@ namespace LegendaryExplorer.DialogueEditor
 
             insidetext.TranslateBy((w - iw) / 2, 0);
             box.AddChild(insidetext);
-            float lineStrRefY = insidetext.Y + insidetext.Height + 3;
             box.AddChild(CreateLineStringRefEditor(w, lineStrRefY));
+            foreach (var section in plotSections)
+            {
+                box.AddChild(section);
+            }
             Bounds = new RectangleF(0, 0, w, h);
             AddChild(box);
             AddChild(titleBox);

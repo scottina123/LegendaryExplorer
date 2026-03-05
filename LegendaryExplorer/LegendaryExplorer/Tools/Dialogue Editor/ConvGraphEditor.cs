@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using LegendaryExplorer.Misc.AppSettings;
 using Piccolo;
 using Piccolo.Event;
 
@@ -19,6 +20,7 @@ namespace LegendaryExplorer.DialogueEditor
         private System.ComponentModel.Container components;
 
         private readonly ZoomController zoomController;
+        private ToolTip plotTooltip;
 
         private const int DEFAULT_WIDTH = 1;
         private const int DEFAULT_HEIGHT = 1;
@@ -74,6 +76,61 @@ namespace LegendaryExplorer.DialogueEditor
         public void addNode(PNode p)
         {
             nodeLayer.AddChild(p);
+        }
+
+        public void ShowPlotTooltip(string text, Point screenPosition)
+        {
+            plotTooltip ??= new ToolTip
+            {
+                AutoPopDelay = 10000,
+                InitialDelay = 0,
+                ReshowDelay = 0,
+                ShowAlways = true,
+                OwnerDraw = true
+            };
+
+            if (plotTooltip.OwnerDraw)
+            {
+                plotTooltip.Draw -= DrawPlotTooltip;
+                plotTooltip.Draw += DrawPlotTooltip;
+            }
+
+            if (Settings.Global_DarkMode_Enabled)
+            {
+                plotTooltip.BackColor = Color.FromArgb(45, 45, 48);
+                plotTooltip.ForeColor = Color.FromArgb(224, 224, 224);
+            }
+            else
+            {
+                plotTooltip.BackColor = SystemColors.Info;
+                plotTooltip.ForeColor = SystemColors.InfoText;
+            }
+
+            var clientPos = PointToClient(screenPosition);
+            plotTooltip.Show(text, this, clientPos.X, clientPos.Y - 20);
+        }
+
+        private static void DrawPlotTooltip(object sender, DrawToolTipEventArgs e)
+        {
+            bool isDarkMode = Settings.Global_DarkMode_Enabled;
+            Color back = isDarkMode ? Color.FromArgb(45, 45, 48) : SystemColors.Info;
+            Color fore = isDarkMode ? Color.FromArgb(224, 224, 224) : SystemColors.InfoText;
+            Color border = isDarkMode ? Color.FromArgb(90, 90, 95) : SystemColors.InfoText;
+
+            using var backBrush = new SolidBrush(back);
+            using var borderPen = new Pen(border);
+
+            e.Graphics.FillRectangle(backBrush, e.Bounds);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, e.Bounds.Width - 1, e.Bounds.Height - 1);
+
+            Rectangle textBounds = Rectangle.Inflate(e.Bounds, -4, -2);
+            TextRenderer.DrawText(e.Graphics, e.ToolTipText, e.Font ?? SystemFonts.DefaultFont, textBounds, fore,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        }
+
+        public void HidePlotTooltip()
+        {
+            plotTooltip?.Hide(this);
         }
 
         public static void UpdateEdge(DiagEdEdge edge)
@@ -157,6 +214,7 @@ namespace LegendaryExplorer.DialogueEditor
                         if (draggedNode is DiagNode draggedDiagNode)
                         {
                             draggedDiagNode.SyncInlineLineStrRefEditorPosition();
+                            draggedDiagNode.SyncInlinePlotFieldEditorPosition();
                         }
                     }
 
@@ -172,6 +230,7 @@ namespace LegendaryExplorer.DialogueEditor
                                 if (obj is DiagNode selectedDiagNode)
                                 {
                                     selectedDiagNode.SyncInlineLineStrRefEditorPosition();
+                                    selectedDiagNode.SyncInlinePlotFieldEditorPosition();
                                 }
                                 foreach (DiagEdEdge edge in obj.Edges)
                                 {
@@ -197,6 +256,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (disposing)
             {
                 components?.Dispose();
+                plotTooltip?.Dispose();
                 nodeLayer.RemoveAllChildren();
                 edgeLayer.RemoveAllChildren();
                 backLayer.RemoveAllChildren();

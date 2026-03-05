@@ -84,6 +84,11 @@ namespace LegendaryExplorerCore.Dialogue
         /// <summary>The reply type of this node. Only used if <see cref="IsReply"/> is true.</summary>
         public EReplyTypes ReplyType { get; set; }
 
+        /// <summary>UI-only: whether the Plot Checks section is expanded in the graph node</summary>
+        public bool PlotChecksExpanded { get; set; }
+        /// <summary>UI-only: whether the Plot Transitions section is expanded in the graph node</summary>
+        public bool PlotTransitionsExpanded { get; set; }
+
         /// <summary>
         /// Basic constructor to create a new DialogueNodeExtended
         /// </summary>

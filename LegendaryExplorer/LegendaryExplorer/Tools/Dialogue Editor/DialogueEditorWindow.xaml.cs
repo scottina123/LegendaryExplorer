@@ -166,6 +166,10 @@ namespace LegendaryExplorer.DialogueEditor
         private System.Windows.Forms.TextBox inlineLineStrRefEditor;
         private DiagNode inlineLineStrRefNode;
         private bool inlineLineStrRefEditClosing;
+        private System.Windows.Forms.Control inlinePlotFieldEditor;
+        private DiagNode inlinePlotFieldNode;
+        private PlotFieldEditorInfo inlinePlotFieldInfo;
+        private bool inlinePlotFieldEditClosing;
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         public string CurrentFile;
@@ -821,6 +825,10 @@ namespace LegendaryExplorer.DialogueEditor
             if (inlineLineStrRefNode != null)
             {
                 UpdateInlineLineStrRefEditorPosition(inlineLineStrRefNode);
+            }
+            if (inlinePlotFieldNode != null)
+            {
+                UpdateInlinePlotFieldEditorPosition(inlinePlotFieldNode);
             }
         }
 
@@ -2149,6 +2157,15 @@ namespace LegendaryExplorer.DialogueEditor
                     saveView(false);
                 }
             }
+        }
+
+        /// <summary>
+        /// Deferred graph refresh safe to call from Piccolo event handlers.
+        /// Rebuilds the graph on the next message pump cycle to avoid re-entrancy.
+        /// </summary>
+        public void ForceRefreshFromGraph()
+        {
+            graphEditor?.BeginInvoke(RefreshView);
         }
 
         private void RefreshExportLoaders()
@@ -3550,6 +3567,254 @@ namespace LegendaryExplorer.DialogueEditor
                 RefreshView();
                 DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
             }
+        }
+
+        /// <summary>
+        /// Opens a single inline control over a specific plot field in the graph node,
+        /// exactly like the TLK string ref inline editor. For FiresConditional, spawns a ComboBox dropdown.
+        /// For all other fields, spawns a TextBox.
+        /// </summary>
+        public void BeginInlinePlotFieldEdit(DiagNode node, PlotFieldEditorInfo fieldInfo)
+        {
+            if (node == null || graphEditor == null || fieldInfo == null)
+                return;
+
+            EndInlinePlotFieldEdit(false);
+
+            inlinePlotFieldNode = node;
+            inlinePlotFieldInfo = fieldInfo;
+
+            System.Windows.Forms.Control editor;
+
+            if (fieldInfo.FieldTag == "FiresConditional")
+            {
+                var combo = new System.Windows.Forms.ComboBox
+                {
+                    DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                    FlatStyle = System.Windows.Forms.FlatStyle.Flat
+                };
+                combo.Items.AddRange(["Bool", "Conditional"]);
+                combo.SelectedIndex = node.Node.FiresConditional ? 1 : 0;
+
+                if (Settings.Global_DarkMode_Enabled)
+                {
+                    combo.BackColor = System.Drawing.Color.FromArgb(45, 45, 48);
+                    combo.ForeColor = System.Drawing.Color.FromArgb(224, 224, 224);
+                }
+
+                // Commit on selection change — deferred to avoid re-entrancy during ComboBox event handling
+                combo.SelectedIndexChanged += (_, _) => combo.BeginInvoke(() => EndInlinePlotFieldEdit(true));
+                combo.KeyDown += (_, e) =>
+                {
+                    if (e.KeyCode == System.Windows.Forms.Keys.Escape)
+                    {
+                        e.SuppressKeyPress = true;
+                        EndInlinePlotFieldEdit(false);
+                    }
+                };
+                combo.LostFocus += (_, _) =>
+                {
+                    if (!combo.IsDisposed)
+                        combo.BeginInvoke(() => EndInlinePlotFieldEdit(true));
+                };
+                editor = combo;
+            }
+            else
+            {
+                string currentValue = fieldInfo.FieldTag switch
+                {
+                    "ConditionalOrBool" => node.Node.ConditionalOrBool.ToString(),
+                    "ConditionalParam" => node.Node.ConditionalParam.ToString(),
+                    "Transition" => node.Node.Transition.ToString(),
+                    "TransitionParam" => node.Node.TransitionParam.ToString(),
+                    _ => ""
+                };
+
+                var textBox = new System.Windows.Forms.TextBox
+                {
+                    Text = currentValue,
+                    BorderStyle = System.Windows.Forms.BorderStyle.None,
+                    Multiline = false,
+                    ShortcutsEnabled = false
+                };
+
+                if (Settings.Global_DarkMode_Enabled)
+                {
+                    textBox.BackColor = System.Drawing.Color.FromArgb(45, 45, 48);
+                    textBox.ForeColor = System.Drawing.Color.FromArgb(224, 224, 224);
+                }
+
+                textBox.KeyDown += (_, e) =>
+                {
+                    if (e.KeyCode == System.Windows.Forms.Keys.Enter)
+                    {
+                        e.SuppressKeyPress = true;
+                        EndInlinePlotFieldEdit(true);
+                    }
+                    else if (e.KeyCode == System.Windows.Forms.Keys.Escape)
+                    {
+                        e.SuppressKeyPress = true;
+                        EndInlinePlotFieldEdit(false);
+                    }
+                };
+                textBox.LostFocus += (_, _) => EndInlinePlotFieldEdit(true);
+                editor = textBox;
+            }
+
+            inlinePlotFieldEditor = editor;
+
+            graphEditor.Controls.Add(editor);
+            if (editor.IsDisposed || inlinePlotFieldEditor != editor)
+                return;
+
+            UpdateInlinePlotFieldEditorPosition(node);
+
+            editor.BringToFront();
+            editor.Focus();
+            if (editor is System.Windows.Forms.TextBox tb)
+                tb.SelectAll();
+            if (editor is System.Windows.Forms.ComboBox cb)
+                cb.DroppedDown = true;
+        }
+
+        public void UpdateInlinePlotFieldEditorPosition(DiagNode node)
+        {
+            if (node == null || inlinePlotFieldEditor == null || inlinePlotFieldNode != node || inlinePlotFieldInfo == null)
+                return;
+
+            Rectangle bounds = node.GetPlotFieldEditorViewBounds(inlinePlotFieldInfo);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                inlinePlotFieldEditor.Visible = false;
+                return;
+            }
+
+            inlinePlotFieldEditor.Visible = true;
+            inlinePlotFieldEditor.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+
+            float viewScale = graphEditor.Camera.ViewScale;
+            float fontSize = Math.Max(12f * viewScale, 1f);
+            if (inlinePlotFieldEditor.Font.SizeInPoints != fontSize)
+            {
+                inlinePlotFieldEditor.Font = new System.Drawing.Font("Arial", fontSize, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+            }
+        }
+
+        private void EndInlinePlotFieldEdit(bool commit)
+        {
+            if (inlinePlotFieldEditClosing)
+                return;
+
+            var editor = inlinePlotFieldEditor;
+            if (editor == null)
+                return;
+
+            inlinePlotFieldEditClosing = true;
+
+            var node = inlinePlotFieldNode;
+            var fieldInfo = inlinePlotFieldInfo;
+
+            // Read value before disposing
+            string text = null;
+            int comboIndex = -1;
+            if (editor is System.Windows.Forms.TextBox tb)
+                text = tb.Text;
+            else if (editor is System.Windows.Forms.ComboBox cb)
+                comboIndex = cb.SelectedIndex;
+
+            if (graphEditor?.Controls.Contains(editor) == true)
+                graphEditor.Controls.Remove(editor);
+            editor.Dispose();
+            inlinePlotFieldEditor = null;
+            inlinePlotFieldNode = null;
+            inlinePlotFieldInfo = null;
+
+            if (!commit || node == null || fieldInfo == null)
+            {
+                inlinePlotFieldEditClosing = false;
+                if (node != null)
+                {
+                    RefreshView();
+                    DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
+                }
+                return;
+            }
+
+            bool changed = false;
+
+            if (fieldInfo.FieldTag == "FiresConditional")
+            {
+                if (comboIndex >= 0)
+                {
+                    bool newFiresConditional = comboIndex == 1;
+                    if (node.Node.FiresConditional != newFiresConditional)
+                    {
+                        node.Node.FiresConditional = newFiresConditional;
+                        node.Node.NodeProp.Properties.AddOrReplaceProp(new BoolProperty(newFiresConditional, "bFireConditional"));
+                        // Refresh the plot path with the new type
+                        if (newFiresConditional)
+                            node.Node.ConditionalPlotPath = PlotDatabases.FindPlotConditionalByID(node.Node.ConditionalOrBool, Pcc.Game)?.Path;
+                        else
+                            node.Node.ConditionalPlotPath = PlotDatabases.FindPlotBoolByID(node.Node.ConditionalOrBool, Pcc.Game)?.Path;
+                        changed = true;
+                    }
+                }
+            }
+            else if (int.TryParse(text, out int newValue))
+            {
+                switch (fieldInfo.FieldTag)
+                {
+                    case "ConditionalOrBool":
+                        if (node.Node.ConditionalOrBool != newValue)
+                        {
+                            node.Node.ConditionalOrBool = newValue;
+                            node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nConditionalFunc"));
+                            if (node.Node.FiresConditional)
+                                node.Node.ConditionalPlotPath = PlotDatabases.FindPlotConditionalByID(newValue, Pcc.Game)?.Path;
+                            else
+                                node.Node.ConditionalPlotPath = PlotDatabases.FindPlotBoolByID(newValue, Pcc.Game)?.Path;
+                            changed = true;
+                        }
+                        break;
+                    case "ConditionalParam":
+                        if (node.Node.ConditionalParam != newValue)
+                        {
+                            node.Node.ConditionalParam = newValue;
+                            node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nConditionalParam"));
+                            changed = true;
+                        }
+                        break;
+                    case "Transition":
+                        if (node.Node.Transition != newValue)
+                        {
+                            node.Node.Transition = newValue;
+                            node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nStateTransition"));
+                            node.Node.TransitionPlotPath = PlotDatabases.FindPlotTransitionByID(newValue, Pcc.Game)?.Path;
+                            changed = true;
+                        }
+                        break;
+                    case "TransitionParam":
+                        if (node.Node.TransitionParam != newValue)
+                        {
+                            node.Node.TransitionParam = newValue;
+                            node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nStateTransitionParam"));
+                            changed = true;
+                        }
+                        break;
+                }
+            }
+
+            if (changed)
+            {
+                RecreateNodesToProperties(SelectedConv);
+                ForceRefresh(null);
+            }
+            else
+            {
+                RefreshView();
+            }
+            DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
+            inlinePlotFieldEditClosing = false;
         }
 
         private void DialogueNode_OpenLinkEditor(object obj)
