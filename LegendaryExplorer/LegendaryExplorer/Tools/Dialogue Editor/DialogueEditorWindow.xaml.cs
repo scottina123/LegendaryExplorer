@@ -1100,6 +1100,18 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 SelectedSpeakerList.Add(spkr);
             }
+
+            RebuildListenersList();
+        }
+
+        private void RebuildListenersList()
+        {
+            ListenersList.ClearEx();
+            ListenersList.Add(new SpeakerExtended(-3, "None"));
+            foreach (var spkr in SelectedSpeakerList)
+            {
+                ListenersList.Add(spkr);
+            }
         }
 
         private void ParseNodeData(DialogueNodeExtended node)
@@ -2924,12 +2936,6 @@ namespace LegendaryExplorer.DialogueEditor
                 RefreshView();
                 Start_ListBoxUpdate();
 
-                ListenersList.ClearEx();
-                ListenersList.Add(new SpeakerExtended(-3, "None"));
-                foreach (var spkr in SelectedSpeakerList)
-                {
-                    ListenersList.Add(spkr);
-                }
             }
             graphEditor_PanTo();
         }
