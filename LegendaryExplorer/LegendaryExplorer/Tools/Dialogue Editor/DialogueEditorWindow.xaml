@@ -153,13 +153,9 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     Background="{TemplateBinding Background}">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Auto"
-                                              CanContentScroll="False">
-                                    <ContentPresenter x:Name="PART_SelectedContentHost"
-                                                      Margin="2"
-                                                      ContentSource="SelectedContent" />
-                                </ScrollViewer>
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  Margin="2"
+                                                  ContentSource="SelectedContent" />
                             </Border>
                             <ScrollViewer Grid.Column="0"
                                           VerticalScrollBarVisibility="Auto"
