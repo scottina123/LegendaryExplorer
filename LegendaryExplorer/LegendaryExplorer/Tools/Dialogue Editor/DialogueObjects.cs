@@ -977,35 +977,36 @@ namespace LegendaryExplorer.DialogueEditor
                     : PlotDatabases.FindPlotBoolByID(Node.ConditionalOrBool, pcc.Game)?.Path;
             }
 
-            string condKind = Node.FiresConditional ? "Cnd" : "Bool";
-            string condSummary = Node.ConditionalOrBool < 0
-                ? $"{condKind}:{Node.ConditionalOrBool}"
-                : $"{condKind}:{Node.ConditionalOrBool} ({Node.ConditionalParam}) {GetLastPathSection(Node.ConditionalPlotPath)}";
-            var condSummaryText = new DText(condSummary, PlotLabelColor, false)
+            if (Node.ConditionalOrBool >= 0)
             {
-                TextAlignment = StringAlignment.Near,
-                ConstrainWidthToTextWidth = false,
-                ConstrainHeightToTextHeight = true,
-                X = 6,
-                Y = innerY,
-                Pickable = false,
-                Width = width - 12
-            };
-            container.AddChild(condSummaryText);
+                string condKind = Node.FiresConditional ? "Cnd" : "Bool";
+                string condSummary = $"{condKind}:{Node.ConditionalOrBool} ({Node.ConditionalParam}) {GetLastPathSection(Node.ConditionalPlotPath)}";
+                var condSummaryText = new DText(condSummary, PlotLabelColor, false)
+                {
+                    TextAlignment = StringAlignment.Near,
+                    ConstrainWidthToTextWidth = false,
+                    ConstrainHeightToTextHeight = true,
+                    X = 6,
+                    Y = innerY,
+                    Pickable = false,
+                    Width = width - 12
+                };
+                container.AddChild(condSummaryText);
 
-            if (!string.IsNullOrEmpty(Node.ConditionalPlotPath))
-            {
-                var summaryOverlay = PPath.CreateRectangle(6, condSummaryText.Y, width - 12, condSummaryText.Height);
-                summaryOverlay.Brush = mostlyTransparentBrush;
-                summaryOverlay.Pen = null;
-                summaryOverlay.Pickable = true;
-                string fullPath = Node.ConditionalPlotPath;
-                summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
-                summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
-                container.AddChild(summaryOverlay);
+                if (!string.IsNullOrEmpty(Node.ConditionalPlotPath))
+                {
+                    var summaryOverlay = PPath.CreateRectangle(6, condSummaryText.Y, width - 12, condSummaryText.Height);
+                    summaryOverlay.Brush = mostlyTransparentBrush;
+                    summaryOverlay.Pen = null;
+                    summaryOverlay.Pickable = true;
+                    string fullPath = Node.ConditionalPlotPath;
+                    summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
+                    summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                    container.AddChild(summaryOverlay);
+                }
+
+                innerY += condSummaryText.Height;
             }
-
-            innerY += condSummaryText.Height;
 
             if (Node.PlotChecksExpanded)
             {
@@ -1114,34 +1115,35 @@ namespace LegendaryExplorer.DialogueEditor
                 Node.TransitionPlotPath = PlotDatabases.FindPlotTransitionByID(Node.Transition, pcc.Game)?.Path;
             }
 
-            string transSummary = Node.Transition < 0
-                ? $"Trans:{Node.Transition}"
-                : $"Trans:{Node.Transition} ({Node.TransitionParam}) {GetLastPathSection(Node.TransitionPlotPath)}";
-            var transSummaryText = new DText(transSummary, PlotLabelColor, false)
+            if (Node.Transition >= 0)
             {
-                TextAlignment = StringAlignment.Near,
-                ConstrainWidthToTextWidth = false,
-                ConstrainHeightToTextHeight = true,
-                X = 6,
-                Y = innerY,
-                Pickable = false,
-                Width = width - 12
-            };
-            container.AddChild(transSummaryText);
+                string transSummary = $"Trans:{Node.Transition} ({Node.TransitionParam}) {GetLastPathSection(Node.TransitionPlotPath)}";
+                var transSummaryText = new DText(transSummary, PlotLabelColor, false)
+                {
+                    TextAlignment = StringAlignment.Near,
+                    ConstrainWidthToTextWidth = false,
+                    ConstrainHeightToTextHeight = true,
+                    X = 6,
+                    Y = innerY,
+                    Pickable = false,
+                    Width = width - 12
+                };
+                container.AddChild(transSummaryText);
 
-            if (!string.IsNullOrEmpty(Node.TransitionPlotPath))
-            {
-                var summaryOverlay = PPath.CreateRectangle(6, transSummaryText.Y, width - 12, transSummaryText.Height);
-                summaryOverlay.Brush = mostlyTransparentBrush;
-                summaryOverlay.Pen = null;
-                summaryOverlay.Pickable = true;
-                string fullPath = Node.TransitionPlotPath;
-                summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
-                summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
-                container.AddChild(summaryOverlay);
+                if (!string.IsNullOrEmpty(Node.TransitionPlotPath))
+                {
+                    var summaryOverlay = PPath.CreateRectangle(6, transSummaryText.Y, width - 12, transSummaryText.Height);
+                    summaryOverlay.Brush = mostlyTransparentBrush;
+                    summaryOverlay.Pen = null;
+                    summaryOverlay.Pickable = true;
+                    string fullPath = Node.TransitionPlotPath;
+                    summaryOverlay.MouseEnter += (_, _) => g?.ShowPlotTooltip(fullPath, Cursor.Position);
+                    summaryOverlay.MouseLeave += (_, _) => g?.HidePlotTooltip();
+                    container.AddChild(summaryOverlay);
+                }
+
+                innerY += transSummaryText.Height;
             }
-
-            innerY += transSummaryText.Height;
 
             if (Node.PlotTransitionsExpanded)
             {
