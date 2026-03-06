@@ -1409,7 +1409,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Y = titleBox.Height + starty + 5,
                 Pickable = false
             };
-            insidetext.Width = MathF.Min(MathF.Max(w - 12, 140), 220);
+            insidetext.Width = MathF.Max(w - 12, 140);
             h += insidetext.Height;
             float iw = insidetext.Width;
             if (iw > w) { w = iw; }
