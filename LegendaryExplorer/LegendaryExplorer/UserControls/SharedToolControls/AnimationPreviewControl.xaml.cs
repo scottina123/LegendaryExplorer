@@ -249,6 +249,13 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     /// </summary>
     public event Action<bool> IsPlayingChanged;
 
+    /// <summary>
+    /// Fires once when a non-looping animation reaches its end.
+    /// </summary>
+    public event Action AnimationCompleted;
+
+    private bool _animEndFired;
+
     public AnimationPreviewControl()
     {
         PlayPauseCommand = new GenericCommand(TogglePlayPause);
@@ -389,6 +396,62 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     }
 
     /// <summary>
+    /// Loads an AnimSequence for single-shot (non-looping) playback.
+    /// When the animation reaches its end, <see cref="AnimationCompleted"/> will fire.
+    /// </summary>
+    public void LoadAnimSequenceNonLooping(ExportEntry animSequenceExport)
+    {
+        LoadAnimSequence(animSequenceExport);
+        if (_animPlayer != null)
+        {
+            _animPlayer.IsLooping = false;
+            _animEndFired = false;
+        }
+    }
+
+    /// <summary>
+    /// Crossfades from the current animation pose to a new AnimSequence over <paramref name="blendDuration"/> seconds.
+    /// The new animation plays in non-looping mode; <see cref="AnimationCompleted"/> fires when it reaches its end.
+    /// </summary>
+    public void CrossfadeToAnimSequence(ExportEntry animSequenceExport, float blendDuration)
+    {
+        _lastAnimExport = animSequenceExport;
+        _lastFxActor = null;
+        _lastFxAnimSet = null;
+        _lastFxLine = null;
+        _animEndFired = false;
+        if (_skm == null) return;
+
+        try
+        {
+            var animSequence = ObjectBinary.From<AnimSequence>(animSequenceExport);
+            animSequence.DecompressAnimationData();
+
+            if (_animPlayer is not AnimSequencePlayer animSeqPlayer)
+                _animPlayer = animSeqPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
+
+            animSeqPlayer.CrossfadeTo(animSequence, blendDuration);
+            animSeqPlayer.IsLooping = false;
+
+            IsTimeMode = false;
+            AnimSliderMin = 0;
+            AnimSliderMax = Math.Max(0, animSeqPlayer.TotalFrames - 1);
+            _animSliderValue = 0;
+            OnPropertyChanged(nameof(AnimSliderValue));
+            OnPropertyChanged(nameof(AnimPositionText));
+
+            if (!animSeqPlayer.IsPlaying)
+            {
+                Play();
+            }
+        }
+        catch (Exception)
+        {
+            // Animation might not be compatible with this skeleton
+        }
+    }
+
+    /// <summary>
     /// Loads a FaceFx animation line for playback. The slider will be time-based (in seconds),
     /// with minimum at <see cref="FaceFxPlayer.StartTime"/> (which may be negative).
     /// When <paramref name="animSet"/> is null the line is expected to come from <paramref name="fxActor"/> directly
@@ -436,6 +499,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         _lastFxActor = null;
         _lastFxAnimSet = null;
         _lastFxLine = null;
+        _animEndFired = false;
         if (_animPlayer is AnimSequencePlayer asp)
             asp.SetAnimation(null);
         else if (_animPlayer is FaceFxPlayer ffp)
@@ -454,6 +518,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         _lastFxActor = null;
         _lastFxAnimSet = null;
         _lastFxLine = null;
+        _animEndFired = false;
         _meshPreview?.Dispose();
         _meshPreview = null;
         _skinnedRenderer = null;
@@ -530,6 +595,14 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                 if (_animPlayer.CurrentTime < oldTime)
                 {
                     IsPlayingChanged?.Invoke(true);
+                }
+
+                // Detect non-looping animation reaching its end
+                if (!_animPlayer.IsLooping && !_animEndFired
+                    && _animPlayer.CurrentTime >= _animPlayer.EndTime)
+                {
+                    _animEndFired = true;
+                    AnimationCompleted?.Invoke();
                 }
             }
 

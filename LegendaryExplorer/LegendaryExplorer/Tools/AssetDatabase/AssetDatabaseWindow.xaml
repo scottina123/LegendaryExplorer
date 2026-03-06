@@ -689,7 +689,11 @@
                                 <ColumnDefinition MinWidth="400" Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Animsequences / Ambient Performance Tracks" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
+                            <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                <TextBlock Text="Animsequences / Ambient Performance Tracks" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game"/>
+                                <CheckBox x:Name="chk_OnlyAmbPerf" Content="Only Ambient Performances" Margin="5,2,0,0"
+                                          VerticalContentAlignment="Center" Checked="chk_OnlyAmbPerf_Changed" Unchecked="chk_OnlyAmbPerf_Changed"/>
+                            </StackPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" SelectionChanged="lstbx_Anims_SelectionChanged" Grid.Row="1" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
@@ -723,12 +727,21 @@
                             <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="1" Grid.Column="1">
                                 <DockPanel MinWidth="350" Margin="3">
                                     <ToggleButton x:Name="btn_AnimPreviewToggle" Content="Toggle Animation Preview" MaxHeight="30" ClickMode="Release" 
-                                                  Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"
-                                                  Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                                  Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"/>
                                     <ComboBox x:Name="cbx_AnimPreviewMesh" DockPanel.Dock="Top" Margin="0,0,0,3"
                                               DisplayMemberPath="MeshName"
-                                              SelectionChanged="AnimPreview_MeshSelectionChanged" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                    <sharedToolControls:AnimationPreviewControl x:Name="AnimPreviewControl" Visibility="{Binding SelectedItem.IsAmbPerf, ElementName=lstbx_Anims, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                              SelectionChanged="AnimPreview_MeshSelectionChanged"/>
+                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,3">
+                                        <TextBlock Text="AmbPerf Master PCC: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                                        <Button Content="Clear" DockPanel.Dock="Right" Margin="3,0,0,0" Padding="4,1"
+                                                Command="{Binding ClearAmbPerfMasterPccCommand}"/>
+                                        <Button Content="Browse..." DockPanel.Dock="Right" Margin="3,0,0,0" Padding="4,1"
+                                                Command="{Binding BrowseAmbPerfMasterPccCommand}"/>
+                                        <TextBlock Text="{Binding AmbPerfMasterPccPath, TargetNullValue='(default)', FallbackValue='(default)'}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding AmbPerfMasterPccPath}"/>
+                                    </DockPanel>
+                                    <sharedToolControls:AnimationPreviewControl x:Name="AnimPreviewControl"/>
                                 </DockPanel>
                             </Border>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="2"/>

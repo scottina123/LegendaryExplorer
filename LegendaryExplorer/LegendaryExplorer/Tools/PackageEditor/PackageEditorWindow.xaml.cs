@@ -323,7 +323,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             GoToArchetypeCommand = new GenericCommand(GoToArchetype, CanGoToArchetype);
             ReplaceNamesCommand = new GenericCommand(SearchReplaceNames, PackageIsLoaded);
             ReindexDuplicateIndexesCommand = new GenericCommand(ReindexDuplicateIndexes, PackageIsLoaded);
-            ReplaceReferenceLinksCommand = new GenericCommand(ReplaceReferenceLinks, PackageIsLoaded);
+            ReplaceReferenceLinksCommand = new GenericCommand(ReplaceReferenceLinks, EntryIsSelected);
             OpenFileCommand = new GenericCommand(OpenFile);
             NewFileCommand = new GenericCommand(NewFile);
             NewLevelFileCommand = new GenericCommand(NewLevelFile);

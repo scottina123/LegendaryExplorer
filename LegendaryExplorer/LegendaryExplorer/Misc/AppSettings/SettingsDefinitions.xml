@@ -77,6 +77,7 @@
   <setting name="AssetDBGame" type="string" defaultvalue="LE3"/>
   <setting name="AssetDBPath" type="string" defaultvalue=""/>
   <setting name="AssetDB_HideMICs" type="bool" defaultvalue="false"/>
+  <setting name="AssetDB_AmbPerfMasterPccPath" type="string" defaultvalue=""/>
 
   <!-- Coalesced Editor specific settings -->
   <setting name="CoalescedEditor_SourcePath" type="string" defaultvalue=""/>

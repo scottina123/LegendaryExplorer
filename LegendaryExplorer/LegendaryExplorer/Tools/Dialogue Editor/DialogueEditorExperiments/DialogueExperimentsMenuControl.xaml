@@ -36,4 +36,7 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
         <MenuItem Header="Batch unlist Track from Group" Click="BatchUnlistTrackFromGroup_Click" ToolTip="Remove the given InterpTrack from all matching InterpGroups in the conversation's InterpDatas."/>
         <MenuItem Header="Unlist Track from Group" Click="UnlistTrackFromGroup_Click" ToolTip="Remove the given InterpTrack from the matching InterpGroup in the selected node's InterpDatas."/>
     </MenuItem>
+    <MenuItem Header="Scottina's Funzone">
+        <MenuItem Header="Import All LE3 Ambient Performances to PCC" Click="ImportAllAmbPerfsToPcc_Click" ToolTip="Loads the LE3 Asset Database, finds all ambient performances, and imports them into a single PCC with memory-safe importing."/>
+    </MenuItem>
 </MenuItem>

@@ -550,6 +550,10 @@
 		</ContentWithTargetPath>
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
+	</ItemGroup>
+
 	<PropertyGroup>
 		<!-- Trimming variables -->
 		<CurrentRuntime>$(TargetFramework.Replace('-windows', ''))</CurrentRuntime>

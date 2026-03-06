@@ -242,6 +242,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _assetdb_hidemics;
             set => SetProperty(ref _assetdb_hidemics, value);
         }
+        private static string _assetdb_ambperfmasterpccpath = "";
+        public static string AssetDB_AmbPerfMasterPccPath {
+            get => _assetdb_ambperfmasterpccpath;
+            set => SetProperty(ref _assetdb_ambperfmasterpccpath, value);
+        }
         private static string _coalescededitor_sourcepath = "";
         public static string CoalescedEditor_SourcePath {
             get => _coalescededitor_sourcepath;
@@ -535,6 +540,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             AssetDBGame = TryGetSetting(settingsJson, "assetdbgame", "LE3");
             AssetDBPath = TryGetSetting(settingsJson, "assetdbpath", "");
             AssetDB_HideMICs = TryGetSetting(settingsJson, "assetdb_hidemics", false);
+            AssetDB_AmbPerfMasterPccPath = TryGetSetting(settingsJson, "assetdb_ambperfmasterpccpath", "");
             CoalescedEditor_SourcePath = TryGetSetting(settingsJson, "coalescededitor_sourcepath", "");
             CoalescedEditor_DestinationPath = TryGetSetting(settingsJson, "coalescededitor_destinationpath", "");
             WwiseGraphEditor_AutoSaveView = TryGetSetting(settingsJson, "wwisegrapheditor_autosaveview", false);
@@ -636,6 +642,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["assetdbgame"] = AssetDBGame.ToString();
             settingsJson["assetdbpath"] = AssetDBPath.ToString();
             settingsJson["assetdb_hidemics"] = AssetDB_HideMICs.ToString();
+            settingsJson["assetdb_ambperfmasterpccpath"] = AssetDB_AmbPerfMasterPccPath.ToString();
             settingsJson["coalescededitor_sourcepath"] = CoalescedEditor_SourcePath.ToString();
             settingsJson["coalescededitor_destinationpath"] = CoalescedEditor_DestinationPath.ToString();
             settingsJson["wwisegrapheditor_autosaveview"] = WwiseGraphEditor_AutoSaveView.ToString();

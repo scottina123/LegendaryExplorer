@@ -24,6 +24,10 @@ public class AnimSequencePlayer : AnimPlayer
     private HashSet<string> _useTranslationBones = []; // animSequence => animSetData.UseTranslationBoneNames; these bones will use the positions from the animation even if _animRotationOnly in true
     private HashSet<string> _forceMeshTranslationBoneNames = []; // animSequence => animSetData.ForceMeshTranslationBoneNames; these bones will use the position from the mesh even if _animRotationOnly is false
 
+    // Crossfade blend state
+    private Matrix4x4[] _blendFromComponentSpace;
+    private float _crossfadeDuration;
+
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
     {
         _skelToAnimMap = new int[_bones.Length];
@@ -146,6 +150,43 @@ public class AnimSequencePlayer : AnimPlayer
     }
 
     /// <summary>
+    /// True when a crossfade blend is in progress.
+    /// </summary>
+    public bool IsBlending => _blendFromComponentSpace != null && _crossfadeDuration > 0 && CurrentTime < _crossfadeDuration;
+
+    /// <summary>
+    /// Crossfades from the current animation pose to a new AnimSequence.
+    /// Snapshots the current bone transforms and interpolates toward the new animation
+    /// over <paramref name="blendDuration"/> seconds.
+    /// </summary>
+    public void CrossfadeTo(AnimSequence newSequence, float blendDuration)
+    {
+        if (_animSequence != null && blendDuration > 0 && _boneComponentSpace != null)
+        {
+            // Ensure component-space transforms are up to date before snapshotting
+            ComputeSkinningMatrices();
+            _blendFromComponentSpace = (Matrix4x4[])_boneComponentSpace.Clone();
+            _crossfadeDuration = blendDuration;
+        }
+        else
+        {
+            _blendFromComponentSpace = null;
+            _crossfadeDuration = 0;
+        }
+
+        SetAnimation(newSequence);
+    }
+
+    /// <summary>
+    /// Clears any active crossfade blend state.
+    /// </summary>
+    public void ClearBlend()
+    {
+        _blendFromComponentSpace = null;
+        _crossfadeDuration = 0;
+    }
+
+    /// <summary>
     /// Computes skinning matrices for the current frame.
     /// Returns the array of skinning matrices (InverseBindPose * AnimatedComponentSpace).
     /// </summary>
@@ -204,6 +245,31 @@ public class AnimSequencePlayer : AnimPlayer
             }
 
             _skinningMatrices[i] = _inverseBindPose[i] * _boneComponentSpace[i];
+        }
+
+        // Crossfade blend pass: interpolate between snapshotted pose and current animation
+        if (_blendFromComponentSpace != null && _crossfadeDuration > 0)
+        {
+            float alpha = Math.Clamp(CurrentTime / _crossfadeDuration, 0f, 1f);
+            if (alpha >= 1f)
+            {
+                _blendFromComponentSpace = null;
+                _crossfadeDuration = 0;
+            }
+            else
+            {
+                for (int i = 0; i < numBones; i++)
+                {
+                    if (Matrix4x4.Decompose(_blendFromComponentSpace[i], out _, out var rotFrom, out var posFrom)
+                        && Matrix4x4.Decompose(_boneComponentSpace[i], out _, out var rotTo, out var posTo))
+                    {
+                        var blendedRot = Quaternion.Slerp(rotFrom, rotTo, alpha);
+                        var blendedPos = Vector3.Lerp(posFrom, posTo, alpha);
+                        _boneComponentSpace[i] = Matrix4x4.CreateFromQuaternion(blendedRot) * Matrix4x4.CreateTranslation(blendedPos);
+                    }
+                    _skinningMatrices[i] = _inverseBindPose[i] * _boneComponentSpace[i];
+                }
+            }
         }
 
         return _skinningMatrices;

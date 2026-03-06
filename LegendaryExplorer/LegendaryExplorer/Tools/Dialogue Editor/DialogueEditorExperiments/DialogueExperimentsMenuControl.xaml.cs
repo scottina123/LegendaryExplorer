@@ -129,5 +129,13 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             DialogueEditorExperimentsE.UnlistTrackFromGroupExperiment(GetDEWindow());
         }
         #endregion
+
+        // EXPERIMENTS: SCOTTINA-----------------------------------------------------------
+        #region Scottina's experiments
+        private async void ImportAllAmbPerfsToPcc_Click(object sender, RoutedEventArgs e)
+        {
+            await DialogueEditorExperimentsS.ImportAllAmbientPerformancesToPcc(Window.GetWindow(this));
+        }
+        #endregion
     }
 }

@@ -23,6 +23,7 @@ using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using Microsoft.Win32;
 using AnimSequence = LegendaryExplorerCore.Unreal.BinaryConverters.AnimSequence;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -207,6 +208,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
+        private IMEPackage _ambPerfMasterPcc;
+        private record struct AmbPerfStep(ExportEntry AnimExport, float BlendInTime);
+        private List<AmbPerfStep> _ambPerfAnimQueue;
+        private int _ambPerfAnimIndex;
+        private int _ambPerfVersion;
+
+        private string _ambPerfMasterPccPath;
+        public string AmbPerfMasterPccPath
+        {
+            get => _ambPerfMasterPccPath;
+            set => SetProperty(ref _ambPerfMasterPccPath, value);
+        }
         private GridViewColumnHeader _lastHeaderClicked = null;
         private ListSortDirection _lastDirection = ListSortDirection.Ascending;
 
@@ -246,6 +259,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ICommand OpenInPlotDBCommand { get; set; }
         public ICommand OpenPEDefinitionCommand { get; set; }
         public ICommand ChangeLocalizationCommand { get; set; }
+        public ICommand BrowseAmbPerfMasterPccCommand { get; set; }
+        public ICommand ClearAmbPerfMasterPccCommand { get; set; }
 
         private bool CanCancelDump(object obj)
         {
@@ -350,6 +365,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             OpenInPlotDBCommand = new GenericCommand(OpenInPlotDB, IsPlotElementSelected);
             OpenPEDefinitionCommand = new GenericCommand(OpenPEDefinitionInToolset, IsPlotElementSelected);
             ChangeLocalizationCommand = new RelayCommand((e) => { Localization = (MELocalization)e; });
+            BrowseAmbPerfMasterPccCommand = new GenericCommand(BrowseAmbPerfMasterPcc);
+            ClearAmbPerfMasterPccCommand = new GenericCommand(ClearAmbPerfMasterPcc, () => AmbPerfMasterPccPath != null);
         }
 
         private void AssetDB_Loaded(object sender, RoutedEventArgs e)
@@ -359,6 +376,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             BusyText = "Please wait...";
             IsBusy = true;
             BusyBarInd = true;
+
+            // Restore saved master PCC for ambient performances
+            RestoreAmbPerfMasterPcc();
 
             if (CurrentDBPath != null && CurrentDBPath.EndsWith("zip") && File.Exists(CurrentDBPath) && CurrentGame != MEGame.Unknown && CurrentGame != MEGame.UDK)
             {
@@ -384,23 +404,30 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             Settings.AssetDBPath = CurrentDBPath;
             Settings.AssetDBGame = CurrentGame.ToString();
+            Settings.AssetDB_AmbPerfMasterPccPath = AmbPerfMasterPccPath ?? "";
 
             MeshRendererTab_MeshRenderer?.Dispose();
             SoundpanelWPF_ADB?.Dispose();
             BIKExternalExportLoaderTab_BIKExternalExportLoader?.Dispose();
             EmbeddedTextureViewerTab_EmbeddedTextureViewer?.Dispose();
             MaterialEditorExportLoader_Control?.Dispose();
+            AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+            AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+            _ambPerfAnimQueue = null;
             AnimPreviewControl?.Dispose();
 
             audioPcc?.Dispose();
             meshPcc?.Dispose();
             textPcc?.Dispose();
             animPcc?.Dispose();
+            _ambPerfMasterPcc?.Dispose();
 
             audioPcc = null;
             meshPcc = null;
             textPcc = null;
             animPcc = null;
+            _ambPerfMasterPcc = null;
+            AmbPerfMasterPccPath = null;
 
             dbworker.DoWork -= GetLineStrings;
             dbworker.RunWorkerCompleted -= dbworker_LineWorkCompleted;
@@ -668,8 +695,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             btn_TextRenderToggle.IsChecked = false;
             btn_TextRenderToggle.Content = "Toggle Texture Rendering";
             AnimPreviewControl?.Clear();
+            AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+            AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+            _ambPerfAnimQueue = null;
             animPcc?.Dispose();
             animPcc = null;
+            _ambPerfMasterPcc?.Dispose();
+            _ambPerfMasterPcc = null;
+            AmbPerfMasterPccPath = null;
+            RestoreAmbPerfMasterPcc();
             btn_AnimPreviewToggle.IsChecked = false;
             btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
             MaterialEditorExportLoader_Control?.UnloadExport();
@@ -1290,6 +1324,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                 if (previousView == 5)
                 {
+                    AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                    AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                    _ambPerfAnimQueue = null;
                     AnimPreviewControl.Clear();
                     animPcc?.Dispose();
                     animPcc = null;
@@ -1334,6 +1371,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (currentView == 5 && lstbx_Anims.SelectedIndex >= 0)
             {
                 ToggleRenderAnimation();
+            }
+        }
+
+        private void chk_OnlyAmbPerf_Changed(object sender, RoutedEventArgs e)
+        {
+            // Find the "Only Performances" filter spec and toggle it to match the checkbox
+            var perfFilter = AssetFilters.AnimationFilter.Filters
+                .FirstOrDefault(f => f.FilterName == "Only Performances (ME3)");
+            if (perfFilter != null && perfFilter.IsSelected != chk_OnlyAmbPerf.IsChecked)
+            {
+                SetFilters(perfFilter);
             }
         }
 
@@ -1494,11 +1542,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             bool showAnim = btn_AnimPreviewToggle.IsChecked == true
                 && lstbx_Anims.SelectedIndex >= 0
-                && !((lstbx_Anims.SelectedItem as AnimationRecord)?.IsAmbPerf ?? true)
                 && currentView == 5;
 
             if (!showAnim)
             {
+                AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                _ambPerfAnimQueue = null;
                 AnimPreviewControl.Clear();
                 animPcc?.Dispose();
                 animPcc = null;
@@ -1536,9 +1586,504 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 var animExp = animPcc.GetUExport(animUIndex);
                 LoadSkeletalMeshForAnimPreview();
-                AnimPreviewControl.LoadAnimSequence(animExp);
-                AnimPreviewControl.Play();
+
+                if (anim.IsAmbPerf)
+                {
+                    // Unsubscribe old handlers
+                    AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                    AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                    _ambPerfVersion++; // invalidate any pending InvokeAsync from previous selection
+
+                    // If a master PCC is set, try to find the matching SFXAmbPerfGameData in it
+                    ExportEntry ambPerfSource = animExp;
+                    if (_ambPerfMasterPcc != null)
+                    {
+                        var masterExp = _ambPerfMasterPcc.Exports.FirstOrDefault(
+                            e => e.ClassName == animExp.ClassName && e.ObjectName == animExp.ObjectName);
+                        if (masterExp != null)
+                        {
+                            ambPerfSource = masterExp;
+                        }
+                    }
+
+                    // Build the pose graph step sequence with blend times
+                    _ambPerfAnimQueue = BuildAmbPerfStepSequence(ambPerfSource);
+                    _ambPerfAnimIndex = 0;
+
+                    if (_ambPerfAnimQueue.Count > 0)
+                    {
+                        var firstStep = _ambPerfAnimQueue[0];
+                        AnimPreviewControl.LoadAnimSequenceNonLooping(firstStep.AnimExport);
+                        AnimPreviewControl.Play();
+                        if (_ambPerfAnimQueue.Count > 1)
+                        {
+                            AnimPreviewControl.AnimationCompleted += OnAmbPerfStepCompleted;
+                        }
+                    }
+                }
+                else
+                {
+                    AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                    AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                    _ambPerfVersion++;
+                    _ambPerfAnimQueue = null;
+                    AnimPreviewControl.LoadAnimSequence(animExp);
+                    AnimPreviewControl.Play();
+                }
             }
+        }
+
+        private void RestoreAmbPerfMasterPcc()
+        {
+            string savedPath = Settings.AssetDB_AmbPerfMasterPccPath;
+            if (!string.IsNullOrEmpty(savedPath) && File.Exists(savedPath))
+            {
+                try
+                {
+                    _ambPerfMasterPcc = MEPackageHandler.OpenMEPackage(savedPath);
+                    AmbPerfMasterPccPath = savedPath;
+                }
+                catch
+                {
+                    _ambPerfMasterPcc = null;
+                    AmbPerfMasterPccPath = null;
+                    Settings.AssetDB_AmbPerfMasterPccPath = "";
+                }
+            }
+        }
+
+        private void BrowseAmbPerfMasterPcc()
+        {
+            var dlg = new OpenFileDialog
+            {
+                Title = "Select Master PCC for Ambient Performances",
+                Filter = "Package files (*.pcc;*.sfm;*.upk;*.u)|*.pcc;*.sfm;*.upk;*.u|All files (*.*)|*.*"
+            };
+
+            string rootPath = MEDirectories.GetDefaultGamePath(CurrentGame);
+            if (rootPath != null && Directory.Exists(rootPath))
+            {
+                dlg.InitialDirectory = rootPath;
+            }
+
+            if (dlg.ShowDialog() == true)
+            {
+                // Dispose previous master PCC if any
+                _ambPerfMasterPcc?.Dispose();
+                _ambPerfMasterPcc = null;
+
+                try
+                {
+                    _ambPerfMasterPcc = MEPackageHandler.OpenMEPackage(dlg.FileName);
+                    AmbPerfMasterPccPath = dlg.FileName;
+                    Settings.AssetDB_AmbPerfMasterPccPath = dlg.FileName;
+
+                    // Re-render if currently previewing an ambient performance
+                    if (btn_AnimPreviewToggle.IsChecked == true
+                        && lstbx_Anims.SelectedIndex >= 0
+                        && lstbx_Anims.SelectedItem is AnimationRecord { IsAmbPerf: true })
+                    {
+                        ToggleRenderAnimation();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to open package: {ex.Message}");
+                    _ambPerfMasterPcc = null;
+                    AmbPerfMasterPccPath = null;
+                    Settings.AssetDB_AmbPerfMasterPccPath = "";
+                }
+            }
+        }
+
+        private void ClearAmbPerfMasterPcc()
+        {
+            _ambPerfMasterPcc?.Dispose();
+            _ambPerfMasterPcc = null;
+            AmbPerfMasterPccPath = null;
+            Settings.AssetDB_AmbPerfMasterPccPath = "";
+
+            // Re-render if currently previewing an ambient performance
+            if (btn_AnimPreviewToggle.IsChecked == true
+                && lstbx_Anims.SelectedIndex >= 0
+                && lstbx_Anims.SelectedItem is AnimationRecord { IsAmbPerf: true })
+            {
+                ToggleRenderAnimation();
+            }
+        }
+
+        private void OnAmbPerfAnimLooped(bool isPlaying)
+        {
+            if (!isPlaying || _ambPerfAnimQueue == null || _ambPerfAnimQueue.Count <= 1) return;
+
+            // Immediately unsubscribe to prevent re-entry from render thread or Play() callbacks
+            AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+
+            _ambPerfAnimIndex = (_ambPerfAnimIndex + 1) % _ambPerfAnimQueue.Count;
+            var expectedVersion = _ambPerfVersion;
+            Dispatcher.InvokeAsync(() =>
+            {
+                // Discard if the user switched to a different animation while this was queued
+                if (_ambPerfVersion != expectedVersion) return;
+
+                AnimPreviewControl.LoadAnimSequence(_ambPerfAnimQueue[_ambPerfAnimIndex].AnimExport);
+                AnimPreviewControl.Play();
+                AnimPreviewControl.IsPlayingChanged += OnAmbPerfAnimLooped;
+            });
+        }
+
+        /// <summary>
+        /// Called when a non-looping ambient performance animation step reaches its end.
+        /// Crossfades into the next step in the pose graph sequence.
+        /// </summary>
+        private void OnAmbPerfStepCompleted()
+        {
+            if (_ambPerfAnimQueue == null || _ambPerfAnimQueue.Count <= 1) return;
+
+            // Immediately unsubscribe to prevent re-entry
+            AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+
+            _ambPerfAnimIndex = (_ambPerfAnimIndex + 1) % _ambPerfAnimQueue.Count;
+            var expectedVersion = _ambPerfVersion;
+            Dispatcher.InvokeAsync(() =>
+            {
+                // Discard if the user switched to a different animation while this was queued
+                if (_ambPerfVersion != expectedVersion) return;
+
+                var step = _ambPerfAnimQueue[_ambPerfAnimIndex];
+                if (step.BlendInTime > 0)
+                {
+                    AnimPreviewControl.CrossfadeToAnimSequence(step.AnimExport, step.BlendInTime);
+                }
+                else
+                {
+                    AnimPreviewControl.LoadAnimSequenceNonLooping(step.AnimExport);
+                    AnimPreviewControl.Play();
+                }
+                AnimPreviewControl.AnimationCompleted += OnAmbPerfStepCompleted;
+            });
+        }
+
+        private static List<ExportEntry> FindAllAnimSequencesInAmbPerf(ExportEntry ambPerfExport)
+        {
+            // SFXAmbPerfGameData has:
+            //   m_aAnimsets: ArrayProperty<ObjectProperty> referencing BioDynamicAnimSet exports (or imports)
+            //   m_aPoses: ArrayProperty<StructProperty> of SFXAPGDPose structs
+            //   m_nStartPoseIndex: which pose to start with
+            // Each pose has aTrans (transitions) with mAnimSet/mAnimSeq NameProperties
+            // and aGests (gestures) with mAnimSet/mAnimSeq NameProperties.
+            // We resolve these names against the BioDynamicAnimSets' Sequences.
+            //
+            // BioDynamicAnimSets may be local exports (often children of the SFXAmbPerfGameData),
+            // or imports to other packages. We gather from both m_aAnimsets and children.
+
+            var result = new List<ExportEntry>();
+            var pkg = ambPerfExport.FileRef;
+
+            var seqNameToExport = new Dictionary<(string setName, string seqName), ExportEntry>();
+            using var cache = new PackageCache();
+
+            // Collect BioDynamicAnimSet exports from two sources:
+            // 1) m_aAnimsets property (may contain exports and/or unresolvable imports)
+            // 2) Direct children of the SFXAmbPerfGameData export in the tree
+            var animSetExports = new HashSet<ExportEntry>();
+
+            var animSetRefs = ambPerfExport.GetProperty<ArrayProperty<ObjectProperty>>("m_aAnimsets");
+            if (animSetRefs != null)
+            {
+                foreach (var animSetRef in animSetRefs)
+                {
+                    if (animSetRef.Value > 0 && pkg.TryGetUExport(animSetRef.Value, out var localExp))
+                    {
+                        animSetExports.Add(localExp);
+                    }
+                }
+            }
+
+            // Also scan children of the ambPerfExport for BioDynamicAnimSet exports
+            // that may not be in m_aAnimsets (or when m_aAnimsets only has imports)
+            foreach (var child in ambPerfExport.GetChildren())
+            {
+                if (child is ExportEntry childExp && childExp.ClassName == "BioDynamicAnimSet")
+                {
+                    animSetExports.Add(childExp);
+                }
+            }
+
+            // For each BioDynamicAnimSet, read its Sequences and collect AnimSequence exports
+            foreach (var animSetExport in animSetExports)
+            {
+                string setName = animSetExport.GetProperty<NameProperty>("m_nmOrigSetName")?.Value.Instanced
+                                 ?? animSetExport.ObjectName.Instanced;
+
+                var sequences = animSetExport.GetProperty<ArrayProperty<ObjectProperty>>("Sequences");
+                if (sequences == null) continue;
+
+                foreach (var seqRef in sequences)
+                {
+                    var seqExport = ResolveToExport(animSetExport.FileRef, seqRef.Value, cache);
+                    if (seqExport is { ClassName: "AnimSequence" })
+                    {
+                        var seqName = seqExport.GetProperty<NameProperty>("SequenceName")?.Value.Instanced;
+                        if (seqName != null)
+                        {
+                            seqNameToExport[(setName, seqName)] = seqExport;
+                        }
+                    }
+                }
+            }
+
+            // Walk poses and collect AnimSequences in order
+            var poses = ambPerfExport.GetProperty<ArrayProperty<StructProperty>>("m_aPoses");
+            if (poses == null)
+            {
+                // Fallback: return all sequences from all AnimSets
+                result.AddRange(seqNameToExport.Values);
+                return result;
+            }
+
+            var added = new HashSet<ExportEntry>();
+            foreach (var pose in poses)
+            {
+                // Collect from transitions (aTrans)
+                CollectAnimSeqsFromStructArray(pose.GetProp<ArrayProperty<StructProperty>>("aTrans"), seqNameToExport, result, added);
+                // Collect from gestures (aGests)
+                CollectAnimSeqsFromStructArray(pose.GetProp<ArrayProperty<StructProperty>>("aGests"), seqNameToExport, result, added);
+            }
+
+            // If no poses matched, fall back to all sequences
+            if (result.Count == 0)
+            {
+                result.AddRange(seqNameToExport.Values);
+            }
+
+            return result;
+        }
+
+        private static void CollectAnimSeqsFromStructArray(
+            ArrayProperty<StructProperty> structs,
+            Dictionary<(string setName, string seqName), ExportEntry> lookup,
+            List<ExportEntry> result,
+            HashSet<ExportEntry> added)
+        {
+            if (structs == null) return;
+
+            foreach (var s in structs)
+            {
+                var setName = s.GetProp<NameProperty>("mAnimSet")?.Value.Instanced;
+                var seqName = s.GetProp<NameProperty>("mAnimSeq")?.Value.Instanced;
+                if (setName != null && seqName != null
+                    && lookup.TryGetValue((setName, seqName), out var exp)
+                    && added.Add(exp))
+                {
+                    result.Add(exp);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Builds a sequence of animation steps by walking the SFXAmbPerfGameData pose graph.
+        /// Each step includes the animation to play and the blend time for transitioning into it.
+        /// The sequence follows: pose idle → transition anim → dest pose idle → transition → ...
+        /// </summary>
+        private static List<AmbPerfStep> BuildAmbPerfStepSequence(ExportEntry ambPerfExport)
+        {
+            var pkg = ambPerfExport.FileRef;
+            var seqNameToExport = new Dictionary<(string setName, string seqName), ExportEntry>();
+            using var cache = new PackageCache();
+
+            // Collect BioDynamicAnimSet exports (same resolution as FindAllAnimSequencesInAmbPerf)
+            var animSetExports = new HashSet<ExportEntry>();
+
+            var animSetRefs = ambPerfExport.GetProperty<ArrayProperty<ObjectProperty>>("m_aAnimsets");
+            if (animSetRefs != null)
+            {
+                foreach (var animSetRef in animSetRefs)
+                {
+                    if (animSetRef.Value > 0 && pkg.TryGetUExport(animSetRef.Value, out var localExp))
+                    {
+                        animSetExports.Add(localExp);
+                    }
+                }
+            }
+
+            foreach (var child in ambPerfExport.GetChildren())
+            {
+                if (child is ExportEntry childExp && childExp.ClassName == "BioDynamicAnimSet")
+                {
+                    animSetExports.Add(childExp);
+                }
+            }
+
+            foreach (var animSetExport in animSetExports)
+            {
+                string setName = animSetExport.GetProperty<NameProperty>("m_nmOrigSetName")?.Value.Instanced
+                                 ?? animSetExport.ObjectName.Instanced;
+
+                var sequences = animSetExport.GetProperty<ArrayProperty<ObjectProperty>>("Sequences");
+                if (sequences == null) continue;
+
+                foreach (var seqRef in sequences)
+                {
+                    var seqExport = ResolveToExport(animSetExport.FileRef, seqRef.Value, cache);
+                    if (seqExport is { ClassName: "AnimSequence" })
+                    {
+                        var seqName = seqExport.GetProperty<NameProperty>("SequenceName")?.Value.Instanced;
+                        if (seqName != null)
+                        {
+                            seqNameToExport[(setName, seqName)] = seqExport;
+                        }
+                    }
+                }
+            }
+
+            // Walk the pose graph starting from m_nStartPoseIndex
+            var poses = ambPerfExport.GetProperty<ArrayProperty<StructProperty>>("m_aPoses");
+            var startIdx = ambPerfExport.GetProperty<IntProperty>("m_nStartPoseIndex")?.Value ?? 0;
+            var result = new List<AmbPerfStep>();
+
+            if (poses == null || poses.Count == 0)
+            {
+                // Fallback: return all sequences with no blend
+                foreach (var exp in seqNameToExport.Values)
+                {
+                    result.Add(new AmbPerfStep(exp, 0f));
+                }
+                return result;
+            }
+
+            var visited = new HashSet<int>();
+            int currentIdx = Math.Clamp(startIdx, 0, poses.Count - 1);
+            bool isFirst = true;
+            const float defaultIdleBlend = 0.25f;
+
+            while (currentIdx >= 0 && currentIdx < poses.Count && visited.Add(currentIdx))
+            {
+                var pose = poses[currentIdx];
+
+                // Add the pose's idle animation
+                var idleSet = pose.GetProp<NameProperty>("mAnimSet")?.Value.Instanced;
+                var idleSeq = pose.GetProp<NameProperty>("mAnimSeq")?.Value.Instanced;
+                ExportEntry idleExport = null;
+                if (idleSet != null && idleSeq != null)
+                {
+                    seqNameToExport.TryGetValue((idleSet, idleSeq), out idleExport);
+                }
+                if (idleExport != null)
+                {
+                    result.Add(new AmbPerfStep(idleExport, isFirst ? 0f : defaultIdleBlend));
+                    isFirst = false;
+                }
+
+                // Pick the best transition (highest nPlayChance)
+                var transitions = pose.GetProp<ArrayProperty<StructProperty>>("aTrans");
+                if (transitions == null || transitions.Count == 0) break;
+
+                StructProperty bestTrans = null;
+                int bestChance = -1;
+                foreach (var trans in transitions)
+                {
+                    int chance = trans.GetProp<IntProperty>("nPlayChance")?.Value ?? 0;
+                    if (chance > bestChance)
+                    {
+                        bestChance = chance;
+                        bestTrans = trans;
+                    }
+                }
+
+                if (bestTrans == null) break;
+
+                var transSet = bestTrans.GetProp<NameProperty>("mAnimSet")?.Value.Instanced;
+                var transSeq = bestTrans.GetProp<NameProperty>("mAnimSeq")?.Value.Instanced;
+                float blendTime = bestTrans.GetProp<FloatProperty>("fBlendTime")?.Value ?? 0f;
+                int destIdx = bestTrans.GetProp<IntProperty>("nDestPoseIndex")?.Value ?? -1;
+
+                if (transSet != null && transSeq != null
+                    && seqNameToExport.TryGetValue((transSet, transSeq), out var transExport))
+                {
+                    // Skip if the transition animation is identical to the idle we just added
+                    if (transExport != idleExport)
+                    {
+                        result.Add(new AmbPerfStep(transExport, blendTime));
+                        isFirst = false;
+                    }
+                }
+
+                currentIdx = destIdx;
+            }
+
+            // Remove consecutive duplicate animations (can happen when transition anim == dest idle)
+            for (int i = result.Count - 1; i > 0; i--)
+            {
+                if (result[i].AnimExport == result[i - 1].AnimExport)
+                {
+                    result.RemoveAt(i);
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                // Fallback: return all sequences with no blend
+                foreach (var exp in seqNameToExport.Values)
+                {
+                    result.Add(new AmbPerfStep(exp, 0f));
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Resolves an object reference (positive = export, negative = import) to an ExportEntry.
+        /// Uses a direct file lookup as fallback when standard import resolution fails
+        /// (e.g. when the package has RequireImportsAlreadyLoaded set).
+        /// Returns null if the reference cannot be resolved.
+        /// </summary>
+        private static ExportEntry ResolveToExport(IMEPackage pkg, int uIndex, PackageCache cache)
+        {
+            if (uIndex > 0 && pkg.TryGetUExport(uIndex, out var exp))
+                return exp;
+            if (uIndex < 0 && pkg.TryGetImport(uIndex, out var imp))
+            {
+                // Try standard resolution first
+                try
+                {
+                    var resolved = EntryImporter.ResolveImport(imp, cache);
+                    if (resolved != null) return resolved;
+                }
+                catch { /* fall through to manual lookup */ }
+
+                // Fallback: directly look up the source file by the import's root package name
+                try
+                {
+                    string rootName = imp.GetRootName();
+                    var gameFiles = MELoadedFiles.GetFilesLoadedInGame(pkg.Game, forceUseCached: true);
+                    string ext = pkg.Game == MEGame.ME1 ? ".sfm" : ".pcc";
+                    foreach (var tryName in new[] { $"{rootName}{ext}", $"{rootName}.upk", $"{rootName}.u" })
+                    {
+                        if (gameFiles.TryGetValue(tryName, out var filePath))
+                        {
+                            var sourcePkg = cache.GetCachedPackage(filePath, true);
+                            if (sourcePkg == null) continue;
+
+                            string ifp = imp.InstancedFullPath;
+                            // Try full path first (non-ForcedExport)
+                            var sourceExport = sourcePkg.FindExport(ifp);
+                            if (sourceExport != null) return sourceExport;
+
+                            // Try stripping root package name (ForcedExport style)
+                            if (ifp.StartsWith($"{rootName}.", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sourceExport = sourcePkg.FindExport(ifp.Substring(rootName.Length + 1));
+                                if (sourceExport != null) return sourceExport;
+                            }
+                            break;
+                        }
+                    }
+                }
+                catch { /* give up */ }
+            }
+            return null;
         }
 
         private void AnimPreview_MeshSelectionChanged(object sender, SelectionChangedEventArgs e)
