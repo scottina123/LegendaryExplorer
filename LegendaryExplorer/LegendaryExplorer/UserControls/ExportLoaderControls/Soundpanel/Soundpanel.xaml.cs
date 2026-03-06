@@ -2184,6 +2184,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// <param name="waveStream">PCM data stream</param>
         private void GenerateWaveform(Stream waveStream)
         {
+            if (waveStream == null)
+                return;
             if (!GenerateWaveformGraph)
                 return;
             waveStream.Position = 0;

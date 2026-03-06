@@ -48,9 +48,9 @@ public class RecentFileSet
     public string TooltipText => string.Join("\n", FilePaths.Select(Path.GetFileName));
 }
 
-public partial class LevelEditor : NotifyPropertyChangedWindowBase
+public partial class LevelEditor : NotifyPropertyChangedWindowBase, IActorEditorContext
 {
-    public readonly LevelEditorRenderContext RenderContext;
+    public LevelEditorRenderContext RenderContext { get; }
 
     public ObservableCollectionExtended<OpenLevelFile> OpenFiles { get; } = [];
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
@@ -591,7 +591,7 @@ public partial class LevelEditor : NotifyPropertyChangedWindowBase
     public readonly UndoHistory UndoHistory = new();
     private TransformSnapshot? _preEditSnapshot;
     private bool _isApplyingUndoRedo;
-    internal bool IsApplyingUndoRedo => _isApplyingUndoRedo;
+    public bool IsApplyingUndoRedo => _isApplyingUndoRedo;
 
     public bool CanUndo => UndoHistory.CanUndo;
     public bool CanRedo => UndoHistory.CanRedo;
