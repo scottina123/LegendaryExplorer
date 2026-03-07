@@ -69,8 +69,10 @@ namespace LegendaryExplorer.MainWindow
 
         private void Setting_OnTextChanged(object sender, TextChangedEventArgs e)
         {
-            // Handle setting of game paths
             var t = sender as TextBox;
+            t?.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+
+            // Handle setting of game paths
             if (t.Parent is StackPanel parentPanel && !string.IsNullOrEmpty(parentPanel.Tag.ToString()))
             {
                 switch (parentPanel.Tag.ToString())
