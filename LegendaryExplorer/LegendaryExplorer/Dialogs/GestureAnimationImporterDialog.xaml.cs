@@ -66,6 +66,16 @@ namespace LegendaryExplorer.Dialogs
         private bool IsSFXSkeletalMeshActor => _gestureTrackExport.ClassName == "SFXSkeletalMeshActor";
 
         /// <summary>
+        /// True if the target export is an SFXSeqAct_SetAmbientPerformance.
+        /// </summary>
+        private bool IsSFXSeqActSetAmbientPerformance => _gestureTrackExport.ClassName == "SFXSeqAct_SetAmbientPerformance";
+
+        /// <summary>
+        /// True if the target stores its default pose set directly on itself via m_pDefaultPoseSet.
+        /// </summary>
+        private bool UsesDefaultPoseSetTarget => IsSFXModuleGestures || IsSFXSeqActSetAmbientPerformance;
+
+        /// <summary>
         /// Finds the main SkeletalMeshComponent of an SFXSkeletalMeshActor — the one with
         /// AnimNodeSequence or BioDynamicAnimSet children (typically named SkeletalMeshComponent0),
         /// not HeadMesh0/HairMesh0/GearMesh0.
@@ -244,16 +254,16 @@ namespace LegendaryExplorer.Dialogs
 
             TargetExportInfo = $"Target: {gestureTrackExport.InstancedFullPath} (UIndex {gestureTrackExport.UIndex}) in {Path.GetFileName(_pcc.FilePath)}";
 
-            // Hide gesture-track-specific UI for SFXModule_Gestures and SFXSkeletalMeshActor
-            if (IsSFXModuleGestures || IsSFXSkeletalMeshActor)
+            // Hide gesture-track-specific UI for non-BioEvtSysTrackGesture targets
+            if (UsesDefaultPoseSetTarget || IsSFXSkeletalMeshActor)
             {
                 GbPropertyGroups.Visibility = Visibility.Collapsed;
                 GbGestureKeySettings.Visibility = Visibility.Collapsed;
                 EditGesturesTab.Visibility = Visibility.Collapsed;
             }
 
-            // Show Ambient Performances tab only for SFXModule_Gestures
-            if (IsSFXModuleGestures)
+            // Show Ambient Performances tab for targets that expose m_pPerfGameData
+            if (UsesDefaultPoseSetTarget)
             {
                 AmbPerfTab.Visibility = Visibility.Visible;
                 LoadCurrentAmbPerfInfo();
@@ -316,8 +326,8 @@ namespace LegendaryExplorer.Dialogs
                 PreviewMeshComboBox.SelectedIndex = meshIdx;
             }
 
-            // Load ambient performances for SFXModule_Gestures
-            if (IsSFXModuleGestures)
+            // Load ambient performances for targets that expose m_pPerfGameData
+            if (UsesDefaultPoseSetTarget)
             {
                 _allAmbPerfs = _db.Animations.Where(a => a.IsAmbPerf).ToList();
                 FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
@@ -529,9 +539,9 @@ namespace LegendaryExplorer.Dialogs
             {
                 var (setName, seqName) = ImportAnimationFromDatabase(SelectedAnimation);
 
-                if (IsSFXModuleGestures)
+                if (UsesDefaultPoseSetTarget)
                 {
-                    // For SFXModule_Gestures, set m_nmDefaultPoseAnim on the module
+                    // For default-pose targets, set m_nmDefaultPoseAnim on the export
                     _gestureTrackExport.WriteProperty(new NameProperty(seqName, "m_nmDefaultPoseAnim"));
                 }
                 else if (IsSFXSkeletalMeshActor)
@@ -595,7 +605,7 @@ namespace LegendaryExplorer.Dialogs
             ExportEntry dynamicAnimSet = FindOrImportBioDynamicAnimSet(_gestureTrackExport, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
             AddAnimSequenceToDynamicAnimSet(dynamicAnimSet, importedAnimSeq, bioAnimSetData, setName);
 
-            if (!IsSFXModuleGestures && !IsSFXSkeletalMeshActor)
+            if (!UsesDefaultPoseSetTarget && !IsSFXSkeletalMeshActor)
             {
                 _gestureTrackExport.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
             }
@@ -637,7 +647,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private ExportEntry FindOrImportBioDynamicAnimSet(ExportEntry gestureTrack, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
         {
-            if (IsSFXModuleGestures)
+            if (UsesDefaultPoseSetTarget)
             {
                 return FindOrImportBioDynamicAnimSetForSFXModule(gestureTrack, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
             }

@@ -2366,6 +2366,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
+                if (contextMenu.GetChild("gestureAnimationImporterMenuItem") is MenuItem gestureAnimationImporterMenuItem)
+                {
+                    if (obj.Export.ClassName == "SFXSeqAct_SetAmbientPerformance")
+                    {
+                        gestureAnimationImporterMenuItem.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        gestureAnimationImporterMenuItem.Visibility = Visibility.Collapsed;
+                    }
+                }
+
                 if (contextMenu.GetChild("repointIncomingReferences") is MenuItem repointIncomingReferences)
                 {
                     if (obj is SVar sVar)
@@ -3198,6 +3210,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             MessageBox.Show(this, "Cannot find Conversation!", "Sorry!", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        private void OpenGestureAnimationImporter_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is SObj obj && obj.Export.ClassName == "SFXSeqAct_SetAmbientPerformance")
+            {
+                var dialog = new GestureAnimationImporterDialog(obj.Export, this);
+                dialog.ShowDialog();
+            }
         }
 
         private void GlobalSeqRefViewSavesMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -4222,7 +4243,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                     break;
                 case "OpenGestureAnimationImporter":
-                    if (export.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor")
+                    if (export.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance")
                     {
                         var dialog = new GestureAnimationImporterDialog(export, this);
                         dialog.ShowDialog();

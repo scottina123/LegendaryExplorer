@@ -1193,11 +1193,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool CanShiftInterpTrackMove() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove";
 
-        private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor";
+        private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance";
 
         private void OpenGestureImporter()
         {
-            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor")
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance")
             {
                 var dialog = new Dialogs.GestureAnimationImporterDialog(exp, this);
                 dialog.ShowDialog();
