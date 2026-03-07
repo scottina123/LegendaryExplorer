@@ -863,13 +863,13 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             var peWindow = GetPEWindow();
             if (!peWindow.TryGetSelectedExport(out var export))
             {
-                MessageBox.Show("Please select a BioEvtSysTrackGesture export.", "No export selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Please select a BioEvtSysTrackGesture, SFXModule_Gestures, or SFXSkeletalMeshActor export.", "No export selected", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            if (export.ClassName != "BioEvtSysTrackGesture")
+            if (export.ClassName is not "BioEvtSysTrackGesture" and not "SFXModule_Gestures" and not "SFXSkeletalMeshActor")
             {
-                MessageBox.Show("Selected export is not a BioEvtSysTrackGesture.", "Invalid export type", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Selected export is not a BioEvtSysTrackGesture, SFXModule_Gestures, or SFXSkeletalMeshActor.", "Invalid export type", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

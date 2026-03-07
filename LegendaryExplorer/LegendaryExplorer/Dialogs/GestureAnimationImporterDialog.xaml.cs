@@ -44,6 +44,42 @@ namespace LegendaryExplorer.Dialogs
         private AssetDB _db;
         private List<AnimationRecord> _allAnimations = new();
 
+        /// <summary>
+        /// True if the target export is an SFXModule_Gestures (SFXStuntActor).
+        /// </summary>
+        private bool IsSFXModuleGestures => _gestureTrackExport.ClassName == "SFXModule_Gestures";
+
+        /// <summary>
+        /// True if the target export is an SFXSkeletalMeshActor.
+        /// </summary>
+        private bool IsSFXSkeletalMeshActor => _gestureTrackExport.ClassName == "SFXSkeletalMeshActor";
+
+        /// <summary>
+        /// Finds the main SkeletalMeshComponent of an SFXSkeletalMeshActor — the one with
+        /// AnimNodeSequence or BioDynamicAnimSet children (typically named SkeletalMeshComponent0),
+        /// not HeadMesh0/HairMesh0/GearMesh0.
+        /// </summary>
+        private ExportEntry FindMainSkeletalMeshComponent(ExportEntry skeletalMeshActor)
+        {
+            var skelMeshComponents = _pcc.Exports
+                .Where(exp => exp.idxLink == skeletalMeshActor.UIndex && exp.ClassName == "SkeletalMeshComponent")
+                .ToList();
+
+            // Prefer one that already has an AnimNodeSequence or BioDynamicAnimSet child
+            foreach (var comp in skelMeshComponents)
+            {
+                bool hasRelevantChild = _pcc.Exports.Any(exp =>
+                    exp.idxLink == comp.UIndex &&
+                    exp.ClassName is "AnimNodeSequence" or "BioDynamicAnimSet");
+                if (hasRelevantChild)
+                    return comp;
+            }
+
+            // Fall back to the one whose name starts with "SkeletalMeshComponent"
+            return skelMeshComponents.FirstOrDefault(c => c.ObjectName.Name.StartsWith("SkeletalMeshComponent"))
+                   ?? skelMeshComponents.FirstOrDefault();
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         private void OnPropertyChanged([CallerMemberName] string propertyName = null)
@@ -149,6 +185,33 @@ namespace LegendaryExplorer.Dialogs
         private string _editStartingPoseAnim = "None";
         public string EditStartingPoseAnim { get => _editStartingPoseAnim; set { _editStartingPoseAnim = value; OnPropertyChanged(); } }
 
+        // Ambient Performance properties
+        private List<AnimationRecord> _allAmbPerfs = new();
+        public ObservableCollectionExtended<AnimationRecord> FilteredAmbPerfs { get; } = new();
+
+        private AnimationRecord _selectedAmbPerf;
+        public AnimationRecord SelectedAmbPerf
+        {
+            get => _selectedAmbPerf;
+            set { _selectedAmbPerf = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanImportAmbPerf)); }
+        }
+
+        public bool CanImportAmbPerf => SelectedAmbPerf != null;
+
+        private string _ambPerfStatusText = "";
+        public string AmbPerfStatusText
+        {
+            get => _ambPerfStatusText;
+            set { _ambPerfStatusText = value; OnPropertyChanged(); }
+        }
+
+        private string _currentAmbPerfInfo = "";
+        public string CurrentAmbPerfInfo
+        {
+            get => _currentAmbPerfInfo;
+            set { _currentAmbPerfInfo = value; OnPropertyChanged(); }
+        }
+
         #endregion
 
         // File list from DB for resolving paths
@@ -156,6 +219,7 @@ namespace LegendaryExplorer.Dialogs
 
         // Animation preview state
         private IMEPackage _animPreviewPcc;
+        private IMEPackage _ambPerfPreviewPcc;
         private List<MeshRecord> _skeletonMeshes;
 
         public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner)
@@ -168,6 +232,21 @@ namespace LegendaryExplorer.Dialogs
             CustomWindowChrome.ApplyCustomChrome(this);
 
             TargetExportInfo = $"Target: {gestureTrackExport.InstancedFullPath} (UIndex {gestureTrackExport.UIndex}) in {Path.GetFileName(_pcc.FilePath)}";
+
+            // Hide gesture-track-specific UI for SFXModule_Gestures and SFXSkeletalMeshActor
+            if (IsSFXModuleGestures || IsSFXSkeletalMeshActor)
+            {
+                GbPropertyGroups.Visibility = Visibility.Collapsed;
+                GbGestureKeySettings.Visibility = Visibility.Collapsed;
+                EditGesturesTab.Visibility = Visibility.Collapsed;
+            }
+
+            // Show Ambient Performances tab only for SFXModule_Gestures
+            if (IsSFXModuleGestures)
+            {
+                AmbPerfTab.Visibility = Visibility.Visible;
+                LoadCurrentAmbPerfInfo();
+            }
 
             LoadExistingGestures();
             LoadDatabaseAsync();
@@ -215,6 +294,19 @@ namespace LegendaryExplorer.Dialogs
             if (meshIdx >= 0)
             {
                 PreviewMeshComboBox.SelectedIndex = meshIdx;
+            }
+
+            // Load ambient performances for SFXModule_Gestures
+            if (IsSFXModuleGestures)
+            {
+                _allAmbPerfs = _db.Animations.Where(a => a.IsAmbPerf).ToList();
+                FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
+                AmbPerfStatusText = $"{_allAmbPerfs.Count} ambient performances loaded.";
+                AmbPerfMeshComboBox.ItemsSource = _skeletonMeshes;
+                if (meshIdx >= 0)
+                {
+                    AmbPerfMeshComboBox.SelectedIndex = meshIdx;
+                }
             }
         }
 
@@ -402,8 +494,30 @@ namespace LegendaryExplorer.Dialogs
             {
                 var (setName, seqName) = ImportAnimationFromDatabase(SelectedAnimation);
 
-                // Create BioGestureData and BioTrackKey
-                AddGestureEntry(setName, seqName, poseChecked, gestureChecked, transitionChecked, startingPoseChecked);
+                if (IsSFXModuleGestures)
+                {
+                    // For SFXModule_Gestures, set m_nmDefaultPoseAnim on the module
+                    _gestureTrackExport.WriteProperty(new NameProperty(seqName, "m_nmDefaultPoseAnim"));
+                }
+                else if (IsSFXSkeletalMeshActor)
+                {
+                    // For SFXSkeletalMeshActor, set AnimSeqName on the AnimNodeSequence child
+                    ExportEntry skelMeshComp = FindMainSkeletalMeshComponent(_gestureTrackExport);
+                    if (skelMeshComp != null)
+                    {
+                        ExportEntry animNodeSeq = _pcc.Exports.FirstOrDefault(exp =>
+                            exp.idxLink == skelMeshComp.UIndex && exp.ClassName == "AnimNodeSequence");
+                        if (animNodeSeq != null)
+                        {
+                            animNodeSeq.WriteProperty(new NameProperty(seqName, "AnimSeqName"));
+                        }
+                    }
+                }
+                else
+                {
+                    // For BioEvtSysTrackGesture, create BioGestureData and BioTrackKey
+                    AddGestureEntry(setName, seqName, poseChecked, gestureChecked, transitionChecked, startingPoseChecked);
+                }
 
                 // Reload the gesture list
                 LoadExistingGestures();
@@ -446,7 +560,10 @@ namespace LegendaryExplorer.Dialogs
             ExportEntry dynamicAnimSet = FindOrImportBioDynamicAnimSet(_gestureTrackExport, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
             AddAnimSequenceToDynamicAnimSet(dynamicAnimSet, importedAnimSeq, bioAnimSetData, setName);
 
-            _gestureTrackExport.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
+            if (!IsSFXModuleGestures && !IsSFXSkeletalMeshActor)
+            {
+                _gestureTrackExport.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
+            }
 
             return (setName, seqNameRef.Name);
         }
@@ -481,8 +598,156 @@ namespace LegendaryExplorer.Dialogs
         /// Find an existing BioDynamicAnimSet in the target sequence, or import one from the source package.
         /// Matches by m_nmOrigSetName so that KIS_DYN_* sets with the same anim set name are reused.
         /// Never creates a BioDynamicAnimSet from scratch — always imports a real one to avoid malformed binary.
+        /// For SFXModule_Gestures, uses m_pDefaultPoseSet instead of the sequence shared anim sets.
         /// </summary>
         private ExportEntry FindOrImportBioDynamicAnimSet(ExportEntry gestureTrack, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
+        {
+            if (IsSFXModuleGestures)
+            {
+                return FindOrImportBioDynamicAnimSetForSFXModule(gestureTrack, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
+            }
+
+            if (IsSFXSkeletalMeshActor)
+            {
+                return FindOrImportBioDynamicAnimSetForSkeletalMeshActor(gestureTrack, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
+            }
+
+            return FindOrImportBioDynamicAnimSetForMatinee(gestureTrack, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
+        }
+
+        /// <summary>
+        /// SFXModule_Gestures path: BioDynamicAnimSets are children of the module and referenced via m_pDefaultPoseSet.
+        /// </summary>
+        private ExportEntry FindOrImportBioDynamicAnimSetForSFXModule(ExportEntry gestureModule, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
+        {
+            // Check if there's already a BioDynamicAnimSet via m_pDefaultPoseSet
+            var defaultPoseSetProp = gestureModule.GetProperty<ObjectProperty>("m_pDefaultPoseSet");
+            if (defaultPoseSetProp != null && _pcc.TryGetUExport(defaultPoseSetProp.Value, out ExportEntry existingDynSet)
+                && existingDynSet.ClassName == "BioDynamicAnimSet")
+            {
+                // Clear existing Sequences and binary so the new animation replaces the old one.
+                NameReference existingSeqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+                existingDynSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+                existingDynSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+                existingDynSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+                {
+                    new ObjectProperty(importedAnimSeq.UIndex)
+                });
+                existingDynSet.WriteBinary(new BioDynamicAnimSet
+                {
+                    SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                    [
+                        new KeyValuePair<NameReference, int>(existingSeqName, 1)
+                    ])
+                });
+                return existingDynSet;
+            }
+
+            // No existing set — import one from the source package
+            ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
+            if (sourceDynAnimSet == null)
+            {
+                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+            }
+
+            // Import the BioDynamicAnimSet as a child of the SFXModule_Gestures
+            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
+                sourceDynAnimSet, _pcc, gestureModule, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+
+            // Clear stale Sequences from the cloned source and initialize with the new animation
+            importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+            importedDynAnimSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+            NameReference seqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+            importedDynAnimSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+            {
+                new ObjectProperty(importedAnimSeq.UIndex)
+            });
+            importedDynAnimSet.WriteBinary(new BioDynamicAnimSet
+            {
+                SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                [
+                    new KeyValuePair<NameReference, int>(seqName, 1)
+                ])
+            });
+
+            // Set m_pDefaultPoseSet on the SFXModule_Gestures to reference the new set
+            gestureModule.WriteProperty(new ObjectProperty(importedDynAnimSet.UIndex, "m_pDefaultPoseSet"));
+
+            return importedDynAnimSet;
+        }
+
+        /// <summary>
+        /// SFXSkeletalMeshActor path: BioDynamicAnimSet is a child of the SkeletalMeshComponent.
+        /// </summary>
+        private ExportEntry FindOrImportBioDynamicAnimSetForSkeletalMeshActor(ExportEntry skeletalMeshActor, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
+        {
+            // Find the main SkeletalMeshComponent child (not HeadMesh0/HairMesh0/GearMesh0)
+            ExportEntry skelMeshComp = FindMainSkeletalMeshComponent(skeletalMeshActor);
+            if (skelMeshComp == null)
+            {
+                throw new Exception("Could not find a SkeletalMeshComponent child of the SFXSkeletalMeshActor.");
+            }
+
+            // Check if there's already a BioDynamicAnimSet under the SkeletalMeshComponent
+            ExportEntry existingDynSet = _pcc.Exports.FirstOrDefault(exp =>
+                exp.idxLink == skelMeshComp.UIndex && exp.ClassName == "BioDynamicAnimSet");
+            if (existingDynSet != null)
+            {
+                // Clear existing Sequences and binary so the new animation replaces the old one.
+                // SFXSkeletalMeshActor plays one animation at a time, so we replace rather than append.
+                NameReference existingSeqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+                existingDynSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+                existingDynSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+                existingDynSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+                {
+                    new ObjectProperty(importedAnimSeq.UIndex)
+                });
+                existingDynSet.WriteBinary(new BioDynamicAnimSet
+                {
+                    SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                    [
+                        new KeyValuePair<NameReference, int>(existingSeqName, 1)
+                    ])
+                });
+                return existingDynSet;
+            }
+
+            // No existing set — import one from the source package
+            ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
+            if (sourceDynAnimSet == null)
+            {
+                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+            }
+
+            // Import the BioDynamicAnimSet as a child of the SkeletalMeshComponent
+            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
+                sourceDynAnimSet, _pcc, skelMeshComp, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+
+            // Clear stale Sequences from the cloned source and initialize with the new animation
+            importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+            importedDynAnimSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+            NameReference seqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+            importedDynAnimSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+            {
+                new ObjectProperty(importedAnimSeq.UIndex)
+            });
+            importedDynAnimSet.WriteBinary(new BioDynamicAnimSet
+            {
+                SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                [
+                    new KeyValuePair<NameReference, int>(seqName, 1)
+                ])
+            });
+
+            return importedDynAnimSet;
+        }
+
+        /// <summary>
+        /// BioEvtSysTrackGesture (matinee) path: BioDynamicAnimSets live in the parent sequence's shared anim sets.
+        /// </summary>
+        private ExportEntry FindOrImportBioDynamicAnimSetForMatinee(ExportEntry gestureTrack, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
         {
             // Walk up the tree to find the InterpData, then the sequence
             ExportEntry interpGroup = _pcc.GetUExport(gestureTrack.Parent.UIndex);
@@ -517,8 +782,50 @@ namespace LegendaryExplorer.Dialogs
                 }
             }
 
-            // None found in target — find a KIS_DYN_* BioDynamicAnimSet in the source package that has
-            // a matching m_nmOrigSetName, then import it.
+            // None found in target — import from source
+            ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
+            if (sourceDynAnimSet == null)
+            {
+                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+            }
+
+            // Import the BioDynamicAnimSet from the source package into the sequence
+            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
+                sourceDynAnimSet, _pcc, sequenceExport, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+
+            // Clear stale Sequences from the cloned source and initialize with the new animation
+            importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+            importedDynAnimSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+            NameReference seqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+            importedDynAnimSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+            {
+                new ObjectProperty(importedAnimSeq.UIndex)
+            });
+            importedDynAnimSet.WriteBinary(new BioDynamicAnimSet
+            {
+                SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                [
+                    new KeyValuePair<NameReference, int>(seqName, 1)
+                ])
+            });
+
+            // Add to the sequence's shared anim sets property
+            if (sharedAnimSets == null)
+            {
+                sharedAnimSets = new ArrayProperty<ObjectProperty>(sharedAnimSetsPropName);
+            }
+            sharedAnimSets.Add(new ObjectProperty(importedDynAnimSet.UIndex));
+            sequenceExport.WriteProperty(sharedAnimSets);
+
+            return importedDynAnimSet;
+        }
+
+        /// <summary>
+        /// Searches the source package for a BioDynamicAnimSet to use as a template for importing.
+        /// </summary>
+        private static ExportEntry FindSourceBioDynamicAnimSet(IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
+        {
             var sourceAnimSetDataRef = sourceAnimSeq.GetProperty<ObjectProperty>("m_pBioAnimSetData");
             ExportEntry sourceDynAnimSet = null;
 
@@ -546,43 +853,7 @@ namespace LegendaryExplorer.Dialogs
             // Third pass: any BioDynamicAnimSet at all
             sourceDynAnimSet ??= sourcePackage.Exports.FirstOrDefault(exp => exp.ClassName == "BioDynamicAnimSet");
 
-            if (sourceDynAnimSet == null)
-            {
-                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
-            }
-
-            // Import the BioDynamicAnimSet from the source package into the sequence
-            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
-                sourceDynAnimSet, _pcc, sequenceExport, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
-            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
-
-            // Update its properties to point to the correct imported references in the target package
-            importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
-            importedDynAnimSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
-
-            // Reset Sequences to just the new anim and rebuild the binary map
-            NameReference seqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
-            importedDynAnimSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
-            {
-                new ObjectProperty(importedAnimSeq.UIndex)
-            });
-            importedDynAnimSet.WriteBinary(new BioDynamicAnimSet
-            {
-                SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
-                [
-                    new KeyValuePair<NameReference, int>(seqName, 1)
-                ])
-            });
-
-            // Add to the sequence's shared anim sets property
-            if (sharedAnimSets == null)
-            {
-                sharedAnimSets = new ArrayProperty<ObjectProperty>(sharedAnimSetsPropName);
-            }
-            sharedAnimSets.Add(new ObjectProperty(importedDynAnimSet.UIndex));
-            sequenceExport.WriteProperty(sharedAnimSets);
-
-            return importedDynAnimSet;
+            return sourceDynAnimSet;
         }
 
         private ExportEntry FindParentSequence(ExportEntry interpData)
@@ -1032,6 +1303,177 @@ namespace LegendaryExplorer.Dialogs
 
         #endregion
 
+        #region Ambient Performances
+
+        private void LoadCurrentAmbPerfInfo()
+        {
+            var perfProp = _gestureTrackExport.GetProperty<ObjectProperty>("m_pPerfGameData");
+            if (perfProp != null && _pcc.TryGetEntry(perfProp.Value, out IEntry perfEntry))
+            {
+                CurrentAmbPerfInfo = $"Current: {perfEntry.ObjectName.Instanced} (#{perfEntry.UIndex})";
+            }
+            else
+            {
+                CurrentAmbPerfInfo = "Current: None";
+            }
+        }
+
+        private void AmbPerfSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            string filter = AmbPerfSearchBox.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(filter))
+            {
+                FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
+            }
+            else
+            {
+                FilteredAmbPerfs.ReplaceAll(_allAmbPerfs.Where(a =>
+                    a.AnimSequence.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    (a.SeqName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)));
+            }
+        }
+
+        private void AmbPerfListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SelectedAmbPerf != null)
+            {
+                LoadAmbPerfPreview(SelectedAmbPerf);
+            }
+        }
+
+        private void AmbPerfMesh_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            LoadPreviewMesh(AmbPerfMeshComboBox.SelectedItem as MeshRecord, AmbPerfPreviewControl);
+        }
+
+        private void LoadAmbPerfPreview(AnimationRecord anim)
+        {
+            if (anim == null || !anim.Usages.Any())
+            {
+                AmbPerfPreviewControl.ClearAnimation();
+                return;
+            }
+
+            // Ambient performances are SFXAmbPerfGameData, not AnimSequences.
+            // Find the first AnimSequence child to preview.
+            var usage = anim.Usages.First();
+            string filePath = GetFilePath(usage.FileKey);
+            if (filePath == null)
+            {
+                AmbPerfPreviewControl.ClearAnimation();
+                return;
+            }
+
+            _ambPerfPreviewPcc?.Dispose();
+            _ambPerfPreviewPcc = MEPackageHandler.OpenMEPackage(filePath);
+
+            if (!_ambPerfPreviewPcc.IsUExport(usage.UIndex))
+            {
+                AmbPerfPreviewControl.ClearAnimation();
+                return;
+            }
+
+            ExportEntry ambPerfExport = _ambPerfPreviewPcc.GetUExport(usage.UIndex);
+
+            // Find a child AnimSequence to preview
+            ExportEntry animSeqToPreview = null;
+            foreach (var child in ambPerfExport.GetChildren())
+            {
+                if (child is ExportEntry childExp && childExp.ClassName == "BioDynamicAnimSet")
+                {
+                    var seqs = childExp.GetProperty<ArrayProperty<ObjectProperty>>("Sequences");
+                    if (seqs != null)
+                    {
+                        foreach (var seqRef in seqs)
+                        {
+                            if (_ambPerfPreviewPcc.TryGetUExport(seqRef.Value, out ExportEntry seqExp) && seqExp.ClassName == "AnimSequence")
+                            {
+                                animSeqToPreview = seqExp;
+                                break;
+                            }
+                        }
+                    }
+                    if (animSeqToPreview != null) break;
+                }
+            }
+
+            if (animSeqToPreview != null)
+            {
+                AmbPerfPreviewControl.LoadAnimSequence(animSeqToPreview);
+                AmbPerfPreviewControl.Play();
+            }
+            else
+            {
+                AmbPerfPreviewControl.ClearAnimation();
+            }
+        }
+
+        private void ImportAmbPerf_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedAmbPerf == null)
+            {
+                MessageBox.Show("Please select an ambient performance first.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                ImportAmbientPerformance(SelectedAmbPerf);
+                LoadCurrentAmbPerfInfo();
+                StatusMessage = $"Successfully imported ambient performance '{SelectedAmbPerf.AnimSequence}'.";
+                MessageBox.Show($"Ambient performance '{SelectedAmbPerf.AnimSequence}' has been imported and linked to m_pPerfGameData.", "Import Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error importing ambient performance: {ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Imports an SFXAmbPerfGameData from the source package and sets m_pPerfGameData on the gesture module.
+        /// </summary>
+        private void ImportAmbientPerformance(AnimationRecord ambPerf)
+        {
+            if (!ambPerf.Usages.Any())
+                throw new Exception("No usages found for this ambient performance.");
+
+            // Find the source SFXAmbPerfGameData export
+            string sourceFilePath = null;
+            int sourceUIndex = 0;
+            foreach (var usage in ambPerf.Usages)
+            {
+                string filePath = GetFilePath(usage.FileKey);
+                if (filePath == null) continue;
+
+                using var testPkg = MEPackageHandler.OpenMEPackage(filePath);
+                if (testPkg.IsUExport(usage.UIndex) && testPkg.GetUExport(usage.UIndex).ClassName == "SFXAmbPerfGameData")
+                {
+                    sourceFilePath = filePath;
+                    sourceUIndex = usage.UIndex;
+                    break;
+                }
+            }
+
+            if (sourceFilePath == null)
+                throw new Exception("Could not resolve the ambient performance's source file.");
+
+            using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(sourceFilePath);
+            ExportEntry sourceExport = sourcePackage.GetUExport(sourceUIndex);
+
+            // Preserve the original package hierarchy (e.g. BIOG_GesturesConfig.WalkToThinkingFrustrated)
+            // rather than parenting under SFXModule_Gestures
+            IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceExport.ParentFullPath, sourcePackage, _pcc, new RelinkerOptionsPackage());
+
+            var rop = new RelinkerOptionsPackage();
+            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneTreeAsChild,
+                sourceExport, _pcc, parent, true, rop, out IEntry importedEntry);
+
+            // Set m_pPerfGameData on the gesture module
+            _gestureTrackExport.WriteProperty(new ObjectProperty(importedEntry.UIndex, "m_pPerfGameData"));
+        }
+
+        #endregion
+
         private void Close_Click(object sender, RoutedEventArgs e)
         {
             Close();
@@ -1040,8 +1482,11 @@ namespace LegendaryExplorer.Dialogs
         private void Window_Closing(object sender, CancelEventArgs e)
         {
             AnimPreviewControl?.Dispose();
+            AmbPerfPreviewControl?.Dispose();
             _animPreviewPcc?.Dispose();
             _animPreviewPcc = null;
+            _ambPerfPreviewPcc?.Dispose();
+            _ambPerfPreviewPcc = null;
         }
     }
 }

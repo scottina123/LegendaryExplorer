@@ -551,6 +551,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Folder Include="LegendaryExplorer\Dialogs\" />
 	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
 	</ItemGroup>
 

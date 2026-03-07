@@ -16,7 +16,7 @@
 
         <!-- Top: Target Info -->
         <StackPanel Grid.Row="0" Margin="0,0,0,8">
-            <TextBlock Text="Import animations into BioEvtSysTrackGesture" FontWeight="Bold" FontSize="14"/>
+            <TextBlock Text="Import animations into Gesture Track" FontWeight="Bold" FontSize="14"/>
             <TextBlock Text="{Binding TargetExportInfo}" Opacity="0.7" Margin="0,2,0,0"/>
         </StackPanel>
 
@@ -85,7 +85,7 @@
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>
                                 <!-- Group Selection -->
-                                <GroupBox Header="Animation Property Groups" Padding="8" Margin="0,0,0,8">
+                                <GroupBox x:Name="GbPropertyGroups" Header="Animation Property Groups" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
                                         <TextBlock Text="Select which property groups this animation should be assigned to:" TextWrapping="Wrap" Margin="0,0,0,8" Opacity="0.7"/>
                                         <CheckBox x:Name="CbPoseGroup" Content="Pose (nmPoseSet / nmPoseAnim)" Margin="0,2" IsChecked="True"/>
@@ -96,7 +96,7 @@
                                 </GroupBox>
 
                                 <!-- Gesture Key Settings -->
-                                <GroupBox Header="Gesture Key Settings" Padding="8" Margin="0,0,0,8">
+                                <GroupBox x:Name="GbGestureKeySettings" Header="Gesture Key Settings" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
                                         <DockPanel Margin="0,2">
                                             <TextBlock Text="Key Time: " VerticalAlignment="Center" DockPanel.Dock="Left" Width="80"/>
@@ -130,7 +130,7 @@
             </TabItem>
 
             <!-- Tab 2: Edit Existing Gestures -->
-            <TabItem Header="Edit Existing Gestures">
+            <TabItem x:Name="EditGesturesTab" Header="Edit Existing Gestures">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="200"/>
@@ -287,9 +287,68 @@
                     </DockPanel>
                 </Grid>
             </TabItem>
-        </TabControl>
 
-        <!-- Bottom: Status / Close -->
+            <!-- Tab 3: Ambient Performances (SFXModule_Gestures only) -->
+            <TabItem x:Name="AmbPerfTab" Header="Ambient Performances" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="300" MinWidth="200"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Ambient Performance Preview -->
+                    <DockPanel Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top" Text="Ambient Performance Preview" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Mesh: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="AmbPerfMeshComboBox" DisplayMemberPath="MeshName" SelectionChanged="AmbPerfMesh_SelectionChanged"/>
+                        </DockPanel>
+                        <sharedToolControls:AnimationPreviewControl x:Name="AmbPerfPreviewControl"/>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <!-- Right: Ambient Performance List -->
+                    <DockPanel Grid.Column="2" Margin="5,0,0,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Ambient Performances from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBox x:Name="AmbPerfSearchBox" TextChanged="AmbPerfSearchBox_TextChanged"/>
+                        </DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding AmbPerfStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
+
+                        <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding CurrentAmbPerfInfo}" Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <Button Content="Import Ambient Performance" 
+                                    Padding="8,4"
+                                    Click="ImportAmbPerf_Click"
+                                    IsEnabled="{Binding CanImportAmbPerf}"/>
+                        </DockPanel>
+
+                        <ListBox x:Name="AmbPerfListBox" 
+                                 ItemsSource="{Binding FilteredAmbPerfs}"
+                                 SelectedItem="{Binding SelectedAmbPerf}"
+                                 SelectionChanged="AmbPerfListBox_SelectionChanged"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding AnimSequence}" FontWeight="DemiBold"/>
+                                        <TextBlock Opacity="0.7" FontSize="10">
+                                            <Run Text="{Binding SeqName, Mode=OneWay}"/>
+                                            <Run Text=" | "/>
+                                            <Run Text="{Binding Length, StringFormat={}{0:F2}s, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
         <DockPanel Grid.Row="2" Margin="0,8,0,0">
             <Button Content="Close" DockPanel.Dock="Right" Padding="16,4" Click="Close_Click"/>
             <TextBlock x:Name="StatusText" VerticalAlignment="Center" Text="{Binding StatusMessage}" Opacity="0.7"/>

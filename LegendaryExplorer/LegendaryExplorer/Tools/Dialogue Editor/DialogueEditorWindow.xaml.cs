@@ -2404,7 +2404,7 @@ namespace LegendaryExplorer.DialogueEditor
             var selectedExport = GetSelectedInterpDataTreeExport();
             bool isInterpData = selectedExport?.ClassName == "InterpData";
             bool isInterpTrackMove = selectedExport?.ClassName == "InterpTrackMove";
-            bool isGestureTrack = selectedExport?.ClassName == "BioEvtSysTrackGesture";
+            bool isGestureTrack = selectedExport?.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor";
 
             SetContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
             SetContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
@@ -2535,7 +2535,7 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
                 case "OpenGestureAnimationImporter":
-                    if (export.ClassName == "BioEvtSysTrackGesture")
+                    if (export.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor")
                     {
                         var dialog = new GestureAnimationImporterDialog(export, this);
                         dialog.ShowDialog();

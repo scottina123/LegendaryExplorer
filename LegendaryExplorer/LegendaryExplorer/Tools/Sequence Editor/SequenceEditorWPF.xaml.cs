@@ -4184,7 +4184,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                     break;
                 case "OpenGestureAnimationImporter":
-                    if (export.ClassName == "BioEvtSysTrackGesture")
+                    if (export.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor")
                     {
                         var dialog = new GestureAnimationImporterDialog(export, this);
                         dialog.ShowDialog();
