@@ -66,6 +66,8 @@
             <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
             <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
+            <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
             <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
@@ -105,6 +107,8 @@
             <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
             <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
+            <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
             <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
@@ -1295,6 +1299,15 @@
                                                                   Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                              </Button.Content>
                                          </Button>
+                                         <Button Name="ExportAudioM_Button" Padding="3"
+                                                 DockPanel.Dock="Right"
+                                                 Command="{Binding ExportAudioCommand, ElementName=SoundpanelWPF_M}"
+                                                 ToolTip="Export male audio to Wave file">
+                                             <Button.Content>
+                                                 <fa:ImageAwesome Icon="Solid_FileAudio" Width="16"
+                                                                  Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                             </Button.Content>
+                                         </Button>
                                          <Button Name="Open_WwStreamM_Button" Padding="3"
                                                  DockPanel.Dock="Right"
                                                  Command="{Binding OpenInCommand}"
@@ -1366,6 +1379,15 @@
                                                 ToolTip="Replace female audio from wave file">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_FileImport" Width="16"
+                                                                 Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="ExportAudioF_Button" Padding="3"
+                                                DockPanel.Dock="Right"
+                                                Command="{Binding ExportAudioCommand, ElementName=SoundpanelWPF_F}"
+                                                ToolTip="Export female audio to Wave file">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_FileAudio" Width="16"
                                                                  Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
