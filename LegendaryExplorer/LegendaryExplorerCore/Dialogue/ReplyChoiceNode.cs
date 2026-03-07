@@ -36,6 +36,22 @@ namespace LegendaryExplorerCore.Dialogue
         public string TgtLine { get; set; }
         /// <summary>The <see cref="SpeakerExtended.SpeakerName"/> of the speaker of the reply node that this choice links to</summary>
         public string TgtSpeaker { get; set; }
+        /// <summary>True when this row represents an incoming connection to the current node.</summary>
+        public bool IsIncomingConnection { get; set; }
+        /// <summary>True when this row is a visual divider between link sections.</summary>
+        public bool IsDividerRow { get; set; }
+        /// <summary>The graph object UID that should be navigated to for this row.</summary>
+        public int NavigationNodeUid { get; set; } = -1;
+        /// <summary>True when this row can be edited, cloned, deleted, or reordered.</summary>
+        public bool IsEditableLink => !IsIncomingConnection && !IsDividerRow;
+        /// <summary>True when this row has a graph object that can be navigated to.</summary>
+        public bool HasNavigationTarget => !IsDividerRow && NavigationNodeUid >= 0;
+        /// <summary>The navigation button text shown for this row.</summary>
+        public string NavigationButtonText => IsDividerRow ? string.Empty : IsIncomingConnection ? "Back" : "Go";
+
+        public ReplyChoiceNode()
+        {
+        }
 
         /// <summary>
         /// Basic constructor for <see cref="ReplyChoiceNode"/>
@@ -72,6 +88,9 @@ namespace LegendaryExplorerCore.Dialogue
             TgtFireCnd = other.TgtFireCnd;
             TgtLine = other.TgtLine;
             TgtSpeaker = other.TgtSpeaker;
+            IsIncomingConnection = other.IsIncomingConnection;
+            IsDividerRow = other.IsDividerRow;
+            NavigationNodeUid = other.NavigationNodeUid;
         }
 
 #pragma warning disable

@@ -3370,10 +3370,46 @@ namespace LegendaryExplorer.DialogueEditor
             return null;
         }
 
+        public DObj SelectGraphObjectByUid(int nodeUid, bool centerView = false)
+        {
+            var targetObject = CurrentObjects.FirstOrDefault(o => o.NodeUID == nodeUid);
+            switch (targetObject)
+            {
+                case DiagNode diagNode:
+                    DialogueNode_Selected(diagNode);
+                    break;
+                case DStart startNode:
+                    foreach (var oldselection in SelectedObjects)
+                    {
+                        oldselection.IsSelected = false;
+                    }
+
+                    SelectedObjects.ClearEx();
+                    startNode.IsSelected = true;
+                    SelectedObjects.Add(startNode);
+                    Start_ListBox.SelectedIndex = startNode.Order;
+                    SetUIMode(3, false);
+                    break;
+                default:
+                    return null;
+            }
+
+            if (centerView && graphEditor != null)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(targetObject.GlobalFullBounds, false, 100);
+                graphEditor.Refresh();
+            }
+
+            return targetObject;
+        }
+
         public DiagNode SelectDialogueNodeByIndex(int index, bool isReply = false, bool centerView = false)
         {
-            var node = DialogueNode_SelectByIndex(index, isReply);
-            if (centerView && node != null && graphEditor != null)
+            var node = index == -1
+                ? DialogueNode_SelectByIndex(index, isReply)
+                : SelectGraphObjectByUid(index + (isReply ? 1000 : 0), centerView) as DiagNode;
+
+            if (index == -1 && centerView && node != null && graphEditor != null)
             {
                 graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 100);
                 graphEditor.Refresh();
@@ -3911,16 +3947,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             InlineLinkEditor_LineText.Text = node.Node.Line;
             BuildInlineLinkEditorColumns();
-            InlineLinkEditorLinks.ClearEx();
-
-            int order = 0;
-            foreach (var link in node.Links)
-            {
-                link.Order = order;
-                ParseInlineLink(link);
-                InlineLinkEditorLinks.Add(link);
-                order++;
-            }
+            RebuildInlineLinkEditorRows(node.Links.OrderBy(link => link.Order));
         }
 
         private void BuildInlineLinkEditorColumns()
@@ -4101,10 +4128,133 @@ namespace LegendaryExplorer.DialogueEditor
             return $"{(inlineLinkEditorIsReply ? "Reply" : "Entry")}::{header}";
         }
 
+        private static ReplyChoiceNode CreateLinkSectionDivider(string label)
+        {
+            return new ReplyChoiceNode
+            {
+                IsDividerRow = true,
+                NodeIDLink = label,
+                Ordinal = string.Empty,
+                TgtFireCnd = string.Empty,
+                TgtLine = string.Empty,
+                TgtSpeaker = string.Empty,
+                ReplyLine = string.Empty
+            };
+        }
+
+        private static string GetDialogueNodeLinkLabel(DiagNode node)
+        {
+            return $"{(node.Node.IsReply ? "R" : "E")}{node.Node.NodeCount}";
+        }
+
+        private static int GetLinkedTargetNodeUid(DiagNode sourceNode, ReplyChoiceNode link)
+        {
+            return sourceNode.Node.IsReply ? link.Index : link.Index + 1000;
+        }
+
+        private ReplyChoiceNode CreateIncomingLinkRow(DiagNode sourceNode, ReplyChoiceNode sourceLink)
+        {
+            return new ReplyChoiceNode(sourceLink)
+            {
+                IsIncomingConnection = true,
+                NavigationNodeUid = sourceNode.NodeUID,
+                Ordinal = "In",
+                NodeIDLink = GetDialogueNodeLinkLabel(sourceNode),
+                TgtFireCnd = sourceNode.Node.FiresConditional ? "Conditional" : "Bool",
+                TgtCondition = sourceNode.Node.ConditionalOrBool,
+                TgtLine = sourceNode.Node.Line,
+                TgtSpeaker = sourceNode.Node.SpeakerTag?.SpeakerName ?? "Unknown"
+            };
+        }
+
+        private static ReplyChoiceNode CreateIncomingStartRow(int startOrder, int targetNodeIndex)
+        {
+            return new ReplyChoiceNode
+            {
+                IsIncomingConnection = true,
+                NavigationNodeUid = 2000 + targetNodeIndex,
+                Ordinal = "In",
+                NodeIDLink = $"{AddOrdinal(startOrder + 1)} Start",
+                TgtLine = $"Start node -> E{targetNodeIndex}",
+                TgtFireCnd = string.Empty,
+                TgtSpeaker = string.Empty,
+                ReplyLine = string.Empty
+            };
+        }
+
+        private List<ReplyChoiceNode> GetInlineEditableLinks()
+        {
+            return InlineLinkEditorLinks.Where(link => link.IsEditableLink).OrderBy(link => link.Order).ToList();
+        }
+
+        private List<ReplyChoiceNode> GetIncomingInlineLinkRows(DiagNode node)
+        {
+            List<ReplyChoiceNode> incomingRows = [];
+
+            if (!node.Node.IsReply)
+            {
+                foreach (var startLink in SelectedConv.StartingList.Where(kvp => kvp.Value == node.Node.NodeCount).OrderBy(kvp => kvp.Key))
+                {
+                    incomingRows.Add(CreateIncomingStartRow(startLink.Key, startLink.Value));
+                }
+            }
+
+            foreach (var sourceNode in CurrentObjects.OfType<DiagNode>().OrderBy(o => o.NodeUID))
+            {
+                foreach (var sourceLink in sourceNode.Links.OrderBy(link => link.Order))
+                {
+                    if (GetLinkedTargetNodeUid(sourceNode, sourceLink) == node.NodeUID)
+                    {
+                        incomingRows.Add(CreateIncomingLinkRow(sourceNode, sourceLink));
+                    }
+                }
+            }
+
+            return incomingRows;
+        }
+
+        private void RebuildInlineLinkEditorRows(IEnumerable<ReplyChoiceNode> editableLinks = null, ReplyChoiceNode selectedLink = null)
+        {
+            if (inlineLinkEditorNode == null)
+            {
+                InlineLinkEditorLinks.ClearEx();
+                return;
+            }
+
+            var outgoingLinks = (editableLinks ?? GetInlineEditableLinks()).OrderBy(link => link.Order).ToList();
+            var incomingRows = GetIncomingInlineLinkRows(inlineLinkEditorNode);
+
+            InlineLinkEditorLinks.ClearEx();
+
+            if (incomingRows.Count > 0)
+            {
+                InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Incoming Connections"));
+                foreach (var incomingRow in incomingRows)
+                {
+                    InlineLinkEditorLinks.Add(incomingRow);
+                }
+            }
+
+            InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Outgoing Connections"));
+            foreach (var outgoingLink in outgoingLinks)
+            {
+                ParseInlineLink(outgoingLink);
+                InlineLinkEditorLinks.Add(outgoingLink);
+            }
+
+            if (selectedLink != null)
+            {
+                InlineLinkEditor_DataGrid.SelectedItem = InlineLinkEditorLinks.FirstOrDefault(link => ReferenceEquals(link, selectedLink));
+            }
+        }
+
         private void ParseInlineLink(ReplyChoiceNode link)
         {
             string nodePrefix = inlineLinkEditorIsReply ? "E" : "R";
             int targetUID = inlineLinkEditorIsReply ? link.Index : link.Index + 1000;
+            link.IsIncomingConnection = false;
+            link.IsDividerRow = false;
+            link.NavigationNodeUid = targetUID;
             link.NodeIDLink = $"{nodePrefix}{link.Index}";
             link.ReplyLine = GlobalFindStrRefbyID(link.ReplyStrRef, Pcc);
 
@@ -4138,13 +4288,15 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            var editableLinks = GetInlineEditableLinks();
+
             if (inlineLinkEditorIsReply)
             {
-                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(InlineLinkEditorLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
+                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(editableLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
             }
             else
             {
-                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(InlineLinkEditorLinks.Select(link =>
+                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(editableLinks.Select(link =>
                     new StructProperty("BioDialogReplyListDetails", new PropertyCollection
                     {
                         new IntProperty(link.Index, "nIndex"),
@@ -4170,10 +4322,11 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void InlineLinkEditor_Delete_Click(object sender, RoutedEventArgs e)
         {
-            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode link)
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode { IsEditableLink: true } link)
             {
                 InlineLinkEditor_DataGrid.SelectedItem = link;
-                InlineLinkEditorLinks.Remove(link);
+                var editableLinks = GetInlineEditableLinks();
+                editableLinks.Remove(link);
                 ReOrderInlineLinkEditorLinks();
                 inlineLinkEditorNeedsSave = true;
             }
@@ -4181,19 +4334,20 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void InlineLinkEditor_Clone_Click(object sender, RoutedEventArgs e)
         {
-            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode selectedLink)
+            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } selectedLink)
             {
                 return;
             }
 
-            InlineLinkEditorLinks.Add(new ReplyChoiceNode(selectedLink) { Order = InlineLinkEditorLinks.Count + 1 });
-            ReOrderInlineLinkEditorLinks();
+            var editableLinks = GetInlineEditableLinks();
+            editableLinks.Add(new ReplyChoiceNode(selectedLink) { Order = editableLinks.Count + 1 });
+            RebuildInlineLinkEditorRows(editableLinks, selectedLink);
             inlineLinkEditorNeedsSave = true;
         }
 
         private void InlineLinkEditor_Move_Click(object sender, RoutedEventArgs e)
         {
-            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode selectedLink)
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode { IsEditableLink: true } selectedLink)
             {
                 InlineLinkEditor_DataGrid.SelectedItem = selectedLink;
             }
@@ -4203,8 +4357,14 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            int moveLinkID = InlineLinkEditor_DataGrid.SelectedIndex;
-            if ((moveLinkID == 0 && direction is "Up" or "Top") || (moveLinkID >= InlineLinkEditorLinks.Count - 1 && direction is "Down" or "Bottom"))
+            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } moveLink)
+            {
+                return;
+            }
+
+            var editableLinks = GetInlineEditableLinks();
+            int moveLinkID = editableLinks.IndexOf(moveLink);
+            if ((moveLinkID == 0 && direction is "Up" or "Top") || (moveLinkID >= editableLinks.Count - 1 && direction is "Down" or "Bottom"))
             {
                 return;
             }
@@ -4212,15 +4372,15 @@ namespace LegendaryExplorer.DialogueEditor
             int numSwaps = direction switch
             {
                 "Top" => moveLinkID,
-                "Bottom" => InlineLinkEditorLinks.Count - 1 - moveLinkID,
+                "Bottom" => editableLinks.Count - 1 - moveLinkID,
                 _ => 1
             };
 
             int swapDir = direction is "Up" or "Top" ? -1 : 1;
             for (int i = 0; Math.Abs(i) < numSwaps; i += swapDir)
             {
-                ReplyChoiceNode moveNode = InlineLinkEditorLinks[moveLinkID];
-                ReplyChoiceNode swapNode = InlineLinkEditorLinks[moveLinkID + i + swapDir];
+                ReplyChoiceNode moveNode = editableLinks[moveLinkID];
+                ReplyChoiceNode swapNode = editableLinks[moveLinkID + i + swapDir];
                 (moveNode.Order, swapNode.Order) = (swapNode.Order, moveNode.Order);
             }
 
@@ -4235,10 +4395,10 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void InlineLinkEditor_GoToTarget_Click(object sender, RoutedEventArgs e)
         {
-            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode targetLink)
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode { HasNavigationTarget: true } targetLink)
             {
                 InlineLinkEditor_DataGrid.SelectedItem = targetLink;
-                SelectDialogueNodeByIndex(targetLink.Index, !inlineLinkEditorIsReply, centerView: true);
+                SelectGraphObjectByUid(targetLink.NavigationNodeUid, centerView: true);
                 BottomViewportTabControl.SelectedItem = LinkEditorTab;
             }
         }
@@ -4250,7 +4410,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void EditInlineSelectedLink()
         {
-            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode editLink)
+            if (InlineLinkEditor_DataGrid.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } editLink)
             {
                 return;
             }
@@ -4326,21 +4486,22 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             ParseInlineLink(editLink);
-            ReOrderInlineLinkEditorLinks();
-            InlineLinkEditor_DataGrid.Items.Refresh();
+            ReOrderInlineLinkEditorLinks(editLink);
             inlineLinkEditorNeedsSave = true;
         }
 
-        private void ReOrderInlineLinkEditorLinks()
+        private void ReOrderInlineLinkEditorLinks(ReplyChoiceNode selectedLink = null)
         {
-            InlineLinkEditorLinks.Sort(l => l.Order);
+            var editableLinks = GetInlineEditableLinks().OrderBy(link => link.Order).ToList();
             int order = 0;
-            foreach (var link in InlineLinkEditorLinks)
+            foreach (var link in editableLinks)
             {
                 link.Order = order;
                 link.Ordinal = AddOrdinal(link.Order + 1);
                 order++;
             }
+
+            RebuildInlineLinkEditorRows(editableLinks, selectedLink);
             InlineLinkEditor_DataGrid.Items.Refresh();
         }
 
@@ -4350,9 +4511,14 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (e.Row.Item is ReplyChoiceNode link)
                 {
+                    if (!link.IsEditableLink)
+                    {
+                        return;
+                    }
+
                     ParseInlineLink(link);
                     inlineLinkEditorNeedsSave = true;
-                    InlineLinkEditor_DataGrid.Items.Refresh();
+                    ReOrderInlineLinkEditorLinks(link);
                 }
             }), DispatcherPriority.Background);
         }

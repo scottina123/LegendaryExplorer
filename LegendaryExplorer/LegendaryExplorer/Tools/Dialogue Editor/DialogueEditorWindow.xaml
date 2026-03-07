@@ -785,11 +785,40 @@
                                           CanUserAddRows="False"
                                           CanUserDeleteRows="False"
                                           CellEditEnding="InlineLinkEditor_DataGrid_CellEditEnding">
+                                    <DataGrid.Resources>
+                                        <Style x:Key="InlineLinkEditorActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <Setter Property="Margin" Value="2" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsEditableLink}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGrid.Resources>
+                                    <DataGrid.RowStyle>
+                                        <Style TargetType="DataGridRow">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Setter Property="FontWeight" Value="Normal" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsIncomingConnection}" Value="True">
+                                                    <Setter Property="Background" Value="#1A6AA84F" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsDividerRow}" Value="True">
+                                                    <Setter Property="Background" Value="#334A4A4A" />
+                                                    <Setter Property="Foreground" Value="#FFF4D35E" />
+                                                    <Setter Property="FontWeight" Value="Bold" />
+                                                    <Setter Property="BorderBrush" Value="#FF9A9A9A" />
+                                                    <Setter Property="BorderThickness" Value="0,3,0,1" />
+                                                    <Setter Property="IsHitTestVisible" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGrid.RowStyle>
                                     <DataGrid.Columns>
                                         <DataGridTemplateColumn Header="Del" Width="35">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Click="InlineLinkEditor_Delete_Click" CommandParameter="{Binding}" Margin="2">
+                                                    <Button Click="InlineLinkEditor_Delete_Click" CommandParameter="{Binding}" Style="{StaticResource InlineLinkEditorActionButtonStyle}">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Regular_TrashAlt" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                                         </Button.Content>
@@ -800,7 +829,7 @@
                                         <DataGridTemplateColumn Header="Top" Width="35">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Top" Margin="2">
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Top" Style="{StaticResource InlineLinkEditorActionButtonStyle}">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_ArrowUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                                         </Button.Content>
@@ -811,7 +840,7 @@
                                         <DataGridTemplateColumn Header="Up" Width="35">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Up" Margin="2">
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Up" Style="{StaticResource InlineLinkEditorActionButtonStyle}">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_AngleUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                                         </Button.Content>
@@ -822,7 +851,7 @@
                                         <DataGridTemplateColumn Header="Down" Width="40">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Down" Margin="2">
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Down" Style="{StaticResource InlineLinkEditorActionButtonStyle}">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_AngleDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                                         </Button.Content>
@@ -833,7 +862,7 @@
                                         <DataGridTemplateColumn Header="Bottom" Width="49">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Bottom" Margin="2">
+                                                    <Button Click="InlineLinkEditor_Move_Click" CommandParameter="Bottom" Style="{StaticResource InlineLinkEditorActionButtonStyle}">
                                                         <Button.Content>
                                                             <fa:ImageAwesome Icon="Solid_ArrowDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                                         </Button.Content>

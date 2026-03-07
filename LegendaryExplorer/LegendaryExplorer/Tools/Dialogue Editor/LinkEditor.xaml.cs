@@ -66,14 +66,7 @@ namespace LegendaryExplorer.DialogueEditor
             Title = $"Link Editor - {s}{id} : {Dnode.Node.LineStrRef}";
             LineString_TextBlock.Text = Dnode.Node.Line;
 
-            int n = 0;
-            foreach (var link in Dnode.Links)
-            {
-                link.Order = n;
-                ParseLink(link);
-                linkTable.Add(link);
-                n++;
-            }
+            RebuildDisplayRows(Dnode.Links.OrderBy(link => link.Order));
             GenerateTable();
         }
 
@@ -97,6 +90,9 @@ namespace LegendaryExplorer.DialogueEditor
                 a = "R";
                 tgtUID += 1000;
             }
+            link.IsIncomingConnection = false;
+            link.IsDividerRow = false;
+            link.NavigationNodeUid = tgtUID;
             link.NodeIDLink = $"{a}{link.Index}";
 
             link.ReplyLine = GlobalFindStrRefbyID(link.ReplyStrRef, ParentWindow.Pcc);
@@ -112,6 +108,120 @@ namespace LegendaryExplorer.DialogueEditor
             link.TgtLine = tgtNode.Node.Line;
             link.Ordinal = DialogueEditorWindow.AddOrdinal(link.Order + 1);
             link.TgtSpeaker = tgtNode.Node.SpeakerTag.SpeakerName;
+        }
+
+        private static ReplyChoiceNode CreateLinkSectionDivider(string label)
+        {
+            return new ReplyChoiceNode
+            {
+                IsDividerRow = true,
+                NodeIDLink = label,
+                Ordinal = string.Empty,
+                TgtFireCnd = string.Empty,
+                TgtLine = string.Empty,
+                TgtSpeaker = string.Empty,
+                ReplyLine = string.Empty
+            };
+        }
+
+        private static string GetDialogueNodeLinkLabel(DiagNode node)
+        {
+            return $"{(node.Node.IsReply ? "R" : "E")}{node.Node.NodeCount}";
+        }
+
+        private static int GetLinkedTargetNodeUid(DiagNode sourceNode, ReplyChoiceNode link)
+        {
+            return sourceNode.Node.IsReply ? link.Index : link.Index + 1000;
+        }
+
+        private ReplyChoiceNode CreateIncomingLinkRow(DiagNode sourceNode, ReplyChoiceNode sourceLink)
+        {
+            return new ReplyChoiceNode(sourceLink)
+            {
+                IsIncomingConnection = true,
+                NavigationNodeUid = sourceNode.NodeUID,
+                Ordinal = "In",
+                NodeIDLink = GetDialogueNodeLinkLabel(sourceNode),
+                TgtFireCnd = sourceNode.Node.FiresConditional ? "Conditional" : "Bool",
+                TgtCondition = sourceNode.Node.ConditionalOrBool,
+                TgtLine = sourceNode.Node.Line,
+                TgtSpeaker = sourceNode.Node.SpeakerTag?.SpeakerName ?? "Unknown"
+            };
+        }
+
+        private static ReplyChoiceNode CreateIncomingStartRow(int startOrder, int targetNodeIndex)
+        {
+            return new ReplyChoiceNode
+            {
+                IsIncomingConnection = true,
+                NavigationNodeUid = 2000 + targetNodeIndex,
+                Ordinal = "In",
+                NodeIDLink = $"{DialogueEditorWindow.AddOrdinal(startOrder + 1)} Start",
+                TgtLine = $"Start node -> E{targetNodeIndex}",
+                TgtFireCnd = string.Empty,
+                TgtSpeaker = string.Empty,
+                ReplyLine = string.Empty
+            };
+        }
+
+        private List<ReplyChoiceNode> GetEditableLinks()
+        {
+            return linkTable.Where(link => link.IsEditableLink).OrderBy(link => link.Order).ToList();
+        }
+
+        private List<ReplyChoiceNode> GetIncomingLinkRows()
+        {
+            List<ReplyChoiceNode> incomingRows = [];
+
+            if (!Dnode.Node.IsReply)
+            {
+                foreach (var startLink in ParentWindow.SelectedConv.StartingList.Where(kvp => kvp.Value == Dnode.Node.NodeCount).OrderBy(kvp => kvp.Key))
+                {
+                    incomingRows.Add(CreateIncomingStartRow(startLink.Key, startLink.Value));
+                }
+            }
+
+            foreach (var sourceNode in ParentWindow.CurrentObjects.OfType<DiagNode>().OrderBy(o => o.NodeUID))
+            {
+                foreach (var sourceLink in sourceNode.Links.OrderBy(link => link.Order))
+                {
+                    if (GetLinkedTargetNodeUid(sourceNode, sourceLink) == Dnode.NodeUID)
+                    {
+                        incomingRows.Add(CreateIncomingLinkRow(sourceNode, sourceLink));
+                    }
+                }
+            }
+
+            return incomingRows;
+        }
+
+        private void RebuildDisplayRows(IEnumerable<ReplyChoiceNode> editableLinks = null, ReplyChoiceNode selectedLink = null)
+        {
+            var outgoingLinks = (editableLinks ?? GetEditableLinks()).OrderBy(link => link.Order).ToList();
+            var incomingRows = GetIncomingLinkRows();
+
+            linkTable.ClearEx();
+
+            if (incomingRows.Count > 0)
+            {
+                linkTable.Add(CreateLinkSectionDivider("Incoming Connections"));
+                foreach (var incomingRow in incomingRows)
+                {
+                    linkTable.Add(incomingRow);
+                }
+            }
+
+            linkTable.Add(CreateLinkSectionDivider("Outgoing Connections"));
+            foreach (var outgoingLink in outgoingLinks)
+            {
+                ParseLink(outgoingLink);
+                linkTable.Add(outgoingLink);
+            }
+
+            if (selectedLink != null)
+            {
+                datagrid_Links.SelectedItem = linkTable.FirstOrDefault(link => ReferenceEquals(link, selectedLink));
+            }
         }
 
         private void GenerateTable()
@@ -245,8 +355,17 @@ namespace LegendaryExplorer.DialogueEditor
 
             var goToTargetTemplate = new DataTemplate();
             var goToTargetButton = new FrameworkElementFactory(typeof(Button));
-            goToTargetButton.SetValue(Button.ContentProperty, "Go");
+            goToTargetButton.SetBinding(Button.ContentProperty, new Binding(nameof(ReplyChoiceNode.NavigationButtonText)));
             goToTargetButton.SetValue(Button.MarginProperty, new Thickness(2));
+            var goToTargetButtonStyle = new Style(typeof(Button), TryFindResource(typeof(Button)) as Style);
+            goToTargetButtonStyle.Setters.Add(new Setter(Button.MarginProperty, new Thickness(2)));
+            goToTargetButtonStyle.Triggers.Add(new DataTrigger
+            {
+                Binding = new Binding(nameof(ReplyChoiceNode.HasNavigationTarget)),
+                Value = false,
+                Setters = { new Setter(Button.VisibilityProperty, Visibility.Collapsed) }
+            });
+            goToTargetButton.SetValue(Button.StyleProperty, goToTargetButtonStyle);
             goToTargetButton.SetBinding(Button.CommandProperty, new Binding("DataContext.GoToTargetCommand")
             {
                 RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1)
@@ -274,7 +393,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (!HasActiveLink())
                 return;
 
-            var editLink = linkTable[datagrid_Links.SelectedIndex];
+            var editLink = datagrid_Links.SelectedItem as ReplyChoiceNode;
 
             //Set new Link
             var links = new List<string>();
@@ -330,21 +449,23 @@ namespace LegendaryExplorer.DialogueEditor
                 editLink.RCategory = rc;
             }
             ParseLink(editLink);
-            ReOrderTable();
+            ReOrderTable(editLink);
             NeedsSave = true;
         }
 
-        private void ReOrderTable()
+        private void ReOrderTable(ReplyChoiceNode selectedLink = null)
         {
-            linkTable.Sort(l => l.Order);
+            var editableLinks = GetEditableLinks().OrderBy(link => link.Order).ToList();
 
             int n = 0;
-            foreach (ReplyChoiceNode link in linkTable)
+            foreach (ReplyChoiceNode link in editableLinks)
             {
                 link.Order = n;
                 link.Ordinal = DialogueEditorWindow.AddOrdinal(link.Order + 1);
                 n++;
             }
+
+            RebuildDisplayRows(editableLinks, selectedLink);
         }
 
         private void Close_LinkEditor()
@@ -355,13 +476,14 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void SaveToProperties()
         {
+            var editableLinks = GetEditableLinks();
             if (IsReply)
             {
-                Dnode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(linkTable.Select(link => new IntProperty(link.Index)), "EntryList"));
+                Dnode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(editableLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
             }
             else
             {
-                Dnode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(linkTable.Select(link =>
+                Dnode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(editableLinks.Select(link =>
                     new StructProperty("BioDialogReplyListDetails", new PropertyCollection
                     {
                         new IntProperty(link.Index, "nIndex"),
@@ -378,30 +500,46 @@ namespace LegendaryExplorer.DialogueEditor
 
         private bool HasActiveLink()
         {
-            return datagrid_Links is { SelectedIndex: >= 0 };
+            return datagrid_Links.SelectedItem is ReplyChoiceNode { IsEditableLink: true };
         }
 
         private void DeleteLink()
         {
-            var result = datagrid_Links.SelectedItem as ReplyChoiceNode;
-            linkTable.Remove(result);
+            if (datagrid_Links.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } result)
+            {
+                return;
+            }
+
+            var editableLinks = GetEditableLinks();
+            editableLinks.Remove(result);
             NeedsSave = true;
             ReOrderTable();
         }
 
         private void CloneLink()
         {
-            ReplyChoiceNode donor = linkTable[datagrid_Links.SelectedIndex];
-            linkTable.Add(new ReplyChoiceNode(donor) { Order = linkTable.Count + 1 });
+            if (datagrid_Links.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } donor)
+            {
+                return;
+            }
+
+            var editableLinks = GetEditableLinks();
+            editableLinks.Add(new ReplyChoiceNode(donor) { Order = editableLinks.Count + 1 });
             NeedsSave = true;
-            ReOrderTable();
+            RebuildDisplayRows(editableLinks, donor);
         }
 
         private void MoveLink(object obj)
         {
+            if (datagrid_Links.SelectedItem is not ReplyChoiceNode { IsEditableLink: true } selectedLink)
+            {
+                return;
+            }
+
             string command = obj as string;
-            int moveLinkID = datagrid_Links.SelectedIndex;
-            if ((moveLinkID == 0 && command is "Up" or "Top") || (moveLinkID >= linkTable.Count - 1 && command is "Down" or "Bottom"))
+            var editableLinks = GetEditableLinks();
+            int moveLinkID = editableLinks.IndexOf(selectedLink);
+            if ((moveLinkID == 0 && command is "Up" or "Top") || (moveLinkID >= editableLinks.Count - 1 && command is "Down" or "Bottom"))
                 return;
 
             int numSwaps = 1;
@@ -411,31 +549,31 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else if (command is "Bottom")
             {
-                numSwaps = linkTable.Count - 1 - moveLinkID;
+                numSwaps = editableLinks.Count - 1 - moveLinkID;
             }
 
             int swapDir = command is "Up" or "Top" ? -1 : 1; //"Up" is down in index
 
             for (int i = 0; Math.Abs(i) < numSwaps; i += swapDir)
             {
-                ReplyChoiceNode moveNode = linkTable[moveLinkID];
-                ReplyChoiceNode swapNode = linkTable[moveLinkID + i + swapDir];
+                ReplyChoiceNode moveNode = editableLinks[moveLinkID];
+                ReplyChoiceNode swapNode = editableLinks[moveLinkID + i + swapDir];
                 (moveNode.Order, swapNode.Order) = (swapNode.Order, moveNode.Order);
             }
             NeedsSave = true;
-            ReOrderTable();
+            ReOrderTable(selectedLink);
         }
 
         private void GoToTargetNode(object obj)
         {
             ReplyChoiceNode targetLink = obj as ReplyChoiceNode ?? datagrid_Links.SelectedItem as ReplyChoiceNode;
-            if (targetLink == null)
+            if (targetLink is not { HasNavigationTarget: true })
             {
                 return;
             }
 
             datagrid_Links.SelectedItem = targetLink;
-            ParentWindow.SelectDialogueNodeByIndex(targetLink.Index, !IsReply, centerView: true);
+            ParentWindow.SelectGraphObjectByUid(targetLink.NavigationNodeUid, centerView: true);
             ParentWindow.Activate();
         }
 

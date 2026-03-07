@@ -22,11 +22,40 @@
             </StackPanel>
         </DockPanel>
         <DataGrid x:Name="datagrid_Links" VerticalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Visible" AutoGenerateColumns="False" CanUserSortColumns="False" CanUserAddRows="True" CanUserDeleteRows="True" >
+            <DataGrid.Resources>
+                <Style x:Key="LinkEditorActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                    <Setter Property="Margin" Value="2" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsEditableLink}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="FontWeight" Value="Normal" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsIncomingConnection}" Value="True">
+                            <Setter Property="Background" Value="#1A6AA84F" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsDividerRow}" Value="True">
+                            <Setter Property="Background" Value="#334A4A4A" />
+                            <Setter Property="Foreground" Value="#FFF4D35E" />
+                            <Setter Property="FontWeight" Value="Bold" />
+                            <Setter Property="BorderBrush" Value="#FF9A9A9A" />
+                            <Setter Property="BorderThickness" Value="0,3,0,1" />
+                            <Setter Property="IsHitTestVisible" Value="False" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Del" Width="35">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DeleteCommand}" CommandParameter="{Binding}" Margin="2">
+                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DeleteCommand}" CommandParameter="{Binding}" Style="{StaticResource LinkEditorActionButtonStyle}">
                                 <Button.Content>
                                     <fa:ImageAwesome Icon="Regular_TrashAlt" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                 </Button.Content>
@@ -37,7 +66,7 @@
                 <DataGridTemplateColumn Header="Top" Width="35">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.UpCommand}" CommandParameter="Top" Margin="2">
+                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.UpCommand}" CommandParameter="Top" Style="{StaticResource LinkEditorActionButtonStyle}">
                                 <Button.Content>
                                     <fa:ImageAwesome Icon="Solid_ArrowUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                 </Button.Content>
@@ -48,7 +77,7 @@
                 <DataGridTemplateColumn Header="Up" Width="35">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.UpCommand}" CommandParameter="Up" Margin="2">
+                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.UpCommand}" CommandParameter="Up" Style="{StaticResource LinkEditorActionButtonStyle}">
                                 <Button.Content>
                                     <fa:ImageAwesome Icon="Solid_AngleUp" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                 </Button.Content>
@@ -59,7 +88,7 @@
                 <DataGridTemplateColumn Header="Down" Width="40">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DownCommand}" CommandParameter="Down" Margin="2">
+                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DownCommand}" CommandParameter="Down" Style="{StaticResource LinkEditorActionButtonStyle}">
                                 <Button.Content>
                                     <fa:ImageAwesome Icon="Solid_AngleDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                 </Button.Content>
@@ -70,7 +99,7 @@
                 <DataGridTemplateColumn Header="Bottom" Width="49">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DownCommand}" CommandParameter="Bottom" Margin="2">
+                            <Button Command="{Binding RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}, Path=DataContext.DownCommand}" CommandParameter="Bottom" Style="{StaticResource LinkEditorActionButtonStyle}">
                                 <Button.Content>
                                     <fa:ImageAwesome Icon="Solid_ArrowDown" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}"/>
                                 </Button.Content>
