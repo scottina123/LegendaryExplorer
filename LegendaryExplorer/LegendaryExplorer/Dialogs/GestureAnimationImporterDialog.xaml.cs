@@ -45,6 +45,17 @@ namespace LegendaryExplorer.Dialogs
         private List<AnimationRecord> _allAnimations = new();
 
         /// <summary>
+        /// The game whose asset database is currently loaded for browsing animations.
+        /// May differ from _pcc.Game when browsing cross-game animations.
+        /// </summary>
+        private MEGame _selectedAnimSourceGame;
+
+        /// <summary>
+        /// Games available for browsing in the source game selector.
+        /// </summary>
+        public static MEGame[] AvailableSourceGames { get; } = [MEGame.LE3, MEGame.LE2, MEGame.LE1];
+
+        /// <summary>
         /// True if the target export is an SFXModule_Gestures (SFXStuntActor).
         /// </summary>
         private bool IsSFXModuleGestures => _gestureTrackExport.ClassName == "SFXModule_Gestures";
@@ -248,29 +259,38 @@ namespace LegendaryExplorer.Dialogs
                 LoadCurrentAmbPerfInfo();
             }
 
+            // Initialize source game selector
+            _selectedAnimSourceGame = _pcc.Game;
+            SourceGameComboBox.ItemsSource = AvailableSourceGames;
+            SourceGameComboBox.SelectedItem = _pcc.Game;
+
             LoadExistingGestures();
             LoadDatabaseAsync();
         }
 
         private async void LoadDatabaseAsync()
         {
-            string dbPath = AssetDatabaseWindow.GetDBPath(_pcc.Game);
+            MEGame game = _selectedAnimSourceGame;
+            string dbPath = AssetDatabaseWindow.GetDBPath(game);
             if (!File.Exists(dbPath))
             {
-                AnimationStatusText = "No asset database found. Please generate one in the Asset Database tool.";
+                AnimationStatusText = $"No {game} asset database found. Please generate one in the Asset Database tool.";
                 return;
             }
 
+            AnimationStatusText = $"Loading {game} database...";
+
             _db = new AssetDB();
-            await AssetDatabaseWindow.LoadDatabase(dbPath, _pcc.Game, _db, CancellationToken.None);
+            await AssetDatabaseWindow.LoadDatabase(dbPath, game, _db, CancellationToken.None);
 
             if (_db.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
             {
-                AnimationStatusText = "Asset database is out of date. Please regenerate it in the Asset Database tool.";
+                AnimationStatusText = $"{game} asset database is out of date. Please regenerate it in the Asset Database tool.";
                 return;
             }
 
             // Build file list for resolving paths
+            _fileListExtended.Clear();
             foreach ((string fileName, int dirIndex) in _db.FileList)
             {
                 _fileListExtended.Add((fileName, _db.ContentDir[dirIndex]));
@@ -278,13 +298,13 @@ namespace LegendaryExplorer.Dialogs
 
             _allAnimations = _db.Animations.Where(a => !a.IsAmbPerf).ToList();
             FilteredAnimations.ReplaceAll(_allAnimations);
-            AnimationStatusText = $"{_allAnimations.Count} animations loaded.";
+            AnimationStatusText = $"{_allAnimations.Count} {game} animations loaded.";
 
             // Set up skeleton mesh list for animation preview
             _skeletonMeshes = _db.Meshes.Where(m => m.IsSkeleton).ToList();
             PreviewMeshComboBox.ItemsSource = _skeletonMeshes;
 
-            string defaultMesh = _pcc.Game switch
+            string defaultMesh = game switch
             {
                 MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
                 MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
@@ -301,7 +321,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 _allAmbPerfs = _db.Animations.Where(a => a.IsAmbPerf).ToList();
                 FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
-                AmbPerfStatusText = $"{_allAmbPerfs.Count} ambient performances loaded.";
+                AmbPerfStatusText = $"{_allAmbPerfs.Count} {game} ambient performances loaded.";
                 AmbPerfMeshComboBox.ItemsSource = _skeletonMeshes;
                 if (meshIdx >= 0)
                 {
@@ -354,6 +374,21 @@ namespace LegendaryExplorer.Dialogs
             EditPlayUntilNext = g.GetProp<BoolProperty>("bPlayUntilNext") ?? false;
             EditUseDynAnimSets = g.GetProp<BoolProperty>("bUseDynAnimSets") ?? false;
         }
+
+        #region Source Game Selection
+
+        private void SourceGameComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SourceGameComboBox.SelectedItem is MEGame game && game != _selectedAnimSourceGame)
+            {
+                _selectedAnimSourceGame = game;
+                SelectedAnimation = null;
+                AnimPreviewControl.ClearAnimation();
+                LoadDatabaseAsync();
+            }
+        }
+
+        #endregion
 
         #region Search/Filter
 
@@ -465,7 +500,7 @@ namespace LegendaryExplorer.Dialogs
         {
             if (fileKey < 0 || fileKey >= _fileListExtended.Count) return null;
             var (fileName, contentDir) = _fileListExtended[fileKey];
-            string rootPath = MEDirectories.GetDefaultGamePath(_pcc.Game);
+            string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
             if (rootPath == null || !Directory.Exists(rootPath)) return null;
             return Directory.EnumerateFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories)
                 .FirstOrDefault(f => f.Contains(contentDir));
@@ -582,7 +617,7 @@ namespace LegendaryExplorer.Dialogs
                 if (fileListIndex < 0 || fileListIndex >= _fileListExtended.Count) continue;
 
                 var (fileName, contentDir) = _fileListExtended[fileListIndex];
-                string rootPath = MEDirectories.GetDefaultGamePath(_pcc.Game);
+                string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
                 if (rootPath == null || !Directory.Exists(rootPath)) continue;
 
                 filePath = Directory.EnumerateFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories)

@@ -49,7 +49,9 @@
                     <DockPanel Grid.Column="2">
                         <TextBlock DockPanel.Dock="Top" Text="Animations from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                            <TextBlock Text="Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <TextBlock Text="Source Game: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="SourceGameComboBox" SelectionChanged="SourceGameComboBox_SelectionChanged" Width="80" DockPanel.Dock="Left"/>
+                            <TextBlock Text="  Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
                         </DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding AnimationStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
