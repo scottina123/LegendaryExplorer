@@ -68,7 +68,7 @@
             <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
+            <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
         </ContextMenu>
         <ContextMenu x:Key="entrynodeContextMenu" Closed="ContextMenu_Closed">
             <MenuItem Header="Edit Links" Name="entryLinkEditContextMenu" Command="{Binding NodeEditCommand}" CommandParameter="Entry" ToolTip="Edit Links order and details"/>
@@ -107,7 +107,7 @@
             <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
             <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Copy Line to Clipboard" Command="{Binding CopyToClipboardCommand}" CommandParameter="Line"/>
+            <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
         </ContextMenu>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
             <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />

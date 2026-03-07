@@ -5740,6 +5740,9 @@ namespace LegendaryExplorer.DialogueEditor
                 case "Line":
                     copytext = SelectedDialogueNode.Line;
                     break;
+                case "LineNoQuotes":
+                    copytext = RemoveWrappingQuotes(SelectedDialogueNode.Line);
+                    break;
                 case "ItpDta":
                     copytext = SelectedDialogueNode.InterpData.UIndex.ToString();
                     break;
@@ -5753,6 +5756,21 @@ namespace LegendaryExplorer.DialogueEditor
             StatusBar_OtherText.Text = "Copied to Clipboard.";
             await Task.Delay(4000);
             StatusBar_OtherText.Text = otext;
+        }
+
+        private static string RemoveWrappingQuotes(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length < 2)
+            {
+                return text;
+            }
+
+            return text[0] switch
+            {
+                '"' when text[^1] == '"' => text[1..^1],
+                '“' when text[^1] == '”' => text[1..^1],
+                _ => text
+            };
         }
 
         private void ForceRefresh(object obj)
