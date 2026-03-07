@@ -284,6 +284,8 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand ForceRefreshCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
+        private bool copiedOutgoingConnectionsAreReplyNode;
+        private List<ReplyChoiceNode> copiedOutgoingConnections;
         private bool HasWwbank(object param)
         {
             return SelectedConv?.WwiseBank != null;
@@ -4744,6 +4746,65 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
         }
+
+        private void CopyOutgoingConnections_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedObjects.FirstOrDefault() is not DiagNode selectedNode)
+            {
+                return;
+            }
+
+            copiedOutgoingConnectionsAreReplyNode = selectedNode.Node.IsReply;
+            copiedOutgoingConnections = selectedNode.Links
+                .OrderBy(link => link.Order)
+                .Select(link => new ReplyChoiceNode(link) { Order = link.Order })
+                .ToList();
+
+            StatusBar_OtherText.Text = $"Copied {copiedOutgoingConnections.Count} outgoing connection(s).";
+        }
+
+        private void PasteOutgoingConnections_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedObjects.FirstOrDefault() is not DiagNode selectedNode)
+            {
+                return;
+            }
+
+            if (copiedOutgoingConnections == null)
+            {
+                MessageBox.Show("No outgoing connections have been copied yet.", "Dialogue Editor");
+                return;
+            }
+
+            if (copiedOutgoingConnectionsAreReplyNode != selectedNode.Node.IsReply)
+            {
+                MessageBox.Show("Outgoing connections can only be pasted onto the same node type.", "Dialogue Editor");
+                return;
+            }
+
+            if (selectedNode.Node.IsReply)
+            {
+                selectedNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(copiedOutgoingConnections.Select(link => new IntProperty(link.Index)), "EntryList"));
+            }
+            else
+            {
+                selectedNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(copiedOutgoingConnections.Select(link =>
+                    new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                    {
+                        new IntProperty(link.Index, "nIndex"),
+                        new StringRefProperty(link.ReplyStrRef, "srParaphrase"),
+                        new StrProperty(link.Paraphrase ?? string.Empty, "sParaphrase"),
+                        new EnumProperty(link.RCategory.ToString(), "EReplyCategory", Pcc.Game, "Category"),
+                        new NoneProperty()
+                    })
+                ), "ReplyListNew"));
+            }
+
+            PushLocalGraphChanges(selectedNode);
+            LoadInlineLinkEditor(selectedNode);
+            BottomViewportTabControl.SelectedItem = LinkEditorTab;
+            StatusBar_OtherText.Text = $"Pasted {copiedOutgoingConnections.Count} outgoing connection(s).";
+        }
         private void DialogueNode_Delete(object obj)
         {
             //Warn
@@ -5097,6 +5158,10 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (FindResource("replynodeContextMenu") is ContextMenu contextMenu)
                 {
+                    if (contextMenu.GetChild("replyPasteOutgoingConnectionsMenuItem") is MenuItem replyPasteMenuItem)
+                    {
+                        replyPasteMenuItem.IsEnabled = copiedOutgoingConnections != null && copiedOutgoingConnectionsAreReplyNode;
+                    }
                     if (contextMenu.GetChild("replyLinkEditContextMenu") is MenuItem editHeader)
                     {
                         editHeader.Background = new System.Windows.Media.SolidColorBrush(DObj.replyColor.ToWPFColor());
@@ -5151,6 +5216,10 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (FindResource("entrynodeContextMenu") is ContextMenu contextMenu)
                 {
+                    if (contextMenu.GetChild("entryPasteOutgoingConnectionsMenuItem") is MenuItem entryPasteMenuItem)
+                    {
+                        entryPasteMenuItem.IsEnabled = copiedOutgoingConnections != null && !copiedOutgoingConnectionsAreReplyNode;
+                    }
                     if (contextMenu.GetChild("entryLinkEditContextMenu") is MenuItem editHeader)
                     {
                         editHeader.Background = new System.Windows.Media.SolidColorBrush(DObj.entryColor.ToWPFColor());
