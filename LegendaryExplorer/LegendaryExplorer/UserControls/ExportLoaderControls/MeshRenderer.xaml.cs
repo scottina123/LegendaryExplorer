@@ -247,6 +247,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private static readonly System.Windows.Media.Color DarkThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(30, 30, 30);
+        private static readonly System.Windows.Media.Color LightThemeDefaultBackgroundColor = System.Windows.Media.Color.FromRgb(128, 128, 128);
+
         /// <summary>
         /// Returns the default background color for the current theme.
         /// Dark mode uses the same dark background as the Sequence Editor.
@@ -254,8 +257,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
         {
             return Settings.Global_DarkMode_Enabled
-                ? System.Windows.Media.Color.FromRgb(30, 30, 30)
-                : System.Windows.Media.Color.FromRgb(128, 128, 128);
+                ? DarkThemeDefaultBackgroundColor
+                : LightThemeDefaultBackgroundColor;
+        }
+
+        private static bool IsThemeDefaultBackgroundColor(System.Windows.Media.Color color)
+        {
+            return color == DarkThemeDefaultBackgroundColor || color == LightThemeDefaultBackgroundColor;
         }
         #endregion
 
@@ -591,7 +599,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             MeshContext = new MeshRenderContext();
             if (ColorConverter.ConvertFromString(Settings.Meshplorer_BackgroundColor) is System.Windows.Media.Color color)
             {
-                BackgroundColor = color;
+                BackgroundColor = IsThemeDefaultBackgroundColor(color)
+                    ? GetThemeDefaultBackgroundColor()
+                    : color;
             }
             else
             {

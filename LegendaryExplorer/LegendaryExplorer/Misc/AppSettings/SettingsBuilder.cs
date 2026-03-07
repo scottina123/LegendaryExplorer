@@ -167,6 +167,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _meshplorer_backgroundcolor;
             set => SetProperty(ref _meshplorer_backgroundcolor, value);
         }
+        private static string _actorpreview_backgroundcolor = "#999999";
+        public static string ActorPreview_BackgroundColor {
+            get => _actorpreview_backgroundcolor;
+            set => SetProperty(ref _actorpreview_backgroundcolor, value);
+        }
         private static bool _meshplorer_viewfirstperson = false;
         public static bool Meshplorer_ViewFirstPerson {
             get => _meshplorer_viewfirstperson;
@@ -525,6 +530,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Soundplorer_ReverseIDDisplayEndianness = TryGetSetting(settingsJson, "soundplorer_reverseiddisplayendianness", false);
             Soundplorer_AutoplayEntriesOnSelection = TryGetSetting(settingsJson, "soundplorer_autoplayentriesonselection", false);
             Meshplorer_BackgroundColor = TryGetSetting(settingsJson, "meshplorer_backgroundcolor", "#999999");
+            ActorPreview_BackgroundColor = TryGetSetting(settingsJson, "actorpreview_backgroundcolor", "#999999");
             Meshplorer_ViewFirstPerson = TryGetSetting(settingsJson, "meshplorer_viewfirstperson", false);
             Meshplorer_ViewRotating = TryGetSetting(settingsJson, "meshplorer_viewrotating", false);
             Meshplorer_View_SolidEnabled = TryGetSetting(settingsJson, "meshplorer_view_solidenabled", true);

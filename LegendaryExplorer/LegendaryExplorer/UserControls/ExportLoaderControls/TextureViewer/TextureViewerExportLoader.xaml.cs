@@ -161,18 +161,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private Color _backgroundColor = Colors.White;
+        private static readonly Color LightThemeDefaultBackgroundColor = Color.FromRgb(128, 128, 128);
+        private static readonly Color DarkThemeDefaultBackgroundColor = Color.FromRgb(30, 30, 30);
+
+        private Color _backgroundColor = LightThemeDefaultBackgroundColor;
         public Color BackgroundColor
         {
             get => _backgroundColor;
             set
             {
-                SetProperty(ref _backgroundColor, value);
-                TextureContext.BackgroundColor = new Vector4(value.R / 255.0f, value.G / 255.0f, value.B / 255.0f, value.A / 255.0f);
-                Settings.TextureViewer_BackgroundColor = value.ToString();
-                Settings.Save();
-                RequestRender();
+                if (SetProperty(ref _backgroundColor, value))
+                {
+                    TextureContext.BackgroundColor = new Vector4(value.R / 255.0f, value.G / 255.0f, value.B / 255.0f, value.A / 255.0f);
+                    Settings.TextureViewer_BackgroundColor = value.ToString();
+                    Settings.Save();
+                    RequestRender();
+                }
             }
+        }
+
+        public static Color GetThemeDefaultBackgroundColor()
+        {
+            return Settings.Global_DarkMode_Enabled
+                ? DarkThemeDefaultBackgroundColor
+                : LightThemeDefaultBackgroundColor;
+        }
+
+        private static bool IsThemeDefaultBackgroundColor(Color color)
+        {
+            return color == LightThemeDefaultBackgroundColor || color == DarkThemeDefaultBackgroundColor;
         }
         #endregion
 
@@ -232,17 +249,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             this.PreviewRenderer.Context = this.TextureContext;
             if (ColorConverter.ConvertFromString(Settings.TextureViewer_BackgroundColor) is Color savedColor)
             {
-                BackgroundColor = savedColor;
+                BackgroundColor = IsThemeDefaultBackgroundColor(savedColor)
+                    ? GetThemeDefaultBackgroundColor()
+                    : savedColor;
             }
             else
             {
-                this.TextureContext.BackgroundColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+                BackgroundColor = GetThemeDefaultBackgroundColor();
             }
             this.PreviewRenderer.Loaded += RendererLoaded;
             this.PreviewRenderer.Unloaded += RendererUnloaded;
+            ThemeManager.ThemeChanged += OnThemeChanged;
 
             // Once an image has been rendered we turn it back off until we need a new one rendered, or we just waste GPU resources.
             PreviewRenderer.OnImageRendered = SignalRendered;
+        }
+
+        private void OnThemeChanged(object sender, bool isDarkMode)
+        {
+            if (IsThemeDefaultBackgroundColor(BackgroundColor))
+            {
+                BackgroundColor = GetThemeDefaultBackgroundColor();
+            }
         }
 
         private void RendererLoaded(object sender, RoutedEventArgs e)
@@ -670,6 +698,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void Dispose()
         {
+            ThemeManager.ThemeChanged -= OnThemeChanged;
             PreviewRenderer.OnImageRendered = null; // Remove reference to this
             PreviewRenderer.Loaded -= RendererLoaded;
             PreviewRenderer.Unloaded -= RendererUnloaded;

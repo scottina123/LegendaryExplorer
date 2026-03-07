@@ -1,3 +1,5 @@
+using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
@@ -5,11 +7,15 @@ using LegendaryExplorerCore.Packages;
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorContext
 {
+    private static readonly Color LightThemeDefaultBackgroundColor = Color.FromRgb(153, 153, 153);
+    private static readonly Color DarkThemeDefaultBackgroundColor = Color.FromRgb(30, 30, 30);
+
     public LevelEditorRenderContext RenderContext { get; } = new();
     public bool IsApplyingUndoRedo => false;
 
@@ -34,14 +40,61 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
         set => SetProperty(ref _showCollision, value);
     }
 
+    private Color _backgroundColor = LightThemeDefaultBackgroundColor;
+    public Color BackgroundColor
+    {
+        get => _backgroundColor;
+        set
+        {
+            if (SetProperty(ref _backgroundColor, value))
+            {
+                RenderContext.BackgroundColor = value;
+                Settings.ActorPreview_BackgroundColor = value.ToString();
+                Settings.Save();
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public static Color GetThemeDefaultBackgroundColor()
+    {
+        return Settings.Global_DarkMode_Enabled
+            ? DarkThemeDefaultBackgroundColor
+            : LightThemeDefaultBackgroundColor;
+    }
+
+    private static bool IsThemeDefaultBackgroundColor(Color color)
+    {
+        return color == LightThemeDefaultBackgroundColor || color == DarkThemeDefaultBackgroundColor;
+    }
+
     public ActorPreviewControl() : base("Actor Preview")
     {
         DataContext = this;
         InitializeComponent();
         SceneViewer.Context = RenderContext;
+        if (ColorConverter.ConvertFromString(Settings.ActorPreview_BackgroundColor) is Color savedColor)
+        {
+            BackgroundColor = IsThemeDefaultBackgroundColor(savedColor)
+                ? GetThemeDefaultBackgroundColor()
+                : savedColor;
+        }
+        else
+        {
+            BackgroundColor = GetThemeDefaultBackgroundColor();
+        }
         RenderContext.Camera.FirstPerson = false;
         SceneViewer.Loaded += SceneViewer_Loaded;
         SceneViewer.Unloaded += SceneViewer_Unloaded;
+        ThemeManager.ThemeChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged(object sender, bool isDarkMode)
+    {
+        if (IsThemeDefaultBackgroundColor(BackgroundColor))
+        {
+            BackgroundColor = GetThemeDefaultBackgroundColor();
+        }
     }
 
     private void SceneViewer_Loaded(object sender, RoutedEventArgs e)
@@ -146,6 +199,7 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     public override void Dispose()
     {
+        ThemeManager.ThemeChanged -= OnThemeChanged;
         RenderContext.UpdateScene -= OnUpdateScene;
         RenderContext.RenderScene -= OnRenderScene;
         _actor?.Dispose();
