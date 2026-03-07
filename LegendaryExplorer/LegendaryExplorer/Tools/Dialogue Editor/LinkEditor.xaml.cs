@@ -37,6 +37,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand UpCommand { get; set; }
         public ICommand DownCommand { get; set; }
         public ICommand EditCommand { get; set; }
+        public ICommand GoToTargetCommand { get; set; }
 
         public LinkEditor(DialogueEditorWindow owner, DiagNode node)
         {
@@ -84,6 +85,7 @@ namespace LegendaryExplorer.DialogueEditor
             DeleteCommand = new GenericCommand(DeleteLink, HasActiveLink);
             UpCommand = new RelayCommand(MoveLink);
             DownCommand = new RelayCommand(MoveLink);
+            GoToTargetCommand = new RelayCommand(GoToTargetNode);
         }
 
         private void ParseLink(ReplyChoiceNode link)
@@ -234,6 +236,25 @@ namespace LegendaryExplorer.DialogueEditor
                 Foreground = readOnlyBrush
             };
             datagrid_Links.Columns.Add(clnG);
+
+            var goToTargetColumn = new DataGridTemplateColumn
+            {
+                Header = "Go",
+                Width = 50
+            };
+
+            var goToTargetTemplate = new DataTemplate();
+            var goToTargetButton = new FrameworkElementFactory(typeof(Button));
+            goToTargetButton.SetValue(Button.ContentProperty, "Go");
+            goToTargetButton.SetValue(Button.MarginProperty, new Thickness(2));
+            goToTargetButton.SetBinding(Button.CommandProperty, new Binding("DataContext.GoToTargetCommand")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1)
+            });
+            goToTargetButton.SetBinding(Button.CommandParameterProperty, new Binding());
+            goToTargetTemplate.VisualTree = goToTargetButton;
+            goToTargetColumn.CellTemplate = goToTargetTemplate;
+            datagrid_Links.Columns.Add(goToTargetColumn);
 
             if (!IsReply)
             {
@@ -403,6 +424,19 @@ namespace LegendaryExplorer.DialogueEditor
             }
             NeedsSave = true;
             ReOrderTable();
+        }
+
+        private void GoToTargetNode(object obj)
+        {
+            ReplyChoiceNode targetLink = obj as ReplyChoiceNode ?? datagrid_Links.SelectedItem as ReplyChoiceNode;
+            if (targetLink == null)
+            {
+                return;
+            }
+
+            datagrid_Links.SelectedItem = targetLink;
+            ParentWindow.SelectDialogueNodeByIndex(targetLink.Index, !IsReply, centerView: true);
+            ParentWindow.Activate();
         }
 
         private void LinkEd_Closing(object sender, System.ComponentModel.CancelEventArgs e)

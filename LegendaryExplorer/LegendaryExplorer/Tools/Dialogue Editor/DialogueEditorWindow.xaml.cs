@@ -3369,6 +3369,19 @@ namespace LegendaryExplorer.DialogueEditor
 
             return null;
         }
+
+        public DiagNode SelectDialogueNodeByIndex(int index, bool isReply = false, bool centerView = false)
+        {
+            var node = DialogueNode_SelectByIndex(index, isReply);
+            if (centerView && node != null && graphEditor != null)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 100);
+                graphEditor.Refresh();
+            }
+
+            return node;
+        }
+
         private void DialogueNode_Selected(DiagNode obj)
         {
             SetUIMode(2);
@@ -4046,6 +4059,22 @@ namespace LegendaryExplorer.DialogueEditor
             };
             ApplyInlineLinkEditorColumnWidth(targetLineColumn);
             InlineLinkEditor_DataGrid.Columns.Add(targetLineColumn);
+
+            var goToTargetColumn = new DataGridTemplateColumn
+            {
+                Header = "Go",
+                Width = 50
+            };
+
+            var goToTargetTemplate = new DataTemplate();
+            var goToTargetButton = new FrameworkElementFactory(typeof(Button));
+            goToTargetButton.SetValue(Button.ContentProperty, "Go");
+            goToTargetButton.SetValue(Button.MarginProperty, new Thickness(2));
+            goToTargetButton.AddHandler(Button.ClickEvent, new RoutedEventHandler(InlineLinkEditor_GoToTarget_Click));
+            goToTargetTemplate.VisualTree = goToTargetButton;
+            goToTargetColumn.CellTemplate = goToTargetTemplate;
+            ApplyInlineLinkEditorColumnWidth(goToTargetColumn);
+            InlineLinkEditor_DataGrid.Columns.Add(goToTargetColumn);
         }
 
         private void CacheInlineLinkEditorColumnWidths()
@@ -4202,6 +4231,16 @@ namespace LegendaryExplorer.DialogueEditor
         private void InlineLinkEditor_Edit_Click(object sender, RoutedEventArgs e)
         {
             EditInlineSelectedLink();
+        }
+
+        private void InlineLinkEditor_GoToTarget_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is ReplyChoiceNode targetLink)
+            {
+                InlineLinkEditor_DataGrid.SelectedItem = targetLink;
+                SelectDialogueNodeByIndex(targetLink.Index, !inlineLinkEditorIsReply, centerView: true);
+                BottomViewportTabControl.SelectedItem = LinkEditorTab;
+            }
         }
 
         private void InlineLinkEditor_DataGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
