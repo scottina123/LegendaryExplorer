@@ -669,8 +669,46 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             packageCache.RemoveFromCache(Pcc); // This prevents ref decrementing when cache is disposed
             newSeqObj.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
             Pcc.AddExport(newSeqObj);
+
+            if (info.ClassName == "SFXSeqAct_SetAmbientPerformance" &&
+                MessageBox.Show(this,
+                    "Would you like to create a blank BioDynamicAnimSet and assign it to m_pDefaultPoseSet?",
+                    "Create BioDynamicAnimSet",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                CreateBlankBioDynamicAnimSet(newSeqObj);
+            }
+
             addObject(newSeqObj);
             EndBusy();
+        }
+
+        private void CreateBlankBioDynamicAnimSet(ExportEntry ambientPerformanceExport)
+        {
+            var rop = new RelinkerOptionsPackage();
+            var bioDynamicAnimSetClass = EntryImporter.EnsureClassIsInFile(Pcc, "BioDynamicAnimSet", rop);
+            EntryImporterExtended.ShowRelinkResultsIfAny(rop);
+            if (bioDynamicAnimSetClass is null)
+            {
+                MessageBox.Show(this,
+                    "Could not import BioDynamicAnimSet's class definition.",
+                    "Create BioDynamicAnimSet",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            var bioDynamicAnimSetExport = new ExportEntry(Pcc, ambientPerformanceExport,
+                Pcc.GetNextIndexedName("BioDynamicAnimSet"))
+            {
+                Class = bioDynamicAnimSetClass,
+            };
+            bioDynamicAnimSetExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
+            Pcc.AddExport(bioDynamicAnimSetExport);
+            bioDynamicAnimSetExport.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences"));
+            bioDynamicAnimSetExport.WriteBinary(BioDynamicAnimSet.Create());
+            ambientPerformanceExport.WriteProperty(new ObjectProperty(bioDynamicAnimSetExport, "m_pDefaultPoseSet"));
         }
 
         private bool CanOpenKismetLog(object o)
