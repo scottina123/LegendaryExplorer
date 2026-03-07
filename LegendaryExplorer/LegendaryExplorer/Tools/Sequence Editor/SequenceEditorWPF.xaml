@@ -577,15 +577,67 @@
                     </sharedUi:WindowsFormsHostEx>
                     <Expander Grid.Column="0" Name="toolBoxExpander" HorizontalAlignment="Left"
                                 IsEnabled="{Binding SelectedSequence, Converter={StaticResource NullEnabledConverter}}"
-                                ExpandDirection="Right" IsExpanded="False" Background="{DynamicResource ToolBoxAccentBrush}"
+                                ExpandDirection="Right" IsExpanded="False" Background="Transparent"
                                 sharedUi:Bindings.VisibilityToEnabled="True">
+                        <Expander.Template>
+                            <ControlTemplate TargetType="{x:Type Expander}">
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="ExpandToggleButton"
+                                                  Grid.Column="0"
+                                                  Width="28"
+                                                  Height="28"
+                                                  Margin="4"
+                                                  VerticalAlignment="Top"
+                                                  HorizontalAlignment="Left"
+                                                  Focusable="False"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                                <Border x:Name="ToggleBorder"
+                                                        Background="#FF2E2E2E"
+                                                        BorderBrush="#FF5B5B5B"
+                                                        BorderThickness="1"
+                                                        CornerRadius="14">
+                                                    <TextBlock x:Name="Chevron"
+                                                               Text="❯"
+                                                               FontSize="14"
+                                                               Foreground="White"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ToggleBorder" Property="Background" Value="#FF3A3A3A" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Chevron" Property="Text" Value="❮" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter TargetName="ToggleBorder" Property="Opacity" Value="0.6" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                    <ContentPresenter x:Name="ExpandSite"
+                                                      Grid.Column="1"
+                                                      Margin="4,0,0,0"
+                                                      Visibility="Collapsed"
+                                                      ContentSource="Content" />
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsExpanded" Value="True">
+                                        <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Expander.Template>
                         <Expander.Header>
-                            <TextBlock Text="Sequence Object Toolbox" Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" VerticalAlignment="Center"
-                                        Margin="0,0,4,0">
-                                <TextBlock.LayoutTransform>
-                                    <RotateTransform Angle="-90" />
-                                </TextBlock.LayoutTransform>
-                            </TextBlock>
+                            <Grid Width="0" Height="0" />
                         </Expander.Header>
                         <TabControl>
                             <TabItem>
