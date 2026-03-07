@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
@@ -142,16 +143,7 @@ namespace LegendaryExplorer.Dialogs
 
         public string SelectedAnimationDetails
         {
-            get
-            {
-                if (SelectedAnimation == null) return "No animation selected.";
-                return $"Sequence: {SelectedAnimation.AnimSequence}\n" +
-                       $"Name: {SelectedAnimation.SeqName}\n" +
-                       $"AnimData: {SelectedAnimation.AnimData}\n" +
-                       $"Length: {SelectedAnimation.Length:F2}s\n" +
-                       $"Frames: {SelectedAnimation.Frames}\n" +
-                       $"Compression: {SelectedAnimation.Compression}";
-            }
+            get => GetAnimationDetailsText(SelectedAnimation);
         }
 
         public ObservableCollectionExtended<AnimationRecord> FilteredAnimations { get; } = new();
@@ -275,16 +267,44 @@ namespace LegendaryExplorer.Dialogs
             SourceGameComboBox.SelectedItem = _pcc.Game;
 
             LoadExistingGestures();
-            LoadDatabaseAsync();
+            _ = LoadDatabaseAsync();
         }
 
-        private async void LoadDatabaseAsync()
+        private void ClearLoadedAnimationDatabaseState()
+        {
+            _db = null;
+            _fileListExtended.Clear();
+            _allAnimations = [];
+            _skeletonMeshes = [];
+            SelectedAnimation = null;
+            FilteredAnimations.ReplaceAll(_allAnimations);
+            PreviewMeshComboBox.ItemsSource = null;
+            PreviewMeshComboBox.SelectedItem = null;
+            AnimPreviewControl.ClearAnimation();
+
+            if (UsesDefaultPoseSetTarget)
+            {
+                _allAmbPerfs = [];
+                SelectedAmbPerf = null;
+                FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
+                AmbPerfMeshComboBox.ItemsSource = null;
+                AmbPerfMeshComboBox.SelectedItem = null;
+                AmbPerfPreviewControl.ClearAnimation();
+            }
+        }
+
+        private async Task LoadDatabaseAsync()
         {
             MEGame game = _selectedAnimSourceGame;
             string dbPath = AssetDatabaseWindow.GetDBPath(game);
             if (!File.Exists(dbPath))
             {
+                ClearLoadedAnimationDatabaseState();
                 AnimationStatusText = $"No {game} asset database found. Please generate one in the Asset Database tool.";
+                if (UsesDefaultPoseSetTarget)
+                {
+                    AmbPerfStatusText = AnimationStatusText;
+                }
                 return;
             }
 
@@ -295,7 +315,12 @@ namespace LegendaryExplorer.Dialogs
 
             if (_db.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
             {
+                ClearLoadedAnimationDatabaseState();
                 AnimationStatusText = $"{game} asset database is out of date. Please regenerate it in the Asset Database tool.";
+                if (UsesDefaultPoseSetTarget)
+                {
+                    AmbPerfStatusText = AnimationStatusText;
+                }
                 return;
             }
 
@@ -394,7 +419,7 @@ namespace LegendaryExplorer.Dialogs
                 _selectedAnimSourceGame = game;
                 SelectedAnimation = null;
                 AnimPreviewControl.ClearAnimation();
-                LoadDatabaseAsync();
+                _ = LoadDatabaseAsync();
             }
         }
 
@@ -1029,6 +1054,18 @@ namespace LegendaryExplorer.Dialogs
             // Handled by SelectedGestureEntry binding
         }
 
+        private static string GetAnimationDetailsText(AnimationRecord animation)
+        {
+            if (animation == null) return "No animation selected.";
+
+            return $"Sequence: {animation.AnimSequence}\n" +
+                   $"Name: {animation.SeqName}\n" +
+                   $"AnimData: {animation.AnimData}\n" +
+                   $"Length: {animation.Length:F2}s\n" +
+                   $"Frames: {animation.Frames}\n" +
+                   $"Compression: {animation.Compression}";
+        }
+
         /// <summary>
         /// Opens a picker dialog for the user to select an animation from the database,
         /// imports it, and returns the (setName, seqName). Returns null if cancelled.
@@ -1045,8 +1082,8 @@ namespace LegendaryExplorer.Dialogs
             var pickerWindow = new Window
             {
                 Title = "Select Animation",
-                Width = 900,
-                Height = 600,
+                Width = 1250,
+                Height = 700,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this
             };
@@ -1074,12 +1111,45 @@ namespace LegendaryExplorer.Dialogs
 
             // Left panel: preview
             var previewPanel = new DockPanel { MinWidth = 250 };
+            var previewHeader = new TextBlock { Text = "Animation Preview", FontWeight = FontWeights.Bold, Margin = new Thickness(5, 0, 5, 4) };
+            DockPanel.SetDock(previewHeader, Dock.Top);
+            previewPanel.Children.Add(previewHeader);
             DockPanel.SetDock(meshCombo, Dock.Top);
             previewPanel.Children.Add(meshCombo);
             previewPanel.Children.Add(pickerPreview);
 
             // Search box
             var searchBox = new TextBox { Margin = new Thickness(5) };
+            var sourceGameCombo = new ComboBox
+            {
+                Width = 80,
+                Margin = new Thickness(0, 0, 5, 0),
+                ItemsSource = AvailableSourceGames,
+                SelectedItem = _selectedAnimSourceGame
+            };
+            var searchPanel = new DockPanel { Margin = new Thickness(5, 0, 5, 4) };
+            var sourceGameLabel = new TextBlock { Text = "Source Game: ", VerticalAlignment = VerticalAlignment.Center };
+            var searchLabel = new TextBlock { Text = "  Search: ", VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(sourceGameLabel, Dock.Left);
+            DockPanel.SetDock(sourceGameCombo, Dock.Left);
+            DockPanel.SetDock(searchLabel, Dock.Left);
+            searchBox.Margin = new Thickness(0);
+            searchPanel.Children.Add(sourceGameLabel);
+            searchPanel.Children.Add(sourceGameCombo);
+            searchPanel.Children.Add(searchLabel);
+            searchPanel.Children.Add(searchBox);
+            var statusText = new TextBlock
+            {
+                Margin = new Thickness(5, 0, 5, 4),
+                Opacity = 0.6,
+                Text = $"{_allAnimations.Count} / {_allAnimations.Count} animations shown."
+            };
+            var detailsText = new TextBlock
+            {
+                Text = GetAnimationDetailsText(null),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
 
             // Animation list
             var listBox = new ListBox
@@ -1088,9 +1158,47 @@ namespace LegendaryExplorer.Dialogs
                 DisplayMemberPath = "AnimSequence"
             };
             listBox.ItemsSource = _allAnimations;
+
+            void ApplyPickerFilter()
+            {
+                string filter = searchBox.Text?.Trim() ?? "";
+                if (string.IsNullOrEmpty(filter))
+                {
+                    listBox.ItemsSource = _allAnimations;
+                    statusText.Text = $"{_allAnimations.Count} / {_allAnimations.Count} animations shown.";
+                    return;
+                }
+
+                var filteredAnimations = _allAnimations.Where(a =>
+                    a.AnimSequence.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    (a.SeqName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (a.AnimData?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+                listBox.ItemsSource = filteredAnimations;
+                statusText.Text = $"{filteredAnimations.Count} / {_allAnimations.Count} animations shown.";
+            }
+
+            void RefreshPickerAnimationBrowser()
+            {
+                selectedAnim = null;
+                listBox.SelectedItem = null;
+                detailsText.Text = GetAnimationDetailsText(null);
+                pickerPreview.ClearAnimation();
+                meshCombo.ItemsSource = _skeletonMeshes;
+                meshCombo.SelectedItem = PreviewMeshComboBox.SelectedItem as MeshRecord;
+                if (meshCombo.SelectedItem is MeshRecord selectedMesh)
+                {
+                    pickerWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        LoadPreviewMesh(selectedMesh, pickerPreview);
+                    }), System.Windows.Threading.DispatcherPriority.Loaded);
+                }
+                ApplyPickerFilter();
+            }
+
             listBox.SelectionChanged += (s, args) =>
             {
                 var anim = listBox.SelectedItem as AnimationRecord;
+                detailsText.Text = GetAnimationDetailsText(anim);
                 if (anim != null && anim.Usages.Any())
                 {
                     if (TryResolveAnimationSource(anim, out string fp, out int uIdx))
@@ -1116,13 +1224,17 @@ namespace LegendaryExplorer.Dialogs
             };
             searchBox.TextChanged += (s, args) =>
             {
-                string filter = searchBox.Text?.Trim() ?? "";
-                if (string.IsNullOrEmpty(filter))
-                    listBox.ItemsSource = _allAnimations;
-                else
-                    listBox.ItemsSource = _allAnimations.Where(a =>
-                        a.AnimSequence.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                        (a.SeqName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+                ApplyPickerFilter();
+            };
+            sourceGameCombo.SelectionChanged += async (s, args) =>
+            {
+                if (sourceGameCombo.SelectedItem is MEGame game && game != _selectedAnimSourceGame)
+                {
+                    _selectedAnimSourceGame = game;
+                    SourceGameComboBox.SelectedItem = game;
+                    await LoadDatabaseAsync();
+                    RefreshPickerAnimationBrowser();
+                }
             };
 
             var okButton = new Button { Content = "OK", Width = 80, Margin = new Thickness(5), IsDefault = true };
@@ -1137,32 +1249,57 @@ namespace LegendaryExplorer.Dialogs
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
 
-            // Right panel: search + list + buttons
+            // Middle panel: search + list + buttons
             var listPanel = new DockPanel();
-            DockPanel.SetDock(searchBox, Dock.Top);
-            DockPanel.SetDock(buttonPanel, Dock.Bottom);
-            listPanel.Children.Add(searchBox);
-            listPanel.Children.Add(buttonPanel);
+            var listHeader = new TextBlock { Text = "Animations from Asset Database", FontWeight = FontWeights.Bold, Margin = new Thickness(5, 0, 5, 4) };
+            DockPanel.SetDock(listHeader, Dock.Top);
+            DockPanel.SetDock(searchPanel, Dock.Top);
+            DockPanel.SetDock(statusText, Dock.Top);
+            listPanel.Children.Add(listHeader);
+            listPanel.Children.Add(searchPanel);
+            listPanel.Children.Add(statusText);
             listPanel.Children.Add(listBox);
 
-            // Main layout: preview | list
+            // Right panel: selected animation details
+            var detailsPanel = new DockPanel { Margin = new Thickness(5, 0, 0, 0), MinWidth = 250 };
+            var detailsHeader = new TextBlock { Text = "Selected Animation Details", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) };
+            DockPanel.SetDock(detailsHeader, Dock.Top);
+            var detailsGroup = new GroupBox { Header = "Animation Details", Padding = new Thickness(8), Content = detailsText };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+            detailsPanel.Children.Add(detailsHeader);
+            detailsPanel.Children.Add(buttonPanel);
+            detailsPanel.Children.Add(detailsGroup);
+
+            // Main layout: preview | list | details
             var splitter = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var splitter2 = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch };
             var mainGrid = new Grid();
             mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300), MinWidth = 200 });
             mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
             mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
+            mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300), MinWidth = 250 });
             Grid.SetColumn(previewPanel, 0);
             Grid.SetColumn(splitter, 1);
             Grid.SetColumn(listPanel, 2);
+            Grid.SetColumn(splitter2, 3);
+            Grid.SetColumn(detailsPanel, 4);
             mainGrid.Children.Add(previewPanel);
             mainGrid.Children.Add(splitter);
             mainGrid.Children.Add(listPanel);
+            mainGrid.Children.Add(splitter2);
+            mainGrid.Children.Add(detailsPanel);
 
             pickerWindow.Content = mainGrid;
             pickerWindow.Closing += (s, args) =>
             {
                 pickerPreview.Dispose();
                 pickerAnimPcc?.Dispose();
+            };
+
+            pickerWindow.Loaded += (s, args) =>
+            {
+                RefreshPickerAnimationBrowser();
             };
 
             if (pickerWindow.ShowDialog() != true || selectedAnim == null)
