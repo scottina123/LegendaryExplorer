@@ -216,7 +216,18 @@ public class PointLightComponentProxy : PrimitiveComponentProxy
 {
     public float Radius { get; set; }
     public float Brightness { get; }
-    public Vector3 LightColor { get; }
+    public System.Drawing.Color LightColor { get; set; }
+    public System.Drawing.Color LightEnv_BouncedModulationColor { get; set; }
+    public bool ApplyBouncedModulationColor { get; set; }
+
+    public Vector3 EffectiveLightColor
+    {
+        get
+        {
+            System.Drawing.Color color = ApplyBouncedModulationColor ? LightEnv_BouncedModulationColor : LightColor;
+            return new Vector3(color.R / 255f, color.G / 255f, color.B / 255f);
+        }
+    }
 
     public PointLightComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
     {
@@ -224,18 +235,28 @@ public class PointLightComponentProxy : PrimitiveComponentProxy
         Brightness = Properties.GetProp<FloatProperty>("Brightness")?.Value ?? 1f;
         if (Properties.GetProp<StructProperty>("LightColor") is { } lightColorProp)
         {
-            var lightColor = CommonStructs.GetColor(lightColorProp);
-            LightColor = new Vector3(lightColor.R / 255f, lightColor.G / 255f, lightColor.B / 255f);
+            LightColor = CommonStructs.GetColor(lightColorProp);
         }
         else
         {
-            LightColor = Vector3.One;
+            LightColor = System.Drawing.Color.White;
+        }
+
+        if (Properties.GetProp<StructProperty>("LightEnv_BouncedModulationColor") is { } bouncedColorProp)
+        {
+            LightEnv_BouncedModulationColor = CommonStructs.GetColor(bouncedColorProp);
+        }
+        else
+        {
+            LightEnv_BouncedModulationColor = LightColor;
         }
     }
 
     public virtual void CommitChanges()
     {
         Properties.AddOrReplaceProp(new FloatProperty(Radius, "Radius"));
+        Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
+        Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightEnv_BouncedModulationColor, "LightEnv_BouncedModulationColor"));
         Export.WriteProperties(Properties);
     }
 }

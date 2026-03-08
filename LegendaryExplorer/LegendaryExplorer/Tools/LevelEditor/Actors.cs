@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using MediaColor = System.Windows.Media.Color;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
@@ -172,6 +173,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public virtual float LightRadius { get => 0f; set { } }
     public virtual float InnerConeAngle { get => 0f; set { } }
     public virtual float OuterConeAngle { get => 0f; set { } }
+    public virtual MediaColor LightColor { get => default; set { } }
+    public virtual MediaColor LightEnv_BouncedModulationColor { get => default; set { } }
+    public virtual bool CanApplyBouncedModulationColor => false;
+    public virtual bool ApplyBouncedModulationColor { get => false; set { } }
     public virtual bool TryGetSceneLight(out SceneLight light)
     {
         light = default;
@@ -681,6 +686,47 @@ public class PointLightActorProxy : ActorProxy
         base.CommitChanges(packageCache);
     }
 
+    public override MediaColor LightColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightColor.A ?? byte.MaxValue, LightComponent?.LightColor.R ?? byte.MaxValue, LightComponent?.LightColor.G ?? byte.MaxValue, LightComponent?.LightColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightColor == newColor) return;
+            LightComponent.LightColor = newColor;
+            OnPropertyChanged(nameof(LightColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override MediaColor LightEnv_BouncedModulationColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightEnv_BouncedModulationColor.A ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.R ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.G ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightEnv_BouncedModulationColor == newColor) return;
+            LightComponent.LightEnv_BouncedModulationColor = newColor;
+            OnPropertyChanged(nameof(LightEnv_BouncedModulationColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override bool CanApplyBouncedModulationColor => LightComponent is not null;
+    public override bool ApplyBouncedModulationColor
+    {
+        get => LightComponent?.ApplyBouncedModulationColor ?? false;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.ApplyBouncedModulationColor == value) return;
+            LightComponent.ApplyBouncedModulationColor = value;
+            OnPropertyChanged(nameof(ApplyBouncedModulationColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
     public override bool TryGetSceneLight(out SceneLight light)
     {
         if (LightComponent is null)
@@ -692,7 +738,7 @@ public class PointLightActorProxy : ActorProxy
         light = new SceneLight(
             LocalToWorld.Translation,
             LightComponent.Radius,
-            LightComponent.LightColor,
+            LightComponent.EffectiveLightColor,
             LightComponent.Brightness,
             false,
             LocalToWorld.GetAxis(0).Normal(),
@@ -747,7 +793,7 @@ public class SpotLightActorProxy : PointLightActorProxy
         light = new SceneLight(
             LocalToWorld.Translation,
             LightComponent.Radius,
-            LightComponent.LightColor,
+            LightComponent.EffectiveLightColor,
             LightComponent.Brightness,
             true,
             LocalToWorld.GetAxis(0).Normal(),
@@ -839,6 +885,47 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
         LightComponent?.CommitChanges();
     }
 
+    public override MediaColor LightColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightColor.A ?? byte.MaxValue, LightComponent?.LightColor.R ?? byte.MaxValue, LightComponent?.LightColor.G ?? byte.MaxValue, LightComponent?.LightColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightColor == newColor) return;
+            LightComponent.LightColor = newColor;
+            OnPropertyChanged(nameof(LightColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override MediaColor LightEnv_BouncedModulationColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightEnv_BouncedModulationColor.A ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.R ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.G ?? byte.MaxValue, LightComponent?.LightEnv_BouncedModulationColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightEnv_BouncedModulationColor == newColor) return;
+            LightComponent.LightEnv_BouncedModulationColor = newColor;
+            OnPropertyChanged(nameof(LightEnv_BouncedModulationColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override bool CanApplyBouncedModulationColor => LightComponent is not null;
+    public override bool ApplyBouncedModulationColor
+    {
+        get => LightComponent?.ApplyBouncedModulationColor ?? false;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.ApplyBouncedModulationColor == value) return;
+            LightComponent.ApplyBouncedModulationColor = value;
+            OnPropertyChanged(nameof(ApplyBouncedModulationColor));
+            MarkAuxiliaryChanged();
+        }
+    }
+
     public override bool TryGetSceneLight(out SceneLight light)
     {
         if (LightComponent is null)
@@ -850,7 +937,7 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
         light = new SceneLight(
             LocalToWorld.Translation,
             LightComponent.Radius,
-            LightComponent.LightColor,
+            LightComponent.EffectiveLightColor,
             LightComponent.Brightness,
             false,
             LocalToWorld.GetAxis(0).Normal(),
@@ -904,7 +991,7 @@ public class SpotLightComponentActorProxy : PointLightComponentActorProxy
         light = new SceneLight(
             LocalToWorld.Translation,
             SpotLightComponent.Radius,
-            SpotLightComponent.LightColor,
+            SpotLightComponent.EffectiveLightColor,
             SpotLightComponent.Brightness,
             true,
             LocalToWorld.GetAxis(0).Normal(),
