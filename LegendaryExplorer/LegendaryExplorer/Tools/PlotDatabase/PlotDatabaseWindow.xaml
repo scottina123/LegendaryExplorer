@@ -20,6 +20,41 @@
         Title="Plot Database" Height="900" Width="1500">
     <Window.Resources>
         <plotDatabase1:PlotElementTypeConverter x:Key="PlotElementTypeConverter"/>
+        <Style x:Key="PlotFilterToggleButtonStyle" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Background" Value="#FF2F2F2F" />
+            <Setter Property="BorderBrush" Value="#FF4A4A4A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FF3A3A3A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FF454545" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FF3A3A3A" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF5A5A5A" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="FileLVHeader" TargetType="{x:Type GridViewColumnHeader}" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
             <Setter Property="HorizontalContentAlignment" Value="Left" />
         </Style>
@@ -67,22 +102,22 @@
                 </Grid.RowDefinitions>
                 <DockPanel Name="TopBar"  Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" LastChildFill="True">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" DockPanel.Dock="Right" >
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowBoolStates}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Bool States">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowBoolStates}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Bool States">
                             <Image Source="/Tools/PlotDatabase/PlotTypeIcons/icon_bool.png" Height="12" Width="12"/>
                         </ToggleButton>
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowInts}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Integers">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowInts}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Integers">
                             <Image Source="/Tools/PlotDatabase/PlotTypeIcons/icon_int.png" Height="12" Width="12"/>
                         </ToggleButton>
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowFloats}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Floats">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowFloats}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Floats">
                             <Image Source="/Tools/PlotDatabase/PlotTypeIcons/icon_float.png" Height="12" Width="12"/>
                         </ToggleButton>
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowConditionals}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Conditionals">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowConditionals}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Conditionals">
                             <Image Source="/Tools/PlotDatabase/PlotTypeIcons/icon_cnd.png" Height="12" Width="12"/>
                         </ToggleButton>
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowTransitions}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Transitions">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowTransitions}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Transitions">
                             <Image Source="/Tools/PackageEditor/ExportIcons/icon_function.png" Height="12" Width="12"/>
                         </ToggleButton>
-                        <ToggleButton Command="{Binding FilterCommand}" IsChecked="{Binding ShowJournal}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Journal Items">
+                        <ToggleButton Style="{StaticResource PlotFilterToggleButtonStyle}" Command="{Binding FilterCommand}" IsChecked="{Binding ShowJournal}" Height="25" Width="25" Margin="5,0,5,0" ToolTip="Show Journal Items">
                             <Image Source="/Tools/PackageEditor/ExportIcons/icon_world.png" Height="12" Width="12"/>
                         </ToggleButton>
                         <xctk:WatermarkTextBox Watermark="Search" Name="FilterBox" Width="500" Margin="5,3,20,2" KeyUp="FilterBox_KeyUp" ToolTip="Search" HorizontalAlignment="Right" HorizontalContentAlignment="Left" IsEnabled="True">
