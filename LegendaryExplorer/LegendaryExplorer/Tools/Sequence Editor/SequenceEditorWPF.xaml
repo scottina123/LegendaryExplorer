@@ -109,6 +109,12 @@
         <ContextMenu x:Key="backContextMenu">
             <MenuItem Header="Add Existing Object" Click="AddObject_Clicked" ToolTip="Add existing Sequence Object to this Sequence"/>
         </ContextMenu>
+        <ContextMenu x:Key="currentObjectsContextMenu">
+            <MenuItem Header="Open in Package Editor" Click="CurrentObjects_OpenInPackageEditor_Click" />
+        </ContextMenu>
+        <ContextMenu x:Key="sequencesTreeContextMenu">
+            <MenuItem Header="Open in Package Editor" Click="SequencesTree_OpenInPackageEditor_Click" />
+        </ContextMenu>
         <system:Boolean x:Key="True">True</system:Boolean>
     </Window.Resources>
     <Window.InputBindings>
@@ -299,6 +305,8 @@
                             SelectionChanged="CurrentObjectsList_SelectedItemChanged"
                             HorizontalContentAlignment="Stretch"
                             SelectionMode="Extended"
+                            PreviewMouseRightButtonDown="CurrentObjects_ListBox_PreviewMouseRightButtonDown"
+                            ContextMenu="{StaticResource currentObjectsContextMenu}"
                             Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -424,6 +432,8 @@
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}"
                                 ItemsSource="{Binding TreeViewRootNodes}" 
                                 FocusManager.IsFocusScope="True"
+                                PreviewMouseRightButtonDown="Sequences_TreeView_PreviewMouseRightButtonDown"
+                                ContextMenu="{StaticResource sequencesTreeContextMenu}"
                                 SelectedValuePath="IsSelected">
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type sharedUi:TreeViewEntry}"

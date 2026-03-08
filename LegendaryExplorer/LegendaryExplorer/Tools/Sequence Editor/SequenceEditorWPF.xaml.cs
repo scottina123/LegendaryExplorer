@@ -2787,13 +2787,33 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (CurrentObjects_ListBox.SelectedItem is SObj obj)
             {
-                AllowWindowRefocus =
-                    false; //prevents flicker effect when windows try to focus and then package editor activates
-                var p = new PackageEditor.PackageEditorWindow();
-                p.Show();
-                p.LoadFile(obj.Export.FileRef.FilePath, obj.UIndex);
-                p.Activate(); //bring to front
+                OpenEntryInPackageEditor(obj.Export);
             }
+        }
+
+        private void CurrentObjects_OpenInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is SObj obj)
+            {
+                OpenEntryInPackageEditor(obj.Export);
+            }
+        }
+
+        private void SequencesTree_OpenInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedItem?.Entry is IEntry entry)
+            {
+                OpenEntryInPackageEditor(entry);
+            }
+        }
+
+        private void OpenEntryInPackageEditor(IEntry entry)
+        {
+            AllowWindowRefocus = false;
+            var p = new PackageEditor.PackageEditorWindow();
+            p.Show();
+            p.LoadFile(entry.FileRef.FilePath, entry.UIndex);
+            p.Activate();
         }
 
         private void OpenReferencedObjectInPackageEditor_Clicked(object sender, RoutedEventArgs e)
@@ -4086,6 +4106,44 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             if (source is TreeViewItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+            }
+        }
+
+        private void Sequences_TreeView_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not TreeViewItem && source != null)
+            {
+                source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is TreeViewItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+            }
+        }
+
+        private void CurrentObjects_ListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not ListBoxItem && source != null)
+            {
+                source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is ListBoxItem item)
             {
                 item.IsSelected = true;
                 item.Focus();
