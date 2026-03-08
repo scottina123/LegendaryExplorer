@@ -239,6 +239,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand PopoutInterpreterForObjectValueCommand { get; set; }
         public ICommand MoveArrayElementUpCommand { get; set; }
         public ICommand MoveArrayElementDownCommand { get; set; }
+        public ICommand MoveArrayElementToTopCommand { get; set; }
+        public ICommand MoveArrayElementToBottomCommand { get; set; }
         public ICommand SaveHexChangesCommand { get; set; }
         public ICommand ToggleHexBoxCommand { get; set; }
         public ICommand AddArrayElementCommand { get; set; }
@@ -282,6 +284,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             DeleteArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
             MoveArrayElementUpCommand = new GenericCommand(MoveArrayElementUp, CanMoveArrayElementUp);
             MoveArrayElementDownCommand = new GenericCommand(MoveArrayElementDown, CanMoveArrayElementDown);
+            MoveArrayElementToTopCommand = new GenericCommand(MoveArrayElementToTop, CanMoveArrayElementToTop);
+            MoveArrayElementToBottomCommand = new GenericCommand(MoveArrayElementToBottom, CanMoveArrayElementToBottom);
             GenerateGUIDCommand = new GenericCommand(GenerateNewGUID, IsItemGUIDImmutable);
             NavigateToEntryCommandInternal = new GenericCommand(FireNavigateCallback, CanFireNavigateCallback);
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, ObjectPropertyExportIsSelected);
@@ -515,9 +519,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return entries != null && ArrayElementIsSelected() && entries.IndexOf(SelectedItem) < entries.Count - 1;
         }
 
+        private bool CanMoveArrayElementToTop() => CanMoveArrayElementUp();
+
+        private bool CanMoveArrayElementToBottom() => CanMoveArrayElementDown();
+
         private void MoveArrayElementDown() => MoveArrayElement(false);
 
         private void MoveArrayElementUp() => MoveArrayElement(true);
+
+        private void MoveArrayElementToTop() => MoveArrayElementToIndex(0);
+
+        private void MoveArrayElementToBottom()
+        {
+            if (SelectedItem?.UPParent?.Property is ArrayPropertyBase arrayProperty)
+            {
+                MoveArrayElementToIndex(arrayProperty.Count - 1);
+            }
+        }
 
         private void PopoutInterpreterForObj()
         {
@@ -2934,6 +2952,37 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ForcedRescanOffset = (int)arrayProperty[swapIndex].StartOffset;
                 arrayProperty.SwapElements(index, swapIndex);
                 //Will force reload
+                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            }
+        }
+
+        private void MoveArrayElementToIndex(int destinationIndex)
+        {
+            if (SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
+            {
+                int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
+                if (index < 0 || destinationIndex < 0 || destinationIndex >= arrayProperty.Count || index == destinationIndex)
+                {
+                    return;
+                }
+
+                ForcedRescanOffset = (int)arrayProperty[destinationIndex].StartOffset;
+
+                if (destinationIndex < index)
+                {
+                    for (int i = index; i > destinationIndex; i--)
+                    {
+                        arrayProperty.SwapElements(i, i - 1);
+                    }
+                }
+                else
+                {
+                    for (int i = index; i < destinationIndex; i++)
+                    {
+                        arrayProperty.SwapElements(i, i + 1);
+                    }
+                }
+
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
         }

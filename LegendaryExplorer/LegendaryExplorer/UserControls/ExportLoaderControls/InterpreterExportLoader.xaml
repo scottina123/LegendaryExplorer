@@ -81,6 +81,12 @@
                     Command="{Binding MoveArrayElementDownCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                     <fa:FontAwesome Icon="Solid_ArrowDown" />
                 </Button>
+                <Button Name="ArrayElement_MoveToTop_Button" ToolTip="Move the selected array element to the top of the list" VerticalAlignment="Center" Width="22"
+                    Command="{Binding MoveArrayElementToTopCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                    Content="⇑"/>
+                <Button Name="ArrayElement_MoveToBottom_Button" ToolTip="Move the selected array element to the bottom of the list" VerticalAlignment="Center" Width="22"
+                    Command="{Binding MoveArrayElementToBottomCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                    Content="⇓"/>
             </ToolBar>
             <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
                 <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged" 
