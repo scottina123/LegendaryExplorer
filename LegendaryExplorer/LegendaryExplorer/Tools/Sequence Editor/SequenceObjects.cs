@@ -118,6 +118,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         public ExportEntry Export => export;
         public int UIndex => export.UIndex;
         public bool IsSubSequence => export.ClassName is "Sequence" or "PrefabSequence";
+        public bool IsSequenceReference => export.ObjectName.Name.StartsWith("SequenceReference", StringComparison.OrdinalIgnoreCase);
         public virtual bool IsSelected { get; set; }
 
         protected Pen OutlinePen;
