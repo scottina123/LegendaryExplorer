@@ -8,13 +8,14 @@ using FontAwesome5;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
-using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
+using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
+using LegacyScene3D = LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls;
 
@@ -24,9 +25,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls;
 /// </summary>
 public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase, ISceneRenderContextConfigurable
 {
-    private MeshRenderContext _meshContext;
-    private ModelPreview<WorldVertex> _meshPreview;
-    private SkinnedMeshRenderer _skinnedRenderer;
+    private readonly PackageCache _packageCache = new();
+    private LegacyScene3D.MeshRenderContext _meshContext;
+    private LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex> _meshPreview;
+    private LegacySkinnedMeshRenderer _skinnedRenderer;
     private AnimPlayer _animPlayer;
     private SkeletalMesh _skm;
     private bool _previewInitialized;
@@ -135,9 +137,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (SetProperty(ref _setAlphaToBlack, value))
             {
                 if (value)
-                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.AlphaAsBlack;
+                    _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.AlphaAsBlack;
                 else
-                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.AlphaAsBlack;
+                    _meshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.AlphaAsBlack;
             }
         }
     }
@@ -151,9 +153,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (SetProperty(ref _showRedChannel, value))
             {
                 if (value)
-                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableRedChannel;
+                    _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableRedChannel;
                 else
-                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableRedChannel;
+                    _meshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableRedChannel;
             }
         }
     }
@@ -167,9 +169,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (SetProperty(ref _showGreenChannel, value))
             {
                 if (value)
-                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableGreenChannel;
+                    _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableGreenChannel;
                 else
-                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableGreenChannel;
+                    _meshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableGreenChannel;
             }
         }
     }
@@ -183,9 +185,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (SetProperty(ref _showBlueChannel, value))
             {
                 if (value)
-                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableBlueChannel;
+                    _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableBlueChannel;
                 else
-                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableBlueChannel;
+                    _meshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableBlueChannel;
             }
         }
     }
@@ -199,9 +201,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (SetProperty(ref _showAlphaChannel, value))
             {
                 if (value)
-                    _meshContext.RenderFlags |= RenderContext.ShaderFlags.EnableAlphaChannel;
+                    _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
                 else
-                    _meshContext.RenderFlags &= ~RenderContext.ShaderFlags.EnableAlphaChannel;
+                    _meshContext.CurrentTextureViewFlags &= ~TextureRenderContext.TextureViewFlags.EnableAlphaChannel;
             }
         }
     }
@@ -263,10 +265,11 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         _backgroundColor = GetThemeDefaultBackgroundColor();
         InitializeComponent();
 
-        _meshContext = new MeshRenderContext
+        _meshContext = new LegacyScene3D.MeshRenderContext
         {
             BackgroundColor = _backgroundColor
         };
+        _meshContext.CurrentTextureViewFlags |= TextureRenderContext.TextureViewFlags.AlphaAsBlack;
         SceneViewer.Context = _meshContext;
         SceneViewer.Loaded += SceneViewer_Loaded;
 
@@ -312,17 +315,17 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             {
                 throw new Exception("Mesh has no LODs!");
             }
-            _meshPreview = new ModelPreview<WorldVertex>(_meshContext, skm);
+            _meshPreview = new LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex>(_meshContext.Device, skm, _meshContext.TextureCache, _packageCache);
 
-            _skinnedRenderer = new SkinnedMeshRenderer();
+            _skinnedRenderer = new LegacySkinnedMeshRenderer();
             _skinnedRenderer.BuildFromSkeletalMesh(skeletalMeshExport.FileRef.Game, skm.LODModels[0]);
 
             _skm = skm;
 
-            Mesh<WorldVertex> mesh = _meshPreview.LODs[0].Mesh;
+            var mesh = _meshPreview.LODs[0].Mesh;
             // Center camera on mesh
-            _meshContext.Camera.FocusDepth = mesh.TransformedBounds.SphereRadius * 1.75f;
-            _meshContext.Camera.Position = mesh.TransformedBounds.Origin;
+            _meshContext.Camera.FocusDepth = mesh.AABBHalfSize.Length() * 1.75f;
+            _meshContext.Camera.Position = mesh.AABBCenter;
             _meshContext.Camera.Pitch = -MathF.PI / 7.0f;
 
             // Reload last animation if any
@@ -536,8 +539,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     {
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = !_animPlayer.IsPlaying;
-        if (_animPlayer.IsPlaying)
-            SceneViewer.MarkRenderDirty();
         OnPropertyChanged(nameof(PlayPauseIcon));
         IsPlayingChanged?.Invoke(_animPlayer.IsPlaying);
     }
@@ -546,7 +547,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     {
         if (_animPlayer == null) return;
         _animPlayer.IsPlaying = true;
-        SceneViewer.MarkRenderDirty();
         OnPropertyChanged(nameof(PlayPauseIcon));
         IsPlayingChanged?.Invoke(true);
     }
@@ -568,6 +568,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             _meshContext.RenderScene -= OnRenderScene;
         }
         _meshPreview?.Dispose();
+        _packageCache.Dispose();
         SceneViewer?.Dispose();
     }
 
@@ -625,10 +626,6 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                     AnimTimeChanged?.Invoke(_animPlayer.CurrentTime);
             }
 
-            if (isPlaying)
-            {
-                SceneViewer.MarkRenderDirty();
-            }
         }
     }
 
@@ -640,13 +637,149 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         }
         if (RemoveOffset)
         {
-            _meshContext.Camera.Position = _meshPreview.LODs[0].Mesh.TransformedBounds.Origin;
+            _meshContext.Camera.Position = _meshPreview.LODs[0].Mesh.AABBCenter;
         }
-        foreach (RenderPass renderPass in Enum.GetValues<RenderPass>())
+        foreach (LegacyScene3D.RenderPass renderPass in Enum.GetValues<LegacyScene3D.RenderPass>())
         {
-            _meshPreview.Render(renderPass, _meshContext, 0);
+            _meshPreview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
         }
     }
 
     #endregion
+}
+
+internal sealed class LegacySkinnedMeshRenderer
+{
+    private SkinVertex[] _skinVertices;
+
+    private struct SkinVertex
+    {
+        public Vector3 BindPosition;
+        public Vector3 BindNormal;
+        public Vector2 UV;
+        public int Bone0;
+        public int Bone1;
+        public int Bone2;
+        public int Bone3;
+        public float Weight0;
+        public float Weight1;
+        public float Weight2;
+        public float Weight3;
+    }
+
+    public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel)
+    {
+        bool isME1 = game == MEGame.ME1;
+        int vertexCount = isME1 ? lodModel.ME1VertexBufferGPUSkin.Length : (int)lodModel.NumVertices;
+        _skinVertices = new SkinVertex[vertexCount];
+
+        if (isME1)
+        {
+            for (int v = 0; v < vertexCount; v++)
+            {
+                var sv = lodModel.ME1VertexBufferGPUSkin[v];
+                var chunk = FindChunkForVertex(lodModel, v);
+                ref var skinVert = ref _skinVertices[v];
+                skinVert.BindPosition = sv.Position;
+                skinVert.BindNormal = (Vector3)sv.TangentZ;
+                skinVert.UV = sv.UV;
+                ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk);
+            }
+        }
+        else
+        {
+            for (int v = 0; v < vertexCount; v++)
+            {
+                var gv = lodModel.VertexBufferGPUSkin.VertexData[v];
+                var chunk = FindChunkForVertex(lodModel, v);
+                ref var skinVert = ref _skinVertices[v];
+                skinVert.BindPosition = gv.Position;
+                skinVert.BindNormal = (Vector3)gv.TangentZ;
+                skinVert.UV = gv.UV;
+                ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk);
+            }
+        }
+    }
+
+    private static SkelMeshChunk FindChunkForVertex(StaticLODModel lodModel, int vertexIndex)
+    {
+        foreach (var chunk in lodModel.Chunks)
+        {
+            int chunkStart = (int)chunk.BaseVertexIndex;
+            int chunkEnd = chunkStart + chunk.NumRigidVertices + chunk.NumSoftVertices;
+            if (vertexIndex >= chunkStart && vertexIndex < chunkEnd)
+                return chunk;
+        }
+
+        return lodModel.Chunks[0];
+    }
+
+    private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights, SkelMeshChunk chunk)
+    {
+        skinVert.Bone0 = bones[0] < chunk.BoneMap.Length ? chunk.BoneMap[bones[0]] : 0;
+        skinVert.Bone1 = bones[1] < chunk.BoneMap.Length ? chunk.BoneMap[bones[1]] : 0;
+        skinVert.Bone2 = bones[2] < chunk.BoneMap.Length ? chunk.BoneMap[bones[2]] : 0;
+        skinVert.Bone3 = bones[3] < chunk.BoneMap.Length ? chunk.BoneMap[bones[3]] : 0;
+
+        float w0 = weights[0] / 255f;
+        float w1 = weights[1] / 255f;
+        float w2 = weights[2] / 255f;
+        float w3 = weights[3] / 255f;
+        float total = w0 + w1 + w2 + w3;
+        if (total > 0)
+        {
+            skinVert.Weight0 = w0 / total;
+            skinVert.Weight1 = w1 / total;
+            skinVert.Weight2 = w2 / total;
+            skinVert.Weight3 = w3 / total;
+        }
+        else
+        {
+            skinVert.Weight0 = 1f;
+            skinVert.Weight1 = 0f;
+            skinVert.Weight2 = 0f;
+            skinVert.Weight3 = 0f;
+        }
+    }
+
+    public void UpdateSkinning(SharpDX.Direct3D11.DeviceContext context, LegacyScene3D.Mesh<LegacyScene3D.WorldVertex> mesh, AnimPlayer animPlayer)
+    {
+        if (_skinVertices == null || mesh == null)
+            return;
+
+        var skinningMatrices = animPlayer.ComputeSkinningMatrices();
+        if (skinningMatrices == null)
+            return;
+
+        int vertexCount = Math.Min(_skinVertices.Length, mesh.Vertices.Count);
+        for (int i = 0; i < vertexCount; i++)
+        {
+            ref var sv = ref _skinVertices[i];
+
+            var blended = BlendMatrix(
+                skinningMatrices, sv.Bone0, sv.Weight0,
+                sv.Bone1, sv.Weight1,
+                sv.Bone2, sv.Weight2,
+                sv.Bone3, sv.Weight3);
+
+            var skinnedPos = Vector3.Transform(sv.BindPosition, blended);
+            var skinnedNormal = Vector3.TransformNormal(sv.BindNormal, blended);
+
+            mesh.Vertices[i] = new LegacyScene3D.WorldVertex(
+                new Vector3(-skinnedPos.X, skinnedPos.Z, skinnedPos.Y),
+                new Vector3(-skinnedNormal.X, skinnedNormal.Z, skinnedNormal.Y),
+                sv.UV);
+        }
+
+        mesh.RebuildBuffer(context.Device);
+    }
+
+    private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)
+    {
+        var m = matrices[b0] * w0;
+        if (w1 > 0 && b1 < matrices.Length) m += matrices[b1] * w1;
+        if (w2 > 0 && b2 < matrices.Length) m += matrices[b2] * w2;
+        if (w3 > 0 && b3 < matrices.Length) m += matrices[b3] * w3;
+        return m;
+    }
 }

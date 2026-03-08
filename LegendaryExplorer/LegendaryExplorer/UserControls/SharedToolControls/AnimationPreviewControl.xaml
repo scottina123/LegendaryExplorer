@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
-        xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
+        xmlns:scene3D="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D"
         xmlns:system="clr-namespace:System;assembly=mscorlib"
         xmlns:fa="http://schemas.fontawesome.com/icons/"
         mc:Ignorable="d"
@@ -16,7 +16,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!-- Row 0: 3D viewport -->
-        <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Row="0" />
+        <scene3D:LegacySceneRenderControl x:Name="SceneViewer" Grid.Row="0" />
         <!-- Row 1: Playback controls -->
         <WrapPanel Grid.Row="1" Margin="2">
             <Button Command="{Binding PlayPauseCommand}" Padding="6,4" Margin="0,0,5,0"
