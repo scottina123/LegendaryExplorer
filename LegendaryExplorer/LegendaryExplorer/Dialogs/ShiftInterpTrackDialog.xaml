@@ -43,7 +43,7 @@
         </GroupBox>
 
         <!-- Time Offset Section -->
-        <GroupBox Header="Time Offset" Padding="10" Margin="0,0,0,10">
+        <GroupBox x:Name="TimeOffsetGroupBox" Header="Time Offset" Padding="10" Margin="0,0,0,10">
             <StackPanel>
                 <TextBlock Text="Adjust the timing of the interp track (in seconds)" 
                            Opacity="0.7" Margin="0,0,0,8"/>

@@ -319,6 +319,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
+        public ICommand ShiftLevelActorsCommand { get; set; }
         public ICommand AddAllAssetsToReferencerCommand { get; set; }
 
         private void LoadCommands()
@@ -386,6 +387,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
+            ShiftLevelActorsCommand = new GenericCommand(ShiftSelectedLevelActors, CanShiftSelectedLevelActors);
             AddAllAssetsToReferencerCommand = new GenericCommand(AddAllAssetsToReferencer, ObjectReferencerIsSelected);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
@@ -1238,6 +1240,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance";
 
+        private bool CanShiftSelectedLevelActors() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "Level";
+
         private void OpenGestureImporter()
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance")
@@ -1280,6 +1284,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                         PackageEditorExperimentsM.ShiftInterpTrackMove(trackMove, dialog.Parameters);
                     }
+                }
+            }
+        }
+
+        private void ShiftSelectedLevelActors()
+        {
+            if (TryGetSelectedExport(out ExportEntry levelExp) && levelExp.ClassName == "Level")
+            {
+                var dialog = new ShiftInterpTrackDialog(false, false, "Shift Level Actors");
+                if (dialog.ShowDialog() == true)
+                {
+                    PackageEditorExperimentsM.ShiftLevelActors(levelExp, dialog.Parameters);
                 }
             }
         }

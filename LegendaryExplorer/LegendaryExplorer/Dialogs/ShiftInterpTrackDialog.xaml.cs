@@ -32,11 +32,21 @@ namespace LegendaryExplorer.Dialogs
     {
         public ShiftInterpTrackParameters Parameters { get; private set; }
 
-        public ShiftInterpTrackDialog()
+        public ShiftInterpTrackDialog() : this(true, true, "Shift Interp Track Parameters")
+        {
+        }
+
+        public ShiftInterpTrackDialog(bool includeTimeOffset, bool includeAnchorObjectMoves, string title)
         {
             Parameters = new ShiftInterpTrackParameters();
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
+            Title = title;
+            if (FindName("TimeOffsetGroupBox") is FrameworkElement timeOffsetGroupBox)
+            {
+                timeOffsetGroupBox.Visibility = includeTimeOffset ? Visibility.Visible : Visibility.Collapsed;
+            }
+            IncludeAnchorCheckBox.Visibility = includeAnchorObjectMoves ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)

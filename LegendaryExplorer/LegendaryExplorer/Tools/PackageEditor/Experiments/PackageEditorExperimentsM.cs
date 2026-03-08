@@ -693,6 +693,93 @@ return;
             interpTrackMove.WriteProperties(props);
         }
 
+        public static void ShiftLevelActors(ExportEntry levelExport, ShiftInterpTrackParameters parameters)
+        {
+            if (levelExport.ClassName != "Level")
+            {
+                return;
+            }
+
+            var level = ObjectBinary.From<Level>(levelExport);
+            var locationOffset = new Vector3(parameters.OffsetX, parameters.OffsetY, parameters.OffsetZ);
+            var rotationOffset = new Rotator((int)MathF.Round(parameters.Pitch), (int)MathF.Round(parameters.Yaw), (int)MathF.Round(parameters.Roll));
+
+            var actorsToShift = new Dictionary<int, ExportEntry>();
+
+            foreach (var actor in levelExport.FileRef.Exports.Where(exp => exp.Parent == levelExport && exp.IsA("Actor")))
+            {
+                actorsToShift.TryAdd(actor.UIndex, actor);
+            }
+
+            foreach (int actorIndex in level.Actors.Distinct())
+            {
+                if (actorIndex <= 0 || !levelExport.FileRef.TryGetUExport(actorIndex, out var actor))
+                {
+                    continue;
+                }
+
+                actorsToShift.TryAdd(actor.UIndex, actor);
+            }
+
+            foreach (var actor in actorsToShift.Values)
+            {
+
+                if (actor.ClassName is "StaticLightCollectionActor" or "StaticMeshCollectionActor")
+                {
+                    ShiftCollectionActor(actor, locationOffset, rotationOffset);
+                    continue;
+                }
+
+                if (!actor.IsA("Actor"))
+                {
+                    continue;
+                }
+
+                ShiftActor(actor, locationOffset, rotationOffset);
+            }
+        }
+
+        private static void ShiftActor(ExportEntry actor, Vector3 locationOffset, Rotator rotationOffset)
+        {
+            var props = actor.GetProperties();
+            string locationPropName = actor.Game.IsGame3() ? "location" : "Location";
+
+            var location = props.GetProp<StructProperty>(locationPropName) is { } locationProp
+                ? CommonStructs.GetVector3(locationProp)
+                : Vector3.Zero;
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(location + locationOffset, locationPropName));
+
+            var rotation = props.GetProp<StructProperty>("Rotation") is { } rotationProp
+                ? CommonStructs.GetRotator(rotationProp)
+                : new Rotator(0, 0, 0);
+            props.AddOrReplaceProp(CommonStructs.RotatorProp(AddRotationOffset(rotation, rotationOffset), "Rotation"));
+
+            actor.WriteProperties(props);
+        }
+
+        private static void ShiftCollectionActor(ExportEntry collectionActor, Vector3 locationOffset, Rotator rotationOffset)
+        {
+            if (ObjectBinary.From(collectionActor) is not StaticCollectionActor staticCollectionActor)
+            {
+                return;
+            }
+
+            for (int i = 0; i < staticCollectionActor.LocalToWorldTransforms.Count; i++)
+            {
+                var decomposed = staticCollectionActor.LocalToWorldTransforms[i].UnrealDecompose();
+                decomposed.translation += locationOffset;
+                decomposed.rotation = AddRotationOffset(decomposed.rotation, rotationOffset);
+                staticCollectionActor.LocalToWorldTransforms[i] = ActorUtils.ComposeLocalToWorld(decomposed);
+            }
+
+            collectionActor.WriteBinary(staticCollectionActor);
+        }
+
+        private static Rotator AddRotationOffset(Rotator rotation, Rotator rotationOffset)
+        {
+            return new Rotator(rotation.Pitch + rotationOffset.Pitch, rotation.Yaw + rotationOffset.Yaw, rotation.Roll + rotationOffset.Roll);
+        }
+
         public static void ShiftInterpTrackMove(ExportEntry interpTrackMove, ShiftInterpTrackParameters parameters)
         {
             var props = interpTrackMove.GetProperties();
