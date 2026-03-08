@@ -3074,9 +3074,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 int lastTreeRoot = 0;
                 bool? addToInterpList = null;
+                var clonedTreeRoots = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
                     IEntry newTreeRoot = EntryCloner.CloneTree(entry);
+                    clonedTreeRoots.Add(newTreeRoot);
                     TryAddToPersistentLevel(newTreeRoot);
                     TryAddToStaticCollectionActor(newTreeRoot, entry);
                     addToInterpList ??= ShouldAddToInterpList(entry);
@@ -3086,6 +3088,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     }
                     lastTreeRoot = newTreeRoot.UIndex;
                 }
+                TryAddToStreamingLevelsList(clonedTreeRoots);
                 GoToNumber(lastTreeRoot);
             }
         }
@@ -3114,9 +3117,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 int lastClonedUIndex = 0;
                 bool? addToInterpList = null;
+                var clonedEntries = new List<IEntry>(numClones);
                 for (int i = 0; i < numClones; i++)
                 {
                     IEntry newEntry = EntryCloner.CloneEntry(entry);
+                    clonedEntries.Add(newEntry);
                     TryAddToPersistentLevel(newEntry);
                     TryAddToStaticCollectionActor(newEntry, entry);
                     addToInterpList ??= ShouldAddToInterpList(entry);
@@ -3126,6 +3131,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     }
                     lastClonedUIndex = newEntry.UIndex;
                 }
+                TryAddToStreamingLevelsList(clonedEntries);
                 GoToNumber(lastClonedUIndex);
             }
         }
@@ -3200,6 +3206,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             return false;
+        }
+
+        private void TryAddToStreamingLevelsList(IEnumerable<IEntry> newEntries)
+        {
+            if (!newEntries.OfType<ExportEntry>().Any(exp => exp.ClassName == "LevelStreamingKismet" && exp.ObjectName == "LevelStreamingKismet") ||
+                !Pcc.Exports.Any(exp => exp.ClassName == "BioWorldInfo" && exp.ObjectName == "BioWorldInfo"))
+            {
+                return;
+            }
+
+            try
+            {
+                LegendaryExplorer.Misc.ExperimentsTools.SharedMethods.RebuildStreamingLevels(Pcc);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this,
+                    $"The LevelStreamingKismet was cloned, but BioWorldInfo.StreamingLevels could not be updated:\n{ex.Message}",
+                    "StreamingLevels update failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
         }
 
         private bool TryAddToStaticCollectionActor(IEntry newEntry, IEntry originalEntry)
@@ -4384,7 +4412,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     sourceEntry.EntryHasPendingChanges = hadChanges;
                 }
 
-                TryAddToPersistentLevel(Pcc.Exports.Skip(numExports));
+                var importedEntries = Pcc.Exports.Skip(numExports).Cast<IEntry>().ToList();
+                TryAddToPersistentLevel(importedEntries);
+                TryAddToStreamingLevelsList(importedEntries);
 
                 if (portingOption.PortingOptionChosen is not EntryImporter.PortingOption.ReplaceSingular
                     and not EntryImporter.PortingOption.ReplaceSingularWithRelink
