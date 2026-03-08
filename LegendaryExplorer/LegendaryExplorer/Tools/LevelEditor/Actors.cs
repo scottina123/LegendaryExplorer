@@ -52,10 +52,12 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     }
 
     protected TransformSnapshot _cleanSnapshot;
+    protected bool hasAuxiliaryChanges;
 
     public void MarkClean()
     {
         _cleanSnapshot = SnapshotTransform();
+        hasAuxiliaryChanges = false;
         IsDirty = false;
     }
 
@@ -165,8 +167,29 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public virtual bool IsVolume => false;
     public bool IsVolumetricMesh { get; protected set; }
+    public virtual bool HasLightSettings => false;
+    public virtual bool HasConeAngles => false;
+    public virtual float LightRadius { get => 0f; set { } }
+    public virtual float InnerConeAngle { get => 0f; set { } }
+    public virtual float OuterConeAngle { get => 0f; set { } }
+    public virtual bool TryGetSceneLight(out SceneLight light)
+    {
+        light = default;
+        return false;
+    }
 
     public TransformSnapshot SnapshotTransform() => new(location, rotation, drawScale, drawScale3D);
+
+    protected void UpdateDirtyState()
+    {
+        IsDirty = hasAuxiliaryChanges || !SnapshotTransform().Equals(_cleanSnapshot);
+    }
+
+    protected void MarkAuxiliaryChanged()
+    {
+        hasAuxiliaryChanges = true;
+        UpdateDirtyState();
+    }
 
     public void RestoreTransform(TransformSnapshot snapshot)
     {
@@ -237,6 +260,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         "BioArtPlaceable",
         "BioPawn",
         "Pawn",
+        "PointLight",
+        "SpotLight",
         "PrefabInstance",
         "SFXDroppedGrenade",
         "SFXDroppedAmmo",
@@ -287,6 +312,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         if (GlobalUnrealObjectInfo.IsA(className, "Pawn", actorExport.Game))
         {
             return new PawnProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "SpotLight", actorExport.Game))
+        {
+            return new SpotLightActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "PointLight", actorExport.Game))
+        {
+            return new PointLightActorProxy(context, actorExport);
         }
         if (GlobalUnrealObjectInfo.IsA(className, "PrefabInstance", actorExport.Game))
         {
@@ -620,6 +653,110 @@ public class BioPawnProxy : PawnProxy
     }
 }
 
+public class PointLightActorProxy : ActorProxy
+{
+    public PointLightComponentProxy LightComponent;
+
+    public PointLightActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref LightComponent);
+    }
+
+    public override bool HasLightSettings => LightComponent is not null;
+    public override float LightRadius
+    {
+        get => LightComponent?.Radius ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Radius == value) return;
+            LightComponent.Radius = value;
+            OnPropertyChanged(nameof(LightRadius));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override void CommitChanges(PackageCache packageCache = null)
+    {
+        LightComponent?.CommitChanges();
+        base.CommitChanges(packageCache);
+    }
+
+    public override bool TryGetSceneLight(out SceneLight light)
+    {
+        if (LightComponent is null)
+        {
+            light = default;
+            return false;
+        }
+
+        light = new SceneLight(
+            LocalToWorld.Translation,
+            LightComponent.Radius,
+            LightComponent.LightColor,
+            LightComponent.Brightness,
+            false,
+            LocalToWorld.GetAxis(0).Normal(),
+            0f,
+            0f);
+        return true;
+    }
+}
+
+public class SpotLightActorProxy : PointLightActorProxy
+{
+    public new SpotLightComponentProxy LightComponent;
+
+    public SpotLightActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        LightComponent = Components.Count > 0 ? Components[0] as SpotLightComponentProxy : null;
+    }
+
+    public override bool HasConeAngles => LightComponent is not null;
+    public override float InnerConeAngle
+    {
+        get => LightComponent?.InnerConeAngle ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.InnerConeAngle == value) return;
+            LightComponent.InnerConeAngle = value;
+            OnPropertyChanged(nameof(InnerConeAngle));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override float OuterConeAngle
+    {
+        get => LightComponent?.OuterConeAngle ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.OuterConeAngle == value) return;
+            LightComponent.OuterConeAngle = value;
+            OnPropertyChanged(nameof(OuterConeAngle));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override bool TryGetSceneLight(out SceneLight light)
+    {
+        if (LightComponent is null)
+        {
+            light = default;
+            return false;
+        }
+
+        light = new SceneLight(
+            LocalToWorld.Translation,
+            LightComponent.Radius,
+            LightComponent.LightColor,
+            LightComponent.Brightness,
+            true,
+            LocalToWorld.GetAxis(0).Normal(),
+            LightComponent.InnerConeAngle,
+            LightComponent.OuterConeAngle);
+        return true;
+    }
+}
+
 public abstract class CollectionActorComponentProxy : ActorProxy
 {
     public ExportEntry CollectionActorExport { get; }
@@ -644,7 +781,7 @@ public abstract class CollectionActorComponentProxy : ActorProxy
         throw new InvalidOperationException($"Cannot be called on a {nameof(CollectionActorComponentProxy)}.");
     }
 
-    public void CommitChanges(StaticCollectionActor collectionActor)
+    public virtual void CommitChanges(StaticCollectionActor collectionActor)
     {
         if (!(collectionActor.Components.FindIndex(uIdx => uIdx == Export.UIndex) is int idx and >= 0))
         {
@@ -667,6 +804,113 @@ public class StaticMeshComponentActorProxy : CollectionActorComponentProxy
         var staticMeshComponentProxy = PrimitiveComponentProxy.Create(context.RenderContext, smcExport, this);
         Components.Add(staticMeshComponentProxy);
         IsVolumetricMesh = (staticMeshComponentProxy as StaticMeshComponentProxy)?.IsVolumetric ?? false;
+    }
+}
+
+public class PointLightComponentActorProxy : CollectionActorComponentProxy
+{
+    protected PointLightComponentProxy LightComponent;
+
+    public PointLightComponentActorProxy(IActorEditorContext context, ExportEntry lightComponentExport, StaticLightCollectionActor slca, int slcaIndex) : base(context, slca, lightComponentExport, slcaIndex)
+    {
+        LightComponent = PrimitiveComponentProxy.Create(context.RenderContext, lightComponentExport, this) as PointLightComponentProxy;
+        if (LightComponent is not null)
+        {
+            Components.Add(LightComponent);
+        }
+    }
+
+    public override bool HasLightSettings => LightComponent is not null;
+    public override float LightRadius
+    {
+        get => LightComponent?.Radius ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Radius == value) return;
+            LightComponent.Radius = value;
+            OnPropertyChanged(nameof(LightRadius));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override void CommitChanges(StaticCollectionActor collectionActor)
+    {
+        base.CommitChanges(collectionActor);
+        LightComponent?.CommitChanges();
+    }
+
+    public override bool TryGetSceneLight(out SceneLight light)
+    {
+        if (LightComponent is null)
+        {
+            light = default;
+            return false;
+        }
+
+        light = new SceneLight(
+            LocalToWorld.Translation,
+            LightComponent.Radius,
+            LightComponent.LightColor,
+            LightComponent.Brightness,
+            false,
+            LocalToWorld.GetAxis(0).Normal(),
+            0f,
+            0f);
+        return true;
+    }
+}
+
+public class SpotLightComponentActorProxy : PointLightComponentActorProxy
+{
+    private SpotLightComponentProxy SpotLightComponent => LightComponent as SpotLightComponentProxy;
+
+    public SpotLightComponentActorProxy(IActorEditorContext context, ExportEntry lightComponentExport, StaticLightCollectionActor slca, int slcaIndex) : base(context, lightComponentExport, slca, slcaIndex)
+    {
+    }
+
+    public override bool HasConeAngles => SpotLightComponent is not null;
+    public override float InnerConeAngle
+    {
+        get => SpotLightComponent?.InnerConeAngle ?? 0f;
+        set
+        {
+            if (IsReadOnly || SpotLightComponent is null || SpotLightComponent.InnerConeAngle == value) return;
+            SpotLightComponent.InnerConeAngle = value;
+            OnPropertyChanged(nameof(InnerConeAngle));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override float OuterConeAngle
+    {
+        get => SpotLightComponent?.OuterConeAngle ?? 0f;
+        set
+        {
+            if (IsReadOnly || SpotLightComponent is null || SpotLightComponent.OuterConeAngle == value) return;
+            SpotLightComponent.OuterConeAngle = value;
+            OnPropertyChanged(nameof(OuterConeAngle));
+            MarkAuxiliaryChanged();
+        }
+    }
+
+    public override bool TryGetSceneLight(out SceneLight light)
+    {
+        if (SpotLightComponent is null)
+        {
+            light = default;
+            return false;
+        }
+
+        light = new SceneLight(
+            LocalToWorld.Translation,
+            SpotLightComponent.Radius,
+            SpotLightComponent.LightColor,
+            SpotLightComponent.Brightness,
+            true,
+            LocalToWorld.GetAxis(0).Normal(),
+            SpotLightComponent.InnerConeAngle,
+            SpotLightComponent.OuterConeAngle);
+        return true;
     }
 }
 

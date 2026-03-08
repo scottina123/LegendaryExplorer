@@ -326,6 +326,25 @@
                         </Grid>
                     </GroupBox>
                     <WrapPanel x:Name="wrapPanel" IsEnabled="{Binding ., Converter={StaticResource NullEnabledConverter}}" DataContext="{Binding SelectedActor}">
+                    <GroupBox Header="Light" Margin="5,0,5,5" BorderThickness="2" Padding="5"
+                              Visibility="{Binding HasLightSettings, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Vertical">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text=" Radius:  " VerticalAlignment="Center" />
+                                <xctk:SingleUpDown Value="{Binding LightRadius}" Minimum="0" Increment="16"
+                                                   ButtonSpinnerLocation="Left" FormatString="F2" Width="100"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"
+                                        Visibility="{Binding HasConeAngles, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text=" Inner:  " VerticalAlignment="Center" />
+                                <xctk:SingleUpDown Value="{Binding InnerConeAngle}" Minimum="0" Maximum="89.9"
+                                                   Increment="1" ButtonSpinnerLocation="Left" FormatString="F2" Width="80"/>
+                                <TextBlock Text=" Outer:  " VerticalAlignment="Center" Margin="8,0,0,0" />
+                                <xctk:SingleUpDown Value="{Binding OuterConeAngle}" Minimum="0" Maximum="89.9"
+                                                   Increment="1" ButtonSpinnerLocation="Left" FormatString="F2" Width="80"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
                     <GroupBox Header="Actor Position" Margin="5,0,5,5" BorderThickness="2" Padding="5">
                         <StackPanel Orientation="Vertical">
                             <StackPanel Orientation="Horizontal">

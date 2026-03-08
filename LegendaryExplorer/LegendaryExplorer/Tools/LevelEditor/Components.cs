@@ -101,6 +101,14 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
             case "BrushComponent":
                 return new BrushComponentProxy(context, componentExport, parent);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "SpotLightComponent", componentExport.Game))
+        {
+            return new SpotLightComponentProxy(context, componentExport, parent);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "PointLightComponent", componentExport.Game))
+        {
+            return new PointLightComponentProxy(context, componentExport, parent);
+        }
         if (GlobalUnrealObjectInfo.IsA(className, "StaticMeshComponent", componentExport.Game))
         {
             return new StaticMeshComponentProxy(context, componentExport, parent);
@@ -202,6 +210,58 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         GC.SuppressFinalize(this);
     }
     #endregion
+}
+
+public class PointLightComponentProxy : PrimitiveComponentProxy
+{
+    public float Radius { get; set; }
+    public float Brightness { get; }
+    public Vector3 LightColor { get; }
+
+    public PointLightComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
+    {
+        Radius = Properties.GetProp<FloatProperty>("Radius")?.Value ?? 1024f;
+        Brightness = Properties.GetProp<FloatProperty>("Brightness")?.Value ?? 1f;
+        if (Properties.GetProp<StructProperty>("LightColor") is { } lightColorProp)
+        {
+            var lightColor = CommonStructs.GetColor(lightColorProp);
+            LightColor = new Vector3(lightColor.R / 255f, lightColor.G / 255f, lightColor.B / 255f);
+        }
+        else
+        {
+            LightColor = Vector3.One;
+        }
+    }
+
+    public virtual void CommitChanges()
+    {
+        Properties.AddOrReplaceProp(new FloatProperty(Radius, "Radius"));
+        Export.WriteProperties(Properties);
+    }
+}
+
+public class SpotLightComponentProxy : PointLightComponentProxy
+{
+    public float InnerConeAngle { get; set; }
+    public float OuterConeAngle { get; set; }
+
+    public SpotLightComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
+    {
+        InnerConeAngle = Properties.GetProp<FloatProperty>("InnerConeAngle")?.Value ?? 0f;
+        OuterConeAngle = Properties.GetProp<FloatProperty>("OuterConeAngle")?.Value ?? 44f;
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+    }
+
+    public override void CommitChanges()
+    {
+        Properties.AddOrReplaceProp(new FloatProperty(InnerConeAngle, "InnerConeAngle"));
+        Properties.AddOrReplaceProp(new FloatProperty(OuterConeAngle, "OuterConeAngle"));
+        base.CommitChanges();
+    }
+
 }
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy

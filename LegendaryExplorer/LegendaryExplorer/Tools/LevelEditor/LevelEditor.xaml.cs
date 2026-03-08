@@ -18,6 +18,7 @@ using
 LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 using
 Microsoft.Win32;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -332,6 +333,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
+        RenderContext.RefreshSceneLights();
         Span<RenderPass> passes = ShowCollision
             ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
@@ -727,6 +729,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                         var smcActor = new StaticMeshComponentActorProxy(this, smcExport, smca, i);
                         smcActor.OwningFile = owningFile;
                         actors.Add(smcActor);
+                    }
+                }
+            }
+            else if (className is "StaticLightCollectionActor")
+            {
+                var slca = actorExport.GetBinaryData<StaticLightCollectionActor>();
+                for (int i = 0; i < slca.Components.Count; i++)
+                {
+                    if (level.Export.FileRef.TryGetUExport(slca.Components[i], out ExportEntry lightExport))
+                    {
+                        ActorProxy lightActor = GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "SpotLightComponent", lightExport.Game)
+                            ? new SpotLightComponentActorProxy(this, lightExport, slca, i)
+                            : new PointLightComponentActorProxy(this, lightExport, slca, i);
+                        lightActor.OwningFile = owningFile;
+                        actors.Add(lightActor);
                     }
                 }
             }

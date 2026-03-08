@@ -39,6 +39,18 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private bool IsReadOnly;
 
+    public void RefreshSceneLights()
+    {
+        SceneLights.Clear();
+        foreach (ActorProxy actor in DrawList_3D)
+        {
+            if (actor.TryGetSceneLight(out SceneLight light))
+            {
+                SceneLights.Add(light);
+            }
+        }
+    }
+
     public LevelEditorRenderContext(bool readOnly = false) : base()
     {
         BackgroundColor = System.Windows.Media.Color.FromRgb(0x99, 0x99, 0x99);

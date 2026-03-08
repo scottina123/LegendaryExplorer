@@ -51,6 +51,11 @@ public class MeshRenderContext : RenderContext
         public Matrix4x4 Model;
         public Vector3 HitTestID;
         public ShaderFlags Flags;
+        public Vector4 AmbientColor;
+        public Fixed4<Vector4> LightPositionRadius;
+        public Fixed4<Vector4> LightColorIntensity;
+        public Fixed4<Vector4> LightDirectionInnerCone;
+        public Fixed4<Vector4> LightOuterConeAndType;
 
         public WorldConstants(Matrix4x4 Projection, Matrix4x4 View, Matrix4x4 Model, ShaderFlags flags, Vector3 hitTestId)
         {
@@ -59,6 +64,11 @@ public class MeshRenderContext : RenderContext
             this.Model = Model;
             this.Flags = flags;
             this.HitTestID = hitTestId;
+            AmbientColor = new Vector4(0.2f, 0.2f, 0.2f, 1f);
+            LightPositionRadius = default;
+            LightColorIntensity = default;
+            LightDirectionInnerCone = default;
+            LightOuterConeAndType = default;
         }
     }
 
@@ -104,6 +114,7 @@ public class MeshRenderContext : RenderContext
     private RasterizerState WireframeRasterizerState;
     public SamplerState SampleState { get; private set; }
     public readonly SceneCamera Camera = new();
+    public List<SceneLight> SceneLights { get; } = [];
     private bool wireframe;
     public bool Wireframe
     {
@@ -459,7 +470,44 @@ public class MeshRenderContext : RenderContext
 
     public WorldConstants GetWorldConstants(Matrix4x4 localToWorld)
     {
-        return new WorldConstants(Matrix4x4.Transpose(Camera.ProjectionMatrix), Matrix4x4.Transpose(Camera.ViewMatrix), Matrix4x4.Transpose(localToWorld), RenderFlags, CurrentHitTestId);
+        WorldConstants constants = new(Matrix4x4.Transpose(Camera.ProjectionMatrix), Matrix4x4.Transpose(Camera.ViewMatrix), Matrix4x4.Transpose(localToWorld), RenderFlags, CurrentHitTestId);
+
+        Vector3 objectPosition = localToWorld.Translation;
+        Span<int> nearestLightIndexes = stackalloc int[4] { -1, -1, -1, -1 };
+        Span<float> nearestLightDistances = stackalloc float[4] { float.MaxValue, float.MaxValue, float.MaxValue, float.MaxValue };
+
+        for (int i = 0; i < SceneLights.Count; i++)
+        {
+            SceneLight light = SceneLights[i];
+            float distanceSquared = Vector3.DistanceSquared(light.Position, objectPosition);
+            for (int slot = 0; slot < nearestLightDistances.Length; slot++)
+            {
+                if (distanceSquared < nearestLightDistances[slot])
+                {
+                    for (int shift = nearestLightDistances.Length - 1; shift > slot; shift--)
+                    {
+                        nearestLightDistances[shift] = nearestLightDistances[shift - 1];
+                        nearestLightIndexes[shift] = nearestLightIndexes[shift - 1];
+                    }
+                    nearestLightDistances[slot] = distanceSquared;
+                    nearestLightIndexes[slot] = i;
+                    break;
+                }
+            }
+        }
+
+        for (int slot = 0; slot < nearestLightIndexes.Length; slot++)
+        {
+            if (nearestLightIndexes[slot] < 0) break;
+
+            SceneLight light = SceneLights[nearestLightIndexes[slot]];
+            constants.LightPositionRadius[slot] = new Vector4(light.Position, light.Radius);
+            constants.LightColorIntensity[slot] = new Vector4(light.Color, light.Intensity);
+            constants.LightDirectionInnerCone[slot] = new Vector4(light.Direction, light.InnerConeCos);
+            constants.LightOuterConeAndType[slot] = new Vector4(light.OuterConeCos, light.IsSpot ? 1f : 0f, 0f, 0f);
+        }
+
+        return constants;
     }
 
     public BlendState GetCachedBlendState(RenderTargetBlendDescription renderTargetBlendDesc)

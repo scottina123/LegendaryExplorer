@@ -10,6 +10,7 @@ struct VS_OUT {
     float4 pos : SV_POSITION;
     float4 color : COLOR1;
 	float3 normal : NORMAL;
+    float3 worldPos : TEXCOORD1;
     float2 uv : TEXCOORD0;
     float3 hitTestID : COLOR2;
 };
@@ -18,6 +19,7 @@ struct PS_IN {
     float4 pos : SV_POSITION;
     float4 color : COLOR1;
 	float3 normal : NORMAL;
+    float3 worldPos : TEXCOORD1;
     float2 uv : TEXCOORD0;
     float3 hitTestID : COLOR2;
 };
@@ -34,6 +36,11 @@ cbuffer constants {
 	float4x4 model;
     float3 HitTestID;
 	int Flags;
+    float4 AmbientColor;
+    float4 LightPositionRadius[4];
+    float4 LightColorIntensity[4];
+    float4 LightDirectionInnerCone[4];
+    float4 LightOuterConeAndType[4];
 };
 
 Texture2D tex : register(t0);
@@ -43,12 +50,13 @@ VS_OUT VSMain(VS_IN input) {
 	VS_OUT result = (VS_OUT)0;
 
 	// Transform the input object-space position into a screen-space position
-	result.pos = mul(float4(input.pos.xyz, 1), model);
-	result.pos = mul(result.pos, view);
+	float4 worldPos = mul(float4(input.pos.xyz, 1), model);
+	result.worldPos = worldPos.xyz;
+	result.pos = mul(worldPos, view);
 	result.pos = mul(result.pos, projection);
 
 	// Pass through
-    result.normal = input.normal.xyz;
+	result.normal = normalize(mul(float4(input.normal.xyz, 0), model).xyz);
 	result.uv = input.uv;
     result.color = input.color;
     result.hitTestID = input.hitTestID;
@@ -99,10 +107,44 @@ PS_OUT PSMain(PS_IN input) {
 		}
 	}
 	
-	float3 toLight = normalize(float3(0.6, 1, 0.3)); // the direction to the fake directional light
-	float lambert = saturate(dot(toLight, input.normal));
-	lambert = lambert * 0.5 + 0.5; // a super simple way to fake some ambient lighting in. wildly inaccurate though.
-	result.color = float4(textureValue.xyz * lambert, 1.0);
+	float3 normal = normalize(input.normal);
+	float3 lighting = AmbientColor.rgb;
+
+	[unroll]
+	for (int i = 0; i < 4; i++)
+	{
+		float radius = LightPositionRadius[i].w;
+		if (radius <= 0.0)
+		{
+			continue;
+		}
+
+		float3 lightVector = LightPositionRadius[i].xyz - input.worldPos;
+		float distanceToLight = length(lightVector);
+		if (distanceToLight >= radius)
+		{
+			continue;
+		}
+
+		float3 L = lightVector / max(distanceToLight, 0.0001);
+		float attenuation = saturate(1.0 - distanceToLight / radius);
+		attenuation *= attenuation;
+		float coneAttenuation = 1.0;
+
+		if (LightOuterConeAndType[i].y > 0.5)
+		{
+			float3 lightDirection = normalize(LightDirectionInnerCone[i].xyz);
+			float spotCos = dot(-L, lightDirection);
+			float outerCone = LightOuterConeAndType[i].x;
+			float innerCone = LightDirectionInnerCone[i].w;
+			coneAttenuation = saturate((spotCos - outerCone) / max(innerCone - outerCone, 0.0001));
+		}
+
+		float lambert = saturate(dot(normal, L));
+		lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * lambert * attenuation * coneAttenuation);
+	}
+
+	result.color = float4(textureValue.xyz * saturate(lighting), 1.0);
 	
 	// use the input normal (negative values are clamped to zero (black))
 	//result.color = float4(input.normal, 1.0);
