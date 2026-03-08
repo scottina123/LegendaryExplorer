@@ -169,6 +169,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public virtual bool IsVolume => false;
     public bool IsVolumetricMesh { get; protected set; }
     public virtual bool HasLightSettings => false;
+    public virtual bool HasLightRadius => false;
+    public virtual bool HasBouncedModulationColor => false;
     public virtual bool HasConeAngles => false;
     public virtual float LightRadius { get => 0f; set { } }
     public virtual float InnerConeAngle { get => 0f; set { } }
@@ -266,6 +268,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         "BioPawn",
         "Pawn",
         "PointLight",
+        "DirectionalLight",
         "SpotLight",
         "PrefabInstance",
         "SFXDroppedGrenade",
@@ -321,6 +324,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         if (GlobalUnrealObjectInfo.IsA(className, "SpotLight", actorExport.Game))
         {
             return new SpotLightActorProxy(context, actorExport);
+        }
+        if (GlobalUnrealObjectInfo.IsA(className, "DirectionalLight", actorExport.Game))
+        {
+            return new DirectionalLightActorProxy(context, actorExport);
         }
         if (GlobalUnrealObjectInfo.IsA(className, "PointLight", actorExport.Game))
         {
@@ -668,6 +675,8 @@ public class PointLightActorProxy : ActorProxy
     }
 
     public override bool HasLightSettings => LightComponent is not null;
+    public override bool HasLightRadius => LightComponent is not null;
+    public override bool HasBouncedModulationColor => LightComponent is not null;
     public override float LightRadius
     {
         get => LightComponent?.Radius ?? 0f;
@@ -745,6 +754,38 @@ public class PointLightActorProxy : ActorProxy
             0f,
             0f);
         return true;
+    }
+}
+
+public class DirectionalLightActorProxy : ActorProxy
+{
+    public DirectionalLightComponentProxy LightComponent;
+
+    public DirectionalLightActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
+    {
+        AddComponent(context.RenderContext, ref LightComponent);
+    }
+
+    public override bool HasLightSettings => LightComponent is not null;
+
+    public override void CommitChanges(PackageCache packageCache = null)
+    {
+        LightComponent?.CommitChanges();
+        base.CommitChanges(packageCache);
+    }
+
+    public override MediaColor LightColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightColor.A ?? byte.MaxValue, LightComponent?.LightColor.R ?? byte.MaxValue, LightComponent?.LightColor.G ?? byte.MaxValue, LightComponent?.LightColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightColor == newColor) return;
+            LightComponent.LightColor = newColor;
+            OnPropertyChanged(nameof(LightColor));
+            MarkAuxiliaryChanged();
+        }
     }
 }
 
@@ -867,6 +908,8 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
     }
 
     public override bool HasLightSettings => LightComponent is not null;
+    public override bool HasLightRadius => LightComponent is not null;
+    public override bool HasBouncedModulationColor => LightComponent is not null;
     public override float LightRadius
     {
         get => LightComponent?.Radius ?? 0f;
@@ -944,6 +987,42 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
             0f,
             0f);
         return true;
+    }
+}
+
+public class DirectionalLightComponentActorProxy : CollectionActorComponentProxy
+{
+    public DirectionalLightComponentProxy LightComponent;
+
+    public DirectionalLightComponentActorProxy(IActorEditorContext context, ExportEntry lightComponentExport, StaticLightCollectionActor slca, int slcaIndex) : base(context, slca, lightComponentExport, slcaIndex)
+    {
+        LightComponent = PrimitiveComponentProxy.Create(context.RenderContext, lightComponentExport, this) as DirectionalLightComponentProxy;
+        if (LightComponent is not null)
+        {
+            Components.Add(LightComponent);
+        }
+    }
+
+    public override bool HasLightSettings => LightComponent is not null;
+
+    public override void CommitChanges(StaticCollectionActor collectionActor)
+    {
+        base.CommitChanges(collectionActor);
+        LightComponent?.CommitChanges();
+    }
+
+    public override MediaColor LightColor
+    {
+        get => MediaColor.FromArgb(LightComponent?.LightColor.A ?? byte.MaxValue, LightComponent?.LightColor.R ?? byte.MaxValue, LightComponent?.LightColor.G ?? byte.MaxValue, LightComponent?.LightColor.B ?? byte.MaxValue);
+        set
+        {
+            if (IsReadOnly || LightComponent is null) return;
+            var newColor = System.Drawing.Color.FromArgb(value.A, value.R, value.G, value.B);
+            if (LightComponent.LightColor == newColor) return;
+            LightComponent.LightColor = newColor;
+            OnPropertyChanged(nameof(LightColor));
+            MarkAuxiliaryChanged();
+        }
     }
 }
 

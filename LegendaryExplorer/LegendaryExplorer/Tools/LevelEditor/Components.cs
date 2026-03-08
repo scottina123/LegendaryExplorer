@@ -105,6 +105,10 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         {
             return new SpotLightComponentProxy(context, componentExport, parent);
         }
+        if (GlobalUnrealObjectInfo.IsA(className, "DirectionalLightComponent", componentExport.Game))
+        {
+            return new DirectionalLightComponentProxy(context, componentExport, parent);
+        }
         if (GlobalUnrealObjectInfo.IsA(className, "PointLightComponent", componentExport.Game))
         {
             return new PointLightComponentProxy(context, componentExport, parent);
@@ -283,6 +287,33 @@ public class SpotLightComponentProxy : PointLightComponentProxy
         base.CommitChanges();
     }
 
+}
+
+public class DirectionalLightComponentProxy : PrimitiveComponentProxy
+{
+    public float Brightness { get; }
+    public System.Drawing.Color LightColor { get; set; }
+
+    public Vector3 EffectiveLightColor => new(LightColor.R / 255f, LightColor.G / 255f, LightColor.B / 255f);
+
+    public DirectionalLightComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent) : base(context, componentExport, parent)
+    {
+        Brightness = Properties.GetProp<FloatProperty>("Brightness")?.Value ?? 1f;
+        if (Properties.GetProp<StructProperty>("LightColor") is { } lightColorProp)
+        {
+            LightColor = CommonStructs.GetColor(lightColorProp);
+        }
+        else
+        {
+            LightColor = System.Drawing.Color.White;
+        }
+    }
+
+    public void CommitChanges()
+    {
+        Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
+        Export.WriteProperties(Properties);
+    }
 }
 
 public abstract class MeshComponentProxy : PrimitiveComponentProxy

@@ -741,7 +741,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     {
                         ActorProxy lightActor = GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "SpotLightComponent", lightExport.Game)
                             ? new SpotLightComponentActorProxy(this, lightExport, slca, i)
-                            : new PointLightComponentActorProxy(this, lightExport, slca, i);
+                            : GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "DirectionalLightComponent", lightExport.Game)
+                                ? new DirectionalLightComponentActorProxy(this, lightExport, slca, i)
+                                : new PointLightComponentActorProxy(this, lightExport, slca, i);
                         lightActor.OwningFile = owningFile;
                         actors.Add(lightActor);
                     }
