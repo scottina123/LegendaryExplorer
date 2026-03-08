@@ -43,6 +43,12 @@
         <TextBlock Text="{Binding TopText}" TextWrapping="Wrap" DockPanel.Dock="Top" Margin="0,5,0,5"/>
         <StackPanel Orientation="Horizontal" FlowDirection="RightToLeft" DockPanel.Dock="Bottom" Margin="0,5,0,0">
             <Button FlowDirection="LeftToRight" Click="CopyItemsToClipBoard_Click" Content="Copy items to clipboard" Padding="3"/>
+            <Button FlowDirection="LeftToRight"
+                    Click="SecondaryAction_Click"
+                    Content="{Binding SecondaryActionText}"
+                    Padding="3"
+                    Margin="5,0,0,0"
+                    Visibility="{Binding SecondaryActionVisibility}"/>
             <Label Name="ListDialog_Status" FlowDirection="LeftToRight" Content="Copied to clipboard" Margin="8,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
         </StackPanel>
         <ListView Name="ListDialog_List" HorizontalAlignment="Stretch" AlternationCount="2" 

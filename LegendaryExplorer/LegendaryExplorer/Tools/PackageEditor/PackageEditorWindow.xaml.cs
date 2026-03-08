@@ -66,6 +66,49 @@ namespace LegendaryExplorer.Tools.PackageEditor
     /// </summary>
     public partial class PackageEditorWindow : WPFBase, IDropTarget, IBusyUIHost, IRecents
     {
+        private readonly record struct NameArrayPathSegment(NameReference ArrayName, int StructIndex);
+
+        private sealed record NameArrayUsageMatch(
+            ExportEntry Entry,
+            string DisplayPath,
+            NameReference ArrayName,
+            int SourceElementIndex,
+            NameReference SourceName,
+            IReadOnlyList<NameArrayPathSegment> PathSegments)
+        {
+            public string PathKey => string.Join("/", PathSegments.Select(segment => $"{segment.ArrayName.Instanced}[{segment.StructIndex}]").Append(ArrayName.Instanced));
+
+            public bool TryApply(PropertyCollection rootProps, NameReference targetName)
+            {
+                PropertyCollection currentProps = rootProps;
+                foreach (var segment in PathSegments)
+                {
+                    if (currentProps.GetProp<ArrayProperty<StructProperty>>(segment.ArrayName) is not { } structArray
+                        || segment.StructIndex < 0
+                        || segment.StructIndex >= structArray.Count)
+                    {
+                        return false;
+                    }
+
+                    currentProps = structArray[segment.StructIndex].Properties;
+                }
+
+                if (currentProps.GetProp<ArrayProperty<NameProperty>>(ArrayName) is not { } nameArray)
+                {
+                    return false;
+                }
+
+                if (nameArray.Any(prop => prop.Value == targetName))
+                {
+                    return false;
+                }
+
+                int insertIndex = Math.Min(SourceElementIndex + 1, nameArray.Count);
+                nameArray.Insert(insertIndex, new NameProperty(targetName));
+                return true;
+            }
+        }
+
         public enum CurrentViewMode
         {
             Names,
@@ -1050,7 +1093,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 MessageBoxResult.Yes ==
                 MessageBox.Show(
                     "Are you sure you want to do this? Removing the Indexes from objects can break things if you don't know what you're doing.",
-                    "", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning))
+                    "", MessageBoxButton.YesNo, MessageBoxImage.Warning))
             {
                 TreeViewEntry selected = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
 
@@ -1320,6 +1363,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void ExportEmbeddedFilePrompt()
         {
             ExportEmbeddedFile();
+        }
+
+        private void ImportEmbeddedFile()
+        {
+            MessageBox.Show("Import embedded file is not currently available from Package Editor.");
         }
 
         private void BulkExportSWFs()
@@ -2120,6 +2168,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         // ReSharper disable once MemberCanBePrivate.Global
         public static string FindReferencesMenuText => "Find references";
+
         private void FindReferencesToObject()
         {
             if (TryGetSelectedEntry(out IEntry entry))
@@ -2180,20 +2229,29 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 if (!showUI || uiConfirm)
                 {
                     // Get list of all exports with that object name.
-                    //List<ExportEntry> exports = new List<ExportEntry>();
-                    //Could use LINQ... meh.
-
-                    int index = 1; //we'll start at 1.
+                    //Filter out duplicates
+                    //Get their objectnames from the name list
+                    //Order it ascending
+                    List<ExportEntry> exports = new List<ExportEntry>();
                     foreach (ExportEntry export in Pcc.Exports)
                     {
-                        //Check object name is the same, the package path count is the same, the package prefix is the same, and the item is not of type Class
-                        if (objectname == export.ObjectName.Name && export.ParentInstancedFullPath == prefixToReindex &&
-                            !export.IsClass)
+                        if (objectname == export.ObjectName.Name && export.ParentInstancedFullPath == prefixToReindex && !export.IsClass)
                         {
-                            export.indexValue = index;
-                            index++;
+                            exports.Add(export);
                         }
                     }
+
+                    // Now we reindex
+                    int index = 1; //we'll start at 1.
+                    foreach (ExportEntry export in exports)
+                    {
+                        export.indexValue = index;
+                        index++;
+                    }
+
+                    //RefreshNames();
+                    //RefreshView();
+                    //Preview(true);
                 }
 
                 if (showUI && uiConfirm)
@@ -2226,19 +2284,156 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 string name = iName.Name;
                 BusyText = $"Finding usages of '{name}'...";
                 IsBusy = true;
-                Task.Run(() => Pcc.FindUsagesOfName(name)).ContinueWithOnUIThread(prevTask =>
+                Task.Run(() => (Usages: Pcc.FindUsagesOfName(name), AddableUsages: FindAddableNameUsages(name))).ContinueWithOnUIThread(prevTask =>
                 {
                     IsBusy = false;
                     var dlg = new ListDialog(
-                            prevTask.Result.SelectMany(kvp => kvp.Value.Select(refName =>
+                            prevTask.Result.Usages.SelectMany(kvp => kvp.Value.Select(refName =>
                                 new EntryStringPair(kvp.Key,
                                     $"#{kvp.Key.UIndex} {kvp.Key.ObjectName.Instanced}: {refName}"))).ToList(),
-                            $"{prevTask.Result.Count} Objects that use '{name}'",
+                            $"{prevTask.Result.Usages.Count} Objects that use '{name}'",
                             "There may be additional usages of this name in the unparsed binary of some objects", this)
                     { DoubleClickEntryHandler = entryDoubleClickToTreeview };
+                    if (prevTask.Result.AddableUsages.Count > 0)
+                    {
+                        dlg.SecondaryActionText = $"Add another name to {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
+                        dlg.SecondaryActionHandler = () => AddNameToMatchingUsages(name, prevTask.Result.AddableUsages);
+                    }
                     dlg.Show();
                 });
             }
+        }
+
+        private List<NameArrayUsageMatch> FindAddableNameUsages(string sourceName)
+        {
+            var matches = new List<NameArrayUsageMatch>();
+            foreach (ExportEntry export in Pcc.Exports)
+            {
+                try
+                {
+                    CollectAddableNameUsages(export.GetProperties(), export, sourceName, matches, [], "Property: ");
+                }
+                catch
+                {
+                    // Ignore exports that fail to parse in the same way the normal usage search does.
+                }
+            }
+
+            return matches;
+        }
+
+        private static void CollectAddableNameUsages(
+            PropertyCollection props,
+            ExportEntry export,
+            string sourceName,
+            List<NameArrayUsageMatch> matches,
+            List<NameArrayPathSegment> pathSegments,
+            string prefix)
+        {
+            foreach (Property prop in props)
+            {
+                switch (prop)
+                {
+                    case StructProperty structProperty:
+                        CollectAddableNameUsages(structProperty.Properties, export, sourceName, matches, pathSegments, $"{prefix}{structProperty.Name}: ");
+                        break;
+                    case ArrayProperty<NameProperty> nameArray:
+                        for (int i = 0; i < nameArray.Count; i++)
+                        {
+                            if (nameArray[i].Value.Name == sourceName)
+                            {
+                                matches.Add(new NameArrayUsageMatch(export, $"{prefix}{nameArray.Name}[{i}]", nameArray.Name, i, nameArray[i].Value, [.. pathSegments]));
+                            }
+                        }
+                        break;
+                    case ArrayProperty<StructProperty> structArray:
+                        for (int i = 0; i < structArray.Count; i++)
+                        {
+                            pathSegments.Add(new NameArrayPathSegment(structArray.Name, i));
+                            CollectAddableNameUsages(structArray[i].Properties, export, sourceName, matches, pathSegments, $"{prefix}{structArray.Name}[{i}].");
+                            pathSegments.RemoveAt(pathSegments.Count - 1);
+                        }
+                        break;
+                }
+            }
+        }
+
+        private void AddNameToMatchingUsages(string sourceName, List<NameArrayUsageMatch> addableUsages)
+        {
+            if (addableUsages.Count == 0)
+            {
+                MessageBox.Show($"No editable name arrays referencing '{sourceName}' were found.", "No addable usages");
+                return;
+            }
+
+            if (!NamePromptDialog.Prompt(this,
+                    $"Select the specific indexed source name to match. Only locations containing that exact instanced name will be updated.",
+                    "Match indexed source name",
+                    Pcc,
+                    out NameReference sourceIndexedName,
+                    Pcc.findName(sourceName)))
+            {
+                return;
+            }
+
+            var filteredUsages = addableUsages.Where(usage => usage.SourceName == sourceIndexedName).ToList();
+            if (filteredUsages.Count == 0)
+            {
+                MessageBox.Show($"No editable name arrays referencing '{sourceIndexedName.Instanced}' were found.", "No matching indexed usages");
+                return;
+            }
+
+            if (!SelectOrAddNamePromptDialog.Prompt(this,
+                    $"Select or add the exact name to append anywhere '{sourceIndexedName.Instanced}' is already present in a name array.",
+                    "Add name to matching usages",
+                    Pcc,
+                    out NameReference targetName,
+                    sourceIndexedName))
+            {
+                return;
+            }
+
+            int modifiedExports = 0;
+            int addedCount = 0;
+            int skippedCount = 0;
+
+            foreach (var usageGroup in filteredUsages.GroupBy(usage => usage.Entry))
+            {
+                var props = usageGroup.Key.GetProperties();
+                bool exportModified = false;
+
+                foreach (var usage in usageGroup.OrderBy(usage => usage.PathKey).ThenByDescending(usage => usage.SourceElementIndex))
+                {
+                    if (usage.TryApply(props, targetName))
+                    {
+                        addedCount++;
+                        exportModified = true;
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+                }
+
+                if (exportModified)
+                {
+                    usageGroup.Key.WriteProperties(props);
+                    modifiedExports++;
+                }
+            }
+
+            if (addedCount > 0)
+            {
+                RefreshNames();
+                RefreshView();
+                Preview(true);
+            }
+
+            MessageBox.Show(
+                $"Added '{targetName.Instanced}' to {addedCount} matching array entr{(addedCount == 1 ? "y" : "ies")} that contained '{sourceIndexedName.Instanced}' across {modifiedExports} export{(modifiedExports == 1 ? string.Empty : "s")}.\nSkipped {skippedCount} usage{(skippedCount == 1 ? string.Empty : "s")} that already contained the target name or could not be updated.",
+                "Add name to matching usages",
+                MessageBoxButton.OK,
+                addedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
 
         private bool DoesSelectedItemHaveEmbeddedFile()
@@ -2494,212 +2689,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void ImportEmbeddedFile()
-        {
-            if (TryGetSelectedExport(out ExportEntry exp))
-            {
-                switch (exp.ClassName)
-                {
-                    case "BioSWF":
-                    case "GFxMovieInfo":
-                        {
-                            try
-                            {
-                                string extension = Path.GetExtension(".swf");
-                                var d = new OpenFileDialog
-                                {
-                                    Title = "Replace SWF",
-                                    FileName = exp.FullPath + ".swf",
-                                    Filter = $"*{extension};*.gfx|*{extension};*.gfx",
-                                    CustomPlaces = AppDirectories.GameCustomPlaces
-                                };
-                                if (d.ShowDialog() == true)
-                                {
-                                    var bytes = File.ReadAllBytes(d.FileName);
-                                    var props = exp.GetProperties();
-
-                                    string dataPropName = exp.FileRef.Game != MEGame.ME1 ? "RawData" : "Data";
-                                    var rawData = props.GetProp<ImmutableByteArrayProperty>(dataPropName);
-                                    //Write SWF data
-                                    rawData.Bytes = bytes;
-
-                                    //Write SWF metadata
-                                    if (exp.FileRef.Game.IsGame1() || exp.FileRef.Game.IsGame2())
-                                    {
-                                        string sourceFilePropName = "SourceFilePath";
-                                        StrProperty sourceFilePath = props.GetProp<StrProperty>(sourceFilePropName);
-                                        if (sourceFilePath == null)
-                                        {
-                                            sourceFilePath = new StrProperty(d.FileName, sourceFilePropName);
-                                            props.Add(sourceFilePath);
-                                        }
-
-                                        sourceFilePath.Value = d.FileName;
-                                    }
-
-                                    if (exp.FileRef.Game.IsGame1())
-                                    {
-                                        StrProperty sourceFileTimestamp = props.GetProp<StrProperty>("SourceFileTimestamp");
-                                        sourceFileTimestamp = File.GetLastWriteTime(d.FileName)
-                                            .ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-                                    }
-
-                                    exp.WriteProperties(props);
-                                    MessageBox.Show("Done");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBox.Show("Error reading/setting SWF data:\n\n" + ex.FlattenException());
-                            }
-                            break;
-                        }
-                    case "BioTlkFile":
-                        {
-                            string extension = Path.GetExtension(".xml");
-                            var d = new OpenFileDialog
-                            {
-                                Title = "Replace TLK from exported XML (ME1 Only)",
-                                FileName = exp.FullPath + ".xml",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (d.ShowDialog() == true)
-                            {
-                                HuffmanCompression compressor = new HuffmanCompression();
-                                compressor.LoadInputData(d.FileName);
-                                compressor.SerializeTalkfileToExport(exp, false);
-                            }
-                            break;
-                        }
-                    case "BioSoundNodeWaveStreamingData":
-                        {
-                            // Requires ICB and ISB
-                            string extension = Path.GetExtension(".icb");
-                            var d = new OpenFileDialog
-                            {
-                                Title = "Select the ICB file (ISB should be same name next to it)",
-                                Filter = $"ISACT Content Bank (*.icb)|*{extension}",
-                                CheckFileExists = true,
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (d.ShowDialog() == false)
-                                return;
-
-                            var isbF = Path.Combine(Directory.GetParent(d.FileName).FullName, $"{Path.GetFileNameWithoutExtension(d.FileName)}.isb");
-                            var errorMsg = ISACTHelper.GenerateSoundNodeWaveStreamingDataCS(exp, d.FileName, isbF);
-                            if (errorMsg != null)
-                            {
-                                MessageBox.Show(errorMsg);
-                            }
-                            break;
-                        }
-                    case "SoundNodeWave":
-                        {
-                            // I don't think we should import this way. In release builds don't allow this
-#if !DEBUG
-                            MessageBox.Show("Not currently supported");
-                            return;
-#endif
-                            // Requires ICB and ISB
-                            string extension = Path.GetExtension(".icb");
-                            var d = new OpenFileDialog
-                            {
-                                Title = "Select stripped ICB",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (d.ShowDialog() == false)
-                                return;
-
-                            extension = ".isb";
-                            var d2 = new OpenFileDialog
-                            {
-                                Title = "Select stripped ISB",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (d2.ShowDialog() == false)
-                                return;
-
-                            MemoryStream ms = new MemoryStream();
-                            ms.WriteInt32(0);
-                            ms.Write(File.ReadAllBytes(d.FileName));
-                            ms.Seek(0, SeekOrigin.Begin);
-                            ms.WriteInt32((int)ms.Length /*- 4*/);
-                            ms.Seek(0, SeekOrigin.End);
-                            ms.Write(File.ReadAllBytes(d2.FileName));
-                            var snw = ObjectBinary.From<SoundNodeWave>(exp);
-                            snw.RawData = ms.ToArray();
-                            exp.WriteBinary(snw);
-                        }
-                        break;
-                    case "FaceFXAsset":
-                        {
-                            string extension = Path.GetExtension(".fxa");
-                            var d = new OpenFileDialog
-                            {
-                                Title = "Select FaceFX Asset",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (d.ShowDialog() == true)
-                            {
-                                var length = new FileInfo(d.FileName).Length;
-                                MemoryStream outStream = new MemoryStream();
-                                outStream.WriteInt32((int)length - 4);
-                                outStream.Write(File.ReadAllBytes(d.FileName));
-                                exp.WriteBinary(outStream.GetBuffer());
-                            }
-                            break;
-                        }
-                    case "WwiseBank":
-                        {
-                            string extension = Path.GetExtension(".bnk");
-                            var wdiag = new OpenFileDialog
-                            {
-                                Title = "Select WwiseBank file",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (wdiag.ShowDialog() == true)
-                            {
-                                var length = new FileInfo(wdiag.FileName).Length;
-                                MemoryStream outStream = new MemoryStream();
-                                // Write Bulk Data header
-                                outStream.WriteInt32(0); // Local
-                                outStream.WriteInt32((int)length); // Compressed size
-                                outStream.WriteInt32((int)length); // Decompressed size
-                                outStream.WriteInt32(0); // Data offset - this is not external so this is not used
-                                outStream.Write(File.ReadAllBytes(wdiag.FileName));
-                                exp.WriteBinary(outStream.ToArray()); // Do not use buffer
-                            }
-                            break;
-                        }
-                    case "BrushComponent":
-                        {
-                            string extension = Path.GetExtension(".phys");
-                            var wdiag = new OpenFileDialog
-                            {
-                                Title = "Select LEX exported Phys file",
-                                Filter = $"*{extension}|*{extension}",
-                                CustomPlaces = AppDirectories.GameCustomPlaces
-                            };
-                            if (wdiag.ShowDialog() == true)
-                            {
-                                var brush = BrushComponent.Create();
-                                brush.CachedPhysBrushData.CachedConvexElements =
-                                [
-                                    new KCachedConvexDataElement() { ConvexElementData = File.ReadAllBytes(wdiag.FileName) }
-                                ];
-                                exp.WriteBinary(brush);
-                            }
-                            break;
-                        }
-                }
-            }
-        }
-
         private void RebuildStreamingLevels()
         {
             try
@@ -2754,7 +2743,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 if (result.Contains('.'))
                 {
-                    var sContinue = MessageBox.Show("Names should not contain the '.' unless they are referencing a memory path of an object - these names will break significant amounts of tooling. Do you want to continue to add this name?", ". character breaks LEX", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                    var sContinue = MessageBox.Show("Names should not contain the '.' unless they are referencing a memory path of an object - these names will break significant amounts of tooling. Do you want to continue to add this name?", ". character breaks LEX", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.No);
                     if (sContinue == MessageBoxResult.No)
                     {
                     return;
@@ -2916,7 +2905,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var wdlg = MessageBox.Show(
                 $"This will replace every name containing the text \"{searchstr}\" with a new name containing \"{replacestr}\".\n" +
                 $"This may break any properties, or links containing this string. Please confirm.", "WARNING:",
-                MessageBoxButton.OKCancel);
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
             if (wdlg == MessageBoxResult.Cancel)
                 return;
             int count = 0;
@@ -2933,6 +2922,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             RefreshNames();
             RefreshView();
+            Preview(true);
             MessageBox.Show($"{count} names were amended.", "Search and Replace Names", MessageBoxButton.OK);
         }
 
@@ -4003,10 +3993,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (!TryGetSelectedEntry(out IEntry selectedEntry))
             {
-                foreach ((ExportLoaderControl exportLoader, TabItem tab) in ExportLoaders)
+                foreach (ExportLoaderControl exportLoader in ExportLoaders.Keys)
                 {
                     exportLoader.UnloadExport();
-                    tab.Visibility = Visibility.Collapsed;
                 }
 
                 EditorTabs.IsEnabled = false;
@@ -4337,17 +4326,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     // It's a duplicate. Offer to index it, as this will break the lookup if it's identical on inbound
                     // (it will just install into an existing entry)
-                    var result = MessageBox.Show("The item being ported in has the same full path as an object in the target package. " +
-                                                 "This will cause issues in the game as well as with the toolset if the imported object is not renamed beforehand or has its index changed.\n\n" +
-                                                 "Legendary Explorer will automatically adjust the index for you. You may need to adjust it back after changing the name.", "Indexing issues",
-                                                 MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
-                    if (result == MessageBoxResult.Cancel)
-                    {
-                        return; // User canceled
-                    }
-
-                    // Adjust numeral on inbound export so it doesn't port into existing item.
-                    // save original value for restoration after porting operation is complete.
                     originalIndex = sourceEntry.indexValue;
                     hadChanges = sourceEntry.EntryHasPendingChanges;
                     hadHeaderChanges = sourceEntry.HeaderChanged;
@@ -4677,8 +4655,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
                 var items = AllTreeViewNodesX[0].FlattenTree();
-                int pos = selectedNode == null ? -1 : items.IndexOf(selectedNode);
-
+                int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
                 LoopFunc(ref pos,
                     items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
 

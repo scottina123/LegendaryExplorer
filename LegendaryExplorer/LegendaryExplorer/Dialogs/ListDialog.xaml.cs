@@ -15,12 +15,33 @@ namespace LegendaryExplorer.Dialogs
     {
         public ObservableCollectionExtended<object> Items { get; } = new();
         public Action<EntryStringPair> DoubleClickEntryHandler { get; set; }
+        public Action SecondaryActionHandler { get; set; }
         private string topText;
+        private string secondaryActionText;
+        private Visibility secondaryActionVisibility = Visibility.Collapsed;
 
         public string TopText
         {
             get => topText;
             set => SetProperty(ref topText, value);
+        }
+
+        public string SecondaryActionText
+        {
+            get => secondaryActionText;
+            set
+            {
+                if (SetProperty(ref secondaryActionText, value))
+                {
+                    SecondaryActionVisibility = string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+                }
+            }
+        }
+
+        public Visibility SecondaryActionVisibility
+        {
+            get => secondaryActionVisibility;
+            set => SetProperty(ref secondaryActionVisibility, value);
         }
 
         private ListDialog(string title, string message, Window owner, int width = 0, int height = 0) : base("List Dialog", false)
@@ -78,6 +99,11 @@ namespace LegendaryExplorer.Dialogs
                     DoubleClickEntryHandler.Invoke(item);
                 }
             }
+        }
+
+        private void SecondaryAction_Click(object sender, RoutedEventArgs e)
+        {
+            SecondaryActionHandler?.Invoke();
         }
     }
 }
