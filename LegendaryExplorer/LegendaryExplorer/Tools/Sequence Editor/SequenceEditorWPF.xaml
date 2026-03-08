@@ -318,9 +318,13 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="40" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding Export.UIndex}" />
                                 <TextBlock Grid.Column="1" Text="{Binding Export.ObjectName.Instanced}" />
+                                <TextBlock Grid.Column="2" Text="[Sub]" Margin="6,0,0,0"
+                                           Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+                                           Visibility="{Binding IsSubSequence, Converter={StaticResource BoolToVisibilityConverter}}" />
                             </Grid>
                         </DataTemplate>
                 </ListBox.ItemTemplate>
