@@ -422,6 +422,98 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.Camera.OrientTowards(origin);
     }
 
+    private const float CameraButtonMoveStep = 256f;
+    private bool _isRotatingCameraFromPad;
+    private Point _lastCameraRotatePadPoint;
+
+    private void MoveCameraPlanar(float forwardAmount, float rightAmount)
+    {
+        if (!HasAnyFileOpen) return;
+
+        float yaw = RenderContext.Camera.Yaw;
+        Vector3 planarForward = new(MathF.Cos(yaw), MathF.Sin(yaw), 0f);
+        Vector3 planarRight = new(-MathF.Sin(yaw), MathF.Cos(yaw), 0f);
+        Vector3 direction = (planarForward * forwardAmount) + (planarRight * rightAmount);
+        if (direction.LengthSquared() > 1f)
+        {
+            direction = Vector3.Normalize(direction);
+        }
+
+        RenderContext.Camera.Position += direction * CameraButtonMoveStep;
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void MoveCameraVertical(float amount)
+    {
+        if (!HasAnyFileOpen) return;
+
+        RenderContext.Camera.Position += Vector3.UnitZ * (amount * CameraButtonMoveStep);
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void CameraMoveXYButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        string[] parts = tag.Split(',');
+        if (parts.Length != 2) return;
+
+        if (float.TryParse(parts[0], out float forwardAmount)
+            && float.TryParse(parts[1], out float rightAmount))
+        {
+            MoveCameraPlanar(forwardAmount, rightAmount);
+        }
+    }
+
+    private void CameraMoveZButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        if (float.TryParse(tag, out float amount))
+        {
+            MoveCameraVertical(amount);
+        }
+    }
+
+    private void CameraRotatePad_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!HasAnyFileOpen || sender is not System.Windows.Controls.Border element) return;
+
+        _isRotatingCameraFromPad = true;
+        _lastCameraRotatePadPoint = e.GetPosition(element);
+        element.CaptureMouse();
+        SceneViewer?.Focus();
+        e.Handled = true;
+    }
+
+    private void CameraRotatePad_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isRotatingCameraFromPad || sender is not System.Windows.Controls.Border element) return;
+
+        Point currentPoint = e.GetPosition(element);
+        double deltaX = currentPoint.X - _lastCameraRotatePadPoint.X;
+        double deltaY = currentPoint.Y - _lastCameraRotatePadPoint.Y;
+        _lastCameraRotatePadPoint = currentPoint;
+
+        RenderContext.Camera.Yaw += (float)(deltaX * 0.01);
+        RenderContext.Camera.Pitch = (RenderContext.Camera.Pitch - (float)(deltaY * 0.01))
+            .Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+
+        SceneViewer?.MarkRenderDirty();
+        e.Handled = true;
+    }
+
+    private void CameraRotatePad_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isRotatingCameraFromPad || sender is not System.Windows.Controls.Border element) return;
+
+        _isRotatingCameraFromPad = false;
+        element.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
     #region File Management
 
     public async Task LoadFileAsync(string s)

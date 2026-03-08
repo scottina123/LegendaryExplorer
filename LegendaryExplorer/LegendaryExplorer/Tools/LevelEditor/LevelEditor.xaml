@@ -231,6 +231,64 @@
 
 
                 <DockPanel Grid.Column="4">
+                    <GroupBox DockPanel.Dock="Top" Header="Camera" Margin="5,5,5,0" BorderThickness="2" Padding="5"
+                              IsEnabled="{Binding HasAnyFileOpen}">
+                        <StackPanel>
+                            <Grid HorizontalAlignment="Left" Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Button Grid.Row="0" Grid.Column="0" Content="↖" Width="32" Height="32" Margin="2"
+                                        Tag="1,-1" Click="CameraMoveXYButton_Click" ToolTip="Move forward and left"/>
+                                <Button Grid.Row="0" Grid.Column="1" Content="↑" Width="32" Height="32" Margin="2"
+                                        Tag="1,0" Click="CameraMoveXYButton_Click" ToolTip="Move forward"/>
+                                <Button Grid.Row="0" Grid.Column="2" Content="↗" Width="32" Height="32" Margin="2"
+                                        Tag="1,1" Click="CameraMoveXYButton_Click" ToolTip="Move forward and right"/>
+
+                                <Button Grid.Row="1" Grid.Column="0" Content="←" Width="32" Height="32" Margin="2"
+                                        Tag="0,-1" Click="CameraMoveXYButton_Click" ToolTip="Move left"/>
+                                <Border Grid.Row="1" Grid.Column="1" Width="32" Height="32" Margin="2" Background="Transparent"
+                                        Cursor="SizeAll"
+                                        MouseLeftButtonDown="CameraRotatePad_MouseLeftButtonDown"
+                                        MouseMove="CameraRotatePad_MouseMove"
+                                        MouseLeftButtonUp="CameraRotatePad_MouseLeftButtonUp">
+                                    <Ellipse Width="16" Height="16"
+                                             Stroke="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" StrokeThickness="3"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Row="1" Grid.Column="2" Content="→" Width="32" Height="32" Margin="2"
+                                        Tag="0,1" Click="CameraMoveXYButton_Click" ToolTip="Move right"/>
+
+                                <Button Grid.Row="2" Grid.Column="0" Content="↙" Width="32" Height="32" Margin="2"
+                                        Tag="-1,-1" Click="CameraMoveXYButton_Click" ToolTip="Move back and left"/>
+                                <Button Grid.Row="2" Grid.Column="1" Content="↓" Width="32" Height="32" Margin="2"
+                                        Tag="-1,0" Click="CameraMoveXYButton_Click" ToolTip="Move back"/>
+                                <Button Grid.Row="2" Grid.Column="2" Content="↘" Width="32" Height="32" Margin="2"
+                                        Tag="-1,1" Click="CameraMoveXYButton_Click" ToolTip="Move back and right"/>
+                            </Grid>
+
+                            <StackPanel HorizontalAlignment="Left">
+                                <Button Content="[ Z ↑ ]" Width="72" Margin="0,0,0,4" FontFamily="Consolas"
+                                        Tag="1" Click="CameraMoveZButton_Click" ToolTip="Move up"/>
+                                <Border Width="72" Padding="6,2" BorderThickness="1" HorizontalAlignment="Left"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                    <TextBlock Text="[ 0 ]" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                                </Border>
+                                <Button Content="[ Z ↓ ]" Width="72" Margin="0,4,0,0" FontFamily="Consolas"
+                                        Tag="-1" Click="CameraMoveZButton_Click" ToolTip="Move down"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox DockPanel.Dock="Bottom" Header="Snap" Margin="5,5,5,0" BorderThickness="2" Padding="5"
                               DataContext="{Binding RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}">
                         <Grid>
