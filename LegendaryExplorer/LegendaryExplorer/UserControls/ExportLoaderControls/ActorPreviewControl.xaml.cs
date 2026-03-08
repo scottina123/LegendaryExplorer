@@ -5,6 +5,7 @@ using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using System;
+using System.Numerics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -137,12 +138,43 @@ public partial class ActorPreviewControl : ExportLoaderControl, IActorEditorCont
 
     private void OnRenderScene(object sender, EventArgs e)
     {
+        ConfigurePreviewLighting();
+
         Span<RenderPass> passes = ShowCollision
             ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
         foreach (RenderPass pass in passes)
             _actor?.Render(RenderContext, pass);
         RenderContext.DrawUI();
+    }
+
+    private void ConfigurePreviewLighting()
+    {
+        RenderContext.SceneLights.Clear();
+
+        var cam = RenderContext.Camera;
+        var keyPos = cam.Position - cam.CameraForward * 150f + cam.CameraUp * 75f;
+        var fillPos = cam.Position + cam.CameraRight * 150f + cam.CameraUp * 25f;
+
+        RenderContext.SceneLights.Add(new SceneLight(
+            keyPos,
+            100000f,
+            new Vector3(1f, 1f, 1f),
+            3.0f,
+            false,
+            Vector3.Zero,
+            0,
+            0));
+
+        RenderContext.SceneLights.Add(new SceneLight(
+            fillPos,
+            100000f,
+            new Vector3(0.85f, 0.9f, 1f),
+            1.0f,
+            false,
+            Vector3.Zero,
+            0,
+            0));
     }
 
     public override bool CanParse(ExportEntry exportEntry) =>
