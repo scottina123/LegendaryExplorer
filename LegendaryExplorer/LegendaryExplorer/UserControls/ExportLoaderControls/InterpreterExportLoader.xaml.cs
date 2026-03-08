@@ -244,6 +244,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand AddArrayElementCommand { get; set; }
         public ICommand AddMultipleArrayElementsCommand { get; set; }
         public ICommand RemoveArrayElementCommand { get; set; }
+        public ICommand CloneArrayElementCommand { get; set; }
+        public ICommand MultiCloneArrayElementCommand { get; set; }
+        public ICommand DeleteArrayElementCommand { get; set; }
         public ICommand ClearArrayCommand { get; set; }
         public ICommand CopyValueCommand { get; set; }
         public ICommand CopyPropNameCommand { get; set; }
@@ -274,6 +277,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddArrayElementCommand = new GenericCommand(AddArrayElement, CanAddArrayElement);
             AddMultipleArrayElementsCommand = new GenericCommand(AddMultipleArrayElements, CanAddArrayElement);
             RemoveArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
+            CloneArrayElementCommand = new GenericCommand(AddArrayElement, ArrayElementIsSelected);
+            MultiCloneArrayElementCommand = new GenericCommand(AddMultipleArrayElements, ArrayElementIsSelected);
+            DeleteArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
             MoveArrayElementUpCommand = new GenericCommand(MoveArrayElementUp, CanMoveArrayElementUp);
             MoveArrayElementDownCommand = new GenericCommand(MoveArrayElementDown, CanMoveArrayElementDown);
             GenerateGUIDCommand = new GenericCommand(GenerateNewGUID, IsItemGUIDImmutable);
