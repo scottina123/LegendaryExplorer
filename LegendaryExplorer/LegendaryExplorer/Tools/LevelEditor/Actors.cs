@@ -59,6 +59,30 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         IsDirty = false;
     }
 
+    private bool _isBeingAnimated;
+    public bool IsBeingAnimated
+    {
+        get => _isBeingAnimated;
+        private set => SetProperty(ref _isBeingAnimated, value);
+    }
+
+    private TransformSnapshot? _prematineeSnapshot;
+
+    public void BeginMatineeControl()
+    {
+        if (!_isBeingAnimated)
+            _prematineeSnapshot = SnapshotTransform();
+        IsBeingAnimated = true;
+    }
+
+    public void EndMatineeControl()
+    {
+        IsBeingAnimated = false;
+        if (_prematineeSnapshot is TransformSnapshot snap)
+            RestoreTransform(snap);
+        _prematineeSnapshot = null;
+    }
+
     public NameReference Tag;
 
     protected Rotator rotation;
@@ -81,7 +105,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
                 if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -103,7 +128,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -126,7 +152,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -142,7 +169,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -155,7 +183,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -515,6 +544,7 @@ public class DynamicSMActorProxy : ActorProxy
     public DynamicSMActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
+        IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
     }
 }
 
@@ -596,7 +626,7 @@ public class BioPawnProxy : PawnProxy
 
     public BioPawnProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponent(context.RenderContext, ref HeadMesh);
+        AddComponent(context.RenderContext, ref HeadMesh, actorExport.Game.IsGame1() ? "m_oHeadMesh" : nameof(HeadMesh));
         ApplyMorphFace(HeadMesh);
         AddComponent(context.RenderContext, ref m_oHairMesh);
         AddComponent(context.RenderContext, ref m_oHeadGearMesh);
