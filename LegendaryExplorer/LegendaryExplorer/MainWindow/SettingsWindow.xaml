@@ -121,6 +121,11 @@
                                       IsChecked="{Binding Path=(settings:Settings.PackageEditor_ShowExperiments)}"/>
                             <TextBlock>Show experimental features</TextBlock>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <CheckBox x:Name="PackageEditor_DefaultMemorySafeImportPorting" Margin="5,0"
+                                      IsChecked="{Binding Path=(settings:Settings.PackageEditor_DefaultMemorySafeImportPorting)}"/>
+                            <TextBlock>Use memory-safe import porting by default</TextBlock>
+                        </StackPanel>
                                       </StackPanel>
                 </ScrollViewer>
             </TabItem>

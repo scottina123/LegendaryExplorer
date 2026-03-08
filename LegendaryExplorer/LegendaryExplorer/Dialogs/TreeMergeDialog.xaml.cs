@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
@@ -52,7 +53,7 @@ namespace LegendaryExplorer.Dialogs
         private bool _portGlobalsAsImports = true;
         public bool PortGlobalsAsImports { get => _portGlobalsAsImports; set => SetProperty(ref _portGlobalsAsImports, value); }
 
-        public bool PortExportsMemorySafe { get; set; }
+        public bool PortExportsMemorySafe { get; set; } = Settings.PackageEditor_DefaultMemorySafeImportPorting;
         public bool PortExportsAsImportsWhenPossible { get; set; }
 
         public TreeMergeDialog(IEntry sourceEntry, IEntry targetEntry, MEGame targetGame, PackageEditorWindow sourceWindow = null, PackageEditorWindow destWindow = null)

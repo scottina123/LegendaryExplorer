@@ -62,6 +62,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _packageeditor_showexperiments;
             set => SetProperty(ref _packageeditor_showexperiments, value);
         }
+        private static bool _packageeditor_defaultmemorysafeimportporting = false;
+        public static bool PackageEditor_DefaultMemorySafeImportPorting {
+            get => _packageeditor_defaultmemorysafeimportporting;
+            set => SetProperty(ref _packageeditor_defaultmemorysafeimportporting, value);
+        }
         private static int _sequenceeditor_maxvarstringlength = 40;
         public static int SequenceEditor_MaxVarStringLength {
             get => _sequenceeditor_maxvarstringlength;
@@ -509,6 +514,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             PackageEditor_ShowExportTypeIcons = TryGetSetting(settingsJson, "packageeditor_showexporttypeicons", true);
             PackageEditor_ShowTreeEntrySubText = TryGetSetting(settingsJson, "packageeditor_showtreeentrysubtext", true);
             PackageEditor_ShowExperiments = TryGetSetting(settingsJson, "packageeditor_showexperiments", false);
+            PackageEditor_DefaultMemorySafeImportPorting = TryGetSetting(settingsJson, "packageeditor_defaultmemorysafeimportporting", false);
             SequenceEditor_MaxVarStringLength = TryGetSetting(settingsJson, "sequenceeditor_maxvarstringlength", 40);
             SequenceEditor_ShowParsedInfo = TryGetSetting(settingsJson, "sequenceeditor_showparsedinfo", true);
             SequenceEditor_AutoSaveViewV2 = TryGetSetting(settingsJson, "sequenceeditor_autosaveviewv2", true);
@@ -612,6 +618,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["packageeditor_showexporttypeicons"] = PackageEditor_ShowExportTypeIcons.ToString();
             settingsJson["packageeditor_showtreeentrysubtext"] = PackageEditor_ShowTreeEntrySubText.ToString();
             settingsJson["packageeditor_showexperiments"] = PackageEditor_ShowExperiments.ToString();
+            settingsJson["packageeditor_defaultmemorysafeimportporting"] = PackageEditor_DefaultMemorySafeImportPorting.ToString();
             settingsJson["sequenceeditor_maxvarstringlength"] = SequenceEditor_MaxVarStringLength.ToString();
             settingsJson["sequenceeditor_showparsedinfo"] = SequenceEditor_ShowParsedInfo.ToString();
             settingsJson["sequenceeditor_autosaveviewv2"] = SequenceEditor_AutoSaveViewV2.ToString();
