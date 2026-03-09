@@ -75,10 +75,14 @@ namespace LegendaryExplorer.Dialogs
         public string SelectedOutputBus { get; set; } = "Env-VO-Conversation";
 
         private readonly IMEPackage _package;
+        private readonly string _bankPackageName;
+        private readonly string _bankStreamingAudioPackageName;
 
-        public BulkAudioImportDialog(IMEPackage package)
+        public BulkAudioImportDialog(IMEPackage package, string bankPackageName = "audio", string bankStreamingAudioPackageName = "int")
         {
             _package = package;
+            _bankPackageName = bankPackageName;
+            _bankStreamingAudioPackageName = bankStreamingAudioPackageName;
             InitializeComponent();
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
@@ -332,7 +336,7 @@ namespace LegendaryExplorer.Dialogs
                 //     - WwiseBank and WwiseEvents go directly under "audio"
                 //     - WwiseStreams go under "audio.int"
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package,
-                    bankPackageName: "audio", bankStreamingAudioPackageName: "int");
+                    bankPackageName: _bankPackageName, bankStreamingAudioPackageName: _bankStreamingAudioPackageName);
 
                 // 11. Set DurationSeconds on events from WAV file headers.
                 //     This is critical for dialogue: without DurationSeconds the game's dialogue
