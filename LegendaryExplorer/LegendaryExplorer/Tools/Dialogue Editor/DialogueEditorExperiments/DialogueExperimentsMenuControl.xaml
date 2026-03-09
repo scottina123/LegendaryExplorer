@@ -38,5 +38,6 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
     </MenuItem>
     <MenuItem Header="Scottina's Funzone">
         <MenuItem Header="Import All LE3 Ambient Performances to PCC" Click="ImportAllAmbPerfsToPcc_Click" ToolTip="Loads the LE3 Asset Database, finds all ambient performances, and imports them into a single PCC with memory-safe importing."/>
+        <MenuItem Header="Localize Speaker FaceFX to Conversation Package" Click="LocalizeSpeakerFaceFX_Click" ToolTip="Detects if the selected speaker's FaceFX assets are outside the BioConversation's package, clones them (with WwiseStreams/Events) under the conversation, and updates references."/>
     </MenuItem>
 </MenuItem>

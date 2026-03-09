@@ -1,9 +1,12 @@
+using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
@@ -511,6 +514,233 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
         {
             var files = Directory.GetFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories);
             return files.FirstOrDefault(f => f.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// For the selected speaker in Dialogue Editor, detects if FaceFX animation assets
+        /// are outside the BioConversation's package. If so, clones them (and their referenced
+        /// WwiseStreams and WwiseEvents) into the BioConversation's package hierarchy, renames
+        /// the FaceFX assets, and updates the speaker references.
+        /// </summary>
+        public static void LocalizeSpeakerFaceFX(DialogueEditorWindow dew)
+        {
+            if (dew?.Pcc == null || dew.SelectedConv == null || dew.SelectedSpeaker == null)
+            {
+                MessageBox.Show("Please select a conversation and a speaker first.", "Localize Speaker FaceFX");
+                return;
+            }
+
+            var pcc = dew.Pcc;
+            var conv = dew.SelectedConv;
+            var speaker = dew.SelectedSpeaker;
+            var bioConvExport = conv.Export;
+
+            // Determine the package that holds the BioConversation
+            IEntry convParentPackage = bioConvExport.Parent;
+
+            // Get the top-level folder package name (root of the BioConversation's chain)
+            string topFolderPackageName = GetTopPackageNameForEntry(bioConvExport);
+
+            // Speaker name for naming (the hench name)
+            string henchName = speaker.SpeakerName;
+
+            // Get current FaceFX references
+            var fxaMale = speaker.FaceFX_Male as ExportEntry;
+            var fxaFemale = speaker.FaceFX_Female as ExportEntry;
+
+            if (fxaMale == null && fxaFemale == null)
+            {
+                MessageBox.Show("The selected speaker has no FaceFX assets assigned.", "Localize Speaker FaceFX");
+                return;
+            }
+
+            // Check if assets are already under the BioConversation's parent package
+            string convParentPath = convParentPackage?.InstancedFullPath;
+            bool maleOutside = fxaMale != null && !IsUnderPackage(fxaMale, convParentPath);
+            bool femaleOutside = fxaFemale != null && !IsUnderPackage(fxaFemale, convParentPath);
+
+            if (!maleOutside && !femaleOutside)
+            {
+                MessageBox.Show("The selected speaker's FaceFX assets are already under the BioConversation's package. No action needed.", "Localize Speaker FaceFX");
+                return;
+            }
+
+            // Confirm with user
+            var result = MessageBox.Show(
+                $"Speaker: {henchName}\n" +
+                $"Male FaceFX outside: {maleOutside} ({fxaMale?.InstancedFullPath ?? "none"})\n" +
+                $"Female FaceFX outside: {femaleOutside} ({fxaFemale?.InstancedFullPath ?? "none"})\n\n" +
+                $"This will clone the FaceFX assets (and their WwiseStreams/WwiseEvents) under the BioConversation's package and update references.\n\n" +
+                $"Continue?",
+                "Localize Speaker FaceFX",
+                MessageBoxButton.OKCancel);
+
+            if (result != MessageBoxResult.OK)
+                return;
+
+            ExportEntry newMaleFxa = null;
+            ExportEntry newFemaleFxa = null;
+
+            if (maleOutside && fxaMale != null)
+            {
+                string newName = $"{topFolderPackageName}_{henchName}_M";
+                newMaleFxa = CloneFaceFXWithAudio(pcc, fxaMale, convParentPackage, newName);
+            }
+
+            if (femaleOutside && fxaFemale != null)
+            {
+                string newName = $"{topFolderPackageName}_{henchName}_F";
+                newFemaleFxa = CloneFaceFXWithAudio(pcc, fxaFemale, convParentPackage, newName);
+            }
+
+            // Update the speaker references in the BioConversation
+            int speakerIdx = speaker.SpeakerID + 2; // offset: -2=player, -1=owner, 0+=speakers
+            var bioConvoProps = bioConvExport.GetProperties();
+
+            if (newMaleFxa != null)
+            {
+                var maleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
+                if (maleFaceSets != null && speakerIdx >= 0 && speakerIdx < maleFaceSets.Count)
+                {
+                    maleFaceSets[speakerIdx].Value = newMaleFxa.UIndex;
+                }
+            }
+
+            if (newFemaleFxa != null)
+            {
+                var femaleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
+                if (femaleFaceSets != null && speakerIdx >= 0 && speakerIdx < femaleFaceSets.Count)
+                {
+                    femaleFaceSets[speakerIdx].Value = newFemaleFxa.UIndex;
+                }
+            }
+
+            bioConvExport.WriteProperties(bioConvoProps);
+
+            MessageBox.Show(
+                $"Done! Localized FaceFX for speaker '{henchName}'.\n\n" +
+                (newMaleFxa != null ? $"Male FXA: {newMaleFxa.InstancedFullPath}\n" : "") +
+                (newFemaleFxa != null ? $"Female FXA: {newFemaleFxa.InstancedFullPath}\n" : ""),
+                "Localize Speaker FaceFX");
+        }
+
+        /// <summary>
+        /// Clones a FaceFXAnimSet export under the given parent package with a new name.
+        /// Also clones all WwiseEvents referenced via the ReferencedSoundCues property
+        /// into an audio subfolder under the parent package (keeping original WwiseStream references).
+        /// Updates both the ReferencedSoundCues property and the FaceFX binary line paths.
+        /// </summary>
+        private static ExportEntry CloneFaceFXWithAudio(
+            IMEPackage pcc, ExportEntry sourceFxa, IEntry convParentPackage, string newFxaName)
+        {
+            // Clone the FaceFXAnimSet tree
+            var clonedFxa = EntryCloner.CloneTree(sourceFxa);
+
+            // Move under the BioConversation's parent package
+            clonedFxa.idxLink = convParentPackage?.UIndex ?? 0;
+
+            // Rename
+            pcc.FindNameOrAdd(newFxaName);
+            clonedFxa.ObjectName = new NameReference(newFxaName);
+
+            // Ensure audio package exists under the conv parent
+            var audioPackage = ExportCreator.CreatePackageExport(pcc, "audio", convParentPackage);
+
+            // --- Clone WwiseEvents via the ReferencedSoundCues property ---
+            // This is the actual UIndex-based linkage from the FaceFXAnimSet to WwiseEvents.
+            // WwiseStreams are NOT cloned - the cloned events keep their original stream references.
+            var clonedFxaProps = clonedFxa.GetProperties();
+            var refSoundCues = clonedFxaProps.GetProp<ArrayProperty<ObjectProperty>>("ReferencedSoundCues");
+
+            // Maps original WwiseEvent UIndex → cloned WwiseEvent export
+            var clonedEventMap = new Dictionary<int, ExportEntry>();
+
+            if (refSoundCues != null)
+            {
+                for (int i = 0; i < refSoundCues.Count; i++)
+                {
+                    int originalUIndex = refSoundCues[i].Value;
+                    if (originalUIndex == 0 || !pcc.IsUExport(originalUIndex))
+                        continue;
+
+                    var originalEvent = pcc.GetUExport(originalUIndex);
+                    if (originalEvent.ClassName != "WwiseEvent")
+                        continue;
+
+                    if (!clonedEventMap.TryGetValue(originalUIndex, out var clonedEvent))
+                    {
+                        // Clone the WwiseEvent without incrementing the index
+                        clonedEvent = EntryCloner.CloneEntry(originalEvent, incrementIndex: false);
+                        clonedEvent.idxLink = audioPackage.UIndex;
+
+                        clonedEventMap[originalUIndex] = clonedEvent;
+                    }
+
+                    // Update the ReferencedSoundCues entry to point to the clone
+                    refSoundCues[i].Value = clonedEvent.UIndex;
+                }
+
+                clonedFxaProps.AddOrReplaceProp(refSoundCues);
+                clonedFxa.WriteProperties(clonedFxaProps);
+            }
+
+            // --- Update FaceFX binary line paths to match the new event locations ---
+            var fxaBinary = clonedFxa.GetBinaryData<FaceFXAnimSet>();
+
+            foreach (var line in fxaBinary.Lines)
+            {
+                if (string.IsNullOrEmpty(line.Path))
+                    continue;
+
+                // Try to find which original event this path pointed to
+                var originalEvent = pcc.FindExport(line.Path);
+                if (originalEvent == null)
+                {
+                    // Fallback: search by object name
+                    string eventName = line.Path.Contains('.')
+                        ? line.Path[(line.Path.LastIndexOf('.') + 1)..]
+                        : line.Path;
+                    originalEvent = pcc.Exports.FirstOrDefault(e =>
+                        e.ClassName == "WwiseEvent" &&
+                        e.ObjectName.Instanced.Equals(eventName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (originalEvent != null && clonedEventMap.TryGetValue(originalEvent.UIndex, out var clonedEvent))
+                {
+                    line.Path = clonedEvent.InstancedFullPath;
+                }
+            }
+
+            clonedFxa.WriteBinary(fxaBinary);
+
+            return clonedFxa;
+        }
+
+        /// <summary>
+        /// Gets the top-level package name for an entry by walking up its parent chain.
+        /// For a root-level entry, returns its own name.
+        /// </summary>
+        private static string GetTopPackageNameForEntry(IEntry entry)
+        {
+            IEntry current = entry;
+            while (current.HasParent)
+            {
+                current = current.Parent;
+            }
+            return current.ObjectName.Instanced;
+        }
+
+        /// <summary>
+        /// Returns true if the given export's InstancedFullPath starts with the specified
+        /// package path, indicating it is nested under that package.
+        /// </summary>
+        private static bool IsUnderPackage(ExportEntry export, string packagePath)
+        {
+            if (string.IsNullOrEmpty(packagePath))
+                return export.Parent == null;
+
+            return export.InstancedFullPath.StartsWith(packagePath + ".", StringComparison.OrdinalIgnoreCase)
+                || export.InstancedFullPath.Equals(packagePath, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

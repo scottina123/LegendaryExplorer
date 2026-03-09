@@ -553,6 +553,7 @@
 	<ItemGroup>
 	  <Folder Include="LegendaryExplorer\Dialogs\" />
 	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
+	  <Folder Include="LegendaryExplorer\Tools\Dialogue Editor\DialogueEditorExperiments\" />
 	</ItemGroup>
 
 	<PropertyGroup>

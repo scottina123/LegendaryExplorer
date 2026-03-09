@@ -136,6 +136,11 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
         {
             await DialogueEditorExperimentsS.ImportAllAmbientPerformancesToPcc(Window.GetWindow(this));
         }
+
+        private void LocalizeSpeakerFaceFX_Click(object sender, RoutedEventArgs e)
+        {
+            DialogueEditorExperimentsS.LocalizeSpeakerFaceFX(GetDEWindow());
+        }
         #endregion
     }
 }
