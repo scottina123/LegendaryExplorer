@@ -1029,6 +1029,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                  Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                  CaretBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                 ContextMenu="{DynamicResource DarkTextBoxContextMenu}"
                                  Visibility="Hidden"
                                  IsReadOnly="{TemplateBinding IsReadOnly}"/>
                         <Popup Name="Popup"
@@ -1507,6 +1508,13 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
     </Style>
     
+    <!-- Dark-themed context menu for text controls (Cut/Copy/Paste) -->
+    <ContextMenu x:Key="DarkTextBoxContextMenu">
+        <MenuItem Command="ApplicationCommands.Cut"/>
+        <MenuItem Command="ApplicationCommands.Copy"/>
+        <MenuItem Command="ApplicationCommands.Paste"/>
+    </ContextMenu>
+
     <!-- TextBox styling with full template to ensure dark theme applies -->
     <Style TargetType="{x:Type TextBox}">
         <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
@@ -1514,6 +1522,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="CaretBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
         <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+        <Setter Property="ContextMenu" Value="{DynamicResource DarkTextBoxContextMenu}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="AllowDrop" Value="True"/>
@@ -2005,6 +2014,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                 <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
                 <Setter Property="CaretBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
                 <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                <Setter Property="ContextMenu" Value="{DynamicResource DarkTextBoxContextMenu}"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="Padding" Value="2"/>
                 <Setter Property="Template">
@@ -2074,6 +2084,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                          Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                          Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                          CaretBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                         ContextMenu="{DynamicResource DarkTextBoxContextMenu}"
                                          Visibility="Hidden"
                                          IsReadOnly="{TemplateBinding IsReadOnly}"/>
                                 <Popup Name="Popup"
@@ -2144,6 +2155,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         <Setter Property="CaretBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
         <Setter Property="SelectionBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+        <Setter Property="ContextMenu" Value="{DynamicResource DarkTextBoxContextMenu}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="Template">
@@ -2213,6 +2225,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                  Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
                                  CaretBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                 ContextMenu="{DynamicResource DarkTextBoxContextMenu}"
                                  Visibility="Hidden"
                                  IsReadOnly="{TemplateBinding IsReadOnly}"/>
                         <Popup Name="Popup"

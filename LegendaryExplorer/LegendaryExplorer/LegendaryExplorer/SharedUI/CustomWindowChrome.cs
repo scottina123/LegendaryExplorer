@@ -23,6 +23,9 @@ namespace LegendaryExplorer.SharedUI
         [DllImport("dwmapi.dll", PreserveSig = true)]
         private static extern unsafe int DwmSetWindowAttribute(IntPtr hwnd, int attr, int* attrValue, int attrSize);
 
+        [DllImport("kernel32.dll", EntryPoint = "GetProcAddress")]
+        private static extern nint GetProcAddress(nint hModule, nint procName);
+
         // DWMWA_USE_IMMERSIVE_DARK_MODE - Windows 10 20H1+ and Windows 11
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
@@ -32,6 +35,50 @@ namespace LegendaryExplorer.SharedUI
 
         // DWMWA_BORDER_COLOR - Windows 11 only
         private const int DWMWA_BORDER_COLOR = 34;
+
+        private enum PreferredAppMode
+        {
+            Default,
+            AllowDark,
+            ForceDark,
+            ForceLight,
+            Max
+        }
+
+        private static readonly nint _uxThemeModule = LoadUxThemeModule();
+        private static readonly nint _setPreferredAppMode = GetUxThemeProcAddress(135);
+        private static readonly nint _allowDarkModeForWindow = GetUxThemeProcAddress(133);
+        private static readonly nint _flushMenuThemes = GetUxThemeProcAddress(136);
+
+        private static nint LoadUxThemeModule()
+        {
+            return NativeLibrary.TryLoad("uxtheme.dll", out nint moduleHandle) ? moduleHandle : nint.Zero;
+        }
+
+        private static nint GetUxThemeProcAddress(int ordinal)
+        {
+            if (_uxThemeModule == nint.Zero)
+            {
+                return nint.Zero;
+            }
+
+            return GetProcAddress(_uxThemeModule, (nint)ordinal);
+        }
+
+        private static unsafe void ApplyPreferredAppMode(bool isDarkMode)
+        {
+            if (_setPreferredAppMode != nint.Zero)
+            {
+                var setPreferredAppMode = (delegate* unmanaged[Stdcall]<PreferredAppMode, PreferredAppMode>)_setPreferredAppMode;
+                _ = setPreferredAppMode(isDarkMode ? PreferredAppMode.AllowDark : PreferredAppMode.Default);
+            }
+
+            if (_flushMenuThemes != nint.Zero)
+            {
+                var flushMenuThemes = (delegate* unmanaged[Stdcall]<void>)_flushMenuThemes;
+                flushMenuThemes();
+            }
+        }
 
         #endregion
 
@@ -58,6 +105,8 @@ namespace LegendaryExplorer.SharedUI
         /// </summary>
         private static void OnThemeChanged(object sender, bool isDarkMode)
         {
+            ApplyPreferredAppMode(isDarkMode);
+
             // Clean up dead references and update all live windows
             _registeredWindows.RemoveAll(wr => !wr.TryGetTarget(out _));
 
@@ -151,6 +200,8 @@ namespace LegendaryExplorer.SharedUI
         {
             if (window == null) return;
 
+            ApplyPreferredAppMode(Settings.Global_DarkMode_Enabled);
+
             // Ensure we're subscribed to theme changes
             EnsureThemeChangeSubscription();
 
@@ -173,6 +224,12 @@ namespace LegendaryExplorer.SharedUI
         {
             var hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero) return;
+
+            if (_allowDarkModeForWindow != nint.Zero)
+            {
+                var allowDarkModeForWindow = (delegate* unmanaged[Stdcall]<nint, int, int>)_allowDarkModeForWindow;
+                _ = allowDarkModeForWindow(hwnd, isDarkMode ? 1 : 0);
+            }
 
             int useDarkMode = isDarkMode ? 1 : 0;
 
