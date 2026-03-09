@@ -944,15 +944,27 @@ namespace LegendaryExplorer.DialogueEditor
             container.AddChild(divider);
             innerY += 3;
 
-            // Clickable header — toggle collapse
+            // Only the arrow toggles collapse so the rest of the header can drag the node.
             string arrow = Node.PlotChecksExpanded ? "\u25BE" : "\u25B8";
-            var header = new DText($"{arrow} Plot checks", PlotHeaderColor, false)
+            var arrowText = new DText(arrow, PlotHeaderColor, false)
             {
-                TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
-                X = 6, Y = innerY, Pickable = false, Width = width - 12
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = true,
+                X = 6,
+                Y = innerY,
+                Pickable = false
+            };
+            var headerLabel = new DText("Plot checks", PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = arrowText.X + arrowText.Width + 8,
+                Y = innerY,
+                Pickable = false,
+                Width = width - (arrowText.X + arrowText.Width + 14)
             };
 
-            var headerHitBox = PPath.CreateRectangle(0, innerY, width, header.Height);
+            var headerHitBox = PPath.CreateRectangle(arrowText.X - 2, innerY, arrowText.Width + 6, arrowText.Height);
             headerHitBox.Brush = mostlyTransparentBrush;
             headerHitBox.Pen = null;
             headerHitBox.Pickable = true;
@@ -965,9 +977,10 @@ namespace LegendaryExplorer.DialogueEditor
                 Editor?.ForceRefreshFromGraph();
             };
 
-            container.AddChild(header);
+            container.AddChild(arrowText);
+            container.AddChild(headerLabel);
             container.AddChild(headerHitBox);
-            innerY += header.Height;
+            innerY += Math.Max(arrowText.Height, headerLabel.Height);
 
             // Always-visible summary in header area for quick glance
             if (string.IsNullOrEmpty(Node.ConditionalPlotPath) && Node.ConditionalOrBool >= 0 && pcc != null)
@@ -1084,15 +1097,27 @@ namespace LegendaryExplorer.DialogueEditor
             container.AddChild(divider);
             innerY += 3;
 
-            // Clickable header — toggle collapse
+            // Only the arrow toggles collapse so the rest of the header can drag the node.
             string arrow = Node.PlotTransitionsExpanded ? "\u25BE" : "\u25B8";
-            var header = new DText($"{arrow} Plot transitions", PlotHeaderColor, false)
+            var arrowText = new DText(arrow, PlotHeaderColor, false)
             {
-                TextAlignment = StringAlignment.Near, ConstrainWidthToTextWidth = false,
-                X = 6, Y = innerY, Pickable = false, Width = width - 12
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = true,
+                X = 6,
+                Y = innerY,
+                Pickable = false
+            };
+            var headerLabel = new DText("Plot transitions", PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = arrowText.X + arrowText.Width + 8,
+                Y = innerY,
+                Pickable = false,
+                Width = width - (arrowText.X + arrowText.Width + 14)
             };
 
-            var headerHitBox = PPath.CreateRectangle(0, innerY, width, header.Height);
+            var headerHitBox = PPath.CreateRectangle(arrowText.X - 2, innerY, arrowText.Width + 6, arrowText.Height);
             headerHitBox.Brush = mostlyTransparentBrush;
             headerHitBox.Pen = null;
             headerHitBox.Pickable = true;
@@ -1105,9 +1130,10 @@ namespace LegendaryExplorer.DialogueEditor
                 Editor?.ForceRefreshFromGraph();
             };
 
-            container.AddChild(header);
+            container.AddChild(arrowText);
+            container.AddChild(headerLabel);
             container.AddChild(headerHitBox);
-            innerY += header.Height;
+            innerY += Math.Max(arrowText.Height, headerLabel.Height);
 
             // Always-visible summary in header area for quick glance
             if (string.IsNullOrEmpty(Node.TransitionPlotPath) && Node.Transition >= 0 && pcc != null)

@@ -2861,6 +2861,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
             CurrentUIMode = mode;
 
+            StageDirections_Tab.Visibility = Pcc?.Game.IsGame3() == true ? Visibility.Visible : Visibility.Collapsed;
+
             Node_Panel.Visibility = Visibility.Collapsed;
             switch (CurrentUIMode)
             {
@@ -2876,12 +2878,13 @@ namespace LegendaryExplorer.DialogueEditor
                     BottomViewportTabControl.SelectedItem = StartingNodesTab;
                     break;
                 default:
-                    BottomViewportTabControl.SelectedItem = ConversationDetailsTab;
+                    if (BottomViewportTabControl.SelectedItem is not TabItem selectedTab || selectedTab.Visibility != Visibility.Visible)
+                    {
+                        BottomViewportTabControl.SelectedItem = ConversationDetailsTab;
+                    }
                     break;
 
             }
-
-            StageDirections_Tab.Visibility = Pcc?.Game.IsGame3() == true ? Visibility.Visible : Visibility.Collapsed;
         }
         private void ListBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
