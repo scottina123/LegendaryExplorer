@@ -1686,6 +1686,8 @@
                                                         <fa:ImageAwesome Icon="Solid_FileAudio" Width="16" Height="16" />
                                                     </MenuItem.Icon>
                                                 </MenuItem>
+                                                <Separator />
+                                                <MenuItem Header="Localize Speaker FaceFX" Command="{Binding LocalizeSpeakerFaceFXCommand}" ToolTip="Clones the speaker's FaceFX and WwiseEvents under the conversation's package and updates references." />
                                             </ContextMenu>
                                         </ListBox.ContextMenu>
                                     </ListBox>

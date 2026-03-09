@@ -1,5 +1,6 @@
 ﻿using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor.DialogueEditorExperiments;
+using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -283,6 +284,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand CopyToClipboardCommand { get; set; }
         public ICommand ForceRefreshCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
+        public ICommand LocalizeSpeakerFaceFXCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         private bool copiedOutgoingConnectionsAreReplyNode;
         private List<ReplyChoiceNode> copiedOutgoingConnections;
@@ -608,6 +610,7 @@ namespace LegendaryExplorer.DialogueEditor
             CopyToClipboardCommand = new RelayCommand(CopyStringToClipboard);
             ForceRefreshCommand = new RelayCommand(ForceRefresh);
             ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= -2);
+            LocalizeSpeakerFaceFXCommand = new GenericCommand(() => DialogueEditorExperimentsS.LocalizeSpeakerFaceFX(this), () => SelectedSpeaker != null && SelectedConv != null);
             BulkEditInterpGroupsCommand = new GenericCommand(OpenBulkInterpEditor, LineHasInterpData);
         }
 
