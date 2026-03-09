@@ -3544,7 +3544,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Text = node.Node.LineStrRef.ToString(),
                 BorderStyle = System.Windows.Forms.BorderStyle.None,
                 Multiline = false,
-                ShortcutsEnabled = false
+                ShortcutsEnabled = true
             };
             inlineLineStrRefEditor = editor;
 
