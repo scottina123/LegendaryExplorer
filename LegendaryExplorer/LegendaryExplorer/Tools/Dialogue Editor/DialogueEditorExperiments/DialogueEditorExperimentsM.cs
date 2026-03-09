@@ -63,6 +63,24 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 var fxaMs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
                 var fxaFs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
 
+                if (speakerList == null)
+                {
+                    speakerList = new ArrayProperty<NameProperty>("m_aSpeakerList");
+                    bioconvo.AddOrReplaceProp(speakerList);
+                }
+
+                if (fxaMs == null)
+                {
+                    fxaMs = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets");
+                    bioconvo.AddOrReplaceProp(fxaMs);
+                }
+
+                if (fxaFs == null)
+                {
+                    fxaFs = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets");
+                    bioconvo.AddOrReplaceProp(fxaFs);
+                }
+
                 speakerList.Add(new NameProperty(newTag));
                 fxaMs.Add(new ObjectProperty(fxaM));
                 fxaFs.Add(new ObjectProperty(fxaF));
