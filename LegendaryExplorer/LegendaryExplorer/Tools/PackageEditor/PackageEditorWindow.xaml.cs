@@ -321,6 +321,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
         public ICommand ShiftLevelActorsCommand { get; set; }
         public ICommand AddAllAssetsToReferencerCommand { get; set; }
+        public ICommand CloneTreeToFolderCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -389,6 +390,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
             ShiftLevelActorsCommand = new GenericCommand(ShiftSelectedLevelActors, CanShiftSelectedLevelActors);
             AddAllAssetsToReferencerCommand = new GenericCommand(AddAllAssetsToReferencer, ObjectReferencerIsSelected);
+            CloneTreeToFolderCommand = new GenericCommand(CloneTreeToFolder, ExportIsSelected);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -3125,6 +3127,140 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 CloneTree(howManyTimes);
             }
+        }
+
+        private void CloneTreeToFolder()
+        {
+            if (!TryGetSelectedExport(out ExportEntry sourceExport))
+                return;
+
+            var dlg = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                EnsurePathExists = true,
+                Title = "Select destination folder containing PCC files"
+            };
+
+            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+                return;
+
+            string targetFolder = dlg.FileName;
+
+            var locOnlyResult = MessageBox.Show(this,
+                "Copy to LOC (localization) PCC files only?\n\nYes = LOC files only\nNo = All PCC files\nCancel = Abort",
+                "Clone Tree to Folder",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+
+            if (locOnlyResult == MessageBoxResult.Cancel)
+                return;
+
+            bool locOnly = locOnlyResult == MessageBoxResult.Yes;
+
+            string extension = Path.GetExtension(Pcc.FilePath);
+            var pccFiles = Directory.GetFiles(targetFolder, $"*{extension}", SearchOption.TopDirectoryOnly)
+                .Where(f => !string.Equals(Path.GetFullPath(f), Path.GetFullPath(Pcc.FilePath), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (locOnly)
+            {
+                pccFiles = pccFiles.Where(f => Path.GetFileNameWithoutExtension(f).Contains("_LOC_", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (pccFiles.Count == 0)
+            {
+                MessageBox.Show(this, locOnly
+                    ? "No LOC PCC files found in the selected folder."
+                    : "No PCC files found in the selected folder.",
+                    "Clone Tree to Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirmResult = MessageBox.Show(this,
+                $"This will clone the export tree rooted at:\n\n{sourceExport.InstancedFullPath}\n\ninto {pccFiles.Count} file(s) in:\n{targetFolder}\n\nProceed?",
+                "Confirm Clone Tree to Folder",
+                MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (confirmResult != MessageBoxResult.Yes)
+                return;
+
+            IsBusy = true;
+            BusyText = "Cloning tree to folder...";
+
+            var sourcePackage = Pcc;
+            var sourceEntry = sourceExport;
+
+            Task.Run(() =>
+            {
+                var errors = new List<string>();
+                int successCount = 0;
+
+                for (int i = 0; i < pccFiles.Count; i++)
+                {
+                    string pccFile = pccFiles[i];
+                    try
+                    {
+                        using var destPackage = MEPackageHandler.OpenMEPackage(pccFile, forceLoadFromDisk: true);
+                        var rop = new RelinkerOptionsPackage
+                        {
+                            ImportExportDependencies = true,
+                            Cache = new PackageCache()
+                        };
+
+                        IEntry parentInDest = null;
+                        if (sourceEntry.Parent != null)
+                        {
+                            parentInDest = destPackage.FindEntry(sourceEntry.Parent.InstancedFullPath);
+                            parentInDest ??= EntryExporter.PortParents(sourceEntry, destPackage, cache: rop.Cache, customROP: rop);
+                        }
+
+                        rop.CrossPackageMap.Clear();
+                        var relinkResults = EntryImporter.ImportAndRelinkEntries(
+                            EntryImporter.PortingOption.CloneTreeAsChild,
+                            sourceEntry,
+                            destPackage,
+                            parentInDest,
+                            true,
+                            rop,
+                            out _);
+
+                        if (relinkResults.Any())
+                        {
+                            errors.Add($"{Path.GetFileName(pccFile)}: {relinkResults.Count} relink issue(s)");
+                        }
+
+                        destPackage.Save();
+                        successCount++;
+
+                        Dispatcher.Invoke(() => BusyText = $"Cloning tree to folder... ({i + 1}/{pccFiles.Count})");
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{Path.GetFileName(pccFile)}: {ex.Message}");
+                    }
+                }
+
+                return (successCount, errors);
+            }).ContinueWithOnUIThread(task =>
+            {
+                IsBusy = false;
+                var (successCount, errors) = task.Result;
+
+                if (errors.Count > 0)
+                {
+                    var dlgResult = new ListDialog(
+                        errors.Select(e => new EntryStringPair(e)).ToList(),
+                        $"Cloned to {successCount}/{pccFiles.Count} files with issues",
+                        "The following issues occurred during cloning:",
+                        this);
+                    dlgResult.Show();
+                }
+                else
+                {
+                    MessageBox.Show(this,
+                        $"Successfully cloned export tree into {successCount} file(s).",
+                        "Clone Tree to Folder", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            });
         }
 
         private void CloneEntry(int numClones)

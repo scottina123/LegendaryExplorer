@@ -134,6 +134,7 @@
             <MenuItem Header="Extract to file" ToolTip="Extracts this export and all references to a new package file. Attempts to convert imports into exports that are located in the level-specific files" Command="{Binding ExtractToPackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Clone" ToolTip="Clone only this entry"  Command="{Binding CloneCommand}"/>
             <MenuItem Header="Clone Tree" ToolTip="Clone this entry and all children" Command="{Binding CloneTreeCommand}"/>
+            <MenuItem Header="Clone Tree to Folder" ToolTip="Clone this export tree into every PCC file in a chosen folder, with option for LOC files only" Command="{Binding CloneTreeToFolderCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Multi-cloning">
                 <MenuItem Header="Multi-clone entry" ToolTip="Clone only this entry multiple times" Command="{Binding MultiCloneCommand}"/>
                 <MenuItem Header="Multi-clone Tree" ToolTip="Clone this entry and all children multiple times" Command="{Binding MultiCloneTreeCommand}"/>
