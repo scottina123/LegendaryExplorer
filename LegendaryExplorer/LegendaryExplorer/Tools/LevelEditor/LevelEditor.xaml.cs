@@ -74,6 +74,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public LevelEditorRenderContext RenderContext { get; }
 
     public ObservableCollectionExtended<OpenLevelFile> OpenFiles { get; } = [];
+    private OpenLevelFile _activeFile;
+    public OpenLevelFile ActiveFile
+    {
+        get => _activeFile;
+        private set => SetProperty(ref _activeFile, value);
+    }
+
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
     public ICollectionView ActorsView { get; }
     private string _actorFilterText = "";
@@ -391,6 +398,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         var prev = selectedActor;
         if (SetProperty(ref selectedActor, actor, nameof(SelectedActor)))
         {
+            ActiveFile = actor?.OwningFile ?? OpenFiles.FirstOrDefault();
             SceneViewer?.MarkRenderDirty();
             if (prev is not null)
             {
@@ -587,6 +595,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         // Register the OpenLevelFile as a user of the package for update notifications
         pcc.RegisterTool(openFile);
         OpenFiles.Add(openFile);
+        ActiveFile = openFile;
         HasAnyFileOpen = true;
 
         RecordCurrentFilesAsRecent();
@@ -632,6 +641,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void CloseAllFiles()
     {
         Game = MEGame.Unknown;
+        ActiveFile = null;
         if (selectedActor is not null)
         {
             selectedActor.PropertyChanged -= OnActorPropertyChanged;
@@ -687,6 +697,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         file.Dispose();
         OpenFiles.Remove(file);
+        ActiveFile = SelectedActor?.OwningFile ?? OpenFiles.FirstOrDefault();
         HasAnyFileOpen = OpenFiles.Count > 0;
         UpdateGlobalDirtyState();
         UpdateTitle();
