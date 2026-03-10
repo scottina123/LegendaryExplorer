@@ -14,6 +14,7 @@
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
         xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
         xmlns:fa="http://schemas.fontawesome.com/icons/"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         Icon="pack://application:,,,/Tools/Icons/16x16/LiveLevelEditor_Icon_16.ico"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
@@ -219,6 +220,9 @@
                             <ContextMenu x:Key="MyMenu">
                                 <MenuItem Header="Focus Camera" Command="{Binding Data.FocusSelectedCommand, Source={StaticResource bindingProxy}}" InputGestureText="F"/>
                                 <MenuItem Header="Open in Package Editor" Command="{Binding Data.OpenInPackageEditorCommand, Source={StaticResource bindingProxy}}"/>
+                                <Separator/>
+                                <MenuItem Header="View Properties" Command="{Binding Data.ViewActorPropertiesCommand, Source={StaticResource bindingProxy}}"/>
+                                <MenuItem Header="View Metadata" Command="{Binding Data.ViewActorMetadataCommand, Source={StaticResource bindingProxy}}"/>
                             </ContextMenu>
                             <Style TargetType="{x:Type ListBoxItem}">
                                 <Setter Property="ContextMenu" Value="{StaticResource MyMenu}"/>
@@ -231,8 +235,45 @@
                 <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer" />
 
 
-                <DockPanel Grid.Column="4">
-                    <GroupBox DockPanel.Dock="Top" Header="Camera" Margin="5,5,5,0" BorderThickness="2" Padding="5"
+                <Grid Grid.Column="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*" MinHeight="120"/>
+                        <RowDefinition Height="5"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <ComboBox Grid.Row="0" Margin="2,2,2,0" Height="24"
+                              ItemsSource="{Binding PropertiesExportList}"
+                              SelectedItem="{Binding SelectedPropertiesExport}"
+                              IsEnabled="{Binding SelectedActor, Converter={StaticResource NullEnabledConverter}}"
+                              ToolTip="Select the actor or one of its components to inspect">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock FontFamily="Consolas" FontSize="11">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0}: {1} ({2})">
+                                            <Binding Path="UIndex"/>
+                                            <Binding Path="ObjectName.Instanced"/>
+                                            <Binding Path="ClassName"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TabControl Grid.Row="1" x:Name="PropertiesTabControl">
+                        <TabItem Header="Properties">
+                            <exportLoaderControls:InterpreterExportLoader x:Name="LevelEditorInterpreter" HideHexBox="True"/>
+                        </TabItem>
+                        <TabItem Header="Metadata">
+                            <exportLoaderControls:EntryMetadataExportLoader x:Name="LevelEditorMetadata"/>
+                        </TabItem>
+                    </TabControl>
+                    <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch"
+                                  Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                    <GroupBox Header="Camera" Margin="5,5,5,0" BorderThickness="2" Padding="5"
                               IsEnabled="{Binding HasAnyFileOpen}">
                         <StackPanel>
                             <Grid HorizontalAlignment="Left" Margin="0,0,0,8">
@@ -290,7 +331,7 @@
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox DockPanel.Dock="Bottom" Header="Snap" Margin="5,5,5,0" BorderThickness="2" Padding="5"
+                    <GroupBox Header="Snap" Margin="5,5,5,0" BorderThickness="2" Padding="5"
                               DataContext="{Binding RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -430,7 +471,9 @@
                         </StackPanel>
                     </GroupBox>
                     </WrapPanel>
-                </DockPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
 
                 <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"
                             Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">

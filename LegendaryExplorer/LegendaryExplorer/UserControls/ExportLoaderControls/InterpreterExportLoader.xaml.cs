@@ -130,6 +130,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// This is used so we can do direct object reference comparisons for things like removal
         /// </summary>
         private PropertyCollection CurrentLoadedProperties;
+        private PropertyCollection OverrideLoadedProperties;
         //Values in this list will cause custom code to be fired to modify what the displayed string is for IntProperties
         //when the class matches.
 
@@ -848,6 +849,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void UnloadExport()
         {
             CurrentLoadedExport = null;
+            OverrideLoadedProperties = null;
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
@@ -862,6 +864,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         /// <param name="export"></param>
         public override void LoadExport(ExportEntry export)
+        {
+            LoadExportInternal(export, null);
+        }
+
+        public void LoadExport(ExportEntry export, PropertyCollection overrideProperties)
+        {
+            LoadExportInternal(export, overrideProperties);
+        }
+
+        private void LoadExportInternal(ExportEntry export, PropertyCollection overrideProperties)
         {
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
@@ -888,6 +900,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             //Debug.WriteLine("Selection offset: " + RescanSelectionOffset);
             CurrentLoadedExport = export;
+            OverrideLoadedProperties = overrideProperties;
             isLoadingNewData = true;
             Interpreter_Hexbox.ByteProvider = export.GetByteProvider();
             hb1_SelectionChanged(null, null); //refresh bottom text
@@ -933,7 +946,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 try
                 {
-                    CurrentLoadedProperties = CurrentLoadedExport.GetProperties(includeNoneProperties: true);
+                    CurrentLoadedProperties = (OverrideLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
                     foreach (Property prop in CurrentLoadedProperties)
                     {
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);

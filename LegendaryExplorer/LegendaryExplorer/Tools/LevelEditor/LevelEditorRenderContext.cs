@@ -21,6 +21,7 @@ namespace LegendaryExplorer.Tools.LevelEditor;
 public class LevelEditorRenderContext : MeshRenderContext
 {
     public event Action<ActorProxy> SelectActor;
+    public event Action<ActorProxy> RightClickActor;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
@@ -76,16 +77,26 @@ public class LevelEditorRenderContext : MeshRenderContext
         {
             IHitProxy selected = GetHitProxy(x, y);
 
-            TransformWidget.CurrentAxis = EWidgetAxis.None;
-            switch (selected)
+            if (button == MouseButtons.Right)
             {
-                case ActorProxy actor:
-                    SelectActor?.Invoke(actor);
-                    TransformWidget.Attach = actor;
-                    break;
-                case AxisHitProxy axisProxy:
-                    TransformWidget.CurrentAxis = axisProxy.Axis;
-                    break;
+                if (selected is ActorProxy rightClickedActor)
+                {
+                    RightClickActor?.Invoke(rightClickedActor);
+                }
+            }
+            else
+            {
+                TransformWidget.CurrentAxis = EWidgetAxis.None;
+                switch (selected)
+                {
+                    case ActorProxy actor:
+                        SelectActor?.Invoke(actor);
+                        TransformWidget.Attach = actor;
+                        break;
+                    case AxisHitProxy axisProxy:
+                        TransformWidget.CurrentAxis = axisProxy.Axis;
+                        break;
+                }
             }
         }
 

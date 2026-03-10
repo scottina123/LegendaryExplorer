@@ -395,19 +395,22 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 prev.PropertyChanged -= OnActorPropertyChanged;
             }
             if (selectedActor is not null)
-            {
-                if (focus)
                 {
-                    FocusOnBounds(selectedActor.GetBounds());
-                    RenderContext.TransformWidget.Attach = selectedActor;
+                    if (focus)
+                    {
+                        FocusOnBounds(selectedActor.GetBounds());
+                        RenderContext.TransformWidget.Attach = selectedActor;
+                    }
+                    selectedActor.PropertyChanged += OnActorPropertyChanged;
+                    _preEditSnapshot = selectedActor.SnapshotTransform();
+
+                RefreshPropertiesExportSelection(selectedActor, PropertiesTabControl.SelectedIndex);
                 }
-                selectedActor.PropertyChanged += OnActorPropertyChanged;
-                _preEditSnapshot = selectedActor.SnapshotTransform();
-            }
-            else
-            {
-                _preEditSnapshot = null;
-            }
+                else
+                {
+                    _preEditSnapshot = null;
+                    UnloadPropertyTabs();
+                }
         }
     }
 
@@ -645,6 +648,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         IsDirty = false;
         UndoHistory.Clear();
         _preEditSnapshot = null;
+        UnloadPropertyTabs();
     }
 
     public void CloseFile(OpenLevelFile file)
@@ -691,6 +695,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             TextBelowActors = "";
             UndoHistory.Clear();
             _preEditSnapshot = null;
+            UnloadPropertyTabs();
         }
     }
 
@@ -824,6 +829,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand OpenRecentSetCommand { get; set; }
     public ICommand UndoCommand { get; set; }
     public ICommand RedoCommand { get; set; }
+    public ICommand ViewActorPropertiesCommand { get; set; }
+    public ICommand ViewActorMetadataCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -860,6 +867,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         OpenRecentSetCommand = new RelayCommand(obj => { if (obj is RecentFileSet set) OpenRecentFileSet(set); });
         UndoCommand = new GenericCommand(Undo, () => UndoHistory.CanUndo);
         RedoCommand = new GenericCommand(Redo, () => UndoHistory.CanRedo);
+        ViewActorPropertiesCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 0), () => SelectedActor is not null);
+        ViewActorMetadataCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 1), () => SelectedActor is not null);
     }
 
     #endregion
@@ -1280,6 +1289,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
 
         SceneViewer?.MarkRenderDirty();
+        RefreshSelectedPropertiesPreview();
         if (sender is ActorProxy actor && _preEditSnapshot is { } before)
         {
             var after = actor.SnapshotTransform();
@@ -1296,6 +1306,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (before.Equals(after)) return;
         UndoHistory.Push(new TransformAction(actor, before, after, $"Drag {actor.Export.ObjectName.Instanced}"));
         _preEditSnapshot = after;
+        RefreshSelectedPropertiesPreview();
     }
 
     private bool ActorFilter(object obj)
@@ -1454,6 +1465,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.UpdateScene -= UpdateScene;
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectActor -= ViewportActorSelect;
+        RenderContext.RightClickActor -= OnViewportRightClickActor;
 
         UndoHistory.PropertyChanged -= UndoHistory_PropertyChanged;
         UndoHistory.Clear();
@@ -1466,6 +1478,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.UpdateScene += UpdateScene;
         RenderContext.RenderScene += RenderScene;
         RenderContext.SelectActor += ViewportActorSelect;
+        RenderContext.RightClickActor += OnViewportRightClickActor;
 
         if (!string.IsNullOrEmpty(FileQueuedForLoad))
         {
@@ -1663,6 +1676,130 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             EndBusy();
         }
+    }
+
+    #endregion
+
+    #region Properties / Metadata panel
+
+    public ObservableCollectionExtended<ExportEntry> PropertiesExportList { get; } = [];
+
+    private ExportEntry _selectedPropertiesExport;
+    private IMEPackage _selectedPropertiesExportPackage;
+    private int _selectedPropertiesExportUIndex;
+
+    public ExportEntry SelectedPropertiesExport
+    {
+        get => _selectedPropertiesExport;
+        set
+        {
+            if (SetProperty(ref _selectedPropertiesExport, value) && value is not null)
+            {
+                _selectedPropertiesExportPackage = value.FileRef;
+                _selectedPropertiesExportUIndex = value.UIndex;
+                LevelEditorInterpreter.LoadExport(value);
+                LevelEditorMetadata.LoadExport(value);
+            }
+        }
+    }
+
+    private void LoadExportIntoTabs(ExportEntry export, int tabIndex)
+    {
+        if (export is null) return;
+        PropertiesTabControl.SelectedIndex = tabIndex;
+        SelectedPropertiesExport = export;
+    }
+
+    private void RefreshSelectedPropertiesPreview()
+    {
+        if (SelectedActor is null || SelectedPropertiesExport is null) return;
+        if (SelectedPropertiesExport.FileRef != SelectedActor.Export.FileRef || SelectedPropertiesExport.UIndex != SelectedActor.Export.UIndex) return;
+
+        LevelEditorInterpreter.LoadExport(SelectedActor.Export, SelectedActor.GetPropertiesForInterpreter());
+    }
+
+    private void RefreshPropertiesExportSelection(ActorProxy actor, int tabIndex)
+    {
+        PropertiesExportList.Clear();
+        PropertiesExportList.Add(actor.Export);
+        foreach (var component in actor.Components)
+        {
+            if (component.Export.UIndex != selectedActor.Export.UIndex)
+            {
+                PropertiesExportList.Add(component.Export);
+            }
+        }
+
+        ExportEntry exportToLoad = PropertiesExportList.FirstOrDefault(x => x.FileRef == _selectedPropertiesExportPackage && x.UIndex == _selectedPropertiesExportUIndex)
+                                 ?? actor.Export;
+        LoadExportIntoTabs(exportToLoad, tabIndex);
+    }
+
+    private void UnloadPropertyTabs()
+    {
+        if (_selectedPropertiesExport is null && PropertiesExportList.Count == 0) return;
+        PropertiesExportList.Clear();
+        _selectedPropertiesExport = null;
+        OnPropertyChanged(nameof(SelectedPropertiesExport));
+        LevelEditorInterpreter.UnloadExport();
+        LevelEditorMetadata.UnloadExport();
+    }
+
+    private void OnViewportRightClickActor(ActorProxy actor)
+    {
+        var contextMenu = new System.Windows.Controls.ContextMenu();
+
+        AddPropertiesMenuItems(contextMenu, actor.Export,
+            $"{actor.Export.UIndex}: {actor.Export.ObjectName.Instanced} ({actor.Export.ClassName})");
+
+        if (actor.Components.Count > 0)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            foreach (var component in actor.Components)
+            {
+                AddPropertiesMenuItems(contextMenu, component.Export,
+                    $"{component.Export.UIndex}: {component.Export.ObjectName.Instanced} ({component.Export.ClassName})");
+            }
+        }
+
+        contextMenu.Items.Add(new System.Windows.Controls.Separator());
+
+        var focusItem = new System.Windows.Controls.MenuItem { Header = "Focus Camera" };
+        focusItem.Click += (_, _) =>
+        {
+            SelectedActor = actor;
+            FocusOnBounds(actor.GetBounds());
+        };
+        contextMenu.Items.Add(focusItem);
+
+        var openPEItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
+        openPEItem.Click += (_, _) =>
+        {
+            var p = new PackageEditorWindow();
+            p.Show();
+            p.LoadFile(actor.Export.FileRef.FilePath, actor.Export.UIndex);
+            p.Activate();
+        };
+        contextMenu.Items.Add(openPEItem);
+
+        contextMenu.PlacementTarget = SceneViewer;
+        contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        contextMenu.IsOpen = true;
+    }
+
+    private void AddPropertiesMenuItems(System.Windows.Controls.ContextMenu contextMenu, ExportEntry export, string label)
+    {
+        var parentItem = new System.Windows.Controls.MenuItem { Header = label };
+
+        var propsItem = new System.Windows.Controls.MenuItem { Header = "Properties" };
+        propsItem.Click += (_, _) => LoadExportIntoTabs(export, 0);
+        parentItem.Items.Add(propsItem);
+
+        var metaItem = new System.Windows.Controls.MenuItem { Header = "Metadata" };
+        metaItem.Click += (_, _) => LoadExportIntoTabs(export, 1);
+        parentItem.Items.Add(metaItem);
+
+        contextMenu.Items.Add(parentItem);
     }
 
     #endregion

@@ -417,6 +417,35 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public virtual int HitPriority => IHitProxy.StandardPriority;
 
+    public virtual PropertyCollection GetPropertiesForInterpreter()
+    {
+        var props = Export.GetProperties(includeNoneProperties: true).DeepClone();
+
+        string locationPropName = Export.Game.IsGame3() ? "location" : "Location";
+        if (props.ContainsNamedProp(locationPropName) || Location != Vector3.Zero)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(Location, locationPropName));
+        }
+        if (props.ContainsNamedProp("DrawScale") || DrawScale != 1f)
+        {
+            props.AddOrReplaceProp(new FloatProperty(DrawScale, "DrawScale"));
+        }
+        if (props.ContainsNamedProp("DrawScale3D") || DrawScale3D != Vector3.One)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(DrawScale3D, "DrawScale3D"));
+        }
+        if (props.ContainsNamedProp("Rotation") || !Rotation.IsZero)
+        {
+            props.AddOrReplaceProp(CommonStructs.RotatorProp(Rotation, "Rotation"));
+        }
+        if (props.ContainsNamedProp("PrePivot") || PrePivot != Vector3.Zero)
+        {
+            props.AddOrReplaceProp(CommonStructs.Vector3Prop(PrePivot, "PrePivot"));
+        }
+
+        return props;
+    }
+
     public virtual void CommitChanges(PackageCache packageCache = null)
     {
         var props = Properties;
