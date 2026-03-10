@@ -57,6 +57,7 @@ using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorerCore.Matinee;
 
 namespace LegendaryExplorer.Tools.PackageEditor
@@ -3190,6 +3191,69 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (confirmResult != MessageBoxResult.Yes)
                 return;
 
+            // Detect if the tree being cloned contains any FaceFXAnimSet exports
+            bool treeContainsFxa = false;
+            var allEntries = new List<IEntry> { sourceExport };
+            allEntries.AddRange(sourceExport.GetAllDescendants());
+            var fxaExports = allEntries.OfType<ExportEntry>().Where(e => e.ClassName == "FaceFXAnimSet").ToList();
+            treeContainsFxa = fxaExports.Count > 0;
+
+            // If FaceFXAnimSets are being cloned to LOC files, offer to add speakers to conversations
+            bool addSpeakersToConvos = false;
+            string speakerTag = null;
+            string maleFxaIFP = null;
+            string femaleFxaIFP = null;
+
+            if (treeContainsFxa && filterMode != Dialogs.CloneTreeFileFilterDialog.FileFilterMode.BaseOnly)
+            {
+                var addSpeakerResult = MessageBox.Show(this,
+                    "The cloned tree contains FaceFXAnimSet export(s).\n\n" +
+                    "Would you like to add a speaker with these shared FXAs to all conversations in each target file?",
+                    "Add Speaker to Conversations",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+                if (addSpeakerResult == MessageBoxResult.Yes)
+                {
+                    speakerTag = PromptDialog.Prompt(this, "Enter the tag of the speaker to add.", "Enter speaker tag");
+                    if (string.IsNullOrWhiteSpace(speakerTag))
+                    {
+                        return;
+                    }
+
+                    ExportEntry maleFxa;
+                    if (fxaExports.Count == 1)
+                    {
+                        maleFxa = fxaExports[0];
+                    }
+                    else
+                    {
+                        maleFxa = EntrySelector.GetEntry<ExportEntry>(this, Pcc, "Select the male FXA to assign to the new speaker.",
+                            e => fxaExports.Contains(e));
+                    }
+
+                    if (maleFxa == null)
+                        return;
+
+                    ExportEntry femaleFxa;
+                    if (fxaExports.Count == 1)
+                    {
+                        femaleFxa = fxaExports[0];
+                    }
+                    else
+                    {
+                        femaleFxa = EntrySelector.GetEntry<ExportEntry>(this, Pcc, "Select the female FXA to assign to the new speaker.",
+                            e => fxaExports.Contains(e));
+                    }
+
+                    if (femaleFxa == null)
+                        return;
+
+                    maleFxaIFP = maleFxa.InstancedFullPath;
+                    femaleFxaIFP = femaleFxa.InstancedFullPath;
+                    addSpeakersToConvos = true;
+                }
+            }
+
             IsBusy = true;
             BusyText = "Cloning tree to folder...";
 
@@ -3233,6 +3297,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         if (relinkResults.Any())
                         {
                             errors.Add($"{Path.GetFileName(pccFile)}: {relinkResults.Count} relink issue(s)");
+                        }
+
+                        if (addSpeakersToConvos)
+                        {
+                            int convosModified = DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(
+                                destPackage, speakerTag, maleFxaIFP, femaleFxaIFP);
+                            if (convosModified < 0)
+                            {
+                                errors.Add($"{Path.GetFileName(pccFile)}: Could not find FXA export(s) for speaker assignment");
+                            }
                         }
 
                         destPackage.Save();

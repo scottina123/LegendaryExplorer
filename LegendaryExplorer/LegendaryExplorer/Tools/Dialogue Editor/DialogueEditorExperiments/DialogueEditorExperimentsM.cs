@@ -90,6 +90,64 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             MessageBox.Show("Done.");
         }
 
+        /// <summary>
+        /// Adds a speaker with shared FaceFXAnimSets to all BioConversation exports in the given package.
+        /// This is the headless (no-UI) variant used for batch operations.
+        /// </summary>
+        /// <param name="package">The package to modify.</param>
+        /// <param name="speakerTag">The speaker tag name to add.</param>
+        /// <param name="maleFxaInstancedFullPath">The InstancedFullPath of the male FaceFXAnimSet in the target package.</param>
+        /// <param name="femaleFxaInstancedFullPath">The InstancedFullPath of the female FaceFXAnimSet in the target package.</param>
+        /// <returns>The number of conversations modified, or -1 if FXAs were not found.</returns>
+        public static int AddSpeakerWithSharedFXAToAllConvos(IMEPackage package, string speakerTag, string maleFxaInstancedFullPath, string femaleFxaInstancedFullPath)
+        {
+            var fxaM = package.FindExport(maleFxaInstancedFullPath);
+            var fxaF = package.FindExport(femaleFxaInstancedFullPath);
+            if (fxaM == null || fxaF == null)
+            {
+                return -1;
+            }
+
+            var conversations = package.Exports.Where(e => e.ClassName == "BioConversation").ToList();
+            if (conversations.Count == 0)
+            {
+                return 0;
+            }
+
+            foreach (var convo in conversations)
+            {
+                var bioconvo = convo.GetProperties();
+                var speakerList = bioconvo.GetProp<ArrayProperty<NameProperty>>("m_aSpeakerList");
+                var fxaMs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
+                var fxaFs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
+
+                if (speakerList == null)
+                {
+                    speakerList = new ArrayProperty<NameProperty>("m_aSpeakerList");
+                    bioconvo.AddOrReplaceProp(speakerList);
+                }
+
+                if (fxaMs == null)
+                {
+                    fxaMs = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets");
+                    bioconvo.AddOrReplaceProp(fxaMs);
+                }
+
+                if (fxaFs == null)
+                {
+                    fxaFs = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets");
+                    bioconvo.AddOrReplaceProp(fxaFs);
+                }
+
+                speakerList.Add(new NameProperty(speakerTag));
+                fxaMs.Add(new ObjectProperty(fxaM));
+                fxaFs.Add(new ObjectProperty(fxaF));
+                convo.WriteProperties(bioconvo);
+            }
+
+            return conversations.Count;
+        }
+
         public static void ExtractAllAudioFromSpeakerByTag(WPFBase window)
         {
             if (window.Pcc == null)
