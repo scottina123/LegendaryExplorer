@@ -1466,6 +1466,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        /// <summary>
+        /// Starts the continuous render loop. Must be called when hosting outside a TabControl,
+        /// e.g. directly in a Window or Dialog, after the control has been loaded.
+        /// </summary>
+        public void StartRendering()
+        {
+            if (SceneViewer is { } sv)
+            {
+                sv.SetShouldRender(true);
+                // Re-apply the current pixel size so the initial frame renders
+                // immediately rather than waiting for the next resize event.
+                sv.InvalidateMeasure();
+            }
+        }
+
+        /// <summary>
+        /// Stops the continuous render loop. Call before closing the host window.
+        /// </summary>
+        public void StopRendering() => SceneViewer?.SetShouldRender(false);
+
         private void MeshRendererWPF_OnKeyUp(object sender, KeyEventArgs e)
         {
             SceneViewer?.OnKeyUp(sender, e);

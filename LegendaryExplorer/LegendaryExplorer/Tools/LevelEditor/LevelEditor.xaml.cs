@@ -17,8 +17,10 @@ using LegendaryExplorerCore.Misc;
 using
 LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using
 Microsoft.Win32;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -1172,7 +1174,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     }
                     if (alteredActor is CollectionActorComponentProxy cacp)
                     {
-                        collectionActorsToUpdate.Add(cacp.Export);
+                        collectionActorsToUpdate.Add(cacp.CollectionActorExport);
                         continue;
                     }
                     RemoveActor(alteredActor);
@@ -1782,6 +1784,19 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         contextMenu.Items.Add(openPEItem);
 
+        ExportEntry smcExport = GetStaticMeshComponentExport(actor);
+        if (smcExport is not null)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            var replaceMeshItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Replace Static Mesh...",
+                IsEnabled = !actor.IsReadOnly
+            };
+            replaceMeshItem.Click += (_, _) => ReplaceStaticMesh(actor, smcExport);
+            contextMenu.Items.Add(replaceMeshItem);
+        }
+
         contextMenu.PlacementTarget = SceneViewer;
         contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         contextMenu.IsOpen = true;
@@ -1800,6 +1815,121 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         parentItem.Items.Add(metaItem);
 
         contextMenu.Items.Add(parentItem);
+    }
+
+    #endregion
+
+    #region Static Mesh Replacement
+
+    private static ExportEntry GetStaticMeshComponentExport(ActorProxy actor) =>
+        actor switch
+        {
+            StaticMeshActorProxy sma   => sma.StaticMeshComponent?.Export,
+            DynamicSMActorProxy  dsma  => dsma.StaticMeshComponent?.Export,
+            StaticMeshComponentActorProxy => actor.Export,
+            _ => null
+        };
+
+    private static ExportEntry FindNearestPackageExport(IEntry entry)
+    {
+        while (entry is not null)
+        {
+            if (entry is ExportEntry { ClassName: "Package" } packageExport)
+            {
+                return packageExport;
+            }
+
+            entry = entry.Parent;
+        }
+
+        return null;
+    }
+
+    private ExportEntry ResolveStaticMeshImportParent(ExportEntry sourceMeshExport, IMEPackage destinationPackage)
+    {
+        List<ExportEntry> sourcePackageChain = [];
+        for (IEntry entry = sourceMeshExport.Parent; entry is not null; entry = entry.Parent)
+        {
+            if (entry is ExportEntry { ClassName: "Package" } packageExport)
+            {
+                sourcePackageChain.Add(packageExport);
+            }
+        }
+
+        if (sourcePackageChain.Count == 0)
+        {
+            return null;
+        }
+
+        sourcePackageChain.Reverse();
+
+        ExportEntry currentParent = null;
+        foreach (ExportEntry sourcePackageExport in sourcePackageChain)
+        {
+            currentParent = destinationPackage.CreatePackageExport(sourcePackageExport.ObjectName, currentParent);
+        }
+
+        return currentParent;
+    }
+
+    private async void ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport)
+    {
+        var picker = new StaticMeshPickerDialog(Game, this);
+        if (picker.ShowDialog() != true || picker.SelectedResult is null) return;
+
+        var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
+
+        IsBusy = true;
+        BusyText = "Importing mesh...";
+        await Task.Delay(1).ConfigureAwait(true);
+
+        try
+        {
+            using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
+            ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
+            ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
+
+            var rop = new RelinkerOptionsPackage
+            {
+                ImportExportDependencies = true,
+                Cache = new PackageCache()
+            };
+
+            var relinkResults = EntryImporter.ImportAndRelinkEntries(
+                EntryImporter.PortingOption.CloneAllDependencies,
+                meshExport,
+                componentExport.FileRef,
+                importParent,
+                true,
+                rop,
+                out IEntry importedEntry);
+
+            if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
+            {
+                importedExport.Parent = importParent;
+            }
+
+            if (importedEntry is not null)
+            {
+                var props = componentExport.GetProperties();
+                props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "StaticMesh"));
+                componentExport.WriteProperties(props);
+            }
+
+            if (relinkResults?.Count > 0)
+            {
+                string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
+                MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to import mesh:\n{ex.Message}", "Import Error");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     #endregion
