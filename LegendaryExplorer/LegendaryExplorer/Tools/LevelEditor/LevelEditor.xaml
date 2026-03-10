@@ -223,6 +223,9 @@
                                 <Separator/>
                                 <MenuItem Header="View Properties" Command="{Binding Data.ViewActorPropertiesCommand, Source={StaticResource bindingProxy}}"/>
                                 <MenuItem Header="View Metadata" Command="{Binding Data.ViewActorMetadataCommand, Source={StaticResource bindingProxy}}"/>
+                                <Separator/>
+                                <MenuItem Header="Clone Tree" Command="{Binding Data.CloneActorTreeCommand, Source={StaticResource bindingProxy}}" ToolTip="Clone this actor and all its children into the level"/>
+                                <MenuItem Header="Trash Actor" Command="{Binding Data.TrashActorCommand, Source={StaticResource bindingProxy}}" ToolTip="Permanently remove this actor and all its children from the level"/>
                             </ContextMenu>
                             <Style TargetType="{x:Type ListBoxItem}">
                                 <Setter Property="ContextMenu" Value="{StaticResource MyMenu}"/>

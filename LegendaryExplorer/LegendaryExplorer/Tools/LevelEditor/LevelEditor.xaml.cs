@@ -833,6 +833,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand RedoCommand { get; set; }
     public ICommand ViewActorPropertiesCommand { get; set; }
     public ICommand ViewActorMetadataCommand { get; set; }
+    public ICommand CloneActorTreeCommand { get; set; }
+    public ICommand TrashActorCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -871,6 +873,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RedoCommand = new GenericCommand(Redo, () => UndoHistory.CanRedo);
         ViewActorPropertiesCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 0), () => SelectedActor is not null);
         ViewActorMetadataCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 1), () => SelectedActor is not null);
+        CloneActorTreeCommand = new GenericCommand(CloneActorTree,
+            () => SelectedActor is not null and not CollectionActorComponentProxy && !SelectedActor.IsReadOnly);
+        TrashActorCommand = new GenericCommand(TrashActor,
+            () => SelectedActor is not null and not CollectionActorComponentProxy && !SelectedActor.IsReadOnly);
     }
 
     #endregion
@@ -879,6 +885,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public readonly UndoHistory UndoHistory = new();
     private TransformSnapshot? _preEditSnapshot;
     private bool _isApplyingUndoRedo;
+    private (int UIndex, IMEPackage Package) _pendingSelect;
     public bool IsApplyingUndoRedo => _isApplyingUndoRedo;
 
     public bool CanUndo => UndoHistory.CanUndo;
@@ -1260,19 +1267,28 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         Actors.AddRange(sorted);
         RenderContext.LoadActors(sorted);
 
-        if (reselectUIndex is not 0)
-        {
-            var reselect = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
-            if (reselect is not null)
+        if (_pendingSelect.UIndex > 0 && _pendingSelect.Package == file.Package)
             {
-                SelectedActor = reselect;
-                (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
-                = (savedCamPOV.Item1 + reselect.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                var pendingSelect = Actors.FirstOrDefault(a => a.Export.UIndex == _pendingSelect.UIndex && a.Export.FileRef == file.Package);
+                _pendingSelect = default;
+                if (pendingSelect is not null)
+                {
+                    SelectedActor = pendingSelect;
+                }
             }
-        }
+            else if (reselectUIndex is not 0)
+            {
+                var reselect = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
+                if (reselect is not null)
+                {
+                    SelectedActor = reselect;
+                    (RenderContext.Camera.Position, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw)
+                    = (savedCamPOV.Item1 + reselect.Location - savedActorPos, savedCamPOV.Item2, savedCamPOV.Item3);
+                }
+            }
 
-        file.IsDirty = false;
-    }
+            file.IsDirty = false;
+        }
 
     #endregion
 
@@ -1797,6 +1813,35 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             contextMenu.Items.Add(replaceMeshItem);
         }
 
+        if (actor is not CollectionActorComponentProxy)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+
+            var cloneTreeItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Clone Tree",
+                IsEnabled = !actor.IsReadOnly
+            };
+            cloneTreeItem.Click += (_, _) =>
+            {
+                SelectedActor = actor;
+                CloneActorTree(actor);
+            };
+            contextMenu.Items.Add(cloneTreeItem);
+
+            var trashItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Trash Actor",
+                IsEnabled = !actor.IsReadOnly
+            };
+            trashItem.Click += (_, _) =>
+            {
+                SelectedActor = actor;
+                TrashActor(actor);
+            };
+            contextMenu.Items.Add(trashItem);
+        }
+
         contextMenu.PlacementTarget = SceneViewer;
         contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         contextMenu.IsOpen = true;
@@ -1815,6 +1860,70 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         parentItem.Items.Add(metaItem);
 
         contextMenu.Items.Add(parentItem);
+    }
+
+    #endregion
+
+    #region Clone / Trash
+
+    private void CloneActorTree()
+    {
+        if (SelectedActor is null) return;
+        CloneActorTree(SelectedActor);
+    }
+
+    private void CloneActorTree(ActorProxy actor)
+    {
+        if (actor is CollectionActorComponentProxy)
+        {
+            MessageBox.Show(this,
+                "Collection actor components cannot be cloned from the Level Editor.\nUse the Package Editor to modify StaticMeshCollectionActor or StaticLightCollectionActor entries.",
+                "Cannot Clone");
+            return;
+        }
+
+        ExportEntry clonedExport = EntryCloner.CloneTree(actor.Export);
+
+        Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
+        levelBin.Actors.Add(clonedExport.UIndex);
+        actor.OwningFile.LevelExport.WriteBinary(levelBin);
+
+        _pendingSelect = (clonedExport.UIndex, actor.OwningFile.Package);
+        UndoHistory.Clear();
+        _preEditSnapshot = null;
+    }
+
+    private void TrashActor()
+    {
+        if (SelectedActor is null) return;
+        TrashActor(SelectedActor);
+    }
+
+    private void TrashActor(ActorProxy actor)
+    {
+        if (actor is CollectionActorComponentProxy)
+        {
+            MessageBox.Show(this,
+                "Collection actor components cannot be deleted from the Level Editor.\nUse the Package Editor to modify StaticMeshCollectionActor or StaticLightCollectionActor entries.",
+                "Cannot Delete");
+            return;
+        }
+
+        if (MessageBox.Show(this,
+                $"Permanently delete '{actor.Export.ObjectName.Instanced}'?\n\nThe export and all its children will be trashed and cannot be recovered via Undo.",
+                "Confirm Delete",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
+        levelBin.Actors.Remove(actor.Export.UIndex);
+        actor.OwningFile.LevelExport.WriteBinary(levelBin);
+
+        EntryPruner.TrashEntryAndDescendants(actor.Export);
+        UndoHistory.Clear();
+        _preEditSnapshot = null;
     }
 
     #endregion
