@@ -102,7 +102,7 @@
             </Button>
         </StackPanel>
         <TextBlock Text="The Clone All References option is typically the preferred option, as it includes all dependencies for an export to work." HorizontalAlignment="Center" Foreground="DimGray" Margin="0" TextWrapping="Wrap"/>
-        <Expander Header="Advanced porting options">
+        <GroupBox Header="Advanced porting options">
             <StackPanel>
                 <Button HorizontalAlignment="Left" Content="See referenced objects" Command="{Binding SeeAllReferencesCommand}"/>
                 <GroupBox Header="Porting features">
@@ -124,7 +124,7 @@
                     </StackPanel>
                 </GroupBox>
             </StackPanel>
-        </Expander>
+        </GroupBox>
         <Button Content="Cancel" HorizontalContentAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,0" Padding="8" Click="CancelButton_Click"/>
     </StackPanel>
 </misc:NotifyPropertyChangedWindowBase>
