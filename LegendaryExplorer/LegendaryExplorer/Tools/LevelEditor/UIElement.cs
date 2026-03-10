@@ -16,6 +16,100 @@ public class UIElement
     }
 }
 
+public sealed class LightIconOverlay : UIElement
+{
+    private const int CircleSegments = 16;
+    private const float IconOffset = 18f;
+    private const float OuterRadius = 7.5f;
+    private const float InnerRadius = 6f;
+    private const float RayInnerRadius = 9f;
+    private const float RayOuterRadius = 13f;
+
+    private static readonly Vector4 OutlineColor = new(0f, 0f, 0f, 1f);
+    private static readonly Vector4 LightColor = new(1f, 0.92f, 0.35f, 0.95f);
+    private static readonly Vector4 SelectedLightColor = new(1f, 1f, 0.2f, 1f);
+
+    public override void Draw(LevelEditorRenderContext context)
+    {
+        if (!context.ShowLightIcons)
+        {
+            return;
+        }
+
+        foreach (ActorProxy actor in context.DrawList_3D)
+        {
+            if (!actor.HasLightSettings)
+            {
+                continue;
+            }
+
+            DrawLightIcon(context, actor);
+        }
+    }
+
+    private static void DrawLightIcon(LevelEditorRenderContext context, ActorProxy actor)
+    {
+        Vector4 screenPoint = context.WorldToScreen(actor.LocalToWorld.Translation);
+        if (screenPoint.W <= 0f)
+        {
+            return;
+        }
+
+        float scale = screenPoint.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 right = context.Camera.CameraRight * scale;
+        Vector3 up = context.Camera.CameraUp * scale;
+        Vector3 center = actor.LocalToWorld.Translation + (up * IconOffset);
+
+        if (!context.WorldToPixel(center, out _))
+        {
+            return;
+        }
+
+        int hitId = actor.HitID;
+        Vector4 fillColor = actor == context.TransformWidget.Attach ? SelectedLightColor : LightColor;
+
+        DrawDisk(context, center, right, up, OuterRadius, OutlineColor with { W = 0.9f }, hitId);
+        DrawDisk(context, center, right, up, InnerRadius, fillColor, hitId);
+
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = MathF.PI * 0.25f * i;
+            Vector3 direction = (right * MathF.Cos(angle)) + (up * MathF.Sin(angle));
+            context.Primitives.AddLine(center + (direction * RayInnerRadius), center + (direction * RayOuterRadius), OutlineColor, hitId);
+            context.Primitives.AddLine(center + (direction * (RayInnerRadius + 0.75f)), center + (direction * (RayOuterRadius - 0.5f)), fillColor, hitId);
+        }
+    }
+
+    private static void DrawDisk(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up, float radius, Vector4 color, int hitId)
+    {
+        var mesh = context.Primitives.BuildMesh(color, hitId, Matrix4x4.Identity);
+        mesh.AddVertex(center);
+
+        Vector3 firstPoint = GetBillboardPoint(center, right, up, radius, 0f);
+        mesh.AddVertex(firstPoint);
+
+        Vector3 previousPoint = firstPoint;
+        for (int i = 1; i <= CircleSegments; i++)
+        {
+            float angle = MathF.PI * 2f * i / CircleSegments;
+            Vector3 point = GetBillboardPoint(center, right, up, radius * MathF.Cos(angle), radius * MathF.Sin(angle));
+            mesh.AddVertex(point);
+            context.Primitives.AddLine(previousPoint, point, color, hitId);
+            previousPoint = point;
+        }
+
+        for (int i = 1; i <= CircleSegments; i++)
+        {
+            mesh.AddTriangle(0, i, i + 1);
+        }
+    }
+
+    private static Vector3 GetBillboardPoint(Vector3 center, Vector3 right, Vector3 up, float rightOffset, float upOffset)
+    {
+        return center + (right * rightOffset) + (up * upOffset);
+    }
+}
+
 [Flags]
 public enum EWidgetAxis
 {

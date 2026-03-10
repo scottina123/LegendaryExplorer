@@ -23,6 +23,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public event Action<ActorProxy> SelectActor;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
+    private readonly LightIconOverlay LightIcons = new();
 
     private USparseArray<IHitProxy> HitProxies = [];
 
@@ -34,6 +35,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public readonly BatchedPrimitives Primitives = new();
 
+    public bool ShowLightIcons = true;
     public bool ShowVolumes;
     public bool ShowVolumetrics;
 
@@ -223,6 +225,10 @@ public class LevelEditorRenderContext : MeshRenderContext
         foreach (var actor in actors)
         {
             actor.HitID = HitProxies.Add(actor);
+        }
+        if (!DrawList_UI.Contains(LightIcons))
+        {
+            DrawList_UI.Add(LightIcons);
         }
         if (!IsReadOnly && !DrawList_UI.Contains(TransformWidget))
         {

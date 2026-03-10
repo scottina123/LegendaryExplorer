@@ -118,6 +118,20 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _showLightIcons = true;
+    public bool ShowLightIcons
+    {
+        get => _showLightIcons;
+        set
+        {
+            if (SetProperty(ref _showLightIcons, value))
+            {
+                RenderContext.ShowLightIcons = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _showVolumes = false;
     public bool ShowVolumes
     {
@@ -294,6 +308,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public LevelEditor() : base("LevelEditor")
     {
         RenderContext = new LevelEditorRenderContext();
+        RenderContext.ShowLightIcons = _showLightIcons;
         RenderContext.TransformWidget.OnDragComplete = OnWidgetDragComplete;
         _backgroundColor = GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = _backgroundColor;
