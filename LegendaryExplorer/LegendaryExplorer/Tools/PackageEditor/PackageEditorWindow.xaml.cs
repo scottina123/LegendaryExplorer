@@ -3146,31 +3146,38 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             string targetFolder = dlg.FileName;
 
-            var locOnlyResult = MessageBox.Show(this,
-                "Copy to LOC (localization) PCC files only?\n\nYes = LOC files only\nNo = All PCC files\nCancel = Abort",
-                "Clone Tree to Folder",
-                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-
-            if (locOnlyResult == MessageBoxResult.Cancel)
+            var filterDlg = new Dialogs.CloneTreeFileFilterDialog(this);
+            if (filterDlg.ShowDialog() != true)
                 return;
 
-            bool locOnly = locOnlyResult == MessageBoxResult.Yes;
+            var filterMode = filterDlg.SelectedMode;
 
             string extension = Path.GetExtension(Pcc.FilePath);
             var pccFiles = Directory.GetFiles(targetFolder, $"*{extension}", SearchOption.TopDirectoryOnly)
                 .Where(f => !string.Equals(Path.GetFullPath(f), Path.GetFullPath(Pcc.FilePath), StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            if (locOnly)
+            if (filterMode == Dialogs.CloneTreeFileFilterDialog.FileFilterMode.LocOnly)
             {
                 pccFiles = pccFiles.Where(f => Path.GetFileNameWithoutExtension(f).Contains("_LOC_", StringComparison.OrdinalIgnoreCase)).ToList();
             }
+            else if (filterMode == Dialogs.CloneTreeFileFilterDialog.FileFilterMode.BaseOnly)
+            {
+                pccFiles = pccFiles.Where(f => !Path.GetFileNameWithoutExtension(f).Contains("_LOC_", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            string filterLabel = filterMode switch
+            {
+                Dialogs.CloneTreeFileFilterDialog.FileFilterMode.LocOnly => "LOC",
+                Dialogs.CloneTreeFileFilterDialog.FileFilterMode.BaseOnly => "base (non-LOC)",
+                _ => ""
+            };
 
             if (pccFiles.Count == 0)
             {
-                MessageBox.Show(this, locOnly
-                    ? "No LOC PCC files found in the selected folder."
-                    : "No PCC files found in the selected folder.",
+                MessageBox.Show(this, string.IsNullOrEmpty(filterLabel)
+                    ? "No PCC files found in the selected folder."
+                    : $"No {filterLabel} PCC files found in the selected folder.",
                     "Clone Tree to Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
