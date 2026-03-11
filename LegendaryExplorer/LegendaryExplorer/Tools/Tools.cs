@@ -36,6 +36,7 @@ using LegendaryExplorer.Tools.ClassViewer;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.ScriptDebugger;
 using LegendaryExplorer.Tools.LevelEditor;
+using LegendaryExplorer.Tools.GalaxyMapEditor;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer;
@@ -749,6 +750,19 @@ public static class ToolSet
             tags = ["user", "developer", "me1", "me2", "me3"],
             category = "Core Editors",
             description = "Level Editor is a minimalist level editor, capable only of displaying and editing the positions, rotations, and scale of Actors.",
+        });
+        set.Add(new Tool
+        {
+            name = "Galaxy Map Editor",
+            type = typeof(GalaxyMapEditor),
+            icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
+            open = () =>
+            {
+                (new GalaxyMapEditor()).Show();
+            },
+            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "me2", "me3"],
+            category = "Core Editors",
+            description = "Galaxy Map Editor allows viewing and editing the galaxy map hierarchy (SFXGalaxy). Navigate into clusters and solar systems, and reposition planets, stars, and other galaxy map objects.",
         });
         #endregion
 
