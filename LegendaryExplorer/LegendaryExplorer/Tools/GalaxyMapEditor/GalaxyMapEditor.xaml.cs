@@ -1096,41 +1096,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         _backgroundTexture = RenderContext.TextureCache.LoadTexture(galaxyTexExport, RenderContext.PackageCache);
         if (_backgroundTexture is null) return;
 
-        // Build a quad on the XY plane covering the bounding box of all visible
-        // objects with generous padding, slightly behind at Z=-1.
-        float minX = float.MaxValue, minY = float.MaxValue;
-        float maxX = float.MinValue, maxY = float.MinValue;
-        foreach (var obj in objectsAtLevel)
-        {
-            float x = obj.Location.X;
-            float y = obj.Location.Y;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-
-        float padX = (maxX - minX) * 0.4f + 300f;
-        float padY = (maxY - minY) * 0.4f + 300f;
-        float left = minX - padX;
-        float right = maxX + padX;
-        float bottom = minY - padY;
-        float top = maxY + padY;
-
-        var normal = new Vector4(0, 0, 1, 1);
-        var vertices = new List<WorldVertex>
-        {
-            new(new Vector3(left, bottom, -1f), normal, new Vector2(0, 1)),
-            new(new Vector3(right, bottom, -1f), normal, new Vector2(1, 1)),
-            new(new Vector3(right, top, -1f), normal, new Vector2(1, 0)),
-            new(new Vector3(left, top, -1f), normal, new Vector2(0, 0)),
-        };
-        var triangles = new List<Triangle>
-        {
-            new(0, 1, 2),
-            new(0, 2, 3)
-        };
-        _backgroundQuad = new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
+        _backgroundQuad = CreateBackgroundQuad(objectsAtLevel.Select(obj => obj.Location), 0.08f, 64f);
     }
 
     private void LoadClusterBackground(GalaxyMapObjectProxy cluster)
@@ -1145,27 +1111,56 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         _backgroundTexture = RenderContext.TextureCache.LoadTexture(texEntry, RenderContext.PackageCache);
         if (_backgroundTexture is null) return;
 
-        // Build a quad on the XY plane centered on the children's bounding box
-        // slightly behind at Z=-1 so it doesn't z-fight with icons
+        _backgroundQuad = CreateBackgroundQuad(cluster.MapChildren.Select(child => child.Location), 0.12f, 48f);
+    }
+
+    private Mesh<WorldVertex> CreateBackgroundQuad(IEnumerable<Vector3> points, float paddingFactor, float minimumPadding)
+    {
+        if (_backgroundTexture is null)
+            return null;
+
+        bool hasPoint = false;
         float minX = float.MaxValue, minY = float.MaxValue;
         float maxX = float.MinValue, maxY = float.MinValue;
-        foreach (var child in cluster.MapChildren)
+        foreach (Vector3 point in points)
         {
-            float x = child.Location.X;
-            float y = child.Location.Y;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+            hasPoint = true;
+            if (point.X < minX) minX = point.X;
+            if (point.X > maxX) maxX = point.X;
+            if (point.Y < minY) minY = point.Y;
+            if (point.Y > maxY) maxY = point.Y;
         }
 
-        // Add generous padding around the children
-        float padX = (maxX - minX) * 0.3f + 100f;
-        float padY = (maxY - minY) * 0.3f + 100f;
-        float left = minX - padX;
-        float right = maxX + padX;
-        float bottom = minY - padY;
-        float top = maxY + padY;
+        if (!hasPoint)
+            return null;
+
+        float width = Math.Max(1f, maxX - minX);
+        float height = Math.Max(1f, maxY - minY);
+        float padding = Math.Max(Math.Max(width, height) * paddingFactor, minimumPadding);
+
+        width += padding * 2f;
+        height += padding * 2f;
+
+        var textureDescription = _backgroundTexture.Texture.Description;
+        float textureAspect = textureDescription.Height > 0
+            ? (float)textureDescription.Width / textureDescription.Height
+            : 1f;
+        float boundsAspect = width / height;
+        if (boundsAspect < textureAspect)
+        {
+            width = height * textureAspect;
+        }
+        else
+        {
+            height = width / textureAspect;
+        }
+
+        float centerX = (minX + maxX) * 0.5f;
+        float centerY = (minY + maxY) * 0.5f;
+        float left = centerX - (width * 0.5f);
+        float right = centerX + (width * 0.5f);
+        float bottom = centerY - (height * 0.5f);
+        float top = centerY + (height * 0.5f);
 
         var normal = new Vector4(0, 0, 1, 1);
         var vertices = new List<WorldVertex>
@@ -1180,7 +1175,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             new(0, 1, 2),
             new(0, 2, 3)
         };
-        _backgroundQuad = new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
+        return new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
     }
 
     private void DisposeBackgroundQuad()
