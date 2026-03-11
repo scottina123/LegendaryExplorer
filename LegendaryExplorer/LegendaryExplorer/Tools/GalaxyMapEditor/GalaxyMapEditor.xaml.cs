@@ -1248,6 +1248,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         {
             RenderContext.CurrentHitTestId = Vector3.Zero;
             var constants = RenderContext.GetWorldConstants(Matrix4x4.Identity);
+            // Background textures should be rendered at full brightness — override the
+            // dim ambient (0.2) that GetWorldConstants sets for lit 3D objects.
+            constants.AmbientColor = Vector4.One;
             RenderContext.DefaultEffect.PrepDraw(RenderContext.ImmediateContext, RenderContext.AlphaBlendState, constants);
             RenderContext.DefaultEffect.RenderObject(
                 RenderContext.ImmediateContext,
