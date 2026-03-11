@@ -309,6 +309,12 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     private IMEPackage _openPackage;
     private string _filePath;
 
+    // Always-loaded background package that supplies the galaxy/cluster textures.
+    // Kept open for the lifetime of a loaded session so the TextureCache can
+    // reference its exports safely.
+    private IMEPackage _galaxyBgPackage;
+    private const string GalaxyBgPackageFileName = "BioA_Nor_203aGalaxyMap.pcc";
+
     private bool _hasFileOpen;
     public bool HasFileOpen
     {
@@ -616,8 +622,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     public GalaxyMapEditor() : base("Galaxy Map Editor")
     {
-        RenderContext = new LevelEditorRenderContext();
-        RenderContext.Camera.FirstPerson = true;
+        RenderContext = new GalaxyMap2DRenderContext();
         _backgroundColor = GetThemeDefaultBackgroundColor();
         RenderContext.BackgroundColor = _backgroundColor;
 
@@ -707,6 +712,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
             _allObjects = galaxyObjects;
             BuildHierarchy();
+            LoadGalaxyBackgroundPackage();
 
             HasFileOpen = true;
             NavigateToLevel(null); // show galaxy root level
@@ -751,6 +757,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         UnloadPropertyTabs();
         DisposeBackgroundQuad();
 
+        _galaxyBgPackage?.Release(null);
+        _galaxyBgPackage = null;
+
         if (_openPackage is not null)
         {
             _openPackage.Release(this);
@@ -763,6 +772,33 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         Game = MEGame.Unknown;
         Title = "Galaxy Map Editor";
         StatusBar_LeftMostText.Text = "Open a galaxy map package to begin";
+    }
+
+    /// <summary>
+    /// Opens <see cref="GalaxyBgPackageFileName"/> from the game's mounted file list so
+    /// its textures are available for background quads without depending on the user's
+    /// chosen package file.
+    /// </summary>
+    private void LoadGalaxyBackgroundPackage()
+    {
+        if (_openPackage is null) return;
+        try
+        {
+            if (!MELoadedFiles.TryGetHighestMountedFile(_openPackage.Game, GalaxyBgPackageFileName, out string bgPath))
+            {
+                // Fallback: look in the same directory as the currently loaded file
+                string fallback = Path.Combine(Path.GetDirectoryName(_filePath)!, GalaxyBgPackageFileName);
+                if (!File.Exists(fallback))
+                    return;
+                bgPath = fallback;
+            }
+
+            _galaxyBgPackage = MEPackageHandler.OpenMEPackage(bgPath);
+        }
+        catch
+        {
+            _galaxyBgPackage = null;
+        }
     }
 
     private async void SaveFile()
@@ -1000,7 +1036,11 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         // Load background texture for cluster views
         DisposeBackgroundQuad();
-        if (parent is not null && parent.MapLevel == GalaxyMapLevel.Cluster)
+        if (parent is null)
+        {
+            LoadGalaxyBackground(objectsToShow);
+        }
+        else if (parent.MapLevel == GalaxyMapLevel.Cluster)
         {
             LoadClusterBackground(parent);
         }
@@ -1037,6 +1077,55 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         SelectedObject = null;
         NavigateToLevel(newParent);
         CenterView();
+    }
+
+    private void LoadGalaxyBackground(List<GalaxyMapObjectProxy> objectsAtLevel)
+    {
+        if (_galaxyBgPackage is null || objectsAtLevel.Count == 0) return;
+
+        ExportEntry galaxyTexExport = _galaxyBgPackage.Exports
+            .FirstOrDefault(e => e.ObjectName.Name.Equals("galaxy", StringComparison.OrdinalIgnoreCase)
+                              && e.ClassName == "Texture2D");
+        if (galaxyTexExport is null) return;
+
+        _backgroundTexture = RenderContext.TextureCache.LoadTexture(galaxyTexExport, RenderContext.PackageCache);
+        if (_backgroundTexture is null) return;
+
+        // Build a quad on the XY plane covering the bounding box of all visible
+        // objects with generous padding, slightly behind at Z=-1.
+        float minX = float.MaxValue, minY = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue;
+        foreach (var obj in objectsAtLevel)
+        {
+            float x = obj.Location.X;
+            float y = obj.Location.Y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+
+        float padX = (maxX - minX) * 0.4f + 300f;
+        float padY = (maxY - minY) * 0.4f + 300f;
+        float left = minX - padX;
+        float right = maxX + padX;
+        float bottom = minY - padY;
+        float top = maxY + padY;
+
+        var normal = new Vector4(0, 0, 1, 1);
+        var vertices = new List<WorldVertex>
+        {
+            new(new Vector3(left, bottom, -1f), normal, new Vector2(0, 1)),
+            new(new Vector3(right, bottom, -1f), normal, new Vector2(1, 1)),
+            new(new Vector3(right, top, -1f), normal, new Vector2(1, 0)),
+            new(new Vector3(left, top, -1f), normal, new Vector2(0, 0)),
+        };
+        var triangles = new List<Triangle>
+        {
+            new(0, 1, 2),
+            new(0, 2, 3)
+        };
+        _backgroundQuad = new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
     }
 
     private void LoadClusterBackground(GalaxyMapObjectProxy cluster)
@@ -1204,20 +1293,22 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
         else
         {
-            RenderContext.Camera.Position = Vector3.Zero;
-            RenderContext.Camera.Pitch = -MathF.PI / 5.0f;
-            RenderContext.Camera.Yaw = MathF.PI / 4.0f;
+            RenderContext.Camera.Position = new Vector3(0, 0, 1000f);
+            RenderContext.Camera.Pitch = -MathF.PI / 2f;
+            RenderContext.Camera.Yaw = 0f;
+            RenderContext.Camera.OrthoSize = 500f;
         }
     }
 
     private void FocusOnBounds(BoxSphereBounds bounds)
     {
         Vector3 origin = bounds.Origin;
-        float distance = bounds.SphereRadius.Clamp(50, float.MaxValue) * 2.5f;
         // Position camera above the XY plane looking straight down
-        RenderContext.Camera.Position = new Vector3(origin.X, origin.Y, origin.Z + distance);
-        RenderContext.Camera.Pitch = -MathF.PI / 2f; // Look straight down
+        RenderContext.Camera.Position = new Vector3(origin.X, origin.Y, 1000f);
+        RenderContext.Camera.Pitch = -MathF.PI / 2f;
         RenderContext.Camera.Yaw = 0f;
+        // Fit the full scene into the orthographic view with a small margin
+        RenderContext.Camera.OrthoSize = Math.Max(50f, bounds.SphereRadius * 1.3f);
     }
 
     #endregion

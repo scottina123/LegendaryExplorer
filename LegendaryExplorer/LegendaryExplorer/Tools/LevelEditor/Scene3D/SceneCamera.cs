@@ -47,6 +47,12 @@ public class SceneCamera
     public float ZNear = 0.1f;
     public float ZFar = 100_000;
     public bool FirstPerson = false;
+
+    /// <summary>When true, <see cref="ProjectionMatrix"/> returns an orthographic matrix instead of a perspective one.</summary>
+    public bool IsOrthographic = false;
+
+    /// <summary>Half the view height in world units used by the orthographic projection.</summary>
+    public float OrthoSize = 500f;
     public Vector3 CameraUp
     {
         get
@@ -144,6 +150,10 @@ public class SceneCamera
     {
         get
         {
+            if (IsOrthographic)
+            {
+                return Matrix4x4.CreateOrthographicLeftHanded(OrthoSize * 2f * aspect, OrthoSize * 2f, -ZFar, ZFar);
+            }
             return Matrix4x4.CreatePerspectiveFieldOfViewLeftHanded(FOV, aspect, ZNear, ZFar);
         }
     }
