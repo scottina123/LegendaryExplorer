@@ -13,6 +13,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.Classes;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Microsoft.Win32;
 using System;
@@ -48,6 +49,7 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
     private const int CircleSegments = 20;
     private const float OuterRadius = 10f;
     private const float InnerRadius = 8.5f;
+    private const float ClusterTextureRadius = 12f;
 
     private static readonly Vector4 OutlineColor = new(0f, 0f, 0f, 1f);
     private static readonly Vector4 ClusterColor = new(0.2f, 0.6f, 1f, 0.9f);
@@ -59,6 +61,8 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
     private static readonly Vector4 SelectedHighlight = new(1f, 1f, 0.2f, 1f);
 
     public ActorProxy SelectedActor;
+    public PreviewTextureCache.TextureEntry ClusterIconTexture;
+    public Mesh<WorldVertex> ClusterIconMesh;
 
     public override void Draw(LevelEditorRenderContext context)
     {
@@ -84,13 +88,25 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
 
         int hitId = actor.HitID;
         Vector4 fillColor = GetColorForActor(actor);
-        if (actor == SelectedActor)
+        bool isSelected = actor == SelectedActor;
+        if (isSelected)
             fillColor = SelectedHighlight;
 
-        // Outer ring (dark outline)
-        DrawDisk(context, center, right, up, OuterRadius, OutlineColor with { W = 0.85f }, hitId);
-        // Inner fill
-        DrawDisk(context, center, right, up, InnerRadius, fillColor, hitId);
+        if (actor is GalaxyMapObjectProxy { MapLevel: GalaxyMapLevel.Cluster or GalaxyMapLevel.System }
+            && ClusterIconTexture is not null
+            && ClusterIconMesh is not null)
+        {
+            DrawClusterIcon(context, center, right, up, hitId);
+            if (isSelected)
+            {
+                DrawDisk(context, center, right, up, OuterRadius + 2f, SelectedHighlight with { W = 0.75f }, hitId);
+            }
+        }
+        else
+        {
+            DrawDisk(context, center, right, up, OuterRadius, OutlineColor with { W = 0.85f }, hitId);
+            DrawDisk(context, center, right, up, InnerRadius, fillColor, hitId);
+        }
 
         // Add text label below the icon
         if (actor is GalaxyMapObjectProxy gmoLabel)
@@ -121,6 +137,13 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
             context.Primitives.AddLine(arrowBot, arrowTip, fillColor, hitId);
             context.Primitives.AddLine(arrowTop, arrowBot, fillColor, hitId);
         }
+    }
+
+    public void ClearClusterIconResources()
+    {
+        ClusterIconTexture = null;
+        ClusterIconMesh?.Dispose();
+        ClusterIconMesh = null;
     }
 
     private static Vector4 GetColorForActor(ActorProxy actor)
@@ -162,6 +185,26 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
         {
             mesh.AddTriangle(0, i, i + 1);
         }
+    }
+
+    private void DrawClusterIcon(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up, int hitId)
+    {
+        context.CurrentHitTestId = new Vector3(
+            (hitId & 0xFF) / 255f,
+            ((hitId >> 8) & 0xFF) / 255f,
+            ((hitId >> 16) & 0xFF) / 255f);
+
+        Matrix4x4 model = new(
+            right.X * ClusterTextureRadius, right.Y * ClusterTextureRadius, right.Z * ClusterTextureRadius, 0f,
+            up.X * ClusterTextureRadius, up.Y * ClusterTextureRadius, up.Z * ClusterTextureRadius, 0f,
+            0f, 0f, 1f, 0f,
+            center.X, center.Y, center.Z, 1f);
+
+        var constants = context.GetWorldConstants(model);
+        constants.Flags |= LevelEditorRenderContext.ShaderFlags.PreserveTextureAlpha;
+        constants.AmbientColor = Vector4.One;
+        context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, constants);
+        context.DefaultEffect.RenderObject(context.ImmediateContext, ClusterIconMesh, ClusterIconTexture.TextureView);
     }
 }
 
@@ -319,6 +362,8 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     // reference its exports safely.
     private IMEPackage _galaxyBgPackage;
     private const string GalaxyBgPackageFileName = "BioA_Nor_203aGalaxyMap.pcc";
+    private const string ClusterCircleMaterialName = "Circle_MatInst";
+    private const string ClusterCircleTextureName = "circle";
 
     private bool _hasFileOpen;
     public bool HasFileOpen
@@ -761,6 +806,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         UnloadPropertyTabs();
         DisposeBackgroundQuad();
+        _iconOverlay.ClearClusterIconResources();
 
         _galaxyBgPackage?.Release(null);
         _galaxyBgPackage = null;
@@ -799,11 +845,43 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             }
 
             _galaxyBgPackage = MEPackageHandler.OpenMEPackage(bgPath);
+            LoadClusterIconResources();
         }
         catch
         {
             _galaxyBgPackage = null;
+            _iconOverlay.ClearClusterIconResources();
         }
+    }
+
+    private void LoadClusterIconResources()
+    {
+        _iconOverlay.ClearClusterIconResources();
+        if (_galaxyBgPackage is null)
+            return;
+
+        ExportEntry materialExport = _galaxyBgPackage.Exports.FirstOrDefault(e =>
+            e.ClassName == "MaterialInstanceConstant"
+            && e.ObjectName.Name.Equals(ClusterCircleMaterialName, StringComparison.OrdinalIgnoreCase));
+        if (materialExport is null)
+            return;
+
+        var material = new MaterialInstanceConstantLevelEditor(materialExport, RenderContext.PackageCache);
+        ExportEntry textureExport = material.Textures
+            .OfType<ExportEntry>()
+            .FirstOrDefault(e => e.ClassName == "Texture2D"
+                              && e.ObjectName.Name.Equals(ClusterCircleTextureName, StringComparison.OrdinalIgnoreCase))
+            ?? material.Textures
+                .OfType<ExportEntry>()
+                .FirstOrDefault(e => e.ClassName == "Texture2D");
+        if (textureExport is null)
+            return;
+
+        _iconOverlay.ClusterIconTexture = RenderContext.TextureCache.LoadTexture(textureExport, RenderContext.PackageCache);
+        if (_iconOverlay.ClusterIconTexture is null)
+            return;
+
+        _iconOverlay.ClusterIconMesh = CreateUnitBillboardQuad();
     }
 
     private async void SaveFile()
@@ -1169,6 +1247,24 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             new(new Vector3(right, bottom, -1f), normal, new Vector2(1, 1)),
             new(new Vector3(right, top, -1f), normal, new Vector2(1, 0)),
             new(new Vector3(left, top, -1f), normal, new Vector2(0, 0)),
+        };
+        var triangles = new List<Triangle>
+        {
+            new(0, 1, 2),
+            new(0, 2, 3)
+        };
+        return new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
+    }
+
+    private Mesh<WorldVertex> CreateUnitBillboardQuad()
+    {
+        var normal = new Vector4(0, 0, 1, 1);
+        var vertices = new List<WorldVertex>
+        {
+            new(new Vector3(-1f, -1f, 0f), normal, new Vector2(0, 1)),
+            new(new Vector3(1f, -1f, 0f), normal, new Vector2(1, 1)),
+            new(new Vector3(1f, 1f, 0f), normal, new Vector2(1, 0)),
+            new(new Vector3(-1f, 1f, 0f), normal, new Vector2(0, 0)),
         };
         var triangles = new List<Triangle>
         {

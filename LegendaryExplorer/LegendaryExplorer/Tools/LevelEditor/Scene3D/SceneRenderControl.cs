@@ -162,6 +162,7 @@ public abstract class RenderContext
         EnableGreenChannel = 1 << 3,
         EnableBlueChannel = 1 << 4,
         EnableAlphaChannel = 1 << 5,
+        PreserveTextureAlpha = 1 << 6,
 
         //level editor flags
         Wireframe = 1 << 29,

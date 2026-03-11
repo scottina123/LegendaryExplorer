@@ -69,6 +69,7 @@ VS_OUT VSMain(VS_IN input) {
 #define FLAG_ENABLEGREENCHANNEL (1 << 3)
 #define FLAG_ENABLEBLUECHANNEL (1 << 4)
 #define FLAG_ENABLEALPHACHANNEL (1 << 5)
+#define FLAG_PRESERVETEXTUREALPHA (1 << 6)
 
 //level editor flags
 #define FLAG_WIREFRAME (1 << 29)
@@ -144,7 +145,8 @@ PS_OUT PSMain(PS_IN input) {
 		lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * lambert * attenuation * coneAttenuation);
 	}
 
-	result.color = float4(textureValue.xyz * saturate(lighting), 1.0);
+ float outputAlpha = ((Flags & FLAG_PRESERVETEXTUREALPHA) == FLAG_PRESERVETEXTUREALPHA) ? textureValue.a : 1.0f;
+	result.color = float4(textureValue.xyz * saturate(lighting), outputAlpha);
 	
 	// use the input normal (negative values are clamped to zero (black))
 	//result.color = float4(input.normal, 1.0);
