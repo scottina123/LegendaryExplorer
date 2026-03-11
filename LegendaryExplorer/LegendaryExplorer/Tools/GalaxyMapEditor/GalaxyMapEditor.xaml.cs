@@ -50,6 +50,7 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
     private const float OuterRadius = 10f;
     private const float InnerRadius = 8.5f;
     private const float ClusterTextureRadius = 12f;
+    private const float PlanetTextureRadius = 11.5f;
 
     private static readonly Vector4 OutlineColor = new(0f, 0f, 0f, 1f);
     private static readonly Vector4 ClusterColor = new(0.2f, 0.6f, 1f, 0.9f);
@@ -92,14 +93,33 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
         if (isSelected)
             fillColor = SelectedHighlight;
 
-        if (actor is GalaxyMapObjectProxy { MapLevel: GalaxyMapLevel.Cluster or GalaxyMapLevel.System }
-            && ClusterIconTexture is not null
-            && ClusterIconMesh is not null)
+        if (actor is GalaxyMapObjectProxy gmo && ClusterIconMesh is not null)
         {
-            DrawClusterIcon(context, center, right, up, hitId);
-            if (isSelected)
+            if (gmo.MapLevel is GalaxyMapLevel.Cluster or GalaxyMapLevel.System && ClusterIconTexture is not null)
             {
-                DrawDisk(context, center, right, up, OuterRadius + 2f, SelectedHighlight with { W = 0.75f }, hitId);
+                DrawClusterIcon(context, center, right, up, hitId);
+                if (isSelected)
+                {
+                    DrawDisk(context, center, right, up, OuterRadius + 2f, SelectedHighlight with { W = 0.75f }, hitId);
+                }
+            }
+            else if (gmo.MapLevel == GalaxyMapLevel.Planet
+                     && gmo.HasSharedPlanetMesh)
+            {
+            }
+            else if (gmo.MapLevel == GalaxyMapLevel.Planet
+                     && gmo.PlanetSurfaceTexture is not null)
+            {
+                DrawPlanetIcon(context, gmo, center, right, up, hitId);
+                if (isSelected)
+                {
+                    DrawDisk(context, center, right, up, OuterRadius + 2f, SelectedHighlight with { W = 0.75f }, hitId);
+                }
+            }
+            else
+            {
+                DrawDisk(context, center, right, up, OuterRadius, OutlineColor with { W = 0.85f }, hitId);
+                DrawDisk(context, center, right, up, InnerRadius, fillColor, hitId);
             }
         }
         else
@@ -126,7 +146,7 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
         }
 
         // Draw navigate indicator (small triangle) for objects that can be navigated into
-        if (actor is GalaxyMapObjectProxy gmo && gmo.CanNavigateInto && gmo.MapChildren.Count > 0)
+        if (actor is GalaxyMapObjectProxy navigableObject && navigableObject.CanNavigateInto && navigableObject.MapChildren.Count > 0)
         {
             float arrowOffset = OuterRadius + 4f;
             Vector3 arrowCenter = center + (right * arrowOffset);
@@ -189,14 +209,27 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
 
     private void DrawClusterIcon(LevelEditorRenderContext context, Vector3 center, Vector3 right, Vector3 up, int hitId)
     {
+        DrawTexturedIcon(context, ClusterIconTexture, center, right, up, ClusterTextureRadius, hitId);
+    }
+
+    private void DrawPlanetIcon(LevelEditorRenderContext context, GalaxyMapObjectProxy actor, Vector3 center, Vector3 right, Vector3 up, int hitId)
+    {
+        if (actor.PlanetSurfaceTexture is not null)
+        {
+            DrawTexturedIcon(context, actor.PlanetSurfaceTexture, center, right, up, PlanetTextureRadius, hitId);
+        }
+    }
+
+    private void DrawTexturedIcon(LevelEditorRenderContext context, PreviewTextureCache.TextureEntry texture, Vector3 center, Vector3 right, Vector3 up, float radius, int hitId)
+    {
         context.CurrentHitTestId = new Vector3(
             (hitId & 0xFF) / 255f,
             ((hitId >> 8) & 0xFF) / 255f,
             ((hitId >> 16) & 0xFF) / 255f);
 
         Matrix4x4 model = new(
-            right.X * ClusterTextureRadius, right.Y * ClusterTextureRadius, right.Z * ClusterTextureRadius, 0f,
-            up.X * ClusterTextureRadius, up.Y * ClusterTextureRadius, up.Z * ClusterTextureRadius, 0f,
+            right.X * radius, right.Y * radius, right.Z * radius, 0f,
+            up.X * radius, up.Y * radius, up.Z * radius, 0f,
             0f, 0f, 1f, 0f,
             center.X, center.Y, center.Z, 1f);
 
@@ -204,7 +237,64 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
         constants.Flags |= LevelEditorRenderContext.ShaderFlags.PreserveTextureAlpha;
         constants.AmbientColor = Vector4.One;
         context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, constants);
-        context.DefaultEffect.RenderObject(context.ImmediateContext, ClusterIconMesh, ClusterIconTexture.TextureView);
+        context.DefaultEffect.RenderObject(context.ImmediateContext, ClusterIconMesh, texture.TextureView);
+    }
+}
+
+public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
+{
+    private readonly ModelPreview<LEVertex> _mesh;
+
+    public GalaxyMapSharedStaticMeshProxy(LevelEditorRenderContext context, ExportEntry meshExport, ActorProxy parent, IEntry materialOverride = null)
+        : base(context, meshExport, parent)
+    {
+        StaticMesh staticMesh = meshExport.GetBinaryData<StaticMesh>();
+        bool useDirectOverride = materialOverride is not null && ReferenceEquals(materialOverride.FileRef, meshExport.FileRef);
+        if (useDirectOverride)
+        {
+            staticMesh.SetMaterials([materialOverride], true);
+        }
+
+        _mesh = new ModelPreview<LEVertex>(context, staticMesh, 0);
+        if (!useDirectOverride && materialOverride is ExportEntry materialExport)
+        {
+            _mesh.OverrideSectionMaterials(context, materialExport);
+        }
+        _mesh.UpdateLocalToWorld(LocalToWorld);
+    }
+
+    public override void Render(MeshRenderContext context, RenderPass pass)
+    {
+        if (pass is not RenderPass.Base || _mesh is null)
+            return;
+
+        _mesh.Render(pass, context, 0);
+    }
+
+    public override void UpdateLocalToWorld()
+    {
+        base.UpdateLocalToWorld();
+        _mesh?.UpdateLocalToWorld(LocalToWorld);
+    }
+
+    public override BoxSphereBounds GetBounds()
+    {
+        if (_mesh is not null && _mesh.LODs.Count > 0)
+        {
+            return _mesh.LODs[0].Mesh.TransformedBounds;
+        }
+
+        return base.GetBounds();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _mesh?.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }
 
@@ -215,9 +305,19 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
 /// </summary>
 public class GalaxyMapObjectProxy : ActorProxy
 {
+    private const float PlanetCloudScale = 1.015f;
+
     public GalaxyMapLevel MapLevel { get; }
     public List<GalaxyMapObjectProxy> MapChildren { get; } = [];
     public GalaxyMapObjectProxy MapParent { get; set; }
+    public PreviewTextureCache.TextureEntry PlanetSurfaceTexture { get; private set; }
+    public ExportEntry PlanetMaterialExport { get; private set; }
+    public ExportEntry CloudMaterialExport { get; private set; }
+    public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
+
+    private GalaxyMapSharedStaticMeshProxy _sharedPlanetMesh;
+    private GalaxyMapSharedStaticMeshProxy _sharedPlanetCloudMesh;
+    private GalaxyMapSharedStaticMeshProxy _sharedPlanetRingMesh;
 
     public bool CanNavigateInto => MapLevel is GalaxyMapLevel.Galaxy or GalaxyMapLevel.Cluster or GalaxyMapLevel.System;
 
@@ -242,6 +342,7 @@ public class GalaxyMapObjectProxy : ActorProxy
 
         // Load mesh components from sub-exports (StaticMeshComponent, SkeletalMeshComponent)
         LoadMeshComponents(context.RenderContext);
+        LoadPlanetTextures(context.RenderContext);
     }
 
     private void LoadMeshComponents(LevelEditorRenderContext renderContext)
@@ -276,6 +377,276 @@ public class GalaxyMapObjectProxy : ActorProxy
             }
         }
     }
+
+    private void LoadPlanetTextures(LevelEditorRenderContext renderContext)
+    {
+        if (MapLevel != GalaxyMapLevel.Planet)
+            return;
+
+        ExportEntry appearanceExport = ResolvePlanetAppearanceExport(renderContext.PackageCache);
+        ExportEntry planetMaterial = ResolveMaterialExport("PlanetMaterial", appearanceExport, renderContext.PackageCache);
+        ExportEntry cloudMaterial = ResolveMaterialExport("CloudMaterial", appearanceExport, renderContext.PackageCache);
+
+        PlanetMaterialExport = planetMaterial;
+        CloudMaterialExport = cloudMaterial;
+        PlanetSurfaceTexture = LoadMaterialTexture(renderContext, planetMaterial, preferCloudTexture: false);
+    }
+
+    public void LoadSharedPlanetMeshes(LevelEditorRenderContext renderContext, IMEPackage sharedMeshPackage)
+    {
+        if (MapLevel != GalaxyMapLevel.Planet)
+            return;
+
+        if (_sharedPlanetMesh is not null)
+            return;
+
+        if (sharedMeshPackage is null)
+            return;
+
+        ExportEntry planetMeshExport = sharedMeshPackage.Exports.FirstOrDefault(e =>
+            e.ClassName == "StaticMesh" && e.ObjectName.Name.Equals("Planet", StringComparison.OrdinalIgnoreCase));
+        if (planetMeshExport is null)
+            return;
+
+        _sharedPlanetMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this, PlanetMaterialExport);
+        Components.Add(_sharedPlanetMesh);
+
+        if (CloudMaterialExport is not null)
+        {
+            _sharedPlanetCloudMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this, CloudMaterialExport)
+            {
+                Scale3D = new Vector3(PlanetCloudScale)
+            };
+            Components.Add(_sharedPlanetCloudMesh);
+        }
+
+        if (ShouldUsePlanetRing())
+        {
+            ExportEntry ringMeshExport = sharedMeshPackage.Exports.FirstOrDefault(e =>
+                e.ClassName == "StaticMesh" && e.ObjectName.Name.Equals("PlanetRing", StringComparison.OrdinalIgnoreCase));
+            if (ringMeshExport is not null)
+            {
+                _sharedPlanetRingMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, ringMeshExport, this);
+                Components.Add(_sharedPlanetRingMesh);
+            }
+        }
+    }
+
+    private void UnloadSharedPlanetMeshes()
+    {
+        if (_sharedPlanetMesh is not null)
+        {
+            Components.Remove(_sharedPlanetMesh);
+            _sharedPlanetMesh.Dispose();
+            _sharedPlanetMesh = null;
+        }
+
+        if (_sharedPlanetRingMesh is not null)
+        {
+            Components.Remove(_sharedPlanetRingMesh);
+            _sharedPlanetRingMesh.Dispose();
+            _sharedPlanetRingMesh = null;
+        }
+
+        if (_sharedPlanetCloudMesh is not null)
+        {
+            Components.Remove(_sharedPlanetCloudMesh);
+            _sharedPlanetCloudMesh.Dispose();
+            _sharedPlanetCloudMesh = null;
+        }
+    }
+
+    private bool ShouldUsePlanetRing()
+    {
+        static bool PropertyIndicatesRing(PropertyCollection props)
+        {
+            string planetType = props.GetProp<EnumProperty>("PlanetType")?.Value ?? string.Empty;
+            if (planetType.Contains("Ring", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            string systemLevelType = props.GetProp<EnumProperty>("SystemLevelType")?.Value ?? string.Empty;
+            if (systemLevelType.Contains("RING", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            string orbitRingType = props.GetProp<EnumProperty>("OrbitRingType")?.Value ?? string.Empty;
+            return orbitRingType.Contains("RING", StringComparison.OrdinalIgnoreCase)
+                   || orbitRingType.Contains("ASTEROID", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (PropertyIndicatesRing(Properties))
+            return true;
+
+        ExportEntry appearanceExport = ResolvePlanetAppearanceExport(null);
+        return appearanceExport is not null && PropertyIndicatesRing(appearanceExport.GetProperties());
+    }
+
+    private ExportEntry ResolvePlanetAppearanceExport(PackageCache packageCache)
+    {
+        if (Properties.GetProp<ObjectProperty>("Appearance")?.ResolveToExport(Export.FileRef, packageCache) is ExportEntry appearanceExport
+            && IsPlanetAppearanceClass(appearanceExport))
+        {
+            return appearanceExport;
+        }
+
+        foreach (ExportEntry child in Export.FileRef.Exports)
+        {
+            if (child.idxLink == Export.UIndex && IsPlanetAppearanceClass(child))
+            {
+                return child;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsPlanetAppearanceClass(ExportEntry export)
+    {
+        return export.ClassName.StartsWith("SFXGalaxyMapPlanetAppearance", StringComparison.OrdinalIgnoreCase)
+               || GlobalUnrealObjectInfo.IsA(export.ClassName, "SFXGalaxyMapPlanetAppearance", export.Game);
+    }
+
+    private ExportEntry ResolveMaterialExport(string propName, ExportEntry appearanceExport, PackageCache packageCache)
+    {
+        return Properties.GetProp<ObjectProperty>(propName)?.ResolveToExport(Export.FileRef, packageCache)
+               ?? appearanceExport?.GetProperties(packageCache: packageCache).GetProp<ObjectProperty>(propName)?.ResolveToExport(appearanceExport.FileRef, packageCache);
+    }
+
+    private static PreviewTextureCache.TextureEntry LoadMaterialTexture(LevelEditorRenderContext renderContext, ExportEntry materialExport, bool preferCloudTexture)
+    {
+        ExportEntry textureExport = ResolveMaterialTextureExport(materialExport, renderContext.PackageCache, preferCloudTexture);
+        return textureExport is null ? null : renderContext.TextureCache.LoadTexture(textureExport, renderContext.PackageCache);
+    }
+
+    private static ExportEntry ResolveMaterialTextureExport(ExportEntry materialExport, PackageCache packageCache, bool preferCloudTexture)
+    {
+        if (materialExport is null)
+            return null;
+
+        var candidates = new List<MaterialTextureCandidate>();
+        var visitedMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectMaterialTextureCandidates(materialExport, packageCache, candidates, visitedMaterials);
+
+        ExportEntry bestTexture = null;
+        int bestScore = int.MinValue;
+        foreach (MaterialTextureCandidate candidate in candidates)
+        {
+            int score = ScoreMaterialTexture(candidate, materialExport.ObjectName.Name, preferCloudTexture);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestTexture = candidate.TextureExport;
+            }
+        }
+
+        if (preferCloudTexture && bestScore < 40)
+            return null;
+
+        return bestTexture;
+    }
+
+    private static void CollectMaterialTextureCandidates(ExportEntry materialExport, PackageCache packageCache, List<MaterialTextureCandidate> candidates, HashSet<string> visitedMaterials)
+    {
+        if (!visitedMaterials.Add(materialExport.InstancedFullPath))
+            return;
+
+        if (materialExport.IsA("MaterialInstanceConstant"))
+        {
+            PropertyCollection props = materialExport.GetProperties(packageCache: packageCache);
+            if (props.GetProp<ArrayProperty<StructProperty>>("TextureParameterValues") is { } textureParams)
+            {
+                foreach (StructProperty textureParam in textureParams)
+                {
+                    if (textureParam.GetProp<ObjectProperty>("ParameterValue")?.ResolveToExport(materialExport.FileRef, packageCache) is ExportEntry textureExport)
+                    {
+                        string parameterName = textureParam.GetProp<NameProperty>("ParameterName")?.Value.Instanced;
+                        AddMaterialTextureCandidate(candidates, textureExport, parameterName, isDirectParameter: true);
+                    }
+                }
+            }
+
+            if (props.GetProp<ArrayProperty<ObjectProperty>>("ReferencedTextures") is { } referencedTextures)
+            {
+                foreach (ObjectProperty textureProp in referencedTextures)
+                {
+                    if (textureProp.ResolveToExport(materialExport.FileRef, packageCache) is ExportEntry textureExport)
+                    {
+                        AddMaterialTextureCandidate(candidates, textureExport, materialExport.ObjectName.Name, isDirectParameter: false);
+                    }
+                }
+            }
+
+            if (props.GetProp<ObjectProperty>("Parent")?.ResolveToExport(materialExport.FileRef, packageCache) is ExportEntry parentMaterial)
+            {
+                CollectMaterialTextureCandidates(parentMaterial, packageCache, candidates, visitedMaterials);
+            }
+        }
+        else if (materialExport.ClassName == "Material")
+        {
+            foreach (int uIndex in ObjectBinary.From<Material>(materialExport).SM3MaterialResource.UniformExpressionTextures)
+            {
+                if (materialExport.FileRef.GetEntry(uIndex) is ExportEntry textureExport)
+                {
+                    AddMaterialTextureCandidate(candidates, textureExport, materialExport.ObjectName.Name, isDirectParameter: false);
+                }
+            }
+        }
+    }
+
+    private static void AddMaterialTextureCandidate(List<MaterialTextureCandidate> candidates, ExportEntry textureExport, string hint, bool isDirectParameter)
+    {
+        if (textureExport.ClassName != "Texture2D")
+            return;
+
+        if (candidates.Any(candidate => candidate.TextureExport.InstancedFullPath == textureExport.InstancedFullPath && candidate.Hint == hint))
+            return;
+
+        candidates.Add(new MaterialTextureCandidate(textureExport, hint ?? string.Empty, isDirectParameter));
+    }
+
+    private static int ScoreMaterialTexture(MaterialTextureCandidate candidate, string materialName, bool preferCloudTexture)
+    {
+        ExportEntry textureExport = candidate.TextureExport;
+        string textureName = textureExport.ObjectName.Name;
+        string combinedName = $"{materialName} {candidate.Hint} {textureName}";
+
+        bool isCloud = combinedName.Contains("cloud", StringComparison.OrdinalIgnoreCase)
+                       || combinedName.Contains("atmos", StringComparison.OrdinalIgnoreCase);
+        bool isMask = combinedName.Contains("mask", StringComparison.OrdinalIgnoreCase);
+        bool isNormal = combinedName.Contains("norm", StringComparison.OrdinalIgnoreCase)
+                        || combinedName.Contains("normal", StringComparison.OrdinalIgnoreCase);
+        bool isSpecular = combinedName.Contains("spec", StringComparison.OrdinalIgnoreCase);
+        bool isDiffuse = combinedName.Contains("diff", StringComparison.OrdinalIgnoreCase)
+                         || combinedName.Contains("albedo", StringComparison.OrdinalIgnoreCase)
+                         || combinedName.Contains("base", StringComparison.OrdinalIgnoreCase)
+                         || combinedName.Contains("color", StringComparison.OrdinalIgnoreCase)
+                         || combinedName.Contains("planet", StringComparison.OrdinalIgnoreCase);
+        bool isOpacity = combinedName.Contains("opacity", StringComparison.OrdinalIgnoreCase)
+                         || combinedName.Contains("trans", StringComparison.OrdinalIgnoreCase);
+
+        int score = 0;
+        if (candidate.IsDirectParameter) score += 30;
+        if (preferCloudTexture)
+        {
+            if (isCloud) score += 100;
+            if (isOpacity) score += 25;
+            if (isMask) score += 10;
+        }
+        else
+        {
+            if (!isCloud) score += 40;
+            if (isDiffuse) score += 60;
+            if (textureName.Contains(materialName, StringComparison.OrdinalIgnoreCase)) score += 20;
+            if (isMask) score -= 20;
+            if (isOpacity) score -= 30;
+        }
+
+        if (isNormal) score -= 40;
+        if (isSpecular) score -= 30;
+
+        return score;
+    }
+
+    private readonly record struct MaterialTextureCandidate(ExportEntry TextureExport, string Hint, bool IsDirectParameter);
 
     public override void CommitChanges(PackageCache packageCache = null)
     {
@@ -854,9 +1225,21 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
     }
 
+    private void LoadSharedPlanetMeshes(IEnumerable<GalaxyMapObjectProxy> objects)
+    {
+        if (_galaxyBgPackage is null)
+            return;
+
+        foreach (GalaxyMapObjectProxy planet in objects.Where(o => o.MapLevel == GalaxyMapLevel.Planet))
+        {
+            planet.LoadSharedPlanetMeshes(RenderContext, _galaxyBgPackage);
+        }
+    }
+
     private void LoadClusterIconResources()
     {
         _iconOverlay.ClearClusterIconResources();
+        _iconOverlay.ClusterIconMesh = CreateUnitBillboardQuad();
         if (_galaxyBgPackage is null)
             return;
 
@@ -880,8 +1263,6 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         _iconOverlay.ClusterIconTexture = RenderContext.TextureCache.LoadTexture(textureExport, RenderContext.PackageCache);
         if (_iconOverlay.ClusterIconTexture is null)
             return;
-
-        _iconOverlay.ClusterIconMesh = CreateUnitBillboardQuad();
     }
 
     private async void SaveFile()
@@ -1130,6 +1511,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         if (objectsToShow.Count > 0)
         {
+            LoadSharedPlanetMeshes(objectsToShow);
             CurrentObjects.AddRange(objectsToShow.OrderBy(o => o.Export.UIndex));
             RenderContext.LoadActors(objectsToShow.Cast<ActorProxy>().ToList());
             // Add the icon overlay so objects are rendered as billboard icons

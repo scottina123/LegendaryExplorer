@@ -481,8 +481,14 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
             else
             {
                 IEntry matEntry = m.Export.FileRef.GetEntry(element.Material);
-                AddMaterial(renderContext, matEntry);
-                sections.Add(new ModelPreviewSection(matEntry.InstancedFullPath, element.FirstIndex, element.NumTriangles));
+                if (AddMaterial(renderContext, matEntry))
+                {
+                    sections.Add(new ModelPreviewSection(matEntry.InstancedFullPath, element.FirstIndex, element.NumTriangles));
+                }
+                else
+                {
+                    sections.Add(new ModelPreviewSection(null, element.FirstIndex, element.NumTriangles));
+                }
             }
         }
         LODs.Add(new ModelPreviewLOD<TVertex>(new Mesh<TVertex>(renderContext.Device, triangles, vertices), sections));
@@ -501,8 +507,10 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
             if (materialUIndex is not 0)
             {
                 IEntry matEntry = m.Export.FileRef.GetEntry(materialUIndex);
-                mats[i] = matEntry.InstancedFullPath;
-                AddMaterial(renderContext, matEntry);
+                if (AddMaterial(renderContext, matEntry))
+                {
+                    mats[i] = matEntry.InstancedFullPath;
+                }
             }
         }
 
@@ -551,8 +559,14 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// <summary>
     /// Adds a <see cref="ModelPreviewMaterial"/> to this model, or adds another reference of any conflicting material.
     /// </summary>
-    private void AddMaterial(MeshRenderContext renderContext, IEntry matEntry)
+    private bool AddMaterial(MeshRenderContext renderContext, IEntry matEntry)
     {
+        if (matEntry is null)
+        {
+            Debug.WriteLine("Could not find material entry in the mesh's package.");
+            return false;
+        }
+
         string ifp = matEntry.InstancedFullPath;
         if (!Materials.ContainsKey(ifp))
         {
@@ -563,7 +577,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                 {
                     Debug.WriteLine("Could not find import material.");
                     Debug.WriteLine($"Import material: '{ifp}' from '{matEntry.FileRef.FilePath}'");
-                    return;
+                    return false;
                 }
             }
             switch (Materials)
@@ -576,6 +590,30 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
                     break;
             }
         }
+
+        return true;
+    }
+
+    public bool OverrideSectionMaterials(MeshRenderContext renderContext, ExportEntry materialExport)
+    {
+        if (materialExport is null || !AddMaterial(renderContext, materialExport))
+            return false;
+
+        string materialName = materialExport.InstancedFullPath;
+        foreach (var lod in LODs)
+        {
+            for (int i = 0; i < lod.Sections.Count; i++)
+            {
+                ModelPreviewSection section = lod.Sections[i];
+                if (section.MaterialName is not null)
+                {
+                    section.MaterialName = materialName;
+                    lod.Sections[i] = section;
+                }
+            }
+        }
+
+        return true;
     }
     /// <summary>
     /// Renders the ModelPreview at the specified level of detail
