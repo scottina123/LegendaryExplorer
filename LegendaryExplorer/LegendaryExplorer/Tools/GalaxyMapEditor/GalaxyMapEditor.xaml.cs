@@ -300,6 +300,10 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     public LevelEditorRenderContext RenderContext { get; }
     private readonly GalaxyMapIconOverlay _iconOverlay = new();
 
+    // Background texture for the current cluster view
+    private PreviewTextureCache.TextureEntry _backgroundTexture;
+    private Mesh<WorldVertex> _backgroundQuad;
+
     #region File state
 
     private IMEPackage _openPackage;
@@ -745,6 +749,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         _allObjects.Clear();
 
         UnloadPropertyTabs();
+        DisposeBackgroundQuad();
 
         if (_openPackage is not null)
         {
@@ -993,6 +998,13 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             objectsToShow = parent.MapChildren;
         }
 
+        // Load background texture for cluster views
+        DisposeBackgroundQuad();
+        if (parent is not null && parent.MapLevel == GalaxyMapLevel.Cluster)
+        {
+            LoadClusterBackground(parent);
+        }
+
         if (objectsToShow.Count > 0)
         {
             CurrentObjects.AddRange(objectsToShow.OrderBy(o => o.Export.UIndex));
@@ -1025,6 +1037,63 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         SelectedObject = null;
         NavigateToLevel(newParent);
         CenterView();
+    }
+
+    private void LoadClusterBackground(GalaxyMapObjectProxy cluster)
+    {
+        var clusterProps = cluster.Export.GetProperties();
+        var texRef = clusterProps.GetProp<ObjectProperty>("ClusterTexture");
+        if (texRef is null) return;
+
+        var texEntry = texRef.ResolveToEntry(cluster.Export.FileRef);
+        if (texEntry is null) return;
+
+        _backgroundTexture = RenderContext.TextureCache.LoadTexture(texEntry, RenderContext.PackageCache);
+        if (_backgroundTexture is null) return;
+
+        // Build a quad on the XY plane centered on the children's bounding box
+        // slightly behind at Z=-1 so it doesn't z-fight with icons
+        float minX = float.MaxValue, minY = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue;
+        foreach (var child in cluster.MapChildren)
+        {
+            float x = child.Location.X;
+            float y = child.Location.Y;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+
+        // Add generous padding around the children
+        float padX = (maxX - minX) * 0.3f + 100f;
+        float padY = (maxY - minY) * 0.3f + 100f;
+        float left = minX - padX;
+        float right = maxX + padX;
+        float bottom = minY - padY;
+        float top = maxY + padY;
+
+        var normal = new Vector4(0, 0, 1, 1);
+        var vertices = new List<WorldVertex>
+        {
+            new(new Vector3(left, bottom, -1f), normal, new Vector2(0, 1)),
+            new(new Vector3(right, bottom, -1f), normal, new Vector2(1, 1)),
+            new(new Vector3(right, top, -1f), normal, new Vector2(1, 0)),
+            new(new Vector3(left, top, -1f), normal, new Vector2(0, 0)),
+        };
+        var triangles = new List<Triangle>
+        {
+            new(0, 1, 2),
+            new(0, 2, 3)
+        };
+        _backgroundQuad = new Mesh<WorldVertex>(RenderContext.Device, triangles, vertices);
+    }
+
+    private void DisposeBackgroundQuad()
+    {
+        _backgroundQuad?.Dispose();
+        _backgroundQuad = null;
+        _backgroundTexture = null; // texture is owned by the cache, don't dispose
     }
 
     #endregion
@@ -1085,6 +1154,18 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void RenderScene(object sender, EventArgs e)
     {
+        // Render cluster background texture if present
+        if (_backgroundQuad is not null && _backgroundTexture is not null)
+        {
+            RenderContext.CurrentHitTestId = Vector3.Zero;
+            var constants = RenderContext.GetWorldConstants(Matrix4x4.Identity);
+            RenderContext.DefaultEffect.PrepDraw(RenderContext.ImmediateContext, RenderContext.AlphaBlendState, constants);
+            RenderContext.DefaultEffect.RenderObject(
+                RenderContext.ImmediateContext,
+                _backgroundQuad,
+                _backgroundTexture.TextureView);
+        }
+
         foreach (RenderPass pass in (RenderPass[])[RenderPass.Base])
         {
             for (int i = 0; i < RenderContext.DrawList_3D.Count; i++)
