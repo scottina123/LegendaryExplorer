@@ -183,13 +183,16 @@ public class GalaxyMapObjectProxy : ActorProxy
     {
         MapLevel = level;
 
-        // Galaxy map objects store position as PosX/PosY integer properties
-        // Map them to the XY plane for 3D visualization
+        // Galaxy map objects store position as PosX/PosY integer properties.
+        // The camera looks straight down with UnitZ as world-up, which makes:
+        //   world +X → screen DOWN,  world -Y → screen RIGHT
+        // The game uses screen-space coords (PosX right+, PosY down+), so map:
+        //   worldX = PosY,  worldY = -PosX
         int posX = Properties.GetProp<IntProperty>("PosX")?.Value ?? 0;
         int posY = Properties.GetProp<IntProperty>("PosY")?.Value ?? 0;
         if (posX != 0 || posY != 0)
         {
-            location = new Vector3(posX, posY, 0);
+            location = new Vector3(posY, -posX, 0);
             UpdateLocalToWorld();
             _cleanSnapshot = SnapshotTransform();
         }
@@ -235,9 +238,11 @@ public class GalaxyMapObjectProxy : ActorProxy
     {
         var props = Properties;
 
-        // Write position back as PosX/PosY integers
-        props.AddOrReplaceProp(new IntProperty((int)MathF.Round(location.X), "PosX"));
-        props.AddOrReplaceProp(new IntProperty((int)MathF.Round(location.Y), "PosY"));
+        // Write position back as PosX/PosY integers.
+        // Inverse of the load mapping (worldX = PosY, worldY = -PosX):
+        //   PosX = -worldY,  PosY = worldX
+        props.AddOrReplaceProp(new IntProperty((int)MathF.Round(-location.Y), "PosX"));
+        props.AddOrReplaceProp(new IntProperty((int)MathF.Round(location.X), "PosY"));
 
         if (props.ContainsNamedProp("DrawScale") || DrawScale != 1f)
         {
