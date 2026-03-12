@@ -6,6 +6,7 @@ using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
@@ -243,45 +244,137 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
 
 public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
 {
-    private readonly ModelPreview<LEVertex> _mesh;
+    private readonly ModelPreview<LEVertex> _meshLE;
+    private readonly ModelPreview<WorldVertex> _meshWorld;
 
-    public GalaxyMapSharedStaticMeshProxy(LevelEditorRenderContext context, ExportEntry meshExport, ActorProxy parent, IEntry materialOverride = null)
+    public GalaxyMapSharedStaticMeshProxy(LevelEditorRenderContext context, ExportEntry meshExport, ActorProxy parent, IEntry materialOverride = null, bool useLEShader = true)
         : base(context, meshExport, parent)
     {
-        StaticMesh staticMesh = meshExport.GetBinaryData<StaticMesh>();
-        bool useDirectOverride = materialOverride is not null && ReferenceEquals(materialOverride.FileRef, meshExport.FileRef);
-        if (useDirectOverride)
+        if (meshExport.ClassName == "StaticMesh")
         {
-            staticMesh.SetMaterials([materialOverride], true);
+            StaticMesh staticMesh = meshExport.GetBinaryData<StaticMesh>();
+            bool useDirectOverride = materialOverride is not null && ReferenceEquals(materialOverride.FileRef, meshExport.FileRef);
+            if (useDirectOverride)
+            {
+                staticMesh.SetMaterials([materialOverride], true);
+            }
+
+            if (useLEShader)
+            {
+                _meshLE = new ModelPreview<LEVertex>(context, staticMesh, 0);
+                if (!useDirectOverride && materialOverride is ExportEntry materialExport)
+                {
+                    _meshLE.OverrideSectionMaterials(context, materialExport);
+                }
+            }
+            else
+            {
+                _meshWorld = new ModelPreview<WorldVertex>(context, staticMesh, 0);
+                if (!useDirectOverride && materialOverride is ExportEntry materialExport)
+                {
+                    _meshWorld.OverrideSectionMaterials(context, materialExport);
+                }
+            }
+        }
+        else if (meshExport.ClassName == "Model")
+        {
+            Mesh<LEVertex> mesh = BuildModelMesh(context, meshExport);
+            if (mesh is not null)
+            {
+                _meshLE = new ModelPreview<LEVertex>(context, mesh, PreloadedModelData.LoadModel(meshExport, context.PackageCache));
+            }
         }
 
-        _mesh = new ModelPreview<LEVertex>(context, staticMesh, 0);
-        if (!useDirectOverride && materialOverride is ExportEntry materialExport)
+        _meshLE?.UpdateLocalToWorld(LocalToWorld);
+        _meshWorld?.UpdateLocalToWorld(LocalToWorld);
+    }
+
+    private static Mesh<LEVertex> BuildModelMesh(LevelEditorRenderContext context, ExportEntry modelExport)
+    {
+        Model model = ObjectBinary.From<Model>(modelExport);
+        if (model.VertexBuffer is null || model.VertexBuffer.Length == 0)
+            return null;
+
+        var triangles = new List<Triangle>();
+        var positions = new Vector3[model.VertexBuffer.Length];
+        var normals = new Vector3[model.VertexBuffer.Length];
+        var uvs = new Vector2[model.VertexBuffer.Length];
+
+        for (int i = 0; i < model.VertexBuffer.Length; i++)
         {
-            _mesh.OverrideSectionMaterials(context, materialExport);
+            var vertex = model.VertexBuffer[i];
+            positions[i] = new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y);
+            uvs[i] = new Vector2(vertex.TexCoord.X, vertex.TexCoord.Y);
         }
-        _mesh.UpdateLocalToWorld(LocalToWorld);
+
+        var sections = new List<ModelPreviewSection>();
+        foreach (ExportEntry mcExp in model.Export.FileRef.Exports.Where(x => x.ClassName == "ModelComponent" && !x.IsDefaultObject))
+        {
+            ModelComponent mc = ObjectBinary.From<ModelComponent>(mcExp);
+            if (mc.Model != model.Self)
+                continue;
+
+            foreach (var modelElement in mc.Elements)
+            {
+                foreach (var nodeIndex in modelElement.Nodes)
+                {
+                    var matchingNode = model.Nodes[nodeIndex];
+                    var surface = model.Surfs[matchingNode.iSurf];
+                    IEntry materialEntry = model.Export.FileRef.GetEntry(surface.Material);
+                    sections.Add(new ModelPreviewSection(materialEntry?.InstancedFullPath, (uint)triangles.Count * 3, (uint)matchingNode.NumVertices - 2));
+
+                    for (uint i = 2; i < matchingNode.NumVertices; i++)
+                    {
+                        triangles.Add(new Triangle((uint)matchingNode.iVertexIndex, (uint)matchingNode.iVertexIndex + i - 1, (uint)matchingNode.iVertexIndex + i));
+                    }
+
+                    Vector3 normal = model.Vectors[surface.vNormal];
+                    Vector3 transformedNormal = new(-normal.X, normal.Z, normal.Y);
+                    for (int i = 0; i < matchingNode.NumVertices; i++)
+                    {
+                        normals[matchingNode.iVertexIndex + i] = transformedNormal;
+                    }
+                }
+            }
+        }
+
+        var vertices = new List<LEVertex>(positions.Length);
+        for (int i = 0; i < positions.Length; i++)
+        {
+            Fixed4<Vector4> uvSet = default;
+            uvSet[0] = new Vector4(uvs[i], 0, 0);
+            vertices.Add((LEVertex)LEVertex.Create(positions[i], Vector3.Zero, new Vector4(normals[i], 1f), uvSet));
+        }
+
+        return new Mesh<LEVertex>(context.Device, triangles, vertices, isDynamic: false);
     }
 
     public override void Render(MeshRenderContext context, RenderPass pass)
     {
-        if (pass is not RenderPass.Base || _mesh is null)
+        if (pass is not RenderPass.Base)
             return;
 
-        _mesh.Render(pass, context, 0);
+        _meshLE?.Render(pass, context, 0);
+        _meshWorld?.Render(pass, context, 0);
     }
 
     public override void UpdateLocalToWorld()
     {
         base.UpdateLocalToWorld();
-        _mesh?.UpdateLocalToWorld(LocalToWorld);
+        _meshLE?.UpdateLocalToWorld(LocalToWorld);
+        _meshWorld?.UpdateLocalToWorld(LocalToWorld);
     }
 
     public override BoxSphereBounds GetBounds()
     {
-        if (_mesh is not null && _mesh.LODs.Count > 0)
+        if (_meshLE is not null && _meshLE.LODs.Count > 0)
         {
-            return _mesh.LODs[0].Mesh.TransformedBounds;
+            return _meshLE.LODs[0].Mesh.TransformedBounds;
+        }
+
+        if (_meshWorld is not null && _meshWorld.LODs.Count > 0)
+        {
+            return _meshWorld.LODs[0].Mesh.TransformedBounds;
         }
 
         return base.GetBounds();
@@ -291,7 +384,8 @@ public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
     {
         if (disposing)
         {
-            _mesh?.Dispose();
+            _meshLE?.Dispose();
+            _meshWorld?.Dispose();
         }
 
         base.Dispose(disposing);
@@ -403,15 +497,24 @@ public class GalaxyMapObjectProxy : ActorProxy
         if (sharedMeshPackage is null)
             return;
 
-        ExportEntry planetMeshExport = sharedMeshPackage.Exports.FirstOrDefault(e =>
-            e.ClassName == "StaticMesh" && e.ObjectName.Name.Equals("Planet", StringComparison.OrdinalIgnoreCase));
+        string sharedMeshName = GetSharedPlanetMeshName();
+        bool usesDefaultPlanetSphere = sharedMeshName.Equals("Planet", StringComparison.OrdinalIgnoreCase);
+
+        ExportEntry planetMeshExport = Export.FileRef.Exports.FirstOrDefault(e =>
+            (e.ClassName == "StaticMesh" || e.ClassName == "Model")
+            && e.ObjectName.Name.Equals(sharedMeshName, StringComparison.OrdinalIgnoreCase))
+            ?? sharedMeshPackage.Exports.FirstOrDefault(e =>
+                (e.ClassName == "StaticMesh" || e.ClassName == "Model")
+                && e.ObjectName.Name.Equals(sharedMeshName, StringComparison.OrdinalIgnoreCase));
         if (planetMeshExport is null)
             return;
 
-        _sharedPlanetMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this, PlanetMaterialExport);
+        _sharedPlanetMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this,
+            usesDefaultPlanetSphere ? PlanetMaterialExport : null,
+            useLEShader: usesDefaultPlanetSphere);
         Components.Add(_sharedPlanetMesh);
 
-        if (CloudMaterialExport is not null)
+        if (usesDefaultPlanetSphere && CloudMaterialExport is not null)
         {
             _sharedPlanetCloudMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this, CloudMaterialExport)
             {
@@ -420,7 +523,7 @@ public class GalaxyMapObjectProxy : ActorProxy
             Components.Add(_sharedPlanetCloudMesh);
         }
 
-        if (ShouldUsePlanetRing())
+        if (usesDefaultPlanetSphere && ShouldUsePlanetRing())
         {
             ExportEntry ringMeshExport = sharedMeshPackage.Exports.FirstOrDefault(e =>
                 e.ClassName == "StaticMesh" && e.ObjectName.Name.Equals("PlanetRing", StringComparison.OrdinalIgnoreCase));
@@ -430,6 +533,13 @@ public class GalaxyMapObjectProxy : ActorProxy
                 Components.Add(_sharedPlanetRingMesh);
             }
         }
+    }
+
+    private string GetSharedPlanetMeshName()
+    {
+        return Properties.GetProp<StrProperty>("MapName")?.Value is "BioP_CitHub"
+            ? "Model_Oculon"
+            : "Planet";
     }
 
     private void UnloadSharedPlanetMeshes()
