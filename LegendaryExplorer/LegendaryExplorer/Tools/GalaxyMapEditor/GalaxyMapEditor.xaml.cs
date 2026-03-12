@@ -443,7 +443,7 @@ public class GalaxyMapObjectProxy : ActorProxy
     public PreviewTextureCache.TextureEntry PlanetSurfaceTexture { get; private set; }
     public ExportEntry PlanetMaterialExport { get; private set; }
     public ExportEntry CloudMaterialExport { get; private set; }
-    public string ListDisplaySubtitle { get; }
+    public string ListDisplaySubtitle { get; private set; }
     public bool HasListDisplaySubtitle => !string.IsNullOrWhiteSpace(ListDisplaySubtitle);
     public string PreferredDisplayName => HasListDisplaySubtitle ? ListDisplaySubtitle : Export.ObjectName.Instanced;
     public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
@@ -480,6 +480,42 @@ public class GalaxyMapObjectProxy : ActorProxy
         // Load mesh components from sub-exports (StaticMeshComponent, SkeletalMeshComponent)
         LoadMeshComponents(context.RenderContext);
         LoadPlanetTextures(context.RenderContext);
+    }
+
+    public void RefreshFromExport(PackageCache packageCache)
+    {
+        Properties = Export.GetCondensedProperties();
+
+        int posX = Properties.GetProp<IntProperty>("PosX")?.Value ?? 0;
+        int posY = Properties.GetProp<IntProperty>("PosY")?.Value ?? 0;
+        location = new Vector3(posY, -posX, 0);
+
+        drawScale = Properties.GetProp<FloatProperty>("DrawScale")?.Value ?? 1f;
+        drawScale3D = Properties.GetProp<StructProperty>("DrawScale3D") is { } drawScale3DProp
+            ? CommonStructs.GetVector3(drawScale3DProp)
+            : Vector3.One;
+        rotation = Properties.GetProp<StructProperty>("Rotation") is { } rotationProp
+            ? CommonStructs.GetRotator(rotationProp)
+            : new Rotator(0, 0, 0);
+
+        UpdateLocalToWorld();
+        _cleanSnapshot = SnapshotTransform();
+        hasAuxiliaryChanges = false;
+        IsDirty = false;
+
+        string oldSubtitle = ListDisplaySubtitle;
+        ListDisplaySubtitle = ResolveListDisplaySubtitle();
+        if (!string.Equals(oldSubtitle, ListDisplaySubtitle, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(ListDisplaySubtitle));
+            OnPropertyChanged(nameof(HasListDisplaySubtitle));
+            OnPropertyChanged(nameof(PreferredDisplayName));
+        }
+
+        if (MapLevel == GalaxyMapLevel.Planet)
+        {
+            LoadPlanetTextures((Editor as IActorEditorContext)?.RenderContext);
+        }
     }
 
     private string ResolveListDisplaySubtitle()
@@ -2299,7 +2335,46 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     #endregion
 
-    public override void HandleUpdate(List<PackageUpdate> updates) { }
+    public override void HandleUpdate(List<PackageUpdate> updates)
+    {
+        if (!HasFileOpen || updates is null || updates.Count == 0)
+            return;
+
+        HashSet<int> updatedExports = updates
+            .Where(x => x.Change.Has(PackageChange.Export))
+            .Select(x => x.Index)
+            .ToHashSet();
+        if (updatedExports.Count == 0)
+            return;
+
+        bool anyRefreshed = false;
+        bool selectedExportUpdated = _selectedPropertiesExport is not null && updatedExports.Contains(_selectedPropertiesExport.UIndex);
+        foreach (GalaxyMapObjectProxy obj in _allObjects)
+        {
+            if (updatedExports.Contains(obj.Export.UIndex))
+            {
+                obj.RefreshFromExport(RenderContext.PackageCache);
+                anyRefreshed = true;
+            }
+        }
+
+        if (!anyRefreshed)
+        {
+            if (selectedExportUpdated)
+            {
+                LoadExportIntoTabs(_selectedPropertiesExport);
+            }
+            return;
+        }
+
+        CurrentObjectsView.Refresh();
+        OnPropertyChanged(nameof(BreadcrumbText));
+        if (selectedExportUpdated)
+        {
+            LoadExportIntoTabs(_selectedPropertiesExport);
+        }
+        SceneViewer?.MarkRenderDirty();
+    }
 
     public void HandleSaveStateChange(bool isSaving)
     {
