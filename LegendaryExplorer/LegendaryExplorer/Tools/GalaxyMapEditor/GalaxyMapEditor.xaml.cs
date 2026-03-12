@@ -1172,6 +1172,10 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     #region Selection
 
     private GalaxyMapObjectProxy _selectedObject;
+    private GalaxyMapObjectProxy _lastViewportClickedObject;
+    private DateTime _lastViewportClickUtc;
+    private static readonly TimeSpan ViewportDoubleClickThreshold = TimeSpan.FromMilliseconds(400);
+
     public GalaxyMapObjectProxy SelectedObject
     {
         get => _selectedObject;
@@ -2096,6 +2100,18 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     {
         if (actor is GalaxyMapObjectProxy gmObj)
         {
+            DateTime now = DateTime.UtcNow;
+            bool isDoubleClick = gmObj == _lastViewportClickedObject && (now - _lastViewportClickUtc) <= ViewportDoubleClickThreshold;
+            _lastViewportClickedObject = gmObj;
+            _lastViewportClickUtc = now;
+
+            if (isDoubleClick && gmObj.CanNavigateInto && gmObj.MapChildren.Count > 0)
+            {
+                NavigateInto(gmObj);
+                _lastViewportClickedObject = null;
+                return;
+            }
+
             SelectObject(gmObj, false);
             ObjectsList.ScrollIntoView(_selectedObject);
         }
