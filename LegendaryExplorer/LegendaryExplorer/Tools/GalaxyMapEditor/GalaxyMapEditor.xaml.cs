@@ -5,6 +5,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.GameFilesystem;
@@ -434,6 +435,8 @@ public class GalaxyMapObjectProxy : ActorProxy
     public PreviewTextureCache.TextureEntry PlanetSurfaceTexture { get; private set; }
     public ExportEntry PlanetMaterialExport { get; private set; }
     public ExportEntry CloudMaterialExport { get; private set; }
+    public string ListDisplaySubtitle { get; }
+    public bool HasListDisplaySubtitle => !string.IsNullOrWhiteSpace(ListDisplaySubtitle);
     public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
     public bool IsMassRelay => GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXMassRelay", Export.Game)
                                || GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXGalaxyMapMassRelay", Export.Game)
@@ -449,6 +452,7 @@ public class GalaxyMapObjectProxy : ActorProxy
         : base(context, export)
     {
         MapLevel = level;
+        ListDisplaySubtitle = ResolveListDisplaySubtitle();
 
         // Galaxy map objects store position as PosX/PosY integer properties.
         // The camera looks straight down with UnitZ as world-up, which makes:
@@ -467,6 +471,75 @@ public class GalaxyMapObjectProxy : ActorProxy
         // Load mesh components from sub-exports (StaticMeshComponent, SkeletalMeshComponent)
         LoadMeshComponents(context.RenderContext);
         LoadPlanetTextures(context.RenderContext);
+    }
+
+    private string ResolveListDisplaySubtitle()
+    {
+        if (MapLevel is not (GalaxyMapLevel.Cluster or GalaxyMapLevel.System or GalaxyMapLevel.Planet))
+            return null;
+
+        string[] candidateNames = MapLevel switch
+        {
+            GalaxyMapLevel.Cluster => ["DisplayName", "ClusterName", "Name", "NameStrRef"],
+            GalaxyMapLevel.System => ["DisplayName", "SystemName", "Name", "NameStrRef"],
+            GalaxyMapLevel.Planet => ["DisplayName", "PlanetName", "Name", "NameStrRef"],
+            _ => ["DisplayName", "Name", "NameStrRef"]
+        };
+
+        string subtitle = ResolveSubtitleFromProperties(Properties, candidateNames);
+        if (!string.IsNullOrWhiteSpace(subtitle))
+            return subtitle;
+
+        if (MapLevel == GalaxyMapLevel.Planet)
+        {
+            ExportEntry appearanceExport = ResolvePlanetAppearanceExport(null);
+            if (appearanceExport is not null)
+            {
+                subtitle = ResolveSubtitleFromProperties(appearanceExport.GetProperties(), candidateNames);
+                if (!string.IsNullOrWhiteSpace(subtitle))
+                    return subtitle;
+            }
+        }
+
+        return null;
+    }
+
+    private string ResolveSubtitleFromProperties(PropertyCollection props, IEnumerable<string> propertyNames)
+    {
+        if (props is null)
+            return null;
+
+        foreach (string propName in propertyNames)
+        {
+            string strValue = props.GetProp<StrProperty>(propName)?.Value;
+            if (!string.IsNullOrWhiteSpace(strValue)
+                && !string.Equals(strValue, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            {
+                return strValue.Trim();
+            }
+
+            string nameValue = props.GetProp<NameProperty>(propName)?.Value.Instanced;
+            if (!string.IsNullOrWhiteSpace(nameValue)
+                && !string.Equals(nameValue, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            {
+                return nameValue.Trim();
+            }
+
+            int strRef = props.GetProp<StringRefProperty>(propName)?.Value
+                         ?? props.GetProp<IntProperty>(propName)?.Value
+                         ?? 0;
+            if (strRef <= 0)
+                continue;
+
+            string resolved = TLKManagerWPF.GlobalFindStrRefbyID(strRef, Export.FileRef);
+            if (!string.IsNullOrWhiteSpace(resolved)
+                && !string.Equals(resolved, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            {
+                return resolved.Trim();
+            }
+        }
+
+        return null;
     }
 
     private void LoadMeshComponents(LevelEditorRenderContext renderContext)

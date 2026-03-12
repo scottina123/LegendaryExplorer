@@ -155,17 +155,21 @@
                              VirtualizingStackPanel.VirtualizationMode="Recycling">
                         <ListBox.Resources>
                             <DataTemplate DataType="{x:Type local:GalaxyMapObjectProxy}">
-                                <StackPanel Orientation="Horizontal" Margin="2">
-                                    <TextBlock Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center"
-                                               Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export UIndex"/>
-                                    <TextBlock Text="{Binding Export.ObjectName.Instanced, Mode=OneTime}" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Export.ClassName, Mode=OneTime, StringFormat=' ({0})'}"
-                                               VerticalAlignment="Center" Foreground="Gray" FontSize="11"/>
-                                    <TextBlock Text=" ▶" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
-                                               FontWeight="Bold"
-                                               Visibility="{Binding CanNavigateInto, Converter={StaticResource BoolToVisibilityConverter}}"
-                                               ToolTip="Double-click to navigate into"/>
+                                <StackPanel Margin="2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Export.UIndex, Mode=OneTime}" VerticalAlignment="Center"
+                                                   Margin="0,0,5,0" FontWeight="Bold" ToolTip="Export UIndex"/>
+                                        <TextBlock Text="{Binding Export.ObjectName.Instanced, Mode=OneTime}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Export.ClassName, Mode=OneTime, StringFormat=' ({0})'}"
+                                                   VerticalAlignment="Center" Foreground="Gray" FontSize="11"/>
+                                        <TextBlock Text=" ▶" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+                                                   FontWeight="Bold"
+                                                   Visibility="{Binding CanNavigateInto, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                   ToolTip="Double-click to navigate into"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ListDisplaySubtitle}" Margin="24,0,0,0" Foreground="Gray" FontSize="11"
+                                               Visibility="{Binding HasListDisplaySubtitle, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </DataTemplate>
                             <ContextMenu x:Key="ObjectContextMenu">
