@@ -21,6 +21,7 @@ using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -1113,6 +1114,29 @@ public class GalaxyMapObjectProxy : ActorProxy
         Export.WriteProperties(props);
     }
 
+    /// <summary>PosX as stored in the export (= -world Y). Setting this updates world Y and fires notifications.</summary>
+    public int GalaxyMapPosX
+    {
+        get => (int)MathF.Round(-location.Y);
+        set => YPos = -value;
+    }
+
+    /// <summary>PosY as stored in the export (= world X). Setting this updates world X and fires notifications.</summary>
+    public int GalaxyMapPosY
+    {
+        get => (int)MathF.Round(location.X);
+        set => XPos = value;
+    }
+
+    public override void OnPropertyChanged([CallerMemberName] string propertyname = null)
+    {
+        base.OnPropertyChanged(propertyname);
+        if (propertyname == nameof(YPos))
+            base.OnPropertyChanged(nameof(GalaxyMapPosX));
+        else if (propertyname == nameof(XPos))
+            base.OnPropertyChanged(nameof(GalaxyMapPosY));
+    }
+
     public static GalaxyMapLevel ClassifyExport(ExportEntry export)
     {
         string className = export.ClassName;
@@ -1400,6 +1424,13 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     {
         get => _posIncrement;
         set => SetProperty(ref _posIncrement, value);
+    }
+
+    private int _galaxyMapPosIncrement = 1;
+    public int GalaxyMapPosIncrement
+    {
+        get => _galaxyMapPosIncrement;
+        set => SetProperty(ref _galaxyMapPosIncrement, value);
     }
 
     private float _rotIncrement = 5f;

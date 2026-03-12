@@ -233,6 +233,31 @@
                     <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
                         <StackPanel IsEnabled="{Binding SelectedObject, Converter={StaticResource NullEnabledConverter}}"
                                     DataContext="{Binding SelectedObject}">
+
+                            <!-- Galaxy Map Position editor (PosX / PosY integer properties) -->
+                            <GroupBox Header="Galaxy Map Position" Margin="5,5,5,5" BorderThickness="2" Padding="5">
+                                <StackPanel Orientation="Vertical">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="PosX:  " VerticalAlignment="Center"/>
+                                        <xctk:IntegerUpDown Value="{Binding GalaxyMapPosX}"
+                                                            Increment="{Binding GalaxyMapPosIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:GalaxyMapEditor}}}"
+                                                            ButtonSpinnerLocation="Left" MinWidth="80"/>
+                                        <TextBlock Text="  PosY:  " VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                        <xctk:IntegerUpDown Value="{Binding GalaxyMapPosY}"
+                                                            Increment="{Binding GalaxyMapPosIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:GalaxyMapEditor}}}"
+                                                            ButtonSpinnerLocation="Left" MinWidth="80"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,5,0,0" Orientation="Horizontal">
+                                        <TextBlock Text=" Increment:  " VerticalAlignment="Center"/>
+                                        <xctk:IntegerUpDown Value="{Binding GalaxyMapPosIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:GalaxyMapEditor}}}"
+                                                            Minimum="1" ButtonSpinnerLocation="Left"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <!--
+                            Hidden: Object Position / Rotation / DrawScale boxes (kept for potential future use)
+
                             <GroupBox Header="Object Position" Margin="5,5,5,5" BorderThickness="2" Padding="5">
                                 <StackPanel Orientation="Vertical">
                                     <StackPanel Orientation="Horizontal">
@@ -304,6 +329,7 @@
                                     </StackPanel>
                                 </StackPanel>
                             </GroupBox>
+                            -->
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
