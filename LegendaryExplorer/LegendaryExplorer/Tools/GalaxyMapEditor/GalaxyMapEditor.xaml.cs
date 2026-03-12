@@ -33,8 +33,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using Path = System.IO.Path;
 
 namespace LegendaryExplorer.Tools.GalaxyMapEditor;
 
@@ -443,6 +445,7 @@ public class GalaxyMapObjectProxy : ActorProxy
 
     public GalaxyMapLevel MapLevel { get; }
     public List<GalaxyMapObjectProxy> MapChildren { get; } = [];
+    public List<GalaxyMapObjectProxy> RelayConnections { get; } = [];
     public GalaxyMapObjectProxy MapParent { get; set; }
     public PreviewTextureCache.TextureEntry PlanetSurfaceTexture { get; private set; }
     public ExportEntry PlanetMaterialExport { get; private set; }
@@ -451,6 +454,7 @@ public class GalaxyMapObjectProxy : ActorProxy
     public bool HasListDisplaySubtitle => !string.IsNullOrWhiteSpace(ListDisplaySubtitle);
     public string PreferredDisplayName => HasListDisplaySubtitle ? ListDisplaySubtitle : Export.ObjectName.Instanced;
     public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
+    public bool IsCluster => MapLevel == GalaxyMapLevel.Cluster;
     public bool IsMassRelay => GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXMassRelay", Export.Game)
                                || GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXGalaxyMapMassRelay", Export.Game)
                                || Export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase);
@@ -1188,8 +1192,23 @@ public sealed class GalaxyMapEditableExportOption(ExportEntry export, string dis
 /// </summary>
 public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable, IActorEditorContext, IRecents
 {
+    private const double RelayOverlayClusterRadius = 13d;
+    private const double RelayOverlayHandleRadius = 5d;
+
+    private sealed record RelayLineVisual(GalaxyMapObjectProxy ClusterA, GalaxyMapObjectProxy ClusterB);
+
+    private sealed class RelayDragState
+    {
+        public GalaxyMapObjectProxy FixedCluster { get; init; }
+        public GalaxyMapObjectProxy DetachedCluster { get; init; }
+        public Point CurrentPoint { get; set; }
+    }
+
     public LevelEditorRenderContext RenderContext { get; }
     private readonly GalaxyMapIconOverlay _iconOverlay = new();
+    private readonly Dictionary<GalaxyMapObjectProxy, Point> _visibleRelayClusterCenters = [];
+    private RelayDragState _relayDragState;
+    private Canvas RelayOverlay => SceneViewer?.Parent is Grid grid ? grid.Children.OfType<Canvas>().FirstOrDefault() : null;
 
     // Background texture for the current cluster view
     private PreviewTextureCache.TextureEntry _backgroundTexture;
@@ -1561,6 +1580,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         RecentsController.InitRecentControl(Toolname, Recents_MenuItem, OpenRecentFile);
 
         SceneViewer.Context = RenderContext;
+        SceneViewer.OnImageRendered = RefreshRelayOverlay;
     }
 
     public string Toolname => "GalaxyMapEditor";
@@ -1609,6 +1629,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         RenderContext.RightClickActor -= ViewportActorRightClick;
 
         SceneViewer.Dispose();
+        RecentsController?.Dispose();
     }
 
     #endregion
@@ -1678,6 +1699,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void CloseFile()
     {
+        CancelRelayDrag(refreshOverlay: false);
         SceneViewer?.SetShouldRender(false);
         RenderContext.UnloadLevel();
 
@@ -1717,6 +1739,8 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         Game = MEGame.Unknown;
         Title = "Galaxy Map Editor";
         StatusBar_LeftMostText.Text = "Open a galaxy map package to begin";
+        RelayOverlay?.Children.Clear();
+        _visibleRelayClusterCenters.Clear();
     }
 
     /// <summary>
@@ -1867,12 +1891,36 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void BuildHierarchy()
     {
+        foreach (GalaxyMapObjectProxy obj in _allObjects)
+        {
+            obj.MapChildren.Clear();
+            obj.RelayConnections.Clear();
+            obj.MapParent = null;
+        }
+
         // Find the galaxy root
         _galaxyRoot = _allObjects.FirstOrDefault(o => o.MapLevel == GalaxyMapLevel.Galaxy);
 
         var clusters = _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Cluster).ToList();
         var systems = _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.System).ToList();
         var planetObjects = _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Planet).ToList();
+        var clustersByIndex = clusters.ToDictionary(cluster => cluster.Export.UIndex);
+
+        foreach (GalaxyMapObjectProxy cluster in clusters)
+        {
+            if (GetObjectArrayProperty(cluster.Export, "RelayConnections") is not { } relayRefs)
+                continue;
+
+            foreach (int uIndex in relayRefs)
+            {
+                if (clustersByIndex.TryGetValue(uIndex, out GalaxyMapObjectProxy connectedCluster)
+                    && connectedCluster != cluster
+                    && !cluster.RelayConnections.Contains(connectedCluster))
+                {
+                    cluster.RelayConnections.Add(connectedCluster);
+                }
+            }
+        }
 
         // Link galaxy → clusters
         if (_galaxyRoot is not null)
@@ -2071,6 +2119,416 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         CenterView();
     }
 
+    #endregion
+
+    #region Relay connections overlay
+
+    private void RefreshRelayOverlay()
+    {
+        if (RelayOverlay is null)
+            return;
+
+        RelayOverlay.Children.Clear();
+        _visibleRelayClusterCenters.Clear();
+
+        if (!HasFileOpen)
+            return;
+
+        List<GalaxyMapObjectProxy> visibleClusters = CurrentObjects
+            .Where(obj => obj.MapLevel == GalaxyMapLevel.Cluster)
+            .ToList();
+        if (visibleClusters.Count == 0)
+            return;
+
+        foreach (GalaxyMapObjectProxy cluster in visibleClusters)
+        {
+            if (RenderContext.WorldToPixel(cluster.LocalToWorld.Translation, out Vector2 pixel))
+            {
+                _visibleRelayClusterCenters[cluster] = new Point(pixel.X, pixel.Y);
+            }
+        }
+
+        var seenPairs = new HashSet<(int, int)>();
+        foreach (GalaxyMapObjectProxy cluster in visibleClusters)
+        {
+            foreach (GalaxyMapObjectProxy connectedCluster in cluster.RelayConnections)
+            {
+                if (!_visibleRelayClusterCenters.ContainsKey(connectedCluster))
+                    continue;
+
+                int min = Math.Min(cluster.Export.UIndex, connectedCluster.Export.UIndex);
+                int max = Math.Max(cluster.Export.UIndex, connectedCluster.Export.UIndex);
+                if (seenPairs.Add((min, max)))
+                {
+                    AddRelayLineVisual(cluster, connectedCluster);
+                }
+            }
+        }
+
+        foreach ((GalaxyMapObjectProxy cluster, Point center) in _visibleRelayClusterCenters)
+        {
+            AddRelayConnectorHandle(cluster, center);
+        }
+
+        if (_relayDragState is not null
+            && _visibleRelayClusterCenters.TryGetValue(_relayDragState.FixedCluster, out Point fixedCenter))
+        {
+            Point dragStart = GetRelayConnectorPoint(fixedCenter);
+            var dragLine = new Line
+            {
+                X1 = dragStart.X,
+                Y1 = dragStart.Y,
+                X2 = _relayDragState.CurrentPoint.X,
+                Y2 = _relayDragState.CurrentPoint.Y,
+                Stroke = System.Windows.Media.Brushes.Gold,
+                StrokeThickness = 2.5,
+                StrokeDashArray = new System.Windows.Media.DoubleCollection { 3, 2 },
+                IsHitTestVisible = false
+            };
+            RelayOverlay.Children.Add(dragLine);
+        }
+    }
+
+    private void AddRelayLineVisual(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    {
+        Point centerA = _visibleRelayClusterCenters[clusterA];
+        Point centerB = _visibleRelayClusterCenters[clusterB];
+        Point start = GetTrimmedLinePoint(centerA, centerB, RelayOverlayClusterRadius);
+        Point end = GetTrimmedLinePoint(centerB, centerA, RelayOverlayClusterRadius);
+
+        var line = new Line
+        {
+            X1 = start.X,
+            Y1 = start.Y,
+            X2 = end.X,
+            Y2 = end.Y,
+            Stroke = clusterA == SelectedObject || clusterB == SelectedObject ? System.Windows.Media.Brushes.Gold : System.Windows.Media.Brushes.DeepSkyBlue,
+            StrokeThickness = 2.5,
+            Tag = new RelayLineVisual(clusterA, clusterB),
+            ToolTip = $"{clusterA.PreferredDisplayName} ↔ {clusterB.PreferredDisplayName}",
+            Cursor = Cursors.SizeAll
+        };
+        line.MouseLeftButtonDown += RelayLine_MouseLeftButtonDown;
+
+        var contextMenu = new ContextMenu();
+        var removeItem = new MenuItem { Header = $"Remove connection: {clusterA.PreferredDisplayName} ↔ {clusterB.PreferredDisplayName}" };
+        removeItem.Click += (_, _) => RemoveRelayConnection(clusterA, clusterB);
+        contextMenu.Items.Add(removeItem);
+        line.ContextMenu = contextMenu;
+
+        RelayOverlay.Children.Add(line);
+    }
+
+    private void AddRelayConnectorHandle(GalaxyMapObjectProxy cluster, Point center)
+    {
+        Point handleCenter = GetRelayConnectorPoint(center);
+        var handle = new Ellipse
+        {
+            Width = RelayOverlayHandleRadius * 2,
+            Height = RelayOverlayHandleRadius * 2,
+            Fill = cluster == SelectedObject ? System.Windows.Media.Brushes.Gold : System.Windows.Media.Brushes.DeepSkyBlue,
+            Stroke = System.Windows.Media.Brushes.Black,
+            StrokeThickness = 1,
+            Tag = cluster,
+            ToolTip = $"Drag to create a relay connection from {cluster.PreferredDisplayName}",
+            Cursor = Cursors.Cross
+        };
+        Canvas.SetLeft(handle, handleCenter.X - RelayOverlayHandleRadius);
+        Canvas.SetTop(handle, handleCenter.Y - RelayOverlayHandleRadius);
+        handle.MouseLeftButtonDown += RelayHandle_MouseLeftButtonDown;
+        RelayOverlay.Children.Add(handle);
+    }
+
+    private void RelayHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: GalaxyMapObjectProxy cluster }
+            && _visibleRelayClusterCenters.TryGetValue(cluster, out Point center))
+        {
+            BeginRelayDrag(cluster, null, GetRelayConnectorPoint(center));
+            e.Handled = true;
+        }
+    }
+
+    private void RelayLine_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: RelayLineVisual visual })
+            return;
+
+        if (!_visibleRelayClusterCenters.TryGetValue(visual.ClusterA, out Point pointA)
+            || !_visibleRelayClusterCenters.TryGetValue(visual.ClusterB, out Point pointB))
+        {
+            return;
+        }
+
+        Point mousePoint = e.GetPosition(RelayOverlay);
+        double distToA = GetDistanceSquared(mousePoint, pointA);
+        double distToB = GetDistanceSquared(mousePoint, pointB);
+        GalaxyMapObjectProxy detachedCluster = distToA <= distToB ? visual.ClusterA : visual.ClusterB;
+        GalaxyMapObjectProxy fixedCluster = detachedCluster == visual.ClusterA ? visual.ClusterB : visual.ClusterA;
+        BeginRelayDrag(fixedCluster, detachedCluster, mousePoint);
+        e.Handled = true;
+    }
+
+    private void BeginRelayDrag(GalaxyMapObjectProxy fixedCluster, GalaxyMapObjectProxy detachedCluster, Point startPoint)
+    {
+        if (RelayOverlay is null || fixedCluster?.MapLevel != GalaxyMapLevel.Cluster)
+            return;
+
+        _relayDragState = new RelayDragState
+        {
+            FixedCluster = fixedCluster,
+            DetachedCluster = detachedCluster,
+            CurrentPoint = startPoint
+        };
+
+        RelayOverlay.CaptureMouse();
+        RefreshRelayOverlay();
+    }
+
+    private void CancelRelayDrag(bool refreshOverlay = true)
+    {
+        _relayDragState = null;
+        RelayOverlay?.ReleaseMouseCapture();
+        if (refreshOverlay)
+        {
+            RefreshRelayOverlay();
+        }
+    }
+
+    private void RelayOverlayCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_relayDragState is null)
+            return;
+
+        _relayDragState.CurrentPoint = e.GetPosition(RelayOverlay);
+        RefreshRelayOverlay();
+        e.Handled = true;
+    }
+
+    private void RelayOverlayCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_relayDragState is null)
+            return;
+
+        Point mousePoint = e.GetPosition(RelayOverlay);
+        GalaxyMapObjectProxy targetCluster = FindVisibleClusterAtPoint(mousePoint);
+        GalaxyMapObjectProxy fixedCluster = _relayDragState.FixedCluster;
+        GalaxyMapObjectProxy detachedCluster = _relayDragState.DetachedCluster;
+
+        bool changed = false;
+        if (detachedCluster is null)
+        {
+            if (targetCluster is not null && targetCluster != fixedCluster)
+            {
+                changed = EnsureRelayConnection(fixedCluster, targetCluster);
+            }
+        }
+        else if (targetCluster is null || targetCluster == fixedCluster)
+        {
+            changed = RemoveRelayConnection(fixedCluster, detachedCluster);
+        }
+        else if (targetCluster != detachedCluster)
+        {
+            bool removed = RemoveRelayConnection(fixedCluster, detachedCluster);
+            bool added = EnsureRelayConnection(fixedCluster, targetCluster);
+            changed = removed || added;
+        }
+
+        CancelRelayDrag(refreshOverlay: false);
+        if (!changed)
+        {
+            RefreshRelayOverlay();
+        }
+
+        e.Handled = true;
+    }
+
+    private void RelayOverlayCanvas_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_relayDragState is not null)
+        {
+            CancelRelayDrag();
+            e.Handled = true;
+        }
+    }
+
+    private GalaxyMapObjectProxy FindVisibleClusterAtPoint(Point point)
+    {
+        GalaxyMapObjectProxy closestCluster = null;
+        double bestDistance = RelayOverlayClusterRadius * RelayOverlayClusterRadius * 2.25;
+
+        foreach ((GalaxyMapObjectProxy cluster, Point center) in _visibleRelayClusterCenters)
+        {
+            double distance = GetDistanceSquared(point, center);
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                closestCluster = cluster;
+            }
+        }
+
+        return closestCluster;
+    }
+
+    private static double GetDistanceSquared(Point pointA, Point pointB)
+    {
+        double dx = pointA.X - pointB.X;
+        double dy = pointA.Y - pointB.Y;
+        return (dx * dx) + (dy * dy);
+    }
+
+    private static Point GetRelayConnectorPoint(Point center)
+    {
+        return new Point(center.X + RelayOverlayClusterRadius + 6d, center.Y);
+    }
+
+    private static Point GetTrimmedLinePoint(Point from, Point to, double trimDistance)
+    {
+        System.Windows.Vector direction = to - from;
+        if (direction.LengthSquared <= double.Epsilon)
+            return from;
+
+        direction.Normalize();
+        return from + (direction * trimDistance);
+    }
+
+    private bool AreRelayConnected(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    {
+        if (clusterA is null || clusterB is null || clusterA == clusterB)
+            return false;
+
+        return clusterA.RelayConnections.Contains(clusterB)
+               || clusterB.RelayConnections.Contains(clusterA);
+    }
+
+    private bool EnsureRelayConnection(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    {
+        if (clusterA?.MapLevel != GalaxyMapLevel.Cluster || clusterB?.MapLevel != GalaxyMapLevel.Cluster || clusterA == clusterB)
+            return false;
+
+        bool changed = false;
+        if (!clusterA.RelayConnections.Contains(clusterB))
+        {
+            clusterA.RelayConnections.Add(clusterB);
+            AddReferenceToArray(clusterA.Export, "RelayConnections", clusterB.Export.UIndex);
+            changed = true;
+        }
+
+        if (!clusterB.RelayConnections.Contains(clusterA))
+        {
+            clusterB.RelayConnections.Add(clusterA);
+            AddReferenceToArray(clusterB.Export, "RelayConnections", clusterA.Export.UIndex);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            OnRelayConnectionsChanged(clusterA, clusterB);
+        }
+
+        return changed;
+    }
+
+    private bool RemoveRelayConnection(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    {
+        if (clusterA?.MapLevel != GalaxyMapLevel.Cluster || clusterB?.MapLevel != GalaxyMapLevel.Cluster || clusterA == clusterB)
+            return false;
+
+        bool changed = clusterA.RelayConnections.Remove(clusterB);
+        changed |= clusterB.RelayConnections.Remove(clusterA);
+
+        RemoveReferenceFromArray(clusterA.Export, "RelayConnections", clusterB.Export.UIndex);
+        RemoveReferenceFromArray(clusterB.Export, "RelayConnections", clusterA.Export.UIndex);
+
+        if (changed)
+        {
+            OnRelayConnectionsChanged(clusterA, clusterB);
+        }
+
+        return changed;
+    }
+
+    private void OnRelayConnectionsChanged(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    {
+        IsDirty = true;
+        RefreshRelayOverlay();
+        SceneViewer?.MarkRenderDirty();
+
+        if (_selectedPropertiesExport == clusterA.Export || _selectedPropertiesExport == clusterB.Export)
+        {
+            LoadExportIntoTabs(_selectedPropertiesExport);
+        }
+    }
+
+    private void AddRelayConnectionMenuItems(ContextMenu menu, GalaxyMapObjectProxy cluster)
+    {
+        if (cluster.MapLevel != GalaxyMapLevel.Cluster)
+            return;
+
+        menu.Items.Add(new Separator());
+
+        var relayMenu = new MenuItem { Header = "Relay Connections" };
+
+        var dragItem = new MenuItem { Header = "Start Drag Connection" };
+        dragItem.Click += (_, _) =>
+        {
+            if (_visibleRelayClusterCenters.TryGetValue(cluster, out Point center))
+            {
+                BeginRelayDrag(cluster, null, GetRelayConnectorPoint(center));
+            }
+        };
+        relayMenu.Items.Add(dragItem);
+
+        var connectToMenu = new MenuItem { Header = "Connect To" };
+        foreach (GalaxyMapObjectProxy otherCluster in _allObjects
+                     .Where(obj => obj.MapLevel == GalaxyMapLevel.Cluster && obj != cluster)
+                     .OrderBy(obj => obj.PreferredDisplayName))
+        {
+            if (AreRelayConnected(cluster, otherCluster))
+                continue;
+
+            var connectItem = new MenuItem { Header = otherCluster.PreferredDisplayName };
+            connectItem.Click += (_, _) => EnsureRelayConnection(cluster, otherCluster);
+            connectToMenu.Items.Add(connectItem);
+        }
+        connectToMenu.IsEnabled = connectToMenu.Items.Count > 0;
+        relayMenu.Items.Add(connectToMenu);
+
+        var disconnectMenu = new MenuItem { Header = "Disconnect From" };
+        foreach (GalaxyMapObjectProxy connectedCluster in cluster.RelayConnections
+                     .Distinct()
+                     .OrderBy(obj => obj.PreferredDisplayName))
+        {
+            var disconnectItem = new MenuItem { Header = connectedCluster.PreferredDisplayName };
+            disconnectItem.Click += (_, _) => RemoveRelayConnection(cluster, connectedCluster);
+            disconnectMenu.Items.Add(disconnectItem);
+        }
+        disconnectMenu.IsEnabled = disconnectMenu.Items.Count > 0;
+        relayMenu.Items.Add(disconnectMenu);
+
+        if (SelectedObject is { MapLevel: GalaxyMapLevel.Cluster } selectedCluster && selectedCluster != cluster)
+        {
+            bool alreadyConnected = AreRelayConnected(cluster, selectedCluster);
+            var selectedToggleItem = new MenuItem
+            {
+                Header = alreadyConnected
+                    ? $"Disconnect from Selected ({selectedCluster.PreferredDisplayName})"
+                    : $"Connect to Selected ({selectedCluster.PreferredDisplayName})"
+            };
+            selectedToggleItem.Click += (_, _) =>
+            {
+                if (alreadyConnected)
+                    RemoveRelayConnection(cluster, selectedCluster);
+                else
+                    EnsureRelayConnection(cluster, selectedCluster);
+            };
+            relayMenu.Items.Add(new Separator());
+            relayMenu.Items.Add(selectedToggleItem);
+        }
+
+        menu.Items.Add(relayMenu);
+    }
+
     private void LoadGalaxyBackground(List<GalaxyMapObjectProxy> objectsAtLevel)
     {
         if (_galaxyBgPackage is null || objectsAtLevel.Count == 0) return;
@@ -2262,7 +2720,13 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             menu.Items.Add(navigateItem);
         }
 
-        menu.Items.Add(new System.Windows.Controls.Separator());
+        bool addedRelayMenu = gmObj.MapLevel == GalaxyMapLevel.Cluster;
+        AddRelayConnectionMenuItems(menu, gmObj);
+
+        if (!addedRelayMenu)
+        {
+            menu.Items.Add(new System.Windows.Controls.Separator());
+        }
 
         var openPeItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
         openPeItem.Click += (_, _) =>
@@ -2321,6 +2785,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         if (e.PropertyName is nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation)
             or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))
         {
+            RefreshRelayOverlay();
             SceneViewer?.MarkRenderDirty();
             IsDirty = true;
         }
@@ -2560,6 +3025,12 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                 RenderContext.DrawList_UI.Add(_iconOverlay);
         }
 
+        if (newProxy.MapLevel == GalaxyMapLevel.Cluster)
+        {
+            BuildHierarchy();
+            RefreshRelayOverlay();
+        }
+
         IsDirty = true;
         SelectedObject = newProxy;
         SceneViewer?.MarkRenderDirty();
@@ -2599,6 +3070,14 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             parent.MapChildren.Remove(objToDelete);
         }
 
+        if (objToDelete.MapLevel == GalaxyMapLevel.Cluster)
+        {
+            foreach (GalaxyMapObjectProxy connectedCluster in objToDelete.RelayConnections.ToList())
+            {
+                RemoveRelayConnection(objToDelete, connectedCluster);
+            }
+        }
+
         _allObjects.Remove(objToDelete);
         CurrentObjects.Remove(objToDelete);
         RenderContext.RemoveActor(objToDelete);
@@ -2607,6 +3086,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         EntryPruner.TrashEntryAndDescendants(exportToDelete);
 
         IsDirty = true;
+        RefreshRelayOverlay();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -2707,15 +3187,18 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             {
                 LoadExportIntoTabs(_selectedPropertiesExport);
             }
+            RefreshRelayOverlay();
             return;
         }
 
+        BuildHierarchy();
         CurrentObjectsView.Refresh();
         OnPropertyChanged(nameof(BreadcrumbText));
         if (selectedExportUpdated)
         {
             LoadExportIntoTabs(_selectedPropertiesExport);
         }
+        RefreshRelayOverlay();
         SceneViewer?.MarkRenderDirty();
     }
 

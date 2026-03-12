@@ -205,7 +205,14 @@
                 </DockPanel>
 
                 <!-- Center: 3D viewport -->
-                <scene3D:SceneRenderControl Grid.Column="2" x:Name="SceneViewer"/>
+                <Grid Grid.Column="2">
+                    <scene3D:SceneRenderControl x:Name="SceneViewer"/>
+                    <Canvas x:Name="RelayOverlayCanvas"
+                            Panel.ZIndex="1"
+                            MouseMove="RelayOverlayCanvas_MouseMove"
+                            MouseLeftButtonUp="RelayOverlayCanvas_MouseLeftButtonUp"
+                            LostMouseCapture="RelayOverlayCanvas_LostMouseCapture"/>
+                </Grid>
 
                 <!-- Right panel: properties + transforms -->
                 <Grid Grid.Column="4">
