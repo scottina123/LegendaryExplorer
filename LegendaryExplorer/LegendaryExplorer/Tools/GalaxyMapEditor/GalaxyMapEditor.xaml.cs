@@ -518,6 +518,35 @@ public class GalaxyMapObjectProxy : ActorProxy
         }
     }
 
+    public List<ExportEntry> GetEditableExports(PackageCache packageCache)
+    {
+        var results = new List<ExportEntry>();
+        var seen = new HashSet<int>();
+
+        void AddRecursive(ExportEntry entry)
+        {
+            if (entry is null || !seen.Add(entry.UIndex))
+                return;
+
+            results.Add(entry);
+            foreach (ExportEntry child in entry.FileRef.Exports)
+            {
+                if (child.idxLink == entry.UIndex)
+                {
+                    AddRecursive(child);
+                }
+            }
+        }
+
+        AddRecursive(Export);
+        if (Properties.GetProp<ObjectProperty>("Appearance")?.ResolveToExport(Export.FileRef, packageCache) is ExportEntry appearanceExport)
+        {
+            AddRecursive(appearanceExport);
+        }
+
+        return results;
+    }
+
     private string ResolveListDisplaySubtitle()
     {
         if (MapLevel is not (GalaxyMapLevel.Cluster or GalaxyMapLevel.System or GalaxyMapLevel.Planet))
@@ -1120,6 +1149,12 @@ public class GalaxyMapObjectProxy : ActorProxy
     }
 }
 
+public sealed class GalaxyMapEditableExportOption(ExportEntry export, string displayText)
+{
+    public ExportEntry Export { get; } = export;
+    public string DisplayText { get; } = displayText;
+}
+
 /// <summary>
 /// Galaxy Map Editor - a visual editor for the galaxy map (SFXGalaxy) hierarchy.
 /// Allows navigating into clusters and solar systems and repositioning planets/stars/objects.
@@ -1211,6 +1246,23 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     private GalaxyMapObjectProxy _lastViewportClickedObject;
     private DateTime _lastViewportClickUtc;
     private static readonly TimeSpan ViewportDoubleClickThreshold = TimeSpan.FromMilliseconds(400);
+    public ObservableCollectionExtended<GalaxyMapEditableExportOption> EditableExports { get; } = [];
+
+    private GalaxyMapEditableExportOption _selectedEditableExport;
+    public GalaxyMapEditableExportOption SelectedEditableExport
+    {
+        get => _selectedEditableExport;
+        set
+        {
+            if (SetProperty(ref _selectedEditableExport, value))
+            {
+                if (value?.Export is not null)
+                {
+                    LoadExportIntoTabs(value.Export);
+                }
+            }
+        }
+    }
 
     public GalaxyMapObjectProxy SelectedObject
     {
@@ -2122,11 +2174,13 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                     FocusOnBounds(_selectedObject.GetBounds());
                 }
                 _selectedObject.PropertyChanged += OnObjectPropertyChanged;
-                LoadExportIntoTabs(_selectedObject.Export);
+                RefreshEditableExports(_selectedObject, _selectedObject.Export);
             }
             else
             {
                 RenderContext.TransformWidget.Attach = null;
+                EditableExports.Clear();
+                SelectedEditableExport = null;
                 UnloadPropertyTabs();
             }
         }
@@ -2262,6 +2316,34 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private ExportEntry _selectedPropertiesExport;
 
+    private void RefreshEditableExports(GalaxyMapObjectProxy obj, ExportEntry preferredExport = null)
+    {
+        EditableExports.Clear();
+        SelectedEditableExport = null;
+
+        if (obj is null)
+            return;
+
+        List<ExportEntry> exports = obj.GetEditableExports(RenderContext.PackageCache);
+        ExportEntry appearanceExport = obj.Export.GetProperties().GetProp<ObjectProperty>("Appearance")?.ResolveToExport(obj.Export.FileRef, RenderContext.PackageCache);
+
+        foreach (ExportEntry export in exports)
+        {
+            string prefix = export == obj.Export
+                ? "Object"
+                : export == appearanceExport
+                    ? "Appearance"
+                    : export.idxLink == obj.Export.UIndex
+                        ? "Child"
+                        : "Nested";
+            EditableExports.Add(new GalaxyMapEditableExportOption(export, $"{prefix}: [{export.UIndex}] {export.ObjectName.Instanced} ({export.ClassName})"));
+        }
+
+        SelectedEditableExport = EditableExports.FirstOrDefault(x => x.Export == preferredExport)
+            ?? EditableExports.FirstOrDefault(x => x.Export == _selectedPropertiesExport)
+            ?? EditableExports.FirstOrDefault();
+    }
+
     private void LoadExportIntoTabs(ExportEntry export)
     {
         if (export is null) return;
@@ -2356,6 +2438,11 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                 obj.RefreshFromExport(RenderContext.PackageCache);
                 anyRefreshed = true;
             }
+        }
+
+        if (_selectedObject is not null)
+        {
+            RefreshEditableExports(_selectedObject, _selectedPropertiesExport);
         }
 
         if (!anyRefreshed)
