@@ -2134,17 +2134,30 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         if (!HasFileOpen)
             return;
 
+        Rect viewportRect = new(0, 0,
+            Math.Max(0, RelayOverlay.ActualWidth),
+            Math.Max(0, RelayOverlay.ActualHeight));
+        if (viewportRect.Width <= 0 || viewportRect.Height <= 0)
+            return;
+
         List<GalaxyMapObjectProxy> visibleClusters = CurrentObjects
             .Where(obj => obj.MapLevel == GalaxyMapLevel.Cluster)
             .ToList();
         if (visibleClusters.Count == 0)
             return;
 
+        var projectedClusterCenters = new Dictionary<GalaxyMapObjectProxy, Point>();
+
         foreach (GalaxyMapObjectProxy cluster in visibleClusters)
         {
             if (RenderContext.WorldToPixel(cluster.LocalToWorld.Translation, out Vector2 pixel))
             {
-                _visibleRelayClusterCenters[cluster] = new Point(pixel.X, pixel.Y);
+                Point projectedPoint = new(pixel.X, pixel.Y);
+                projectedClusterCenters[cluster] = projectedPoint;
+                if (viewportRect.Contains(projectedPoint))
+                {
+                    _visibleRelayClusterCenters[cluster] = projectedPoint;
+                }
             }
         }
 
@@ -2153,14 +2166,15 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         {
             foreach (GalaxyMapObjectProxy connectedCluster in cluster.RelayConnections)
             {
-                if (!_visibleRelayClusterCenters.ContainsKey(connectedCluster))
+                if (!projectedClusterCenters.ContainsKey(cluster)
+                    || !projectedClusterCenters.ContainsKey(connectedCluster))
                     continue;
 
                 int min = Math.Min(cluster.Export.UIndex, connectedCluster.Export.UIndex);
                 int max = Math.Max(cluster.Export.UIndex, connectedCluster.Export.UIndex);
                 if (seenPairs.Add((min, max)))
                 {
-                    AddRelayLineVisual(cluster, connectedCluster);
+                    AddRelayLineVisual(cluster, connectedCluster, projectedClusterCenters, viewportRect);
                 }
             }
         }
@@ -2189,12 +2203,17 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
     }
 
-    private void AddRelayLineVisual(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
+    private void AddRelayLineVisual(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB, IReadOnlyDictionary<GalaxyMapObjectProxy, Point> projectedClusterCenters, Rect viewportRect)
     {
-        Point centerA = _visibleRelayClusterCenters[clusterA];
-        Point centerB = _visibleRelayClusterCenters[clusterB];
-        Point start = GetTrimmedLinePoint(centerA, centerB, RelayOverlayClusterRadius);
-        Point end = GetTrimmedLinePoint(centerB, centerA, RelayOverlayClusterRadius);
+        Point centerA = projectedClusterCenters[clusterA];
+        Point centerB = projectedClusterCenters[clusterB];
+        bool centerAVisible = viewportRect.Contains(centerA);
+        bool centerBVisible = viewportRect.Contains(centerB);
+        Point start = centerAVisible ? GetTrimmedLinePoint(centerA, centerB, RelayOverlayClusterRadius) : centerA;
+        Point end = centerBVisible ? GetTrimmedLinePoint(centerB, centerA, RelayOverlayClusterRadius) : centerB;
+
+        if (!TryClipLineToRect(viewportRect, ref start, ref end))
+            return;
 
         var line = new Line
         {
@@ -2390,6 +2409,90 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         direction.Normalize();
         return from + (direction * trimDistance);
+    }
+
+    private static bool TryClipLineToRect(Rect rect, ref Point start, ref Point end)
+    {
+        const int Inside = 0;
+        const int Left = 1;
+        const int Right = 2;
+        const int Bottom = 4;
+        const int Top = 8;
+
+        static int ComputeOutCode(Rect bounds, Point point)
+        {
+            int code = Inside;
+            if (point.X < bounds.Left)
+                code |= Left;
+            else if (point.X > bounds.Right)
+                code |= Right;
+
+            if (point.Y < bounds.Top)
+                code |= Top;
+            else if (point.Y > bounds.Bottom)
+                code |= Bottom;
+
+            return code;
+        }
+
+        double x0 = start.X;
+        double y0 = start.Y;
+        double x1 = end.X;
+        double y1 = end.Y;
+
+        int outCode0 = ComputeOutCode(rect, start);
+        int outCode1 = ComputeOutCode(rect, end);
+
+        while (true)
+        {
+            if ((outCode0 | outCode1) == 0)
+            {
+                start = new Point(x0, y0);
+                end = new Point(x1, y1);
+                return true;
+            }
+
+            if ((outCode0 & outCode1) != 0)
+                return false;
+
+            int outCodeOut = outCode0 != 0 ? outCode0 : outCode1;
+            double x;
+            double y;
+
+            if ((outCodeOut & Top) != 0)
+            {
+                x = x0 + ((x1 - x0) * (rect.Top - y0) / (y1 - y0));
+                y = rect.Top;
+            }
+            else if ((outCodeOut & Bottom) != 0)
+            {
+                x = x0 + ((x1 - x0) * (rect.Bottom - y0) / (y1 - y0));
+                y = rect.Bottom;
+            }
+            else if ((outCodeOut & Right) != 0)
+            {
+                y = y0 + ((y1 - y0) * (rect.Right - x0) / (x1 - x0));
+                x = rect.Right;
+            }
+            else
+            {
+                y = y0 + ((y1 - y0) * (rect.Left - x0) / (x1 - x0));
+                x = rect.Left;
+            }
+
+            if (outCodeOut == outCode0)
+            {
+                x0 = x;
+                y0 = y;
+                outCode0 = ComputeOutCode(rect, new Point(x0, y0));
+            }
+            else
+            {
+                x1 = x;
+                y1 = y;
+                outCode1 = ComputeOutCode(rect, new Point(x1, y1));
+            }
+        }
     }
 
     private bool AreRelayConnected(GalaxyMapObjectProxy clusterA, GalaxyMapObjectProxy clusterB)
