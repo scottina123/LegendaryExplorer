@@ -1161,7 +1161,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             var parts = new List<string> { "Galaxy" };
             foreach (var node in _navigationStack.Reverse())
             {
-                parts.Add(node.Export.ObjectName.Instanced);
+                parts.Add(node.PreferredDisplayName);
             }
             return string.Join(" > ", parts);
         }
