@@ -1674,6 +1674,10 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         {
             LoadClusterBackground(parent);
         }
+        else if (parent.MapLevel == GalaxyMapLevel.System)
+        {
+            LoadSystemBackground(objectsToShow);
+        }
 
         if (objectsToShow.Count > 0)
         {
@@ -1738,6 +1742,24 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         if (_backgroundTexture is null) return;
 
         _backgroundQuad = CreateBackgroundQuad(cluster.MapChildren.Select(child => child.Location), 0.12f, 48f);
+    }
+
+    private void LoadSystemBackground(List<GalaxyMapObjectProxy> objectsAtLevel)
+    {
+        if (_galaxyBgPackage is null || objectsAtLevel.Count == 0)
+            return;
+
+        ExportEntry starfieldTexExport = _galaxyBgPackage.Exports
+            .FirstOrDefault(e => e.ClassName == "Texture2D"
+                              && e.ObjectName.Name.Equals("StarField", StringComparison.OrdinalIgnoreCase));
+        if (starfieldTexExport is null)
+            return;
+
+        _backgroundTexture = RenderContext.TextureCache.LoadTexture(starfieldTexExport, RenderContext.PackageCache);
+        if (_backgroundTexture is null)
+            return;
+
+        _backgroundQuad = CreateBackgroundQuad(objectsAtLevel.Select(obj => obj.Location), 0.15f, 96f);
     }
 
     private Mesh<WorldVertex> CreateBackgroundQuad(IEnumerable<Vector3> points, float paddingFactor, float minimumPadding)
