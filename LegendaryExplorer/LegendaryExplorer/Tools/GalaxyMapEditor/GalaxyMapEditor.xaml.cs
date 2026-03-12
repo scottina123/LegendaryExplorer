@@ -422,6 +422,11 @@ public class GalaxyMapObjectProxy : ActorProxy
         (89.97f).DegreesToUnrealRotationUnits(),
         (94.97681f).DegreesToUnrealRotationUnits());
     private const float RelayDisplayScale = 0.1f;
+    private static readonly Rotator SolarArrayDisplayRotation = new(
+        (0f).DegreesToUnrealRotationUnits(),
+        (90f).DegreesToUnrealRotationUnits(),
+        (90f).DegreesToUnrealRotationUnits());
+    private const float SolarArrayDisplayScale = 0.6f;
 
     public GalaxyMapLevel MapLevel { get; }
     public List<GalaxyMapObjectProxy> MapChildren { get; } = [];
@@ -524,6 +529,7 @@ public class GalaxyMapObjectProxy : ActorProxy
 
         string sharedMeshName = GetSharedPlanetMeshName();
         bool usesDefaultPlanetSphere = sharedMeshName.Equals("Planet", StringComparison.OrdinalIgnoreCase);
+        bool isSolarArray = sharedMeshName.Equals("Solar_Array", StringComparison.OrdinalIgnoreCase);
 
         ExportEntry planetMeshExport = Export.FileRef.Exports.FirstOrDefault(e =>
             (e.ClassName == "StaticMesh" || e.ClassName == "SkeletalMesh" || e.ClassName == "Model")
@@ -542,6 +548,12 @@ public class GalaxyMapObjectProxy : ActorProxy
             _sharedPlanetMesh.Scale = RelayDisplayScale;
             _sharedPlanetMesh.Scale3D = Vector3.One;
             _sharedPlanetMesh.Rotation = RelayDisplayRotation;
+        }
+        else if (isSolarArray)
+        {
+            _sharedPlanetMesh.Scale = SolarArrayDisplayScale;
+            _sharedPlanetMesh.Scale3D = Vector3.One;
+            _sharedPlanetMesh.Rotation = SolarArrayDisplayRotation;
         }
         Components.Add(_sharedPlanetMesh);
 
@@ -573,6 +585,12 @@ public class GalaxyMapObjectProxy : ActorProxy
             || Export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase))
         {
             return "Mass_Relay_GM_MDL";
+        }
+
+        string systemLevelType = Properties.GetProp<EnumProperty>("SystemLevelType")?.Value ?? string.Empty;
+        if (systemLevelType.Equals("SL_DEPOT", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Solar_Array";
         }
 
         return Properties.GetProp<StrProperty>("MapName")?.Value is "BioP_CitHub"
