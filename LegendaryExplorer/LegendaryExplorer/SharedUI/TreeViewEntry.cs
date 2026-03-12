@@ -560,6 +560,11 @@ namespace LegendaryExplorer.SharedUI
                                 _subtext = null; // Don't display it if it's the same.
                         }
 
+                        if (_subtext == null && IsUnderSfxSystem(ee))
+                        {
+                            _subtext = ResolveGalaxyMapDisplayName(ee);
+                        }
+
                         // Short circuit
                         
 
@@ -703,6 +708,197 @@ namespace LegendaryExplorer.SharedUI
             }
 
             return false;
+        }
+
+        private bool IsUnderSfxSystem(IEntry entry)
+        {
+            for (IEntry current = entry; current != null; current = current.Parent)
+            {
+                if (current.ClassName.StartsWith("SFXSystem", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private string ResolveGalaxyMapDisplayName(ExportEntry ee)
+        {
+            PropertyCollection props = ee.GetProperties();
+            string[] candidateNames = ["DisplayName", "SystemName", "ClusterName", "PlanetName", "RelayName", "Name", "NameStrRef"];
+
+            string subtitle = ResolveDisplayNameFromProperties(ee, props, candidateNames);
+            if (!string.IsNullOrWhiteSpace(subtitle))
+                return subtitle;
+
+            subtitle = ResolveDisplayNameFromPropertyTree(ee, props);
+            if (!string.IsNullOrWhiteSpace(subtitle))
+                return subtitle;
+
+            if (props.GetProp<ObjectProperty>("Appearance")?.ResolveToExport(ee.FileRef, DefaultsLookupCache) is ExportEntry appearanceExport)
+            {
+                PropertyCollection appearanceProps = appearanceExport.GetProperties();
+
+                subtitle = ResolveDisplayNameFromProperties(ee, appearanceProps, candidateNames);
+                if (!string.IsNullOrWhiteSpace(subtitle))
+                    return subtitle;
+
+                subtitle = ResolveDisplayNameFromPropertyTree(ee, appearanceProps);
+                if (!string.IsNullOrWhiteSpace(subtitle))
+                    return subtitle;
+            }
+
+            return null;
+        }
+
+        private string ResolveDisplayNameFromProperties(ExportEntry ee, PropertyCollection props, IEnumerable<string> propertyNames)
+        {
+            if (props is null)
+                return null;
+
+            foreach (string propName in propertyNames)
+            {
+                string strValue = props.GetProp<StrProperty>(propName)?.Value;
+                if (IsUsefulDisplayName(ee, strValue))
+                    return strValue.Trim();
+
+                string nameValue = props.GetProp<NameProperty>(propName)?.Value.Instanced;
+                if (IsUsefulDisplayName(ee, nameValue))
+                    return nameValue.Trim();
+
+                int strRef = props.GetProp<StringRefProperty>(propName)?.Value
+                             ?? props.GetProp<IntProperty>(propName)?.Value
+                             ?? 0;
+                if (strRef <= 0)
+                    continue;
+
+                string resolved = ResolveDisplayNameStringRef(ee, strRef);
+                if (IsUsefulDisplayName(ee, resolved))
+                    return resolved.Trim();
+            }
+
+            return null;
+        }
+
+        private string ResolveDisplayNameFromPropertyTree(ExportEntry ee, PropertyCollection props)
+        {
+            if (props is null)
+                return null;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in EnumerateDisplayNameCandidates(ee, props, 0, seen))
+            {
+                if (IsUsefulDisplayName(ee, candidate))
+                    return candidate.Trim();
+            }
+
+            return null;
+        }
+
+        private IEnumerable<string> EnumerateDisplayNameCandidates(ExportEntry ee, PropertyCollection props, int depth, HashSet<string> seen)
+        {
+            if (props is null || depth > 4)
+                yield break;
+
+            foreach (Property prop in props)
+            {
+                string propName = prop.Name.Instanced;
+                bool looksLikeDisplayName = propName.Contains("name", StringComparison.OrdinalIgnoreCase)
+                                            || propName.Contains("display", StringComparison.OrdinalIgnoreCase)
+                                            || propName.Contains("title", StringComparison.OrdinalIgnoreCase)
+                                            || propName.Contains("label", StringComparison.OrdinalIgnoreCase);
+
+                switch (prop)
+                {
+                    case StrProperty strProp when looksLikeDisplayName:
+                        if (seen.Add(strProp.Value ?? string.Empty))
+                            yield return strProp.Value;
+                        break;
+
+                    case NameProperty nameProp when looksLikeDisplayName:
+                        if (seen.Add(nameProp.Value.Instanced ?? string.Empty))
+                            yield return nameProp.Value.Instanced;
+                        break;
+
+                    case StringRefProperty stringRefProp when looksLikeDisplayName || propName.Contains("strref", StringComparison.OrdinalIgnoreCase):
+                    {
+                        string resolved = ResolveDisplayNameStringRef(ee, stringRefProp.Value);
+                        if (seen.Add(resolved ?? string.Empty))
+                            yield return resolved;
+                        break;
+                    }
+
+                    case IntProperty intProp when propName.Contains("strref", StringComparison.OrdinalIgnoreCase):
+                    {
+                        string resolved = ResolveDisplayNameStringRef(ee, intProp.Value);
+                        if (seen.Add(resolved ?? string.Empty))
+                            yield return resolved;
+                        break;
+                    }
+
+                    case StructProperty structProp:
+                        foreach (string nested in EnumerateDisplayNameCandidates(ee, structProp.Properties, depth + 1, seen))
+                            yield return nested;
+                        break;
+
+                    case ArrayPropertyBase arrayProp:
+                        foreach (Property item in arrayProp.Properties)
+                        {
+                            if (item is StructProperty itemStruct)
+                            {
+                                foreach (string nested in EnumerateDisplayNameCandidates(ee, itemStruct.Properties, depth + 1, seen))
+                                    yield return nested;
+                            }
+                            else if (item is StrProperty itemStr && looksLikeDisplayName)
+                            {
+                                if (seen.Add(itemStr.Value ?? string.Empty))
+                                    yield return itemStr.Value;
+                            }
+                            else if (item is NameProperty itemName && looksLikeDisplayName)
+                            {
+                                if (seen.Add(itemName.Value.Instanced ?? string.Empty))
+                                    yield return itemName.Value.Instanced;
+                            }
+                            else if (item is StringRefProperty itemStringRef)
+                            {
+                                string resolved = ResolveDisplayNameStringRef(ee, itemStringRef.Value);
+                                if (seen.Add(resolved ?? string.Empty))
+                                    yield return resolved;
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+
+        private string ResolveDisplayNameStringRef(ExportEntry ee, int strRef)
+        {
+            if (strRef <= 0)
+                return null;
+
+            string resolved = TLKManagerWPF.GlobalFindStrRefbyID(strRef, ee.FileRef);
+            return resolved == "No Data" ? null : resolved;
+        }
+
+        private bool IsUsefulDisplayName(ExportEntry ee, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            string trimmed = value.Trim();
+            if (string.Equals(trimmed, ee.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (string.Equals(trimmed, ee.ClassName, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (trimmed.StartsWith("SFX", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("Bio", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("Default__", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public int UIndex => Entry?.UIndex ?? 0;
