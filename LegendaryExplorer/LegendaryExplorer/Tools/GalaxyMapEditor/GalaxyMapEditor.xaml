@@ -65,6 +65,8 @@
                 <MenuItem Header="File" Padding="4">
                     <MenuItem Header="Open" Command="{Binding OpenFileCommand}" InputGestureText="Ctrl+O"/>
                     <Separator/>
+                    <MenuItem x:Name="Recents_MenuItem" Header="Recent" IsEnabled="False"/>
+                    <Separator/>
                     <MenuItem Header="Save" Command="{Binding SaveFileCommand}" InputGestureText="Ctrl+S" IsEnabled="{Binding HasFileOpen}"/>
                     <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" IsEnabled="{Binding HasFileOpen}"/>
                 </MenuItem>
@@ -355,6 +357,7 @@
                         <LineBreak/><LineBreak/>
                         You can also drag and drop a package file onto this window.
                     </TextBlock>
+                    <sharedToolControls:RecentsControl x:Name="RecentsController" Margin="10,0,10,10"/>
                 </StackPanel>
             </Grid>
         </DockPanel>

@@ -2,11 +2,13 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -1184,7 +1186,7 @@ public sealed class GalaxyMapEditableExportOption(ExportEntry export, string dis
 /// Galaxy Map Editor - a visual editor for the galaxy map (SFXGalaxy) hierarchy.
 /// Allows navigating into clusters and solar systems and repositioning planets/stars/objects.
 /// </summary>
-public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable, IActorEditorContext
+public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable, IActorEditorContext, IRecents
 {
     public LevelEditorRenderContext RenderContext { get; }
     private readonly GalaxyMapIconOverlay _iconOverlay = new();
@@ -1556,8 +1558,16 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         LoadCommands();
         InitializeComponent();
+        RecentsController.InitRecentControl(Toolname, Recents_MenuItem, OpenRecentFile);
 
         SceneViewer.Context = RenderContext;
+    }
+
+    public string Toolname => "GalaxyMapEditor";
+
+    public void PropogateRecentsChange(string propogationToolSource, IEnumerable<RecentsControl.RecentItem> newRecents)
+    {
+        RecentsController.PropogateRecentsChange(false, newRecents);
     }
 
     private static System.Windows.Media.Color GetThemeDefaultBackgroundColor()
@@ -1614,6 +1624,11 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
     }
 
+    private async void OpenRecentFile(string path)
+    {
+        await LoadFileAsync(path);
+    }
+
     public async Task LoadFileAsync(string path)
     {
         try
@@ -1642,6 +1657,8 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             LoadGalaxyBackgroundPackage();
 
             HasFileOpen = true;
+            RecentsController.AddRecent(_filePath, false, Game);
+            RecentsController.SaveRecentList(true);
             NavigateToLevel(null); // show galaxy root level
             CenterView();
 
