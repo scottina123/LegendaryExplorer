@@ -276,6 +276,23 @@ public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
                 }
             }
         }
+        else if (meshExport.ClassName == "SkeletalMesh")
+        {
+            SkeletalMesh skeletalMesh = meshExport.GetBinaryData<SkeletalMesh>();
+            if (materialOverride is not null)
+            {
+                skeletalMesh.SetMaterials([materialOverride], true);
+            }
+
+            if (useLEShader)
+            {
+                _meshLE = new ModelPreview<LEVertex>(context, skeletalMesh);
+            }
+            else
+            {
+                _meshWorld = new ModelPreview<WorldVertex>(context, skeletalMesh);
+            }
+        }
         else if (meshExport.ClassName == "Model")
         {
             Mesh<LEVertex> mesh = BuildModelMesh(context, meshExport);
@@ -400,6 +417,11 @@ public sealed class GalaxyMapSharedStaticMeshProxy : PrimitiveComponentProxy
 public class GalaxyMapObjectProxy : ActorProxy
 {
     private const float PlanetCloudScale = 1.015f;
+    private static readonly Rotator RelayDisplayRotation = new(
+        (-39.990234f).DegreesToUnrealRotationUnits(),
+        (89.97f).DegreesToUnrealRotationUnits(),
+        (94.97681f).DegreesToUnrealRotationUnits());
+    private const float RelayDisplayScale = 0.1f;
 
     public GalaxyMapLevel MapLevel { get; }
     public List<GalaxyMapObjectProxy> MapChildren { get; } = [];
@@ -408,6 +430,9 @@ public class GalaxyMapObjectProxy : ActorProxy
     public ExportEntry PlanetMaterialExport { get; private set; }
     public ExportEntry CloudMaterialExport { get; private set; }
     public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
+    public bool IsMassRelay => GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXMassRelay", Export.Game)
+                               || GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXGalaxyMapMassRelay", Export.Game)
+                               || Export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase);
 
     private GalaxyMapSharedStaticMeshProxy _sharedPlanetMesh;
     private GalaxyMapSharedStaticMeshProxy _sharedPlanetCloudMesh;
@@ -501,10 +526,10 @@ public class GalaxyMapObjectProxy : ActorProxy
         bool usesDefaultPlanetSphere = sharedMeshName.Equals("Planet", StringComparison.OrdinalIgnoreCase);
 
         ExportEntry planetMeshExport = Export.FileRef.Exports.FirstOrDefault(e =>
-            (e.ClassName == "StaticMesh" || e.ClassName == "Model")
+            (e.ClassName == "StaticMesh" || e.ClassName == "SkeletalMesh" || e.ClassName == "Model")
             && e.ObjectName.Name.Equals(sharedMeshName, StringComparison.OrdinalIgnoreCase))
             ?? sharedMeshPackage.Exports.FirstOrDefault(e =>
-                (e.ClassName == "StaticMesh" || e.ClassName == "Model")
+                (e.ClassName == "StaticMesh" || e.ClassName == "SkeletalMesh" || e.ClassName == "Model")
                 && e.ObjectName.Name.Equals(sharedMeshName, StringComparison.OrdinalIgnoreCase));
         if (planetMeshExport is null)
             return;
@@ -512,6 +537,12 @@ public class GalaxyMapObjectProxy : ActorProxy
         _sharedPlanetMesh = new GalaxyMapSharedStaticMeshProxy(renderContext, planetMeshExport, this,
             usesDefaultPlanetSphere ? PlanetMaterialExport : null,
             useLEShader: usesDefaultPlanetSphere);
+        if (IsMassRelay)
+        {
+            _sharedPlanetMesh.Scale = RelayDisplayScale;
+            _sharedPlanetMesh.Scale3D = Vector3.One;
+            _sharedPlanetMesh.Rotation = RelayDisplayRotation;
+        }
         Components.Add(_sharedPlanetMesh);
 
         if (usesDefaultPlanetSphere && CloudMaterialExport is not null)
@@ -537,6 +568,13 @@ public class GalaxyMapObjectProxy : ActorProxy
 
     private string GetSharedPlanetMeshName()
     {
+        if (GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXMassRelay", Export.Game)
+            || GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXGalaxyMapMassRelay", Export.Game)
+            || Export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Mass_Relay_GM_MDL";
+        }
+
         return Properties.GetProp<StrProperty>("MapName")?.Value is "BioP_CitHub"
             ? "Model_Oculon"
             : "Planet";
