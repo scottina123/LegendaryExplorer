@@ -259,8 +259,8 @@ public class MeshRenderContext : RenderContext
 
                 foreach (ref readonly var label in CollectionsMarshal.AsSpan(ScreenLabels))
                 {
-                    const float labelW = 20;
-                    const float labelH = 12;
+                    float labelW = MathF.Max(20f, (label.Text?.Length ?? 0) * 6.5f + 10f);
+                    const float labelH = 14f;
                     var rect = new RawRectangleF(label.X - labelW * 0.5f, label.Y - labelH * 0.5f,
                                                  label.X + labelW * 0.5f, label.Y + labelH * 0.5f);
                     RenderTarget2D.FillRectangle(rect, labelBackgroundBrush);

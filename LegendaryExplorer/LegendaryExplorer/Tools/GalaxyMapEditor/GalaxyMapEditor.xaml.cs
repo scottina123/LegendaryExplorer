@@ -133,7 +133,7 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
         // Add text label below the icon
         if (actor is GalaxyMapObjectProxy gmoLabel)
         {
-            context.ScreenLabels.Add(new ScreenLabel(pixel.X, pixel.Y + 16f, gmoLabel.Export.ObjectName.Instanced));
+            context.ScreenLabels.Add(new ScreenLabel(pixel.X, pixel.Y + 16f, gmoLabel.PreferredDisplayName));
         }
 
         // Draw rays for suns
@@ -437,6 +437,7 @@ public class GalaxyMapObjectProxy : ActorProxy
     public ExportEntry CloudMaterialExport { get; private set; }
     public string ListDisplaySubtitle { get; }
     public bool HasListDisplaySubtitle => !string.IsNullOrWhiteSpace(ListDisplaySubtitle);
+    public string PreferredDisplayName => HasListDisplaySubtitle ? ListDisplaySubtitle : Export.ObjectName.Instanced;
     public bool HasSharedPlanetMesh => _sharedPlanetMesh is not null;
     public bool IsMassRelay => GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXMassRelay", Export.Game)
                                || GlobalUnrealObjectInfo.IsA(Export.ClassName, "SFXGalaxyMapMassRelay", Export.Game)
@@ -490,12 +491,28 @@ public class GalaxyMapObjectProxy : ActorProxy
         if (!string.IsNullOrWhiteSpace(subtitle))
             return subtitle;
 
+        // Fallback: scan the full property tree for any likely display-name fields
+        subtitle = ResolveSubtitleFromPropertyTree(Properties);
+        if (!string.IsNullOrWhiteSpace(subtitle))
+            return subtitle;
+
+        if (Properties.GetProp<ObjectProperty>("Appearance")?.ResolveToExport(Export.FileRef, null) is ExportEntry appearanceFromProp)
+        {
+            subtitle = ResolveSubtitleFromPropertyTree(appearanceFromProp.GetProperties());
+            if (!string.IsNullOrWhiteSpace(subtitle))
+                return subtitle;
+        }
+
         if (MapLevel == GalaxyMapLevel.Planet)
         {
             ExportEntry appearanceExport = ResolvePlanetAppearanceExport(null);
             if (appearanceExport is not null)
             {
                 subtitle = ResolveSubtitleFromProperties(appearanceExport.GetProperties(), candidateNames);
+                if (!string.IsNullOrWhiteSpace(subtitle))
+                    return subtitle;
+
+                subtitle = ResolveSubtitleFromPropertyTree(appearanceExport.GetProperties());
                 if (!string.IsNullOrWhiteSpace(subtitle))
                     return subtitle;
             }
@@ -512,15 +529,13 @@ public class GalaxyMapObjectProxy : ActorProxy
         foreach (string propName in propertyNames)
         {
             string strValue = props.GetProp<StrProperty>(propName)?.Value;
-            if (!string.IsNullOrWhiteSpace(strValue)
-                && !string.Equals(strValue, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            if (IsUsefulDisplayName(strValue))
             {
                 return strValue.Trim();
             }
 
             string nameValue = props.GetProp<NameProperty>(propName)?.Value.Instanced;
-            if (!string.IsNullOrWhiteSpace(nameValue)
-                && !string.Equals(nameValue, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            if (IsUsefulDisplayName(nameValue))
             {
                 return nameValue.Trim();
             }
@@ -532,14 +547,126 @@ public class GalaxyMapObjectProxy : ActorProxy
                 continue;
 
             string resolved = TLKManagerWPF.GlobalFindStrRefbyID(strRef, Export.FileRef);
-            if (!string.IsNullOrWhiteSpace(resolved)
-                && !string.Equals(resolved, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            if (IsUsefulDisplayName(resolved))
             {
                 return resolved.Trim();
             }
         }
 
         return null;
+    }
+
+    private string ResolveSubtitleFromPropertyTree(PropertyCollection props)
+    {
+        if (props is null)
+            return null;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string candidate in EnumerateDisplayNameCandidates(props, 0, seen))
+        {
+            if (IsUsefulDisplayName(candidate))
+                return candidate.Trim();
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> EnumerateDisplayNameCandidates(PropertyCollection props, int depth, HashSet<string> seen)
+    {
+        if (props is null || depth > 4)
+            yield break;
+
+        foreach (Property prop in props)
+        {
+            string propName = prop.Name.Instanced;
+            bool looksLikeDisplayName = propName.Contains("name", StringComparison.OrdinalIgnoreCase)
+                                        || propName.Contains("display", StringComparison.OrdinalIgnoreCase)
+                                        || propName.Contains("title", StringComparison.OrdinalIgnoreCase)
+                                        || propName.Contains("label", StringComparison.OrdinalIgnoreCase);
+
+            switch (prop)
+            {
+                case StrProperty strProp when looksLikeDisplayName:
+                    if (seen.Add(strProp.Value ?? string.Empty))
+                        yield return strProp.Value;
+                    break;
+
+                case NameProperty nameProp when looksLikeDisplayName:
+                    if (seen.Add(nameProp.Value.Instanced ?? string.Empty))
+                        yield return nameProp.Value.Instanced;
+                    break;
+
+                case StringRefProperty stringRefProp when looksLikeDisplayName || propName.Contains("strref", StringComparison.OrdinalIgnoreCase):
+                {
+                    string resolved = TLKManagerWPF.GlobalFindStrRefbyID(stringRefProp.Value, Export.FileRef);
+                    if (seen.Add(resolved ?? string.Empty))
+                        yield return resolved;
+                    break;
+                }
+
+                case IntProperty intProp when propName.Contains("strref", StringComparison.OrdinalIgnoreCase):
+                {
+                    string resolved = TLKManagerWPF.GlobalFindStrRefbyID(intProp.Value, Export.FileRef);
+                    if (seen.Add(resolved ?? string.Empty))
+                        yield return resolved;
+                    break;
+                }
+
+                case StructProperty structProp:
+                    foreach (string nested in EnumerateDisplayNameCandidates(structProp.Properties, depth + 1, seen))
+                        yield return nested;
+                    break;
+
+                case ArrayPropertyBase arrayProp:
+                    foreach (Property item in arrayProp.Properties)
+                    {
+                        if (item is StructProperty itemStruct)
+                        {
+                            foreach (string nested in EnumerateDisplayNameCandidates(itemStruct.Properties, depth + 1, seen))
+                                yield return nested;
+                        }
+                        else if (item is StrProperty itemStr && looksLikeDisplayName)
+                        {
+                            if (seen.Add(itemStr.Value ?? string.Empty))
+                                yield return itemStr.Value;
+                        }
+                        else if (item is NameProperty itemName && looksLikeDisplayName)
+                        {
+                            if (seen.Add(itemName.Value.Instanced ?? string.Empty))
+                                yield return itemName.Value.Instanced;
+                        }
+                        else if (item is StringRefProperty itemStringRef)
+                        {
+                            string resolved = TLKManagerWPF.GlobalFindStrRefbyID(itemStringRef.Value, Export.FileRef);
+                            if (seen.Add(resolved ?? string.Empty))
+                                yield return resolved;
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private bool IsUsefulDisplayName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string trimmed = value.Trim();
+        if (string.Equals(trimmed, Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(trimmed, Export.ClassName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (trimmed.StartsWith("SFX", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("Bio", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("Default__", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private void LoadMeshComponents(LevelEditorRenderContext renderContext)
