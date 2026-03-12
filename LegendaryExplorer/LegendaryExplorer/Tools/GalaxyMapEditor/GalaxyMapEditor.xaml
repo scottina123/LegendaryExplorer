@@ -88,21 +88,21 @@
                     <Button Content="⬆ Navigate Up" ToolTip="Go back to parent level (Backspace)" Command="{Binding NavigateUpCommand}"/>
                     <TextBlock Text="{Binding BreadcrumbText}" VerticalAlignment="Center" Margin="8,0" FontWeight="Bold"
                                Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"/>
-                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                    <RadioButton GroupName="WidgetMode" ToolTip="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True">
+                    <Separator Visibility="Collapsed" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <RadioButton Visibility="Collapsed" GroupName="WidgetMode" ToolTip="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True">
                         Translate
                     </RadioButton>
-                    <RadioButton GroupName="WidgetMode" ToolTip="Rotate" Command="{Binding ToggleRotateCommand}">
+                    <RadioButton Visibility="Collapsed" GroupName="WidgetMode" ToolTip="Rotate" Command="{Binding ToggleRotateCommand}">
                         Rotate
                     </RadioButton>
-                    <RadioButton GroupName="WidgetMode" ToolTip="Scale" Command="{Binding ToggleScaleCommand}">
+                    <RadioButton Visibility="Collapsed" GroupName="WidgetMode" ToolTip="Scale" Command="{Binding ToggleScaleCommand}">
                         Scale
                     </RadioButton>
-                    <RadioButton GroupName="WidgetMode" ToolTip="Uniform Scale" Command="{Binding ToggleUniformScaleCommand}">
+                    <RadioButton Visibility="Collapsed" GroupName="WidgetMode" ToolTip="Uniform Scale" Command="{Binding ToggleUniformScaleCommand}">
                         Uniform Scale
                     </RadioButton>
-                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
-                    <ToggleButton Content="Local Coords" ToolTip="Use local coordinates for the transform widget" IsChecked="{Binding UseLocalCoordsForWidget}"/>
+                    <Separator Visibility="Collapsed" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <ToggleButton Visibility="Collapsed" Content="Local Coords" ToolTip="Use local coordinates for the transform widget" IsChecked="{Binding UseLocalCoordsForWidget}"/>
                 </ToolBar>
             </WrapPanel>
 
