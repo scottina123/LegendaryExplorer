@@ -12,6 +12,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -1501,6 +1502,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     public ICommand ToggleUniformScaleCommand { get; set; }
     public ICommand ToggleLocalCoordsCommand { get; set; }
     public ICommand OpenInPackageEditorCommand { get; set; }
+    public ICommand CloneObjectCommand { get; set; }
+    public ICommand DeleteObjectCommand { get; set; }
+    public ICommand EditReferencesCommand { get; set; }
 
     private void LoadCommands()
     {
@@ -1534,6 +1538,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
                 p.Activate();
             }
         }, () => SelectedObject is not null);
+        CloneObjectCommand = new GenericCommand(CloneSelectedObject, () => SelectedObject is not null && HasFileOpen);
+        DeleteObjectCommand = new GenericCommand(DeleteSelectedObject, () => SelectedObject is not null && HasFileOpen);
+        EditReferencesCommand = new GenericCommand(OpenReferenceEditor, () => SelectedObject is not null && HasFileOpen);
     }
 
     #endregion
@@ -1566,6 +1573,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     {
         RenderContext.RenderScene += RenderScene;
         RenderContext.SelectActor += ViewportActorSelect;
+        RenderContext.RightClickActor += ViewportActorRightClick;
     }
 
     private void GalaxyMapEditor_Closing(object sender, CancelEventArgs e)
@@ -1588,6 +1596,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectActor -= ViewportActorSelect;
+        RenderContext.RightClickActor -= ViewportActorRightClick;
 
         SceneViewer.Dispose();
     }
@@ -2217,6 +2226,58 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
     }
 
+    private void ViewportActorRightClick(ActorProxy actor)
+    {
+        if (actor is not GalaxyMapObjectProxy gmObj) return;
+
+        SelectObject(gmObj, false);
+
+        var menu = new System.Windows.Controls.ContextMenu();
+
+        var focusItem = new System.Windows.Controls.MenuItem { Header = "Focus Camera" };
+        focusItem.Click += (_, _) => FocusOnBounds(gmObj.GetBounds());
+        menu.Items.Add(focusItem);
+
+        if (gmObj.CanNavigateInto && gmObj.MapChildren.Count > 0)
+        {
+            var navigateItem = new System.Windows.Controls.MenuItem { Header = "Navigate Into" };
+            navigateItem.Click += (_, _) => NavigateInto(gmObj);
+            menu.Items.Add(navigateItem);
+        }
+
+        menu.Items.Add(new System.Windows.Controls.Separator());
+
+        var openPeItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
+        openPeItem.Click += (_, _) =>
+        {
+            var p = new PackageEditorWindow();
+            p.Show();
+            p.LoadFile(gmObj.Export.FileRef.FilePath, gmObj.Export.UIndex);
+            p.Activate();
+        };
+        menu.Items.Add(openPeItem);
+
+        menu.Items.Add(new System.Windows.Controls.Separator());
+
+        var cloneItem = new System.Windows.Controls.MenuItem { Header = "Clone Object" };
+        cloneItem.Click += (_, _) => CloneSelectedObject();
+        menu.Items.Add(cloneItem);
+
+        var deleteItem = new System.Windows.Controls.MenuItem { Header = "Delete Object" };
+        deleteItem.Click += (_, _) => DeleteSelectedObject();
+        menu.Items.Add(deleteItem);
+
+        menu.Items.Add(new System.Windows.Controls.Separator());
+
+        var refsItem = new System.Windows.Controls.MenuItem { Header = "Edit Associated References..." };
+        refsItem.Click += (_, _) => OpenReferenceEditor();
+        menu.Items.Add(refsItem);
+
+        menu.PlacementTarget = SceneViewer;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        menu.IsOpen = true;
+    }
+
     private void ViewportActorSelect(ActorProxy actor)
     {
         if (actor is GalaxyMapObjectProxy gmObj)
@@ -2448,6 +2509,153 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     #endregion
 
+    #region Object operations
+
+    private void CloneSelectedObject()
+    {
+        if (SelectedObject is null || !HasFileOpen) return;
+
+        ExportEntry clonedExport = EntryCloner.CloneTree(SelectedObject.Export);
+        var mapLevel = GalaxyMapObjectProxy.ClassifyExport(clonedExport);
+        var newProxy = new GalaxyMapObjectProxy(this, clonedExport, mapLevel);
+
+        // Offset position slightly so the clone doesn't overlap the original
+        newProxy.Location = newProxy.Location + new Vector3(50f, 0f, 0f);
+
+        _allObjects.Add(newProxy);
+
+        GalaxyMapObjectProxy parent = SelectedObject.MapParent;
+        if (parent is not null)
+        {
+            newProxy.MapParent = parent;
+            parent.MapChildren.Add(newProxy);
+            string propName = FindParentChildArrayName(parent, SelectedObject);
+            AddReferenceToArray(parent.Export, propName, clonedExport.UIndex);
+        }
+
+        // Add to the current view if the original is currently displayed
+        if (CurrentObjects.Contains(SelectedObject))
+        {
+            LoadSharedPlanetMeshes([newProxy]);
+            CurrentObjects.Add(newProxy);
+            RenderContext.AddActor(newProxy);
+            if (!RenderContext.DrawList_UI.Contains(_iconOverlay))
+                RenderContext.DrawList_UI.Add(_iconOverlay);
+        }
+
+        IsDirty = true;
+        SelectedObject = newProxy;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void DeleteSelectedObject()
+    {
+        if (SelectedObject is null || !HasFileOpen) return;
+
+        GalaxyMapObjectProxy objToDelete = SelectedObject;
+        var result = MessageBox.Show(this,
+            $"Delete [{objToDelete.Export.UIndex}] {objToDelete.Export.ObjectName.Instanced}?\n\nThis will trash the export and all its descendants. This cannot be undone.",
+            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
+        ExportEntry exportToDelete = objToDelete.Export;
+
+        // If we're inside a level rooted on the object being deleted, pop back to safety
+        if (_navigationStack.Contains(objToDelete))
+        {
+            _navigationStack.Clear();
+            SelectedObject = null;
+            NavigateToLevel(null);
+            CenterView();
+        }
+        else
+        {
+            SelectedObject = null;
+        }
+
+        // Remove from parent hierarchy and parent's reference array
+        GalaxyMapObjectProxy parent = objToDelete.MapParent;
+        if (parent is not null)
+        {
+            string propName = FindParentChildArrayName(parent, objToDelete);
+            RemoveReferenceFromArray(parent.Export, propName, exportToDelete.UIndex);
+            parent.MapChildren.Remove(objToDelete);
+        }
+
+        _allObjects.Remove(objToDelete);
+        CurrentObjects.Remove(objToDelete);
+        RenderContext.RemoveActor(objToDelete);
+        objToDelete.Dispose();
+
+        EntryPruner.TrashEntryAndDescendants(exportToDelete);
+
+        IsDirty = true;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void OpenReferenceEditor()
+    {
+        if (SelectedObject is null) return;
+        var dialog = new GalaxyMapReferenceEditorDialog(this, SelectedObject.Export, _allObjects);
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Returns the property name on <paramref name="parent"/> whose array contains <paramref name="child"/>.
+    /// Falls back to the first candidate if no match is found.
+    /// </summary>
+    private static string FindParentChildArrayName(GalaxyMapObjectProxy parent, GalaxyMapObjectProxy child)
+    {
+        string[] candidates = child.MapLevel switch
+        {
+            GalaxyMapLevel.Cluster => ["Clusters", "Children"],
+            GalaxyMapLevel.System  => ["Systems",  "Children"],
+            GalaxyMapLevel.Planet  => ["Children", "SystemObjects", "Planets"],
+            _                      => ["Children"]
+        };
+        var props = parent.Export.GetProperties();
+        foreach (string candidate in candidates)
+        {
+            if (props.GetProp<ArrayProperty<ObjectProperty>>(candidate) is { } arr
+                && arr.Any(o => o.Value == child.Export.UIndex))
+                return candidate;
+        }
+        return candidates[0];
+    }
+
+    private static void AddReferenceToArray(ExportEntry owner, string propName, int uIndex)
+    {
+        var props = owner.GetProperties();
+        var arr = props.GetProp<ArrayProperty<ObjectProperty>>(propName);
+        if (arr is null)
+        {
+            arr = new ArrayProperty<ObjectProperty>(propName);
+            props.AddOrReplaceProp(arr);
+        }
+        if (!arr.Any(o => o.Value == uIndex))
+        {
+            arr.Add(new ObjectProperty(uIndex));
+            owner.WriteProperties(props);
+        }
+    }
+
+    private static void RemoveReferenceFromArray(ExportEntry owner, string propName, int uIndex)
+    {
+        var props = owner.GetProperties();
+        if (props.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } arr)
+        {
+            arr.RemoveAll(o => o.Value == uIndex);
+            owner.WriteProperties(props);
+        }
+        else if (props.GetProp<ObjectProperty>(propName) is { } op && op.Value == uIndex)
+        {
+            props.RemoveNamedProperty(propName);
+            owner.WriteProperties(props);
+        }
+    }
+
+    #endregion
+
     public override void HandleUpdate(List<PackageUpdate> updates)
     {
         if (!HasFileOpen || updates is null || updates.Count == 0)
@@ -2500,5 +2708,179 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
             SetBusy("Saving");
         else
             EndBusy();
+    }
+}
+
+/// <summary>
+/// Code-only dialog that shows which galaxy map exports reference a given export
+/// (via ObjectProperty or ArrayProperty&lt;ObjectProperty&gt;) and lets the user
+/// add or remove those references.
+/// </summary>
+internal sealed class GalaxyMapReferenceEditorDialog : Window
+{
+    private sealed record ReferenceItem(ExportEntry Owner, string PropName)
+    {
+        public string DisplayText =>
+            $"[{Owner.UIndex}] {Owner.ObjectName.Instanced} ({Owner.ClassName})  ←  '{PropName}'";
+    }
+
+    private sealed record OwnerOption(ExportEntry Export)
+    {
+        public string Display => $"[{Export.UIndex}] {Export.ObjectName.Instanced} ({Export.ClassName})";
+    }
+
+    private readonly ExportEntry _target;
+    private readonly List<GalaxyMapObjectProxy> _allObjects;
+    private readonly ObservableCollectionExtended<ReferenceItem> _items = new();
+    private ListBox _listBox;
+    private ComboBox _ownerCombo;
+    private TextBox _propBox;
+
+    public GalaxyMapReferenceEditorDialog(Window owner, ExportEntry target, List<GalaxyMapObjectProxy> allObjects)
+    {
+        _target = target;
+        _allObjects = allObjects;
+        Owner = owner;
+        Title = $"References — [{target.UIndex}] {target.ObjectName.Instanced}";
+        Width = 680;
+        Height = 440;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
+        Content = BuildUI();
+        Refresh();
+    }
+
+    private FrameworkElement BuildUI()
+    {
+        _listBox = new ListBox
+        {
+            ItemsSource = _items,
+            Margin = new Thickness(5, 5, 5, 0),
+            DisplayMemberPath = nameof(ReferenceItem.DisplayText)
+        };
+
+        var removeBtn = new Button
+        {
+            Content = "Remove Selected Reference",
+            Margin = new Thickness(5, 4, 5, 4),
+            Padding = new Thickness(8, 2, 8, 2),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        removeBtn.Click += (_, _) =>
+        {
+            if (_listBox.SelectedItem is ReferenceItem item)
+            {
+                RemoveReference(item.Owner, item.PropName);
+                Refresh();
+            }
+        };
+
+        GalaxyMapObjectProxy targetProxy = _allObjects.FirstOrDefault(o => o.Export == _target);
+        string defaultProp = targetProxy?.MapLevel switch
+        {
+            GalaxyMapLevel.Cluster => "Clusters",
+            GalaxyMapLevel.System  => "Systems",
+            _                      => "Children"
+        };
+
+        _ownerCombo = new ComboBox
+        {
+            ItemsSource = _allObjects
+                .Where(o => o.Export != _target)
+                .Select(o => new OwnerOption(o.Export))
+                .ToList(),
+            DisplayMemberPath = nameof(OwnerOption.Display),
+            Width = 240,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+
+        _propBox = new TextBox
+        {
+            Text = defaultProp,
+            Width = 100,
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+
+        var addBtn = new Button { Content = "Add Reference", Padding = new Thickness(10, 2, 10, 2) };
+        addBtn.Click += (_, _) =>
+        {
+            if (_ownerCombo.SelectedItem is OwnerOption opt && !string.IsNullOrWhiteSpace(_propBox.Text))
+            {
+                AddReference(opt.Export, _propBox.Text.Trim());
+                Refresh();
+            }
+        };
+
+        var addRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(3) };
+        addRow.Children.Add(new TextBlock { Text = "Owner:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
+        addRow.Children.Add(_ownerCombo);
+        addRow.Children.Add(new TextBlock { Text = "Property:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
+        addRow.Children.Add(_propBox);
+        addRow.Children.Add(addBtn);
+
+        var addGroup = new GroupBox
+        {
+            Header = "Add Reference",
+            Margin = new Thickness(5, 0, 5, 5),
+            Padding = new Thickness(3),
+            Content = addRow
+        };
+
+        var root = new DockPanel();
+        DockPanel.SetDock(addGroup, Dock.Bottom);
+        DockPanel.SetDock(removeBtn, Dock.Bottom);
+        root.Children.Add(addGroup);
+        root.Children.Add(removeBtn);
+        root.Children.Add(_listBox);
+        return root;
+    }
+
+    private void Refresh()
+    {
+        _items.Clear();
+        int uIndex = _target.UIndex;
+        foreach (GalaxyMapObjectProxy obj in _allObjects)
+        {
+            if (obj.Export == _target) continue;
+            foreach (Property prop in obj.Export.GetProperties())
+            {
+                if (prop is ObjectProperty op && op.Value == uIndex)
+                    _items.Add(new ReferenceItem(obj.Export, prop.Name.Instanced));
+                else if (prop is ArrayProperty<ObjectProperty> ap && ap.Any(o => o.Value == uIndex))
+                    _items.Add(new ReferenceItem(obj.Export, prop.Name.Instanced));
+            }
+        }
+    }
+
+    private void RemoveReference(ExportEntry owner, string propName)
+    {
+        var props = owner.GetProperties();
+        if (props.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } arr)
+        {
+            arr.RemoveAll(o => o.Value == _target.UIndex);
+            owner.WriteProperties(props);
+        }
+        else if (props.GetProp<ObjectProperty>(propName) is { } op && op.Value == _target.UIndex)
+        {
+            props.RemoveNamedProperty(propName);
+            owner.WriteProperties(props);
+        }
+    }
+
+    private void AddReference(ExportEntry owner, string propName)
+    {
+        var props = owner.GetProperties();
+        var arr = props.GetProp<ArrayProperty<ObjectProperty>>(propName);
+        if (arr is null)
+        {
+            arr = new ArrayProperty<ObjectProperty>(propName);
+            props.AddOrReplaceProp(arr);
+        }
+        if (!arr.Any(o => o.Value == _target.UIndex))
+        {
+            arr.Add(new ObjectProperty(_target.UIndex));
+            owner.WriteProperties(props);
+        }
     }
 }

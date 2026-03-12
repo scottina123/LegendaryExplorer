@@ -188,6 +188,11 @@
                                 <MenuItem Header="Navigate Into" Command="{Binding Data.NavigateIntoCommand, Source={StaticResource bindingProxy}}" InputGestureText="Enter"/>
                                 <Separator/>
                                 <MenuItem Header="Open in Package Editor" Command="{Binding Data.OpenInPackageEditorCommand, Source={StaticResource bindingProxy}}"/>
+                                <Separator/>
+                                <MenuItem Header="Clone Object" Command="{Binding Data.CloneObjectCommand, Source={StaticResource bindingProxy}}"/>
+                                <MenuItem Header="Delete Object" Command="{Binding Data.DeleteObjectCommand, Source={StaticResource bindingProxy}}"/>
+                                <Separator/>
+                                <MenuItem Header="Edit Associated References..." Command="{Binding Data.EditReferencesCommand, Source={StaticResource bindingProxy}}"/>
                             </ContextMenu>
                             <Style TargetType="{x:Type ListBoxItem}">
                                 <Setter Property="ContextMenu" Value="{StaticResource ObjectContextMenu}"/>
