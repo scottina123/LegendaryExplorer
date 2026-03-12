@@ -108,6 +108,14 @@ public sealed class GalaxyMapIconOverlay : LevelEditor.UIElement
             else if (gmo.MapLevel == GalaxyMapLevel.Planet
                      && gmo.HasSharedPlanetMesh)
             {
+                // Shared mesh planets can be difficult to hit-test directly due to mesh/texture setup.
+                // Draw a very faint billboard disk to provide a reliable selection target.
+                DrawDisk(context, center, right, up, OuterRadius, OutlineColor with { W = 0.03f }, hitId);
+                DrawDisk(context, center, right, up, InnerRadius, fillColor with { W = 0.02f }, hitId);
+                if (isSelected)
+                {
+                    DrawDisk(context, center, right, up, OuterRadius + 2f, SelectedHighlight with { W = 0.75f }, hitId);
+                }
             }
             else if (gmo.MapLevel == GalaxyMapLevel.Planet
                      && gmo.PlanetSurfaceTexture is not null)
