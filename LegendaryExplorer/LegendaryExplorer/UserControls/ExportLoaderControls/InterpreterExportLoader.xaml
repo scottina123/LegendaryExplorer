@@ -168,6 +168,9 @@
                                          FontFamily="Consolas" SelectedItemChanged="Interpreter_TreeViewSelectedItemChanged" 
                                          ItemsSource="{Binding PropertyNodes, Mode=OneTime}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" 
                                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                <b:Interaction.Behaviors>
+                    <peregrineTreeView:TreeSelectionBehavior SelectedItem="{Binding SelectedItem, Mode=TwoWay}" />
+                </b:Interaction.Behaviors>
                 <controls:StretchingTreeView.Resources>
                     <HierarchicalDataTemplate DataType="{x:Type global:UPropertyTreeViewEntry}" ItemsSource="{Binding ChildrenProperties, Mode=OneTime}">
                         <Border x:Name="PropertyItem_Container" Margin="1" Padding="{Binding Path=(SharedUI:TouchComfySettings.InterpreterWPFNodeMargin)}">
@@ -309,7 +312,7 @@
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
                       Color="White" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
-                      Color="#505050" />
+                      Color="#004080" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
                       Color="White" />
                 </controls:StretchingTreeView.Resources>
@@ -369,9 +372,6 @@
                         <MenuItem Header="Remove property" ToolTip="Remove this property from this export" Command="{Binding RemovePropertyCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                     </ContextMenu>
                 </controls:StretchingTreeView.ContextMenu>
-                <b:Interaction.Behaviors>
-                    <peregrineTreeView:TreeViewHelper BoundSelectedItem="{Binding SelectedItem}" />
-                </b:Interaction.Behaviors>
             </controls:StretchingTreeView>
         </Grid>
     </DockPanel>

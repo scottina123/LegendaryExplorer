@@ -135,6 +135,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         //when the class matches.
 
         int RescanSelectionOffset;
+        private HashSet<string> ExpandedNodePaths = [];
+        private string SelectedNodePath;
         private readonly List<FrameworkElement> EditorSetElements = [];
 
         private HexBox Interpreter_Hexbox;
@@ -224,7 +226,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        public UPropertyTreeViewEntry SelectedItem { get; set; }
+        private UPropertyTreeViewEntry _selectedItem;
+        public UPropertyTreeViewEntry SelectedItem
+        {
+            get => _selectedItem;
+            set => SetProperty(ref _selectedItem, value);
+        }
 
         #region Commands
         public ICommand RemovePropertyCommand { get; set; }
@@ -850,6 +857,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             CurrentLoadedExport = null;
             OverrideLoadedProperties = null;
+            ExpandedNodePaths.Clear();
+            SelectedNodePath = null;
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
@@ -880,9 +889,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
             HasUnsavedChanges = false;
             Interpreter_Hexbox.UnhighlightAll();
+            bool isSameExportReload = CurrentLoadedExport != null && export.FileRef == Pcc && export.UIndex == CurrentLoadedExport.UIndex;
+            ExpandedNodePaths = isSameExportReload ? CaptureExpandedNodePaths() : [];
+            SelectedNodePath = isSameExportReload ? CaptureSelectedNodePath() : null;
             //set rescan offset
             //TODO: Make this more reliable because it is recycling virtualization
-            if (CurrentLoadedExport != null && export.FileRef == Pcc && export.UIndex == CurrentLoadedExport.UIndex)
+            if (isSameExportReload)
             {
                 if (SelectedItem is { Property: not null } tvi)
                 {
@@ -951,6 +963,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
                     }
+                    RestoreExpandedNodePaths(topLevelTree);
                 }
                 catch (Exception ex)
                 {
@@ -963,7 +976,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 if (RescanSelectionOffset != 0)
                 {
-                    UPropertyTreeViewEntry itemToSelect = topLevelTree.FlattenTree().LastOrDefault(x => x.Property != null && x.Property.StartOffset == RescanSelectionOffset);
+                    UPropertyTreeViewEntry itemToSelect = FindNodeByPath(topLevelTree, SelectedNodePath)
+                        ?? topLevelTree.FlattenTree().LastOrDefault(x => x.Property != null && x.Property.StartOffset == RescanSelectionOffset);
                     if (itemToSelect != null)
                     {
                         UPropertyTreeViewEntry cachedSelectedItem = itemToSelect;
@@ -980,7 +994,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             if (itemToSelect.ChildrenProperties.LastOrDefault() is UPropertyTreeViewEntry u)
                             {
                                 u.ExpandParents();
-                                u.IsSelected = true;
+                                SelectedItem = u;
                                 return;
                             }
                         }
@@ -988,11 +1002,75 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         //due to tree view virtualization
 
                         cachedSelectedItem.ExpandParents();
-                        cachedSelectedItem.IsSelected = true;
+                        cachedSelectedItem.IsExpanded |= ExpandedNodePaths.Contains(GetNodePath(cachedSelectedItem));
+                        SelectedItem = cachedSelectedItem;
                     }
                     RescanSelectionOffset = 0;
+                    SelectedNodePath = null;
                 }
             }
+        }
+
+        private HashSet<string> CaptureExpandedNodePaths()
+        {
+            if (PropertyNodes.Count == 0)
+                return [];
+
+            return [.. PropertyNodes
+                .SelectMany(node => node.FlattenTree())
+                .Where(node => node.IsExpanded)
+                .Select(GetNodePath)];
+        }
+
+        private string CaptureSelectedNodePath()
+        {
+            return SelectedItem is { } selectedItem ? GetNodePath(selectedItem) : null;
+        }
+
+        private void RestoreExpandedNodePaths(UPropertyTreeViewEntry root)
+        {
+            if (ExpandedNodePaths.Count == 0)
+                return;
+
+            foreach (UPropertyTreeViewEntry node in root.FlattenTree())
+            {
+                if (ExpandedNodePaths.Contains(GetNodePath(node)))
+                {
+                    node.IsExpanded = true;
+                }
+            }
+        }
+
+        private static string GetNodePath(UPropertyTreeViewEntry node)
+        {
+            var segments = new Stack<int>();
+            for (UPropertyTreeViewEntry current = node; current.UPParent is not null; current = current.UPParent)
+            {
+                segments.Push(current.UPParent.ChildrenProperties.IndexOf(current));
+            }
+
+            return string.Join('.', segments);
+        }
+
+        private static UPropertyTreeViewEntry FindNodeByPath(UPropertyTreeViewEntry root, string nodePath)
+        {
+            if (string.IsNullOrWhiteSpace(nodePath))
+                return null;
+
+            UPropertyTreeViewEntry current = root;
+            foreach (string segment in nodePath.Split('.'))
+            {
+                if (!int.TryParse(segment, out int index)
+                    || index < 0
+                    || index >= current.ChildrenProperties.Count)
+                {
+                    return null;
+                }
+
+                current = current.ChildrenProperties[index];
+            }
+
+            return current;
         }
 
         #region Static tree generating code (shared with BinaryInterpreterExportLoader)
@@ -1942,6 +2020,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             // From https://www.codeproject.com/Tips/208896/WPF-TreeView-SelectedItemChanged-called-twice
             Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(e.NewValue as UPropertyTreeViewEntry)));
             UPropertyTreeViewEntry newSelectedItem = (UPropertyTreeViewEntry)e.NewValue;
+            SelectedItem = newSelectedItem;
             //list of visible elements for editing
             var SupportedEditorSetElements = new List<FrameworkElement>();
             if (newSelectedItem?.Property != null)

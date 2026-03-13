@@ -797,6 +797,27 @@ public class GalaxyMapObjectProxy : ActorProxy
         PlanetSurfaceTexture = LoadMaterialTexture(renderContext, planetMaterial, preferCloudTexture: false);
     }
 
+    public void EnsureRenderResources(LevelEditorRenderContext renderContext, IMEPackage sharedMeshPackage)
+    {
+        if (!isDisposed && Components.Count > 0)
+            return;
+
+        isDisposed = false;
+        Components.Clear();
+        _sharedPlanetMesh = null;
+        _sharedPlanetCloudMesh = null;
+        _sharedPlanetRingMesh = null;
+
+        LoadMeshComponents(renderContext);
+        LoadPlanetTextures(renderContext);
+        if (MapLevel == GalaxyMapLevel.Planet)
+        {
+            LoadSharedPlanetMeshes(renderContext, sharedMeshPackage);
+        }
+
+        UpdateLocalToWorld();
+    }
+
     public void LoadSharedPlanetMeshes(LevelEditorRenderContext renderContext, IMEPackage sharedMeshPackage)
     {
         if (MapLevel != GalaxyMapLevel.Planet)
@@ -1775,12 +1796,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void LoadSharedPlanetMeshes(IEnumerable<GalaxyMapObjectProxy> objects)
     {
-        if (_galaxyBgPackage is null)
-            return;
-
-        foreach (GalaxyMapObjectProxy planet in objects.Where(o => o.MapLevel == GalaxyMapLevel.Planet))
+        foreach (GalaxyMapObjectProxy planet in objects)
         {
-            planet.LoadSharedPlanetMeshes(RenderContext, _galaxyBgPackage);
+            planet.EnsureRenderResources(RenderContext, _galaxyBgPackage);
         }
     }
 
