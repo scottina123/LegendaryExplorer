@@ -1246,6 +1246,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     #region Galaxy map data
 
     private List<GalaxyMapObjectProxy> _allObjects = [];
+    private readonly List<GalaxyMapObjectProxy> _currentLevelObjects = [];
     private GalaxyMapObjectProxy _galaxyRoot;
 
     public ObservableCollectionExtended<GalaxyMapObjectProxy> CurrentObjects { get; } = [];
@@ -2034,6 +2035,72 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         return arr?.Select(o => o.Value).ToList();
     }
 
+    private List<GalaxyMapObjectProxy> GetObjectsAtLevel(GalaxyMapObjectProxy parent)
+    {
+        if (parent is null)
+        {
+            if (_galaxyRoot is not null)
+            {
+                return _galaxyRoot.MapChildren.Count > 0
+                    ? _galaxyRoot.MapChildren
+                    : _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Cluster).ToList();
+            }
+
+            List<GalaxyMapObjectProxy> rootObjects = _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Cluster).ToList();
+            return rootObjects.Count > 0 ? rootObjects : _allObjects.ToList();
+        }
+
+        return parent.MapChildren;
+    }
+
+    private static IEnumerable<GalaxyMapObjectProxy> OrderObjectsForList(IEnumerable<GalaxyMapObjectProxy> objects)
+    {
+        return objects
+            .OrderBy(obj => obj.Export.ObjectName)
+            .ThenBy(obj => obj.Export.UIndex);
+    }
+
+    private void RefreshCurrentObjectsList()
+    {
+        IEnumerable<GalaxyMapObjectProxy> sourceObjects = string.IsNullOrWhiteSpace(_filterText)
+            ? _currentLevelObjects
+            : _allObjects;
+        CurrentObjects.ReplaceAll(OrderObjectsForList(sourceObjects));
+        CurrentObjectsView.Refresh();
+    }
+
+    private void SortCurrentObjectsForList()
+    {
+        if (CurrentObjects.Count <= 1)
+            return;
+
+        CurrentObjects.ReplaceAll(OrderObjectsForList(CurrentObjects));
+    }
+
+    private void NavigateToObjectLevel(GalaxyMapObjectProxy obj)
+    {
+        GalaxyMapObjectProxy parent = obj?.MapParent;
+        GalaxyMapObjectProxy levelParent = parent?.MapLevel == GalaxyMapLevel.Galaxy ? null : parent;
+
+        _navigationStack.Clear();
+        var path = new List<GalaxyMapObjectProxy>();
+        for (GalaxyMapObjectProxy node = levelParent; node is not null; node = node.MapParent)
+        {
+            if (node.MapLevel != GalaxyMapLevel.Galaxy)
+            {
+                path.Add(node);
+            }
+        }
+
+        path.Reverse();
+        foreach (GalaxyMapObjectProxy node in path)
+        {
+            _navigationStack.Push(node);
+        }
+
+        NavigateToLevel(levelParent);
+    }
+
     #endregion
 
     #region Navigation
@@ -2042,32 +2109,13 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     {
         // Clear current viewport
         RenderContext.UnloadLevel();
-        CurrentObjects.Clear();
 
         CurrentParent = parent;
 
-        List<GalaxyMapObjectProxy> objectsToShow;
-        if (parent is null)
-        {
-            // Galaxy level: show clusters (or all root objects)
-            if (_galaxyRoot is not null)
-            {
-                objectsToShow = _galaxyRoot.MapChildren.Count > 0
-                    ? _galaxyRoot.MapChildren
-                    : _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Cluster).ToList();
-            }
-            else
-            {
-                objectsToShow = _allObjects.Where(o => o.MapLevel == GalaxyMapLevel.Cluster).ToList();
-                if (objectsToShow.Count == 0)
-                    objectsToShow = _allObjects.ToList();
-            }
-        }
-        else
-        {
-            // Show children of the current parent
-            objectsToShow = parent.MapChildren;
-        }
+        List<GalaxyMapObjectProxy> objectsToShow = GetObjectsAtLevel(parent);
+        _currentLevelObjects.Clear();
+        _currentLevelObjects.AddRange(objectsToShow);
+        RefreshCurrentObjectsList();
 
         // Load background texture for cluster views
         DisposeBackgroundQuad();
@@ -2087,7 +2135,6 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         if (objectsToShow.Count > 0)
         {
             LoadSharedPlanetMeshes(objectsToShow);
-            CurrentObjects.AddRange(objectsToShow.OrderBy(o => o.Export.UIndex));
             RenderContext.LoadActors(objectsToShow.Cast<ActorProxy>().ToList());
             // Add the icon overlay so objects are rendered as billboard icons
             if (!RenderContext.DrawList_UI.Contains(_iconOverlay))
@@ -2140,7 +2187,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         if (viewportRect.Width <= 0 || viewportRect.Height <= 0)
             return;
 
-        List<GalaxyMapObjectProxy> visibleClusters = CurrentObjects
+        List<GalaxyMapObjectProxy> visibleClusters = _currentLevelObjects
             .Where(obj => obj.MapLevel == GalaxyMapLevel.Cluster)
             .ToList();
         if (visibleClusters.Count == 0)
@@ -2775,6 +2822,12 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void SelectObject(GalaxyMapObjectProxy obj, bool focusCamera)
     {
+        if (obj is not null && !_currentLevelObjects.Contains(obj))
+        {
+            NavigateToObjectLevel(obj);
+            focusCamera = true;
+        }
+
         var prev = _selectedObject;
         if (SetProperty(ref _selectedObject, obj, nameof(SelectedObject)))
         {
@@ -2942,12 +2995,12 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private void CenterView()
     {
-        if (CurrentObjects.Count > 0)
+        if (_currentLevelObjects.Count > 0)
         {
-            BoxSphereBounds fullBounds = CurrentObjects[0].GetBounds();
-            for (int i = 1; i < CurrentObjects.Count; i++)
+            BoxSphereBounds fullBounds = _currentLevelObjects[0].GetBounds();
+            for (int i = 1; i < _currentLevelObjects.Count; i++)
             {
-                fullBounds = fullBounds.Union(CurrentObjects[i].GetBounds());
+                fullBounds = fullBounds.Union(_currentLevelObjects[i].GetBounds());
             }
             FocusOnBounds(fullBounds);
         }
@@ -3042,15 +3095,19 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
     private bool ObjectFilter(object obj)
     {
-        if (string.IsNullOrEmpty(_filterText)) return true;
-        return obj is GalaxyMapObjectProxy gmObj &&
-               gmObj.Export.ObjectName.Instanced.Contains(_filterText, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(_filterText))
+            return true;
+
+        return obj is GalaxyMapObjectProxy gmObj
+               && (gmObj.Export.ObjectName.Instanced.Contains(_filterText, StringComparison.OrdinalIgnoreCase)
+                   || gmObj.PreferredDisplayName.Contains(_filterText, StringComparison.OrdinalIgnoreCase)
+                   || (gmObj.ListDisplaySubtitle?.Contains(_filterText, StringComparison.OrdinalIgnoreCase) ?? false));
     }
 
     private void FilterTextBox_KeyUp(object sender, KeyEventArgs e)
     {
         _filterText = FilterTextBox.Text;
-        CurrentObjectsView.Refresh();
+        RefreshCurrentObjectsList();
     }
 
     private void ObjectsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -3119,14 +3176,18 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
 
         // Add to the current view if the original is currently displayed
-        if (CurrentObjects.Contains(SelectedObject))
+        if (_currentLevelObjects.Contains(SelectedObject))
         {
             LoadSharedPlanetMeshes([newProxy]);
+            _currentLevelObjects.Add(newProxy);
             CurrentObjects.Add(newProxy);
+            SortCurrentObjectsForList();
             RenderContext.AddActor(newProxy);
             if (!RenderContext.DrawList_UI.Contains(_iconOverlay))
                 RenderContext.DrawList_UI.Add(_iconOverlay);
         }
+
+        RefreshCurrentObjectsList();
 
         if (newProxy.MapLevel == GalaxyMapLevel.Cluster)
         {
@@ -3182,6 +3243,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
 
         _allObjects.Remove(objToDelete);
+        _currentLevelObjects.Remove(objToDelete);
         CurrentObjects.Remove(objToDelete);
         RenderContext.RemoveActor(objToDelete);
         objToDelete.Dispose();
@@ -3189,6 +3251,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         EntryPruner.TrashEntryAndDescendants(exportToDelete);
 
         IsDirty = true;
+        RefreshCurrentObjectsList();
         RefreshRelayOverlay();
         SceneViewer?.MarkRenderDirty();
     }
@@ -3295,7 +3358,9 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
 
         BuildHierarchy();
-        CurrentObjectsView.Refresh();
+        _currentLevelObjects.Clear();
+        _currentLevelObjects.AddRange(GetObjectsAtLevel(CurrentParent));
+        RefreshCurrentObjectsList();
         OnPropertyChanged(nameof(BreadcrumbText));
         if (selectedExportUpdated)
         {
