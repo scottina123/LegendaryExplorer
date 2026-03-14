@@ -18,6 +18,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Kismet;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Misc.ME3Tweaks;
 using LegendaryExplorerCore.Packages;
@@ -1853,10 +1854,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             if (isSamePackageDrop && isShiftHeld)
             {
+                var oldParent = sourceEntry.Parent as ExportEntry;
                 sourceEntry.idxLink = targetEntry.UIndex;
-                if (ShouldAddToInterpList(sourceEntry))
+                if (oldParent != sourceEntry.Parent)
                 {
-                    AddToInterpList(sourceEntry);
+                    MatineeHelper.RemoveFromParentInterpList(sourceEntry, oldParent);
+                    if (ShouldAddToInterpList(sourceEntry))
+                    {
+                        MatineeHelper.AddToParentInterpList(sourceEntry);
+                    }
                 }
 
                 RefreshInterpDataTreePreserveState(sourceEntry.UIndex);
@@ -4700,27 +4706,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private static void AddToInterpList(IEntry newEntry)
         {
-            if (newEntry == null || newEntry.Parent is not ExportEntry parentExport)
-            {
-                return;
-            }
-
-            if (parentExport.IsA("InterpGroup"))
-            {
-                var props = parentExport.GetProperties();
-                var tracksProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks");
-                tracksProp.Add(new ObjectProperty(newEntry));
-                props.AddOrReplaceProp(tracksProp);
-                parentExport.WriteProperties(props);
-            }
-            else if (parentExport.IsA("InterpData"))
-            {
-                var props = parentExport.GetProperties();
-                var groupsProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups") ?? new ArrayProperty<ObjectProperty>("InterpGroups");
-                groupsProp.Add(new ObjectProperty(newEntry));
-                props.AddOrReplaceProp(groupsProp);
-                parentExport.WriteProperties(props);
-            }
+            MatineeHelper.AddToParentInterpList(newEntry);
         }
 
         #endregion

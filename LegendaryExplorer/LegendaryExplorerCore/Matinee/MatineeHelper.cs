@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using System.Drawing;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -105,13 +106,112 @@ namespace LegendaryExplorerCore.Matinee
             //should add the property that contains track keys at least
             ExportEntry track = CreateNewExport(trackClass, interpGroup, null);
 
-            var props = interpGroup.GetProperties();
-            var tracksProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks");
-            tracksProp.Add(new ObjectProperty(track));
-            props.AddOrReplaceProp(tracksProp);
-            interpGroup.WriteProperties(props);
+            AddToParentInterpList(track, interpGroup);
 
             return track;
+        }
+
+        public static bool AddToParentInterpList(IEntry entry, ExportEntry parentExport = null)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            parentExport ??= entry.Parent as ExportEntry;
+            if (parentExport == null)
+            {
+                return false;
+            }
+
+            string listPropName = null;
+            if (parentExport.IsA("InterpGroup"))
+            {
+                if (entry is not ExportEntry exportEntry || !exportEntry.IsA("InterpTrack"))
+                {
+                    return false;
+                }
+
+                listPropName = "InterpTracks";
+            }
+            else if (parentExport.ClassName == "InterpData")
+            {
+                if (entry is not ExportEntry exportEntry || !(exportEntry.IsA("InterpGroup") || exportEntry.ClassName is "InterpGroupDirector" or "InterpDirector"))
+                {
+                    return false;
+                }
+
+                listPropName = "InterpGroups";
+            }
+
+            if (listPropName == null)
+            {
+                return false;
+            }
+
+            var props = parentExport.GetProperties();
+            var entryList = props.GetProp<ArrayProperty<ObjectProperty>>(listPropName) ?? new ArrayProperty<ObjectProperty>(listPropName);
+            for (int i = 0; i < entryList.Count; i++)
+            {
+                if (entryList[i] is ObjectProperty existingProp && existingProp.Value == entry.UIndex)
+                {
+                    return false;
+                }
+            }
+
+            entryList.Add(new ObjectProperty(entry));
+            props.AddOrReplaceProp(entryList);
+            parentExport.WriteProperties(props);
+            return true;
+        }
+
+        public static bool RemoveFromParentInterpList(IEntry entry, ExportEntry parentExport = null)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            parentExport ??= entry.Parent as ExportEntry;
+            if (parentExport == null)
+            {
+                return false;
+            }
+
+            string listPropName = parentExport.IsA("InterpGroup")
+                ? "InterpTracks"
+                : parentExport.IsA("InterpData")
+                    ? "InterpGroups"
+                    : null;
+
+            if (listPropName == null)
+            {
+                return false;
+            }
+
+            var props = parentExport.GetProperties();
+            var entryList = props.GetProp<ArrayProperty<ObjectProperty>>(listPropName);
+            if (entryList == null)
+            {
+                return false;
+            }
+
+            int originalCount = entryList.Count;
+            for (int i = entryList.Count - 1; i >= 0; i--)
+            {
+                if (entryList[i] is not ObjectProperty prop || prop.Value == entry.UIndex)
+                {
+                    entryList.RemoveAt(i);
+                }
+            }
+            if (entryList.Count == originalCount)
+            {
+                return false;
+            }
+
+            props.AddOrReplaceProp(entryList);
+            parentExport.WriteProperties(props);
+            return true;
         }
 
         /// <summary>

@@ -31,6 +31,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -4828,11 +4829,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (isSamePackageDrop && isShiftHeld)
                 {
+                    var oldParent = sourceItem.Entry.Parent as ExportEntry;
                     // Change the link instead
                     sourceItem.Entry.idxLink = targetItem?.Entry?.UIndex ?? 0;
-                    if (ShouldAddToInterpList(sourceItem.Entry))
+                    if (oldParent != sourceItem.Entry.Parent)
                     {
-                        AddToInterpList(sourceItem.Entry);
+                        MatineeHelper.RemoveFromParentInterpList(sourceItem.Entry, oldParent);
+                        if (ShouldAddToInterpList(sourceItem.Entry))
+                        {
+                            AddToInterpList(sourceItem.Entry);
+                        }
                     }
                     return;
                 }

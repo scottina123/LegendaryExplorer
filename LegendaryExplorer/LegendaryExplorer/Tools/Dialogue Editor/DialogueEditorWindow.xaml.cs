@@ -2482,10 +2482,15 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (isSamePackageDrop && isShiftHeld)
             {
+                var oldParent = sourceEntry.Parent as ExportEntry;
                 sourceEntry.idxLink = targetEntry.UIndex;
-                if (ShouldAddToInterpList(sourceEntry))
+                if (oldParent != sourceEntry.Parent)
                 {
-                    AddToInterpList(sourceEntry);
+                    MatineeHelper.RemoveFromParentInterpList(sourceEntry, oldParent);
+                    if (ShouldAddToInterpList(sourceEntry))
+                    {
+                        AddToInterpList(sourceEntry);
+                    }
                 }
 
                 RefreshInterpDataTreePreserveState(sourceEntry.UIndex);
@@ -2929,27 +2934,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         private static void AddToInterpList(IEntry newEntry)
         {
-            if (newEntry == null || newEntry.Parent is not ExportEntry parentExport)
-            {
-                return;
-            }
-
-            if (parentExport.IsA("InterpGroup"))
-            {
-                var props = parentExport.GetProperties();
-                var tracksProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks");
-                tracksProp.Add(new ObjectProperty(newEntry));
-                props.AddOrReplaceProp(tracksProp);
-                parentExport.WriteProperties(props);
-            }
-            else if (parentExport.IsA("InterpData"))
-            {
-                var props = parentExport.GetProperties();
-                var groupsProp = props.GetProp<ArrayProperty<ObjectProperty>>("InterpGroups") ?? new ArrayProperty<ObjectProperty>("InterpGroups");
-                groupsProp.Add(new ObjectProperty(newEntry));
-                props.AddOrReplaceProp(groupsProp);
-                parentExport.WriteProperties(props);
-            }
+            MatineeHelper.AddToParentInterpList(newEntry);
         }
 
         private void OpenPackageEditorForInterpDataExport(ExportEntry export, string packageEditorAction = null)

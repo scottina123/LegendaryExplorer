@@ -13,6 +13,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -151,10 +152,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void SaveHexChanges()
         {
             var bytes = GetHeaderBytes();
+            ExportEntry oldParent = null;
+            if (CurrentLoadedEntry is ExportEntry currentExport)
+            {
+                oldParent = currentExport.Parent as ExportEntry;
+            }
+
             CurrentLoadedEntry.SetHeaderValuesFromByteArray(bytes.ToArray());
             switch (CurrentLoadedEntry)
             {
                 case ExportEntry exportEntry:
+                    if (oldParent != exportEntry.Parent)
+                    {
+                        MatineeHelper.RemoveFromParentInterpList(exportEntry, oldParent);
+                        MatineeHelper.AddToParentInterpList(exportEntry);
+                    }
+
                     LoadExport(exportEntry);
                     break;
                 case ImportEntry importEntry:
