@@ -218,6 +218,7 @@
                               ToolTip="Save package file to another location"
                               IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" />
                     <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}" />
+                    <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}" />
                     <MenuItem Header="Open in...">
                         <MenuItem Header="FaceFX Editor" Command="{Binding OpenInCommand}"
                                   CommandParameter="FaceFXEditor"

@@ -153,6 +153,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand OpenFileCommand { get; set; }
         public ICommand ReloadCurrentExportCommand { get; set; }
         public ICommand OpenCurrentFileLocationCommand { get; set; }
+        public ICommand CopyCurrentFileNameCommand { get; set; }
         private void LoadCommands()
         {
             SaveCommand = new GenericCommand(SavePackage, CanSave);
@@ -161,6 +162,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             OpenFileCommand = new GenericCommand(OpenFile, CanLoadFile);
             ReloadCurrentExportCommand = new GenericCommand(ReloadCurrentExport, IsExportLoaded);
             OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
+            CopyCurrentFileNameCommand = new GenericCommand(CopyCurrentFileName, CanCopyCurrentFileName);
         }
 
         private void ReloadCurrentExport()
@@ -254,6 +256,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (!string.IsNullOrWhiteSpace(CurrentFilePath))
             {
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
+            }
+        }
+
+        private bool CanCopyCurrentFileName()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentFilePath);
+        }
+
+        private void CopyCurrentFileName()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentFilePath))
+            {
+                Clipboard.SetText(Path.GetFileName(CurrentFilePath));
             }
         }
 

@@ -46,10 +46,12 @@ namespace LegendaryExplorer.SharedUI.Bases
         public string CurrentPackageFilePath => Pcc?.FilePath;
 
         public ICommand OpenCurrentFileLocationCommand { get; }
+        public ICommand CopyCurrentFileNameCommand { get; }
 
         protected WPFBase(string memoryTrackerName, bool submitTelemetry = true)
         {
             OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
+            CopyCurrentFileNameCommand = new GenericCommand(CopyCurrentFileName, CanCopyCurrentFileName);
             MemoryAnalyzer.AddTrackedMemoryItem(new MemoryAnalyzerObjectExtended($"[{nameof(WPFBase)}] {memoryTrackerName}", new WeakReference(this)));
             if (submitTelemetry)
             {
@@ -125,6 +127,19 @@ namespace LegendaryExplorer.SharedUI.Bases
             if (!string.IsNullOrWhiteSpace(CurrentPackageFilePath))
             {
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentPackageFilePath);
+            }
+        }
+
+        private bool CanCopyCurrentFileName()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentPackageFilePath);
+        }
+
+        private void CopyCurrentFileName()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentPackageFilePath))
+            {
+                Clipboard.SetText(Path.GetFileName(CurrentPackageFilePath));
             }
         }
 

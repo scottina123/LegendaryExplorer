@@ -192,6 +192,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         public ICommand SearchAgainCommand { get; set; }
         public ICommand AddBlankCommand { get; set; }
         public ICommand OpenCurrentFileLocationCommand { get; set; }
+        public ICommand CopyCurrentFileNameCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -209,6 +210,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             SearchAgainCommand = new GenericCommand(Search, CanSearchAgain);
             AddBlankCommand = new GenericCommand(AddBlankConditional, FileIsLoaded);
             OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
+            CopyCurrentFileNameCommand = new GenericCommand(CopyCurrentFileName, CanCopyCurrentFileName);
         }
 
         private bool CanSearchAgain() => FileIsLoaded() && !string.IsNullOrEmpty(searchText);
@@ -526,6 +528,19 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             if (!string.IsNullOrWhiteSpace(CurrentFilePath))
             {
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
+            }
+        }
+
+        private bool CanCopyCurrentFileName()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentFilePath);
+        }
+
+        private void CopyCurrentFileName()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentFilePath))
+            {
+                Clipboard.SetText(Path.GetFileName(CurrentFilePath));
             }
         }
 
