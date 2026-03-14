@@ -13,6 +13,13 @@
     <UserControl.Resources>
         <converters:FilePathToFileNameConverter x:Key="FilePathToFileNameConverter"/>
         <converters:GameToImageIconConverter x:Key="GameToImageIconConverter"/>
+        <ContextMenu x:Key="RecentItemContextMenu"
+                     x:Shared="False"
+                     DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+            <MenuItem Header="Open file location" Click="OpenRecentItemLocation_Click" />
+            <MenuItem Header="Copy file path" Click="CopyRecentItemPath_Click" />
+            <MenuItem Header="Copy file name" Click="CopyRecentItemName_Click" />
+        </ContextMenu>
     </UserControl.Resources>
     <DockPanel>
         <TextBlock Text="Recently opened items" DockPanel.Dock="Top" TextAlignment="Center" FontSize="20" FontWeight="Light" Margin="10"
@@ -26,7 +33,8 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Button Width="252" Margin="3" Padding="3" ToolTip="{Binding Path}" 
-                            Command="{Binding RecentFileOpenCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:RecentsControl}}}" CommandParameter="{Binding Path}">
+                            Command="{Binding RecentFileOpenCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:RecentsControl}}}" CommandParameter="{Binding Path}"
+                            ContextMenu="{StaticResource RecentItemContextMenu}">
                         <Button.Content>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                 <Image Margin="0,0,5,0" RenderOptions.BitmapScalingMode="HighQuality" Source="{Binding Game, Converter={StaticResource GameToImageIconConverter}}" Height="16" VerticalAlignment="Center"/>

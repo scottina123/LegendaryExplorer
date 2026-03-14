@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +10,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Converters;
 using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 
@@ -78,10 +80,98 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
         }
 
         public RelayCommand RecentFileOpenCommand { get; private set; }
+        public RelayCommand OpenRecentItemLocationCommand { get; private set; }
+        public RelayCommand CopyRecentItemPathCommand { get; private set; }
+        public RelayCommand CopyRecentItemNameCommand { get; private set; }
 
         private void LoadCommands()
         {
             RecentFileOpenCommand = new RelayCommand(filePath => RecentItemClicked?.Invoke((string)filePath));
+            OpenRecentItemLocationCommand = new RelayCommand(OpenRecentItemLocation, CanAccessRecentItem);
+            CopyRecentItemPathCommand = new RelayCommand(CopyRecentItemPath, CanAccessRecentItem);
+            CopyRecentItemNameCommand = new RelayCommand(CopyRecentItemName, CanAccessRecentItem);
+        }
+
+        private static bool CanAccessRecentItem(object pathObj)
+        {
+            if (pathObj is not string path || string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            return File.Exists(path) || Directory.Exists(path);
+        }
+
+        private static void OpenRecentItemLocation(object pathObj)
+        {
+            if (pathObj is not string path || string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            path = Path.GetFullPath(path);
+            if (Directory.Exists(path))
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+                return;
+            }
+
+            if (File.Exists(path))
+            {
+                LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(path);
+            }
+        }
+
+        private static void CopyRecentItemPath(object pathObj)
+        {
+            if (pathObj is string path && !string.IsNullOrWhiteSpace(path))
+            {
+                Clipboard.SetText(Path.GetFullPath(path));
+            }
+        }
+
+        private static void CopyRecentItemName(object pathObj)
+        {
+            if (pathObj is string path && !string.IsNullOrWhiteSpace(path))
+            {
+                Clipboard.SetText(GetItemName(path));
+            }
+        }
+
+        private static string GetItemName(string path)
+        {
+            path = Path.GetFullPath(path);
+
+            if (Directory.Exists(path))
+            {
+                return new DirectoryInfo(path).Name;
+            }
+
+            return Path.GetFileName(path);
+        }
+
+        private void OpenRecentItemLocation_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: RecentItem item })
+            {
+                OpenRecentItemLocation(item.Path);
+            }
+        }
+
+        private void CopyRecentItemPath_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: RecentItem item })
+            {
+                CopyRecentItemPath(item.Path);
+            }
+        }
+
+        private void CopyRecentItemName_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: RecentItem item })
+            {
+                CopyRecentItemName(item.Path);
+            }
         }
 
         private string RecentsAppDataFile => Path.Combine(Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, RecentsFoldername)).FullName, "RECENTFILES");
