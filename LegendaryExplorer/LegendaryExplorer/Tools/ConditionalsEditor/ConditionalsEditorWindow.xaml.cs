@@ -131,6 +131,13 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             set => SetProperty(ref _file, value);
         }
 
+        private string _currentFileName;
+        public string CurrentFileName
+        {
+            get => _currentFileName;
+            set => SetProperty(ref _currentFileName, value);
+        }
+
         public ConditionalsEditorWindow() : base("Conditionals Editor", true)
         {
             LoadCommands();
@@ -312,9 +319,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                     var d = new SaveFileDialog { Filter = CNDFileFilter };
                     if (d.ShowDialog() == false) return;
                     File.FilePath = d.FileName;
+                    CurrentFileName = Path.GetFileName(d.FileName);
                     RecentsController.AddRecent(d.FileName, false, null); // Can we infer game this file is for?
                     RecentsController.SaveRecentList(true);
-                    Title = $"Conditionals Editor - {Path.GetFileName(d.FileName)}";
+                    Title = $"Conditionals Editor - {d.FileName}";
                 }
 
                 SaveFile();
@@ -472,11 +480,13 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 MessageBox.Show(e.Message);
 
                 File = null;
+                CurrentFileName = null;
                 Title = "Conditionals Editor";
                 return;
             }
 
-            Title = $"Conditionals Editor - {Path.GetFileName(filePath)}";
+            CurrentFileName = Path.GetFileName(filePath);
+            Title = $"Conditionals Editor - {filePath}";
             Conditionals.AddRange(File.ConditionalEntries.OrderBy(c => c.ID).Select(c => new CondListEntry(c)));
         }
 
@@ -487,6 +497,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             {
                 ConditionalEntries = new List<CNDFile.ConditionalEntry>()
             };
+            CurrentFileName = null;
             Conditionals.Clear();
             SelectedCond = null;
             Save();
