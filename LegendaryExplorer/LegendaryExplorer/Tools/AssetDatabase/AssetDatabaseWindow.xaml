@@ -563,6 +563,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -571,7 +572,14 @@
                                 <ColumnDefinition Width="15*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Meshes" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Meshes within the game" Grid.Row="0" Grid.Column="0"/>
-                            <controls:ListBoxScroll x:Name="lstbx_Meshes" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Meshes}" SelectionChanged="lstbx_Meshes_SelectionChanged" Grid.Row="1" Grid.Column="0">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170"
+                                          ItemsSource="{Binding MeshTypeFilters}"
+                                          SelectedItem="{Binding SelectedMeshTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_Meshes" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Meshes}" SelectionChanged="lstbx_Meshes_SelectionChanged" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <!--<TextBlock Text="{Binding MeshName}" />
@@ -601,13 +609,13 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Viewer" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the viewer on or off" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="1" Grid.Column="1">
+                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
                                 <DockPanel x:Name="details_Mesh" MinWidth="350" Margin="3" >
                                     <ToggleButton x:Name="btn_MeshRenderToggle" Content="Toggle Mesh Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_MeshRenderToggle_Click" IsChecked="False"></ToggleButton>
                                     <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer" Visibility="Visible" />
                                 </DockPanel>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="meshesUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                            <assetDatabase:AssetUsagesPanel x:Name="meshesUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Meshes}"
                                                            HeaderToolTip="Every file that uses this Mesh&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>

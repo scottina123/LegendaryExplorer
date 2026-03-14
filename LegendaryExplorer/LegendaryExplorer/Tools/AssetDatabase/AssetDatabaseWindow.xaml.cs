@@ -120,10 +120,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public AssetFilters AssetFilters { get; private set; }
 
         public ObservableCollectionExtended<FileDirPair> FileListExtended { get; } = new();
+        public ObservableCollectionExtended<string> MeshTypeFilters { get; } = new()
+        {
+            AllMeshFilterOption,
+            SkeletalMeshFilterOption,
+            StaticMeshFilterOption
+        };
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
 
+        private const string AllMeshFilterOption = "All";
+        private const string SkeletalMeshFilterOption = "Skeletal Meshes";
+        private const string StaticMeshFilterOption = "Static Meshes";
         private const string AllTextureFilterOption = "All";
+
+        private string _selectedMeshTypeFilter = AllMeshFilterOption;
+        public string SelectedMeshTypeFilter
+        {
+            get => _selectedMeshTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMeshTypeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
 
         private string _selectedTextureTypeFilter = AllTextureFilterOption;
         public string SelectedTextureTypeFilter
@@ -591,9 +613,30 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             FileListFilter.IsSelected = false;
             expander_CustomFiles.IsExpanded = false;
             SpeakerList.ClearEx();
+            SelectedMeshTypeFilter = AllMeshFilterOption;
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
+        }
+
+        private bool MeshTabFilter(object obj)
+        {
+            if (obj is not MeshRecord meshRecord)
+            {
+                return false;
+            }
+
+            if (!AssetFilters.MeshFilter.Filter(meshRecord))
+            {
+                return false;
+            }
+
+            return SelectedMeshTypeFilter switch
+            {
+                SkeletalMeshFilterOption => meshRecord.IsSkeleton,
+                StaticMeshFilterOption => !meshRecord.IsSkeleton,
+                _ => true
+            };
         }
 
         private void RefreshTextureDropdownFilters()
@@ -2564,7 +2607,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     break;
                 case 3: //Meshes
                     ICollectionView viewS = CollectionViewSource.GetDefaultView(CurrentDataBase.Meshes);
-                    viewS.Filter = AssetFilters.MeshFilter.Filter;
+                    viewS.Filter = MeshTabFilter;
                     lstbx_Meshes.ItemsSource = viewS;
                     break;
                 case 4: //Textures
