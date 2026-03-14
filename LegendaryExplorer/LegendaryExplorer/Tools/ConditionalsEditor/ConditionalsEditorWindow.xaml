@@ -86,7 +86,12 @@
                      Style="{DynamicResource ListBoxStyle}"
                      HorizontalContentAlignment="Stretch"
                      ItemsSource="{Binding Conditionals}"
-                     SelectedItem="{Binding SelectedCond}">
+                      SelectedItem="{Binding SelectedCond}"
+                      AllowDrop="True"
+                      PreviewMouseLeftButtonDown="ConditionalsListBox_PreviewMouseLeftButtonDown"
+                      MouseMove="ConditionalsListBox_MouseMove"
+                      DragOver="ConditionalsListBox_DragOver"
+                      Drop="ConditionalsListBox_Drop">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid>

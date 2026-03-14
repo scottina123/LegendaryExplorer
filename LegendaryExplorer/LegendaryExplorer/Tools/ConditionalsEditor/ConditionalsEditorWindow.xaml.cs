@@ -88,8 +88,12 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         #endregion
 
         public const string CNDFileFilter = "ME3/LE3 conditional file|*.cnd";
+        private const string ConditionalsDragFormat = "LegendaryExplorer.ConditionalsEditor.Conditional";
 
         private HexBox hexBox;
+        private readonly Guid _windowInstanceId = Guid.NewGuid();
+        private Point? _conditionalsDragStartPoint;
+        private CondListEntry _draggedConditional;
 
         public ObservableCollectionExtended<CondListEntry> Conditionals { get; } = new();
 
@@ -547,6 +551,116 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             compilationMsgBox.Clear();
         }
 
+        private void ConditionalsListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _conditionalsDragStartPoint = e.GetPosition(ConditionalsListBox);
+            _draggedConditional = FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext as CondListEntry;
+        }
+
+        private void ConditionalsListBox_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _conditionalsDragStartPoint is null || _draggedConditional is null)
+            {
+                return;
+            }
+
+            Point currentPosition = e.GetPosition(ConditionalsListBox);
+            Vector dragDelta = _conditionalsDragStartPoint.Value - currentPosition;
+            if (Math.Abs(dragDelta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(dragDelta.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            var draggedConditional = _draggedConditional;
+            _conditionalsDragStartPoint = null;
+            _draggedConditional = null;
+
+            var data = new DataObject(ConditionalsDragFormat, new ConditionalDragData(_windowInstanceId, draggedConditional.ID, draggedConditional.Conditional.Data.ArrayClone()));
+            DragDrop.DoDragDrop(ConditionalsListBox, data, DragDropEffects.Copy);
+        }
+
+        private void ConditionalsListBox_DragOver(object sender, DragEventArgs e)
+        {
+            if (File is null || !e.Data.GetDataPresent(ConditionalsDragFormat) || e.Data.GetData(ConditionalsDragFormat) is not ConditionalDragData dragData)
+            {
+                return;
+            }
+
+            e.Effects = dragData.SourceWindowId == _windowInstanceId ? DragDropEffects.None : DragDropEffects.Copy;
+            e.Handled = true;
+        }
+
+        private void ConditionalsListBox_Drop(object sender, DragEventArgs e)
+        {
+            if (File is null || !e.Data.GetDataPresent(ConditionalsDragFormat) || e.Data.GetData(ConditionalsDragFormat) is not ConditionalDragData dragData)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            if (dragData.SourceWindowId == _windowInstanceId)
+            {
+                return;
+            }
+
+            var newCond = new CondListEntry(new CNDFile.ConditionalEntry
+            {
+                Data = dragData.Data.ArrayClone(),
+                ID = dragData.ID
+            })
+            {
+                IsModified = true
+            };
+
+            if (Conditionals.Any(c => c.ID == newCond.ID))
+            {
+                var wdlg = MessageBox.Show("This conditional ID already exists in this file. Continue?", "Warning", MessageBoxButton.OKCancel);
+                if (wdlg == MessageBoxResult.Cancel)
+                {
+                    return;
+                }
+            }
+
+            int insertIndex = GetDropIndex(e.GetPosition(ConditionalsListBox));
+            Conditionals.Insert(insertIndex, newCond);
+            SelectedCond = newCond;
+            ConditionalsListBox.ScrollIntoView(newCond);
+        }
+
+        private int GetDropIndex(Point dropPosition)
+        {
+            var dropTarget = FindVisualParent<ListBoxItem>(ConditionalsListBox.InputHitTest(dropPosition) as DependencyObject);
+            if (dropTarget?.DataContext is not CondListEntry targetEntry)
+            {
+                return Conditionals.Count;
+            }
+
+            int index = Conditionals.IndexOf(targetEntry);
+            Point itemTopLeft = dropTarget.TranslatePoint(new Point(), ConditionalsListBox);
+            if (dropPosition.Y - itemTopLeft.Y > dropTarget.ActualHeight / 2)
+            {
+                index++;
+            }
+
+            return Math.Min(index, Conditionals.Count);
+        }
+
+        private static T FindVisualParent<T>(DependencyObject source) where T : DependencyObject
+        {
+            while (source is not null)
+            {
+                if (source is T typedSource)
+                {
+                    return typedSource;
+                }
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return null;
+        }
+
         public class CondListEntry : NotifyPropertyChangedBase
         {
             private bool _isModified;
@@ -615,6 +729,21 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
                 error = false;
                 return "Compiled!";
+            }
+        }
+
+        [Serializable]
+        private sealed class ConditionalDragData
+        {
+            public Guid SourceWindowId { get; }
+            public int ID { get; }
+            public byte[] Data { get; }
+
+            public ConditionalDragData(Guid sourceWindowId, int id, byte[] data)
+            {
+                SourceWindowId = sourceWindowId;
+                ID = id;
+                Data = data;
             }
         }
 
