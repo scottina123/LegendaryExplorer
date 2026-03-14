@@ -1725,6 +1725,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectNameUsageInRightPanel(clickedItem)));
         }
 
+        private void objectReferenceDoubleClick(EntryStringPair clickedItem)
+        {
+            if (CurrentView is CurrentViewMode.Names)
+            {
+                SearchHintText = "Object name";
+                GotoHintText = "UIndex";
+                CurrentView = CurrentViewMode.Tree;
+            }
+
+            entryDoubleClick(clickedItem);
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectObjectReferenceInRightPanel(clickedItem)));
+        }
+
         private void SelectNameUsageInRightPanel(EntryStringPair clickedItem)
         {
             if (clickedItem?.Entry is null || clickedItem.Entry.UIndex == 0)
@@ -1732,7 +1746,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            string usageDetail = GetNameUsageDetail(clickedItem);
+            string usageDetail = GetUsageDetail(clickedItem);
             if (string.IsNullOrWhiteSpace(usageDetail))
             {
                 return;
@@ -1765,7 +1779,49 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private static string GetNameUsageDetail(EntryStringPair clickedItem)
+        private void SelectObjectReferenceInRightPanel(EntryStringPair clickedItem)
+        {
+            if (clickedItem?.Entry is null || clickedItem.Entry.UIndex == 0)
+            {
+                return;
+            }
+
+            string usageDetail = GetUsageDetail(clickedItem);
+            if (string.IsNullOrWhiteSpace(usageDetail))
+            {
+                return;
+            }
+
+            if (clickedItem.Entry is not ExportEntry)
+            {
+                return;
+            }
+
+            if (TrySelectExportObjectReferenceHeaderUsage(usageDetail))
+            {
+                return;
+            }
+
+            if (TrySelectPropertyUsage(usageDetail, "Property: "))
+            {
+                return;
+            }
+
+            if (usageDetail == "Stack")
+            {
+                BinaryInterpreter_Tab.IsSelected = true;
+                BinaryInterpreterTab_BinaryInterpreter.SetHexboxSelectedOffset(0);
+                return;
+            }
+
+            if (TryParseTemplateOwnerClassUsageOffset(usageDetail, out int templateOwnerOffset))
+            {
+                BinaryInterpreter_Tab.IsSelected = true;
+                BinaryInterpreterTab_BinaryInterpreter.SetHexboxSelectedOffset(templateOwnerOffset);
+            }
+        }
+
+        private static string GetUsageDetail(EntryStringPair clickedItem)
         {
             if (clickedItem?.Entry is null || string.IsNullOrEmpty(clickedItem.Message))
             {
@@ -1792,6 +1848,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
             };
         }
 
+        private bool TrySelectExportObjectReferenceHeaderUsage(string usageDetail)
+        {
+            return usageDetail switch
+            {
+                "Header: Class" => SelectMetadataOffset(0x0),
+                "Header: SuperClass" => SelectMetadataOffset(0x4),
+                "Header: Archetype" => SelectMetadataOffset(0x14),
+                "Header: ComponentMap" => SelectMetadataOffset(0x28),
+                _ => false
+            };
+        }
+
         private bool TrySelectImportHeaderNameUsage(string usageDetail)
         {
             return usageDetail switch
@@ -1812,10 +1880,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool TrySelectPropertyNameUsage(string usageDetail)
         {
-            const string propertyPrefix = "Property: ";
-            if (!usageDetail.StartsWith(propertyPrefix, StringComparison.Ordinal)
+            return TrySelectPropertyUsage(usageDetail, "Property: ");
+        }
+
+        private bool TrySelectPropertyUsage(string usageDetail, params string[] propertyPrefixes)
+        {
+            string propertyPath = null;
+            foreach (string propertyPrefix in propertyPrefixes)
+            {
+                if (usageDetail.StartsWith(propertyPrefix, StringComparison.Ordinal))
+                {
+                    propertyPath = usageDetail[propertyPrefix.Length..];
+                    break;
+                }
+            }
+
+            if (propertyPath is null
                 || InterpreterTab_Interpreter.PropertyNodes.Count == 0
-                || !TryParsePropertyUsagePath(usageDetail[propertyPrefix.Length..], out var pathSegments))
+                || !TryParsePropertyUsagePath(propertyPath, out var pathSegments))
             {
                 return false;
             }
@@ -1853,6 +1935,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
             current.IsSelected = true;
             InterpreterTab_Interpreter.SelectedItem = current;
             return true;
+        }
+
+        private static bool TryParseTemplateOwnerClassUsageOffset(string usageDetail, out int offset)
+        {
+            const string prefix = "TemplateOwnerClass (Data offset 0x";
+            offset = 0;
+            if (!usageDetail.StartsWith(prefix, StringComparison.Ordinal) || !usageDetail.EndsWith(')'))
+            {
+                return false;
+            }
+
+            return int.TryParse(usageDetail[prefix.Length..^1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out offset);
         }
 
         private static bool TryParsePropertyUsagePath(string usagePath, out List<NameUsagePropertyPathSegment> pathSegments)
@@ -2397,7 +2491,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             $"{prevTask.Result.Count} Objects that reference #{entry.UIndex} {entry.InstancedFullPath}",
                             "There may be additional references to this object in the unparsed binary of some objects",
                             this)
-                    { DoubleClickEntryHandler = entryDoubleClick };
+                    { DoubleClickEntryHandler = objectReferenceDoubleClick };
                     dlg.Show();
                 });
 
