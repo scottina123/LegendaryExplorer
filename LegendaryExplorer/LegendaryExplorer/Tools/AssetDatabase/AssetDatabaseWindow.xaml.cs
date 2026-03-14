@@ -126,12 +126,21 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SkeletalMeshFilterOption,
             StaticMeshFilterOption
         };
+        public ObservableCollectionExtended<string> VfxTypeFilters { get; } = new()
+        {
+            AllVfxFilterOption,
+            ParticleSystemFilterOption,
+            ClientEffectFilterOption
+        };
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
 
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
         private const string StaticMeshFilterOption = "Static Meshes";
+        private const string AllVfxFilterOption = "All";
+        private const string ParticleSystemFilterOption = "Particle Systems";
+        private const string ClientEffectFilterOption = "Client Effects";
         private const string AllTextureFilterOption = "All";
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
@@ -141,6 +150,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set
             {
                 if (SetProperty(ref _selectedMeshTypeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedVfxTypeFilter = AllVfxFilterOption;
+        public string SelectedVfxTypeFilter
+        {
+            get => _selectedVfxTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedVfxTypeFilter, value))
                 {
                     Filter();
                 }
@@ -614,6 +636,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             expander_CustomFiles.IsExpanded = false;
             SpeakerList.ClearEx();
             SelectedMeshTypeFilter = AllMeshFilterOption;
+            SelectedVfxTypeFilter = AllVfxFilterOption;
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
@@ -635,6 +658,26 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 SkeletalMeshFilterOption => meshRecord.IsSkeleton,
                 StaticMeshFilterOption => !meshRecord.IsSkeleton,
+                _ => true
+            };
+        }
+
+        private bool VfxTabFilter(object obj)
+        {
+            if (obj is not ParticleSysRecord particleRecord)
+            {
+                return false;
+            }
+
+            if (!AssetFilters.ParticleFilter.Filter(particleRecord))
+            {
+                return false;
+            }
+
+            return SelectedVfxTypeFilter switch
+            {
+                ParticleSystemFilterOption => particleRecord.VFXType == ParticleSysRecord.VFXClass.ParticleSystem,
+                ClientEffectFilterOption => particleRecord.VFXType == ParticleSysRecord.VFXClass.RvrClientEffect,
                 _ => true
             };
         }
@@ -2639,7 +2682,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     break;
                 case 6: //Particles
                     ICollectionView viewP = CollectionViewSource.GetDefaultView(CurrentDataBase.Particles);
-                    viewP.Filter = AssetFilters.ParticleFilter.Filter;
+                    viewP.Filter = VfxTabFilter;
                     lstbx_Particles.ItemsSource = viewP;
                     break;
                 case 7: //Scaleform

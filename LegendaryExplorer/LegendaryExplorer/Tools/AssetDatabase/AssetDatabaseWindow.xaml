@@ -776,6 +776,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -784,7 +785,14 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Particle Systems and Receiver Effects (Visual Effects)" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Particle systems (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
-                            <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="1" Grid.Column="0">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170"
+                                          ItemsSource="{Binding VfxTypeFilters}"
+                                          SelectedItem="{Binding SelectedVfxTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -804,7 +812,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
+                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
                                 <StackPanel x:Name="details_PS" MinWidth="200" Margin="3">
                                     <TextBlock Text="Parent Package: " Margin="0,5,0,0"/>
                                     <TextBlock Text="{Binding Path=SelectedItem.ParentPackage, ElementName=lstbx_Particles}" />
@@ -814,7 +822,7 @@
                                     <TextBlock Text="{Binding Path=SelectedItem.IsDLCOnly, ElementName=lstbx_Particles}" />
                                 </StackPanel>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                            <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Particles}"
                                                            HeaderToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor"/>
                         </Grid>

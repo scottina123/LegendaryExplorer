@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
 using LegendaryExplorerCore.Unreal;
@@ -64,6 +65,24 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             Assert.IsTrue(AssetFilters.MeshSearch(("bones:101", r1)));
             Assert.IsFalse(AssetFilters.MeshSearch(("bones:", r1)));
             Assert.IsFalse(AssetFilters.MeshSearch(("bones:5000", r1)));
+        }
+
+        [TestMethod]
+        public void TestClientEffectsFilterIsExactMatch()
+        {
+            var filters = new AssetFilters(new FileListSpecification());
+            var particleSystem = new ParticleSysRecord("PS", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.ParticleSystem);
+            var clientEffect = new ParticleSysRecord("CE", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.RvrClientEffect);
+            var bioVfxTemplate = new ParticleSysRecord("Template", "Pkg", false, false, 1, ParticleSysRecord.VFXClass.BioVFXTemplate);
+
+            var clientEffectsSpec = filters.ParticleFilter.Filters
+                .First(spec => spec.FilterName == "Only Client Effects");
+
+            filters.ParticleFilter.SetSelected(clientEffectsSpec);
+
+            Assert.IsFalse(filters.ParticleFilter.Filter(particleSystem));
+            Assert.IsTrue(filters.ParticleFilter.Filter(clientEffect));
+            Assert.IsFalse(filters.ParticleFilter.Filter(bioVfxTemplate));
         }
 
     }

@@ -61,7 +61,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
                 new PredicateSpecification<ParticleSysRecord>("Only Particle Systems",
                     pr => pr.VFXType == ParticleSysRecord.VFXClass.ParticleSystem),
                 new PredicateSpecification<ParticleSysRecord>("Only Client Effects",
-                    pr => pr.VFXType != ParticleSysRecord.VFXClass.ParticleSystem)
+                    pr => pr.VFXType == ParticleSysRecord.VFXClass.RvrClientEffect)
             }, searchPredicate: t => t.Record.PSName.ToLower().Contains(t.SearchText.ToLower()));
 
             GUIFilter = new GenericAssetFilter<GUIElement>(new IAssetSpecification<GUIElement>[] {fileList},
