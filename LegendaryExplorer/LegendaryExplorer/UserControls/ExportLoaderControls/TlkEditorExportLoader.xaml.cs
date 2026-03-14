@@ -11,6 +11,8 @@ using System.Media;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -478,6 +480,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (CurrentLoadedExport != null)
             {
                 CurrentLoadedExport.FileRef.Save();
+                RefreshLoadedTlksAfterSave(CurrentLoadedExport.FileRef.Game, CurrentLoadedExport.FileRef.FilePath, CurrentLoadedExport.UIndex);
             }
             else if (_currentMe2Me3Me2Me3TalkFile is not null)
             {
@@ -490,9 +493,61 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ME2ME3HuffmanCompression.SaveToTlkFile(_currentMe2Me3Me2Me3TalkFile.FilePath, LoadedStrings);
                 _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(CurrentLoadedFile);
                 FileModified = false; //you can only commit to file, not to export and then file in file mode.
+                RefreshLoadedTlksAfterSave(GetCurrentLoadedFileGame(), CurrentLoadedFile);
             }
             //throw new NotImplementedException();
 
+        }
+
+        private void RefreshLoadedTlksAfterSave(MEGame game, string tlkPath, int exportNumber = 0)
+        {
+            if (game == MEGame.Unknown)
+            {
+                return;
+            }
+
+            try
+            {
+                TLKManagerWPF.AutoFindAndReloadTlks(game, tlkPath, exportNumber);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"TLK was saved, but refreshing loaded TLKs failed:\n{ex.Message}", "TLK Refresh Error");
+            }
+        }
+
+        private MEGame GetCurrentLoadedFileGame()
+        {
+            if (string.IsNullOrEmpty(CurrentLoadedFile))
+            {
+                return MEGame.Unknown;
+            }
+
+            if (ME2TalkFiles.LoadedTlks.Any(x => string.Equals(x.FilePath, CurrentLoadedFile, StringComparison.OrdinalIgnoreCase))) return MEGame.ME2;
+            if (ME3TalkFiles.LoadedTlks.Any(x => string.Equals(x.FilePath, CurrentLoadedFile, StringComparison.OrdinalIgnoreCase))) return MEGame.ME3;
+            if (LE2TalkFiles.LoadedTlks.Any(x => string.Equals(x.FilePath, CurrentLoadedFile, StringComparison.OrdinalIgnoreCase))) return MEGame.LE2;
+            if (LE3TalkFiles.LoadedTlks.Any(x => string.Equals(x.FilePath, CurrentLoadedFile, StringComparison.OrdinalIgnoreCase))) return MEGame.LE3;
+
+            string fullPath = Path.GetFullPath(CurrentLoadedFile);
+            if (IsUnderDirectory(fullPath, ME2Directory.BioGamePath)) return MEGame.ME2;
+            if (IsUnderDirectory(fullPath, ME3Directory.BioGamePath)) return MEGame.ME3;
+            if (IsUnderDirectory(fullPath, LE2Directory.BioGamePath)) return MEGame.LE2;
+            if (IsUnderDirectory(fullPath, LE3Directory.BioGamePath)) return MEGame.LE3;
+
+            return MEGame.Unknown;
+        }
+
+        private static bool IsUnderDirectory(string path, string directory)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(directory))
+            {
+                return false;
+            }
+
+            string normalizedPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string normalizedDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return normalizedPath.StartsWith(normalizedDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalizedPath, normalizedDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         public override void SaveAs()

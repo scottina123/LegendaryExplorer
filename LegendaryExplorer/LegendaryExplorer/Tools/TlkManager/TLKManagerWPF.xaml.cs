@@ -535,19 +535,169 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             TLKLoader.SaveTLKList(MEGame.LE3);
         }
 
+        public static void AutoFindAndReloadTlks(MEGame game, string tlkPath = null, int exportNumber = 0)
+        {
+            switch (game)
+            {
+                case MEGame.ME1:
+                {
+                    var tlks = FindME1Tlks();
+                    SelectExistingEmbeddedTlks(tlks, ME1TalkFiles.LoadedTlks.Select(x => (x.FilePath, x.UIndex)).ToHashSet(), tlkPath, exportNumber);
+                    ME1ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+                case MEGame.ME2:
+                {
+                    var tlks = FindME2Tlks();
+                    SelectExistingTlks(tlks, ME2TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
+                    ME2ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+                case MEGame.ME3:
+                {
+                    var tlks = FindME3Tlks();
+                    SelectExistingTlks(tlks, ME3TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
+                    ME3ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+                case MEGame.LE1:
+                {
+                    var tlks = FindLE1Tlks();
+                    SelectExistingEmbeddedTlks(tlks, LE1TalkFiles.LoadedTlks.Select(x => (x.FilePath, x.UIndex)).ToHashSet(), tlkPath, exportNumber);
+                    LE1ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+                case MEGame.LE2:
+                {
+                    var tlks = FindLE2Tlks();
+                    SelectExistingTlks(tlks, LE2TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
+                    LE2ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+                case MEGame.LE3:
+                {
+                    var tlks = FindLE3Tlks();
+                    SelectExistingTlks(tlks, LE3TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
+                    LE3ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
+                    break;
+                }
+            }
+        }
+
+        private static void SelectExistingTlks(List<LoadedTLK> tlks, HashSet<string> loadedPaths, string preferredPath)
+        {
+            foreach (LoadedTLK tlk in tlks)
+            {
+                tlk.selectedForLoad = loadedPaths.Contains(tlk.tlkPath);
+            }
+
+            if (tlks.Any(x => x.selectedForLoad) || string.IsNullOrEmpty(preferredPath))
+            {
+                return;
+            }
+
+            LoadedTLK preferredTlk = tlks.FirstOrDefault(x => string.Equals(x.tlkPath, preferredPath, StringComparison.OrdinalIgnoreCase));
+            if (preferredTlk is not null)
+            {
+                preferredTlk.selectedForLoad = true;
+            }
+        }
+
+        private static void SelectExistingEmbeddedTlks(List<LoadedTLK> tlks, HashSet<(string FilePath, int UIndex)> loadedTlks, string preferredPath, int preferredExportNumber)
+        {
+            foreach (LoadedTLK tlk in tlks)
+            {
+                tlk.selectedForLoad = loadedTlks.Contains((tlk.tlkPath, tlk.exportNumber));
+            }
+
+            if (tlks.Any(x => x.selectedForLoad) || string.IsNullOrEmpty(preferredPath))
+            {
+                return;
+            }
+
+            LoadedTLK preferredTlk = tlks.FirstOrDefault(x => x.exportNumber == preferredExportNumber && string.Equals(x.tlkPath, preferredPath, StringComparison.OrdinalIgnoreCase));
+            if (preferredTlk is not null)
+            {
+                preferredTlk.selectedForLoad = true;
+            }
+        }
+
+        private static List<LoadedTLK> FindME3Tlks()
+        {
+            var tlks = Directory.EnumerateFiles(ME3Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
+            tlks.ForEach(x => x.LoadMountPriority());
+            tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
+            return tlks;
+        }
+
+        private static List<LoadedTLK> FindME2Tlks()
+        {
+            var tlks = Directory.EnumerateFiles(ME2Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
+            tlks.ForEach(x => x.LoadMountPriority());
+            tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
+            return tlks;
+        }
+
+        private static List<LoadedTLK> FindME1Tlks()
+        {
+            var tlkfiles = Directory.EnumerateFiles(ME1Directory.DefaultGamePath, "*Tlk*", SearchOption.AllDirectories).ToList();
+            var tlks = new List<LoadedTLK>();
+            foreach (string tlk in tlkfiles)
+            {
+                using IMEPackage upk = MEPackageHandler.OpenME1Package(tlk);
+                foreach (ExportEntry exp in upk.Exports.Where(exp => exp.ClassName == "BioTlkFile"))
+                {
+                    tlks.Add(new LoadedTLK(tlk, exp.UIndex, exp.ObjectName, false));
+                }
+            }
+
+            return tlks;
+        }
+
+        private static List<LoadedTLK> FindLE3Tlks()
+        {
+            var tlks = Directory.EnumerateFiles(LE3Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
+            tlks.ForEach(x => x.LoadMountPriority());
+            tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
+            return tlks;
+        }
+
+        private static List<LoadedTLK> FindLE2Tlks()
+        {
+            var tlks = Directory.EnumerateFiles(LE2Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
+            tlks.ForEach(x => x.LoadMountPriority());
+            tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
+            return tlks;
+        }
+
+        private static List<LoadedTLK> FindLE1Tlks()
+        {
+            var tlkfiles = Directory.EnumerateFiles(LE1Directory.DefaultGamePath, "Startup_*", SearchOption.AllDirectories).ToList();
+            if (Directory.Exists(LE1Directory.DLCPath))
+            {
+                tlkfiles.AddRange(Directory
+                    .EnumerateFiles(LE1Directory.DLCPath, "*Tlk*", SearchOption.AllDirectories).ToList());
+            }
+
+            var tlks = new List<LoadedTLK>();
+            foreach (string tlk in tlkfiles)
+            {
+                using var upk = MEPackageHandler.UnsafePartialLoad(tlk, x => x.ClassName == "BioTlkFile");
+                foreach (ExportEntry exp in upk.Exports.Where(exp => exp.IsDataLoaded()))
+                {
+                    tlks.Add(new LoadedTLK(tlk, exp.UIndex, exp.ObjectName, false));
+                }
+            }
+
+            return tlks;
+        }
+
         private void AutoFindTLKME3()
         {
             BusyText = "Scanning for Mass Effect 3 TLK files";
             IsBusy = true;
             ME3TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkmountmap = new List<(string, int)>();
-                var tlks = Directory.EnumerateFiles(ME3Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
-                tlks.ForEach(x => x.LoadMountPriority());
-                tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindME3Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 ME3TLKItems.ReplaceAll(prevTask.Result);
                 SelectLoadedTLKsME3();
@@ -565,14 +715,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             BusyText = "Scanning for Mass Effect 2 TLK files";
             IsBusy = true;
             ME2TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkmountmap = new List<(string, int)>();
-                var tlks = Directory.EnumerateFiles(ME2Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
-                tlks.ForEach(x => x.LoadMountPriority());
-                tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindME2Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 ME2TLKItems.ReplaceAll(prevTask.Result);
                 SelectLoadedTLKsME2();
@@ -590,20 +733,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             BusyText = "Scanning for Mass Effect TLK files";
             IsBusy = true;
             ME1TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkfiles = Directory.EnumerateFiles(ME1Directory.DefaultGamePath, "*Tlk*", SearchOption.AllDirectories).ToList();
-                var tlks = new List<LoadedTLK>();
-                foreach (string tlk in tlkfiles)
-                {
-                    using IMEPackage upk = MEPackageHandler.OpenME1Package(tlk);
-                    foreach (ExportEntry exp in upk.Exports.Where(exp => exp.ClassName == "BioTlkFile"))
-                    {
-                        tlks.Add(new LoadedTLK(tlk, exp.UIndex, exp.ObjectName, false));
-                    }
-                }
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindME1Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 ME1TLKItems.ReplaceAll(prevTask.Result);
                 SelectLoadedTLKsME1();
@@ -621,14 +751,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             BusyText = "Scanning for Mass Effect 3 Legendary Edition TLK files";
             IsBusy = true;
             LE3TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkmountmap = new List<(string, int)>();
-                var tlks = Directory.EnumerateFiles(LE3Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
-                tlks.ForEach(x => x.LoadMountPriority());
-                tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindLE3Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 LE3TLKItems.ReplaceAll(prevTask.Result);
                 SelectLoadedTLKsLE3();
@@ -646,14 +769,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             BusyText = "Scanning for Mass Effect 2 Legendary Edition TLK files";
             IsBusy = true;
             LE2TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkmountmap = new List<(string, int)>();
-                var tlks = Directory.EnumerateFiles(LE2Directory.BioGamePath, "*.tlk", SearchOption.AllDirectories).Select(x => new LoadedTLK(x, false)).ToList();
-                tlks.ForEach(x => x.LoadMountPriority());
-                tlks.Sort((a, b) => a.mountpriority.CompareTo(b.mountpriority));
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindLE2Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 LE2TLKItems.ReplaceAll(prevTask.Result);
                 SelectLoadedTLKsLE2();
@@ -671,30 +787,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
             BusyText = "Scanning for Mass Effect 1 Legendary Edition TLK files";
             IsBusy = true;
             LE1TalkFiles.LoadedTlks.Clear();
-            Task.Run(() =>
-            {
-                var tlkfiles = Directory.EnumerateFiles(LE1Directory.DefaultGamePath, "Startup_*", SearchOption.AllDirectories).ToList();
-                if (Directory.Exists(LE1Directory.DLCPath))
-                {
-                    tlkfiles.AddRange(Directory
-                        .EnumerateFiles(LE1Directory.DLCPath, "*Tlk*", SearchOption.AllDirectories).ToList());
-                }
-
-                var tlks = new List<LoadedTLK>();
-                foreach (string tlk in tlkfiles)
-                {
-                    using var upk = MEPackageHandler.UnsafePartialLoad(tlk, x => x.ClassName == "BioTlkFile");
-                    {
-                        foreach (ExportEntry exp in upk.Exports.Where(exp => exp.IsDataLoaded()))
-                        {
-                            tlks.Add(new LoadedTLK(tlk, exp.UIndex, exp.ObjectName, false));
-                        }
-                    }
-
-                }
-                // MemoryAnalyzer.ForceFullGC(true);
-                return tlks;
-            }).ContinueWithOnUIThread(prevTask =>
+            Task.Run(FindLE1Tlks).ContinueWithOnUIThread(prevTask =>
             {
                 if (prevTask.Exception != null)
                 {
