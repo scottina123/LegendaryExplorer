@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Memory;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -39,10 +40,17 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         }
         public static void TrashEntries(IMEPackage pcc, IEnumerable<IEntry> itemsToTrash)
         {
+            var entriesToTrash = itemsToTrash.ToList();
+
+            foreach (IEntry entry in entriesToTrash)
+            {
+                MatineeHelper.RemoveFromParentInterpList(entry);
+            }
+
             ExportEntry trashTopLevel = pcc.FindExport(UnrealPackageFile.TrashPackageName);
             IEntry packageClass = pcc.GetEntryOrAddImport("Core.Package", "Class");
 
-            foreach (IEntry entry in itemsToTrash)
+            foreach (IEntry entry in entriesToTrash)
             {
                 if (entry == trashTopLevel || entry.ObjectName == "Trash") //don't trash what's already been trashed
                 {
@@ -57,7 +65,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
             {
                 var l = ObjectBinary.From<Level>(level);
                 var trashed = false;
-                foreach (var item in itemsToTrash.Where(x => x.IsTexture()))
+                foreach (var item in entriesToTrash.Where(x => x.IsTexture()))
                 {
                     trashed |= l.TextureToInstancesMap.Remove(item.UIndex);
                 }
@@ -69,7 +77,7 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
 
                 var bwi = pcc.GetUExport(l.Actors[0]); // 0 is always BioWorldInfo
                 var props = bwi.GetProperties();
-                var uindexes = itemsToTrash.Select(x => x.UIndex).ToList();
+                var uindexes = entriesToTrash.Select(x => x.UIndex).ToList();
                 foreach (var propName in BWIProperitesToCleanupOnTrash)
                 {
                     var array = props.GetProp<ArrayProperty<ObjectProperty>>(propName);
