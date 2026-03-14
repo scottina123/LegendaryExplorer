@@ -1755,11 +1755,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             switch (clickedItem.Entry)
             {
                 case ExportEntry exportEntry:
-                    if (TrySelectExportHeaderNameUsage(usageDetail))
-                    {
-                        return;
-                    }
-
                     if (TrySelectPropertyNameUsage(usageDetail))
                     {
                         return;
@@ -1772,9 +1767,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         return;
                     }
 
-                    break;
-                case ImportEntry:
-                    TrySelectImportHeaderNameUsage(usageDetail);
                     break;
             }
         }
@@ -1793,11 +1785,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             if (clickedItem.Entry is not ExportEntry)
-            {
-                return;
-            }
-
-            if (TrySelectExportObjectReferenceHeaderUsage(usageDetail))
             {
                 return;
             }
