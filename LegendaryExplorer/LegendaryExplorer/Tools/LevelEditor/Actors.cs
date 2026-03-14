@@ -206,23 +206,14 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         DrawScale3D = snapshot.DrawScale3D;
     }
 
-    protected ActorProxy(IActorEditorContext context, ExportEntry actorExport)
+    protected virtual void LoadFromProperties()
     {
-        Editor = context;
-        Export = actorExport;
-        Properties = actorExport.GetCondensedProperties();
         PropertyCollection props = Properties;
 
         Tag = props.GetProp<NameProperty>("Tag")?.Value ?? NameReference.None;
 
-        DisplayText = Export.ObjectName.Instanced;
-        if (!Tag.Name.CaseInsensitiveEquals(Export.ClassName))
-        {
-            DisplayText += $" ({Tag})";
-        }
-
         var rotationProp = props.GetProp<StructProperty>("Rotation");
-        var locationsProp = props.GetProp<StructProperty>("location");
+        var locationsProp = props.GetProp<StructProperty>("location") ?? props.GetProp<StructProperty>("Location");
         var drawScale3DProp = props.GetProp<StructProperty>("DrawScale3D");
         var prePivotProp = props.GetProp<StructProperty>("PrePivot");
 
@@ -231,6 +222,52 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         drawScale3D = drawScale3DProp != null ? CommonStructs.GetVector3(drawScale3DProp) : Vector3.One;
         prePivot = prePivotProp != null ? CommonStructs.GetVector3(prePivotProp) : Vector3.Zero;
         rotation = rotationProp != null ? CommonStructs.GetRotator(rotationProp) : new Rotator(0, 0, 0);
+    }
+
+    protected void NotifyTransformPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(Location));
+        OnPropertyChanged(nameof(XPos));
+        OnPropertyChanged(nameof(YPos));
+        OnPropertyChanged(nameof(ZPos));
+        OnPropertyChanged(nameof(Rotation));
+        OnPropertyChanged(nameof(PitchDegrees));
+        OnPropertyChanged(nameof(YawDegrees));
+        OnPropertyChanged(nameof(RollDegrees));
+        OnPropertyChanged(nameof(DrawScale));
+        OnPropertyChanged(nameof(DrawScale3D));
+        OnPropertyChanged(nameof(XScale));
+        OnPropertyChanged(nameof(YScale));
+        OnPropertyChanged(nameof(ZScale));
+        OnPropertyChanged(nameof(PrePivot));
+    }
+
+    public virtual void RefreshFromExport()
+    {
+        Properties = Export.GetCondensedProperties();
+        LoadFromProperties();
+        UpdateLocalToWorld();
+        foreach (var component in Components)
+        {
+            component.RefreshFromExport();
+        }
+        MarkClean();
+        NotifyTransformPropertiesChanged();
+    }
+
+    protected ActorProxy(IActorEditorContext context, ExportEntry actorExport)
+    {
+        Editor = context;
+        Export = actorExport;
+        Properties = actorExport.GetCondensedProperties();
+        LoadFromProperties();
+
+        DisplayText = Export.ObjectName.Instanced;
+        if (!Tag.Name.CaseInsensitiveEquals(Export.ClassName))
+        {
+            DisplayText += $" ({Tag})";
+        }
+
         UpdateLocalToWorld();
         _cleanSnapshot = SnapshotTransform();
     }
@@ -910,6 +947,35 @@ public abstract class CollectionActorComponentProxy : ActorProxy
     public override bool TestUIndexes(HashSet<int> uIndexes)
     {
         return base.TestUIndexes(uIndexes) || uIndexes.Contains(CollectionActorExport.UIndex);
+    }
+
+    public override void RefreshFromExport()
+    {
+        Properties = Export.GetCondensedProperties();
+        if (ObjectBinary.From(CollectionActorExport) is StaticCollectionActor collectionActor
+            && collectionActor.Components.FindIndex(uIdx => uIdx == Export.UIndex) is int idx and >= 0)
+        {
+            LocalToWorld = collectionActor.LocalToWorldTransforms[idx];
+            (location, drawScale3D, rotation) = collectionActor.GetDecomposedTransformationForIndex(idx);
+            if (drawScale3D.X == drawScale3D.Y && drawScale3D.X == drawScale3D.Z)
+            {
+                drawScale = drawScale3D.X;
+                drawScale3D = Vector3.One;
+            }
+            else
+            {
+                drawScale = 1f;
+            }
+            prePivot = Vector3.Zero;
+        }
+
+        foreach (var component in Components)
+        {
+            component.RefreshFromExport();
+        }
+
+        MarkClean();
+        NotifyTransformPropertiesChanged();
     }
 }
 

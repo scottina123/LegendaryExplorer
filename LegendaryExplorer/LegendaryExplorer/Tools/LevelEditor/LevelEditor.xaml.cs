@@ -896,6 +896,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public readonly UndoHistory UndoHistory = new();
     private TransformSnapshot? _preEditSnapshot;
     private bool _isApplyingUndoRedo;
+    private bool _isRefreshingActorFromPackageUpdate;
     private (int UIndex, IMEPackage Package) _pendingSelect;
     public bool IsApplyingUndoRedo => _isApplyingUndoRedo;
 
@@ -1167,6 +1168,40 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
         HashSet<int> updatedExports = relevantUpdates.Select(x => x.Index).ToHashSet();
+        if (_selectedPropertiesExport is not null
+            && _selectedPropertiesExportPackage == file.Package
+            && updatedExports.Contains(_selectedPropertiesExportUIndex))
+        {
+            if (file.Actors.FirstOrDefault(actor => actor.TestUIndexes(updatedExports)) is { } actor)
+            {
+                _isRefreshingActorFromPackageUpdate = true;
+                try
+                {
+                    actor.RefreshFromExport();
+                }
+                finally
+                {
+                    _isRefreshingActorFromPackageUpdate = false;
+                }
+
+                if (actor == SelectedActor)
+                {
+                    _preEditSnapshot = SelectedActor.SnapshotTransform();
+                }
+            }
+
+            if (file.Package.GetEntry(_selectedPropertiesExportUIndex) is ExportEntry updatedPropertiesExport)
+            {
+                _selectedPropertiesExport = updatedPropertiesExport;
+                LevelEditorInterpreter.LoadExport(updatedPropertiesExport);
+                LevelEditorMetadata.LoadExport(updatedPropertiesExport);
+            }
+
+            SceneViewer?.MarkRenderDirty();
+            UpdateGlobalDirtyState();
+            return;
+        }
+
         if (updatedExports.Contains(file.LevelExport.UIndex))
         {
             ReloadFile(file);
@@ -1314,6 +1349,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void OnActorPropertyChanged(object sender, PropertyChangedEventArgs e)
     {
+        if (_isRefreshingActorFromPackageUpdate) return;
         if (_isApplyingUndoRedo || RenderContext.TransformWidget.IsDragging) return;
         if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
 

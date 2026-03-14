@@ -77,6 +77,12 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         Export = componentExport;
         Properties = componentExport.GetCondensedProperties();
 
+        LoadFromProperties();
+        UpdateSelfLocalToWorld();
+    }
+
+    protected virtual void LoadFromProperties()
+    {
         var rotationProp = Properties.GetProp<StructProperty>("Rotation");
         var translationProp = Properties.GetProp<StructProperty>("Translation");
         var scale3DProp = Properties.GetProp<StructProperty>("Scale3D");
@@ -89,8 +95,6 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         absoluteTranslation = Properties.GetProp<BoolProperty>("AbsoluteTranslation")?.Value ?? false;
         absoluteRotation = Properties.GetProp<BoolProperty>("AbsoluteRotation")?.Value ?? false;
         absoluteScale = Properties.GetProp<BoolProperty>("AbsoluteScale")?.Value ?? false;
-
-        UpdateSelfLocalToWorld();
     }
 
     public static PrimitiveComponentProxy Create(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)
@@ -128,6 +132,13 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
     public virtual void Render(MeshRenderContext context, RenderPass pass) { }
 
     public virtual void UpdateScene(MeshRenderContext context, float deltaTime) { }
+
+    public virtual void RefreshFromExport()
+    {
+        Properties = Export.GetCondensedProperties();
+        LoadFromProperties();
+        UpdateLocalToWorld();
+    }
 
     private void UpdateSelfLocalToWorld()
     {
@@ -219,7 +230,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 public class PointLightComponentProxy : PrimitiveComponentProxy
 {
     public float Radius { get; set; }
-    public float Brightness { get; }
+    public float Brightness { get; private set; }
     public System.Drawing.Color LightColor { get; set; }
     public System.Drawing.Color LightEnv_BouncedModulationColor { get; set; }
     public bool ApplyBouncedModulationColor { get; set; }
@@ -263,6 +274,30 @@ public class PointLightComponentProxy : PrimitiveComponentProxy
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightEnv_BouncedModulationColor, "LightEnv_BouncedModulationColor"));
         Export.WriteProperties(Properties);
     }
+
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        Radius = Properties.GetProp<FloatProperty>("Radius")?.Value ?? 1024f;
+        Brightness = Properties.GetProp<FloatProperty>("Brightness")?.Value ?? 1f;
+        if (Properties.GetProp<StructProperty>("LightColor") is { } lightColorProp)
+        {
+            LightColor = CommonStructs.GetColor(lightColorProp);
+        }
+        else
+        {
+            LightColor = System.Drawing.Color.White;
+        }
+
+        if (Properties.GetProp<StructProperty>("LightEnv_BouncedModulationColor") is { } bouncedColorProp)
+        {
+            LightEnv_BouncedModulationColor = CommonStructs.GetColor(bouncedColorProp);
+        }
+        else
+        {
+            LightEnv_BouncedModulationColor = LightColor;
+        }
+    }
 }
 
 public class SpotLightComponentProxy : PointLightComponentProxy
@@ -287,11 +322,18 @@ public class SpotLightComponentProxy : PointLightComponentProxy
         base.CommitChanges();
     }
 
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        InnerConeAngle = Properties.GetProp<FloatProperty>("InnerConeAngle")?.Value ?? 0f;
+        OuterConeAngle = Properties.GetProp<FloatProperty>("OuterConeAngle")?.Value ?? 44f;
+    }
+
 }
 
 public class DirectionalLightComponentProxy : PrimitiveComponentProxy
 {
-    public float Brightness { get; }
+    public float Brightness { get; private set; }
     public System.Drawing.Color LightColor { get; set; }
 
     public Vector3 EffectiveLightColor => new(LightColor.R / 255f, LightColor.G / 255f, LightColor.B / 255f);
@@ -313,6 +355,20 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
     {
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
         Export.WriteProperties(Properties);
+    }
+
+    public override void RefreshFromExport()
+    {
+        base.RefreshFromExport();
+        Brightness = Properties.GetProp<FloatProperty>("Brightness")?.Value ?? 1f;
+        if (Properties.GetProp<StructProperty>("LightColor") is { } lightColorProp)
+        {
+            LightColor = CommonStructs.GetColor(lightColorProp);
+        }
+        else
+        {
+            LightColor = System.Drawing.Color.White;
+        }
     }
 }
 
