@@ -86,7 +86,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         {
             var (text, tr) = t;
             text = text.ToLower();
-            bool showThis = tr.TextureName.ToLower().Contains(text) || tr.CRC.ToLower().Contains(text) || tr.ParentPackage.ToLower().Contains(text);
+            var textureSize = $"{tr.SizeX}x{tr.SizeY}";
+            bool showThis = tr.TextureName.ToLower().Contains(text)
+                            || tr.CRC.ToLower().Contains(text)
+                            || tr.ParentPackage.ToLower().Contains(text)
+                            || tr.CFormat.ToLower().Contains(text)
+                            || tr.TexGrp.ToLower().Contains(text)
+                            || textureSize.Contains(text);
 
             if (!showThis && text.StartsWith("size: ") && text.Contains('x') && text.Length > 6)
             {
@@ -96,6 +102,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
                     showThis = tr.SizeX == xVal && tr.SizeY == yVal;
                 }
             }
+
+            if (!showThis && text.StartsWith("type:") && text.Length > 5)
+            {
+                var typeText = text[5..].Trim();
+                showThis = tr.CFormat.Contains(typeText, System.StringComparison.OrdinalIgnoreCase)
+                           || tr.TexGrp.Contains(typeText, System.StringComparison.OrdinalIgnoreCase);
+            }
+
             return showThis;
         }
     }

@@ -629,6 +629,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -637,7 +638,19 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Textures" Style="{StaticResource ColumnHeaderStyle}" ToolTip="All the textures in the game (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
-                            <controls:ListBoxScroll x:Name="lstbx_Textures" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Textures}" SelectionChanged="lstbx_Textures_SelectionChanged" Grid.Row="1" Grid.Column="0">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170" Margin="0,0,12,0"
+                                          ItemsSource="{Binding TextureTypeFilters}"
+                                          SelectedItem="{Binding SelectedTextureTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                                <TextBlock Text="Size:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170"
+                                          ItemsSource="{Binding TextureSizeFilters}"
+                                          SelectedItem="{Binding SelectedTextureSizeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_Textures" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Textures}" SelectionChanged="lstbx_Textures_SelectionChanged" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -663,7 +676,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Texture Viewer" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Click button to toggle the viewer" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
+                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
                                 <DockPanel x:Name="details_Textures" MinWidth="350" MaxWidth="550" Margin="3">
                                     <ToggleButton x:Name="btn_TextRenderToggle" Content="Toggle Texture Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_TextRenderToggle_Click"/>
                                     <Grid>
@@ -672,7 +685,7 @@
                                     </Grid>
                                 </DockPanel>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="texturesUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                            <assetDatabase:AssetUsagesPanel x:Name="texturesUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Textures}"
                                                            HeaderToolTip="Every file that uses this texture&#x0a;Right click to open in Package Editor"/>
                         </Grid>

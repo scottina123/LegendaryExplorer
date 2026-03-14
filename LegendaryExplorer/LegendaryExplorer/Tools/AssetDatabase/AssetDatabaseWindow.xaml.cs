@@ -120,6 +120,36 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public AssetFilters AssetFilters { get; private set; }
 
         public ObservableCollectionExtended<FileDirPair> FileListExtended { get; } = new();
+        public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
+        public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
+
+        private const string AllTextureFilterOption = "All";
+
+        private string _selectedTextureTypeFilter = AllTextureFilterOption;
+        public string SelectedTextureTypeFilter
+        {
+            get => _selectedTextureTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedTextureTypeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedTextureSizeFilter = AllTextureFilterOption;
+        public string SelectedTextureSizeFilter
+        {
+            get => _selectedTextureSizeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedTextureSizeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
 
         private ClassRecord _selectedClass;
         public ClassRecord SelectedClass
@@ -561,8 +591,56 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             FileListFilter.IsSelected = false;
             expander_CustomFiles.IsExpanded = false;
             SpeakerList.ClearEx();
+            RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
+        }
+
+        private void RefreshTextureDropdownFilters()
+        {
+            TextureTypeFilters.ClearEx();
+            TextureSizeFilters.ClearEx();
+
+            TextureTypeFilters.Add(AllTextureFilterOption);
+            TextureTypeFilters.AddRange(CurrentDataBase.Textures
+                .Select(t => t.CFormat)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
+
+            TextureSizeFilters.Add(AllTextureFilterOption);
+            TextureSizeFilters.AddRange(CurrentDataBase.Textures
+                .Select(t => new { t.SizeX, t.SizeY, Display = $"{t.SizeX}x{t.SizeY}" })
+                .GroupBy(t => t.Display, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g.First().SizeX)
+                .ThenBy(g => g.First().SizeY)
+                .Select(g => g.Key));
+
+            SelectedTextureTypeFilter = AllTextureFilterOption;
+            SelectedTextureSizeFilter = AllTextureFilterOption;
+        }
+
+        private bool TextureTabFilter(object obj)
+        {
+            if (obj is not TextureRecord textureRecord)
+            {
+                return false;
+            }
+
+            if (!AssetFilters.TextureFilter.Filter(textureRecord))
+            {
+                return false;
+            }
+
+            if (!string.Equals(SelectedTextureTypeFilter, AllTextureFilterOption, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(textureRecord.CFormat, SelectedTextureTypeFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var textureSize = $"{textureRecord.SizeX}x{textureRecord.SizeY}";
+            return string.Equals(SelectedTextureSizeFilter, AllTextureFilterOption, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(textureSize, SelectedTextureSizeFilter, StringComparison.OrdinalIgnoreCase);
         }
 
         private void GetConvoLinesBackground()
@@ -795,6 +873,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                         Localization = CurrentDataBase.Localization;
                         AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
+                        RefreshTextureDropdownFilters();
                         IsBusy = false;
                         CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} " +
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
@@ -1298,7 +1377,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         FilterBox.Watermark = "Search (by material name or parent package)";
                         break;
                     case 4:
-                        FilterBox.Watermark = "Search (by texture name or CRC if compiled)";
+                        FilterBox.Watermark = "Search (by texture name, package, type, size, or CRC if compiled)";
                         break;
                     case 0:
                         FilterBox.Watermark = "Search (by filename or source directory)";
@@ -2490,7 +2569,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     break;
                 case 4: //Textures
                     ICollectionView viewT = CollectionViewSource.GetDefaultView(CurrentDataBase.Textures);
-                    viewT.Filter = AssetFilters.TextureFilter.Filter;
+                    viewT.Filter = TextureTabFilter;
                     lstbx_Textures.ItemsSource = viewT;
                     break;
                 case 5: //Animations
@@ -3044,6 +3123,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
+            RefreshTextureDropdownFilters();
             Settings.AssetDBGame = CurrentDataBase.Game.ToString();
             isProcessing = false;
             SaveDatabase();

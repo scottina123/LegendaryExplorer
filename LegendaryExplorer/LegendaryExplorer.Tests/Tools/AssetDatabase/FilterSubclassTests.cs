@@ -26,14 +26,20 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
         public void TestTextureSearch()
         {
             var r1 = new TextureRecord("Name", "RandomPackage", false, false,
-                "format", "LOD", 512, 512, "ABCDE");
+                "DXT1", "Environment512", 512, 512, "ABCDE");
 
             var r2 = new TextureRecord("Name", "RandomPackage", false, false,
-                "format", "LOD", 512, 1024, "ABCDE");
+                "TextureCube", "UI", 512, 1024, "ABCDE");
 
             Assert.IsTrue(TextureFilter.TextureSearch(("name", r1))); // Can search against name
             Assert.IsTrue(TextureFilter.TextureSearch(("ompack", r1))); // Parent Package
             Assert.IsTrue(TextureFilter.TextureSearch(("ABCDE", r1))); // Or CRC
+            Assert.IsTrue(TextureFilter.TextureSearch(("dxt1", r1))); // Texture format/type
+            Assert.IsTrue(TextureFilter.TextureSearch(("environment512", r1))); // Texture group/type
+            Assert.IsTrue(TextureFilter.TextureSearch(("512x512", r1))); // Displayed texture size
+            Assert.IsTrue(TextureFilter.TextureSearch(("type:dxt1", r1))); // Explicit type search
+            Assert.IsTrue(TextureFilter.TextureSearch(("type:ui", r2))); // Explicit type search on texture group
+            Assert.IsFalse(TextureFilter.TextureSearch(("type:dxt5", r1)));
 
             // Test size parsing
             Assert.IsFalse(TextureFilter.TextureSearch(("size:", r1)));
