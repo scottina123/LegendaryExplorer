@@ -85,5 +85,28 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             Assert.IsFalse(filters.ParticleFilter.Filter(bioVfxTemplate));
         }
 
+        [TestMethod]
+        public void TestAnimationFiltersAreExclusive()
+        {
+            var filters = new AssetFilters(new FileListSpecification());
+            var normalAnimation = new AnimationRecord("Anim", "Anim", "Data", 1f, 30, "Comp", "Key", false, false);
+            var ambientPerformance = new AnimationRecord("Perf", "Perf", "Data", 1f, 30, "Comp", "Key", true, false);
+
+            var normalSpec = filters.AnimationFilter.Filters.First(spec => spec.FilterName == "Only Animations");
+            var perfSpec = filters.AnimationFilter.Filters.First(spec => spec.FilterName == "Only Performances (ME3)");
+
+            filters.AnimationFilter.SetSelected(normalSpec);
+            Assert.IsTrue(filters.AnimationFilter.Filter(normalAnimation));
+            Assert.IsFalse(filters.AnimationFilter.Filter(ambientPerformance));
+
+            filters.AnimationFilter.SetSelected(perfSpec);
+            Assert.IsFalse(filters.AnimationFilter.Filter(normalAnimation));
+            Assert.IsTrue(filters.AnimationFilter.Filter(ambientPerformance));
+
+            filters.AnimationFilter.SetSelected(perfSpec);
+            Assert.IsTrue(filters.AnimationFilter.Filter(normalAnimation));
+            Assert.IsTrue(filters.AnimationFilter.Filter(ambientPerformance));
+        }
+
     }
 }

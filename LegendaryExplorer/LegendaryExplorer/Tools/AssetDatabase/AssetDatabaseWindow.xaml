@@ -703,6 +703,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -710,12 +711,15 @@
                                 <ColumnDefinition MinWidth="400" Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-                                <TextBlock Text="Animsequences / Ambient Performance Tracks" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game"/>
-                                <CheckBox x:Name="chk_OnlyAmbPerf" Content="Only Ambient Performances" Margin="5,2,0,0"
-                                          VerticalContentAlignment="Center" Checked="chk_OnlyAmbPerf_Changed" Unchecked="chk_OnlyAmbPerf_Changed"/>
-                            </StackPanel>
-                            <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" SelectionChanged="lstbx_Anims_SelectionChanged" Grid.Row="1" Grid.Column="0">
+                            <TextBlock Text="Animsequences / Ambient Performance Tracks" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="170"
+                                          ItemsSource="{Binding AnimationTypeFilters}"
+                                          SelectedItem="{Binding SelectedAnimationTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_Anims" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Animations}" SelectionChanged="lstbx_Anims_SelectionChanged" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -745,7 +749,7 @@
                                 </controls:ListBoxScroll.ContextMenu>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Animation Preview and details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the animation preview on or off" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="1" Grid.Column="1">
+                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
                                 <DockPanel MinWidth="350" Margin="3">
                                     <ToggleButton x:Name="btn_AnimPreviewToggle" Content="Toggle Animation Preview" MaxHeight="30" ClickMode="Release" 
                                                   Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"/>
@@ -766,7 +770,7 @@
                                 </DockPanel>
                             </Border>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="2"/>
-                            <assetDatabase:AssetUsagesPanel x:Name="animationsUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="3"
+                            <assetDatabase:AssetUsagesPanel x:Name="animationsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Anims}"
                                                            HeaderToolTip="Every file that uses this animsequence&#x0a;Right click to open in Package Editor"/>
                         </Grid>

@@ -132,6 +132,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             ParticleSystemFilterOption,
             ClientEffectFilterOption
         };
+        public ObservableCollectionExtended<string> AnimationTypeFilters { get; } = new()
+        {
+            AllAnimationFilterOption,
+            NormalAnimationFilterOption,
+            AmbientPerformanceFilterOption
+        };
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
 
@@ -141,6 +147,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllVfxFilterOption = "All";
         private const string ParticleSystemFilterOption = "Particle Systems";
         private const string ClientEffectFilterOption = "Client Effects";
+        private const string AllAnimationFilterOption = "All";
+        private const string NormalAnimationFilterOption = "Normal Animations";
+        private const string AmbientPerformanceFilterOption = "Ambient Performances";
         private const string AllTextureFilterOption = "All";
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
@@ -151,6 +160,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 if (SetProperty(ref _selectedMeshTypeFilter, value))
                 {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedAnimationTypeFilter = AllAnimationFilterOption;
+        public string SelectedAnimationTypeFilter
+        {
+            get => _selectedAnimationTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedAnimationTypeFilter, value))
+                {
+                    ApplyAnimationTypeFilter();
                     Filter();
                 }
             }
@@ -637,9 +660,31 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SpeakerList.ClearEx();
             SelectedMeshTypeFilter = AllMeshFilterOption;
             SelectedVfxTypeFilter = AllVfxFilterOption;
+            SelectedAnimationTypeFilter = AllAnimationFilterOption;
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
+        }
+
+        private void ApplyAnimationTypeFilter()
+        {
+            if (AssetFilters?.AnimationFilter?.Filters is null)
+            {
+                return;
+            }
+
+            var normalFilter = AssetFilters.AnimationFilter.Filters
+                .FirstOrDefault(f => f.FilterName == "Only Animations");
+            var perfFilter = AssetFilters.AnimationFilter.Filters
+                .FirstOrDefault(f => f.FilterName == "Only Performances (ME3)");
+
+            if (normalFilter is null || perfFilter is null)
+            {
+                return;
+            }
+
+            normalFilter.IsSelected = SelectedAnimationTypeFilter == NormalAnimationFilterOption;
+            perfFilter.IsSelected = SelectedAnimationTypeFilter == AmbientPerformanceFilterOption;
         }
 
         private bool MeshTabFilter(object obj)
@@ -1536,17 +1581,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (currentView == 5 && lstbx_Anims.SelectedIndex >= 0)
             {
                 ToggleRenderAnimation();
-            }
-        }
-
-        private void chk_OnlyAmbPerf_Changed(object sender, RoutedEventArgs e)
-        {
-            // Find the "Only Performances" filter spec and toggle it to match the checkbox
-            var perfFilter = AssetFilters.AnimationFilter.Filters
-                .FirstOrDefault(f => f.FilterName == "Only Performances (ME3)");
-            if (perfFilter != null && perfFilter.IsSelected != chk_OnlyAmbPerf.IsChecked)
-            {
-                SetFilters(perfFilter);
             }
         }
 
