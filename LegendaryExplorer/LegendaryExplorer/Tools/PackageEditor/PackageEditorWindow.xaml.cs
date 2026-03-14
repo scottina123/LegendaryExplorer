@@ -60,6 +60,7 @@ using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorerCore.Matinee;
+using System.Windows.Media;
 
 namespace LegendaryExplorer.Tools.PackageEditor
 {
@@ -71,6 +72,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private readonly record struct NameArrayPathSegment(NameReference ArrayName, int StructIndex);
 
         private readonly record struct NameUsagePropertyPathSegment(string PropertyName, int? ArrayIndex);
+
+        private readonly record struct TreeViewScrollState(double HorizontalOffset, double VerticalOffset);
 
         private sealed record NameArrayUsageMatch(
             ExportEntry Entry,
@@ -2261,6 +2264,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 BusyText = "Performing reference check...";
                 IsBusy = true;
                 var positionInBranch = selected.Parent.Sublinks.IndexOf(selected);
+                var treeViewScrollState = CaptureTreeViewScrollState();
                 Task.Run(() =>
                 {
                     List<IEntry> itemsToTrash = selected.FlattenTree().OrderByDescending(x => x.UIndex).Select(tvEntry => tvEntry.Entry).ToList();
@@ -2310,6 +2314,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     bool removedFromLevel = selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
 
                     EntryPruner.TrashEntries(Pcc, itemsToTrash);
+
+                    RestoreTreeViewViewport(treeViewScrollState);
 
                     if (removedFromLevel)
                     {
@@ -5295,6 +5301,63 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
             AllTreeViewNodesX.ClearEx();
+        }
+
+        private TreeViewScrollState? CaptureTreeViewScrollState()
+        {
+            if (CurrentView != CurrentViewMode.Tree)
+            {
+                return null;
+            }
+
+            var scrollViewer = FindVisualChild<ScrollViewer>(LeftSide_TreeView);
+            return scrollViewer is null
+                ? null
+                : new TreeViewScrollState(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
+        }
+
+        private void RestoreTreeViewViewport(TreeViewScrollState? scrollState)
+        {
+            if (scrollState is not { } state || CurrentView != CurrentViewMode.Tree)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (FindVisualChild<ScrollViewer>(LeftSide_TreeView) is { } scrollViewer)
+                {
+                    scrollViewer.ScrollToHorizontalOffset(state.HorizontalOffset);
+                    scrollViewer.ScrollToVerticalOffset(state.VerticalOffset);
+                }
+
+                LeftSide_TreeView.Focus();
+                Keyboard.Focus(LeftSide_TreeView);
+            }));
+        }
+
+        private static T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent is null)
+            {
+                return null;
+            }
+
+            for (int i = 0, childCount = VisualTreeHelper.GetChildrenCount(parent); i < childCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match)
+                {
+                    return match;
+                }
+
+                if (FindVisualChild<T>(child) is { } descendant)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
         }
 
         private void OpenIn_Clicked(object sender, RoutedEventArgs e)
