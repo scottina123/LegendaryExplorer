@@ -1,4 +1,5 @@
 ﻿using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
+using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
@@ -66,7 +67,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
     /// <summary>
     /// Interaction logic for SequenceEditorWPF.xaml
     /// </summary>
-    public partial class SequenceEditorWPF : WPFBase, IRecents
+    public partial class SequenceEditorWPF : WPFBase, IRecents, IDropTarget
     {
         private readonly SequenceGraphEditor graphEditor;
         public ObservableCollectionExtended<SObj> CurrentObjects { get; } = new();
@@ -1818,12 +1819,160 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        void IDropTarget.DragOver(IDropInfo dropInfo)
+        {
+            if (dropInfo.TargetItem is TreeViewEntry && dropInfo.Data is TreeViewEntry { Parent: not null } sourceItem)
+            {
+                dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
+                bool isSamePackageDrop = sourceItem.Entry?.FileRef == Pcc;
+                bool isShiftHeld = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+                dropInfo.Effects = isSamePackageDrop && isShiftHeld ? DragDropEffects.Move : DragDropEffects.Copy;
+            }
+        }
+
+        void IDropTarget.Drop(IDropInfo dropInfo)
+        {
+            if (dropInfo.TargetItem is not TreeViewEntry targetItem || dropInfo.Data is not TreeViewEntry { Parent: not null } sourceItem)
+            {
+                return;
+            }
+
+            IEntry sourceEntry = sourceItem.Entry;
+            IEntry targetEntry = targetItem.Entry;
+            if (sourceItem == targetItem || sourceEntry == null || targetEntry == null)
+            {
+                return;
+            }
+
+            bool isShiftHeld = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+            bool isSamePackageDrop = sourceEntry.FileRef == targetEntry.FileRef;
+            if (isSamePackageDrop && !isShiftHeld)
+            {
+                return;
+            }
+
+            if (isSamePackageDrop && isShiftHeld)
+            {
+                sourceEntry.idxLink = targetEntry.UIndex;
+                if (ShouldAddToInterpList(sourceEntry))
+                {
+                    AddToInterpList(sourceEntry);
+                }
+
+                RefreshInterpDataTreePreserveState(sourceEntry.UIndex);
+                return;
+            }
+
+            if (targetEntry.Game.IsLEGame() != sourceEntry.Game.IsLEGame() && !App.IsDebug && sourceEntry.Game != MEGame.UDK)
+            {
+                MessageBox.Show(
+                    "Cannot port assets between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot port asset",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            var treeMergeDialog = new TreeMergeDialog(sourceEntry, targetEntry, Pcc.Game);
+            if (treeMergeDialog.Owner == null)
+            {
+                treeMergeDialog.Owner = this;
+            }
+
+            treeMergeDialog.ShowDialog();
+            var portingOption = treeMergeDialog.PortingOption;
+            portingOption.PortUsingDonors = treeMergeDialog.PortUsingDonors;
+            portingOption.PortGlobalsAsImports = treeMergeDialog.PortGlobalsAsImports;
+            portingOption.PortExportsAsImportsWhenPossible = treeMergeDialog.PortExportsAsImportsWhenPossible;
+            portingOption.PortExportsMemorySafe = treeMergeDialog.PortExportsMemorySafe;
+            if (portingOption.PortingOptionChosen == EntryImporter.PortingOption.Cancel)
+            {
+                return;
+            }
+
+            IEntry targetLinkEntry = targetEntry;
+
+            int originalIndex = -1;
+            bool hadChanges = false;
+            bool hadHeaderChanges = false;
+            if (portingOption.PortingOptionChosen != EntryImporter.PortingOption.ReplaceSingular
+                && portingOption.PortingOptionChosen != EntryImporter.PortingOption.ReplaceSingularWithRelink
+                && targetEntry.FileRef.FindEntry(sourceEntry.InstancedFullPath) != null)
+            {
+                originalIndex = sourceEntry.indexValue;
+                hadChanges = sourceEntry.EntryHasPendingChanges;
+                hadHeaderChanges = sourceEntry.HeaderChanged;
+                sourceEntry.indexValue = targetEntry.FileRef.GetNextIndexedName(sourceEntry.ObjectName).Number;
+            }
+
+            string objectDBPath = AppDirectories.GetObjectDatabasePath(targetEntry.Game);
+            bool shouldUseDonors = portingOption.PortUsingDonors && sourceEntry.Game != targetEntry.Game && sourceEntry.Game != MEGame.UDK;
+            ObjectInstanceDB objectDB = null;
+            if (shouldUseDonors)
+            {
+                if (File.Exists(objectDBPath))
+                {
+                    using FileStream fs = File.OpenRead(objectDBPath);
+                    objectDB = ObjectInstanceDB.Deserialize(targetEntry.Game, fs);
+                }
+                else if (MessageBox.Show(
+                             "Port With Donors checkbox was selected, but no object database was found! Continue operation without donors?",
+                             "No object database",
+                             MessageBoxButton.YesNo,
+                             MessageBoxImage.Warning,
+                             MessageBoxResult.No) is not MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            var rop = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceEntry.Game != targetEntry.Game && sourceEntry.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                TargetGameDonorDB = objectDB,
+                ImportExportDependencies = portingOption.PortingOptionChosen is EntryImporter.PortingOption.CloneAllDependencies
+                    or EntryImporter.PortingOption.ReplaceSingularWithRelink,
+                GenerateImportsForGlobalFiles = portingOption.PortGlobalsAsImports,
+                PortImportsMemorySafe = portingOption.PortExportsMemorySafe,
+                PortExportsAsImportsWhenPossible = portingOption.PortExportsAsImportsWhenPossible,
+            };
+
+            var relinkResults = EntryImporter.ImportAndRelinkEntries(portingOption.PortingOptionChosen, sourceEntry, Pcc,
+                targetLinkEntry, true, rop, out IEntry newEntry);
+
+            if (originalIndex >= 0)
+            {
+                sourceEntry.indexValue = originalIndex;
+                sourceEntry.HeaderChanged = hadHeaderChanges;
+                sourceEntry.EntryHasPendingChanges = hadChanges;
+            }
+
+            if (portingOption.PortingOptionChosen is not EntryImporter.PortingOption.ReplaceSingular
+                and not EntryImporter.PortingOption.ReplaceSingularWithRelink
+                && newEntry != null
+                && ShouldAddToInterpList(newEntry))
+            {
+                AddToInterpList(newEntry);
+            }
+
+            RefreshInterpDataTreePreserveState(newEntry?.UIndex ?? targetEntry.UIndex);
+
+            if ((relinkResults?.Count ?? 0) > 0)
+            {
+                new ListDialog(relinkResults, "Relink report",
+                    "The following items reported relinking issues.", this).Show();
+            }
+        }
+
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
             if (Pcc == null)
             {
                 return; //nothing is loaded
             }
+
+            InterpData_MetadataEditor.LoadPccData(Pcc);
 
             IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
             List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
@@ -1853,6 +2002,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     SequenceExports.ClearEx();
                     SelectedObjects.ClearEx();
                     Properties_InterpreterWPF.UnloadExport();
+                    InterpData_MetadataEditor.UnloadExport();
                 }
 
                 RefreshView();
@@ -2776,6 +2926,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             graphEditor.Dispose();
             Properties_InterpreterWPF.Dispose();
             InterpData_InterpreterWPF.Dispose();
+            InterpData_MetadataEditor.Dispose();
             GraphHost.Child = null; //This seems to be required to clear OnChildGotFocus handler from WinFormsHost
             GraphHost.Dispose();
             DataContext = null;
@@ -3019,6 +3170,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     ClearInterpDataTree();
                     InterpData_InterpreterWPF.UnloadExport();
+                    InterpData_MetadataEditor.UnloadExport();
                     InterpDataTab.Visibility = Visibility.Collapsed;
                     if (BottomTabControl.SelectedItem == InterpDataTab)
                     {
@@ -3974,8 +4126,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (interpDataExport == null || Pcc == null)
             {
                 InterpData_InterpreterWPF.UnloadExport();
+                InterpData_MetadataEditor.UnloadExport();
                 return;
             }
+
+            InterpData_MetadataEditor.LoadPccData(Pcc);
 
             var childrenByParent = Pcc.Exports
                 .GroupBy(x => x.idxLink)
@@ -3985,6 +4140,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (root == null)
             {
                 InterpData_InterpreterWPF.UnloadExport();
+                InterpData_MetadataEditor.UnloadExport();
                 return;
             }
 
@@ -3992,6 +4148,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             InterpDataTreeNodes.Add(root);
             root.IsSelected = true;
             InterpData_InterpreterWPF.LoadExport(interpDataExport);
+            InterpData_MetadataEditor.LoadExport(interpDataExport);
         }
 
         private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes, IReadOnlyDictionary<int, List<ExportEntry>> childrenByParent)
@@ -4030,6 +4187,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
 
             InterpDataTreeNodes.ClearEx();
+            InterpData_MetadataEditor.UnloadExport();
         }
 
         private ExportEntry GetSelectedInterpDataTreeExport()
@@ -4042,10 +4200,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (e.NewValue is TreeViewEntry { Entry: ExportEntry export })
             {
                 InterpData_InterpreterWPF.LoadExport(export);
+                InterpData_MetadataEditor.LoadExport(export);
             }
             else
             {
                 InterpData_InterpreterWPF.UnloadExport();
+                InterpData_MetadataEditor.UnloadExport();
             }
         }
 
@@ -4264,6 +4424,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                         RefreshInterpDataTreePreserveState(trackExport.UIndex);
                     }
                     break;
+                case "BulkEditInterpGroups":
+                    if (export.ClassName == "InterpData")
+                    {
+                        var dialog = new BulkInterpEditorDialog(this, export);
+                        dialog.ShowDialog();
+                    }
+                    break;
                 case "ShiftInterpTrackMovesInInterpData":
                     if (export.ClassName == "InterpData")
                     {
@@ -4411,6 +4578,28 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                     break;
                 }
+                case "RestoreExport":
+                    Task.Run(() => SharedPackageTools.GetUnmoddedCandidatesForPackage(this)).ContinueWithOnUIThread(foundCandidates =>
+                    {
+                        if (!foundCandidates.Result.Any())
+                        {
+                            MessageBox.Show(this, "Cannot find any candidates for this file!");
+                            return;
+                        }
+
+                        var choices = foundCandidates.Result.DiskFiles.ToList();
+                        choices.AddRange(foundCandidates.Result.SFARPackageStreams.Select(x => x.Key));
+                        var choice = InputComboBoxDialog.GetValue(this, "Choose file to compare to:", "Unmodified file comparison", choices, choices.Last());
+                        if (string.IsNullOrEmpty(choice))
+                        {
+                            return;
+                        }
+
+                        using var restorePackage = MEPackageHandler.OpenMEPackage(choice, forceLoadFromDisk: true);
+                        export.Data = restorePackage.GetUExport(export.UIndex).Data;
+                        RefreshInterpDataTreePreserveState(export.UIndex);
+                    });
+                    break;
                 case "Trash":
                     if (InterpDataTreeView?.SelectedItem is TreeViewEntry selected)
                     {
@@ -4442,6 +4631,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                     break;
                 }
+                case "ExportEmbeddedFile":
+                case "ImportEmbeddedFile":
+                    MessageBox.Show(this, "Embedded file import/export is not available directly in Sequence Editor for this context.");
+                    break;
                 case "ImportAllData":
                 case "ImportBinaryData":
                 {
@@ -4461,6 +4654,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                         MessageBox.Show("Done.");
                         RefreshInterpDataTreePreserveState(export.UIndex);
                     }
+                    break;
+                }
+                case "GenerateExportMd5":
+                {
+                    var hash = MD5.HashData(export.Data);
+                    var result = new StringBuilder(hash.Length * 2);
+                    for (int i = 0; i < hash.Length; i++)
+                    {
+                        result.Append(hash[i].ToString("x2"));
+                    }
+                    Clipboard.SetText(result.ToString());
                     break;
                 }
             }
@@ -4496,7 +4700,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private static void AddToInterpList(IEntry newEntry)
         {
-            if (newEntry.Parent is not ExportEntry parentExport)
+            if (newEntry == null || newEntry.Parent is not ExportEntry parentExport)
             {
                 return;
             }

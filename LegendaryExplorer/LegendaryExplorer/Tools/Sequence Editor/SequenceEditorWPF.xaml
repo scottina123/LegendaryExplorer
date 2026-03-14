@@ -36,6 +36,7 @@
             <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
             <MenuItem Header="Open Gesture Animation Importer" Tag="OpenGestureAnimationImporter" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
             <MenuItem Header="Add InterpTrack to group" Tag="AddInterpTrack" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Bulk Edit InterpGroups" Tag="BulkEditInterpGroups" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift currently selected InterpTrackMove" Tag="ShiftSelectedInterpTrackMove" Click="InterpDataTree_PackageEditorAction_Click" />
             <Separator />
@@ -48,16 +49,21 @@
                 <MenuItem Header="Multi-clone entry" Tag="MultiClone" Click="InterpDataTree_PackageEditorAction_Click" />
                 <MenuItem Header="Multi-clone Tree" Tag="MultiCloneTree" Click="InterpDataTree_PackageEditorAction_Click" />
             </MenuItem>
+            <MenuItem Header="Restore export data" Tag="RestoreExport" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Trash entry and children" Tag="Trash" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Set all object indexes in this tree to 0" Tag="SetIndicesInTreeToZero" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Export...">
+                <MenuItem Header="Embedded file(s)" Tag="ExportEmbeddedFile" Click="InterpDataTree_PackageEditorAction_Click" />
                 <MenuItem Header="Complete export data" Tag="ExportAllData" Click="InterpDataTree_PackageEditorAction_Click" />
                 <MenuItem Header="Binary data only" Tag="ExportBinaryData" Click="InterpDataTree_PackageEditorAction_Click" />
             </MenuItem>
             <MenuItem Header="Import...">
+                <MenuItem Header="Embedded file*" Tag="ImportEmbeddedFile" Click="InterpDataTree_PackageEditorAction_Click" />
                 <MenuItem Header="Complete export data*" Tag="ImportAllData" Click="InterpDataTree_PackageEditorAction_Click" />
                 <MenuItem Header="Binary data only*" Tag="ImportBinaryData" Click="InterpDataTree_PackageEditorAction_Click" />
             </MenuItem>
+            <Separator />
+            <MenuItem Header="Generate MD5 of export" Tag="GenerateExportMd5" Click="InterpDataTree_PackageEditorAction_Click" />
             <Separator />
             <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
             <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
@@ -548,6 +554,9 @@
                                           ItemsSource="{Binding InterpDataTreeNodes}"
                                           SelectedItemChanged="InterpDataTreeView_SelectedItemChanged"
                                           PreviewMouseRightButtonDown="InterpDataTreeView_PreviewMouseRightButtonDown"
+                                           dd:DragDrop.IsDragSource="True"
+                                           dd:DragDrop.IsDropTarget="True"
+                                           dd:DragDrop.DropHandler="{Binding}"
                                           VirtualizingStackPanel.IsVirtualizing="True"
                                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                                           ContextMenu="{StaticResource interpDataTreeContextMenu}">
@@ -581,7 +590,14 @@
                                     </TreeView.ItemContainerStyle>
                                 </TreeView>
                                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
-                                <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF" Grid.Column="2" HideHexBox="True" />
+                                <TabControl Grid.Column="2">
+                                    <TabItem Header="Interpreter">
+                                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF" HideHexBox="True" />
+                                    </TabItem>
+                                    <TabItem Header="Metadata">
+                                        <exportLoaderControls:EntryMetadataExportLoader x:Name="InterpData_MetadataEditor" />
+                                    </TabItem>
+                                </TabControl>
                             </Grid>
                         </TabItem>
                     </TabControl>
