@@ -69,6 +69,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
     {
         private readonly record struct NameArrayPathSegment(NameReference ArrayName, int StructIndex);
 
+        private readonly record struct NameUsagePropertyPathSegment(string PropertyName, int? ArrayIndex);
+
         private sealed record NameArrayUsageMatch(
             ExportEntry Entry,
             string DisplayPath,
@@ -1709,6 +1711,197 @@ namespace LegendaryExplorer.Tools.PackageEditor
             entryDoubleClick(clickedItem);
         }
 
+        private void nameUsageDoubleClick(EntryStringPair clickedItem)
+        {
+            if (CurrentView is CurrentViewMode.Names)
+            {
+                SearchHintText = "Object name";
+                GotoHintText = "UIndex";
+                CurrentView = CurrentViewMode.Tree;
+            }
+
+            entryDoubleClick(clickedItem);
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectNameUsageInRightPanel(clickedItem)));
+        }
+
+        private void SelectNameUsageInRightPanel(EntryStringPair clickedItem)
+        {
+            if (clickedItem?.Entry is null || clickedItem.Entry.UIndex == 0)
+            {
+                return;
+            }
+
+            string usageDetail = GetNameUsageDetail(clickedItem);
+            if (string.IsNullOrWhiteSpace(usageDetail))
+            {
+                return;
+            }
+
+            switch (clickedItem.Entry)
+            {
+                case ExportEntry exportEntry:
+                    if (TrySelectExportHeaderNameUsage(usageDetail))
+                    {
+                        return;
+                    }
+
+                    if (TrySelectPropertyNameUsage(usageDetail))
+                    {
+                        return;
+                    }
+
+                    if (usageDetail == "Component TemplateName (0x4)")
+                    {
+                        BinaryInterpreter_Tab.IsSelected = true;
+                        BinaryInterpreterTab_BinaryInterpreter.SetHexboxSelectedOffset(4);
+                        return;
+                    }
+
+                    break;
+                case ImportEntry:
+                    TrySelectImportHeaderNameUsage(usageDetail);
+                    break;
+            }
+        }
+
+        private static string GetNameUsageDetail(EntryStringPair clickedItem)
+        {
+            if (clickedItem?.Entry is null || string.IsNullOrEmpty(clickedItem.Message))
+            {
+                return null;
+            }
+
+            string expectedPrefix = $"#{clickedItem.Entry.UIndex} {clickedItem.Entry.ObjectName.Instanced}: ";
+            if (clickedItem.Message.StartsWith(expectedPrefix, StringComparison.Ordinal))
+            {
+                return clickedItem.Message[expectedPrefix.Length..];
+            }
+
+            int separatorIndex = clickedItem.Message.IndexOf(": ", StringComparison.Ordinal);
+            return separatorIndex >= 0 ? clickedItem.Message[(separatorIndex + 2)..] : null;
+        }
+
+        private bool TrySelectExportHeaderNameUsage(string usageDetail)
+        {
+            return usageDetail switch
+            {
+                "Header: Object Name" => SelectMetadataOffset(0xC),
+                "Header: ComponentMap" => SelectMetadataOffset(0x28),
+                _ => false
+            };
+        }
+
+        private bool TrySelectImportHeaderNameUsage(string usageDetail)
+        {
+            return usageDetail switch
+            {
+                "ObjectName" => SelectMetadataOffset(0x14),
+                "PackageFile" => SelectMetadataOffset(0x0),
+                "Class" => SelectMetadataOffset(0x8),
+                _ => false
+            };
+        }
+
+        private bool SelectMetadataOffset(long offset)
+        {
+            Metadata_Tab.IsSelected = true;
+            MetadataTab_MetadataEditor.SetHexboxSelectedOffset(offset);
+            return true;
+        }
+
+        private bool TrySelectPropertyNameUsage(string usageDetail)
+        {
+            const string propertyPrefix = "Property: ";
+            if (!usageDetail.StartsWith(propertyPrefix, StringComparison.Ordinal)
+                || InterpreterTab_Interpreter.PropertyNodes.Count == 0
+                || !TryParsePropertyUsagePath(usageDetail[propertyPrefix.Length..], out var pathSegments))
+            {
+                return false;
+            }
+
+            UPropertyTreeViewEntry current = null;
+            foreach (var segment in pathSegments)
+            {
+                IEnumerable<UPropertyTreeViewEntry> children = current?.ChildrenProperties
+                    ?? InterpreterTab_Interpreter.PropertyNodes.SelectMany(node => node.ChildrenProperties);
+                current = children.FirstOrDefault(node => node.Property?.Name.Name == segment.PropertyName);
+                if (current is null)
+                {
+                    return false;
+                }
+
+                if (segment.ArrayIndex is int arrayIndex)
+                {
+                    if (arrayIndex < 0 || arrayIndex >= current.ChildrenProperties.Count)
+                    {
+                        return false;
+                    }
+
+                    current.IsExpanded = true;
+                    current = current.ChildrenProperties[arrayIndex];
+                }
+            }
+
+            if (current is null)
+            {
+                return false;
+            }
+
+            current.ExpandParents();
+            Interpreter_Tab.IsSelected = true;
+            current.IsSelected = true;
+            InterpreterTab_Interpreter.SelectedItem = current;
+            return true;
+        }
+
+        private static bool TryParsePropertyUsagePath(string usagePath, out List<NameUsagePropertyPathSegment> pathSegments)
+        {
+            pathSegments = null;
+            if (string.IsNullOrWhiteSpace(usagePath))
+            {
+                return false;
+            }
+
+            string normalizedPath = usagePath.Trim();
+            foreach (string suffix in new[] { " function name", " enum type", " enum value", " struct type", " name", " value" })
+            {
+                if (normalizedPath.EndsWith(suffix, StringComparison.Ordinal))
+                {
+                    normalizedPath = normalizedPath[..^suffix.Length];
+                    break;
+                }
+            }
+
+            normalizedPath = normalizedPath.Replace(": ", ".", StringComparison.Ordinal).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            var parsedSegments = new List<NameUsagePropertyPathSegment>();
+            foreach (string rawSegment in normalizedPath.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int bracketIndex = rawSegment.IndexOf('[');
+                if (bracketIndex < 0)
+                {
+                    parsedSegments.Add(new NameUsagePropertyPathSegment(rawSegment, null));
+                    continue;
+                }
+
+                if (!rawSegment.EndsWith(']')
+                    || !int.TryParse(rawSegment[(bracketIndex + 1)..^1], out int arrayIndex))
+                {
+                    return false;
+                }
+
+                parsedSegments.Add(new NameUsagePropertyPathSegment(rawSegment[..bracketIndex], arrayIndex));
+            }
+
+            pathSegments = parsedSegments;
+            return pathSegments.Count > 0;
+        }
+
         private void PopoutCurrentView()
         {
             if (EditorTabs.SelectedItem is TabItem { Content: ExportLoaderControl exportLoader })
@@ -2312,7 +2505,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                     $"#{kvp.Key.UIndex} {kvp.Key.ObjectName.Instanced}: {refName}"))).ToList(),
                             $"{prevTask.Result.Usages.Count} Objects that use '{name}'",
                             "There may be additional usages of this name in the unparsed binary of some objects", this)
-                    { DoubleClickEntryHandler = entryDoubleClickToTreeview };
+                    { DoubleClickEntryHandler = nameUsageDoubleClick };
                     if (prevTask.Result.AddableUsages.Count > 0)
                     {
                         dlg.SecondaryActionText = $"Add another name to {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
