@@ -139,6 +139,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     RecentsController.AddRecent(felc.LoadedFile, false, null); // If we ever support games in FELC we should change the EventArgs
                     RecentsController.PropogateRecentsChange(true, RecentsController.RecentItems);
                 }
+
+                OnPropertyChanged(nameof(CurrentFilePath));
+                CommandManager.InvalidateRequerySuggested();
             }
         }
 
@@ -149,6 +152,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand LoadFileCommand { get; set; }
         public ICommand OpenFileCommand { get; set; }
         public ICommand ReloadCurrentExportCommand { get; set; }
+        public ICommand OpenCurrentFileLocationCommand { get; set; }
         private void LoadCommands()
         {
             SaveCommand = new GenericCommand(SavePackage, CanSave);
@@ -156,6 +160,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LoadFileCommand = new GenericCommand(LoadFile, CanLoadFile);
             OpenFileCommand = new GenericCommand(OpenFile, CanLoadFile);
             ReloadCurrentExportCommand = new GenericCommand(ReloadCurrentExport, IsExportLoaded);
+            OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
         }
 
         private void ReloadCurrentExport()
@@ -236,7 +241,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        public string CurrentFilePath => Pcc?.FilePath ?? (HostedControl as FileExportLoaderControl)?.LoadedFile;
         public string CurrentFile => Pcc != null ? Path.GetFileName(Pcc.FilePath) : "";
+
+        private bool CanOpenCurrentFileLocation()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentFilePath) && File.Exists(CurrentFilePath);
+        }
+
+        private void OpenCurrentFileLocation()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentFilePath))
+            {
+                LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
+            }
+        }
+
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
             if (updates.Any(x => x.Change.Has(PackageChange.Name)))

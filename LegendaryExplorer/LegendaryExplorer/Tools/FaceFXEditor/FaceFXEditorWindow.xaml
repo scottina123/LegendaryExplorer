@@ -35,6 +35,7 @@
                     <MenuItem Header="_Open" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O" ToolTip="Open a package file"/>
                     <MenuItem Header="_Save"  Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" ToolTip="Save package file in-place"/>
                     <MenuItem Header="Save as" Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" ToolTip="Save package file to another location"/>
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
                 </MenuItem>
             </Menu>

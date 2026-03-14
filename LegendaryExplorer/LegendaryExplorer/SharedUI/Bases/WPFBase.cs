@@ -5,11 +5,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Input;
 using LegendaryExplorer.Libraries;
 using LegendaryExplorer.MainWindow;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -30,11 +33,23 @@ namespace LegendaryExplorer.SharedUI.Bases
         public IMEPackage Pcc
         {
             get => pcc;
-            private set => SetProperty(ref pcc, value);
+            private set
+            {
+                if (SetProperty(ref pcc, value))
+                {
+                    OnPropertyChanged(nameof(CurrentPackageFilePath));
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
         }
+
+        public string CurrentPackageFilePath => Pcc?.FilePath;
+
+        public ICommand OpenCurrentFileLocationCommand { get; }
 
         protected WPFBase(string memoryTrackerName, bool submitTelemetry = true)
         {
+            OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
             MemoryAnalyzer.AddTrackedMemoryItem(new MemoryAnalyzerObjectExtended($"[{nameof(WPFBase)}] {memoryTrackerName}", new WeakReference(this)));
             if (submitTelemetry)
             {
@@ -98,6 +113,19 @@ namespace LegendaryExplorer.SharedUI.Bases
         {
             pcc?.Release(this);
             Pcc = null;
+        }
+
+        private bool CanOpenCurrentFileLocation()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentPackageFilePath) && File.Exists(CurrentPackageFilePath);
+        }
+
+        private void OpenCurrentFileLocation()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentPackageFilePath))
+            {
+                LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentPackageFilePath);
+            }
         }
 
         public abstract void HandleUpdate(List<PackageUpdate> updates);

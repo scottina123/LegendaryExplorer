@@ -49,6 +49,9 @@
                               Command="{Binding SaveCommand}" />
                     <MenuItem Header="Save As" x:Name="SaveFileAsMenuItem" InputGestureText="Ctrl+Shift+S"
                               Command="{Binding SaveAsCommand}" />
+                    <MenuItem Header="Open file location"
+                              Command="{Binding OpenCurrentFileLocationCommand}"
+                              ToolTip="{Binding CurrentFilePath, StringFormat=Open containing folder for {0}}" />
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>

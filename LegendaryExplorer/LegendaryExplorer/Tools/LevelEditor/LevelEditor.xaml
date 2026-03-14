@@ -79,6 +79,7 @@
                     <Separator />
                     <MenuItem Header="Save All" Command="{Binding SaveFileCommand}" InputGestureText="Ctrl+S" ToolTip="Save all open files in-place" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" ToolTip="Save selected file to another location" IsEnabled="{Binding HasAnyFileOpen}"/>
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
                 </MenuItem>

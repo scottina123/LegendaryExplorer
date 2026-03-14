@@ -138,6 +138,13 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             set => SetProperty(ref _currentFileName, value);
         }
 
+        private string _currentFilePath;
+        public string CurrentFilePath
+        {
+            get => _currentFilePath;
+            set => SetProperty(ref _currentFilePath, value);
+        }
+
         public ConditionalsEditorWindow() : base("Conditionals Editor", true)
         {
             LoadCommands();
@@ -184,6 +191,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         public ICommand SearchCommand { get; set; }
         public ICommand SearchAgainCommand { get; set; }
         public ICommand AddBlankCommand { get; set; }
+        public ICommand OpenCurrentFileLocationCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -200,6 +208,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             SearchCommand = new GenericCommand(SearchPrompt, FileIsLoaded);
             SearchAgainCommand = new GenericCommand(Search, CanSearchAgain);
             AddBlankCommand = new GenericCommand(AddBlankConditional, FileIsLoaded);
+            OpenCurrentFileLocationCommand = new GenericCommand(OpenCurrentFileLocation, CanOpenCurrentFileLocation);
         }
 
         private bool CanSearchAgain() => FileIsLoaded() && !string.IsNullOrEmpty(searchText);
@@ -320,6 +329,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                     if (d.ShowDialog() == false) return;
                     File.FilePath = d.FileName;
                     CurrentFileName = Path.GetFileName(d.FileName);
+                    CurrentFilePath = d.FileName;
                     RecentsController.AddRecent(d.FileName, false, null); // Can we infer game this file is for?
                     RecentsController.SaveRecentList(true);
                     Title = $"Conditionals Editor - {d.FileName}";
@@ -481,11 +491,13 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
                 File = null;
                 CurrentFileName = null;
+                CurrentFilePath = null;
                 Title = "Conditionals Editor";
                 return;
             }
 
             CurrentFileName = Path.GetFileName(filePath);
+            CurrentFilePath = filePath;
             Title = $"Conditionals Editor - {filePath}";
             Conditionals.AddRange(File.ConditionalEntries.OrderBy(c => c.ID).Select(c => new CondListEntry(c)));
         }
@@ -498,9 +510,23 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 ConditionalEntries = new List<CNDFile.ConditionalEntry>()
             };
             CurrentFileName = null;
+            CurrentFilePath = null;
             Conditionals.Clear();
             SelectedCond = null;
             Save();
+        }
+
+        private bool CanOpenCurrentFileLocation()
+        {
+            return !string.IsNullOrWhiteSpace(CurrentFilePath) && System.IO.File.Exists(CurrentFilePath);
+        }
+
+        private void OpenCurrentFileLocation()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentFilePath))
+            {
+                LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
+            }
         }
 
         private void AddBlankConditional()

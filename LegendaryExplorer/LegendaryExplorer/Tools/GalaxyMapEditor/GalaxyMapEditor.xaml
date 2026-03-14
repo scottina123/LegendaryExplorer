@@ -69,6 +69,7 @@
                     <Separator/>
                     <MenuItem Header="Save" Command="{Binding SaveFileCommand}" InputGestureText="Ctrl+S" IsEnabled="{Binding HasFileOpen}"/>
                     <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" IsEnabled="{Binding HasFileOpen}"/>
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
                 </MenuItem>
             </Menu>
 

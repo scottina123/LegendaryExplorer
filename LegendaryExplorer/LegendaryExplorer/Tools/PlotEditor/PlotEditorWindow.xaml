@@ -56,6 +56,7 @@
                     <MenuItem Header="_Open" x:Name="OpenFileMenuItem" Command="Open" />
                     <MenuItem Header="_Save" x:Name="SaveFileMenuItem" Command="Save" />
                     <MenuItem Header="_Save As" x:Name="SaveAsFileMenuItem" Command="SaveAs" />
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}" />
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>

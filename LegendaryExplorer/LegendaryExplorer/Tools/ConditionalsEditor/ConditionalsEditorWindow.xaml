@@ -58,6 +58,8 @@
                                   ToolTip="Save conditionals file in-place"/>
                     <MenuItem Header="Save as" Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S"
                                     ToolTip="Save conditionals file to another location" />
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}"
+                              ToolTip="{Binding CurrentFilePath, StringFormat=Open containing folder for {0}}" />
                     <Separator />
                     <MenuItem Header="Add new conditional" Command="{Binding AddBlankCommand}" InputGestureText="Ctrl+Shift+N"
                               ToolTip="Add a new, blank conditional to the file" />

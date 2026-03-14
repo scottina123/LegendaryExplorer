@@ -43,6 +43,7 @@
                     <MenuItem Header="Save as" Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S"
                               ToolTip="Save package file to another location"
                               IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" />
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}" />
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>

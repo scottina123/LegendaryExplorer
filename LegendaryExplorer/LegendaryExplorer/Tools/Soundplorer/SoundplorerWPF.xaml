@@ -72,6 +72,7 @@
                     <MenuItem Header="_Open" Command="Open" InputGestureText="Ctrl+O"/>
                     <MenuItem Header="_Save" Command="Save" InputGestureText="Ctrl+S" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
                     <MenuItem Header="_Save as" Command="SaveAs" InputGestureText="Ctrl+Shift+S" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"/>
+                    <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
 
                     <Separator/>
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false"/>
