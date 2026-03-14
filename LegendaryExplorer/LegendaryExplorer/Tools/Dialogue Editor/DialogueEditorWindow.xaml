@@ -3,6 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:dd="urn:gong-wpf-dragdrop"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:system="clr-namespace:System;assembly=mscorlib"
@@ -689,6 +690,9 @@
                                           ItemsSource="{Binding InterpDataTreeNodes}"
                                           SelectedItemChanged="InterpDataTreeView_SelectedItemChanged"
                                           PreviewMouseRightButtonDown="InterpDataTreeView_PreviewMouseRightButtonDown"
+                                          dd:DragDrop.IsDragSource="True"
+                                          dd:DragDrop.IsDropTarget="True"
+                                          dd:DragDrop.DropHandler="{Binding}"
                                           VirtualizingStackPanel.IsVirtualizing="True"
                                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                                           ContextMenu="{StaticResource interpDataTreeContextMenu}">
@@ -719,9 +723,15 @@
                                     </TreeView.ItemContainerStyle>
                                 </TreeView>
                                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
-                                <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF"
-                                                                               Grid.Column="2"
-                                                                               HideHexBox="True" />
+                                <TabControl Grid.Column="2">
+                                    <TabItem Header="Interpreter">
+                                        <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF"
+                                                                                       HideHexBox="True" />
+                                    </TabItem>
+                                    <TabItem Header="Metadata">
+                                        <exportLoaderControls:EntryMetadataExportLoader x:Name="InterpData_MetadataEditor" />
+                                    </TabItem>
+                                </TabControl>
                             </Grid>
                         </TabItem>
                         <TabItem Header="FaceFX">
