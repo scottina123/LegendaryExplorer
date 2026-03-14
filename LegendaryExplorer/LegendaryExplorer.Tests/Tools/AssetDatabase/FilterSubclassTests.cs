@@ -108,5 +108,31 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             Assert.IsTrue(filters.AnimationFilter.Filter(ambientPerformance));
         }
 
+        [TestMethod]
+        public void TestMaterialClassFiltersAreExclusive()
+        {
+            var filters = new AssetFilters(new FileListSpecification());
+            var material = new MaterialRecord("Mat", "Pkg", false, []);
+            var materialInstance = new MaterialRecord("MIC", "Pkg", false, [new MatSetting("IsInstance", "true", null)]);
+
+            var hideMaterials = filters.MaterialFilter.Types.OfType<MaterialClassSpec>().First(spec => spec.IsMaterial);
+            var hideMaterialInstances = filters.MaterialFilter.Types.OfType<MaterialClassSpec>().First(spec => !spec.IsMaterial);
+
+            hideMaterials.IsSelected = false;
+            hideMaterialInstances.IsSelected = true;
+            Assert.IsTrue(filters.MaterialFilter.Filter(material));
+            Assert.IsFalse(filters.MaterialFilter.Filter(materialInstance));
+
+            hideMaterials.IsSelected = true;
+            hideMaterialInstances.IsSelected = false;
+            Assert.IsFalse(filters.MaterialFilter.Filter(material));
+            Assert.IsTrue(filters.MaterialFilter.Filter(materialInstance));
+
+            hideMaterials.IsSelected = false;
+            hideMaterialInstances.IsSelected = false;
+            Assert.IsTrue(filters.MaterialFilter.Filter(material));
+            Assert.IsTrue(filters.MaterialFilter.Filter(materialInstance));
+        }
+
     }
 }

@@ -505,6 +505,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
@@ -515,7 +516,14 @@
                                 <ColumnDefinition Width="*" MinWidth="200"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Material Records" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Material Records (Grey shows DLC only materials that require a shadercache)" Grid.Row="0" Grid.Column="0"/>
-                            <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="1" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="4,2">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="190"
+                                          ItemsSource="{Binding MaterialTypeFilters}"
+                                          SelectedItem="{Binding SelectedMaterialTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="2" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -550,10 +558,10 @@
                                     </DataTemplate>
                                 </controls:ListBoxScroll.ItemTemplate>
                             </controls:ListBoxScroll>-->
-                            <GridSplitter Grid.RowSpan="2" Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-                            <materialEditor:MaterialEditorExportLoader x:Name="MaterialEditorExportLoader_Control" Grid.Row="1" Grid.Column="2" IsReadOnly="True" ShowSaveBar="False" AlwaysLoadData="True" MinWidth="200"/>
-                            <GridSplitter Grid.RowSpan="2" Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-                            <assetDatabase:AssetUsagesPanel x:Name="materialsUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="4"
+                            <GridSplitter Grid.RowSpan="3" Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                            <materialEditor:MaterialEditorExportLoader x:Name="MaterialEditorExportLoader_Control" Grid.Row="2" Grid.Column="2" IsReadOnly="True" ShowSaveBar="False" AlwaysLoadData="True" MinWidth="200"/>
+                            <GridSplitter Grid.RowSpan="3" Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                            <assetDatabase:AssetUsagesPanel x:Name="materialsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="4"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Materials}"
                                                            HeaderToolTip="All the files that use the material (grey is official DLC with shadercache)&#x0a;Right click to open in Package Editor"/>
                         </Grid>

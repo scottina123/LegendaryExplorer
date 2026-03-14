@@ -138,6 +138,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             NormalAnimationFilterOption,
             AmbientPerformanceFilterOption
         };
+        public ObservableCollectionExtended<string> MaterialTypeFilters { get; } = new()
+        {
+            AllMaterialFilterOption,
+            NormalMaterialFilterOption,
+            MaterialInstanceConstantFilterOption
+        };
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
 
@@ -150,6 +156,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllAnimationFilterOption = "All";
         private const string NormalAnimationFilterOption = "Normal Animations";
         private const string AmbientPerformanceFilterOption = "Ambient Performances";
+        private const string AllMaterialFilterOption = "All";
+        private const string NormalMaterialFilterOption = "Normal Materials";
+        private const string MaterialInstanceConstantFilterOption = "MaterialInstanceConstant";
         private const string AllTextureFilterOption = "All";
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
@@ -160,6 +169,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 if (SetProperty(ref _selectedMeshTypeFilter, value))
                 {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedMaterialTypeFilter = AllMaterialFilterOption;
+        public string SelectedMaterialTypeFilter
+        {
+            get => _selectedMaterialTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMaterialTypeFilter, value))
+                {
+                    ApplyMaterialTypeFilter();
                     Filter();
                 }
             }
@@ -661,9 +684,33 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SelectedMeshTypeFilter = AllMeshFilterOption;
             SelectedVfxTypeFilter = AllVfxFilterOption;
             SelectedAnimationTypeFilter = AllAnimationFilterOption;
+            SelectedMaterialTypeFilter = AllMaterialFilterOption;
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
+        }
+
+        private void ApplyMaterialTypeFilter()
+        {
+            if (AssetFilters?.MaterialFilter?.Types is null)
+            {
+                return;
+            }
+
+            var hideMaterials = AssetFilters.MaterialFilter.Types
+                .OfType<MaterialClassSpec>()
+                .FirstOrDefault(spec => spec.IsMaterial);
+            var hideMaterialInstances = AssetFilters.MaterialFilter.Types
+                .OfType<MaterialClassSpec>()
+                .FirstOrDefault(spec => !spec.IsMaterial);
+
+            if (hideMaterials is null || hideMaterialInstances is null)
+            {
+                return;
+            }
+
+            hideMaterials.IsSelected = SelectedMaterialTypeFilter == MaterialInstanceConstantFilterOption;
+            hideMaterialInstances.IsSelected = SelectedMaterialTypeFilter == NormalMaterialFilterOption;
         }
 
         private void ApplyAnimationTypeFilter()
