@@ -11,15 +11,44 @@ namespace LegendaryExplorerCore.TLK
     [DebuggerDisplay("TLKStringRef {StringID} {Data}")]
     public class TLKStringRef : INotifyPropertyChanged, IEquatable<TLKStringRef>, IComparable
     {
+        private int _stringId;
+        private string _data;
+
         /// <summary>
         /// The StringRef ID this corresponds to
         /// </summary>
-        public int StringID { get; set; }
+        public int StringID
+        {
+            get => _stringId;
+            set
+            {
+                if (_stringId == value)
+                {
+                    return;
+                }
+
+                _stringId = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StringID)));
+            }
+        }
            
         /// <summary>
         /// The string corresponding to <see cref="StringID"/>
         /// </summary>
-        public string Data { get; set; }
+        public string Data
+        {
+            get => _data;
+            set
+            {
+                if (_data == value)
+                {
+                    return;
+                }
+
+                _data = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Data)));
+            }
+        }
             
         /// <summary>
         /// Only applicable to ME1/LE1. If equal to 1, this is a valid string ref.

@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.IO;
+using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
 using System.Media;
 using LegendaryExplorer.Dialogs;
@@ -31,18 +32,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     public partial class TLKEditorExportLoader : FileExportLoaderControl
     {
         private ME2ME3TalkFile _currentMe2Me3Me2Me3TalkFile;
+        private bool _suppressInlineEditEvents;
         public List<TLKStringRef> LoadedStrings; //Loaded TLK
         public ObservableCollectionExtended<TLKStringRef> CleanedStrings { get; } = new(); // Displayed
         private bool xmlUp;
-
-        private const string NO_STRING_SELECTED = "No string selected";
 
         public bool StringSelected
         {
             get
             {
-                if (DisplayedString_ListBox == null) return false;
-                return DisplayedString_ListBox.SelectedIndex >= 0;
+                return GetActiveString() is not null;
             }
         }
 
@@ -53,7 +52,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InitializeComponent();
         }
 
-        public ICommand SaveCommand { get; set; }
         public ICommand CommitCommand { get; set; }
         public ICommand SetIDCommand { get; set; }
         public ICommand ExportXmlCommand { get; set; }
@@ -66,7 +64,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadCommands()
         {
-            SaveCommand = new RelayCommand(SaveString, CanSaveString);
             CommitCommand = new RelayCommand(CommitTLK, CanCommitTLK);
             SetIDCommand = new RelayCommand(SetStringID, StringIsSelected);
             DeleteStringCommand = new RelayCommand(DeleteString, StringIsSelected);
@@ -82,7 +79,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void DeleteString(object obj)
         {
-            var selectedItem = DisplayedString_ListBox.SelectedItem as TLKStringRef;
+            var selectedItem = GetActiveString();
+            if (selectedItem is null)
+            {
+                return;
+            }
+
             CleanedStrings.Remove(selectedItem);
             LoadedStrings.Remove(selectedItem);
             FileModified = true;
@@ -117,28 +119,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void CommitTLK(object obj)
         {
+            MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            NormalizeLoadedStrings();
             var huff = new HuffmanCompression();
             huff.LoadInputData(LoadedStrings);
             huff.SerializeTalkfileToExport(CurrentLoadedExport);
             FileModified = false;
-        }
-
-        private void SaveString(object obj)
-        {
-            if (DisplayedString_ListBox.SelectedItem is TLKStringRef selectedItem)
-            {
-                selectedItem.Data = EditorString;
-                FileModified = true;
-            }
-        }
-
-        private string EditorString => editBox.Text.Trim().Replace("\r\n", "\n");
-
-        private bool CanSaveString(object obj)
-        {
-            if (DisplayedString_ListBox == null) return false;
-            var selectedItem = DisplayedString_ListBox.SelectedItem as TLKStringRef;
-            return selectedItem?.Data != null && EditorString != selectedItem.Data;
         }
 
         //SirC "efficiency is next to godliness" way of Checking export is ME1/TLK
@@ -167,10 +153,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedFile = null;
             var tlkFile = new ME1TalkFile(exportEntry); // Setup object as TalkFile
             LoadedStrings = tlkFile.StringRefs.ToList(); //This is not binded to so reassigning is fine
+            _suppressInlineEditEvents = true;
             CleanedStrings.ClearEx(); //clear strings Ex does this in bulk (faster)
             CleanedStrings.AddRange(LoadedStrings.Where(x => x.StringID > 0).ToList()); //nest it remove 0 strings.
+            _suppressInlineEditEvents = false;
             CurrentLoadedExport = exportEntry;
-            editBox.Text = NO_STRING_SELECTED; //Reset ability to save, reset edit box if export changed.
             FileModified = false;
         }
 
@@ -185,10 +172,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void DisplayedString_ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (DisplayedString_ListBox.SelectedItem is TLKStringRef selectedItem)
-            {
-                editBox.Text = selectedItem.Data;
-            }
             OnPropertyChanged(nameof(StringSelected)); //Propogate this change
         }
 
@@ -232,8 +215,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             var blankstringref = new TLKStringRef(100, "New Blank Line", 1);
             LoadedStrings.Add(blankstringref);
             CleanedStrings.Add(blankstringref);
-            DisplayedString_ListBox.SelectedIndex = CleanedStrings.Count() - 1; //Set focus to new line (which is the last one)
-            DisplayedString_ListBox.ScrollIntoView(DisplayedString_ListBox.SelectedItem); //Scroll to last item
+            FocusString(blankstringref, 1);
             SetNewID();
             FileModified = true;
         }
@@ -267,8 +249,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CleanedStrings.AddRange(newStrings);
 
                 // Select the first added string
-                DisplayedString_ListBox.SelectedItem = newStrings[0];
-                DisplayedString_ListBox.ScrollIntoView(newStrings[0]);
+                FocusString(newStrings[0], 1);
 
                 FileModified = true;
             }
@@ -348,8 +329,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 popoutXmlBox.Text = xmlString;
 
-                popupDlg.Height = LowerDock.ActualHeight + DisplayedString_ListBox.ActualHeight;
-                popupDlg.Width = DisplayedString_ListBox.ActualWidth;
+                popupDlg.Height = ActualHeight;
+                popupDlg.Width = ActualWidth;
                 btnViewXML.ToolTip = "Close XML View.";
                 popupDlg.IsOpen = true;
                 xmlUp = true;
@@ -365,7 +346,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SetNewID()
         {
-            if (DisplayedString_ListBox.SelectedItem is TLKStringRef selectedItem)
+            if (GetActiveString() is TLKStringRef selectedItem)
             {
                 var stringRefNewID = DlgStringID(selectedItem.StringID); //Run popout box to set tlkstring id
                 if (selectedItem.StringID != stringRefNewID)
@@ -389,7 +370,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             string searchTerm = boxSearch.Text.Trim().ToLower();
             if (searchTerm == "") return; //don't search blank
 
-            int pos = DisplayedString_ListBox.SelectedIndex;
+            int pos = CleanedStrings.IndexOf(GetActiveString());
             pos += 1; //search this and 1 forward
             for (int i = 0; i < CleanedStrings.Count; i++)
             {
@@ -399,13 +380,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (node.StringID.ToString().Contains(searchTerm))
                 {
                     //ID Search
-                    DisplayedString_ListBox.SelectedIndex = curIndex;
+                    FocusString(node, 0);
                     return;
                 }
                 else if (node.Data != null && node.Data.ToLower().Contains(searchTerm))
                 {
-                    DisplayedString_ListBox.SelectedIndex = curIndex;
-                    DisplayedString_ListBox.ScrollIntoView(DisplayedString_ListBox.SelectedItem);
+                    FocusString(node, 1);
                     return;
                 }
             }
@@ -428,8 +408,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void RefreshME2ME3TLK()
         {
             LoadedStrings = _currentMe2Me3Me2Me3TalkFile.StringRefs.ToList(); //This is not bound to so reassigning is fine
+            _suppressInlineEditEvents = true;
             CleanedStrings.ReplaceAll(LoadedStrings.Where(x => x.StringID > 0).ToList()); //remove 0 or null strings.
-            editBox.Text = NO_STRING_SELECTED; //Reset ability to save, reset edit box if export changed.
+            _suppressInlineEditEvents = false;
         }
 
         public void LoadFileFromStream(Stream stream, string source)
@@ -479,6 +460,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (CurrentLoadedExport != null)
             {
+                if (FileModified)
+                {
+                    CommitTLK(null);
+                }
+
                 CurrentLoadedExport.FileRef.Save();
                 RefreshLoadedTlksAfterSave(CurrentLoadedExport.FileRef.Game, CurrentLoadedExport.FileRef.FilePath, CurrentLoadedExport.UIndex);
             }
@@ -490,6 +476,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
                 // CurrentME2ME3TalkFile.
+                NormalizeLoadedStrings();
                 ME2ME3HuffmanCompression.SaveToTlkFile(_currentMe2Me3Me2Me3TalkFile.FilePath, LoadedStrings);
                 _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(CurrentLoadedFile);
                 FileModified = false; //you can only commit to file, not to export and then file in file mode.
@@ -557,6 +544,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SaveFileDialog d = new() { Filter = $"*{Path.GetExtension(CurrentLoadedExport.FileRef.FilePath)}|*{Path.GetExtension(CurrentLoadedExport.FileRef.FilePath)}" };
                 if (d.ShowDialog() == true)
                 {
+                    if (FileModified)
+                    {
+                        CommitTLK(null);
+                    }
+
                     CurrentLoadedExport.FileRef.Save(d.FileName);
                 }
             }
@@ -566,6 +558,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (d.ShowDialog() == true)
                 {
                     // CurrentME2ME3TalkFile.
+                    NormalizeLoadedStrings();
                     ME2ME3HuffmanCompression.SaveToTlkFile(d.FileName, LoadedStrings);
                 }
             }
@@ -603,17 +596,219 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void TlkStrField_PreviewKeyDown(object sender, KeyEventArgs e)
+        private void InlineEditor_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
-            if (e.Key == Key.Enter && Keyboard.Modifiers != ModifierKeys.Shift)
+            if (sender is FrameworkElement { DataContext: TLKStringRef item })
             {
-                e.Handled = true;
+                FocusString(item, 1);
+            }
+        }
+
+        private void StringIdTextBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (sender is TextBox textBox && textBox.DataContext is TLKStringRef item)
+            {
+                FocusString(item, 0);
+                textBox.Tag = item.StringID;
+                textBox.SelectAll();
+            }
+        }
+
+        private TLKStringRef GetActiveString()
+        {
+            if (DisplayedString_ListBox?.CurrentCell.Item is TLKStringRef currentItem)
+            {
+                return currentItem;
             }
 
-            if (CanSaveString(null))
+            return DisplayedString_ListBox?.SelectedItem as TLKStringRef;
+        }
+
+        private void FocusString(TLKStringRef item, int columnIndex)
+        {
+            if (DisplayedString_ListBox == null || item == null || DisplayedString_ListBox.Columns.Count == 0)
             {
-                SaveString(null);
+                return;
             }
+
+            columnIndex = Math.Clamp(columnIndex, 0, DisplayedString_ListBox.Columns.Count - 1);
+            var cellInfo = new DataGridCellInfo(item, DisplayedString_ListBox.Columns[columnIndex]);
+            DisplayedString_ListBox.CurrentCell = cellInfo;
+            DisplayedString_ListBox.SelectedCells.Clear();
+            DisplayedString_ListBox.SelectedCells.Add(cellInfo);
+            DisplayedString_ListBox.ScrollIntoView(item, DisplayedString_ListBox.Columns[columnIndex]);
+        }
+
+        private void StringDataTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_suppressInlineEditEvents)
+            {
+                return;
+            }
+
+            if (sender is TextBox textBox && textBox.IsKeyboardFocusWithin)
+            {
+                FileModified = true;
+            }
+        }
+
+        private void StringIdTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = e.Text.Any(c => !char.IsDigit(c));
+        }
+
+        private void StringIdTextBox_OnPasting(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.SourceDataObject.GetDataPresent(DataFormats.Text))
+            {
+                e.CancelCommand();
+                return;
+            }
+
+            if (e.SourceDataObject.GetData(DataFormats.Text) is not string pastedText || pastedText.Any(c => !char.IsDigit(c)))
+            {
+                e.CancelCommand();
+            }
+        }
+
+        private void StringIdTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is not TextBox textBox)
+            {
+                return;
+            }
+
+            if (e.Key == Key.Enter)
+            {
+                CommitStringIdEdit(textBox);
+                e.Handled = true;
+                textBox.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
+            else if (e.Key == Key.Escape)
+            {
+                ResetStringIdText(textBox);
+                e.Handled = true;
+            }
+        }
+
+        private void StringIdTextBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                CommitStringIdEdit(textBox);
+            }
+        }
+
+        private void CommitStringIdEdit(TextBox textBox)
+        {
+            if (_suppressInlineEditEvents || textBox.DataContext is not TLKStringRef item)
+            {
+                return;
+            }
+
+            int originalId = textBox.Tag is int taggedId ? taggedId : item.StringID;
+            string proposedText = textBox.Text.Trim();
+
+            if (string.IsNullOrEmpty(proposedText) || !int.TryParse(proposedText, out int newId) || newId <= 0)
+            {
+                MessageBox.Show("String ID must be a positive integer");
+                ResetStringIdText(textBox, originalId);
+                return;
+            }
+
+            if (LoadedStrings.Any(x => !ReferenceEquals(x, item) && x.StringID == newId))
+            {
+                MessageBox.Show($"String ID must be unique.\n{newId} is currently in use in this TLK.");
+                ResetStringIdText(textBox, originalId);
+                return;
+            }
+
+            if (newId != originalId)
+            {
+                item.StringID = newId;
+                FileModified = true;
+            }
+
+            textBox.Tag = item.StringID;
+            textBox.Text = item.StringID.ToString();
+        }
+
+        private void ResetStringIdText(TextBox textBox, int? originalId = null)
+        {
+            int resetId = originalId ?? (textBox.Tag is int taggedId ? taggedId : 0);
+            textBox.Text = resetId > 0 ? resetId.ToString() : string.Empty;
+        }
+
+        private void NormalizeLoadedStrings()
+        {
+            if (LoadedStrings == null)
+            {
+                return;
+            }
+
+            foreach (TLKStringRef stringRef in LoadedStrings)
+            {
+                if (stringRef.Data is not null)
+                {
+                    stringRef.Data = stringRef.Data.Replace("\r\n", "\n");
+                }
+            }
+        }
+
+        private void CloneLineMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: TLKStringRef sourceString } } })
+            {
+                return;
+            }
+
+            string response = PromptDialog.Prompt(
+                this,
+                "How many copies of this TLK line should be created?",
+                "Clone TLK Line",
+                "1",
+                selectText: true,
+                validator: text => int.TryParse(text, out int count) && count > 0
+                    ? (true, null)
+                    : (false, "Enter a positive integer."));
+
+            if (response is null || !int.TryParse(response, out int cloneCount) || cloneCount <= 0)
+            {
+                return;
+            }
+
+            HashSet<int> clonedIds = Enumerable.Range(1, cloneCount)
+                                               .Select(i => sourceString.StringID + i)
+                                               .ToHashSet();
+
+            int? conflictingId = LoadedStrings.Where(x => !ReferenceEquals(x, sourceString))
+                                              .Select(x => (int?)x.StringID)
+                                              .FirstOrDefault(id => id.HasValue && clonedIds.Contains(id.Value));
+            if (conflictingId.HasValue)
+            {
+                MessageBox.Show($"Cannot clone line because TLK ID {conflictingId.Value} already exists.", "Clone TLK Line");
+                return;
+            }
+
+            int loadedInsertIndex = LoadedStrings.IndexOf(sourceString);
+            int cleanedInsertIndex = CleanedStrings.IndexOf(sourceString);
+            if (loadedInsertIndex < 0 || cleanedInsertIndex < 0)
+            {
+                return;
+            }
+
+            var clones = Enumerable.Range(1, cloneCount)
+                                   .Select(i => new TLKStringRef(sourceString.StringID + i, sourceString.Data, sourceString.Flags))
+                                   .ToList();
+
+            foreach (TLKStringRef clone in clones)
+            {
+                LoadedStrings.Insert(++loadedInsertIndex, clone);
+                CleanedStrings.Insert(++cleanedInsertIndex, clone);
+            }
+
+            FocusString(clones[0], 1);
+            FileModified = true;
         }
 
         private void CloseViewAsXml(object sender, RoutedEventArgs e)

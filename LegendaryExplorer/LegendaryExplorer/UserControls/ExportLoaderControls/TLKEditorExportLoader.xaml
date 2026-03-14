@@ -11,6 +11,55 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <exportLoaderControls:FileExportLoaderControl.Resources>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConveter"/>
+        <Style x:Key="DarkAwareContextMenuStyle" TargetType="{x:Type ContextMenu}">
+            <Setter Property="Background" Value="{StaticResource MenuPopupBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource MenuPopupBorderBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ContextMenu}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="2"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <ContextMenu x:Key="InlineTextEditorContextMenu"
+                     x:Shared="False"
+                     Style="{StaticResource DarkAwareContextMenuStyle}">
+            <MenuItem Command="ApplicationCommands.Cut"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Command="ApplicationCommands.Copy"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Command="ApplicationCommands.Paste"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <Separator/>
+            <MenuItem Command="ApplicationCommands.SelectAll"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+        </ContextMenu>
+        <ContextMenu x:Key="InlineTlkLineContextMenu"
+                     x:Shared="False"
+                     Style="{StaticResource DarkAwareContextMenuStyle}">
+            <MenuItem Header="Clone Line..."
+                      Click="CloneLineMenuItem_Click"/>
+            <Separator/>
+            <MenuItem Command="ApplicationCommands.Cut"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Command="ApplicationCommands.Copy"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Command="ApplicationCommands.Paste"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <Separator/>
+            <MenuItem Command="ApplicationCommands.SelectAll"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+        </ContextMenu>
     </exportLoaderControls:FileExportLoaderControl.Resources>
     <DockPanel MinWidth="10" MinHeight="10">
         <ToolBar ToolBarTray.IsLocked="True" DockPanel.Dock="Top">
@@ -28,7 +77,8 @@
                     </Style>
                 </Button.Style>
             </Button>
-            <TextBox Name="boxSearch" Height="26" Width="160" TextWrapping="Wrap" HorizontalAlignment="Left" KeyUp="Evt_KeyUp" VerticalAlignment="Stretch"/>
+            <TextBox Name="boxSearch" Height="26" Width="160" TextWrapping="Wrap" HorizontalAlignment="Left" KeyUp="Evt_KeyUp" VerticalAlignment="Stretch"
+                     ContextMenu="{StaticResource InlineTextEditorContextMenu}"/>
             <Button Name="btnSearch" Command="{Binding SearchCommand}" Content="Search" ToolTip="Search strings" Padding="5,0" VerticalAlignment="Stretch"/>
             <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
             <Button Name="btnAddNew" Command="{Binding AddStringCommand}" Content="Add String" ToolTip="Add a new string"  Padding="5,0" VerticalAlignment="Stretch"/>
@@ -41,38 +91,87 @@
             <Button Name="btnImportXML" Command="{Binding ImportXmlCommand}" Content="Import" ToolTip="Import from XML"  Padding="5,0" VerticalAlignment="Stretch"/>
             <Button Name="btnViewXML" Command="{Binding ViewXmlCommand}" Content="View XML" ToolTip="View as XML"  Padding="5,0" VerticalAlignment="Stretch"/>
         </ToolBar>
-        <DockPanel Name="LowerDock" DockPanel.Dock="Bottom" MinHeight="120" MaxHeight="450">
-            <Button Name="btnSaveEdit" Content="Save" DockPanel.Dock="Right" Width="50"  Command="{Binding SaveCommand}"/>
-            <TextBlock Text="Press enter to save the string. Press Shift+Enter to enter a newline." DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
-            <TextBox Name="editBox" Text="No string selected" FontFamily="Courier New" FontSize="14" Focusable="True" ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Visible" IsEnabled="{Binding StringSelected, FallbackValue=False}" TextWrapping="Wrap" Visibility="Visible" AcceptsReturn="True" PreviewKeyDown="TlkStrField_PreviewKeyDown" />
-        </DockPanel>
         <Popup Name="popupDlg" Placement="Center" VerticalOffset="15" Width="640" Height="800" Margin="0,12,0,0" Closed="Evt_CloseXML" StaysOpen="false">
             <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" >
                 <TextBox Name="popoutXmlBox" Text="No xml loaded" Margin="15,0,15,0" VerticalAlignment = "Center" FontFamily = "Courier New" FontSize = "14" Focusable = "True" ScrollViewer.CanContentScroll = "True" ScrollViewer.VerticalScrollBarVisibility = "Visible" IsReadOnly = "True" TextWrapping = "Wrap" LostFocus="CloseViewAsXml"/>
             </Border>
         </Popup>
-        <ListBox Name="DisplayedString_ListBox" ItemsSource="{Binding CleanedStrings}" HorizontalContentAlignment="Stretch" SelectionChanged="DisplayedString_ListBox_SelectionChanged" IsTextSearchEnabled="True" TextSearch.TextPath="StringID" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding StringID}" Grid.Column="0" TextAlignment="Center"></TextBlock>
-                        <TextBlock Text="{Binding Data}" Grid.Column="1" TextWrapping="Wrap" ></TextBlock>
-                    </Grid>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-            <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
+        <DataGrid Name="DisplayedString_ListBox"
+                  ItemsSource="{Binding CleanedStrings}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  GridLinesVisibility="All"
+                  HorizontalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                  VerticalGridLinesBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                  HeadersVisibility="Column"
+                  RowHeaderWidth="0"
+                  SelectionMode="Single"
+                  SelectionUnit="Cell"
+                  SelectionChanged="DisplayedString_ListBox_SelectionChanged"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <DataGrid.RowStyle>
+                <Style TargetType="{x:Type DataGridRow}">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True" >
-                            <Setter Property="FontWeight" Value="Bold" />
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                         </Trigger>
                     </Style.Triggers>
                 </Style>
-            </ListBox.ItemContainerStyle>
-        </ListBox>
+            </DataGrid.RowStyle>
+            <DataGrid.CellStyle>
+                <Style TargetType="{x:Type DataGridCell}">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.CellStyle>
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="TLK ID" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" BorderThickness="0,0,1,0">
+                                <TextBox Text="{Binding StringID, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="2"
+                                         HorizontalContentAlignment="Right"
+                                         ContextMenu="{StaticResource InlineTlkLineContextMenu}"
+                                         PreviewTextInput="StringIdTextBox_PreviewTextInput"
+                                         PreviewKeyDown="StringIdTextBox_PreviewKeyDown"
+                                         LostKeyboardFocus="StringIdTextBox_LostKeyboardFocus"
+                                         GotKeyboardFocus="StringIdTextBox_GotKeyboardFocus"
+                                         DataObject.Pasting="StringIdTextBox_OnPasting" />
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Text" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding Data, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     Padding="2"
+                                     ContextMenu="{StaticResource InlineTlkLineContextMenu}"
+                                     TextWrapping="Wrap"
+                                     AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Disabled"
+                                     TextChanged="StringDataTextBox_TextChanged"
+                                     GotKeyboardFocus="InlineEditor_GotKeyboardFocus" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
     </DockPanel>
 </exportLoaderControls:FileExportLoaderControl>
