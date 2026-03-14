@@ -16,6 +16,9 @@
         <local:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
         <local:TreeLineVisibilityConverter x:Key="TreeLineVisConverter"/>
+        <SolidColorBrush x:Key="GraphToolbarHighlightBrush" Color="#264F78"/>
+        <SolidColorBrush x:Key="GraphToolbarHighlightPressedBrush" Color="#007ACC"/>
+        <SolidColorBrush x:Key="GraphToolbarHighlightForegroundBrush" Color="White"/>
 
         <!-- Tree-branch connector wrapping each child item -->
         <DataTemplate x:Key="TreeBranchItemTemplate">
@@ -75,12 +78,51 @@
 
         <Style x:Key="LinkButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Padding" Value="4,2"/>
             <Setter Property="Margin" Value="2,0"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource GraphToolbarHighlightBrush}"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource GraphToolbarHighlightPressedBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource GraphToolbarHighlightForegroundBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource GraphToolbarHighlightBrush}"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource GraphToolbarHighlightPressedBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource GraphToolbarHighlightForegroundBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource GraphToolbarHighlightPressedBrush}"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource GraphToolbarHighlightPressedBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource GraphToolbarHighlightForegroundBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="DeleteButton" TargetType="Button" BasedOn="{StaticResource LinkButton}">
