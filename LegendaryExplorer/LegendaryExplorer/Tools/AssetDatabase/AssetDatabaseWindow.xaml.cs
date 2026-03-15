@@ -415,6 +415,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public bool isProcessing;
         private CancellationTokenSource cancelloading;
+        private bool _isGeneratingAllDatabases;
+        private readonly Dictionary<MEGame, string> _allGamesProgressStatus = new();
         private string _currentOverallOperationText;
         public string CurrentOverallOperationText
         {
@@ -468,6 +470,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set => SetProperty(ref _currentConvo, value);
         }
         public ObservableCollectionExtended<string> SpeakerList { get; } = new();
+        public ObservableCollectionExtended<string> AllGamesScanProgress { get; } = new();
         private bool _isGettingTLKs;
         public bool IsGettingTLKs
         {
@@ -476,6 +479,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
         public const string CustomListDesc = "Custom File Lists allow the database to be filtered so only assets that are in certain files or groups of files are shown. Lists can be saved/reloaded.";
         public ICommand GenerateDBCommand { get; set; }
+        public ICommand GenerateAllDBCommand { get; set; }
         public ICommand SaveDBCommand { get; set; }
         public ICommand SwitchMECommand { get; set; }
         public ICommand CancelDumpCommand { get; set; }
@@ -595,6 +599,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void LoadCommands()
         {
             GenerateDBCommand = new GenericCommand(GenerateDatabase);
+            GenerateAllDBCommand = new GenericCommand(GenerateAllDatabases);
             SaveDBCommand = new GenericCommand(SaveDatabase);
             SetFilterCommand = new RelayCommand(SetFilters, CanSetFilter);
             SwitchMECommand = new RelayCommand(SwitchGame);
@@ -777,11 +782,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private async void SaveDatabase()
         {
-            BusyHeader = "Saving database";
-            BusyText = "Please wait...";
-            BusyBarInd = true;
-            IsBusy = true;
-            CurrentOverallOperationText = "Database saving...";
+            await SaveDatabaseAsync();
+        }
+
+        private async Task SaveDatabaseAsync(bool preserveBusyState = false, bool suppressFinalSummary = false)
+        {
+            if (!preserveBusyState)
+            {
+                BusyHeader = "Saving database";
+                BusyText = "Please wait...";
+                BusyBarInd = true;
+                IsBusy = true;
+                CurrentOverallOperationText = "Database saving...";
+            }
 
             await using (var fileStream = new FileStream(CurrentDBPath, FileMode.Create))
             {
@@ -795,9 +808,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
             menu_SaveXEmptyLines.IsEnabled = false;
             CurrentOverallOperationText = $"Database saved.";
-            IsBusy = false;
-            await Task.Delay(3000);
-            CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count}";
+            if (!preserveBusyState)
+            {
+                IsBusy = false;
+                await Task.Delay(3000);
+                if (!suppressFinalSummary)
+                {
+                    CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count}";
+                }
+            }
         }
 
         public void ClearDataBase()
@@ -1526,6 +1545,69 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        public async void GenerateAllDatabases()
+        {
+            var shouldGenerate = MessageBox.Show("Generate new databases for all games?", "Generating all databases", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            if (!shouldGenerate)
+            {
+                return;
+            }
+
+            var originalGame = CurrentGame;
+            var originalCurrentView = currentView;
+            _isGeneratingAllDatabases = true;
+            InitializeAllGamesScanProgress();
+
+            BusyHeader = "Generating databases for all games";
+            BusyText = "Preparing scans...";
+            BusyBarInd = false;
+            IsBusy = true;
+            TopDock.IsEnabled = false;
+            MidDock.IsEnabled = false;
+
+            try
+            {
+                foreach (var game in DatabaseGenerationGames)
+                {
+                    string rootPath = MEDirectories.GetDefaultGamePath(game);
+                    if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+                    {
+                        SetAllGamesScanStatus(game, "Skipped (game not found)");
+                        continue;
+                    }
+
+                    SetAllGamesScanStatus(game, "Queued");
+
+                    try
+                    {
+                        await ScanGameAsync(game, updateUiAfterScan: false, showCompletionMessage: false, preserveBusyState: true, manageWindowState: false, showMissingGameMessage: false);
+                        SetAllGamesScanStatus(game, "Completed");
+                    }
+                    catch (Exception ex)
+                    {
+                        SetAllGamesScanStatus(game, $"Failed ({ex.GetBaseException().Message})");
+                    }
+                }
+            }
+            finally
+            {
+                _isGeneratingAllDatabases = false;
+                IsBusy = false;
+                TopDock.IsEnabled = true;
+                MidDock.IsEnabled = true;
+            }
+
+            if (originalGame != MEGame.Unknown)
+            {
+                SwitchGame(GetSwitchGameParameter(originalGame));
+                currentView = originalCurrentView;
+            }
+
+            string summary = string.Join("\n", AllGamesScanProgress);
+            MessageBox.Show(this, summary, "All database generation finished", MessageBoxButton.OK, MessageBoxImage.Information);
+            ClearAllGamesScanProgress();
+        }
+
         public void SwitchGame(object param)
         {
             var p = param as string;
@@ -1716,6 +1798,50 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public static string GetDBPath(MEGame game)
         {
             return Path.Combine(AppDirectories.AppDataFolder, $"AssetDB{game}.zip");
+        }
+
+        private static readonly MEGame[] DatabaseGenerationGames =
+        {
+            MEGame.ME1,
+            MEGame.ME2,
+            MEGame.ME3,
+            MEGame.LE1,
+            MEGame.LE2,
+            MEGame.LE3
+        };
+
+        private static string GetSwitchGameParameter(MEGame game) => game.ToString();
+
+        private void RefreshAllGamesScanProgress()
+        {
+            AllGamesScanProgress.ReplaceAll(DatabaseGenerationGames.Select(game =>
+            {
+                string status = _allGamesProgressStatus.TryGetValue(game, out var value) ? value : "Pending";
+                return $"{game}: {status}";
+            }));
+        }
+
+        private void SetAllGamesScanStatus(MEGame game, string status)
+        {
+            _allGamesProgressStatus[game] = status;
+            RefreshAllGamesScanProgress();
+        }
+
+        private void InitializeAllGamesScanProgress()
+        {
+            _allGamesProgressStatus.Clear();
+            foreach (var game in DatabaseGenerationGames)
+            {
+                _allGamesProgressStatus[game] = "Pending";
+            }
+
+            RefreshAllGamesScanProgress();
+        }
+
+        private void ClearAllGamesScanProgress()
+        {
+            _allGamesProgressStatus.Clear();
+            AllGamesScanProgress.ClearEx();
         }
 
         private ListBoxScroll GetSelectedPlotListBox()
@@ -4264,31 +4390,45 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private async void ScanGame()
         {
-            string rootPath = MEDirectories.GetDefaultGamePath(CurrentGame);
+            await ScanGameAsync(CurrentGame);
+        }
+
+        private async Task ScanGameAsync(MEGame game, bool updateUiAfterScan = true, bool showCompletionMessage = true, bool preserveBusyState = false, bool manageWindowState = true, bool showMissingGameMessage = true)
+        {
+            string rootPath = MEDirectories.GetDefaultGamePath(game);
 
             if (rootPath == null || !Directory.Exists(rootPath))
             {
-                MessageBox.Show($"{CurrentGame} has not been found. Please check your Legendary Explorer settings");
+                if (showMissingGameMessage)
+                {
+                    MessageBox.Show($"{game} has not been found. Please check your Legendary Explorer settings");
+                }
                 return;
             }
 
             rootPath = Path.GetFullPath(rootPath);
 
-            string ShaderCacheName = CurrentGame.IsLEGame() ? "RefShaderCache-PC-D3D-SM5.upk" : "RefShaderCache-PC-D3D-SM3.upk";
+            string ShaderCacheName = game.IsLEGame() ? "RefShaderCache-PC-D3D-SM5.upk" : "RefShaderCache-PC-D3D-SM3.upk";
             List<string> files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories).Where(s => SupportedFileExtensions.Contains(Path.GetExtension(s.ToLower())) && !s.EndsWith(ShaderCacheName)).ToList();
 
-            await dumpPackages(files, CurrentGame);
+            await dumpPackages(files, game, updateUiAfterScan, showCompletionMessage, preserveBusyState, manageWindowState);
         }
 
-        private async Task dumpPackages(List<string> files, MEGame game)
+        private async Task dumpPackages(List<string> files, MEGame game, bool updateUiAfterScan = true, bool showCompletionMessage = true, bool preserveBusyState = false, bool manageWindowState = true)
         {
             var beginTime = DateTime.Now;
-            TopDock.IsEnabled = false;
-            MidDock.IsEnabled = false;
+            if (manageWindowState)
+            {
+                TopDock.IsEnabled = false;
+                MidDock.IsEnabled = false;
+            }
+
+            CurrentGame = game;
+            CurrentDBPath = GetDBPath(game);
             OverallProgressMaximum = files.Count;
             OverallProgressValue = 0;
             BusyBarInd = false;
-            CurrentOverallOperationText = $"Generating Database...";
+            CurrentOverallOperationText = $"Generating database for {game}...";
             bool scanCRC = menu_checkCRC.IsChecked;
 
             //Clear database
@@ -4362,7 +4502,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             //}
 
             IsBusy = true;
-            BusyHeader = $"Generating database for {CurrentGame}";
+            BusyHeader = $"Generating database for {game}";
             ProcessingQueue = new ActionBlock<SingleFileScanner>(x =>
             {
                 if (x.DumpCanceled)
@@ -4372,7 +4512,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 x.DumpPackageFile(game, GeneratedDB);
                 Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    BusyText = $"Scanned {OverallProgressValue}/{OverallProgressMaximum} files\n\n{GeneratedDB.GetProgressString()}";
+                    string currentStatus = $"Scanning {OverallProgressValue}/{OverallProgressMaximum} files";
+                    if (_isGeneratingAllDatabases)
+                    {
+                        SetAllGamesScanStatus(game, currentStatus);
+                    }
+
+                    BusyText = $"{game}: {currentStatus}\n\n{GeneratedDB.GetProgressString()}";
                     OverallProgressValue++; //Concurrency 
                 });
             }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 1, 4) });
@@ -4404,6 +4550,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 {
                     DumpCanceled = false;
                     BusyHeader = "Dump canceled. ";
+                    if (_isGeneratingAllDatabases)
+                    {
+                        SetAllGamesScanStatus(game, "Canceled");
+                    }
                 }
                 else
                 {
@@ -4419,16 +4569,26 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 GeneratedDB.Clear();
                 CurrentOverallOperationText = "Database generation failed";
-                IsBusy = false;
+                if (!preserveBusyState)
+                {
+                    IsBusy = false;
+                }
                 isProcessing = false;
-                TopDock.IsEnabled = true;
-                MidDock.IsEnabled = true;
+                if (manageWindowState)
+                {
+                    TopDock.IsEnabled = true;
+                    MidDock.IsEnabled = true;
+                }
                 throw caughtException;
             }
 
             BusyHeader += "Collating and sorting the database";
             BusyText = "Please wait...";
             BusyBarInd = true;
+            if (_isGeneratingAllDatabases)
+            {
+                SetAllGamesScanStatus(game, "Collating and sorting");
+            }
             CommandManager.InvalidateRequerySuggested();
 
             AssetDB pdb = await Task.Run(GeneratedDB.CollateDataBase);
@@ -4437,32 +4597,54 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             CurrentDataBase.AddRecords(pdb);
             RebuildConversationLookup();
 
-            var dlcs = MELoadedDLC.GetDLCNamesWithMounts(CurrentGame);
-            dlcs.Add("BioGame", 0);
-            foreach ((string fileName, int directoryKey) in CurrentDataBase.FileList)
+            if (updateUiAfterScan)
             {
-                var cd = CurrentDataBase.ContentDir[directoryKey];
-                int mount = -1;
-                dlcs.TryGetValue(cd, out mount);
-                FileListExtended.Add(new(fileName, cd, mount));
+                var dlcs = MELoadedDLC.GetDLCNamesWithMounts(game);
+                dlcs.Add("BioGame", 0);
+                foreach ((string fileName, int directoryKey) in CurrentDataBase.FileList)
+                {
+                    var cd = CurrentDataBase.ContentDir[directoryKey];
+                    int mount = -1;
+                    dlcs.TryGetValue(cd, out mount);
+                    FileListExtended.Add(new(fileName, cd, mount));
+                }
+
+                AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
+                RefreshMaterialTextureDropdownFilters();
+                RefreshTextureDropdownFilters();
             }
 
-            AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
-            RefreshMaterialTextureDropdownFilters();
-            RefreshTextureDropdownFilters();
             Settings.AssetDBGame = CurrentDataBase.Game.ToString();
             isProcessing = false;
-            SaveDatabase();
-            TopDock.IsEnabled = true;
-            MidDock.IsEnabled = true;
-            IsBusy = false;
+            if (_isGeneratingAllDatabases)
+            {
+                SetAllGamesScanStatus(game, "Saving database");
+            }
+
+            await SaveDatabaseAsync(preserveBusyState, suppressFinalSummary: preserveBusyState || !updateUiAfterScan);
+            if (manageWindowState)
+            {
+                TopDock.IsEnabled = true;
+                MidDock.IsEnabled = true;
+            }
+            if (!preserveBusyState)
+            {
+                IsBusy = false;
+            }
             var elapsed = DateTime.Now - beginTime;
-            MessageBox.Show(this, $"{CurrentGame} Database generated in {elapsed:mm\\:ss}");
+            if (showCompletionMessage)
+            {
+                MessageBox.Show(this, $"{game} Database generated in {elapsed:mm\\:ss}");
+            }
+
             MemoryAnalyzer.ForceFullGC(true);
-            // 08/27/2023 - Removed !IsGame1() check on GetConvoLinesBackground()
-            GetConvoLinesBackground();
-            StartOwnerNamePrewarm();
-            CurrentDataBase.PlotUsages.LoadPlotPaths(game);
+            if (updateUiAfterScan)
+            {
+                // 08/27/2023 - Removed !IsGame1() check on GetConvoLinesBackground()
+                GetConvoLinesBackground();
+                StartOwnerNamePrewarm();
+                CurrentDataBase.PlotUsages.LoadPlotPaths(game);
+            }
         }
 
         private void CancelDump(object obj)
