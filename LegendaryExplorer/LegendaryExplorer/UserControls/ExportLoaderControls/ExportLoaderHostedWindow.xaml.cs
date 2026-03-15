@@ -145,6 +145,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 OnPropertyChanged(nameof(CurrentFilePath));
+                OnPropertyChanged(nameof(CurrentLastSavedText));
                 CommandManager.InvalidateRequerySuggested();
             }
         }
@@ -155,6 +156,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 OnPropertyChanged(nameof(CurrentFilePath));
                 OnPropertyChanged(nameof(CurrentFile));
+                OnPropertyChanged(nameof(CurrentLastSavedText));
                 OnPropertyChanged(nameof(ShouldShowRecentsController));
                 OnPropertyChanged(nameof(IsModifiedProxy));
                 CommandManager.InvalidateRequerySuggested();
@@ -233,6 +235,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 felc.SaveAs();
                 FileHasPendingChanges = false;
+                OnPropertyChanged(nameof(CurrentLastSavedText));
             }
             else
             {
@@ -241,6 +244,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (d.ShowDialog() == true)
                 {
                     await Pcc.SaveAsync(d.FileName);
+                    OnPropertyChanged(nameof(CurrentLastSavedText));
                     MessageBox.Show("Done");
                 }
             }
@@ -252,15 +256,34 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 felc.Save();
                 FileHasPendingChanges = false;
+                OnPropertyChanged(nameof(CurrentLastSavedText));
             }
             else
             {
                 await Pcc.SaveAsync();
+                OnPropertyChanged(nameof(CurrentLastSavedText));
             }
         }
 
         public string CurrentFilePath => Pcc?.FilePath ?? (HostedControl as FileExportLoaderControl)?.LoadedFile;
         public string CurrentFile => Pcc != null ? Path.GetFileName(Pcc.FilePath) : "";
+        public string CurrentLastSavedText
+        {
+            get
+            {
+                if (Pcc != null)
+                {
+                    return $"Last saved at {Pcc.LastSaved:G}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(CurrentFilePath) && File.Exists(CurrentFilePath))
+                {
+                    return $"Last saved at {File.GetLastWriteTime(CurrentFilePath):G}";
+                }
+
+                return string.Empty;
+            }
+        }
 
         private bool CanOpenCurrentFileLocation()
         {

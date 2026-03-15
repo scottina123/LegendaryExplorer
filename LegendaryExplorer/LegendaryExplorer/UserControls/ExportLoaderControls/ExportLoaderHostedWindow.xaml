@@ -56,7 +56,9 @@
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>
-                <MenuItem Header="Modified" IsEnabled="False" HorizontalAlignment="Right" Background="Yellow"
+                <MenuItem Header="Modified" IsEnabled="False" HorizontalAlignment="Right"
+                          Background="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                          Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
                           Visibility="{Binding IsModifiedProxy, Converter={StaticResource BoolToVisibilityConverter}}" />
             </Menu>
             <StatusBar Height="23" DockPanel.Dock="Bottom">
@@ -69,7 +71,7 @@
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Name="StatusBar_RightSide_LastSaved"
-                                   Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray" />
+                                   Text="{Binding CurrentLastSavedText}" Foreground="Gray" />
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>
