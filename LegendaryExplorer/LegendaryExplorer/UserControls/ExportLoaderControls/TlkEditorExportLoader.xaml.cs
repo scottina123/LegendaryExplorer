@@ -7,10 +7,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.IO;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
 using Microsoft.Win32;
 using System.Media;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
@@ -31,11 +34,76 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     /// </summary>
     public partial class TLKEditorExportLoader : FileExportLoaderControl
     {
+        public sealed class TLKEditorTab : NotifyPropertyChangedBase
+        {
+            private string _filePath;
+            private bool _isModified;
+
+            public TLKEditorTab(string filePath, ME2ME3TalkFile talkFile)
+            {
+                _filePath = filePath;
+                TalkFile = talkFile;
+                LoadedStrings = talkFile.StringRefs.ToList();
+            }
+
+            public string FilePath
+            {
+                get => _filePath;
+                set
+                {
+                    if (SetProperty(ref _filePath, value))
+                    {
+                        OnPropertyChanged(nameof(DisplayName));
+                        OnPropertyChanged(nameof(HeaderText));
+                    }
+                }
+            }
+
+            public string DisplayName => string.IsNullOrWhiteSpace(FilePath) ? "Unsaved TLK" : Path.GetFileName(FilePath);
+            public string HeaderText => IsModified ? $"{DisplayName} *" : DisplayName;
+
+            public ME2ME3TalkFile TalkFile { get; set; }
+            public List<TLKStringRef> LoadedStrings { get; set; }
+
+            public bool IsModified
+            {
+                get => _isModified;
+                set
+                {
+                    if (SetProperty(ref _isModified, value))
+                    {
+                        OnPropertyChanged(nameof(HeaderText));
+                    }
+                }
+            }
+        }
+
         private ME2ME3TalkFile _currentMe2Me3Me2Me3TalkFile;
+        private ExportLoaderHostedWindow _hostedWindow;
+        private TLKEditorTab _activeTab;
+        private Point _tabDragStartPoint;
+        private TLKEditorTab _tabPendingDrag;
+        private bool _restoredPersistedTabs;
+        private bool _suppressTabPersistence;
         private bool _suppressInlineEditEvents;
         public List<TLKStringRef> LoadedStrings; //Loaded TLK
         public ObservableCollectionExtended<TLKStringRef> CleanedStrings { get; } = new(); // Displayed
+        public ObservableCollectionExtended<TLKEditorTab> OpenTabs { get; } = new();
         private bool xmlUp;
+
+        public TLKEditorTab ActiveTab
+        {
+            get => _activeTab;
+            set
+            {
+                if (!ReferenceEquals(_activeTab, value))
+                {
+                    SwitchToTab(value);
+                }
+            }
+        }
+
+        public bool HasOpenTabs => OpenTabs.Count > 0;
 
         public bool StringSelected
         {
@@ -50,6 +118,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             DataContext = this;
             LoadCommands();
             InitializeComponent();
+            Loaded += TLKEditorExportLoader_Loaded;
+            OpenTabs.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOpenTabs));
         }
 
         public ICommand CommitCommand { get; set; }
@@ -59,6 +129,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand ViewXmlCommand { get; set; }
         public ICommand DeleteStringCommand { get; set; }
         public ICommand SearchCommand { get; set; }
+        public ICommand OpenTabCommand { get; set; }
         public ICommand AddStringCommand { get; set; }
         public ICommand AddStringRangeCommand { get; set; }
 
@@ -68,6 +139,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SetIDCommand = new RelayCommand(SetStringID, StringIsSelected);
             DeleteStringCommand = new RelayCommand(DeleteString, StringIsSelected);
 
+            OpenTabCommand = new GenericCommand(OpenTab, CanLoadFile);
             SearchCommand = new GenericCommand(TextSearch, HasTLKLoaded);
             AddStringCommand = new GenericCommand(AddString, HasTLKLoaded);
             AddStringRangeCommand = new GenericCommand(AddStringRange, HasTLKLoaded);
@@ -75,6 +147,318 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ExportXmlCommand = new GenericCommand(ExportToXml, HasTLKLoaded);
             ImportXmlCommand = new GenericCommand(ImportFromXml, HasTLKLoaded);
             ViewXmlCommand = new GenericCommand(ViewAsXml, HasTLKLoaded);
+        }
+
+        private void OpenTab()
+        {
+            OpenFile();
+        }
+
+        private void TLKEditorExportLoader_Loaded(object sender, RoutedEventArgs e)
+        {
+            RestorePersistedTabs();
+        }
+
+        private void RestorePersistedTabs()
+        {
+            if (_restoredPersistedTabs || !IsPoppedOut || CurrentLoadedExport != null || HasTLKLoaded() || OpenTabs.Count > 0)
+            {
+                return;
+            }
+
+            _restoredPersistedTabs = true;
+            var restoredPaths = (Settings.TLKEditor_OpenTabs ?? new List<string>())
+                                .Where(path => !string.IsNullOrWhiteSpace(path))
+                                .Select(Path.GetFullPath)
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .Where(File.Exists)
+                                .ToList();
+            if (restoredPaths.Count == 0)
+            {
+                PersistOpenTabs();
+                return;
+            }
+
+            _suppressTabPersistence = true;
+            try
+            {
+                foreach (string path in restoredPaths)
+                {
+                    try
+                    {
+                        OpenTabs.Add(CreateTab(path));
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                if (OpenTabs.Count > 0)
+                {
+                    string selectedPath = Settings.TLKEditor_SelectedTab;
+                    ActiveTab = OpenTabs.FirstOrDefault(tab => string.Equals(tab.FilePath, selectedPath, StringComparison.OrdinalIgnoreCase)) ?? OpenTabs[0];
+                }
+            }
+            finally
+            {
+                _suppressTabPersistence = false;
+            }
+
+            PersistOpenTabs();
+        }
+
+        private void MoveTab(TLKEditorTab sourceTab, TLKEditorTab targetTab)
+        {
+            if (sourceTab is null || targetTab is null || ReferenceEquals(sourceTab, targetTab))
+            {
+                return;
+            }
+
+            int sourceIndex = OpenTabs.IndexOf(sourceTab);
+            int targetIndex = OpenTabs.IndexOf(targetTab);
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+            {
+                return;
+            }
+
+            OpenTabs.Move(sourceIndex, targetIndex);
+            ActiveTab = sourceTab;
+            PersistOpenTabs();
+        }
+
+        private void TabControl_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _tabDragStartPoint = e.GetPosition(null);
+            _tabPendingDrag = null;
+
+            if (e.OriginalSource is DependencyObject sourceElement && FindAncestor<Button>(sourceElement) is null)
+            {
+                _tabPendingDrag = FindAncestor<TabItem>(sourceElement)?.DataContext as TLKEditorTab;
+            }
+        }
+
+        private void TabControl_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _tabPendingDrag is null)
+            {
+                return;
+            }
+
+            Point currentPosition = e.GetPosition(null);
+            if (Math.Abs(currentPosition.X - _tabDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance
+                && Math.Abs(currentPosition.Y - _tabDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            TLKEditorTab draggedTab = _tabPendingDrag;
+            _tabPendingDrag = null;
+            DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(typeof(TLKEditorTab), draggedTab), DragDropEffects.Move);
+        }
+
+        private void TabControl_DragOver(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(typeof(TLKEditorTab)) || e.OriginalSource is not DependencyObject sourceElement)
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+
+            TLKEditorTab targetTab = FindAncestor<TabItem>(sourceElement)?.DataContext as TLKEditorTab;
+            e.Effects = targetTab is null ? DragDropEffects.None : DragDropEffects.Move;
+            e.Handled = true;
+        }
+
+        private void TabControl_Drop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(typeof(TLKEditorTab)) || e.OriginalSource is not DependencyObject sourceElement)
+            {
+                return;
+            }
+
+            TLKEditorTab sourceTab = e.Data.GetData(typeof(TLKEditorTab)) as TLKEditorTab;
+            TLKEditorTab targetTab = FindAncestor<TabItem>(sourceElement)?.DataContext as TLKEditorTab;
+            MoveTab(sourceTab, targetTab);
+            e.Handled = true;
+        }
+
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            while (current is not null)
+            {
+                if (current is T match)
+                {
+                    return match;
+                }
+
+                current = current switch
+                {
+                    Visual or System.Windows.Media.Media3D.Visual3D => VisualTreeHelper.GetParent(current),
+                    _ => LogicalTreeHelper.GetParent(current)
+                };
+            }
+
+            return null;
+        }
+
+        private TLKEditorTab CreateTab(string filepath)
+        {
+            filepath = Path.GetFullPath(filepath);
+            return new TLKEditorTab(filepath, new ME2ME3TalkFile(filepath));
+        }
+
+        private TLKEditorTab FindTab(string filepath)
+        {
+            if (string.IsNullOrWhiteSpace(filepath))
+            {
+                return null;
+            }
+
+            filepath = Path.GetFullPath(filepath);
+            return OpenTabs.FirstOrDefault(tab => string.Equals(tab.FilePath, filepath, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void SwitchToTab(TLKEditorTab tab)
+        {
+            if (_activeTab is not null)
+            {
+                _activeTab.TalkFile = _currentMe2Me3Me2Me3TalkFile;
+                _activeTab.LoadedStrings = LoadedStrings;
+                _activeTab.IsModified = FileModified;
+            }
+
+            _activeTab = tab;
+            OnPropertyChanged(nameof(ActiveTab));
+
+            if (tab is null)
+            {
+                SetCurrentLoadedFilePath(null);
+                SetLoadedFilePath(null);
+                CurrentLoadedExport = null;
+                _currentMe2Me3Me2Me3TalkFile = null;
+                LoadedStrings = null;
+                _suppressInlineEditEvents = true;
+                CleanedStrings.ClearEx();
+                _suppressInlineEditEvents = false;
+                SetFileModified(false, false);
+            }
+            else
+            {
+                CurrentLoadedExport = null;
+                SetCurrentLoadedFilePath(tab.FilePath);
+                SetLoadedFilePath(tab.FilePath);
+                _currentMe2Me3Me2Me3TalkFile = tab.TalkFile;
+                LoadedStrings = tab.LoadedStrings;
+                RefreshVisibleStrings();
+                SetFileModified(tab.IsModified, false);
+            }
+
+            OnPropertyChanged(nameof(StringSelected));
+            UpdateWindowTitle();
+            PersistOpenTabs();
+        }
+
+        private void SetCurrentLoadedFilePath(string filepath)
+        {
+            if (string.Equals(CurrentLoadedFile, filepath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            CurrentLoadedFile = filepath;
+            OnPropertyChanged(nameof(CurrentLoadedFile));
+        }
+
+        private void SetLoadedFilePath(string filepath)
+        {
+            if (string.Equals(LoadedFile, filepath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            LoadedFile = filepath;
+            OnPropertyChanged(nameof(LoadedFile));
+        }
+
+        private void RefreshVisibleStrings()
+        {
+            _suppressInlineEditEvents = true;
+            CleanedStrings.ReplaceAll(LoadedStrings?.Where(x => x.StringID > 0).ToList() ?? new List<TLKStringRef>());
+            _suppressInlineEditEvents = false;
+        }
+
+        private void SetFileModified(bool value, bool updateActiveTab = true)
+        {
+            FileModified = value;
+            if (updateActiveTab && ActiveTab is not null)
+            {
+                ActiveTab.IsModified = value;
+            }
+        }
+
+        private void PersistOpenTabs()
+        {
+            if (_suppressTabPersistence || !IsPoppedOut)
+            {
+                return;
+            }
+
+            Settings.TLKEditor_OpenTabs = OpenTabs.Where(tab => !string.IsNullOrWhiteSpace(tab.FilePath))
+                                                  .Select(tab => tab.FilePath)
+                                                  .Distinct(StringComparer.OrdinalIgnoreCase)
+                                                  .ToList();
+            Settings.TLKEditor_SelectedTab = ActiveTab?.FilePath ?? string.Empty;
+        }
+
+        private void UpdateWindowTitle()
+        {
+            var window = _hostedWindow ?? Window.GetWindow(this);
+            if (window is null)
+            {
+                return;
+            }
+
+            window.Title = CurrentLoadedExport != null
+                ? $"TLK Editor - {CurrentLoadedExport.UIndex} {CurrentLoadedExport.InstancedFullPath} - {CurrentLoadedExport.FileRef.FilePath}"
+                : string.IsNullOrWhiteSpace(CurrentLoadedFile) ? "TLK Editor" : "TLK Editor - " + CurrentLoadedFile;
+        }
+
+        private TLKEditorTab GetAdjacentTab(TLKEditorTab tab)
+        {
+            int index = OpenTabs.IndexOf(tab);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            if (index + 1 < OpenTabs.Count)
+            {
+                return OpenTabs[index + 1];
+            }
+
+            return index > 0 ? OpenTabs[index - 1] : null;
+        }
+
+        private void CloseTab(TLKEditorTab tab)
+        {
+            if (tab is null)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(ActiveTab, tab))
+            {
+                ActiveTab = GetAdjacentTab(tab);
+            }
+
+            OpenTabs.Remove(tab);
+            if (OpenTabs.Count == 0)
+            {
+                ActiveTab = null;
+            }
+
+            PersistOpenTabs();
         }
 
         private void DeleteString(object obj)
@@ -87,7 +471,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             CleanedStrings.Remove(selectedItem);
             LoadedStrings.Remove(selectedItem);
-            FileModified = true;
+            SetFileModified(true);
         }
 
         private void SetStringID(object obj)
@@ -124,17 +508,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             var huff = new HuffmanCompression();
             huff.LoadInputData(LoadedStrings);
             huff.SerializeTalkfileToExport(CurrentLoadedExport);
-            FileModified = false;
+            SetFileModified(false);
         }
 
         //SirC "efficiency is next to godliness" way of Checking export is ME1/TLK
         public override bool CanParse(ExportEntry exportEntry) => exportEntry.FileRef.Game.IsGame1() && exportEntry.ClassName == "BioTlkFile" && !exportEntry.IsDefaultObject;
         public override void PoppedOut(ExportLoaderHostedWindow elhw)
         {
-
-            //Recents_MenuItem = recentsMenuItem;
-            //LoadRecentList();
-            //RefreshRecent(false);
+            _hostedWindow = elhw;
         }
 
         /// <summary>
@@ -146,26 +527,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             _currentMe2Me3Me2Me3TalkFile = null;
             LoadedStrings?.Clear();
             CleanedStrings?.ClearEx();
+            _hostedWindow = null;
         }
 
         public override void LoadExport(ExportEntry exportEntry)
         {
-            CurrentLoadedFile = null;
+            SetCurrentLoadedFilePath(null);
+            SetLoadedFilePath(null);
             var tlkFile = new ME1TalkFile(exportEntry); // Setup object as TalkFile
             LoadedStrings = tlkFile.StringRefs.ToList(); //This is not binded to so reassigning is fine
-            _suppressInlineEditEvents = true;
-            CleanedStrings.ClearEx(); //clear strings Ex does this in bulk (faster)
-            CleanedStrings.AddRange(LoadedStrings.Where(x => x.StringID > 0).ToList()); //nest it remove 0 strings.
-            _suppressInlineEditEvents = false;
+            RefreshVisibleStrings();
             CurrentLoadedExport = exportEntry;
-            FileModified = false;
+            SetFileModified(false, false);
+            UpdateWindowTitle();
         }
 
         public string CurrentLoadedFile { get; set; }
 
         public override void UnloadExport()
         {
-            FileModified = false;
+            SetFileModified(false);
         }
 
         public bool HasTLKLoaded() => CurrentLoadedFile != null || CurrentLoadedExport != null;
@@ -217,7 +598,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CleanedStrings.Add(blankstringref);
             FocusString(blankstringref, 1);
             SetNewID();
-            FileModified = true;
+            SetFileModified(true);
         }
 
         private void AddStringRange()
@@ -251,7 +632,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 // Select the first added string
                 FocusString(newStrings[0], 1);
 
-                FileModified = true;
+                SetFileModified(true);
             }
         }
 
@@ -306,7 +687,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     _currentMe2Me3Me2Me3TalkFile.LoadTlkDataFromStream(compressor.SaveToStream().SeekBegin());
                     RefreshME2ME3TLK();
                 }
-                FileModified = true; //this is not always technically true, but we'll assume it is
+                SetFileModified(true); //this is not always technically true, but we'll assume it is
             }
         }
 
@@ -352,7 +733,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (selectedItem.StringID != stringRefNewID)
                 {
                     selectedItem.StringID = stringRefNewID;
-                    FileModified = true;
+                    SetFileModified(true);
                 }
             }
         }
@@ -396,33 +777,44 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void LoadFile(string filepath)
         {
             UnloadExport();
-            CurrentLoadedFile = filepath;
-            _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(filepath);
-            LoadedFile = filepath;
-            RefreshME2ME3TLK();
-            FileModified = false;
-            Window.GetWindow(this).Title = "TLK Editor - " + filepath;
+            CurrentLoadedExport = null;
+            filepath = Path.GetFullPath(filepath);
+
+            var existingTab = FindTab(filepath);
+            if (existingTab is null)
+            {
+                existingTab = CreateTab(filepath);
+                OpenTabs.Add(existingTab);
+            }
+
+            ActiveTab = existingTab;
             OnFileLoaded(EventArgs.Empty);
         }
 
         private void RefreshME2ME3TLK()
         {
             LoadedStrings = _currentMe2Me3Me2Me3TalkFile.StringRefs.ToList(); //This is not bound to so reassigning is fine
-            _suppressInlineEditEvents = true;
-            CleanedStrings.ReplaceAll(LoadedStrings.Where(x => x.StringID > 0).ToList()); //remove 0 or null strings.
-            _suppressInlineEditEvents = false;
+            if (ActiveTab is not null)
+            {
+                ActiveTab.TalkFile = _currentMe2Me3Me2Me3TalkFile;
+                ActiveTab.LoadedStrings = LoadedStrings;
+            }
+
+            RefreshVisibleStrings();
         }
 
         public void LoadFileFromStream(Stream stream, string source)
         {
             UnloadExport();
-            CurrentLoadedFile = null;
+            SetCurrentLoadedFilePath(null);
+            SetLoadedFilePath(null);
             _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(stream, source);
 
             // Need way to load a file without having it show up in the recents
 
             RefreshME2ME3TLK();
-            FileModified = false;
+            SetFileModified(false, false);
+            UpdateWindowTitle();
         }
 
         public override bool CanLoadFile()
@@ -479,7 +871,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 NormalizeLoadedStrings();
                 ME2ME3HuffmanCompression.SaveToTlkFile(_currentMe2Me3Me2Me3TalkFile.FilePath, LoadedStrings);
                 _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(CurrentLoadedFile);
-                FileModified = false; //you can only commit to file, not to export and then file in file mode.
+                RefreshME2ME3TLK();
+                SetFileModified(false); //you can only commit to file, not to export and then file in file mode.
                 RefreshLoadedTlksAfterSave(GetCurrentLoadedFileGame(), CurrentLoadedFile);
             }
             //throw new NotImplementedException();
@@ -560,6 +953,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     // CurrentME2ME3TalkFile.
                     NormalizeLoadedStrings();
                     ME2ME3HuffmanCompression.SaveToTlkFile(d.FileName, LoadedStrings);
+
+                    if (ActiveTab is not null)
+                    {
+                        ActiveTab.FilePath = Path.GetFullPath(d.FileName);
+                        SetCurrentLoadedFilePath(ActiveTab.FilePath);
+                        SetLoadedFilePath(ActiveTab.FilePath);
+                        _currentMe2Me3Me2Me3TalkFile = new ME2ME3TalkFile(ActiveTab.FilePath);
+                        RefreshME2ME3TLK();
+                        SetFileModified(false);
+                        PersistOpenTabs();
+                        UpdateWindowTitle();
+                        OnFileLoaded(EventArgs.Empty);
+                    }
                 }
             }
         }
@@ -648,7 +1054,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (sender is TextBox textBox && textBox.IsKeyboardFocusWithin)
             {
-                FileModified = true;
+                SetFileModified(true);
             }
         }
 
@@ -726,7 +1132,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (newId != originalId)
             {
                 item.StringID = newId;
-                FileModified = true;
+                SetFileModified(true);
             }
 
             textBox.Tag = item.StringID;
@@ -808,7 +1214,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             FocusString(clones[0], 1);
-            FileModified = true;
+            SetFileModified(true);
+        }
+
+        private void CloseTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: TLKEditorTab tab })
+            {
+                CloseTab(tab);
+                e.Handled = true;
+            }
         }
 
         private void CloseViewAsXml(object sender, RoutedEventArgs e)

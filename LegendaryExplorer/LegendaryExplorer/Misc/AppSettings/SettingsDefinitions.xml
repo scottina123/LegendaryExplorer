@@ -116,6 +116,9 @@
   
   <setting name="Soundpanel_LoopAudio" type="bool" defaultvalue="false"/>
 
+  <setting name="TLKEditor_OpenTabs" type="List&lt;string&gt;" defaultvalue="new List&lt;string&gt;()"/>
+  <setting name="TLKEditor_SelectedTab" type="string" defaultvalue=""/>
+
   <!-- Wwise settings -->
   <setting name="Wwise_3773Path" type="string" defaultvalue="" category="Audio"
            friendlyName="WwiseCLI.exe v3773 Path" fileSelectExtension="*.exe"/>

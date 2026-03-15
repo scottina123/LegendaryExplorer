@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -69,6 +70,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LoadCommands();
             InitializeComponent();
             ContentGrid.Children.Add(HostedControl);
+            HostedControl.PropertyChanged += HostedControl_PropertyChanged;
             HostedControl.IsPoppedOut = true;
             HostedControl.PoppedOut(this);
             switch (HostedControl)
@@ -114,6 +116,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //NamesList.ReplaceAll(LoadedExport.FileRef.Names.Select((name, i) => new IndexedName(i, name))); //we replaceall so we don't add one by one and trigger tons of notifications
             LoadCommands();
             InitializeComponent();
+            HostedControl.PropertyChanged += HostedControl_PropertyChanged;
+            HostedControl.IsPoppedOut = true;
             HostedControl.PoppedOut(this);
             ContentGrid.Children.Add(hostedControl);
             RecentsController.InitRecentControl(hostedControl.Toolname, Recents_MenuItem, hostedControl.LoadFile);
@@ -141,6 +145,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 OnPropertyChanged(nameof(CurrentFilePath));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        private void HostedControl_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (HostedControl is FileExportLoaderControl)
+            {
+                OnPropertyChanged(nameof(CurrentFilePath));
+                OnPropertyChanged(nameof(CurrentFile));
+                OnPropertyChanged(nameof(ShouldShowRecentsController));
+                OnPropertyChanged(nameof(IsModifiedProxy));
                 CommandManager.InvalidateRequerySuggested();
             }
         }
@@ -323,6 +339,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     felc.FileLoaded -= FELCFileLoaded;
                     felc.ModifiedStatusChanging -= NotifyPendingChangesStatusChanged;
                 }
+
+                HostedControl.PropertyChanged -= HostedControl_PropertyChanged;
 
                 HostedControl.Dispose();
             }

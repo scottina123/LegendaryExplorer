@@ -432,6 +432,16 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _scriptide_savedthemes;
             set => SetProperty(ref _scriptide_savedthemes, value);
         }
+        private static List<string> _tlkeditor_opentabs = new List<string>();
+        public static List<string> TLKEditor_OpenTabs {
+            get => _tlkeditor_opentabs;
+            set => SetProperty(ref _tlkeditor_opentabs, value);
+        }
+        private static string _tlkeditor_selectedtab = "";
+        public static string TLKEditor_SelectedTab {
+            get => _tlkeditor_selectedtab;
+            set => SetProperty(ref _tlkeditor_selectedtab, value);
+        }
 
         public static string Get_SequenceEditor_Favorites (MEGame game) => game switch
         {
@@ -587,6 +597,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             CustomAssetDirectories = TryGetSetting(settingsJson, "customassetdirectories", new List<string>());
             ScriptIDE_ActiveTheme = TryGetSetting(settingsJson, "scriptide_activetheme", "");
             ScriptIDE_SavedThemes = TryGetSetting(settingsJson, "scriptide_savedthemes", new Dictionary<string, ThemeData>());
+            TLKEditor_OpenTabs = TryGetSetting(settingsJson, "tlkeditor_opentabs", new List<string>());
+            TLKEditor_SelectedTab = TryGetSetting(settingsJson, "tlkeditor_selectedtab", "");
 
             ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
 
@@ -690,6 +702,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["customassetdirectories"] = CustomAssetDirectories;
             settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();
             settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
+            settingsJson["tlkeditor_opentabs"] = TLKEditor_OpenTabs;
+            settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
 
             settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
 

@@ -10,7 +10,66 @@
              d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
              d:DesignHeight="450" d:DesignWidth="800">
     <exportLoaderControls:FileExportLoaderControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConveter"/>
+        <Style x:Key="TlkEditorTabCloseButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="TlkEditorTabItemStyle" TargetType="{x:Type TabItem}">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="Background" Value="{StaticResource MenuPopupBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource MenuPopupBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabItem}">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Margin="0,0,2,0"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter x:Name="ContentSite"
+                                              ContentSource="Header"
+                                              Margin="0"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="DarkAwareContextMenuStyle" TargetType="{x:Type ContextMenu}">
             <Setter Property="Background" Value="{StaticResource MenuPopupBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource MenuPopupBorderBrush}"/>
@@ -62,6 +121,44 @@
         </ContextMenu>
     </exportLoaderControls:FileExportLoaderControl.Resources>
     <DockPanel MinWidth="10" MinHeight="10">
+        <TabControl DockPanel.Dock="Top"
+                    ItemsSource="{Binding OpenTabs}"
+                    SelectedItem="{Binding ActiveTab, Mode=TwoWay}"
+                    AllowDrop="True"
+                    Background="{StaticResource MenuPopupBackgroundBrush}"
+                    BorderBrush="{StaticResource MenuPopupBorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    PreviewMouseLeftButtonDown="TabControl_PreviewMouseLeftButtonDown"
+                    PreviewMouseMove="TabControl_PreviewMouseMove"
+                    DragOver="TabControl_DragOver"
+                    Drop="TabControl_Drop"
+                    Visibility="{Binding HasOpenTabs, Converter={StaticResource BoolToVisibilityConverter}}">
+            <TabControl.ItemContainerStyle>
+                <Style TargetType="{x:Type TabItem}" BasedOn="{StaticResource TlkEditorTabItemStyle}">
+                    <Setter Property="ToolTip" Value="{Binding FilePath}"/>
+                </Style>
+            </TabControl.ItemContainerStyle>
+            <TabControl.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel LastChildFill="False">
+                        <TextBlock Text="{Binding HeaderText}" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{Binding RelativeSource={RelativeSource AncestorType=TabItem}, Path=Foreground}"/>
+                        <Button Content="×"
+                                Width="16"
+                                Height="16"
+                                Padding="0"
+                                Focusable="False"
+                                Style="{StaticResource TlkEditorTabCloseButtonStyle}"
+                                Click="CloseTabButton_Click"
+                                VerticalAlignment="Center"/>
+                    </DockPanel>
+                </DataTemplate>
+            </TabControl.ItemTemplate>
+            <TabControl.ContentTemplate>
+                <DataTemplate>
+                    <Grid Height="0"/>
+                </DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
         <ToolBar ToolBarTray.IsLocked="True" DockPanel.Dock="Top">
             <!-- Commit button saves edits. disabled by default. Enabled when editing. Ends edit mode with saving to object -->
             <Button Name="btnCommit" Command="{Binding CommitCommand}" Content="Commit" ToolTip="Commit changes to this TLK file back to the export" VerticalAlignment="Stretch" Padding="7,0"
@@ -77,6 +174,7 @@
                     </Style>
                 </Button.Style>
             </Button>
+            <Button Name="btnOpenTab" Command="{Binding OpenTabCommand}" Content="Open" ToolTip="Open TLK file in a new or existing tab" Padding="5,0" VerticalAlignment="Stretch"/>
             <TextBox Name="boxSearch" Height="26" Width="160" TextWrapping="Wrap" HorizontalAlignment="Left" KeyUp="Evt_KeyUp" VerticalAlignment="Stretch"
                      ContextMenu="{StaticResource InlineTextEditorContextMenu}"/>
             <Button Name="btnSearch" Command="{Binding SearchCommand}" Content="Search" ToolTip="Search strings" Padding="5,0" VerticalAlignment="Stretch"/>
