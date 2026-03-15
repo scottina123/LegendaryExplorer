@@ -549,6 +549,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public string Line { get; set; }
 
+        public string DisplayLine => StripWrappingQuotes(Line);
+
         public string Convo { get; set; }
 
         public ConvoLine(int StrRef, string Speaker, string Convo)
@@ -560,6 +562,21 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public ConvoLine()
         { }
+
+        private static string StripWrappingQuotes(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length < 2)
+            {
+                return text;
+            }
+
+            return text[0] switch
+            {
+                '"' when text[^1] == '"' => text[1..^1],
+                '“' when text[^1] == '”' => text[1..^1],
+                _ => text
+            };
+        }
     }
 
     public enum PlotRecordType

@@ -3843,7 +3843,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 case "Line":
                     var line = (ConvoLine)lstbx_Lines.SelectedItem;
-                    copytext = line.Line;
+                    copytext = line.DisplayLine;
                     break;
                 case "StrRef":
                     var lineref = (ConvoLine)lstbx_Lines.SelectedItem;
@@ -3901,13 +3901,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 SpeakerLineSearchColumn => ContainsText(speakerDisplay, searchText),
                 TlkStringRefLineSearchColumn => ContainsText(line.StrRef.ToString(), searchText),
-                LineTextSearchColumn => ContainsText(line.Line, searchText),
+                LineTextSearchColumn => ContainsText(line.DisplayLine, searchText),
                 LineConversationSearchColumn => ContainsText(line.Convo, searchText),
                 FileLineSearchColumn => ContainsText(GetConvoFileValue(line.Convo), searchText),
                 LocationLineSearchColumn => ContainsText(GetConvoLocationValue(line.Convo), searchText),
                 _ => ContainsText(speakerDisplay, searchText)
                      || ContainsText(line.StrRef.ToString(), searchText)
-                     || ContainsText(line.Line, searchText)
+                     || ContainsText(line.DisplayLine, searchText)
                      || ContainsText(line.Convo, searchText)
                      || ContainsText(GetConvoFileValue(line.Convo), searchText)
                      || ContainsText(GetConvoLocationValue(line.Convo), searchText)

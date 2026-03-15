@@ -1065,7 +1065,7 @@
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
                                         <GridViewColumn DisplayMemberBinding="{Binding StrRef}" Width="110" Header="TLK String Ref" />
-                                        <GridViewColumn DisplayMemberBinding="{Binding Line}" Width="420" Header="Line" />
+                                        <GridViewColumn DisplayMemberBinding="{Binding DisplayLine}" Width="420" Header="Line" />
                                         <GridViewColumn DisplayMemberBinding="{Binding Convo}" Width="220" Header="Line Conversation" />
                                         <GridViewColumn Width="220" Header="File">
                                             <GridViewColumn.CellTemplate>
