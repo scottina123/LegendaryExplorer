@@ -138,6 +138,83 @@
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
         </Style>
+        <Style x:Key="AssetDatabaseBusyIndicatorStyle" TargetType="{x:Type xctk:BusyIndicator}" BasedOn="{StaticResource {x:Type xctk:BusyIndicator}}">
+            <Setter Property="OverlayStyle">
+                <Setter.Value>
+                    <Style TargetType="Rectangle">
+                        <Setter Property="Fill" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+                        <Setter Property="Opacity" Value="0.65"/>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type xctk:BusyIndicator}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="VisibilityStates">
+                                    <VisualState x:Name="Hidden">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="busycontent" Storyboard.TargetProperty="(UIElement.Visibility)">
+                                                <DiscreteObjectKeyFrame KeyTime="0">
+                                                    <DiscreteObjectKeyFrame.Value>
+                                                        <Visibility>Collapsed</Visibility>
+                                                    </DiscreteObjectKeyFrame.Value>
+                                                </DiscreteObjectKeyFrame>
+                                            </ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="overlay" Storyboard.TargetProperty="(UIElement.Visibility)">
+                                                <DiscreteObjectKeyFrame KeyTime="0">
+                                                    <DiscreteObjectKeyFrame.Value>
+                                                        <Visibility>Collapsed</Visibility>
+                                                    </DiscreteObjectKeyFrame.Value>
+                                                </DiscreteObjectKeyFrame>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Visible">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="busycontent" Storyboard.TargetProperty="(UIElement.Visibility)">
+                                                <DiscreteObjectKeyFrame KeyTime="0">
+                                                    <DiscreteObjectKeyFrame.Value>
+                                                        <Visibility>Visible</Visibility>
+                                                    </DiscreteObjectKeyFrame.Value>
+                                                </DiscreteObjectKeyFrame>
+                                            </ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="overlay" Storyboard.TargetProperty="(UIElement.Visibility)">
+                                                <DiscreteObjectKeyFrame KeyTime="0">
+                                                    <DiscreteObjectKeyFrame.Value>
+                                                        <Visibility>Visible</Visibility>
+                                                    </DiscreteObjectKeyFrame.Value>
+                                                </DiscreteObjectKeyFrame>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="BusyStatusStates">
+                                    <VisualState x:Name="Idle" />
+                                    <VisualState x:Name="Busy" />
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter x:Name="content"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Focusable="False"/>
+                            <Rectangle x:Name="overlay"
+                                       Style="{TemplateBinding OverlayStyle}"
+                                       Visibility="Collapsed"/>
+                            <ContentPresenter x:Name="busycontent"
+                                              Content="{TemplateBinding BusyContent}"
+                                              ContentTemplate="{TemplateBinding BusyContentTemplate}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Visibility="Collapsed"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="G" Modifiers="Control"  Command="{Binding GenerateDBCommand}"/>
@@ -148,7 +225,7 @@
         <KeyBinding Key="D5" Modifiers="Control" Command="{Binding SwitchMECommand}" CommandParameter="LE2"/>
         <KeyBinding Key="D6" Modifiers="Control" Command="{Binding SwitchMECommand}" CommandParameter="LE3"/>
     </Window.InputBindings>
-    <xctk:BusyIndicator x:Name="dbBusyIndicator" IsBusy="{Binding IsBusy, FallbackValue=False}">
+    <xctk:BusyIndicator x:Name="dbBusyIndicator" IsBusy="{Binding IsBusy, FallbackValue=False}" Style="{StaticResource AssetDatabaseBusyIndicatorStyle}">
         <DockPanel>
             <DockPanel DockPanel.Dock="Top">
                 <xctk:WatermarkTextBox DockPanel.Dock="Right" Watermark="Search" Name="FilterBox" Width="300" KeyUp="FilterBox_KeyUp" ToolTip="Filter and find classes" HorizontalAlignment="Right" HorizontalContentAlignment="Left" IsEnabled="True">
@@ -1225,12 +1302,18 @@
         </DockPanel>
         <xctk:BusyIndicator.BusyContentTemplate>
             <DataTemplate>
-                <StackPanel DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}}">
-                    <TextBlock Text="{Binding BusyHeader}" FontWeight="Bold" TextAlignment="Center"/>
-                    <TextBlock Text="{Binding BusyText}"/>
-                    <ProgressBar Value="{Binding OverallProgressValue}" Maximum="{Binding OverallProgressMaximum}" IsIndeterminate="{Binding BusyBarInd}"  Margin="0,5,0,0" Height="15" />
-                    <Button Content="Cancel" HorizontalAlignment="center" Margin="0,5,0,0" Padding="3"  Command="{Binding CancelDumpCommand}" />
-                </StackPanel>
+                <Border DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                        BorderThickness="1"
+                        Padding="10">
+                    <StackPanel>
+                        <TextBlock Text="{Binding BusyHeader}" FontWeight="Bold" TextAlignment="Center"/>
+                        <TextBlock Text="{Binding BusyText}"/>
+                        <ProgressBar Value="{Binding OverallProgressValue}" Maximum="{Binding OverallProgressMaximum}" IsIndeterminate="{Binding BusyBarInd}"  Margin="0,5,0,0" Height="15" />
+                        <Button Content="Cancel" HorizontalAlignment="center" Margin="0,5,0,0" Padding="3"  Command="{Binding CancelDumpCommand}" />
+                    </StackPanel>
+                </Border>
             </DataTemplate>
         </xctk:BusyIndicator.BusyContentTemplate>
         <xctk:BusyIndicator.ProgressBarStyle>
