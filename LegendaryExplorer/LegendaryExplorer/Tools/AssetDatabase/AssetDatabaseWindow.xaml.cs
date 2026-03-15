@@ -15,6 +15,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -117,6 +118,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private string CurrentDBPath { get; set; }
         public AssetDB CurrentDataBase { get; } = new();
         private readonly Dictionary<string, Conversation> _conversationLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (string FileName, string Location)> _convoFileInfoCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly DispatcherTimer _lineSearchDebounceTimer;
 
         public static ConcurrentDictionary<ConversationKey, string> OwnerNameCache { get; } = new();
 
@@ -548,6 +551,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Enum.TryParse(Settings.AssetDBGame, out MEGame game);
             CurrentGame = game;
 
+            _lineSearchDebounceTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(180)
+            };
+            _lineSearchDebounceTimer.Tick += (_, _) =>
+            {
+                _lineSearchDebounceTimer.Stop();
+                if (currentView == 8)
+                {
+                    Filter();
+                }
+            };
+
             InitializeComponent();
         }
 
@@ -765,6 +781,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             CurrentDataBase.Game = CurrentGame;
             CurrentDataBase.Localization = Localization;
             _conversationLookup.Clear();
+            _convoFileInfoCache.Clear();
             ClearOwnerNameResolverCache();
 
             FileListExtended.ClearEx();
@@ -785,6 +802,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void RebuildConversationLookup()
         {
             _conversationLookup.Clear();
+            _convoFileInfoCache.Clear();
 
             foreach (var conversation in CurrentDataBase.Conversations)
             {
@@ -831,8 +849,97 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return line.Speaker;
             }
 
-            var ownerName = ResolveOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex));
-            return string.IsNullOrWhiteSpace(ownerName) ? line.Speaker : $"{line.Speaker} ({ownerName})";
+            var ownerName = TryGetCachedOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex));
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return line.Speaker;
+            }
+
+            return $"{line.Speaker} ({ownerName})";
+        }
+
+        private string GetSpeakerDisplayForSearch(ConvoLine line)
+        {
+            if (line == null || !string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
+            {
+                return line?.Speaker;
+            }
+
+            if (!TryGetConversation(line.Convo, out var conversation)
+                || string.IsNullOrWhiteSpace(conversation.PackageName)
+                || conversation.ConversationExportIndex <= 0)
+            {
+                return line.Speaker;
+            }
+
+            return TryGetCachedOwnerDisplay(line, conversation);
+        }
+
+        private static string TryGetCachedOwnerDisplay(ConvoLine line, Conversation conversation)
+        {
+            var key = new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex);
+            var cachedName = TryGetCachedOwnerName(key);
+            if (string.IsNullOrWhiteSpace(cachedName))
+            {
+                return line.Speaker;
+            }
+
+            return $"{line.Speaker} ({cachedName})";
+        }
+
+        private static string TryGetCachedOwnerName(ConversationKey key)
+        {
+            return OwnerNameCache.TryGetValue(key, out var cachedName) && !string.IsNullOrWhiteSpace(cachedName)
+                ? cachedName
+                : null;
+        }
+
+        private void PreResolveOwnerNames()
+        {
+            var ownerConversationKeys = CurrentDataBase.Lines
+                .Where(line => string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
+                .Select(line => line.Convo)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(convoName => TryGetConversation(convoName, out var conversation)
+                    && !string.IsNullOrWhiteSpace(conversation.PackageName)
+                    && conversation.ConversationExportIndex > 0
+                        ? new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex)
+                        : default)
+                .Where(key => !string.IsNullOrWhiteSpace(key.PackageName) && key.ExportIndex > 0)
+                .Distinct()
+                .ToList();
+
+            foreach (var key in ownerConversationKeys)
+            {
+                ResolveOwnerName(key);
+            }
+        }
+
+        private void StartOwnerNamePrewarm()
+        {
+            Task.Run(PreResolveOwnerNames).ContinueWithOnUIThread(_ => RefreshLinesView());
+        }
+
+        private void RefreshLinesView()
+        {
+            if (currentView != 8)
+            {
+                return;
+            }
+
+            CollectionViewSource.GetDefaultView(lstbx_Lines.ItemsSource)?.Refresh();
+        }
+
+        private void ScheduleLineSearchFilter()
+        {
+            if (currentView != 8)
+            {
+                Filter();
+                return;
+            }
+
+            _lineSearchDebounceTimer.Stop();
+            _lineSearchDebounceTimer.Start();
         }
 
         public static string ResolveOwnerName(ConversationKey key)
@@ -1489,6 +1596,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 #endif
 
                         GetConvoLinesBackground();
+                        StartOwnerNamePrewarm();
                     }
                 }).ContinueWith(x =>
                 {
@@ -3284,20 +3392,29 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return false;
             }
 
-            var convo = CurrentDataBase.Conversations.FirstOrDefault(c => c.ConvName == convoName);
-            if (convo == null)
+            if (_convoFileInfoCache.TryGetValue(convoName, out var cachedInfo))
             {
+                fileName = cachedInfo.FileName;
+                location = cachedInfo.Location;
+                return fileName != null;
+            }
+
+            if (!TryGetConversation(convoName, out var convo))
+            {
+                _convoFileInfoCache[convoName] = (null, null);
                 return false;
             }
 
             int fileKey = convo.ConvFile.FileKey;
             if (fileKey < 0 || fileKey >= FileListExtended.Count)
             {
+                _convoFileInfoCache[convoName] = (null, null);
                 return false;
             }
 
             fileName = FileListExtended[fileKey].FileName;
             location = FileListExtended[fileKey].Directory;
+            _convoFileInfoCache[convoName] = (fileName, location);
             return true;
         }
 
@@ -3516,13 +3633,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void cmbbx_filterSpkrs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
-            Filter();
+            ScheduleLineSearchFilter();
         }
 
         private void ClearSpeakerFilter_Click(object sender, RoutedEventArgs e)
         {
             cmbbx_filterSpkrs.SelectedIndex = -1;
-            Filter();
+            ScheduleLineSearchFilter();
         }
 
         private void SaveCustomFileList()
@@ -3913,6 +4030,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             MemoryAnalyzer.ForceFullGC(true);
             // 08/27/2023 - Removed !IsGame1() check on GetConvoLinesBackground()
             GetConvoLinesBackground();
+            StartOwnerNamePrewarm();
             CurrentDataBase.PlotUsages.LoadPlotPaths(game);
         }
 
