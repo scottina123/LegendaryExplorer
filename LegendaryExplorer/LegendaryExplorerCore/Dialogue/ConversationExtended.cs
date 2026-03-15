@@ -469,6 +469,11 @@ namespace LegendaryExplorerCore.Dialogue
         {
             EntryList = new ObservableCollectionExtended<DialogueNodeExtended>();
             var entryprop = BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList");
+            if (entryprop == null)
+            {
+                return;
+            }
+
             int cnt = 0;
 
             foreach (StructProperty node in entryprop)

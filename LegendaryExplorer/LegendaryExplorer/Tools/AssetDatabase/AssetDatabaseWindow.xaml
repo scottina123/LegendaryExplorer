@@ -948,6 +948,12 @@
                                           Click="btn_LinePlaybackToggle_Click"
                                           IsChecked="False"
                                           ToolTip="Toggle playback of the selected line."/>
+                                <Button Content="Extract shown audio..."
+                                        Margin="0,3,10,3"
+                                        Padding="8,2"
+                                        Click="ExtractFilteredLinesAudio_Click"
+                                        IsEnabled="{Binding IsGettingTLKs, Converter={StaticResource InverseBooleanConverter}}"
+                                        ToolTip="Extract audio for the lines currently shown by the active filter/search."/>
                                 <TextBlock Text="Parsing TLKs: " Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="5,0" VerticalAlignment="Center"/>
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>

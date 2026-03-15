@@ -35,12 +35,16 @@ using Microsoft.WindowsAPICodePack.Taskbar;
 using BinaryPack;
 using LegendaryExplorer.GameInterop;
 using LegendaryExplorer.SharedUI.Controls;
+using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.LiveLevelEditor;
 using LegendaryExplorer.Tools.PlotDatabase;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Memory;
 using LegendaryExplorerCore.PlotDatabase;
+using Microsoft.WindowsAPICodePack.Dialogs;
 using TerraFX.Interop.Windows;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
@@ -51,6 +55,27 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     /// </summary>
     public partial class AssetDatabaseWindow : TrackingNotifyPropertyChangedWindowBase
     {
+        private sealed class ConversationLoadContext : IDisposable
+        {
+            private readonly IDisposable[] _resources;
+
+            public ConversationLoadContext(ConversationExtended conversationData, params IDisposable[] resources)
+            {
+                ConversationData = conversationData;
+                _resources = resources ?? [];
+            }
+
+            public ConversationExtended ConversationData { get; }
+
+            public void Dispose()
+            {
+                foreach (var resource in _resources)
+                {
+                    resource?.Dispose();
+                }
+            }
+        }
+
         #region Declarations
         // v9.2: Conversation records now store StartConversation owner metadata for lazy speaker resolution.
         public const string dbCurrentBuild = "9.2"; //If changes are made that invalidate old databases edit this.
@@ -2346,6 +2371,77 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             ExtractSelectedLineAudio(1);
         }
 
+        private void ExtractFilteredLinesAudio_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentView != 8)
+            {
+                return;
+            }
+
+            var visibleLines = lstbx_Lines.Items.Cast<ConvoLine>().ToList();
+            if (visibleLines.Count == 0)
+            {
+                MessageBox.Show(this, "There are no shown lines to extract audio from.", "Extract Filtered Audio", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (cmbbx_filterSpkrs.SelectedIndex < 0 && string.IsNullOrWhiteSpace(LineSearchText))
+            {
+                MessageBox.Show(this, "Apply a speaker filter or line search first.", "Extract Filtered Audio", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!PromptAudioGenderSelection(out bool extractMale, out bool extractFemale))
+            {
+                return;
+            }
+
+            var dlg = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                EnsurePathExists = true,
+                Title = "Select Output Folder for Filtered Audio"
+            };
+            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            {
+                return;
+            }
+
+            string outputFolder = dlg.FileName;
+            bool includeText = MessageBox.Show(this,
+                "Include dialogue text in filenames?",
+                "Filename Options",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+            BusyHeader = "Extracting filtered line audio";
+            BusyBarInd = true;
+            IsBusy = true;
+            BusyText = "Preparing to extract audio...";
+
+            Task.Run(() => ExtractFilteredLinesAudio(visibleLines, outputFolder, includeText, extractMale, extractFemale))
+                .ContinueWithOnUIThread(task =>
+                {
+                    IsBusy = false;
+                    if (task.IsFaulted)
+                    {
+                        MessageBox.Show(this,
+                            $"Error during extraction:\n{task.Exception?.InnerException?.Message ?? task.Exception?.Message}",
+                            "Extraction Error",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
+
+                    var result = task.Result;
+                    MessageBox.Show(this,
+                        $"Extraction complete!\nConversations processed: {result.ConversationsProcessed}\nAudio files extracted: {result.AudioFilesExtracted}",
+                        "Extraction Complete",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                });
+        }
+
         private void PlaySelectedLineAudio(int genderTabIndex)
         {
             if (currentView != 8 || lstbx_Lines.SelectedIndex < 0)
@@ -2393,6 +2489,295 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 SoundpanelWPF_ADB.ExportAudioCommand.Execute(null);
             }
+        }
+
+        private bool PromptAudioGenderSelection(out bool extractMale, out bool extractFemale)
+        {
+            extractMale = true;
+            extractFemale = true;
+
+            var genderDialog = new Window
+            {
+                Title = "Select Genders",
+                Width = 350,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+            genderDialog.SetResourceReference(Window.BackgroundProperty, SystemColors.WindowBrushKey);
+            genderDialog.SetResourceReference(Window.ForegroundProperty, SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(genderDialog);
+
+            string genderChoice = null;
+
+            var textBlock = new TextBlock
+            {
+                Text = "Which audio files would you like to extract?",
+                Margin = new Thickness(10, 15, 10, 10),
+                TextWrapping = TextWrapping.Wrap
+            };
+            textBlock.SetResourceReference(TextBlock.ForegroundProperty, SystemColors.WindowTextBrushKey);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 10, 0, 10)
+            };
+
+            var bothBtn = new Button { Content = "Both", Width = 70, Margin = new Thickness(5) };
+            var maleBtn = new Button { Content = "Male", Width = 70, Margin = new Thickness(5) };
+            var femaleBtn = new Button { Content = "Female", Width = 70, Margin = new Thickness(5) };
+            var cancelBtn = new Button { Content = "Cancel", Width = 70, Margin = new Thickness(5), IsCancel = true };
+
+            bothBtn.Click += (_, _) => { genderChoice = "both"; genderDialog.DialogResult = true; };
+            maleBtn.Click += (_, _) => { genderChoice = "male"; genderDialog.DialogResult = true; };
+            femaleBtn.Click += (_, _) => { genderChoice = "female"; genderDialog.DialogResult = true; };
+
+            buttonPanel.Children.Add(bothBtn);
+            buttonPanel.Children.Add(maleBtn);
+            buttonPanel.Children.Add(femaleBtn);
+            buttonPanel.Children.Add(cancelBtn);
+
+            var mainPanel = new StackPanel();
+            mainPanel.Children.Add(textBlock);
+            mainPanel.Children.Add(buttonPanel);
+            genderDialog.Content = mainPanel;
+
+            if (genderDialog.ShowDialog() != true)
+            {
+                return false;
+            }
+
+            extractMale = genderChoice is "both" or "male";
+            extractFemale = genderChoice is "both" or "female";
+            return true;
+        }
+
+        private (int ConversationsProcessed, int AudioFilesExtracted) ExtractFilteredLinesAudio(List<ConvoLine> visibleLines, string outputFolder, bool includeText, bool extractMale, bool extractFemale)
+        {
+            int conversationsProcessed = 0;
+            int audioFilesExtracted = 0;
+
+            foreach (var conversationGroup in visibleLines
+                         .GroupBy(line => line.Convo, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!TryGetConversation(conversationGroup.Key, out var conversation))
+                {
+                    continue;
+                }
+
+                using var conversationContext = TryCreateConversationLoadContext(conversation);
+                if (conversationContext == null)
+                {
+                    continue;
+                }
+
+                var convoData = conversationContext.ConversationData;
+                convoData.LoadConversation(TLKManagerWPF.GlobalFindStrRefbyID, true);
+
+                int extractedForConversation = 0;
+                foreach (var speakerGroup in conversationGroup
+                             .GroupBy(line => GetSpeakerExtractionLabel(line), StringComparer.CurrentCultureIgnoreCase))
+                {
+                    var matchingNodes = speakerGroup
+                        .SelectMany(line => FindMatchingDialogueNodes(convoData, line))
+                        .DistinctBy(node => (node.IsReply, node.NodeCount, node.LineStrRef))
+                        .ToList();
+
+                    if (matchingNodes.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var convoFolder = Path.Combine(outputFolder, SanitizePathSegment(conversationGroup.Key));
+                    Directory.CreateDirectory(convoFolder);
+
+                    extractedForConversation += DialogueEditorWindow.ExtractAudioFilesForSpeaker(
+                        matchingNodes,
+                        speakerGroup.Key,
+                        includeText,
+                        extractMale,
+                        extractFemale,
+                        convoFolder);
+                }
+
+                if (extractedForConversation > 0)
+                {
+                    conversationsProcessed++;
+                    audioFilesExtracted += extractedForConversation;
+                }
+
+                Dispatcher.Invoke(() => BusyText = $"Extracting audio...\nConversations: {conversationsProcessed}\nAudio files: {audioFilesExtracted}");
+            }
+
+            return (conversationsProcessed, audioFilesExtracted);
+        }
+
+        private IEnumerable<DialogueNodeExtended> FindMatchingDialogueNodes(ConversationExtended convoData, ConvoLine line)
+        {
+            if (line == null)
+            {
+                return [];
+            }
+
+            if (string.Equals(line.Speaker, "Shepard", StringComparison.OrdinalIgnoreCase))
+            {
+                return convoData.ReplyList.Where(node => node.LineStrRef == line.StrRef);
+            }
+
+            if (string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
+            {
+                return convoData.EntryList.Where(node => node.LineStrRef == line.StrRef
+                    && string.Equals(node.SpeakerTag?.SpeakerName, "owner", StringComparison.OrdinalIgnoreCase));
+            }
+
+            return convoData.EntryList.Where(node => node.LineStrRef == line.StrRef
+                && string.Equals(node.SpeakerTag?.SpeakerName, line.Speaker, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private string GetSpeakerExtractionLabel(ConvoLine line) => GetSpeakerFilterValue(line) ?? line?.Speaker ?? "speaker";
+
+        private ConversationLoadContext TryCreateConversationLoadContext(Conversation conversation)
+        {
+            if (conversation == null)
+            {
+                return null;
+            }
+
+            if (TryOpenConversationPackage(conversation, out var conversationPackage)
+                && TryResolveConversationExport(conversationPackage, conversation, out var conversationExport))
+            {
+                return new ConversationLoadContext(new ConversationExtended(conversationExport), conversationPackage);
+            }
+
+            conversationPackage?.Dispose();
+
+            if (TryResolveConversationExportFromStartConversation(conversation, out var resolvedConversationExport, out var startConversationPackage, out var packageCache))
+            {
+                return new ConversationLoadContext(new ConversationExtended(resolvedConversationExport), startConversationPackage, packageCache);
+            }
+
+            startConversationPackage?.Dispose();
+            packageCache?.Dispose();
+            return null;
+        }
+
+        private bool TryResolveConversationExport(IMEPackage package, Conversation conversation, out ExportEntry conversationExport)
+        {
+            conversationExport = null;
+            if (package == null || conversation == null)
+            {
+                return false;
+            }
+
+            if (conversation.ConvFile.UIndex > 0
+                && package.TryGetUExport(conversation.ConvFile.UIndex, out var indexedExport)
+                && IsMatchingConversationExport(indexedExport, conversation.ConvName))
+            {
+                conversationExport = indexedExport;
+                return true;
+            }
+
+            conversationExport = package.Exports.FirstOrDefault(export => IsMatchingConversationExport(export, conversation.ConvName));
+            return conversationExport != null;
+        }
+
+        private bool TryResolveConversationExportFromStartConversation(Conversation conversation, out ExportEntry conversationExport, out IMEPackage startConversationPackage, out PackageCache packageCache)
+        {
+            conversationExport = null;
+            startConversationPackage = null;
+            packageCache = null;
+
+            if (conversation == null || string.IsNullOrWhiteSpace(conversation.PackageName) || conversation.ConversationExportIndex <= 0)
+            {
+                return false;
+            }
+
+            startConversationPackage = OpenOwnerResolverPackage(conversation.PackageName);
+            if (startConversationPackage == null
+                || !startConversationPackage.TryGetUExport(conversation.ConversationExportIndex, out var startConversationExport))
+            {
+                return false;
+            }
+
+            var conversationRef = startConversationExport.GetProperty<ObjectProperty>("Conv");
+            if (conversationRef == null || conversationRef.Value == 0)
+            {
+                return false;
+            }
+
+            if (conversationRef.Value > 0
+                && startConversationPackage.TryGetUExport(conversationRef.Value, out var localConversationExport)
+                && IsMatchingConversationExport(localConversationExport, conversation.ConvName))
+            {
+                conversationExport = localConversationExport;
+                return true;
+            }
+
+            packageCache = new PackageCache();
+            conversationExport = ResolveToExport(startConversationPackage, conversationRef.Value, packageCache);
+            if (!IsMatchingConversationExport(conversationExport, conversation.ConvName))
+            {
+                conversationExport = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsMatchingConversationExport(ExportEntry export, string conversationName)
+        {
+            return export?.ClassName == "BioConversation"
+                && string.Equals(export.ObjectName.Instanced, conversationName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryOpenConversationPackage(Conversation conversation, out IMEPackage package)
+        {
+            package = null;
+            if (conversation == null || conversation.ConvFile.FileKey < 0 || conversation.ConvFile.FileKey >= CurrentDataBase.FileList.Count)
+            {
+                return false;
+            }
+
+            var (fileName, directoryKey) = CurrentDataBase.FileList[conversation.ConvFile.FileKey];
+            var contentDir = CurrentDataBase.ContentDir[directoryKey];
+            var filePath = GetFilePath(fileName, contentDir);
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return false;
+            }
+
+            package = fetchPackage(filePath, conversation.ConvFile.FileKey, fileName);
+            return package != null;
+        }
+
+        private IMEPackage OpenConversationPackage(Conversation conversation)
+        {
+            if (conversation == null || conversation.ConvFile.FileKey < 0 || conversation.ConvFile.FileKey >= CurrentDataBase.FileList.Count)
+            {
+                return null;
+            }
+
+            var (fileName, _) = CurrentDataBase.FileList[conversation.ConvFile.FileKey];
+            return OpenOwnerResolverPackage(fileName);
+        }
+
+        private static string SanitizePathSegment(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "Conversation";
+            }
+
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                value = value.Replace(invalidChar, '_');
+            }
+
+            return value;
         }
 
         private void ToggleRenderMesh()
