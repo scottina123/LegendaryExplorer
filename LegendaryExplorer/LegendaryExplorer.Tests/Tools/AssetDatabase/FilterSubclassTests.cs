@@ -32,6 +32,9 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             var r2 = new TextureRecord("Name", "RandomPackage", false, false,
                 "TextureCube", "UI", 512, 1024, "ABCDE");
 
+            var r3 = new TextureRecord("HMM_ARM_Tint_tnt", "RandomPackage", false, false,
+                "DXT5", "CharacterDiff", 1024, 1024, "12345");
+
             Assert.IsTrue(TextureFilter.TextureSearch(("name", r1))); // Can search against name
             Assert.IsTrue(TextureFilter.TextureSearch(("ompack", r1))); // Parent Package
             Assert.IsTrue(TextureFilter.TextureSearch(("ABCDE", r1))); // Or CRC
@@ -40,6 +43,8 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             Assert.IsTrue(TextureFilter.TextureSearch(("512x512", r1))); // Displayed texture size
             Assert.IsTrue(TextureFilter.TextureSearch(("type:dxt1", r1))); // Explicit type search
             Assert.IsTrue(TextureFilter.TextureSearch(("type:ui", r2))); // Explicit type search on texture group
+            Assert.IsTrue(TextureFilter.TextureSearch(("type:tint", r3))); // Explicit texture-name type alias search
+            Assert.IsTrue(TextureFilter.TextureSearch(("type:tnt", r3))); // Explicit texture-name type alias search
             Assert.IsFalse(TextureFilter.TextureSearch(("type:dxt5", r1)));
 
             // Test size parsing
@@ -132,6 +137,51 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             hideMaterialInstances.IsSelected = false;
             Assert.IsTrue(filters.MaterialFilter.Filter(material));
             Assert.IsTrue(filters.MaterialFilter.Filter(materialInstance));
+        }
+
+        [TestMethod]
+        public void TestMaterialTextureTypeClassificationAndCounts()
+        {
+            var material = new MaterialRecord("Mat", "Pkg", false,
+            [
+                new MatSetting("TextureSampleParameter2D", "DiffuseMap", null),
+                new MatSetting("TextureSampleParameter2D", "NormDetail", null),
+                new MatSetting("TextureSampleParameter2D", "Tint_tnt", null),
+                new MatSetting("TextureSampleParameter2D", "Msk1", null),
+                new MatSetting("TextureSampleParameter2D", "Msk2", null),
+                new MatSetting("ScalarParameter", "Talk", "1")
+            ]);
+
+            CollectionAssert.AreEqual(
+                new[] { "Diffuse", "Normal", "Tint", "Mask", "Mask" },
+                MaterialFilter.GetTextureSettings(material).Select(MaterialFilter.GetTextureParameterType).ToList());
+
+            Assert.AreEqual(5, MaterialFilter.GetTextureParameterTypeCount(material));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Diffuse"));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Normal"));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Tint"));
+            Assert.AreEqual(2, MaterialFilter.GetTextureParameterTypeCount(material, "Mask"));
+        }
+
+        [TestMethod]
+        public void TestMaterialInstanceTextureTypeClassificationAndCounts()
+        {
+            var materialInstance = new MaterialRecord("MatInst", "Pkg", false,
+            [
+                new MatSetting("IsInstance", "true", null),
+                new MatSetting("TextureParameterValue", "DiffuseMap", "1"),
+                new MatSetting("TextureParameterValue", "Tint_tnt", "2"),
+                new MatSetting("ScalarParameter", "CubeMap_Scalar_Intensity", "0"),
+                new MatSetting("VectorParameter", "SkinLightScattering", "R:0.45 G:0.1 B:0.2 A:1")
+            ]);
+
+            CollectionAssert.AreEqual(
+                new[] { "Diffuse", "Tint" },
+                MaterialFilter.GetTextureSettings(materialInstance).Select(MaterialFilter.GetTextureParameterType).ToList());
+
+            Assert.AreEqual(2, MaterialFilter.GetTextureParameterTypeCount(materialInstance));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(materialInstance, "Diffuse"));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(materialInstance, "Tint"));
         }
 
     }

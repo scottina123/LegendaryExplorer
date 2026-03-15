@@ -50,8 +50,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     public partial class AssetDatabaseWindow : TrackingNotifyPropertyChangedWindowBase
     {
         #region Declarations
-        // v9.0: Textures now use .IsTexture() to get more texture class types. Add MaterialInstances to Materials.
-        public const string dbCurrentBuild = "9.0"; //If changes are made that invalidate old databases edit this.
+        // v9.1: MaterialInstance scan now stores instance material expressions for in-memory texture filtering.
+        public const string dbCurrentBuild = "9.1"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private int _currentView;
@@ -144,6 +144,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             NormalMaterialFilterOption,
             MaterialInstanceConstantFilterOption
         };
+        public ObservableCollectionExtended<string> MaterialTextureTypeFilters { get; } = new();
+        public ObservableCollectionExtended<string> MaterialTextureCountFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
 
@@ -159,6 +161,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllMaterialFilterOption = "All";
         private const string NormalMaterialFilterOption = "Normal Materials";
         private const string MaterialInstanceConstantFilterOption = "MaterialInstanceConstant";
+        private const string AllMaterialTextureTypeFilterOption = "All";
+        private const string AllMaterialTextureCountFilterOption = "All";
         private const string AllTextureFilterOption = "All";
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
@@ -174,6 +178,40 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        private string _selectedMaterialTextureTypeFilter = AllMaterialTextureTypeFilterOption;
+        private bool _isRefreshingMaterialTextureFilters;
+        public string SelectedMaterialTextureTypeFilter
+        {
+            get => _selectedMaterialTextureTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMaterialTextureTypeFilter, value))
+                {
+                    if (!_isRefreshingMaterialTextureFilters)
+                    {
+                        RefreshMaterialTextureCountFilters();
+                        Filter();
+                    }
+                }
+            }
+        }
+
+        private string _selectedMaterialTextureCountFilter = AllMaterialTextureCountFilterOption;
+        public string SelectedMaterialTextureCountFilter
+        {
+            get => _selectedMaterialTextureCountFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMaterialTextureCountFilter, value))
+                {
+                    if (!_isRefreshingMaterialTextureFilters)
+                    {
+                        Filter();
+                    }
+                }
+            }
+        }
+
         private string _selectedMaterialTypeFilter = AllMaterialFilterOption;
         public string SelectedMaterialTypeFilter
         {
@@ -183,6 +221,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 if (SetProperty(ref _selectedMaterialTypeFilter, value))
                 {
                     ApplyMaterialTypeFilter();
+                    RefreshMaterialTextureDropdownFilters(preserveSelections: true);
                     Filter();
                 }
             }
@@ -685,6 +724,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SelectedVfxTypeFilter = AllVfxFilterOption;
             SelectedAnimationTypeFilter = AllAnimationFilterOption;
             SelectedMaterialTypeFilter = AllMaterialFilterOption;
+            RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
@@ -711,6 +751,109 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             hideMaterials.IsSelected = SelectedMaterialTypeFilter == MaterialInstanceConstantFilterOption;
             hideMaterialInstances.IsSelected = SelectedMaterialTypeFilter == NormalMaterialFilterOption;
+        }
+
+        private IEnumerable<MaterialRecord> GetMaterialTextureDropdownSource()
+        {
+            if (AssetFilters?.MaterialFilter is null)
+            {
+                return CurrentDataBase.Materials;
+            }
+
+            return CurrentDataBase.Materials.Where(material => AssetFilters.MaterialFilter.Filter(material));
+        }
+
+        private void RefreshMaterialTextureDropdownFilters(bool preserveSelections = false)
+        {
+            var previousTypeSelection = SelectedMaterialTextureTypeFilter;
+            var previousCountSelection = SelectedMaterialTextureCountFilter;
+            var materialSource = GetMaterialTextureDropdownSource().ToList();
+            var textureTypeFilters = new[] { AllMaterialTextureTypeFilterOption }.Concat(MaterialFilter.GetKnownTextureParameterTypes()
+                .Concat(materialSource
+                .SelectMany(MaterialFilter.GetTextureSettings)
+                .Select(MaterialFilter.GetTextureParameterType)
+                .Where(type => !string.IsNullOrWhiteSpace(type))
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+                .OrderBy(type => type, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            _isRefreshingMaterialTextureFilters = true;
+            try
+            {
+                MaterialTextureTypeFilters.ReplaceAll(textureTypeFilters);
+                SelectedMaterialTextureTypeFilter = preserveSelections
+                                                    && textureTypeFilters.Contains(previousTypeSelection, StringComparer.OrdinalIgnoreCase)
+                    ? previousTypeSelection
+                    : AllMaterialTextureTypeFilterOption;
+                RefreshMaterialTextureCountFilters(preserveSelections, previousCountSelection);
+            }
+            finally
+            {
+                _isRefreshingMaterialTextureFilters = false;
+            }
+
+            Filter();
+        }
+
+        private void RefreshMaterialTextureCountFilters(bool preserveSelections = false, string previousCountSelection = null)
+        {
+            var materialSource = GetMaterialTextureDropdownSource().ToList();
+            var textureCountFilters = new[] { AllMaterialTextureCountFilterOption }.Concat(materialSource
+                .Select(GetMaterialTextureCountForCurrentFilter)
+                .Distinct()
+                .OrderBy(count => count)
+                .Select(count => count.ToString()))
+                .ToList();
+
+            _isRefreshingMaterialTextureFilters = true;
+            try
+            {
+                MaterialTextureCountFilters.ReplaceAll(textureCountFilters);
+                SelectedMaterialTextureCountFilter = preserveSelections && !string.IsNullOrWhiteSpace(previousCountSelection)
+                    ? previousCountSelection
+                    : AllMaterialTextureCountFilterOption;
+            }
+            finally
+            {
+                _isRefreshingMaterialTextureFilters = false;
+            }
+        }
+
+        private int GetMaterialTextureCountForCurrentFilter(MaterialRecord material)
+        {
+            if (string.Equals(SelectedMaterialTextureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                return MaterialFilter.GetTextureParameterTypeCount(material);
+            }
+
+            return MaterialFilter.GetTextureParameterTypeCount(material, SelectedMaterialTextureTypeFilter);
+        }
+
+        private bool MaterialTabFilter(object obj)
+        {
+            if (obj is not MaterialRecord materialRecord)
+            {
+                return false;
+            }
+
+            if (!AssetFilters.MaterialFilter.Filter(materialRecord))
+            {
+                return false;
+            }
+
+            var textureCount = GetMaterialTextureCountForCurrentFilter(materialRecord);
+            if (!string.Equals(SelectedMaterialTextureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(SelectedMaterialTextureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                return textureCount > 0;
+            }
+
+            if (string.Equals(SelectedMaterialTextureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return int.TryParse(SelectedMaterialTextureCountFilter, out int countFilter) && textureCount == countFilter;
         }
 
         private void ApplyAnimationTypeFilter()
@@ -1051,6 +1194,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                         Localization = CurrentDataBase.Localization;
                         AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
+                        RefreshMaterialTextureDropdownFilters();
                         RefreshTextureDropdownFilters();
                         IsBusy = false;
                         CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} " +
@@ -1552,6 +1696,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 switch (currentView)
                 {
                     case 2:
+                        if (MaterialTextureTypeFilters.Count <= 1 && CurrentDataBase.Materials.Count > 0)
+                        {
+                            RefreshMaterialTextureDropdownFilters();
+                        }
                         FilterBox.Watermark = "Search (by material name or parent package)";
                         break;
                     case 4:
@@ -2726,7 +2874,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     break;
                 case 2: //Materials
                     ICollectionView viewM = CollectionViewSource.GetDefaultView(CurrentDataBase.Materials);
-                    viewM.Filter = AssetFilters.MaterialFilter.Filter;
+                    viewM.Filter = MaterialTabFilter;
                     lstbx_Materials.ItemsSource = viewM;
                     break;
                 case 3: //Meshes
@@ -3290,6 +3438,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
+            RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
             Settings.AssetDBGame = CurrentDataBase.Game.ToString();
             isProcessing = false;

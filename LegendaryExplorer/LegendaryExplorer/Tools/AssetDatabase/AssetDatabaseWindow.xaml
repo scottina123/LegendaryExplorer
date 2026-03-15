@@ -516,13 +516,25 @@
                                 <ColumnDefinition Width="*" MinWidth="200"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Material Records" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Material Records (Grey shows DLC only materials that require a shadercache)" Grid.Row="0" Grid.Column="0"/>
-                            <DockPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="4,2">
-                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <ComboBox Width="190"
+                            <WrapPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="4,2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Material Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="190" Margin="0,0,12,0"
                                           ItemsSource="{Binding MaterialTypeFilters}"
                                           SelectedItem="{Binding SelectedMaterialTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
-                            </DockPanel>
+                                <TextBlock Text="Texture Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="150" Margin="0,0,12,0"
+                                          ItemsSource="{Binding MaterialTextureTypeFilters}"
+                                          SelectedItem="{Binding SelectedMaterialTextureTypeFilter, Mode=TwoWay}"
+                                          IsEditable="True"
+                                          IsTextSearchEnabled="True"/>
+                                <TextBlock Text="Count:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="90"
+                                          ItemsSource="{Binding MaterialTextureCountFilters}"
+                                          Text="{Binding SelectedMaterialTextureCountFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEditable="True"
+                                          IsTextSearchEnabled="True"/>
+                            </WrapPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="2" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>

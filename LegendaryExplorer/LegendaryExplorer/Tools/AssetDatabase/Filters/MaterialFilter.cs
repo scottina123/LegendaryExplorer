@@ -8,6 +8,24 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
 {
     public class MaterialFilter : GenericAssetFilter<MaterialRecord>
     {
+        private const string OtherTextureType = "Other";
+
+        private static readonly (string TypeName, string[] Tokens)[] TextureTypeMappings =
+        [
+            ("Diffuse", ["diffuse", "diff", "albedo", "basecolor", "basecolour"]),
+            ("Normal", ["normal", "norm"]),
+            ("Tint", ["tint", "tnt"]),
+            ("Mask", ["mask", "msk"]),
+            ("Specular", ["specular", "spec"]),
+            ("Emissive", ["emissive", "emiss", "emis", "glow"]),
+            ("Detail", ["detail"]),
+            ("Opacity", ["opacity", "opac"]),
+            ("Roughness", ["roughness", "rough"]),
+            ("Metallic", ["metallic", "metal"]),
+            ("AO", ["ambientocclusion", "ao"]),
+            ("Height", ["height", "parallax"])
+        ];
+
         public List<IAssetSpecification<MaterialRecord>> Types { get; private set; } = new();
         public List<IAssetSpecification<MaterialRecord>> BlendModes { get; private set; } = new();
         public ObservableCollection<IAssetSpecification<MaterialRecord>> GeneratedOptions { get; } = new();
@@ -76,6 +94,48 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         {
             var blendModeOr = new OrSpecification<MaterialRecord>(BlendModes); // Matches spec if any of the selected BlendModes are true
             return GeneratedOptions.Concat(Types).Append(blendModeOr);
+        }
+
+        public static IEnumerable<MatSetting> GetTextureSettings(MaterialRecord material)
+        {
+            return material?.MatSettings?.Where(setting => setting is { Name: not null, Parm1: not null }
+                && setting.Name.Contains("Texture", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(setting.Parm1)) ?? Enumerable.Empty<MatSetting>();
+        }
+
+        public static IEnumerable<string> GetKnownTextureParameterTypes()
+        {
+            return TextureTypeMappings.Select(mapping => mapping.TypeName).Append(OtherTextureType);
+        }
+
+        public static string GetTextureParameterType(MatSetting setting)
+        {
+            if (setting is null || string.IsNullOrWhiteSpace(setting.Parm1))
+            {
+                return null;
+            }
+
+            var normalizedName = new string(setting.Parm1.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+            foreach ((string typeName, string[] tokens) in TextureTypeMappings)
+            {
+                if (tokens.Any(normalizedName.Contains))
+                {
+                    return typeName;
+                }
+            }
+
+            return OtherTextureType;
+        }
+
+        public static int GetTextureParameterTypeCount(MaterialRecord material, string textureType = null)
+        {
+            var textureSettings = GetTextureSettings(material);
+            if (string.IsNullOrWhiteSpace(textureType))
+            {
+                return textureSettings.Count();
+            }
+
+            return textureSettings.Count(setting => string.Equals(GetTextureParameterType(setting), textureType, StringComparison.OrdinalIgnoreCase));
         }
 
         private bool MaterialSearch((string, MaterialRecord) t)

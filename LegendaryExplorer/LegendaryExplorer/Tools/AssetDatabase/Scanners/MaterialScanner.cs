@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
+using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -190,6 +191,22 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 if (parent != null && e.Export.FileRef.TryGetEntry(parent.Value, out var entry))
                 {
                     mSets.Add(new MatSetting("Parent", parent.Name, null));
+                }
+
+                foreach (var scalarParameter in ScalarParameter.GetScalarParameters(e.Export, true) ?? [])
+                {
+                    mSets.Add(new MatSetting("ScalarParameter", scalarParameter.ParameterName, scalarParameter.ParameterValue.ToString()));
+                }
+
+                foreach (var vectorParameter in VectorParameter.GetVectorParameters(e.Export, true) ?? [])
+                {
+                    var linearColor = $"R:{vectorParameter.ParameterValue.W} G:{vectorParameter.ParameterValue.X} B:{vectorParameter.ParameterValue.Y} A:{vectorParameter.ParameterValue.Z}";
+                    mSets.Add(new MatSetting("VectorParameter", vectorParameter.ParameterName, linearColor));
+                }
+
+                foreach (var textureParameter in TextureParameter.GetTextureParameters(e.Export, true) ?? [])
+                {
+                    mSets.Add(new MatSetting("TextureParameterValue", textureParameter.ParameterName, textureParameter.ParameterValue.ToString()));
                 }
 
                 mSets.Add(new MatSetting("IsInstance", "true", null));

@@ -6,6 +6,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
 {
     public class TextureFilter : GenericAssetFilter<TextureRecord>
     {
+        private static readonly Dictionary<string, string[]> NameBasedTextureTypeAliases = new()
+        {
+            ["tint"] = ["tint", "tnt"],
+            ["tnt"] = ["tint", "tnt"]
+        };
+
         public ObservableCollection<IAssetSpecification<TextureRecord>> LODGroups { get; }
         private readonly List<PredicateSpecification<TextureRecord>> GeneratedLodFilters;
         private readonly List<PredicateSpecification<TextureRecord>> SingleSelectionSizes;
@@ -107,10 +113,26 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
             {
                 var typeText = text[5..].Trim();
                 showThis = tr.CFormat.Contains(typeText, System.StringComparison.OrdinalIgnoreCase)
-                           || tr.TexGrp.Contains(typeText, System.StringComparison.OrdinalIgnoreCase);
+                           || tr.TexGrp.Contains(typeText, System.StringComparison.OrdinalIgnoreCase)
+                           || MatchesTextureNameType(typeText, tr.TextureName);
             }
 
             return showThis;
+        }
+
+        private static bool MatchesTextureNameType(string typeText, string textureName)
+        {
+            if (string.IsNullOrWhiteSpace(typeText) || string.IsNullOrWhiteSpace(textureName))
+            {
+                return false;
+            }
+
+            if (!NameBasedTextureTypeAliases.TryGetValue(typeText, out var aliases))
+            {
+                return false;
+            }
+
+            return aliases.Any(alias => textureName.Contains(alias, System.StringComparison.OrdinalIgnoreCase));
         }
     }
 }
