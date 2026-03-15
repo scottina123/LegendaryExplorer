@@ -79,6 +79,9 @@
                         <TextBlock Text="Box Text Color: " />
                         <xctk:ColorPicker Name="ClrPcker_BoxText" SelectedColorChanged="ColorPicker_SelectedColorChanged"
                                           HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Box Outline Color: " ToolTip="Outline color for standard graph boxes" />
+                        <xctk:ColorPicker Name="ClrPcker_BoxOutline" SelectedColorChanged="ColorPicker_SelectedColorChanged"
+                                          HorizontalAlignment="Stretch" ToolTip="Outline color for standard graph boxes" />
                         <TextBlock Text="Connection Line Color: " ToolTip="Base connection line color for output links" />
                         <xctk:ColorPicker Name="ClrPcker_Connection" SelectedColorChanged="ColorPicker_SelectedColorChanged"
                                           HorizontalAlignment="Stretch" ToolTip="Base connection line color for output links" />

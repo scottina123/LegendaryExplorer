@@ -140,6 +140,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         public List<WwiseEdEdge> InputEdges = new();
 
         private static Color _connectionColor = Color.Black;
+        private static Color _boxOutlineColor = Color.Black;
         protected static Brush outputBrush => new SolidBrush(_connectionColor);
 
         public static Color NodeBrushColor
@@ -164,6 +165,12 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             get => _boxTextColor;
             set => _boxTextColor = value;
+        }
+
+        public static Color BoxOutlineColor
+        {
+            get => _boxOutlineColor;
+            set => _boxOutlineColor = value;
         }
 
         public static Color ConnectionColor
@@ -311,7 +318,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             {
                 "WwiseEvent" => boolColor,
                 "WwiseStream" => intColor,
-                _ => ConnectionColor
+                _ => BoxOutlineColor
             });
             shape.Pen = outlinePen;
             shape.Brush = nodeBrush;
@@ -569,7 +576,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
 
         public override void Layout(float x, float y)
         {
-            outlinePen = new Pen(ConnectionColor);
+            outlinePen = new Pen(BoxOutlineColor);
             string s = GetTitle();
             float starty = 8;
             float w = 20;

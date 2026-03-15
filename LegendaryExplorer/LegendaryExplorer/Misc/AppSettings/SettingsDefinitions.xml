@@ -97,6 +97,7 @@
   <setting name="WwiseGraphEditor_TitleBoxColor" type="int" defaultvalue="-9408400"/>
   <setting name="WwiseGraphEditor_CommentTextColor" type="int" defaultvalue="-11911234"/>
   <setting name="WwiseGraphEditor_BoxTextColor" type="int" defaultvalue="-128"/>
+  <setting name="WwiseGraphEditor_BoxOutlineColor" type="int" defaultvalue="-16777216"/>
   <setting name="WwiseGraphEditor_ConnectionColor" type="int" defaultvalue="-16777216"/>
 
   <!-- Export Loader Control settings -->

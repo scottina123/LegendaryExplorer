@@ -74,6 +74,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            ClrPcker_BoxOutline.SelectedColor = BoxOutlineColor.ToWPFColor();
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
 
             soundPanel.SoundPanel_TabsControl.SelectedIndex = 1;
@@ -199,6 +200,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
+        private Color _boxOutlineColor = Color.Black;
+        public Color BoxOutlineColor
+        {
+            get => _boxOutlineColor;
+            set
+            {
+                if (_boxOutlineColor != value)
+                {
+                    _boxOutlineColor = value;
+                    WwiseHircObjNode.BoxOutlineColor = value;
+                    if (CurrentObjects.Any())
+                    {
+                        RefreshView();
+                    }
+                }
+            }
+        }
+
         private Color _connectionColor = Color.Black;
         public Color ConnectionColor
         {
@@ -232,6 +251,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 _titleBoxColor = Color.FromArgb(37, 37, 38);
                 _commentTextColor = Color.FromArgb(87, 166, 74);
                 _boxTextColor = Color.FromArgb(220, 220, 220);
+                _boxOutlineColor = Color.FromArgb(35, 34, 34);
                 _connectionColor = Color.White;
             }
             else
@@ -242,6 +262,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 _titleBoxColor = Color.FromArgb(112, 112, 112);
                 _commentTextColor = Color.FromArgb(74, 63, 190);
                 _boxTextColor = Color.FromArgb(255, 255, 128);
+                _boxOutlineColor = Color.Black;
                 _connectionColor = Color.Black;
             }
 
@@ -250,6 +271,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             WwiseHircObjNode.TitleBoxBrushColor = _titleBoxColor;
             WwiseHircObjNode.CommentTextColor = _commentTextColor;
             WwiseHircObjNode.BoxTextColor = _boxTextColor;
+            WwiseHircObjNode.BoxOutlineColor = _boxOutlineColor;
             WwiseHircObjNode.ConnectionColor = _connectionColor;
         }
 
@@ -271,6 +293,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             ClrPcker_TitleBox.SelectedColor = TitleBoxColor.ToWPFColor();
             ClrPcker_CommentText.SelectedColor = CommentTextColor.ToWPFColor();
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
+            ClrPcker_BoxOutline.SelectedColor = BoxOutlineColor.ToWPFColor();
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
 
             if (CurrentObjects.Any())
@@ -306,6 +329,10 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     case "ClrPcker_BoxText":
                         BoxTextColor = newColor;
                         Settings.WwiseGraphEditor_BoxTextColor = newColor.ToArgb();
+                        break;
+                    case "ClrPcker_BoxOutline":
+                        BoxOutlineColor = newColor;
+                        Settings.WwiseGraphEditor_BoxOutlineColor = newColor.ToArgb();
                         break;
                     case "ClrPcker_Connection":
                         ConnectionColor = newColor;

@@ -297,6 +297,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _wwisegrapheditor_boxtextcolor;
             set => SetProperty(ref _wwisegrapheditor_boxtextcolor, value);
         }
+        private static int _wwisegrapheditor_boxoutlinecolor = -16777216;
+        public static int WwiseGraphEditor_BoxOutlineColor {
+            get => _wwisegrapheditor_boxoutlinecolor;
+            set => SetProperty(ref _wwisegrapheditor_boxoutlinecolor, value);
+        }
         private static int _wwisegrapheditor_connectioncolor = -16777216;
         public static int WwiseGraphEditor_ConnectionColor {
             get => _wwisegrapheditor_connectioncolor;
@@ -571,6 +576,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             WwiseGraphEditor_TitleBoxColor = TryGetSetting(settingsJson, "wwisegrapheditor_titleboxcolor", -9408400);
             WwiseGraphEditor_CommentTextColor = TryGetSetting(settingsJson, "wwisegrapheditor_commenttextcolor", -11911234);
             WwiseGraphEditor_BoxTextColor = TryGetSetting(settingsJson, "wwisegrapheditor_boxtextcolor", -128);
+            WwiseGraphEditor_BoxOutlineColor = TryGetSetting(settingsJson, "wwisegrapheditor_boxoutlinecolor", -16777216);
             WwiseGraphEditor_ConnectionColor = TryGetSetting(settingsJson, "wwisegrapheditor_connectioncolor", -16777216);
             BinaryInterpreter_SkipAutoParseSizeCheck = TryGetSetting(settingsJson, "binaryinterpreter_skipautoparsesizecheck", false);
             TextureViewer_AutoLoadMip = TryGetSetting(settingsJson, "textureviewer_autoloadmip", true);
