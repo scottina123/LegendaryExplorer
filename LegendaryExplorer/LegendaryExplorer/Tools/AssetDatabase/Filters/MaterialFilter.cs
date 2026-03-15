@@ -14,6 +14,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         [
             ("Diffuse", ["diffuse", "diff", "albedo", "basecolor", "basecolour"]),
             ("Normal", ["normal", "norm"]),
+            ("CubeMaps", ["cubemap"]),
             ("Tint", ["tint", "tnt"]),
             ("Mask", ["mask", "msk"]),
             ("Specular", ["specular", "spec"]),

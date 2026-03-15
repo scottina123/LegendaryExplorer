@@ -770,10 +770,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var materialSource = GetMaterialTextureDropdownSource().ToList();
             var textureTypeFilters = new[] { AllMaterialTextureTypeFilterOption }.Concat(MaterialFilter.GetKnownTextureParameterTypes()
                 .Concat(materialSource
-                .SelectMany(MaterialFilter.GetTextureSettings)
-                .Select(MaterialFilter.GetTextureParameterType)
-                .Where(type => !string.IsNullOrWhiteSpace(type))
-                .Distinct(StringComparer.OrdinalIgnoreCase))
+                    .SelectMany(MaterialFilter.GetTextureSettings)
+                    .Select(MaterialFilter.GetTextureParameterType)
+                    .Where(type => !string.IsNullOrWhiteSpace(type)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(type => type, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 

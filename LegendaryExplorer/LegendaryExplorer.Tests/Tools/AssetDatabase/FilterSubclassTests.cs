@@ -144,6 +144,7 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
         {
             var material = new MaterialRecord("Mat", "Pkg", false,
             [
+                new MatSetting("TextureSampleParameterCube", "CubeMap", null),
                 new MatSetting("TextureSampleParameter2D", "DiffuseMap", null),
                 new MatSetting("TextureSampleParameter2D", "NormDetail", null),
                 new MatSetting("TextureSampleParameter2D", "Tint_tnt", null),
@@ -153,10 +154,11 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             ]);
 
             CollectionAssert.AreEqual(
-                new[] { "Diffuse", "Normal", "Tint", "Mask", "Mask" },
+                new[] { "CubeMaps", "Diffuse", "Normal", "Tint", "Mask", "Mask" },
                 MaterialFilter.GetTextureSettings(material).Select(MaterialFilter.GetTextureParameterType).ToList());
 
-            Assert.AreEqual(5, MaterialFilter.GetTextureParameterTypeCount(material));
+            Assert.AreEqual(6, MaterialFilter.GetTextureParameterTypeCount(material));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "CubeMaps"));
             Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Diffuse"));
             Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Normal"));
             Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(material, "Tint"));
@@ -169,6 +171,7 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             var materialInstance = new MaterialRecord("MatInst", "Pkg", false,
             [
                 new MatSetting("IsInstance", "true", null),
+                new MatSetting("TextureParameterValue", "CubeMap", "7"),
                 new MatSetting("TextureParameterValue", "DiffuseMap", "1"),
                 new MatSetting("TextureParameterValue", "Tint_tnt", "2"),
                 new MatSetting("ScalarParameter", "CubeMap_Scalar_Intensity", "0"),
@@ -176,10 +179,11 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
             ]);
 
             CollectionAssert.AreEqual(
-                new[] { "Diffuse", "Tint" },
+                new[] { "CubeMaps", "Diffuse", "Tint" },
                 MaterialFilter.GetTextureSettings(materialInstance).Select(MaterialFilter.GetTextureParameterType).ToList());
 
-            Assert.AreEqual(2, MaterialFilter.GetTextureParameterTypeCount(materialInstance));
+            Assert.AreEqual(3, MaterialFilter.GetTextureParameterTypeCount(materialInstance));
+            Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(materialInstance, "CubeMaps"));
             Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(materialInstance, "Diffuse"));
             Assert.AreEqual(1, MaterialFilter.GetTextureParameterTypeCount(materialInstance, "Tint"));
         }
