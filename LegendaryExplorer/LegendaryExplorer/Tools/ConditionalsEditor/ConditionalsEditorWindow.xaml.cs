@@ -142,7 +142,26 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         public string CurrentFilePath
         {
             get => _currentFilePath;
-            set => SetProperty(ref _currentFilePath, value);
+            set
+            {
+                if (SetProperty(ref _currentFilePath, value))
+                {
+                    OnPropertyChanged(nameof(CurrentLastSavedText));
+                }
+            }
+        }
+
+        public string CurrentLastSavedText
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(CurrentFilePath) && System.IO.File.Exists(CurrentFilePath))
+                {
+                    return $"Last saved at {System.IO.File.GetLastWriteTime(CurrentFilePath):G}";
+                }
+
+                return string.Empty;
+            }
         }
 
         public ConditionalsEditorWindow() : base("Conditionals Editor", true)
@@ -359,6 +378,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             File.ConditionalEntries.Clear();
             File.ConditionalEntries.AddRange(Conditionals.Select(c => c.Conditional).OrderBy(c => c.ID));
             File.ToFile(filePath);
+            OnPropertyChanged(nameof(CurrentLastSavedText));
 
             //don't reset modified state on save as
             if (filePath is null)

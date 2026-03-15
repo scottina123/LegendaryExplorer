@@ -77,11 +77,18 @@
                     <MenuItem Header="Search Again" InputGestureText="F3" Command="{Binding SearchAgainCommand}"/>
                 </MenuItem>
             </Menu>
-            <TextBlock DockPanel.Dock="Left"
-                       Margin="8,0,0,0"
-                       VerticalAlignment="Center"
-                       Text="{Binding CurrentFileName}"
-                       Visibility="{Binding CurrentFileName, Converter={StaticResource NullVisibilityConverter}}" />
+            <StackPanel DockPanel.Dock="Left"
+                        Orientation="Horizontal"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding CurrentFileName, Converter={StaticResource NullVisibilityConverter}}">
+                <TextBlock Text="{Binding CurrentFileName}"
+                           VerticalAlignment="Center" />
+                <TextBlock Margin="8,0,0,0"
+                           Foreground="Gray"
+                           VerticalAlignment="Center"
+                           Text="{Binding CurrentLastSavedText}" />
+            </StackPanel>
         </DockPanel>
         <Grid Margin="5">
             <Grid.ColumnDefinitions>
