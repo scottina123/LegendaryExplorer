@@ -875,6 +875,23 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return TryGetCachedOwnerDisplay(line, conversation);
         }
 
+        private string GetSpeakerFilterValue(ConvoLine line)
+        {
+            if (line == null || !string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
+            {
+                return line?.Speaker;
+            }
+
+            if (!TryGetConversation(line.Convo, out var conversation)
+                || string.IsNullOrWhiteSpace(conversation.PackageName)
+                || conversation.ConversationExportIndex <= 0)
+            {
+                return line.Speaker;
+            }
+
+            return TryGetCachedOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex)) ?? line.Speaker;
+        }
+
         private static string TryGetCachedOwnerDisplay(ConvoLine line, Conversation conversation)
         {
             var key = new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex);
@@ -917,7 +934,40 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void StartOwnerNamePrewarm()
         {
-            Task.Run(PreResolveOwnerNames).ContinueWithOnUIThread(_ => RefreshLinesView());
+            Task.Run(PreResolveOwnerNames).ContinueWithOnUIThread(_ =>
+            {
+                RefreshSpeakerList();
+                RefreshLinesView();
+            });
+        }
+
+        private void RefreshSpeakerList()
+        {
+            var selectedSpeaker = cmbbx_filterSpkrs?.SelectedItem as string;
+            var speakers = CurrentDataBase.Lines
+                .SelectMany(line =>
+                {
+                    var values = new List<string>(2) { line.Speaker };
+                    var filterValue = GetSpeakerFilterValue(line);
+                    if (!string.IsNullOrWhiteSpace(filterValue)
+                        && !string.Equals(filterValue, line.Speaker, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        values.Add(filterValue);
+                    }
+
+                    return values;
+                })
+                .Where(speaker => !string.IsNullOrWhiteSpace(speaker))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(speaker => speaker, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            SpeakerList.ReplaceAll(speakers);
+
+            if (!string.IsNullOrWhiteSpace(selectedSpeaker) && speakers.Contains(selectedSpeaker, StringComparer.CurrentCultureIgnoreCase))
+            {
+                cmbbx_filterSpkrs.SelectedItem = speakers.First(s => string.Equals(s, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase));
+            }
         }
 
         private void RefreshLinesView()
@@ -1356,14 +1406,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (CurrentGame.IsGame1())
             {
-                var spkrs = new List<string>();
-                foreach (var line in CurrentDataBase.Lines)
-                {
-                    if (spkrs.All(s => s != line.Speaker))
-                        spkrs.Add(line.Speaker);
-                }
-                spkrs.Sort();
-                SpeakerList.AddRange(spkrs);
+                RefreshSpeakerList();
                 return;
             }
 #if DEBUG
@@ -1389,15 +1432,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             dbworker.CancelAsync();
             CommandManager.InvalidateRequerySuggested();
-            var spkrs = new List<string>();
             foreach (var line in CurrentDataBase.Lines)
             {
                 if (GeneratedDB.GeneratedLines.ContainsKey(line.StrRef.ToString()))
                 {
                     line.Line = GeneratedDB.GeneratedLines[line.StrRef.ToString()].Line;
                 }
-                if (spkrs.All(s => s != line.Speaker))
-                    spkrs.Add(line.Speaker);
             }
 
             int lineCountWithEmptyLines = CurrentDataBase.Lines.Count;
@@ -1405,8 +1445,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             int numEmptyLines = lineCountWithEmptyLines - CurrentDataBase.Lines.Count;
 
             GeneratedDB.GeneratedLines.Clear();
-            spkrs.Sort();
-            SpeakerList.AddRange(spkrs);
+            RefreshSpeakerList();
             if (numEmptyLines > 0)
             {
                 menu_SaveXEmptyLines.IsEnabled = true;
@@ -3320,7 +3359,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 bool showthis = true;
                 if (cmbbx_filterSpkrs.SelectedIndex >= 0)
                 {
-                    showthis = string.Equals(line.Speaker, cmbbx_filterSpkrs.SelectedItem.ToString(), StringComparison.CurrentCultureIgnoreCase);
+                    string selectedSpeaker = cmbbx_filterSpkrs.SelectedItem.ToString();
+                    string displaySpeaker = GetSpeakerDisplayForSearch(line);
+                    string filterSpeaker = GetSpeakerFilterValue(line);
+                    showthis = string.Equals(line.Speaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase)
+                               || string.Equals(filterSpeaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase)
+                               || string.Equals(displaySpeaker, selectedSpeaker, StringComparison.CurrentCultureIgnoreCase);
                 }
                 if (showthis && !string.IsNullOrWhiteSpace(LineSearchText))
                 {
@@ -3340,15 +3384,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return true;
             }
 
+            var speakerDisplay = GetSpeakerDisplayForSearch(line);
+
             return SelectedLineSearchColumn switch
             {
-                SpeakerLineSearchColumn => ContainsText(line.Speaker, searchText),
+                SpeakerLineSearchColumn => ContainsText(speakerDisplay, searchText),
                 TlkStringRefLineSearchColumn => ContainsText(line.StrRef.ToString(), searchText),
                 LineTextSearchColumn => ContainsText(line.Line, searchText),
                 LineConversationSearchColumn => ContainsText(line.Convo, searchText),
                 FileLineSearchColumn => ContainsText(GetConvoFileValue(line.Convo), searchText),
                 LocationLineSearchColumn => ContainsText(GetConvoLocationValue(line.Convo), searchText),
-                _ => ContainsText(line.Speaker, searchText)
+                _ => ContainsText(speakerDisplay, searchText)
                      || ContainsText(line.StrRef.ToString(), searchText)
                      || ContainsText(line.Line, searchText)
                      || ContainsText(line.Convo, searchText)
