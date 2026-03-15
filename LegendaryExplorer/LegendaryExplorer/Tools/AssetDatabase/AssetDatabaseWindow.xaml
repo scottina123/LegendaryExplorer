@@ -22,6 +22,7 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
         <assetDatabase:FileIndexToNameConverter x:Key="FileIndexToNameConverter"/>
+        <assetDatabase:ConvoLineSpeakerConverter x:Key="ConvoLineSpeakerConverter"/>
         <assetDatabase:ConvoLineFileConverter x:Key="ConvoLineFileConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -965,7 +966,20 @@
                                       VerticalContentAlignment="Center">
                                 <ListView.View>
                                     <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
-                                        <GridViewColumn DisplayMemberBinding="{Binding Speaker}" Width="120" Header="Speaker"/>
+                                        <GridViewColumn Width="220" Header="Speaker">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock>
+                                                        <TextBlock.Text>
+                                                            <MultiBinding Converter="{StaticResource ConvoLineSpeakerConverter}">
+                                                                <Binding/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                         <GridViewColumn DisplayMemberBinding="{Binding StrRef}" Width="110" Header="TLK String Ref" />
                                         <GridViewColumn DisplayMemberBinding="{Binding Line}" Width="420" Header="Line" />
                                         <GridViewColumn DisplayMemberBinding="{Binding Convo}" Width="220" Header="Line Conversation" />

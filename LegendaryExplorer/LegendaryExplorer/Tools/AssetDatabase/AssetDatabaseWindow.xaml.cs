@@ -51,8 +51,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     public partial class AssetDatabaseWindow : TrackingNotifyPropertyChangedWindowBase
     {
         #region Declarations
-        // v9.1: MaterialInstance scan now stores instance material expressions for in-memory texture filtering.
-        public const string dbCurrentBuild = "9.1"; //If changes are made that invalidate old databases edit this.
+        // v9.2: Conversation records now store StartConversation owner metadata for lazy speaker resolution.
+        public const string dbCurrentBuild = "9.2"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private int _currentView;
@@ -116,6 +116,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string CurrentDBPath { get; set; }
         public AssetDB CurrentDataBase { get; } = new();
+        private readonly Dictionary<string, Conversation> _conversationLookup = new(StringComparer.OrdinalIgnoreCase);
+
+        public static ConcurrentDictionary<ConversationKey, string> OwnerNameCache { get; } = new();
+
+        private static readonly ConcurrentDictionary<ConversationKey, Lazy<string>> OwnerNameResolvers = new();
+        private static readonly ConcurrentDictionary<string, Lazy<IMEPackage>> OwnerPackageCache = new(StringComparer.OrdinalIgnoreCase);
 
         public FileListSpecification FileListFilter { get; } = new();
         public AssetFilters AssetFilters { get; private set; }
@@ -758,6 +764,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             CurrentDataBase.Clear();
             CurrentDataBase.Game = CurrentGame;
             CurrentDataBase.Localization = Localization;
+            _conversationLookup.Clear();
+            ClearOwnerNameResolverCache();
 
             FileListExtended.ClearEx();
             FileListFilter.CustomFileList.Clear();
@@ -772,6 +780,217 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshTextureDropdownFilters();
             FilterBox.Clear();
             Filter();
+        }
+
+        private void RebuildConversationLookup()
+        {
+            _conversationLookup.Clear();
+
+            foreach (var conversation in CurrentDataBase.Conversations)
+            {
+                if (!string.IsNullOrWhiteSpace(conversation.ConvName) && !_conversationLookup.ContainsKey(conversation.ConvName))
+                {
+                    _conversationLookup[conversation.ConvName] = conversation;
+                }
+            }
+        }
+
+        private bool TryGetConversation(string convoName, out Conversation conversation)
+        {
+            conversation = null;
+            return !string.IsNullOrWhiteSpace(convoName) && _conversationLookup.TryGetValue(convoName, out conversation);
+        }
+
+        private static void ClearOwnerNameResolverCache()
+        {
+            OwnerNameCache.Clear();
+            OwnerNameResolvers.Clear();
+
+            foreach (var package in OwnerPackageCache.Values)
+            {
+                if (package.IsValueCreated)
+                {
+                    package.Value?.Dispose();
+                }
+            }
+
+            OwnerPackageCache.Clear();
+        }
+
+        public string GetSpeakerDisplay(ConvoLine line)
+        {
+            if (line == null || !string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
+            {
+                return line?.Speaker;
+            }
+
+            if (!TryGetConversation(line.Convo, out var conversation)
+                || string.IsNullOrWhiteSpace(conversation.PackageName)
+                || conversation.ConversationExportIndex <= 0)
+            {
+                return line.Speaker;
+            }
+
+            var ownerName = ResolveOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex));
+            return string.IsNullOrWhiteSpace(ownerName) ? line.Speaker : $"{line.Speaker} ({ownerName})";
+        }
+
+        public static string ResolveOwnerName(ConversationKey key)
+        {
+            if (string.IsNullOrWhiteSpace(key.PackageName) || key.ExportIndex <= 0)
+            {
+                return null;
+            }
+
+            if (OwnerNameCache.TryGetValue(key, out var cachedName))
+            {
+                return string.IsNullOrEmpty(cachedName) ? null : cachedName;
+            }
+
+            var lazyName = OwnerNameResolvers.GetOrAdd(key,
+                                                       static k => new Lazy<string>(() => ResolveOwnerNameCore(k), LazyThreadSafetyMode.ExecutionAndPublication));
+
+            var resolvedName = lazyName.Value;
+            OwnerNameCache[key] = resolvedName ?? string.Empty;
+            OwnerNameResolvers.TryRemove(key, out _);
+            return resolvedName;
+        }
+
+        private static string ResolveOwnerNameCore(ConversationKey key)
+        {
+            var package = GetOwnerResolverPackage(key.PackageName);
+            if (package == null || !package.TryGetUExport(key.ExportIndex, out var startConversationExport))
+            {
+                return null;
+            }
+
+            var ownerObjectRef = GetOwnerObjectRef(startConversationExport);
+            if (ownerObjectRef <= 0)
+            {
+                return null;
+            }
+
+            return ResolveFriendlyOwnerName(package, ownerObjectRef);
+        }
+
+        private static int GetOwnerObjectRef(ExportEntry startConversationExport)
+        {
+            var links = startConversationExport.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (links == null)
+            {
+                return 0;
+            }
+
+            foreach (var link in links)
+            {
+                var description = link.GetProp<StrProperty>("LinkDesc")?.Value;
+                if (!string.Equals(description, "Owner", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var linkedVars = link.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                if (linkedVars is { Count: > 0 })
+                {
+                    return linkedVars[0].Value;
+                }
+            }
+
+            return 0;
+        }
+
+        private static string ResolveFriendlyOwnerName(IMEPackage package, int ownerObjectRef)
+        {
+            if (!package.TryGetUExport(ownerObjectRef, out var ownerVar))
+            {
+                return null;
+            }
+
+            switch (ownerVar.ClassName)
+            {
+                case "SeqVar_Object":
+                {
+                    var objValue = ownerVar.GetProperty<ObjectProperty>("ObjValue");
+                    if (objValue == null || objValue.Value <= 0 || !package.TryGetEntry(objValue.Value, out var actorEntry))
+                    {
+                        return null;
+                    }
+
+                    return actorEntry.ObjectName.Instanced;
+                }
+                case "BioSeqVar_ObjectFindByTag":
+                {
+                    var tagName = ownerVar.GetProperty<NameProperty>("m_sObjectTagToFind")?.Value.Instanced;
+                    if (!string.IsNullOrWhiteSpace(tagName))
+                    {
+                        return tagName;
+                    }
+
+                    return ownerVar.GetProperty<StrProperty>("m_sObjectTagToFind")?.Value;
+                }
+                default:
+                    return ownerVar.ObjectName.Instanced;
+            }
+        }
+
+        private static IMEPackage GetOwnerResolverPackage(string packageName)
+        {
+            if (string.IsNullOrWhiteSpace(packageName))
+            {
+                return null;
+            }
+
+            var lazyPackage = OwnerPackageCache.GetOrAdd(packageName,
+                                                         static name => new Lazy<IMEPackage>(() => OpenOwnerResolverPackage(name), LazyThreadSafetyMode.ExecutionAndPublication));
+            return lazyPackage.Value;
+        }
+
+        private static IMEPackage OpenOwnerResolverPackage(string packageName)
+        {
+            if (File.Exists(packageName))
+            {
+                return MEPackageHandler.OpenMEPackage(Path.GetFullPath(packageName));
+            }
+
+            if (!Enum.TryParse(Settings.AssetDBGame, out MEGame game) || game == MEGame.Unknown)
+            {
+                return null;
+            }
+
+            if (MELoadedFiles.TryGetHighestMountedFile(game, Path.GetFileName(packageName), out var mountedFilePath))
+            {
+                return MEPackageHandler.OpenMEPackage(mountedFilePath);
+            }
+
+            if (game != MEGame.ME3)
+            {
+                return null;
+            }
+
+            var gameRoot = MEDirectories.GetDefaultGamePath(game);
+            if (string.IsNullOrWhiteSpace(gameRoot))
+            {
+                return null;
+            }
+
+            var relativePackagePath = packageName.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var packageDirectory = Directory.GetParent(Path.Combine(gameRoot, relativePackagePath));
+            if (packageDirectory == null)
+            {
+                return null;
+            }
+
+            var sfarPath = Path.Combine(packageDirectory.FullName, "Default.sfar");
+            if (!File.Exists(sfarPath))
+            {
+                return null;
+            }
+
+            var dlcPackage = new DLCPackage(sfarPath);
+            var sfarEntryIndex = dlcPackage.FindFileEntry(Path.GetFileName(packageName));
+            return sfarEntryIndex == -1
+                ? null
+                : MEPackageHandler.OpenMEPackageFromStream(dlcPackage.DecompressEntry(sfarEntryIndex), packageName);
         }
 
         private void ApplyMaterialTypeFilter()
@@ -1236,6 +1455,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         }
 
                         Localization = CurrentDataBase.Localization;
+                        RebuildConversationLookup();
                         AssetFilters.MaterialFilter.LoadFromDatabase(CurrentDataBase);
                         RefreshMaterialTextureDropdownFilters();
                         RefreshTextureDropdownFilters();
@@ -3649,6 +3869,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedDB.Clear();
             //Add and sort Classes
             CurrentDataBase.AddRecords(pdb);
+            RebuildConversationLookup();
 
             var dlcs = MELoadedDLC.GetDLCNamesWithMounts(CurrentGame);
             dlcs.Add("BioGame", 0);
@@ -3873,6 +4094,53 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         {
             return null; //not needed
+        }
+    }
+
+    public readonly struct ConversationKey : IEquatable<ConversationKey>
+    {
+        public ConversationKey(string packageName, int exportIndex)
+        {
+            PackageName = packageName;
+            ExportIndex = exportIndex;
+        }
+
+        public string PackageName { get; }
+
+        public int ExportIndex { get; }
+
+        public bool Equals(ConversationKey other)
+        {
+            return ExportIndex == other.ExportIndex
+                && string.Equals(PackageName, other.PackageName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is ConversationKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(PackageName ?? string.Empty), ExportIndex);
+        }
+    }
+
+    public class ConvoLineSpeakerConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values[0] is not ConvoLine line || values[1] is not AssetDatabaseWindow window)
+            {
+                return values[0] is ConvoLine fallbackLine ? fallbackLine.Speaker : string.Empty;
+            }
+
+            return window.GetSpeakerDisplay(line) ?? line.Speaker;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
         }
     }
 

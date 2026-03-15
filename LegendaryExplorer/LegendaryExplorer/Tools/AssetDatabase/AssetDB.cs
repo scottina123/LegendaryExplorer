@@ -515,11 +515,21 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public bool IsAmbient { get; set; }
 
         public FileKeyExportPair ConvFile { get; set; } //file, export
-        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile)
+
+        public string PackageName { get; set; }
+
+        public int ConversationExportIndex { get; set; }
+
+        public int OwnerObjectRef { get; set; }
+
+        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile, string packageName = null, int conversationExportIndex = 0, int ownerObjectRef = 0)
         {
             this.ConvName = ConvName;
             this.IsAmbient = IsAmbient;
             this.ConvFile = ConvFile;
+            PackageName = packageName;
+            ConversationExportIndex = conversationExportIndex;
+            OwnerObjectRef = ownerObjectRef;
         }
 
         public Conversation()

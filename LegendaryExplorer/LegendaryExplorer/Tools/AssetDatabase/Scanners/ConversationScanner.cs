@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.TLK;
@@ -8,6 +9,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
 {
     internal class ConversationScanner : AssetScanner
     {
+        private static readonly HashSet<string> StartConversationClasses =
+        [
+            "BioSeqAct_StartConversation",
+            "SFXSeqAct_StartConversation",
+            "SFXSeqAct_StartAmbientConv"
+        ];
+
         public ConversationScanner() : base()
         {
         }
@@ -15,7 +23,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
         public override void ScanExport(ExportScanInfo e, ConcurrentAssetDB db, AssetDBScanOptions options)
         {
             if (e.IsDefault) return;
-            if (e.ClassName == "BioConversation" && !db.GeneratedConvo.ContainsKey(e.Export.ObjectName.Instanced))
+
+            if (StartConversationClasses.Contains(e.ClassName))
+            {
+                ScanConversationOwnerMetadata(e, db);
+            }
+
+            if (e.ClassName == "BioConversation")
             {
                 bool IsAmbient = true;
 
@@ -71,9 +85,95 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 }
 
                 var newConv = new Conversation(e.Export.ObjectName.Instanced, IsAmbient, new FileKeyExportPair(e.FileKey, e.Export.UIndex));
-                db.GeneratedConvo.TryAdd(e.Export.InstancedFullPath.ToLower(), newConv);
+                db.GeneratedConvo.AddOrUpdate(GetConversationLookupKey(e.Export.ObjectName.Instanced),
+                                             _ => newConv,
+                                             (_, existing) =>
+                                             {
+                                                 existing.ConvName = newConv.ConvName;
+                                                 existing.IsAmbient = newConv.IsAmbient;
+                                                 existing.ConvFile = newConv.ConvFile;
+                                                 return existing;
+                                             });
             }
         }
+
+        private static void ScanConversationOwnerMetadata(ExportScanInfo e, ConcurrentAssetDB db)
+        {
+            var convProp = e.Properties.GetProp<ObjectProperty>("Conv");
+            if (convProp == null || convProp.Value == 0)
+            {
+                return;
+            }
+
+            var convEntry = e.Export.FileRef.GetEntry(convProp.Value);
+            if (convEntry == null)
+            {
+                return;
+            }
+
+            var ownerObjectRef = GetFirstLinkedVariableIndex(e.Properties, "Owner");
+            var conversationName = convEntry.ObjectName.Instanced;
+            var packageName = e.FileName;
+            var exportIndex = e.Export.UIndex;
+
+            db.GeneratedConvo.AddOrUpdate(GetConversationLookupKey(conversationName),
+                                         _ => new Conversation(conversationName,
+                                                               IsAmbient: false,
+                                                               ConvFile: new FileKeyExportPair(-1, 0),
+                                                               packageName,
+                                                               exportIndex,
+                                                               ownerObjectRef),
+                                         (_, existing) =>
+                                         {
+                                             if (string.IsNullOrWhiteSpace(existing.PackageName))
+                                             {
+                                                 existing.PackageName = packageName;
+                                             }
+
+                                             if (existing.ConversationExportIndex <= 0)
+                                             {
+                                                 existing.ConversationExportIndex = exportIndex;
+                                             }
+
+                                             if (existing.OwnerObjectRef == 0)
+                                             {
+                                                 existing.OwnerObjectRef = ownerObjectRef;
+                                             }
+
+                                             return existing;
+                                         });
+        }
+
+        private static int GetFirstLinkedVariableIndex(PropertyCollection props, params string[] linkDescriptions)
+        {
+            var links = props.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
+            if (links == null)
+            {
+                return 0;
+            }
+
+            foreach (var linkDescription in linkDescriptions)
+            {
+                foreach (var link in links)
+                {
+                    var desc = link.GetProp<StrProperty>("LinkDesc");
+                    if (!string.Equals(desc?.Value, linkDescription, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var linkedVars = link.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                    if (linkedVars is { Count: > 0 })
+                    {
+                        return linkedVars[0].Value;
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        private static string GetConversationLookupKey(string conversationName) => conversationName?.ToLowerInvariant() ?? string.Empty;
 
         private List<string> GetSpeakers(ExportEntry export, PropertyCollection props)
         {
