@@ -916,15 +916,22 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                                 <TextBlock Text="Lines" HorizontalAlignment="Stretch" Padding="3" ToolTip="Conversation Lines"  />
-                                <Grid Margin="10, 3" MinWidth="120">
+                                <Grid Margin="10,3,6,3" MinWidth="120">
                                     <ComboBox Name="cmbbx_filterSpkrs" ItemsSource="{Binding SpeakerList}" SelectionChanged="cmbbx_filterSpkrs_SelectionChanged" Padding="1" IsEditable="True" IsTextSearchEnabled="True" IsEnabled="{Binding IsGettingTLKs, Converter={StaticResource InverseBooleanConverter}}"/>
                                     <TextBlock Text="Filter by Speaker" IsHitTestVisible="False" VerticalAlignment="Center" Margin="5,0,0,0" Foreground="Gray"
                                                Visibility="{Binding SelectedItem, ElementName=cmbbx_filterSpkrs, Converter={StaticResource NullVisibilityConverter}}"/>
                                 </Grid>
+                                <CheckBox x:Name="btn_LinePlaybackToggle"
+                                          Content="Playback"
+                                          Margin="0,0,10,0"
+                                          VerticalAlignment="Center"
+                                          Click="btn_LinePlaybackToggle_Click"
+                                          IsChecked="False"
+                                          ToolTip="Toggle playback of the selected line."/>
                                 <TextBlock Text="Parsing TLKs: " Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="5,0" VerticalAlignment="Center"/>
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>
-                            <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged"
+                            <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged" PreviewMouseRightButtonDown="lstbx_Lines_PreviewMouseRightButtonDown"
                                       Style="{x:Null}"
                                       Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                                       Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
@@ -958,10 +965,30 @@
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
                                         </GridViewColumn>
+                                        <GridViewColumn Width="180" Header="Location">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock>
+                                                        <TextBlock.Text>
+                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}" ConverterParameter="Location">
+                                                                <Binding Path="Convo"/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="CurrentDataBase.Conversations"/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="FileListExtended"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                     </GridView>
                                 </ListView.View>
                                 <ListView.ContextMenu>
                                     <ContextMenu>
+                                        <MenuItem Header="Play Male Audio" Click="PlayMaleLineAudio_Click" ToolTip="Play the male version of this line."/>
+                                        <MenuItem Header="Play Female Audio" Click="PlayFemaleLineAudio_Click" ToolTip="Play the female version of this line."/>
+                                        <MenuItem Header="Extract Male Audio..." Click="ExtractMaleLineAudio_Click" ToolTip="Export the male audio for this line to a wave file."/>
+                                        <MenuItem Header="Extract Female Audio..." Click="ExtractFemaleLineAudio_Click" ToolTip="Export the female audio for this line to a wave file."/>
+                                        <Separator/>
                                         <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this conversation in Package Editor.">
                                             <MenuItem.Icon>
                                                 <Image Source="{StaticResource iconPackageEditor16}" Width="64"/>
@@ -1014,7 +1041,6 @@
                                         <TabItem Header="Female"/>
                                     </TabControl>
                                 </StackPanel>
-                                <ToggleButton x:Name="btn_LinePlaybackToggle" Content="Toggle Line Playback" Margin="5" Click="btn_LinePlaybackToggle_Click" IsChecked="False" MaxHeight="30" ClickMode="Release" DockPanel.Dock="Bottom"/>
                                 <exportLoaderControls:Soundpanel x:Name="SoundpanelWPF_ADB" PlayBackOnlyMode="True" />
                             </DockPanel>
                         </Grid>

@@ -14,6 +14,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -1110,7 +1111,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             audioPcc?.Dispose();
             SoundpanelWPF_ADB.FreeAudioResources();
             btn_LinePlaybackToggle.IsChecked = false;
-            btn_LinePlaybackToggle.Content = "Toggle Line Playback";
             btn_LinePlaybackToggle.IsEnabled = true;
             tabCtrl_plotUsage.SelectedIndex = 0;
             SelectedPlotUsages.ClearEx();
@@ -1784,17 +1784,50 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             e.Handled = true;
             if (currentView == 8 && lstbx_Lines.SelectedIndex >= 0)
             {
-                var newline = (ConvoLine)lstbx_Lines.SelectedItem;
-                var convo = CurrentDataBase.Conversations.FirstOrDefault(x => x.ConvName == newline.Convo);
-                if (convo != null)
+                if (UpdateCurrentConvoForLine(lstbx_Lines.SelectedItem as ConvoLine))
                 {
-                    (string fileName, int directoryKey) = CurrentDataBase.FileList[convo.ConvFile.FileKey];
-                    CurrentConvo = new Tuple<string, string, int, string, bool>(convo.ConvName, fileName, convo.ConvFile.UIndex, CurrentDataBase.ContentDir[directoryKey], convo.IsAmbient);
                     ToggleLinePlayback();
                     return;
                 }
             }
             CurrentConvo = new Tuple<string, string, int, string, bool>(null, null, 0, null, false);
+        }
+
+        private bool UpdateCurrentConvoForLine(ConvoLine line)
+        {
+            if (line == null)
+            {
+                return false;
+            }
+
+            var convo = CurrentDataBase.Conversations.FirstOrDefault(x => x.ConvName == line.Convo);
+            if (convo == null)
+            {
+                return false;
+            }
+
+            (string fileName, int directoryKey) = CurrentDataBase.FileList[convo.ConvFile.FileKey];
+            CurrentConvo = new Tuple<string, string, int, string, bool>(convo.ConvName, fileName, convo.ConvFile.UIndex, CurrentDataBase.ContentDir[directoryKey], convo.IsAmbient);
+            return true;
+        }
+
+        private void lstbx_Lines_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not ListViewItem && source != null)
+            {
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is ListViewItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+            }
         }
 
         private void PETabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1863,13 +1896,74 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void btn_LinePlaybackToggle_Click(object sender, RoutedEventArgs e)
         {
             ToggleLinePlayback();
-            if (btn_LinePlaybackToggle.IsChecked == true)
+        }
+
+        private void PlayMaleLineAudio_Click(object sender, RoutedEventArgs e)
+        {
+            PlaySelectedLineAudio(0);
+        }
+
+        private void PlayFemaleLineAudio_Click(object sender, RoutedEventArgs e)
+        {
+            PlaySelectedLineAudio(1);
+        }
+
+        private void ExtractMaleLineAudio_Click(object sender, RoutedEventArgs e)
+        {
+            ExtractSelectedLineAudio(0);
+        }
+
+        private void ExtractFemaleLineAudio_Click(object sender, RoutedEventArgs e)
+        {
+            ExtractSelectedLineAudio(1);
+        }
+
+        private void PlaySelectedLineAudio(int genderTabIndex)
+        {
+            if (currentView != 8 || lstbx_Lines.SelectedIndex < 0)
             {
-                btn_LinePlaybackToggle.Content = "Untoggle Line Playback";
+                return;
             }
-            else
+
+            if (!UpdateCurrentConvoForLine(lstbx_Lines.SelectedItem as ConvoLine))
             {
-                btn_LinePlaybackToggle.Content = "Toggle Line Playback";
+                return;
+            }
+
+            btn_LinePlaybackToggle.IsChecked = true;
+
+            if (genderTabs.SelectedIndex != genderTabIndex)
+            {
+                genderTabs.SelectedIndex = genderTabIndex;
+            }
+
+            ToggleLinePlayback(startPlayback: true);
+        }
+
+        private void ExtractSelectedLineAudio(int genderTabIndex)
+        {
+            if (currentView != 8 || lstbx_Lines.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            if (!UpdateCurrentConvoForLine(lstbx_Lines.SelectedItem as ConvoLine))
+            {
+                return;
+            }
+
+            btn_LinePlaybackToggle.IsChecked = true;
+
+            if (genderTabs.SelectedIndex != genderTabIndex)
+            {
+                genderTabs.SelectedIndex = genderTabIndex;
+            }
+
+            ToggleLinePlayback();
+
+            if (SoundpanelWPF_ADB.ExportAudioCommand?.CanExecute(null) == true)
+            {
+                SoundpanelWPF_ADB.ExportAudioCommand.Execute(null);
             }
         }
 
@@ -2598,7 +2692,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
-        private void ToggleLinePlayback()
+        private void ToggleLinePlayback(bool startPlayback = false)
         {
             bool showAudio = btn_LinePlaybackToggle.IsChecked == true && lstbx_Lines.SelectedIndex >= 0 && CurrentConvo.Item1 != null && currentView == 8;
 
@@ -2639,6 +2733,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     if (stream != null)
                     {
                         SoundpanelWPF_ADB.LoadExport(stream);
+                        if (startPlayback)
+                        {
+                            SoundpanelWPF_ADB.StartPlayingCurrentSelection();
+                        }
                         return;
                     }
                 }
@@ -2661,6 +2759,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     if (stream != null)
                     {
                         SoundpanelWPF_ADB.LoadExport(stream);
+                        if (startPlayback)
+                        {
+                            SoundpanelWPF_ADB.StartPlayingCurrentSelection();
+                        }
                         break;
                     }
                     audioPcc.Dispose();
@@ -2671,6 +2773,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     if (stream != null)
                     {
                         SoundpanelWPF_ADB.LoadExport(stream);
+                        if (startPlayback)
+                        {
+                            SoundpanelWPF_ADB.StartPlayingCurrentSelection();
+                        }
                         break;
                     }
                     audioPcc.Dispose();
@@ -3670,7 +3776,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             int fileKey = convo.ConvFile.FileKey;
             if (fileKey < 0 || fileKey >= fileList.Count) return "";
 
-            return fileList[fileKey].FileName;
+            return string.Equals(parameter as string, "Location", StringComparison.OrdinalIgnoreCase)
+                ? fileList[fileKey].Directory
+                : fileList[fileKey].FileName;
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
@@ -3678,4 +3786,5 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return null;
         }
     }
+
 }
