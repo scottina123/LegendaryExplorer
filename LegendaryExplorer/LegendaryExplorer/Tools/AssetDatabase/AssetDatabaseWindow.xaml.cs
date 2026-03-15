@@ -916,6 +916,24 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         return null;
                     }
 
+                    if (actorEntry is ExportEntry actorExport)
+                    {
+                        var actorTag = actorExport.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                        if (!string.IsNullOrWhiteSpace(actorTag))
+                        {
+                            return actorTag;
+                        }
+
+                        if (actorExport.HasArchetype && actorExport.Archetype is ExportEntry archetype)
+                        {
+                            var archetypeTag = archetype.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                            if (!string.IsNullOrWhiteSpace(archetypeTag))
+                            {
+                                return archetypeTag;
+                            }
+                        }
+                    }
+
                     return actorEntry.ObjectName.Instanced;
                 }
                 case "BioSeqVar_ObjectFindByTag":
