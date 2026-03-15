@@ -955,12 +955,12 @@
                                     <StackPanel Orientation="Horizontal" Margin="3">
                                         <Button x:Name="btn_OpenConvoPackEd" Command="{Binding OpenUsagePkgCommand}" ToolTip="Opens this conversation in Package Editor." Margin="3" Padding="2" Height="40" Width="40">
                                             <Button.Content>
-                                                <fa:ImageAwesome Icon="Solid_Cube" Width="32" Height="32" Foreground="DarkBlue"/>
+                                                <fa:ImageAwesome Icon="Solid_Cube" Width="32" Height="32" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                                             </Button.Content>
                                         </Button>
                                         <Button x:Name="btn_OpenConvoDiagEd" Command="{Binding OpenUsagePkgCommand}" CommandParameter="DlgEd" ToolTip="Opens this conversation in Dialogue Editor." Margin="3" Padding="2" Height="40" Width="40">
                                             <Button.Content>
-                                                <fa:ImageAwesome Icon="Regular_Comment" Width="32" Height="32" Foreground="DarkBlue"/>
+                                                <fa:ImageAwesome Icon="Regular_Comment" Width="32" Height="32" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                                             </Button.Content>
                                         </Button>
                                     </StackPanel>
