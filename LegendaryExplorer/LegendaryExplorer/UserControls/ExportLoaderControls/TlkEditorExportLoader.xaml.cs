@@ -34,6 +34,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
     /// </summary>
     public partial class TLKEditorExportLoader : FileExportLoaderControl
     {
+        private sealed class CopiedTLKLine
+        {
+            public CopiedTLKLine(int stringId, string data, int flags)
+            {
+                StringID = stringId;
+                Data = data;
+                Flags = flags;
+            }
+
+            public int StringID { get; }
+            public string Data { get; }
+            public int Flags { get; }
+        }
+
+        private static CopiedTLKLine _copiedLine;
+
         public sealed class TLKEditorTab : NotifyPropertyChangedBase
         {
             private string _filePath;
@@ -205,6 +221,94 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             PersistOpenTabs();
+        }
+
+        private static TLKStringRef GetContextMenuString(object sender)
+        {
+            return sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: TLKStringRef item } } }
+                ? item
+                : null;
+        }
+
+        private int GetNextAvailableStringId(int preferredId)
+        {
+            preferredId = Math.Max(1, preferredId);
+            HashSet<int> existingIds = LoadedStrings.Where(x => x is not null)
+                                                  .Select(x => x.StringID)
+                                                  .Where(id => id > 0)
+                                                  .ToHashSet();
+
+            while (existingIds.Contains(preferredId))
+            {
+                preferredId++;
+            }
+
+            return preferredId;
+        }
+
+        private bool StringIdExistsInCurrentTlk(int stringId)
+        {
+            return stringId > 0 && LoadedStrings.Any(x => x is not null && x.StringID == stringId);
+        }
+
+        private int GetCleanedInsertIndex(int stringId)
+        {
+            for (int i = 0; i < CleanedStrings.Count; i++)
+            {
+                if (CleanedStrings[i].StringID > stringId)
+                {
+                    return i;
+                }
+            }
+
+            return CleanedStrings.Count;
+        }
+
+        private int GetLoadedInsertIndex(int stringId)
+        {
+            for (int i = 0; i < LoadedStrings.Count; i++)
+            {
+                if (LoadedStrings[i].StringID > 0 && LoadedStrings[i].StringID > stringId)
+                {
+                    return i;
+                }
+            }
+
+            for (int i = LoadedStrings.Count - 1; i >= 0; i--)
+            {
+                if (LoadedStrings[i].StringID > 0)
+                {
+                    return i + 1;
+                }
+            }
+
+            return LoadedStrings.Count;
+        }
+
+        private void CopyLineMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (GetContextMenuString(sender) is TLKStringRef sourceString)
+            {
+                _copiedLine = new CopiedTLKLine(sourceString.StringID, sourceString.Data, sourceString.Flags);
+            }
+        }
+
+        private void PasteLineMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (_copiedLine is null || GetContextMenuString(sender) is not TLKStringRef targetString)
+            {
+                return;
+            }
+
+            int pastedId = !StringIdExistsInCurrentTlk(_copiedLine.StringID)
+                ? _copiedLine.StringID
+                : GetNextAvailableStringId(targetString.StringID > 0 ? targetString.StringID + 1 : 1);
+
+            TLKStringRef pastedLine = new(pastedId, _copiedLine.Data, _copiedLine.Flags);
+            LoadedStrings.Insert(GetLoadedInsertIndex(pastedId), pastedLine);
+            CleanedStrings.Insert(GetCleanedInsertIndex(pastedId), pastedLine);
+            FocusString(pastedLine, 1);
+            SetFileModified(true);
         }
 
         private void MoveTab(TLKEditorTab sourceTab, TLKEditorTab targetTab)
@@ -1163,7 +1267,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void CloneLineMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: TLKStringRef sourceString } } })
+            if (GetContextMenuString(sender) is not TLKStringRef sourceString)
             {
                 return;
             }
