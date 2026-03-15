@@ -22,6 +22,7 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
         <assetDatabase:FileIndexToNameConverter x:Key="FileIndexToNameConverter"/>
+        <assetDatabase:ConvoLineFileConverter x:Key="ConvoLineFileConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
@@ -339,7 +340,19 @@
                                         </controls:ListBoxScroll>
                                     </DockPanel>
                                 </Expander>
-                                <ListView x:Name="lstbx_Files" DockPanel.Dock="Bottom" MinWidth="300" ItemsSource="{Binding Path=FileListExtended}" GridViewColumnHeader.Click="views_ColumnHeader_Click">
+                                <ListView x:Name="lstbx_Files" DockPanel.Dock="Bottom" MinWidth="300" ItemsSource="{Binding Path=FileListExtended}" GridViewColumnHeader.Click="views_ColumnHeader_Click"
+                                          Style="{x:Null}"
+                                          Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                          Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                          BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                          BorderThickness="1"
+                                          Padding="1"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.PanningMode="Both"
+                                          Stylus.IsFlicksEnabled="False"
+                                          VerticalContentAlignment="Center">
                                     <ListView.View>
                                         <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
                                             <GridViewColumn DisplayMemberBinding="{Binding FileName}" Width="260" Header="File"/>
@@ -911,13 +924,40 @@
                                 <TextBlock Text="Parsing TLKs: " Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="5,0" VerticalAlignment="Center"/>
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>
-                            <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged" >
+                            <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged"
+                                      Style="{x:Null}"
+                                      Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                      Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                      BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                      BorderThickness="1"
+                                      Padding="1"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      ScrollViewer.CanContentScroll="True"
+                                      ScrollViewer.PanningMode="Both"
+                                      Stylus.IsFlicksEnabled="False"
+                                      VerticalContentAlignment="Center">
                                 <ListView.View>
                                     <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
-                                        <GridViewColumn DisplayMemberBinding="{Binding Speaker}" Width="100" Header="Speaker"/>
-                                        <GridViewColumn DisplayMemberBinding="{Binding StrRef}" Width="60" Header="StrRef" />
-                                        <GridViewColumn DisplayMemberBinding="{Binding Line}" Header="Line" />
-                                        <GridViewColumn DisplayMemberBinding="{Binding Convo}" Header="Conversation" />
+                                        <GridViewColumn DisplayMemberBinding="{Binding Speaker}" Width="120" Header="Speaker"/>
+                                        <GridViewColumn DisplayMemberBinding="{Binding StrRef}" Width="110" Header="TLK String Ref" />
+                                        <GridViewColumn DisplayMemberBinding="{Binding Line}" Width="420" Header="Line" />
+                                        <GridViewColumn DisplayMemberBinding="{Binding Convo}" Width="220" Header="Line Conversation" />
+                                        <GridViewColumn Width="220" Header="File">
+                                            <GridViewColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock>
+                                                        <TextBlock.Text>
+                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}">
+                                                                <Binding Path="Convo"/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="CurrentDataBase.Conversations"/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="FileListExtended"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </GridViewColumn.CellTemplate>
+                                        </GridViewColumn>
                                     </GridView>
                                 </ListView.View>
                                 <ListView.ContextMenu>

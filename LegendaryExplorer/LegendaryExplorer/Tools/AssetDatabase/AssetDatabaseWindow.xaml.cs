@@ -3652,4 +3652,30 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return null; //not needed
         }
     }
+
+    public class ConvoLineFileConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values[0] is not string convoName ||
+                values[1] is not List<Conversation> conversations ||
+                values[2] is not ObservableCollectionExtended<AssetDatabaseWindow.FileDirPair> fileList)
+            {
+                return "";
+            }
+
+            var convo = conversations.FirstOrDefault(c => c.ConvName == convoName);
+            if (convo == null) return "";
+
+            int fileKey = convo.ConvFile.FileKey;
+            if (fileKey < 0 || fileKey >= fileList.Count) return "";
+
+            return fileList[fileKey].FileName;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
 }
