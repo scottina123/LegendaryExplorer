@@ -116,7 +116,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
                 return null;
             }
 
-            var normalizedName = new string(setting.Parm1.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+            var normalizedName = NormalizeTextureTypeToken(setting.Parm1);
             foreach ((string typeName, string[] tokens) in TextureTypeMappings)
             {
                 if (tokens.Any(normalizedName.Contains))
@@ -126,6 +126,33 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
             }
 
             return OtherTextureType;
+        }
+
+        public static bool TryGetTextureParameterType(string text, out string textureType)
+        {
+            textureType = null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            var normalizedName = NormalizeTextureTypeToken(text);
+            foreach ((string typeName, string[] tokens) in TextureTypeMappings)
+            {
+                if (tokens.Any(token => normalizedName.Contains(token) || token.Contains(normalizedName)))
+                {
+                    textureType = typeName;
+                    return true;
+                }
+            }
+
+            if (OtherTextureType.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                textureType = OtherTextureType;
+                return true;
+            }
+
+            return false;
         }
 
         public static int GetTextureParameterTypeCount(MaterialRecord material, string textureType = null)
@@ -143,6 +170,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
         {
             var (text, mr) = t;
             return mr.MaterialName.ToLower().Contains(text.ToLower()) || mr.ParentPackage.ToLower().Contains(text.ToLower());
+        }
+
+        private static string NormalizeTextureTypeToken(string text)
+        {
+            return new string((text ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
         }
     }
 }

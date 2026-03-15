@@ -76,6 +76,70 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        public sealed class MaterialTextureFilterCriterion : INotifyPropertyChanged
+        {
+            private string _typeLabel = "Texture Type:";
+            private string _selectedTextureType = AllMaterialTextureTypeFilterOption;
+            private string _selectedTextureCount = AllMaterialTextureCountFilterOption;
+            private bool _canRemove;
+
+            public event PropertyChangedEventHandler PropertyChanged;
+
+            public ObservableCollectionExtended<string> CountFilters { get; } = new();
+
+            public string TypeLabel
+            {
+                get => _typeLabel;
+                set
+                {
+                    if (_typeLabel != value)
+                    {
+                        _typeLabel = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TypeLabel)));
+                    }
+                }
+            }
+
+            public string SelectedTextureType
+            {
+                get => _selectedTextureType;
+                set
+                {
+                    if (_selectedTextureType != value)
+                    {
+                        _selectedTextureType = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTextureType)));
+                    }
+                }
+            }
+
+            public string SelectedTextureCount
+            {
+                get => _selectedTextureCount;
+                set
+                {
+                    if (_selectedTextureCount != value)
+                    {
+                        _selectedTextureCount = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedTextureCount)));
+                    }
+                }
+            }
+
+            public bool CanRemove
+            {
+                get => _canRemove;
+                set
+                {
+                    if (_canRemove != value)
+                    {
+                        _canRemove = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRemove)));
+                    }
+                }
+            }
+        }
+
         #region Declarations
         // v9.2: Conversation records now store StartConversation owner metadata for lazy speaker resolution.
         public const string dbCurrentBuild = "9.2"; //If changes are made that invalidate old databases edit this.
@@ -180,7 +244,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             MaterialInstanceConstantFilterOption
         };
         public ObservableCollectionExtended<string> MaterialTextureTypeFilters { get; } = new();
-        public ObservableCollectionExtended<string> MaterialTextureCountFilters { get; } = new();
+        public ObservableCollectionExtended<MaterialTextureFilterCriterion> MaterialTextureCriteria { get; } = new();
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
         public ObservableCollectionExtended<string> LineSearchColumns { get; } = new()
@@ -230,39 +294,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
-        private string _selectedMaterialTextureTypeFilter = AllMaterialTextureTypeFilterOption;
         private bool _isRefreshingMaterialTextureFilters;
-        public string SelectedMaterialTextureTypeFilter
-        {
-            get => _selectedMaterialTextureTypeFilter;
-            set
-            {
-                if (SetProperty(ref _selectedMaterialTextureTypeFilter, value))
-                {
-                    if (!_isRefreshingMaterialTextureFilters)
-                    {
-                        RefreshMaterialTextureCountFilters();
-                        Filter();
-                    }
-                }
-            }
-        }
-
-        private string _selectedMaterialTextureCountFilter = AllMaterialTextureCountFilterOption;
-        public string SelectedMaterialTextureCountFilter
-        {
-            get => _selectedMaterialTextureCountFilter;
-            set
-            {
-                if (SetProperty(ref _selectedMaterialTextureCountFilter, value))
-                {
-                    if (!_isRefreshingMaterialTextureFilters)
-                    {
-                        Filter();
-                    }
-                }
-            }
-        }
 
         private string _selectedMaterialTypeFilter = AllMaterialFilterOption;
         public string SelectedMaterialTypeFilter
@@ -593,6 +625,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
             };
 
+            EnsureMaterialTextureCriteria();
             InitializeComponent();
         }
 
@@ -1247,8 +1280,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void RefreshMaterialTextureDropdownFilters(bool preserveSelections = false)
         {
-            var previousTypeSelection = SelectedMaterialTextureTypeFilter;
-            var previousCountSelection = SelectedMaterialTextureCountFilter;
+            var previousSelections = MaterialTextureCriteria
+                .Select(criterion => (TextureType: criterion.SelectedTextureType, TextureCount: criterion.SelectedTextureCount))
+                .ToList();
             var materialSource = GetMaterialTextureDropdownSource().ToList();
             var textureTypeFilters = new[] { AllMaterialTextureTypeFilterOption }.Concat(MaterialFilter.GetKnownTextureParameterTypes()
                 .Concat(materialSource
@@ -1263,11 +1297,21 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             try
             {
                 MaterialTextureTypeFilters.ReplaceAll(textureTypeFilters);
-                SelectedMaterialTextureTypeFilter = preserveSelections
-                                                    && textureTypeFilters.Contains(previousTypeSelection, StringComparer.OrdinalIgnoreCase)
-                    ? previousTypeSelection
-                    : AllMaterialTextureTypeFilterOption;
-                RefreshMaterialTextureCountFilters(preserveSelections, previousCountSelection);
+                EnsureMaterialTextureCriteria();
+
+                for (int i = 0; i < MaterialTextureCriteria.Count; i++)
+                {
+                    var criterion = MaterialTextureCriteria[i];
+                    (string TextureType, string TextureCount) previousSelection = preserveSelections && i < previousSelections.Count
+                        ? previousSelections[i]
+                        : (AllMaterialTextureTypeFilterOption, AllMaterialTextureCountFilterOption);
+                    criterion.SelectedTextureType = textureTypeFilters.Contains(previousSelection.TextureType, StringComparer.OrdinalIgnoreCase)
+                        ? previousSelection.TextureType
+                        : AllMaterialTextureTypeFilterOption;
+                    RefreshMaterialTextureCountFilters(criterion, preserveSelections, previousSelection.TextureCount);
+                }
+
+                UpdateMaterialTextureCriteriaMetadata();
             }
             finally
             {
@@ -1277,38 +1321,124 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Filter();
         }
 
-        private void RefreshMaterialTextureCountFilters(bool preserveSelections = false, string previousCountSelection = null)
+        private void RefreshMaterialTextureCountFilters(MaterialTextureFilterCriterion criterion, bool preserveSelections = false, string previousCountSelection = null)
         {
             var materialSource = GetMaterialTextureDropdownSource().ToList();
             var textureCountFilters = new[] { AllMaterialTextureCountFilterOption }.Concat(materialSource
-                .Select(GetMaterialTextureCountForCurrentFilter)
+                .Select(material => GetMaterialTextureCountForFilter(material, criterion.SelectedTextureType))
                 .Distinct()
                 .OrderBy(count => count)
                 .Select(count => count.ToString()))
                 .ToList();
 
-            _isRefreshingMaterialTextureFilters = true;
-            try
+            criterion.CountFilters.ReplaceAll(textureCountFilters);
+            criterion.SelectedTextureCount = preserveSelections && !string.IsNullOrWhiteSpace(previousCountSelection)
+                                              && textureCountFilters.Contains(previousCountSelection, StringComparer.OrdinalIgnoreCase)
+                ? previousCountSelection
+                : AllMaterialTextureCountFilterOption;
+        }
+
+        private void EnsureMaterialTextureCriteria()
+        {
+            if (MaterialTextureCriteria.Count == 0)
             {
-                MaterialTextureCountFilters.ReplaceAll(textureCountFilters);
-                SelectedMaterialTextureCountFilter = preserveSelections && !string.IsNullOrWhiteSpace(previousCountSelection)
-                    ? previousCountSelection
-                    : AllMaterialTextureCountFilterOption;
+                AddMaterialTextureCriterion();
             }
-            finally
+            else
             {
-                _isRefreshingMaterialTextureFilters = false;
+                UpdateMaterialTextureCriteriaMetadata();
             }
         }
 
-        private int GetMaterialTextureCountForCurrentFilter(MaterialRecord material)
+        private void AddMaterialTextureCriterion()
         {
-            if (string.Equals(SelectedMaterialTextureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase))
+            var criterion = new MaterialTextureFilterCriterion();
+            criterion.PropertyChanged += MaterialTextureCriterion_PropertyChanged;
+            MaterialTextureCriteria.Add(criterion);
+            UpdateMaterialTextureCriteriaMetadata();
+            RefreshMaterialTextureCountFilters(criterion);
+        }
+
+        private void RemoveMaterialTextureCriterion(MaterialTextureFilterCriterion criterion)
+        {
+            if (criterion is null)
+            {
+                return;
+            }
+
+            criterion.PropertyChanged -= MaterialTextureCriterion_PropertyChanged;
+            MaterialTextureCriteria.Remove(criterion);
+            EnsureMaterialTextureCriteria();
+            Filter();
+        }
+
+        private void UpdateMaterialTextureCriteriaMetadata()
+        {
+            for (int i = 0; i < MaterialTextureCriteria.Count; i++)
+            {
+                MaterialTextureCriteria[i].TypeLabel = i == 0 ? "Texture Type:" : "And Type:";
+                MaterialTextureCriteria[i].CanRemove = MaterialTextureCriteria.Count > 1;
+            }
+        }
+
+        private void MaterialTextureCriterion_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (_isRefreshingMaterialTextureFilters || sender is not MaterialTextureFilterCriterion criterion)
+            {
+                return;
+            }
+
+            if (e.PropertyName == nameof(MaterialTextureFilterCriterion.SelectedTextureType))
+            {
+                _isRefreshingMaterialTextureFilters = true;
+                try
+                {
+                    RefreshMaterialTextureCountFilters(criterion, preserveSelections: true, previousCountSelection: criterion.SelectedTextureCount);
+                }
+                finally
+                {
+                    _isRefreshingMaterialTextureFilters = false;
+                }
+            }
+
+            Filter();
+        }
+
+        private void AddMaterialTextureCriterion_Click(object sender, RoutedEventArgs e)
+        {
+            AddMaterialTextureCriterion();
+        }
+
+        private void RemoveMaterialTextureCriterion_Click(object sender, RoutedEventArgs e)
+        {
+            RemoveMaterialTextureCriterion((sender as FrameworkElement)?.Tag as MaterialTextureFilterCriterion);
+        }
+
+        private static int GetMaterialTextureCountForFilter(MaterialRecord material, string textureTypeFilter)
+        {
+            if (string.Equals(textureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase))
             {
                 return MaterialFilter.GetTextureParameterTypeCount(material);
             }
 
-            return MaterialFilter.GetTextureParameterTypeCount(material, SelectedMaterialTextureTypeFilter);
+            return MaterialFilter.GetTextureParameterTypeCount(material, textureTypeFilter);
+        }
+
+        private static bool MatchesMaterialTextureCriterion(MaterialRecord material, string textureTypeFilter, string textureCountFilter)
+        {
+            var textureCount = GetMaterialTextureCountForFilter(material, textureTypeFilter);
+            if (!string.Equals(textureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(textureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                return textureCount > 0;
+            }
+
+            if (string.Equals(textureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return int.TryParse(textureCountFilter, out int countFilter) && textureCount == countFilter;
         }
 
         private bool MaterialTabFilter(object obj)
@@ -1323,19 +1453,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return false;
             }
 
-            var textureCount = GetMaterialTextureCountForCurrentFilter(materialRecord);
-            if (!string.Equals(SelectedMaterialTextureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(SelectedMaterialTextureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
-            {
-                return textureCount > 0;
-            }
-
-            if (string.Equals(SelectedMaterialTextureCountFilter, AllMaterialTextureCountFilterOption, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return int.TryParse(SelectedMaterialTextureCountFilter, out int countFilter) && textureCount == countFilter;
+            return MaterialTextureCriteria.All(criterion => MatchesMaterialTextureCriterion(materialRecord, criterion.SelectedTextureType, criterion.SelectedTextureCount));
         }
 
         private void ApplyAnimationTypeFilter()
