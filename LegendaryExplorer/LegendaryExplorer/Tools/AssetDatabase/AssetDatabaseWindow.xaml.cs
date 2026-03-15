@@ -149,6 +149,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ObservableCollectionExtended<string> MaterialTextureCountFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
+        public ObservableCollectionExtended<string> LineSearchColumns { get; } = new()
+        {
+            AllLineSearchColumnsOption,
+            SpeakerLineSearchColumn,
+            TlkStringRefLineSearchColumn,
+            LineTextSearchColumn,
+            LineConversationSearchColumn,
+            FileLineSearchColumn,
+            LocationLineSearchColumn
+        };
 
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
@@ -165,6 +175,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllMaterialTextureTypeFilterOption = "All";
         private const string AllMaterialTextureCountFilterOption = "All";
         private const string AllTextureFilterOption = "All";
+        private const string AllLineSearchColumnsOption = "All Columns";
+        private const string SpeakerLineSearchColumn = "Speaker";
+        private const string TlkStringRefLineSearchColumn = "TLK String Ref";
+        private const string LineTextSearchColumn = "Line";
+        private const string LineConversationSearchColumn = "Line Conversation";
+        private const string FileLineSearchColumn = "File";
+        private const string LocationLineSearchColumn = "Location";
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
         public string SelectedMeshTypeFilter
@@ -275,6 +292,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set
             {
                 if (SetProperty(ref _selectedTextureSizeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedLineSearchColumn = AllLineSearchColumnsOption;
+        public string SelectedLineSearchColumn
+        {
+            get => _selectedLineSearchColumn;
+            set
+            {
+                if (SetProperty(ref _selectedLineSearchColumn, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _lineSearchText;
+        public string LineSearchText
+        {
+            get => _lineSearchText;
+            set
+            {
+                if (SetProperty(ref _lineSearchText, value))
                 {
                     Filter();
                 }
@@ -2933,23 +2976,91 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 {
                     showthis = string.Equals(line.Speaker, cmbbx_filterSpkrs.SelectedItem.ToString(), StringComparison.CurrentCultureIgnoreCase);
                 }
-                if (showthis && !string.IsNullOrEmpty(FilterBox.Text))
+                if (showthis && !string.IsNullOrWhiteSpace(LineSearchText))
                 {
-                    showthis = line.StrRef.ToString().Contains(FilterBox.Text.ToLower());
-                    if (!showthis)
-                    {
-                        showthis = line.Convo.ToLower().Contains(FilterBox.Text.ToLower());
-                    }
-                    if (!showthis)
-                    {
-                        showthis = line.Line.ToLower().Contains(FilterBox.Text.ToLower());
-                    }
+                    showthis = LineMatchesSearch(line, LineSearchText);
                 }
 
                 return showthis;
             }
 
             return false;
+        }
+
+        private bool LineMatchesSearch(ConvoLine line, string searchText)
+        {
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                return true;
+            }
+
+            return SelectedLineSearchColumn switch
+            {
+                SpeakerLineSearchColumn => ContainsText(line.Speaker, searchText),
+                TlkStringRefLineSearchColumn => ContainsText(line.StrRef.ToString(), searchText),
+                LineTextSearchColumn => ContainsText(line.Line, searchText),
+                LineConversationSearchColumn => ContainsText(line.Convo, searchText),
+                FileLineSearchColumn => ContainsText(GetConvoFileValue(line.Convo), searchText),
+                LocationLineSearchColumn => ContainsText(GetConvoLocationValue(line.Convo), searchText),
+                _ => ContainsText(line.Speaker, searchText)
+                     || ContainsText(line.StrRef.ToString(), searchText)
+                     || ContainsText(line.Line, searchText)
+                     || ContainsText(line.Convo, searchText)
+                     || ContainsText(GetConvoFileValue(line.Convo), searchText)
+                     || ContainsText(GetConvoLocationValue(line.Convo), searchText)
+            };
+        }
+
+        private bool ContainsText(string source, string searchText)
+        {
+            return !string.IsNullOrEmpty(source) && source.Contains(searchText, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private string GetConvoFileValue(string convoName)
+        {
+            if (!TryGetConvoFileInfo(convoName, out var fileName, out _))
+            {
+                return null;
+            }
+
+            return fileName;
+        }
+
+        private string GetConvoLocationValue(string convoName)
+        {
+            if (!TryGetConvoFileInfo(convoName, out _, out var location))
+            {
+                return null;
+            }
+
+            return location;
+        }
+
+        private bool TryGetConvoFileInfo(string convoName, out string fileName, out string location)
+        {
+            fileName = null;
+            location = null;
+
+            if (string.IsNullOrEmpty(convoName))
+            {
+                return false;
+            }
+
+            var convo = CurrentDataBase.Conversations.FirstOrDefault(c => c.ConvName == convoName);
+            if (convo == null)
+            {
+                return false;
+            }
+
+            int fileKey = convo.ConvFile.FileKey;
+            if (fileKey < 0 || fileKey >= FileListExtended.Count)
+            {
+                return false;
+            }
+
+            fileName = FileListExtended[fileKey].FileName;
+            location = FileListExtended[fileKey].Directory;
+            return true;
         }
 
         private bool FileFilter(object d)
@@ -3167,6 +3278,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void cmbbx_filterSpkrs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
+            Filter();
+        }
+
+        private void ClearSpeakerFilter_Click(object sender, RoutedEventArgs e)
+        {
+            cmbbx_filterSpkrs.SelectedIndex = -1;
             Filter();
         }
 
