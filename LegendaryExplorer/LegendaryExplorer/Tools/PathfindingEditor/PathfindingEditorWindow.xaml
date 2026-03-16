@@ -793,13 +793,35 @@
                     <!-- Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" -->
                     <exportLoaderControls:InterpreterExportLoader x:Name="interpreterControl" HideHexBox="True" />
                 </DockPanel>
-                <Grid>
-                    <sharedUi:WindowsFormsHostEx x:Name="GraphHost" VerticalAlignment="Stretch">
-                        <pathfindingEditor:PathingGraphEditor DragEnter="GraphEditor_DragEnter"
-                                                              DragDrop="GraphEditor_DragDrop" />
-                    </sharedUi:WindowsFormsHostEx>
-                    <Image Visibility="Collapsed" Name="graphImageSub" Stretch="None" />
-                </Grid>
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="6,4" Background="#FF3A3A3A">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Camera" FontWeight="Bold" Margin="0,0,10,0"
+                                       Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+                            <TextBlock Text="X:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+                            <TextBox Width="70" Margin="4,0,10,0" Name="CameraPositionX_TextBox"
+                                     Text="{Binding CameraPositionX, Mode=TwoWay}"
+                                     KeyUp="CameraPositionBoxes_KeyUp"
+                                     LostFocus="CameraPositionBoxes_LostFocus"
+                                     GotFocus="CoordinateEditor_GotFocus" />
+                            <TextBlock Text="Y:" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+                            <TextBox Width="70" Margin="4,0,0,0" Name="CameraPositionY_TextBox"
+                                     Text="{Binding CameraPositionY, Mode=TwoWay}"
+                                     KeyUp="CameraPositionBoxes_KeyUp"
+                                     LostFocus="CameraPositionBoxes_LostFocus"
+                                     GotFocus="CoordinateEditor_GotFocus" />
+                        </StackPanel>
+                    </Border>
+                    <Grid>
+                        <sharedUi:WindowsFormsHostEx x:Name="GraphHost" VerticalAlignment="Stretch">
+                            <pathfindingEditor:PathingGraphEditor DragEnter="GraphEditor_DragEnter"
+                                                                  DragDrop="GraphEditor_DragDrop" />
+                        </sharedUi:WindowsFormsHostEx>
+                        <Image Visibility="Collapsed" Name="graphImageSub" Stretch="None" />
+                    </Grid>
+                </DockPanel>
             </DockPanel>
         </DockPanel>
         <xctk:BusyIndicator Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}"/>

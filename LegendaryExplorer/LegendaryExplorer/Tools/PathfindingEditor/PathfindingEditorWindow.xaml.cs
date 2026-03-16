@@ -150,6 +150,21 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
             set => SetProperty(ref _currentNodeXY, value);
         }
 
+        private bool _updatingCameraPositionText;
+        private string _cameraPositionX = "0";
+        public string CameraPositionX
+        {
+            get => _cameraPositionX;
+            set => SetProperty(ref _cameraPositionX, value);
+        }
+
+        private string _cameraPositionY = "0";
+        public string CameraPositionY
+        {
+            get => _cameraPositionY;
+            set => SetProperty(ref _cameraPositionY, value);
+        }
+
         private string _statusText;
         public string StatusText
         {
@@ -593,9 +608,11 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
             graphEditor = (PathingGraphEditor)GraphHost.Child;
             graphEditor.BackColor = GraphEditorBackColor;
+            graphEditor.Camera.ViewTransformChanged += Camera_ViewTransformChanged;
             AllowRefresh = true;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
             zoomController = new PathingZoomController(graphEditor);
+            UpdateCameraPositionText();
             PathEdUtils.LoadClassesDB();
             List<PathfindingDB_ExportType> types = PathEdUtils.ExportClassDB.Where(x => x.pathnode).ToList();
             foreach (var type in types)
@@ -741,6 +758,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
                 // Unsubscribe from theme changes to prevent memory leaks
                 ThemeManager.ThemeChanged -= OnThemeChanged;
+                graphEditor.Camera.ViewTransformChanged -= Camera_ViewTransformChanged;
 
                 graphEditor.RemoveInputEventListener(pathfindingMouseListener);
                 graphEditor.DragDrop -= GraphEditor_DragDrop;
@@ -1617,6 +1635,70 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         }
 
         public bool AllowWindowRefocus = true;
+
+        private void Camera_ViewTransformChanged(object sender, PPropertyEventArgs e)
+        {
+            UpdateCameraPositionText();
+        }
+
+        private void UpdateCameraPositionText()
+        {
+            if (graphEditor?.Camera is null)
+            {
+                return;
+            }
+
+            _updatingCameraPositionText = true;
+            try
+            {
+                RectangleF viewBounds = graphEditor.Camera.ViewBounds;
+                CameraPositionX = viewBounds.X.ToString("0.##");
+                CameraPositionY = viewBounds.Y.ToString("0.##");
+            }
+            finally
+            {
+                _updatingCameraPositionText = false;
+            }
+        }
+
+        private void CameraPositionBoxes_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                MoveCameraToEnteredPosition();
+                e.Handled = true;
+            }
+        }
+
+        private void CameraPositionBoxes_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (!_updatingCameraPositionText)
+            {
+                MoveCameraToEnteredPosition();
+            }
+        }
+
+        private void MoveCameraToEnteredPosition()
+        {
+            if (graphEditor?.Camera is null)
+            {
+                return;
+            }
+
+            if (!float.TryParse(CameraPositionX_TextBox.Text, out float x) || !float.TryParse(CameraPositionY_TextBox.Text, out float y))
+            {
+                UpdateCameraPositionText();
+                return;
+            }
+
+            RectangleF viewBounds = graphEditor.Camera.ViewBounds;
+            if (viewBounds.X != x || viewBounds.Y != y)
+            {
+                graphEditor.Camera.ViewBounds = new RectangleF(x, y, viewBounds.Width, viewBounds.Height);
+            }
+
+            UpdateCameraPositionText();
+        }
 
         private void Window_DragOver(object sender, DragEventArgs e)
         {
