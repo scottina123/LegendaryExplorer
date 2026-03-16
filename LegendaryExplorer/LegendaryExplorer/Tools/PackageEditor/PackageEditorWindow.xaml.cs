@@ -5441,6 +5441,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     var pathEditor = new PathfindingEditor.PathfindingEditorWindow(Pcc);
                     pathEditor.Show();
                     break;
+                case "LevelEditor":
+                    var levelEditor = new LevelEditor.LevelEditor();
+                    levelEditor.Show();
+                    _ = levelEditor.LoadFileAsync(Pcc.FilePath);
+                    break;
                 case "Meshplorer":
                     var meshplorer = new MeshplorerWindow();
                     meshplorer.LoadFile(Pcc.FilePath);
