@@ -1719,6 +1719,24 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
         }
     }
 
+    public async Task LoadFileAndSelectObjectAsync(string path, int exportUIndex)
+    {
+        await LoadFileAsync(path);
+        TrySelectObjectByExportUIndex(exportUIndex);
+    }
+
+    public bool TrySelectObjectByExportUIndex(int exportUIndex)
+    {
+        GalaxyMapObjectProxy obj = _allObjects.FirstOrDefault(candidate => candidate.Export.UIndex == exportUIndex);
+        if (obj is null)
+        {
+            return false;
+        }
+
+        SelectedObject = obj;
+        return true;
+    }
+
     private void CloseFile()
     {
         CancelRelayDrag(refreshOverlay: false);

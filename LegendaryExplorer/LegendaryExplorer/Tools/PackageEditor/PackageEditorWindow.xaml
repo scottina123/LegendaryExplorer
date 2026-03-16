@@ -126,6 +126,7 @@
             <MenuItem Header="Open in Pathfinding Editor" Command="{Binding OpenExportInCommand}" CommandParameter="PathfindingEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in WwiseEditor" Command="{Binding OpenExportInCommand}" CommandParameter="WwiseEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Level Editor" Command="{Binding OpenExportInCommand}" CommandParameter="LevelEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Open in Galaxy Map Editor" Command="{Binding OpenExportInCommand}" CommandParameter="GalaxyMapEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
             <MenuItem Header="{Binding Path=(packageEditor:PackageEditorWindow.FindReferencesMenuText), Mode=OneTime}"
                       ToolTip="Finds objects that reference this one" Command="{Binding FindReferencesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
