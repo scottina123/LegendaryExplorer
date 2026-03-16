@@ -1096,7 +1096,12 @@ namespace LegendaryExplorer.DialogueEditor
 
         private string TLKLookup(int id, IMEPackage package)
         {
-            return GlobalFindStrRefbyID(id, package);
+            return GetDisplayTlkText(id, package);
+        }
+
+        private static string GetDisplayTlkText(int id, IMEPackage package)
+        {
+            return RemoveWrappingQuotes(GlobalFindStrRefbyID(id, package));
         }
 
         private void GenerateSpeakerList()
@@ -4409,7 +4414,7 @@ namespace LegendaryExplorer.DialogueEditor
             link.IsDividerRow = false;
             link.NavigationNodeUid = targetUID;
             link.NodeIDLink = $"{nodePrefix}{link.Index}";
-            link.ReplyLine = GlobalFindStrRefbyID(link.ReplyStrRef, Pcc);
+            link.ReplyLine = GetDisplayTlkText(link.ReplyStrRef, Pcc);
 
             var targetNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(t => t.NodeUID == targetUID);
             if (targetNode is null)
@@ -5088,7 +5093,7 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                 }
 
-                SelectedConv.StageDirections.Add(new StageDirection(strRef, GlobalFindStrRefbyID(strRef, Pcc), "Add direction"));
+                SelectedConv.StageDirections.Add(new StageDirection(strRef, GetDisplayTlkText(strRef, Pcc), "Add direction"));
                 SaveStageDirectionsToProperties(SelectedConv);
             }
             else if (command == "Delete" && StageDirs_ListBox.SelectedIndex >= 0)
