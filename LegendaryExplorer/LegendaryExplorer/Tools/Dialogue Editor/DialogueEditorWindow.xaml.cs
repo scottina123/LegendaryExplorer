@@ -5814,42 +5814,46 @@ namespace LegendaryExplorer.DialogueEditor
             string filePath = null;
             if (filename != null)  //If file is a new loaded file need to find path.
             {
-                filePath = Path.Combine(Path.GetDirectoryName(Pcc.FilePath), filename);
-
-                if (!File.Exists(filePath))
+                if (!MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, filename, out filePath))
                 {
-                    string rootPath = null;
-                    switch (Pcc.Game)
+                    filePath = Path.Combine(Path.GetDirectoryName(Pcc.FilePath), filename);
+
+                    if (!File.Exists(filePath))
                     {
-                        case MEGame.ME1:
-                            rootPath = ME1Directory.DefaultGamePath;
-                            break;
-                        case MEGame.ME2:
-                            rootPath = ME2Directory.DefaultGamePath;
-                            break;
-                        case MEGame.ME3:
-                            rootPath = ME3Directory.DefaultGamePath;
-                            break;
-                        case MEGame.LE1:
-                            rootPath = LE1Directory.DefaultGamePath;
-                            break;
-                        case MEGame.LE2:
-                            rootPath = LE2Directory.DefaultGamePath;
-                            break;
-                        case MEGame.LE3:
-                            rootPath = LE3Directory.DefaultGamePath;
-                            break;
-                    }
-                    filePath = Directory.GetFiles(rootPath, Level, SearchOption.AllDirectories).FirstOrDefault();
-                    if (filePath == null)
-                    {
-                        MessageBox.Show($"File {filename} not found.");
-                        return;
-                    }
-                    var dlg = MessageBox.Show($"Opening level at {filePath}", "Dialogue Editor", MessageBoxButton.OKCancel);
-                    if (dlg == MessageBoxResult.Cancel)
-                    {
-                        return;
+                        string rootPath = null;
+                        switch (Pcc.Game)
+                        {
+                            case MEGame.ME1:
+                                rootPath = ME1Directory.DefaultGamePath;
+                                break;
+                            case MEGame.ME2:
+                                rootPath = ME2Directory.DefaultGamePath;
+                                break;
+                            case MEGame.ME3:
+                                rootPath = ME3Directory.DefaultGamePath;
+                                break;
+                            case MEGame.LE1:
+                                rootPath = LE1Directory.DefaultGamePath;
+                                break;
+                            case MEGame.LE2:
+                                rootPath = LE2Directory.DefaultGamePath;
+                                break;
+                            case MEGame.LE3:
+                                rootPath = LE3Directory.DefaultGamePath;
+                                break;
+                        }
+                        filePath = Directory.GetFiles(rootPath, Level, SearchOption.AllDirectories).FirstOrDefault();
+                        if (filePath == null)
+                        {
+                            MessageBox.Show($"File {filename} not found.");
+                            return;
+                        }
+
+                        var dlg = MessageBox.Show($"Opening level at {filePath}", "Dialogue Editor", MessageBoxButton.OKCancel);
+                        if (dlg == MessageBoxResult.Cancel)
+                        {
+                            return;
+                        }
                     }
                 }
             }
