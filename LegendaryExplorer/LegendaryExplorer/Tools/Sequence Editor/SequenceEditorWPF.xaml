@@ -280,6 +280,7 @@
                 </MenuItem>
                 <MenuItem Header="Toolbox" Padding="4" IsCheckable="True"
                           IsChecked="{Binding ElementName=toolBoxExpander, Path=IsExpanded, Mode=TwoWay}" />
+                <MenuItem Header="Open linked" Padding="4" Command="{Binding OpenHighestMountedLinkedFileCommand}" ToolTip="Open the highest mounted linked LOC_INT file when viewing a base package, or the highest mounted base package when viewing a LOC file." />
             </Menu>
             <StatusBar Height="23" DockPanel.Dock="Bottom">
                 <sharedToolControls:StatusBarGameIDIndicator

@@ -254,6 +254,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ICommand DesignerCreateOutputCommand { get; set; }
         public ICommand DesignerCreateExternCommand { get; set; }
         public ICommand OpenHighestMountedCommand { get; set; }
+        public ICommand OpenHighestMountedLinkedFileCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -284,6 +285,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 new GenericCommand(() => SharedPackageTools.ComparePackageToAnother(this, entryDoubleClick),
                     PackageIsLoaded);
             OpenHighestMountedCommand = new GenericCommand(OpenHighestMountedVersion, IsLoadedPackageME);
+            OpenHighestMountedLinkedFileCommand = new GenericCommand(OpenHighestMountedLinkedFile, IsLoadedPackageME);
 
             DesignerCreateExternCommand = new GenericCommand(CreateExtern, () => SelectedSequence != null);
             DesignerCreateInputCommand = new GenericCommand(CreateInput, () => SelectedSequence != null);
@@ -945,6 +947,56 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 pe.LoadFileAndGoTo(filePath, goToEntry: entry?.InstancedFullPath);
                 pe.Show();
             }
+        }
+
+        private void OpenHighestMountedLinkedFile()
+        {
+            if (Pcc is null)
+            {
+                return;
+            }
+
+            if (MEDirectories.GetBioGamePath(Pcc.Game) is null)
+            {
+                MessageBox.Show($"No {Pcc.Game} installation detected!");
+                return;
+            }
+
+            string currentFileName = Path.GetFileName(Pcc.FilePath);
+            MELocalization currentLocalization = currentFileName.GetUnrealLocalization();
+
+            string counterpartFilePath;
+            string counterpartDescription;
+
+            if (currentLocalization == MELocalization.None)
+            {
+                string locIntFileName = currentFileName.SetUnrealLocalization(Pcc.Game, MELocalization.INT, includeLOC: true);
+                MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, locIntFileName, out counterpartFilePath);
+                counterpartDescription = "linked LOC_INT file";
+            }
+            else
+            {
+                string baseFileName = currentFileName.StripUnrealLocalization();
+                MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, baseFileName, out counterpartFilePath);
+                counterpartDescription = "linked base file";
+            }
+
+            if (string.IsNullOrEmpty(counterpartFilePath))
+            {
+                MessageBox.Show($"No {counterpartDescription} was found for '{currentFileName}' in the {Pcc.Game} installation.");
+                return;
+            }
+
+            if (Path.GetFullPath(counterpartFilePath) == Path.GetFullPath(Pcc.FilePath))
+            {
+                MessageBox.Show($"This file is already the resolved {counterpartDescription} for '{currentFileName}'.");
+                return;
+            }
+
+            var entry = SelectedItem?.Entry ?? SelectedSequence;
+            var seqEd = new SequenceEditorWPF();
+            seqEd.LoadFileAndGoTo(counterpartFilePath, goToEntry: entry?.InstancedFullPath);
+            seqEd.Show();
         }
 
         /// <summary>
