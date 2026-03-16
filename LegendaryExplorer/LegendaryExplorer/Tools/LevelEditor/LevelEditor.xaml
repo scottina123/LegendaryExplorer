@@ -125,6 +125,41 @@
                     <ToggleButton Content="Show Volumes" ToolTip="Show volume wireframes" IsChecked="{Binding ShowVolumes}"/>
                     <ToggleButton Content="Show Volumetric Meshes" IsChecked="{Binding ShowVolumetrics}"
                                   ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
+                        <TextBox x:Name="CameraPositionX_TextBox" Width="72" Margin="0,0,6,0"
+                                 Text="{Binding CameraPositionX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 IsEnabled="{Binding HasAnyFileOpen}"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera X position"/>
+                        <TextBlock Text="Y:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource YTextDeco}"/>
+                        <TextBox x:Name="CameraPositionY_TextBox" Width="72" Margin="0,0,6,0"
+                                 Text="{Binding CameraPositionY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 IsEnabled="{Binding HasAnyFileOpen}"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Y position"/>
+                        <TextBlock Text="Z:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource ZTextDeco}"/>
+                        <TextBox x:Name="CameraPositionZ_TextBox" Width="72" Margin="0,0,2,0"
+                                 Text="{Binding CameraPositionZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 IsEnabled="{Binding HasAnyFileOpen}"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Z position"/>
+                    </StackPanel>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <xctk:DropDownButton Content="View options">
                         <xctk:DropDownButton.DropDownContent>

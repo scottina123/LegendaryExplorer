@@ -116,18 +116,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref isDirty, value);
     }
 
-    private bool _showCollision;
+    private bool _showCollision = Settings.LevelEditor_ShowCollision;
     public bool ShowCollision
     {
         get => _showCollision;
         set
         {
             if (SetProperty(ref _showCollision, value))
+            {
+                Settings.LevelEditor_ShowCollision = value;
                 SceneViewer?.MarkRenderDirty();
+            }
         }
     }
 
-    private bool _showLightIcons = true;
+    private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
     public bool ShowLightIcons
     {
         get => _showLightIcons;
@@ -135,31 +138,38 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         {
             if (SetProperty(ref _showLightIcons, value))
             {
+                Settings.LevelEditor_ShowLightIcons = value;
                 RenderContext.ShowLightIcons = value;
                 SceneViewer?.MarkRenderDirty();
             }
         }
     }
 
-    private bool _showVolumes = false;
+    private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
     public bool ShowVolumes
     {
         get => _showVolumes;
         set
         {
             if (SetProperty(ref _showVolumes, value))
+            {
+                Settings.LevelEditor_ShowVolumes = value;
                 SceneViewer?.MarkRenderDirty();
+            }
         }
     }
 
-    private bool _showVolumetrics = false;
+    private bool _showVolumetrics = Settings.LevelEditor_ShowVolumetrics;
     public bool ShowVolumetrics
     {
         get => _showVolumetrics;
         set
         {
             if (SetProperty(ref _showVolumetrics, value))
+            {
+                Settings.LevelEditor_ShowVolumetrics = value;
                 SceneViewer?.MarkRenderDirty();
+            }
         }
     }
 
@@ -308,6 +318,30 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref RenderContext.TransformWidget.ScaleSnapValue, value);
     }
 
+    private string _cameraPositionX = "0";
+    public string CameraPositionX
+    {
+        get => _cameraPositionX;
+        set => SetProperty(ref _cameraPositionX, value);
+    }
+
+    private string _cameraPositionY = "0";
+    public string CameraPositionY
+    {
+        get => _cameraPositionY;
+        set => SetProperty(ref _cameraPositionY, value);
+    }
+
+    private string _cameraPositionZ = "0";
+    public string CameraPositionZ
+    {
+        get => _cameraPositionZ;
+        set => SetProperty(ref _cameraPositionZ, value);
+    }
+
+    private bool _updatingCameraPositionText;
+    private int _cameraPositionEditorsFocused;
+
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
     private static string RecentSetsFile => Path.Combine(
@@ -350,7 +384,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void UpdateScene(object sender, float e)
     {
-
+        UpdateCameraPositionText();
     }
 
     private void RenderScene(object sender, EventArgs e)
@@ -441,6 +475,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             RenderContext.Camera.Pitch = -MathF.PI / 5.0f;
             RenderContext.Camera.Yaw = MathF.PI / 4.0f;
         }
+
+        UpdateCameraPositionText();
     }
 
     private void FocusOnBounds(BoxSphereBounds fullBounds)
@@ -450,6 +486,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
         RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
         RenderContext.Camera.OrientTowards(origin);
+        UpdateCameraPositionText();
     }
 
     private const float CameraButtonMoveStep = 256f;
@@ -470,6 +507,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
 
         RenderContext.Camera.Position += direction * CameraButtonMoveStep;
+        UpdateCameraPositionText();
         SceneViewer?.MarkRenderDirty();
         SceneViewer?.Focus();
     }
@@ -479,6 +517,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (!HasAnyFileOpen) return;
 
         RenderContext.Camera.Position += Vector3.UnitZ * (amount * CameraButtonMoveStep);
+        UpdateCameraPositionText();
         SceneViewer?.MarkRenderDirty();
         SceneViewer?.Focus();
     }
@@ -531,6 +570,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.Camera.Pitch = (RenderContext.Camera.Pitch - (float)(deltaY * 0.01))
             .Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
 
+        UpdateCameraPositionText();
         SceneViewer?.MarkRenderDirty();
         e.Handled = true;
     }
@@ -542,6 +582,95 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         _isRotatingCameraFromPad = false;
         element.ReleaseMouseCapture();
         e.Handled = true;
+    }
+
+    private bool AreCameraPositionBoxesFocused() => _cameraPositionEditorsFocused > 0;
+
+    private void UpdateCameraPositionText()
+    {
+        if (AreCameraPositionBoxesFocused()) return;
+
+        _updatingCameraPositionText = true;
+        try
+        {
+            Vector3 position = RenderContext.Camera.Position;
+            CameraPositionX = position.X.ToString("0.##");
+            CameraPositionY = position.Y.ToString("0.##");
+            CameraPositionZ = position.Z.ToString("0.##");
+        }
+        finally
+        {
+            _updatingCameraPositionText = false;
+        }
+    }
+
+    private void ResetCameraPositionText()
+    {
+        _updatingCameraPositionText = true;
+        try
+        {
+            CameraPositionX = "0";
+            CameraPositionY = "0";
+            CameraPositionZ = "0";
+        }
+        finally
+        {
+            _updatingCameraPositionText = false;
+        }
+    }
+
+    private void CameraPositionBoxes_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            MoveCameraToEnteredPosition();
+            e.Handled = true;
+        }
+    }
+
+    private void CameraPositionBoxes_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _cameraPositionEditorsFocused++;
+    }
+
+    private void CameraPositionBoxes_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _cameraPositionEditorsFocused = Math.Max(0, _cameraPositionEditorsFocused - 1);
+        if (_updatingCameraPositionText) return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!_updatingCameraPositionText && !AreCameraPositionBoxesFocused())
+            {
+                MoveCameraToEnteredPosition();
+            }
+        }));
+    }
+
+    private void MoveCameraToEnteredPosition()
+    {
+        if (!HasAnyFileOpen) return;
+
+        if (!float.TryParse(CameraPositionX, out float x)
+            || !float.TryParse(CameraPositionY, out float y)
+            || !float.TryParse(CameraPositionZ, out float z))
+        {
+            UpdateCameraPositionText();
+            return;
+        }
+
+        RenderContext.Camera.Position = new Vector3(x, y, z);
+        UpdateCameraPositionText();
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void CoordinateEditor_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (Keyboard.PrimaryDevice.IsKeyDown(Key.Tab) && sender is TextBox tb)
+        {
+            tb.SelectAll();
+        }
     }
 
     #region File Management
@@ -656,6 +785,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
         OpenFiles.Clear();
         HasAnyFileOpen = false;
+        ResetCameraPositionText();
         TextBelowActors = "";
         IsDirty = false;
         UndoHistory.Clear();
