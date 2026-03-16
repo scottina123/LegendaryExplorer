@@ -34,7 +34,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 }
                 else
                 {
-                    var mSets = GetMaterialSettings(e, db);
+                    var (mSets, usedOn, parentMaterialKey) = GetMaterialSettings(e, db);
 
                     // 05/05/2025 - Use GetLinker() instead since it is more useful to know which original package this was part of. It also works better in BIOGs.
                     string parent = e.Export.GetLinker();
@@ -52,7 +52,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                         objectNameInstanced += "_Decal";
                     }
 
-                    var NewMat = new MaterialRecord(objectNameInstanced, parent, e.IsDlc, mSets);
+                    var NewMat = new MaterialRecord(objectNameInstanced, parent, e.IsDlc, mSets, usedOn, parentMaterialKey);
                     NewMat.Usages.Add(matUsage);
                     if (!db.GeneratedMats.TryAdd(e.AssetKey, NewMat))
                     {
@@ -81,7 +81,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 }
                 else
                 {
-                    var mSets = GetMaterialSettings(e, db);
+                    var (mSets, usedOn, parentMaterialKey) = GetMaterialSettings(e, db);
                     string parent;
                     if (e.Export.Game == MEGame.ME1 && e.FileName.EndsWith(".upk"))
                     {
@@ -94,7 +94,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
 
                     var objectNameInstanced = e.ObjectNameInstanced;
 
-                    var NewMat = new MaterialRecord(objectNameInstanced, parent, e.IsDlc, mSets);
+                    var NewMat = new MaterialRecord(objectNameInstanced, parent, e.IsDlc, mSets, usedOn, parentMaterialKey);
                     NewMat.Usages.Add(matUsage);
                     if (!db.GeneratedMats.TryAdd(e.AssetKey, NewMat))
                     {
@@ -109,9 +109,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
             }
         }
 
-        private List<MatSetting> GetMaterialSettings(ExportScanInfo e, ConcurrentAssetDB db)
+        private (List<MatSetting> Settings, string[] UsedOn, string ParentMaterialKey) GetMaterialSettings(ExportScanInfo e, ConcurrentAssetDB db)
         {
             var mSets = new List<MatSetting>();
+            var usedOn = GetMaterialUsageTargets(e.Properties.OfType<BoolProperty>());
+            var parentMaterialKey = GetParentMaterialKey(e.Export);
+
             if (e.ClassName == "Material" && !db.GeneratedMats.ContainsKey(e.ObjectNameInstanced) &&
                 !e.IsDefault) //Run material settings
             {
@@ -212,9 +215,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 mSets.Add(new MatSetting("IsInstance", "true", null));
             }
 
-            return mSets;
+            return (mSets, usedOn, parentMaterialKey);
         }
 
+        private static string GetParentMaterialKey(ExportEntry export)
+        {
+            var parentProperty = export.GetProperty<ObjectProperty>("Parent")
+                                 ?? export.GetProperty<ObjectProperty>("m_pBaseMaterial");
+            if (parentProperty == null || parentProperty.Value == 0)
+            {
+                return null;
+            }
+
+            return export.FileRef.TryGetEntry(parentProperty.Value, out var parentEntry)
+                ? parentEntry.InstancedFullPath.ToLowerInvariant()
+                : null;
+        }
+
+        private static string[] GetMaterialUsageTargets(IEnumerable<BoolProperty> boolProperties)
+        {
+            return boolProperties
+                .Where(prop => prop.Value && prop.Name.Name.StartsWith("bUsedWith", StringComparison.OrdinalIgnoreCase))
+                .Select(prop => prop.Name.Name.Substring(9))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
         private void TryCreateMatFilter(Property p, ExportScanInfo e, ConcurrentAssetDB db)
         {
             if (p is BoolProperty bp)

@@ -615,6 +615,11 @@
                                               ItemsSource="{Binding MaterialTypeFilters}"
                                               SelectedItem="{Binding SelectedMaterialTypeFilter, Mode=TwoWay}"
                                               IsTextSearchEnabled="True"/>
+                                    <TextBlock Text="Used On:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <ComboBox Width="190" Margin="0,0,12,0"
+                                              ItemsSource="{Binding MaterialUsageFilters}"
+                                              SelectedItem="{Binding SelectedMaterialUsageFilter, Mode=TwoWay}"
+                                              IsTextSearchEnabled="True"/>
                                     <Button Content="Add Texture Filter"
                                             Padding="8,2"
                                             Click="AddMaterialTextureCriterion_Click"

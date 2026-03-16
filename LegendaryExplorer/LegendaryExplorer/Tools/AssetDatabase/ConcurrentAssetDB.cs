@@ -126,6 +126,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
             pdb.Animations.AddRange(animsSorted);
 
+            ResolveMaterialUsageTargets();
+
             var matsSorted = GeneratedMats.Values.OrderBy(x => x.MaterialName).ToList();
             foreach (MaterialRecord mat in matsSorted)
             {
@@ -184,6 +186,48 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             pdb.MaterialBoolSpecs.AddRange(matFiltersSorted);
 
             return pdb;
+        }
+
+        private void ResolveMaterialUsageTargets()
+        {
+            var resolvedTargets = new Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (materialKey, materialRecord) in GeneratedMats)
+            {
+                materialRecord.UsedOn = ResolveMaterialUsageTargets(materialKey, materialRecord, resolvedTargets, new HashSet<string>(System.StringComparer.OrdinalIgnoreCase));
+            }
+        }
+
+        private string[] ResolveMaterialUsageTargets(string materialKey, MaterialRecord materialRecord, Dictionary<string, string[]> resolvedTargets, HashSet<string> visitedKeys)
+        {
+            if (resolvedTargets.TryGetValue(materialKey, out var cachedTargets))
+            {
+                return cachedTargets;
+            }
+
+            if (!visitedKeys.Add(materialKey))
+            {
+                return materialRecord.UsedOn ?? [];
+            }
+
+            var localTargets = materialRecord.UsedOn ?? [];
+            if (string.IsNullOrWhiteSpace(materialRecord.ParentMaterialKey)
+                || !GeneratedMats.TryGetValue(materialRecord.ParentMaterialKey, out var parentMaterial))
+            {
+                return resolvedTargets[materialKey] = NormalizeMaterialUsageTargets(localTargets);
+            }
+
+            var parentTargets = ResolveMaterialUsageTargets(materialRecord.ParentMaterialKey, parentMaterial, resolvedTargets, visitedKeys);
+            return resolvedTargets[materialKey] = NormalizeMaterialUsageTargets(localTargets.Concat(parentTargets));
+        }
+
+        private static string[] NormalizeMaterialUsageTargets(IEnumerable<string> usageTargets)
+        {
+            return (usageTargets ?? [])
+                .Where(target => !string.IsNullOrWhiteSpace(target))
+                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .OrderBy(target => target, System.StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         public class ScanTimeClassRecord

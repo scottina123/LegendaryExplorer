@@ -276,14 +276,24 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<MatSetting> MatSettings { get; set; } = new();
 
+        public string[] UsedOn { get; set; } = [];
+
+        public string ParentMaterialKey { get; set; }
+
         public string DisplayString => $"{MaterialName} ({ParentPackage})";
 
-        public MaterialRecord(string MaterialName, string ParentPackage, bool IsDLCOnly, IEnumerable<MatSetting> MatSettings)
+        public MaterialRecord(string MaterialName, string ParentPackage, bool IsDLCOnly, IEnumerable<MatSetting> MatSettings, IEnumerable<string> UsedOn = null, string ParentMaterialKey = null)
         {
             this.MaterialName = MaterialName;
             this.ParentPackage = ParentPackage;
             this.IsDLCOnly = IsDLCOnly;
             this.MatSettings.AddRange(MatSettings);
+            this.UsedOn = UsedOn?
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? [];
+            this.ParentMaterialKey = ParentMaterialKey;
         }
 
         public MaterialRecord()
