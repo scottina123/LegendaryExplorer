@@ -636,6 +636,12 @@
                                                           Text="{Binding SelectedTextureCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           IsEditable="True"
                                                           IsTextSearchEnabled="True"/>
+                                                <TextBlock Text="Parameter:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <ComboBox Width="180" Margin="0,0,12,0"
+                                                          ItemsSource="{Binding ParameterFilters}"
+                                                          SelectedItem="{Binding SelectedTextureParameter, Mode=TwoWay}"
+                                                          IsEditable="True"
+                                                          IsTextSearchEnabled="True"/>
                                                 <Button Content="Remove"
                                                         Padding="8,2"
                                                         Tag="{Binding}"

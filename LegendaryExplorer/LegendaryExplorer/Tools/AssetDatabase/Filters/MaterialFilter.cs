@@ -104,6 +104,22 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Filters
                 && !string.IsNullOrWhiteSpace(setting.Parm1)) ?? Enumerable.Empty<MatSetting>();
         }
 
+        public static string GetTextureParameterName(MatSetting setting)
+        {
+            return string.IsNullOrWhiteSpace(setting?.Parm1) ? null : setting.Parm1;
+        }
+
+        public static IEnumerable<string> GetTextureParameterNames(IEnumerable<MaterialRecord> materials, string textureType = null)
+        {
+            return (materials ?? Enumerable.Empty<MaterialRecord>())
+                .SelectMany(GetTextureSettings)
+                .Where(setting => string.IsNullOrWhiteSpace(textureType)
+                    || string.Equals(textureType, "All", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(GetTextureParameterType(setting), textureType, StringComparison.OrdinalIgnoreCase))
+                .Select(GetTextureParameterName)
+                .Where(name => !string.IsNullOrWhiteSpace(name));
+        }
+
         public static IEnumerable<string> GetKnownTextureParameterTypes()
         {
             return TextureTypeMappings.Select(mapping => mapping.TypeName).Append(OtherTextureType);
