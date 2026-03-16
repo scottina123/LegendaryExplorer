@@ -251,6 +251,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand StructuralComparePackagesCommand { get; set; }
         public ICommand OpenOtherVersionCommand { get; set; }
         public ICommand OpenHighestMountedCommand { get; set; }
+        public ICommand OpenHighestMountedLinkedFileCommand { get; set; }
         public ICommand CompareToUnmoddedCommand { get; set; }
         public ICommand StructuralCompareToUnmoddedCommand { get; set; }
         public ICommand ExportAllDataCommand { get; set; }
@@ -409,6 +410,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             RestoreExportCommand = new GenericCommand(RestoreExportData, ExportIsSelected);
             OpenOtherVersionCommand = new GenericCommand(OpenOtherVersion, IsLoadedPackageME);
             OpenHighestMountedCommand = new GenericCommand(OpenHighestMountedVersion, IsLoadedPackageME);
+            OpenHighestMountedLinkedFileCommand = new GenericCommand(OpenHighestMountedLinkedFile, IsLoadedPackageME);
 
             //do not change lambda to method group here! causes runtime error
             ForceReloadPackageCommand = new GenericCommand(() => ExperimentsMenu.ForceReloadPackageWithoutSharing(), () => ShowExperiments && ExperimentsMenu.CanForceReload());
@@ -835,6 +837,57 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 pe.LoadPackage(otherGen, goToEntry: entry?.InstancedFullPath);
                 pe.Show();
             }
+        }
+
+        private void OpenHighestMountedLinkedFile()
+        {
+            if (Pcc is null)
+            {
+                return;
+            }
+
+            if (MEDirectories.GetBioGamePath(Pcc.Game) is null)
+            {
+                MessageBox.Show($"No {Pcc.Game} installation detected!");
+                return;
+            }
+
+            string currentFileName = Path.GetFileName(Pcc.FilePath);
+            string currentExtension = Path.GetExtension(currentFileName);
+            MELocalization currentLocalization = currentFileName.GetUnrealLocalization();
+
+            string counterpartFilePath;
+            string counterpartDescription;
+
+            if (currentLocalization == MELocalization.None)
+            {
+                string locIntFileName = currentFileName.SetUnrealLocalization(Pcc.Game, MELocalization.INT, includeLOC: true);
+                MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, locIntFileName, out counterpartFilePath);
+                counterpartDescription = "linked LOC_INT file";
+            }
+            else
+            {
+                string baseFileName = currentFileName.StripUnrealLocalization();
+                MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, baseFileName, out counterpartFilePath);
+                counterpartDescription = "linked base file";
+            }
+
+            if (string.IsNullOrEmpty(counterpartFilePath))
+            {
+                MessageBox.Show($"No {counterpartDescription} was found for '{currentFileName}' in the {Pcc.Game} installation.");
+                return;
+            }
+
+            if (Path.GetFullPath(counterpartFilePath) == Path.GetFullPath(Pcc.FilePath))
+            {
+                MessageBox.Show($"This file is already the resolved {counterpartDescription} for '{currentFileName}'.");
+                return;
+            }
+
+            TryGetSelectedEntry(out var entry);
+            var pe = new PackageEditorWindow();
+            pe.LoadFile(counterpartFilePath, goToEntry: entry?.InstancedFullPath);
+            pe.Show();
         }
 
         private void OpenHighestMountedVersion()

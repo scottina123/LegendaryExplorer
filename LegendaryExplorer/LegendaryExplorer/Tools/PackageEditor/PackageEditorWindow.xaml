@@ -405,6 +405,7 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
                         <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                        <Button Content="Open linked" Command="{Binding OpenHighestMountedLinkedFileCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolTip="Open the highest mounted linked LOC file when viewing a base package, or the highest mounted base package when viewing a LOC file."/>
                     </StackPanel>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
                     <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
