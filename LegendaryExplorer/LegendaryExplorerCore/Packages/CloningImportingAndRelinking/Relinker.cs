@@ -776,7 +776,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 
                 // END CROSSGEN-V
 
-                if (rop.PortImportsMemorySafe && !rop.IsCrossGame)
+                if (rop.PortImportsMemorySafe)
                 {
                     if (importFullName.HasParent)
                     {
