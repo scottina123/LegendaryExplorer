@@ -220,6 +220,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (allowSelection && SetProperty(ref _selectedItem, value) && !SuppressSelectionEvent)
                 {
+                    OnPropertyChanged(nameof(CanRebuildBioWorldStreamingLevels));
                     //_lastSelectionEvent = now;
                     if (oldIndex.HasValue && oldIndex.Value != 0 && !IsBackForwardsNavigationEvent)
                     {
@@ -385,7 +386,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             CopyNameCommand = new GenericCommand(CopyName, NameIsSelected);
             FindNameUsagesCommand = new GenericCommand(FindNameUsages, NameIsSelected);
             ViewInAssetViewerCommand = new GenericCommand(ViewInAssetViewer, CanViewInAssetViewer);
-            RebuildStreamingLevelsCommand = new GenericCommand(RebuildStreamingLevels, PackageIsLoaded);
+            RebuildStreamingLevelsCommand = new GenericCommand(RebuildStreamingLevels, () => CanRebuildBioWorldStreamingLevels);
             ExportEmbeddedFileCommand = new GenericCommand(ExportEmbeddedFilePrompt, DoesSelectedItemHaveEmbeddedFile);
             ImportEmbeddedFileCommand = new GenericCommand(ImportEmbeddedFile, DoesSelectedItemHaveEmbeddedFile);
             FindReferencesCommand = new GenericCommand(FindReferencesToObject, EntryIsSelected);
@@ -4016,6 +4017,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             TryGetSelectedEntry(out IEntry entry);
             return entry?.ClassName == "Package";
         }
+
+        public bool CanRebuildBioWorldStreamingLevels => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "BioWorldInfo" && exp.ObjectName == "BioWorldInfo";
 
         private bool ObjectReferencerIsSelected() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "ObjectReferencer";
 

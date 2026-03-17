@@ -141,6 +141,10 @@
                 <MenuItem Header="Multi-clone Tree" ToolTip="Clone this entry and all children multiple times" Command="{Binding MultiCloneTreeCommand}"/>
             </MenuItem>
             <MenuItem Header="Go to Archetype" ToolTip="Go to this object's archetype" Command="{Binding GoToArchetypeCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Rebuild BioWorld StreamingLevels"
+                      ToolTip="Updates BioWorldInfo's list of StreamingLevels to include all LevelStreamingKismet"
+                      Command="{Binding RebuildStreamingLevelsCommand}"
+                      Visibility="{Binding CanRebuildBioWorldStreamingLevels, Converter={StaticResource BoolToVisibilityConverter}}"/>
             <MenuItem Header="Package utilities" Command="{Binding PackageExportIsSelectedCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
                 <MenuItem Header="Generate new GUID for package" ToolTip="Generates a new GUID for this package. Only use this if you really know what you're doing." Command="{Binding CreateNewPackageGUIDCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                 <MenuItem Header="Set as filename package" ToolTip="Sets the name of this export to the same as the file." Command="{Binding SetPackageAsFilenamePackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
