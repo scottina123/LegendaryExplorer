@@ -877,6 +877,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             dialog.ShowDialog();
         }
 
+        private void FixBrokenMaterialsUsingAssetDb_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.FixBrokenMaterialsUsingAssetDatabase(GetPEWindow());
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))
