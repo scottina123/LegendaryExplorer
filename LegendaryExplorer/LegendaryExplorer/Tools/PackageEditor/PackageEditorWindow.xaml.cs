@@ -114,6 +114,33 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 nameArray.Insert(insertIndex, new NameProperty(targetName));
                 return true;
             }
+
+            public bool TryRemove(PropertyCollection rootProps, NameReference targetName)
+            {
+                PropertyCollection currentProps = rootProps;
+                foreach (var segment in PathSegments)
+                {
+                    if (currentProps.GetProp<ArrayProperty<StructProperty>>(segment.ArrayName) is not { } structArray
+                        || segment.StructIndex < 0
+                        || segment.StructIndex >= structArray.Count)
+                    {
+                        return false;
+                    }
+
+                    currentProps = structArray[segment.StructIndex].Properties;
+                }
+
+                if (currentProps.GetProp<ArrayProperty<NameProperty>>(ArrayName) is not { } nameArray
+                    || SourceElementIndex < 0
+                    || SourceElementIndex >= nameArray.Count
+                    || nameArray[SourceElementIndex].Value != targetName)
+                {
+                    return false;
+                }
+
+                nameArray.RemoveAt(SourceElementIndex);
+                return true;
+            }
         }
 
         public enum CurrentViewMode
@@ -2566,7 +2593,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     { DoubleClickEntryHandler = objectReferenceDoubleClick };
                     dlg.Show();
                 });
-
             }
         }
 
@@ -2601,7 +2627,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         $"Only use this reindexing feature for items that are meant to be indexed 1 and above (and not 0) as this tool will force all items to be indexed at 1 or above.\n\n" +
                         $"Ensure this file has a backup, this operation may cause the file to stop working if you use it improperly.",
                         "Confirm Reindexing",
-                        MessageBoxButton.YesNo) == MessageBoxResult.Yes;
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.Cancel) == MessageBoxResult.Yes;
                 }
 
                 if (!showUI || uiConfirm)
@@ -2676,6 +2702,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     {
                         dlg.SecondaryActionText = $"Add another name to {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
                         dlg.SecondaryActionHandler = () => AddNameToMatchingUsages(name, prevTask.Result.AddableUsages);
+                        dlg.TertiaryActionText = $"Remove this name from {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
+                        dlg.TertiaryActionHandler = () => RemoveNameFromMatchingUsages(name, prevTask.Result.AddableUsages);
                     }
                     dlg.Show();
                 });
@@ -2812,6 +2840,82 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 "Add name to matching usages",
                 MessageBoxButton.OK,
                 addedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+
+        private void RemoveNameFromMatchingUsages(string sourceName, List<NameArrayUsageMatch> removableUsages)
+        {
+            if (removableUsages.Count == 0)
+            {
+                MessageBox.Show($"No editable name arrays referencing '{sourceName}' were found.", "No removable usages");
+                return;
+            }
+
+            if (!NamePromptDialog.Prompt(this,
+                    $"Select the specific indexed name to remove. Only exact matching instanced names will be removed from matching arrays.",
+                    "Remove name from matching usages",
+                    Pcc,
+                    out NameReference targetName,
+                    Pcc.findName(sourceName)))
+            {
+                return;
+            }
+
+            var filteredUsages = removableUsages.Where(usage => usage.SourceName == targetName).ToList();
+            if (filteredUsages.Count == 0)
+            {
+                MessageBox.Show($"No editable name arrays referencing '{targetName.Instanced}' were found.", "No matching indexed usages");
+                return;
+            }
+
+            int modifiedExports = 0;
+            int removedCount = 0;
+            int skippedCount = 0;
+
+            foreach (var usageGroup in filteredUsages.GroupBy(usage => usage.Entry))
+            {
+                var props = usageGroup.Key.GetProperties();
+                bool exportModified = false;
+
+                foreach (var usage in usageGroup.OrderBy(usage => usage.PathKey).ThenByDescending(usage => usage.SourceElementIndex))
+                {
+                    if (usage.TryRemove(props, targetName))
+                    {
+                        removedCount++;
+                        exportModified = true;
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+                }
+
+                if (exportModified)
+                {
+                    usageGroup.Key.WriteProperties(props);
+                    modifiedExports++;
+                }
+            }
+
+            if (removedCount > 0)
+            {
+                RefreshNames();
+                RefreshView();
+                Preview(true);
+            }
+
+            string removedEntrySuffix = removedCount == 1 ? "y" : "ies";
+            string modifiedExportSuffix = modifiedExports == 1 ? string.Empty : "s";
+            string skippedUsageSuffix = skippedCount == 1 ? string.Empty : "s";
+            string resultMessage = "Removed '" + targetName.Instanced + "' from " + removedCount
+                + " matching array entr" + removedEntrySuffix
+                + " across " + modifiedExports + " export" + modifiedExportSuffix + "."
+                + Environment.NewLine
+                + "Skipped " + skippedCount + " usage" + skippedUsageSuffix + " that could not be updated.";
+            MessageBox.Show(
+                resultMessage,
+                "Remove name from matching usages",
+                MessageBoxButton.OK,
+                removedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
 
         private bool DoesSelectedItemHaveEmbeddedFile()
@@ -3321,7 +3425,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var lw = new ListDialog(issues.ToList(), $"Reference issues in {Pcc.FilePath}",
                         "The following items have referencing issues. Note that this is a best-effort check and may not be 100% accurate.",
                         this)
-                { DoubleClickEntryHandler = entryDoubleClick };
+                { DoubleClickEntryHandler = objectReferenceDoubleClick };
                 lw.Show();
             }
             else
@@ -3687,12 +3791,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (errors.Count > 0)
                 {
-                    var dlgResult = new ListDialog(
+                    var dlg = new ListDialog(
                         errors.Select(e => new EntryStringPair(e)).ToList(),
                         $"Cloned to {successCount}/{pccFiles.Count} files with issues",
                         "The following issues occurred during cloning:",
                         this);
-                    dlgResult.Show();
+                    dlg.Show();
                 }
                 else
                 {

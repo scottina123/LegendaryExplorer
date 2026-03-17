@@ -49,6 +49,12 @@
                     Padding="3"
                     Margin="5,0,0,0"
                     Visibility="{Binding SecondaryActionVisibility}"/>
+            <Button FlowDirection="LeftToRight"
+                    Click="TertiaryAction_Click"
+                    Content="{Binding TertiaryActionText}"
+                    Padding="3"
+                    Margin="5,0,0,0"
+                    Visibility="{Binding TertiaryActionVisibility}"/>
             <Label Name="ListDialog_Status" FlowDirection="LeftToRight" Content="Copied to clipboard" Margin="8,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
         </StackPanel>
         <ListView Name="ListDialog_List" HorizontalAlignment="Stretch" AlternationCount="2" 
