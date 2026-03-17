@@ -11,6 +11,9 @@
                   IsEditable="True"
                   IsReadOnly="True"
                   Text="{Binding SelectedText, ElementName=FlagsComboBoxControl, Mode=OneWay}"
+                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                  Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                  BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
                   GotFocus="PART_ComboBox_GotFocus"
                   Loaded="PART_ComboBox_Loaded">
             <ComboBox.ItemsPanel>
@@ -20,11 +23,15 @@
             </ComboBox.ItemsPanel>
             <ComboBox.ItemTemplate>
                 <DataTemplate>
-                    <CheckBox Content="{Binding Item}"
-                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
                               Checked="CheckBox_CheckedChanged"
                               Unchecked="CheckBox_CheckedChanged"
-                              Padding="4,2"/>
+                              Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                              Background="Transparent"
+                              Padding="4,2">
+                        <TextBlock Text="{Binding Item}"
+                                   Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                    </CheckBox>
                 </DataTemplate>
             </ComboBox.ItemTemplate>
         </ComboBox>

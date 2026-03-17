@@ -287,7 +287,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllMaterialFilterOption = "All";
         private const string NormalMaterialFilterOption = "Normal Materials";
         private const string MaterialInstanceConstantFilterOption = "MaterialInstanceConstant";
-        private const string AllMaterialUsageFilterOption = "All";
+        private const string MaterialUsageFilterDelimiter = ", ";
         private const string AllMaterialTextureTypeFilterOption = "All";
         private const string AllMaterialTextureCountFilterOption = "All";
         private const string AllMaterialTextureParameterFilterOption = "All";
@@ -331,13 +331,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
-        private string _selectedMaterialUsageFilter = AllMaterialUsageFilterOption;
-        public string SelectedMaterialUsageFilter
+        private string _selectedMaterialUsageFilters = string.Empty;
+        public string SelectedMaterialUsageFilters
         {
-            get => _selectedMaterialUsageFilter;
+            get => _selectedMaterialUsageFilters;
             set
             {
-                if (SetProperty(ref _selectedMaterialUsageFilter, value))
+                if (SetProperty(ref _selectedMaterialUsageFilters, value))
                 {
                     if (_isRefreshingMaterialUsageFilters)
                     {
@@ -1312,31 +1312,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (AssetFilters?.MaterialFilter is null)
             {
-                return CurrentDataBase.Materials.Where(material => MatchesMaterialUsageFilter(material, SelectedMaterialUsageFilter));
+                return CurrentDataBase.Materials.Where(material => MatchesMaterialUsageFilter(material, SelectedMaterialUsageFilters));
             }
 
             return CurrentDataBase.Materials.Where(material => AssetFilters.MaterialFilter.Filter(material)
-                && MatchesMaterialUsageFilter(material, SelectedMaterialUsageFilter));
+                && MatchesMaterialUsageFilter(material, SelectedMaterialUsageFilters));
         }
 
         private void RefreshMaterialUsageDropdownFilters(bool preserveSelection = false)
         {
-            var previousSelection = preserveSelection ? SelectedMaterialUsageFilter : null;
-            var usageFilters = new[] { AllMaterialUsageFilterOption }.Concat(CurrentDataBase.Materials
+            var previousSelection = preserveSelection ? SelectedMaterialUsageFilters : null;
+            var usageFilters = CurrentDataBase.Materials
                 .SelectMany(material => material.UsedOn ?? [])
                 .Where(usage => !string.IsNullOrWhiteSpace(usage))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(usage => usage, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(usage => usage, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var selectedUsageFilters = ParseSelectedMaterialUsageFilters(previousSelection)
+                .Where(selectedUsage => usageFilters.Contains(selectedUsage, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
             _isRefreshingMaterialUsageFilters = true;
             try
             {
                 MaterialUsageFilters.ReplaceAll(usageFilters);
-                SelectedMaterialUsageFilter = !string.IsNullOrWhiteSpace(previousSelection)
-                    && usageFilters.Contains(previousSelection, StringComparer.OrdinalIgnoreCase)
-                        ? previousSelection
-                        : AllMaterialUsageFilterOption;
+                SelectedMaterialUsageFilters = string.Join(MaterialUsageFilterDelimiter, selectedUsageFilters);
             }
             finally
             {
@@ -1555,7 +1556,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return false;
             }
 
-            if (!MatchesMaterialUsageFilter(materialRecord, SelectedMaterialUsageFilter))
+            if (!MatchesMaterialUsageFilter(materialRecord, SelectedMaterialUsageFilters))
             {
                 return false;
             }
@@ -1563,10 +1564,21 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return MaterialTextureCriteria.All(criterion => MatchesMaterialTextureCriterion(materialRecord, criterion.SelectedTextureType, criterion.SelectedTextureCount, criterion.SelectedTextureParameter));
         }
 
-        private static bool MatchesMaterialUsageFilter(MaterialRecord material, string usageFilter)
+        private static bool MatchesMaterialUsageFilter(MaterialRecord material, string usageFilters)
         {
-            return string.Equals(usageFilter, AllMaterialUsageFilterOption, StringComparison.OrdinalIgnoreCase)
-                   || material?.UsedOn?.Contains(usageFilter, StringComparer.OrdinalIgnoreCase) == true;
+            var selectedUsageFilters = ParseSelectedMaterialUsageFilters(usageFilters);
+            return selectedUsageFilters.Count == 0
+                   || material?.UsedOn?.Any(usedOn => selectedUsageFilters.Contains(usedOn)) == true;
+        }
+
+        private static HashSet<string> ParseSelectedMaterialUsageFilters(string usageFilters)
+        {
+            return string.IsNullOrWhiteSpace(usageFilters)
+                ? []
+                : usageFilters.Split([MaterialUsageFilterDelimiter], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(filter => filter.Trim())
+                    .Where(filter => !string.IsNullOrWhiteSpace(filter))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
         private void ApplyAnimationTypeFilter()

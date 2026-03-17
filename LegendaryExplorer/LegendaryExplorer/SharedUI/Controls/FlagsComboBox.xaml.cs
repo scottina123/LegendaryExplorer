@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
@@ -19,6 +20,7 @@ namespace LegendaryExplorer.SharedUI.Controls
         public event EventHandler<ItemSelectionChangedEventArgs> ItemSelectionChanged;
 
         private bool _isUpdatingSelection;
+        private INotifyCollectionChanged _itemsSourceCollection;
 
         public FlagsComboBox()
         {
@@ -96,6 +98,8 @@ namespace LegendaryExplorer.SharedUI.Controls
         {
             if (d is FlagsComboBox control)
             {
+                control.DetachItemsSourceCollectionChanged();
+                control.AttachItemsSourceCollectionChanged(e.NewValue as IEnumerable);
                 control.RefreshItems();
             }
         }
@@ -122,6 +126,11 @@ namespace LegendaryExplorer.SharedUI.Controls
 
         private void RefreshItems()
         {
+            foreach (var selectableItem in _selectableItems)
+            {
+                selectableItem.PropertyChanged -= SelectableItem_PropertyChanged;
+            }
+
             _selectableItems.Clear();
 
             if (ItemsSource != null)
@@ -138,6 +147,29 @@ namespace LegendaryExplorer.SharedUI.Controls
             ItemContainerGenerator = new FlagsComboBoxItemContainerGenerator(_selectableItems);
             SetSelectedFromString(SelectedValue);
             OnPropertyChanged(nameof(SelectedText));
+        }
+
+        private void AttachItemsSourceCollectionChanged(IEnumerable itemsSource)
+        {
+            _itemsSourceCollection = itemsSource as INotifyCollectionChanged;
+            if (_itemsSourceCollection != null)
+            {
+                _itemsSourceCollection.CollectionChanged += ItemsSource_CollectionChanged;
+            }
+        }
+
+        private void DetachItemsSourceCollectionChanged()
+        {
+            if (_itemsSourceCollection != null)
+            {
+                _itemsSourceCollection.CollectionChanged -= ItemsSource_CollectionChanged;
+                _itemsSourceCollection = null;
+            }
+        }
+
+        private void ItemsSource_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            RefreshItems();
         }
 
         private void SetSelectedFromString(string value)
@@ -176,6 +208,7 @@ namespace LegendaryExplorer.SharedUI.Controls
         {
             if (e.PropertyName == nameof(SelectableItem.IsSelected))
             {
+                UpdateSelectedValueFromItems();
                 OnPropertyChanged(nameof(SelectedText));
             }
         }
@@ -188,7 +221,22 @@ namespace LegendaryExplorer.SharedUI.Controls
             {
                 ItemSelectionChanged?.Invoke(this, new ItemSelectionChangedEventArgs(selectableItem.Item, selectableItem.IsSelected));
             }
+            UpdateSelectedValueFromItems();
             OnPropertyChanged(nameof(SelectedText));
+        }
+
+        private void UpdateSelectedValueFromItems()
+        {
+            if (_isUpdatingSelection)
+            {
+                return;
+            }
+
+            var selectedValue = SelectedText;
+            if (!string.Equals(SelectedValue, selectedValue, StringComparison.Ordinal))
+            {
+                SetCurrentValue(SelectedValueProperty, selectedValue);
+            }
         }
 
         private void PART_ComboBox_GotFocus(object sender, RoutedEventArgs e)
