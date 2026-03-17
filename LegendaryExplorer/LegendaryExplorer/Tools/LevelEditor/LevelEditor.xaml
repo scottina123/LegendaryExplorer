@@ -127,38 +127,142 @@
                                   ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
-                        <TextBox x:Name="CameraPositionX_TextBox" Width="72" Margin="0,0,6,0"
-                                 Text="{Binding CameraPositionX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 KeyUp="CameraPositionBoxes_KeyUp"
-                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
-                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
-                                 GotFocus="CoordinateEditor_GotFocus"
-                                 IsEnabled="{Binding HasAnyFileOpen}"
-                                 VerticalContentAlignment="Center"
-                                 FontFamily="Consolas"
-                                 ToolTip="Camera X position"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraPositionX_TextBox" Width="72"
+                                     Text="{Binding CameraPositionX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraPositionBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera X position"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="X,1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase X position"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="X,-1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease X position"/>
+                            </StackPanel>
+                        </StackPanel>
                         <TextBlock Text="Y:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource YTextDeco}"/>
-                        <TextBox x:Name="CameraPositionY_TextBox" Width="72" Margin="0,0,6,0"
-                                 Text="{Binding CameraPositionY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 KeyUp="CameraPositionBoxes_KeyUp"
-                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
-                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
-                                 GotFocus="CoordinateEditor_GotFocus"
-                                 IsEnabled="{Binding HasAnyFileOpen}"
-                                 VerticalContentAlignment="Center"
-                                 FontFamily="Consolas"
-                                 ToolTip="Camera Y position"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraPositionY_TextBox" Width="72"
+                                     Text="{Binding CameraPositionY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraPositionBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera Y position"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="Y,1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase Y position"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="Y,-1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease Y position"/>
+                            </StackPanel>
+                        </StackPanel>
                         <TextBlock Text="Z:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource ZTextDeco}"/>
-                        <TextBox x:Name="CameraPositionZ_TextBox" Width="72" Margin="0,0,2,0"
-                                 Text="{Binding CameraPositionZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 KeyUp="CameraPositionBoxes_KeyUp"
-                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
-                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
-                                 GotFocus="CoordinateEditor_GotFocus"
-                                 IsEnabled="{Binding HasAnyFileOpen}"
-                                 VerticalContentAlignment="Center"
-                                 FontFamily="Consolas"
-                                 ToolTip="Camera Z position"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraPositionZ_TextBox" Width="72"
+                                     Text="{Binding CameraPositionZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraPositionBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera Z position"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="Z,1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase Z position"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="Z,-1" Click="CameraPositionAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease Z position"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Step:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                        <xctk:SingleUpDown Width="70" Value="{Binding CameraPositionStep}" Minimum="0.01"
+                                           ButtonSpinnerLocation="Left" FormatString="F2"
+                                           VerticalContentAlignment="Center" ToolTip="Camera position adjustment step"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                        <TextBlock Text="Rot" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraRotationX_TextBox" Width="72"
+                                     Text="{Binding CameraRotationX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraRotationBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera X rotation (Roll, degrees)"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="X,1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase X rotation"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="X,-1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease X rotation"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Y:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource YTextDeco}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraRotationY_TextBox" Width="72"
+                                     Text="{Binding CameraRotationY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraRotationBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera Y rotation (Pitch, degrees)"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="Y,1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase Y rotation"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="Y,-1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease Y rotation"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Z:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource ZTextDeco}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <TextBox x:Name="CameraRotationZ_TextBox" Width="72"
+                                     Text="{Binding CameraRotationZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyUp="CameraRotationBoxes_KeyUp"
+                                     GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                     LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                     GotFocus="CoordinateEditor_GotFocus"
+                                     IsEnabled="{Binding HasAnyFileOpen}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Consolas"
+                                     ToolTip="Camera Z rotation (Yaw, degrees)"/>
+                            <StackPanel Margin="2,0,0,0">
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                        Tag="Z,1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Increase Z rotation"/>
+                                <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                        Tag="Z,-1" Click="CameraRotationAdjustButton_Click"
+                                        IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Decrease Z rotation"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Step:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                        <xctk:SingleUpDown Width="70" Value="{Binding CameraRotationStep}" Minimum="0.1"
+                                           ButtonSpinnerLocation="Left" FormatString="F2"
+                                           VerticalContentAlignment="Center" ToolTip="Camera rotation adjustment step in degrees"/>
                     </StackPanel>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <xctk:DropDownButton Content="View options">
@@ -339,7 +443,8 @@
                     <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                     <GroupBox Header="Camera" Margin="5,5,5,0" BorderThickness="2" Padding="5"
-                              IsEnabled="{Binding HasAnyFileOpen}">
+                              IsEnabled="{Binding HasAnyFileOpen}"
+                              Visibility="Collapsed">
                         <StackPanel>
                             <Grid HorizontalAlignment="Left" Margin="0,0,0,8">
                                 <Grid.RowDefinitions>

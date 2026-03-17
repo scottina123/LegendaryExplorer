@@ -339,8 +339,45 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         set => SetProperty(ref _cameraPositionZ, value);
     }
 
+    private string _cameraRotationX = "0";
+    public string CameraRotationX
+    {
+        get => _cameraRotationX;
+        set => SetProperty(ref _cameraRotationX, value);
+    }
+
+    private string _cameraRotationY = "0";
+    public string CameraRotationY
+    {
+        get => _cameraRotationY;
+        set => SetProperty(ref _cameraRotationY, value);
+    }
+
+    private string _cameraRotationZ = "0";
+    public string CameraRotationZ
+    {
+        get => _cameraRotationZ;
+        set => SetProperty(ref _cameraRotationZ, value);
+    }
+
+    private float _cameraPositionStep = 10f;
+    public float CameraPositionStep
+    {
+        get => _cameraPositionStep;
+        set => SetProperty(ref _cameraPositionStep, value);
+    }
+
+    private float _cameraRotationStep = 5f;
+    public float CameraRotationStep
+    {
+        get => _cameraRotationStep;
+        set => SetProperty(ref _cameraRotationStep, value);
+    }
+
     private bool _updatingCameraPositionText;
     private int _cameraPositionEditorsFocused;
+    private bool _updatingCameraRotationText;
+    private int _cameraRotationEditorsFocused;
 
     public ObservableCollectionExtended<RecentFileSet> RecentSets { get; } = [];
 
@@ -385,6 +422,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void UpdateScene(object sender, float e)
     {
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
     }
 
     private void RenderScene(object sender, EventArgs e)
@@ -419,6 +457,76 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             actor.Render(RenderContext, pass);
             RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Selected;
         }
+    }
+
+    private void CameraPositionAdjustButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        string[] parts = tag.Split(',');
+        if (parts.Length != 2 || !float.TryParse(parts[1], out float direction)) return;
+
+        Vector3 position = RenderContext.Camera.Position;
+        if (float.TryParse(CameraPositionX, out float x)) position.X = x;
+        if (float.TryParse(CameraPositionY, out float y)) position.Y = y;
+        if (float.TryParse(CameraPositionZ, out float z)) position.Z = z;
+
+        float delta = CameraPositionStep * direction;
+        switch (parts[0])
+        {
+            case "X":
+                position.X += delta;
+                break;
+            case "Y":
+                position.Y += delta;
+                break;
+            case "Z":
+                position.Z += delta;
+                break;
+            default:
+                return;
+        }
+
+        CameraPositionX = position.X.ToString("0.##");
+        CameraPositionY = position.Y.ToString("0.##");
+        CameraPositionZ = position.Z.ToString("0.##");
+        MoveCameraToEnteredPosition();
+    }
+
+    private void CameraRotationAdjustButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        string[] parts = tag.Split(',');
+        if (parts.Length != 2 || !float.TryParse(parts[1], out float direction)) return;
+
+        float x = RenderContext.Camera.Roll.RadiansToDegrees();
+        float y = RenderContext.Camera.Pitch.RadiansToDegrees();
+        float z = RenderContext.Camera.Yaw.RadiansToDegrees();
+        if (float.TryParse(CameraRotationX, out float enteredX)) x = enteredX;
+        if (float.TryParse(CameraRotationY, out float enteredY)) y = enteredY;
+        if (float.TryParse(CameraRotationZ, out float enteredZ)) z = enteredZ;
+
+        float delta = CameraRotationStep * direction;
+        switch (parts[0])
+        {
+            case "X":
+                x += delta;
+                break;
+            case "Y":
+                y += delta;
+                break;
+            case "Z":
+                z += delta;
+                break;
+            default:
+                return;
+        }
+
+        CameraRotationX = x.ToString("0.##");
+        CameraRotationY = y.ToString("0.##");
+        CameraRotationZ = z.ToString("0.##");
+        MoveCameraToEnteredRotation();
     }
 
     private void ViewportActorSelect(ActorProxy actor)
@@ -477,6 +585,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
 
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
     }
 
     private void FocusOnBounds(BoxSphereBounds fullBounds)
@@ -487,6 +596,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
         RenderContext.Camera.OrientTowards(origin);
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
     }
 
     private const float CameraButtonMoveStep = 256f;
@@ -508,6 +618,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         RenderContext.Camera.Position += direction * CameraButtonMoveStep;
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
         SceneViewer?.MarkRenderDirty();
         SceneViewer?.Focus();
     }
@@ -518,6 +629,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         RenderContext.Camera.Position += Vector3.UnitZ * (amount * CameraButtonMoveStep);
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
         SceneViewer?.MarkRenderDirty();
         SceneViewer?.Focus();
     }
@@ -571,6 +683,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             .Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
 
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
         SceneViewer?.MarkRenderDirty();
         e.Handled = true;
     }
@@ -585,6 +698,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     private bool AreCameraPositionBoxesFocused() => _cameraPositionEditorsFocused > 0;
+    private bool AreCameraRotationBoxesFocused() => _cameraRotationEditorsFocused > 0;
 
     private void UpdateCameraPositionText()
     {
@@ -601,6 +715,38 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         finally
         {
             _updatingCameraPositionText = false;
+        }
+    }
+
+    private void UpdateCameraRotationText()
+    {
+        if (AreCameraRotationBoxesFocused()) return;
+
+        _updatingCameraRotationText = true;
+        try
+        {
+            CameraRotationX = RenderContext.Camera.Roll.RadiansToDegrees().ToString("0.##");
+            CameraRotationY = RenderContext.Camera.Pitch.RadiansToDegrees().ToString("0.##");
+            CameraRotationZ = RenderContext.Camera.Yaw.RadiansToDegrees().ToString("0.##");
+        }
+        finally
+        {
+            _updatingCameraRotationText = false;
+        }
+    }
+
+    private void ResetCameraRotationText()
+    {
+        _updatingCameraRotationText = true;
+        try
+        {
+            CameraRotationX = "0";
+            CameraRotationY = "0";
+            CameraRotationZ = "0";
+        }
+        finally
+        {
+            _updatingCameraRotationText = false;
         }
     }
 
@@ -661,6 +807,55 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         RenderContext.Camera.Position = new Vector3(x, y, z);
         UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void CameraRotationBoxes_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            MoveCameraToEnteredRotation();
+            e.Handled = true;
+        }
+    }
+
+    private void CameraRotationBoxes_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _cameraRotationEditorsFocused++;
+    }
+
+    private void CameraRotationBoxes_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _cameraRotationEditorsFocused = Math.Max(0, _cameraRotationEditorsFocused - 1);
+        if (_updatingCameraRotationText) return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!_updatingCameraRotationText && !AreCameraRotationBoxesFocused())
+            {
+                MoveCameraToEnteredRotation();
+            }
+        }));
+    }
+
+    private void MoveCameraToEnteredRotation()
+    {
+        if (!HasAnyFileOpen) return;
+
+        if (!float.TryParse(CameraRotationX, out float x)
+            || !float.TryParse(CameraRotationY, out float y)
+            || !float.TryParse(CameraRotationZ, out float z))
+        {
+            UpdateCameraRotationText();
+            return;
+        }
+
+        RenderContext.Camera.Roll = x.DegreesToRadians();
+        RenderContext.Camera.Pitch = y.DegreesToRadians().Clamp(-MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+        RenderContext.Camera.Yaw = z.DegreesToRadians();
+        UpdateCameraRotationText();
         SceneViewer?.MarkRenderDirty();
         SceneViewer?.Focus();
     }
@@ -786,6 +981,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         OpenFiles.Clear();
         HasAnyFileOpen = false;
         ResetCameraPositionText();
+        ResetCameraRotationText();
         TextBelowActors = "";
         IsDirty = false;
         UndoHistory.Clear();
