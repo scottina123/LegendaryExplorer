@@ -143,6 +143,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool isLoadingNewData;
         private int ForcedRescanOffset;
         private bool ArrayElementJustAdded;
+        private string PendingAddedArrayNodePath;
+        private int PendingAddedArrayElementIndex = -1;
 
         /// <summary>
         /// Reference to the package that the property we copied from is from
@@ -986,14 +988,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     topLevelTree.ChildrenProperties.Add(errorNode);
                 }
 
-                if (RescanSelectionOffset != 0)
+                if (PendingAddedArrayNodePath != null || RescanSelectionOffset != 0)
                 {
-                    UPropertyTreeViewEntry itemToSelect = FindNodeByPath(topLevelTree, SelectedNodePath)
+                    UPropertyTreeViewEntry itemToSelect = null;
+                    if (PendingAddedArrayNodePath != null)
+                    {
+                        var arrayNode = FindNodeByPath(topLevelTree, PendingAddedArrayNodePath);
+                        if (arrayNode != null
+                            && PendingAddedArrayElementIndex >= 0
+                            && PendingAddedArrayElementIndex < arrayNode.ChildrenProperties.Count)
+                        {
+                            itemToSelect = arrayNode.ChildrenProperties[PendingAddedArrayElementIndex];
+                        }
+                    }
+
+                    itemToSelect ??= FindNodeByPath(topLevelTree, SelectedNodePath)
                         ?? topLevelTree.FlattenTree().LastOrDefault(x => x.Property != null && x.Property.StartOffset == RescanSelectionOffset);
                     if (itemToSelect != null)
                     {
                         UPropertyTreeViewEntry cachedSelectedItem = itemToSelect;
-                        if (ArrayElementJustAdded)
+                        if (ArrayElementJustAdded && PendingAddedArrayNodePath == null)
                         {
                             //Ensure we are at array level so we can choose the last item
                             if (!(itemToSelect.Property is ArrayPropertyBase))
@@ -1019,6 +1033,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                     RescanSelectionOffset = 0;
                     SelectedNodePath = null;
+                    PendingAddedArrayNodePath = null;
+                    PendingAddedArrayElementIndex = -1;
                 }
             }
         }
@@ -2868,6 +2884,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     return;
                 }
+
+                PendingAddedArrayNodePath = GetNodePath(tvi.Property is ArrayPropertyBase ? tvi : tvi.UPParent);
+                PendingAddedArrayElementIndex = insertIndex + count - 1;
 
                 if (TryGetSynchronizedStructArrays(tvi, propertyToAddItemTo, out var syncedArrays))
                 {
