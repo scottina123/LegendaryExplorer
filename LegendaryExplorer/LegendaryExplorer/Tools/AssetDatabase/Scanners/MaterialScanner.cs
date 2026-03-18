@@ -170,6 +170,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
 
                                         pSet = new MatSetting(exprsnName, paramName, linearColor);
                                         break;
+                                    case "MaterialExpressionTextureSample":
+                                    case "MaterialExpressionTextureSampleParameter2D":
+                                    case "MaterialExpressionTextureSampleParameterCube":
+                                        pSet = new MatSetting(exprsnName, paramName, GetReferencedTextureName(exprsnProps, exprsn.FileRef));
+                                        break;
                                     default:
                                         pSet = new MatSetting(exprsnName, paramName, null);
                                         break;
@@ -209,7 +214,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
 
                 foreach (var textureParameter in TextureParameter.GetTextureParameters(e.Export, true) ?? [])
                 {
-                    mSets.Add(new MatSetting("TextureParameterValue", textureParameter.ParameterName, textureParameter.ParameterValue.ToString()));
+                    mSets.Add(new MatSetting("TextureParameterValue", textureParameter.ParameterName, GetReferencedTextureName(textureParameter.ParameterValue, e.Export.FileRef)));
                 }
 
                 mSets.Add(new MatSetting("IsInstance", "true", null));
@@ -241,6 +246,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
+
+        private static string GetReferencedTextureName(PropertyCollection properties, IMEPackage package)
+        {
+            return GetReferencedTextureName(properties?.GetProp<ObjectProperty>("Texture")?.Value ?? 0, package);
+        }
+
+        private static string GetReferencedTextureName(int textureUIndex, IMEPackage package)
+        {
+            return textureUIndex != 0 && package?.TryGetEntry(textureUIndex, out var textureEntry) == true
+                ? textureEntry.ObjectName.Instanced
+                : null;
+        }
+
         private void TryCreateMatFilter(Property p, ExportScanInfo e, ConcurrentAssetDB db)
         {
             if (p is BoolProperty bp)

@@ -157,8 +157,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v9.4: Material instance usage-target metadata is resolved during collation instead of scan-time package traversal.
-        public const string dbCurrentBuild = "9.4"; //If changes are made that invalidate old databases edit this.
+        // v9.5: Base material texture expressions now persist referenced texture names for material texture-name filtering.
+        public const string dbCurrentBuild = "9.5"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private int _currentView;
@@ -307,6 +307,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set
             {
                 if (SetProperty(ref _selectedMeshTypeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedMaterialTextureNameFilter = string.Empty;
+        public string SelectedMaterialTextureNameFilter
+        {
+            get => _selectedMaterialTextureNameFilter;
+            set
+            {
+                if (SetProperty(ref _selectedMaterialTextureNameFilter, value))
                 {
                     Filter();
                 }
@@ -909,6 +922,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SelectedVfxTypeFilter = AllVfxFilterOption;
             SelectedAnimationTypeFilter = AllAnimationFilterOption;
             SelectedMaterialTypeFilter = AllMaterialFilterOption;
+            SelectedMaterialTextureNameFilter = string.Empty;
             RefreshMaterialUsageDropdownFilters();
             RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
@@ -1544,6 +1558,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return int.TryParse(textureCountFilter, out int countFilter) && textureCount == countFilter;
         }
 
+        private static bool MatchesMaterialTextureNameFilter(MaterialRecord material, string textureNameFilter)
+        {
+            if (string.IsNullOrWhiteSpace(textureNameFilter))
+            {
+                return true;
+            }
+
+            return MaterialFilter.GetTextureSettings(material)
+                .Any(setting => !string.IsNullOrWhiteSpace(setting?.Parm2)
+                    && setting.Parm2.Contains(textureNameFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
         private bool MaterialTabFilter(object obj)
         {
             if (obj is not MaterialRecord materialRecord)
@@ -1557,6 +1583,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             if (!MatchesMaterialUsageFilter(materialRecord, SelectedMaterialUsageFilters))
+            {
+                return false;
+            }
+
+            if (!MatchesMaterialTextureNameFilter(materialRecord, SelectedMaterialTextureNameFilter))
             {
                 return false;
             }
