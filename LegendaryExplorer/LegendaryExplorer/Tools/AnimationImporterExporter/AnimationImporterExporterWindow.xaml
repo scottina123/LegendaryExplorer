@@ -53,6 +53,8 @@
                 </MenuItem>
 
                 <MenuItem Header="Tools" Padding="4">
+                    <MenuItem Header="Import New AnimSequence(s) from Package" Command="{Binding ImportFromPackageCommand}" />
+                    <MenuItem Header="Replace AnimSequence from Package" Command="{Binding ReplaceFromPackageCommand}" />
                     <MenuItem Header="Import New AnimSequence(s) from PSA" Command="{Binding ImportFromPSACommand}" />
                     <MenuItem Header="Replace AnimSequence from PSA" Command="{Binding ReplaceFromPSACommand}" />
                     <MenuItem Header="Import New AnimSequence(s) from UDK" Command="{Binding ImportFromUDKCommand}"
@@ -152,6 +154,9 @@
                                 </MenuItem>
                                 <MenuItem Header="Replace AnimSequence from PSA"
                                           Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromPSACommand}"
+                                          sharedUi:Bindings.VisibilityToEnabled="True" />
+                                <MenuItem Header="Replace AnimSequence from Package"
+                                          Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromPackageCommand}"
                                           sharedUi:Bindings.VisibilityToEnabled="True" />
                                 <MenuItem Header="Replace AnimSequence from UDK"
                                           Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ReplaceFromUDKCommand}"

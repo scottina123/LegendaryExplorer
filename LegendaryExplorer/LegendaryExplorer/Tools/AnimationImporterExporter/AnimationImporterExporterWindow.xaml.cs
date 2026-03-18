@@ -109,6 +109,8 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
         public ICommand OpenFileCommand { get; set; }
         public ICommand SaveFileCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
+        public ICommand ImportFromPackageCommand { get; set; }
+        public ICommand ReplaceFromPackageCommand { get; set; }
         public ICommand ImportFromUDKCommand { get; set; }
         public ICommand ReplaceFromUDKCommand { get; set; }
         public ICommand ImportFromPSACommand { get; set; }
@@ -122,6 +124,8 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             SaveFileCommand = new GenericCommand(SaveFile, IsPackageLoaded);
             SaveAsCommand = new GenericCommand(SaveFileAs, IsPackageLoaded);
 
+            ImportFromPackageCommand = new GenericCommand(ImportFromPackage, IsPackageLoaded);
+            ReplaceFromPackageCommand = new GenericCommand(ReplaceFromPackage, IsAnimSequenceSelected);
             ImportFromUDKCommand = new GenericCommand(ImportFromUDK, IsPackageLoaded);
             ReplaceFromUDKCommand = new GenericCommand(ReplaceFromUDK, IsAnimSequenceSelected);
             ImportFromPSACommand = new GenericCommand(ImportFromPSA, IsPackageLoaded);
@@ -156,6 +160,63 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     MessageBox.Show("Done!", "PSA Export", MessageBoxButton.OK);
                 }
             }
+        }
+
+        private void ReplaceFromPackage()
+        {
+            if (CurrentExport.ClassName != "AnimSequence")
+            {
+                return;
+            }
+
+            string sourceFilePath = PromptForAnimationSourcePackage();
+            if (sourceFilePath == null)
+            {
+                return;
+            }
+
+            using var sourcePackage = MEPackageHandler.OpenMEPackage(sourceFilePath);
+            if (!ValidateAnimationSourcePackage(sourcePackage, "Replace From Package"))
+            {
+                return;
+            }
+
+            var selectedExport = EntrySelector.GetEntry<ExportEntry>(this, sourcePackage, "Select an AnimSequence", entry => entry.ClassName == "AnimSequence");
+            if (selectedExport is null)
+            {
+                return;
+            }
+
+            var currentSequence = CurrentExport.GetBinaryData<AnimSequence>();
+            var selectedAnimSequence = selectedExport.GetBinaryData<AnimSequence>();
+            if (!currentSequence.Bones.SequenceEqual(selectedAnimSequence.Bones))
+            {
+                MessageBox.Show("This animation is not compatible. TrackBoneNames must be identical to replace this animation.", "", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var props = CurrentExport.GetProperties();
+            if (props.GetProp<EnumProperty>("RotationCompressionFormat") is not EnumProperty compressionFormatEnum ||
+                !Enum.TryParse(compressionFormatEnum.Value, out AnimationCompressionFormat rotationCompressionFormat))
+            {
+                rotationCompressionFormat = AnimationCompressionFormat.ACF_Float96NoW;
+            }
+
+            if (!TryGetRotationCompressionFormat(ref rotationCompressionFormat))
+            {
+                return;
+            }
+
+            var originalSeqName = props.GetProp<NameProperty>("SequenceName");
+            selectedAnimSequence.UpdateProps(props, CurrentExport.Game, rotationCompressionFormat);
+            if (originalSeqName != null)
+            {
+                props.AddOrReplaceProp(originalSeqName);
+            }
+
+            CurrentExport.WriteProperties(props);
+            CurrentExport.WriteBinary(selectedAnimSequence);
+            MessageBox.Show("Done!", "Replace From Package", MessageBoxButton.OK);
         }
 
         private void ReplaceFromPSA()
@@ -301,6 +362,51 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
             }
         }
 
+        private void ImportFromPackage()
+        {
+            string sourceFilePath = PromptForAnimationSourcePackage();
+            if (sourceFilePath == null)
+            {
+                return;
+            }
+
+            using var sourcePackage = MEPackageHandler.OpenMEPackage(sourceFilePath);
+            if (!ValidateAnimationSourcePackage(sourcePackage, "Import From Package"))
+            {
+                return;
+            }
+
+            var selectedExport = EntrySelector.GetEntry<ExportEntry>(this, sourcePackage, "Select an AnimSequence or BioAnimSetData",
+                entry => entry.ClassName is "AnimSequence" or "BioAnimSetData");
+            if (selectedExport is null)
+            {
+                return;
+            }
+
+            List<ExportEntry> selectedAnimSequences = selectedExport.ClassName switch
+            {
+                "AnimSequence" => [selectedExport],
+                "BioAnimSetData" => GetAnimSequencesForBioAnimSetData(sourcePackage, selectedExport),
+                _ => []
+            };
+
+            if (selectedAnimSequences.IsEmpty())
+            {
+                MessageBox.Show("The selected source does not contain any AnimSequences.", "", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            foreach (ExportEntry sourceAnimSequence in selectedAnimSequences)
+            {
+                var rop = CreateAnimationImportRelinkerOptions();
+                IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceAnimSequence.ParentFullPath, sourcePackage, Pcc, rop);
+                EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceAnimSequence, Pcc, parent, true, rop, out _);
+            }
+
+            AnimSequenceExports.ReplaceAll(Pcc.Exports.Where(exp => exp.ClassName == "AnimSequence"));
+            MessageBox.Show("Done!", "Import From Package", MessageBoxButton.OK);
+        }
+
         private void ReplaceFromUDK()
         {
             if (CurrentExport.ClassName == "AnimSequence")
@@ -444,6 +550,55 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
         private bool IsAnimSequenceSelected() => CurrentExport?.ClassName == "AnimSequence";
 
         private bool IsPackageLoaded() => Pcc != null;
+
+        private RelinkerOptionsPackage CreateAnimationImportRelinkerOptions() => new()
+        {
+            ImportExportDependencies = true,
+            PortImportsMemorySafe = true,
+            PortExportsAsImportsWhenPossible = true,
+        };
+
+        private static List<ExportEntry> GetAnimSequencesForBioAnimSetData(IMEPackage package, ExportEntry bioAnimSetData)
+        {
+            return package.Exports
+                .Where(exp => exp.ClassName == "AnimSequence" && exp.GetProperty<ObjectProperty>("m_pBioAnimSetData")?.Value == bioAnimSetData.UIndex)
+                .ToList();
+        }
+
+        private string PromptForAnimationSourcePackage()
+        {
+            var dlg = AppDirectories.GetOpenPackageDialog();
+            dlg.Title = "Select source package";
+            if (dlg.ShowDialog(this) != true)
+            {
+                return null;
+            }
+
+            if (Path.GetFullPath(dlg.FileName).Equals(Path.GetFullPath(Pcc.FilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Choose a different source file than the package currently loaded in this tool.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+
+            return dlg.FileName;
+        }
+
+        private bool ValidateAnimationSourcePackage(IMEPackage sourcePackage, string operationName)
+        {
+            if (sourcePackage.Game == MEGame.UDK)
+            {
+                MessageBox.Show($"Use the UDK import commands for {operationName.ToLowerInvariant()} when working with UDK packages.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (sourcePackage.Game != Pcc.Game)
+            {
+                MessageBox.Show($"{operationName} only supports source packages from the same game as the currently loaded package.", "", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            return true;
+        }
 
         #endregion
 

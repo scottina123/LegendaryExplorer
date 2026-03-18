@@ -54,6 +54,13 @@
                             <TextBlock Text="  Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"/>
                         </DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Source Package: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="SourcePackageComboBox"
+                                      ItemsSource="{Binding AvailableAnimationSources}"
+                                      SelectedItem="{Binding SelectedAnimationSource}"
+                                      DisplayMemberPath="DisplayName"/>
+                        </DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding AnimationStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
                         <ListBox x:Name="AnimationListBox" 
                                  ItemsSource="{Binding FilteredAnimations}"
@@ -86,6 +93,11 @@
 
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>
+                                <GroupBox x:Name="GbGestureImportTarget" Header="Target BioGestureData" Padding="8" Margin="0,0,0,8">
+                                    <ComboBox ItemsSource="{Binding GestureImportTargets}"
+                                              SelectedItem="{Binding SelectedGestureImportTarget}"
+                                              DisplayMemberPath="DisplayName"/>
+                                </GroupBox>
                                 <!-- Group Selection -->
                                 <GroupBox x:Name="GbPropertyGroups" Header="Animation Property Groups" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
@@ -314,6 +326,13 @@
                     <!-- Right: Ambient Performance List -->
                     <DockPanel Grid.Column="2" Margin="5,0,0,0">
                         <TextBlock DockPanel.Dock="Top" Text="Ambient Performances from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                            <TextBlock Text="Source Package: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="AmbPerfSourcePackageComboBox"
+                                      ItemsSource="{Binding AvailableAmbPerfSources}"
+                                      SelectedItem="{Binding SelectedAmbPerfSource}"
+                                      DisplayMemberPath="DisplayName"/>
+                        </DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                             <TextBlock Text="Search: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                             <TextBox x:Name="AmbPerfSearchBox" TextChanged="AmbPerfSearchBox_TextChanged"/>

@@ -38,6 +38,19 @@ namespace LegendaryExplorer.Dialogs
         public event PropertyChangedEventHandler PropertyChanged;
     }
 
+    public sealed class AnimationSourceOption
+    {
+        public string DisplayName { get; init; }
+        public string FilePath { get; init; }
+        public int UIndex { get; init; }
+    }
+
+    public sealed class GestureImportTargetOption
+    {
+        public int? GestureIndex { get; init; }
+        public string DisplayName { get; init; }
+    }
+
     public partial class GestureAnimationImporterDialog : Window, INotifyPropertyChanged
     {
         private readonly ExportEntry _gestureTrackExport;
@@ -136,7 +149,14 @@ namespace LegendaryExplorer.Dialogs
         public AnimationRecord SelectedAnimation
         {
             get => _selectedAnimation;
-            set { _selectedAnimation = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanImport)); OnPropertyChanged(nameof(SelectedAnimationDetails)); }
+            set
+            {
+                _selectedAnimation = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanImport));
+                OnPropertyChanged(nameof(SelectedAnimationDetails));
+                RefreshSelectedAnimationSources();
+            }
         }
 
         public bool CanImport => SelectedAnimation != null;
@@ -148,6 +168,34 @@ namespace LegendaryExplorer.Dialogs
 
         public ObservableCollectionExtended<AnimationRecord> FilteredAnimations { get; } = new();
         public ObservableCollectionExtended<GestureEntryViewModel> GestureEntries { get; } = new();
+        public ObservableCollectionExtended<AnimationSourceOption> AvailableAnimationSources { get; } = new();
+        public ObservableCollectionExtended<GestureImportTargetOption> GestureImportTargets { get; } = new();
+
+        private AnimationSourceOption _selectedAnimationSource;
+        public AnimationSourceOption SelectedAnimationSource
+        {
+            get => _selectedAnimationSource;
+            set
+            {
+                _selectedAnimationSource = value;
+                OnPropertyChanged();
+                if (SelectedAnimation != null)
+                {
+                    LoadAnimationPreview(SelectedAnimation, AnimPreviewControl);
+                }
+            }
+        }
+
+        private GestureImportTargetOption _selectedGestureImportTarget;
+        public GestureImportTargetOption SelectedGestureImportTarget
+        {
+            get => _selectedGestureImportTarget;
+            set
+            {
+                _selectedGestureImportTarget = value;
+                OnPropertyChanged();
+            }
+        }
 
         private GestureEntryViewModel _selectedGestureEntry;
         public GestureEntryViewModel SelectedGestureEntry
@@ -206,10 +254,33 @@ namespace LegendaryExplorer.Dialogs
         public AnimationRecord SelectedAmbPerf
         {
             get => _selectedAmbPerf;
-            set { _selectedAmbPerf = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanImportAmbPerf)); }
+            set
+            {
+                _selectedAmbPerf = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanImportAmbPerf));
+                RefreshSelectedAmbPerfSources();
+            }
         }
 
         public bool CanImportAmbPerf => SelectedAmbPerf != null;
+
+        public ObservableCollectionExtended<AnimationSourceOption> AvailableAmbPerfSources { get; } = new();
+
+        private AnimationSourceOption _selectedAmbPerfSource;
+        public AnimationSourceOption SelectedAmbPerfSource
+        {
+            get => _selectedAmbPerfSource;
+            set
+            {
+                _selectedAmbPerfSource = value;
+                OnPropertyChanged();
+                if (SelectedAmbPerf != null)
+                {
+                    LoadAmbPerfPreview(SelectedAmbPerf);
+                }
+            }
+        }
 
         private string _ambPerfStatusText = "";
         public string AmbPerfStatusText
@@ -249,6 +320,7 @@ namespace LegendaryExplorer.Dialogs
             // Hide gesture-track-specific UI for non-BioEvtSysTrackGesture targets
             if (UsesDefaultPoseSetTarget || IsSFXSkeletalMeshActor)
             {
+                GbGestureImportTarget.Visibility = Visibility.Collapsed;
                 GbPropertyGroups.Visibility = Visibility.Collapsed;
                 GbGestureKeySettings.Visibility = Visibility.Collapsed;
                 EditGesturesTab.Visibility = Visibility.Collapsed;
@@ -277,6 +349,8 @@ namespace LegendaryExplorer.Dialogs
             _allAnimations = [];
             _skeletonMeshes = [];
             SelectedAnimation = null;
+            AvailableAnimationSources.ClearEx();
+            SelectedAnimationSource = null;
             FilteredAnimations.ReplaceAll(_allAnimations);
             PreviewMeshComboBox.ItemsSource = null;
             PreviewMeshComboBox.SelectedItem = null;
@@ -286,6 +360,8 @@ namespace LegendaryExplorer.Dialogs
             {
                 _allAmbPerfs = [];
                 SelectedAmbPerf = null;
+                AvailableAmbPerfSources.ClearEx();
+                SelectedAmbPerfSource = null;
                 FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
                 AmbPerfMeshComboBox.ItemsSource = null;
                 AmbPerfMeshComboBox.SelectedItem = null;
@@ -367,6 +443,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void LoadExistingGestures()
         {
+            int? selectedGestureIndex = SelectedGestureImportTarget?.GestureIndex;
             GestureEntries.ClearEx();
             var gestures = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aGestures");
             var trackKeys = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys");
@@ -386,6 +463,42 @@ namespace LegendaryExplorer.Dialogs
             // Load track-level starting pose properties
             EditStartingPoseSet = _gestureTrackExport.GetProperty<NameProperty>("nmStartingPoseSet")?.Value.Instanced ?? "None";
             EditStartingPoseAnim = _gestureTrackExport.GetProperty<NameProperty>("nmStartingPoseAnim")?.Value.Instanced ?? "None";
+
+            RefreshGestureImportTargets(selectedGestureIndex);
+        }
+
+        private void RefreshGestureImportTargets(int? preferredGestureIndex = null)
+        {
+            List<GestureImportTargetOption> options =
+            [
+                new GestureImportTargetOption { DisplayName = "Create New BioGestureData", GestureIndex = null },
+                .. GestureEntries.Select(entry => new GestureImportTargetOption
+                {
+                    GestureIndex = entry.Index,
+                    DisplayName = $"BioGestureData {entry.Index}: {DescribeGestureEntry(entry.GestureStruct)}"
+                })
+            ];
+
+            GestureImportTargets.ReplaceAll(options);
+            SelectedGestureImportTarget = options.FirstOrDefault(option => option.GestureIndex == preferredGestureIndex) ?? options[0];
+        }
+
+        private static string DescribeGestureEntry(StructProperty gestureStruct)
+        {
+            if (gestureStruct == null)
+            {
+                return "Empty";
+            }
+
+            string[] animationNames =
+            [
+                gestureStruct.GetProp<NameProperty>("nmPoseAnim")?.Value.Instanced,
+                gestureStruct.GetProp<NameProperty>("nmGestureAnim")?.Value.Instanced,
+                gestureStruct.GetProp<NameProperty>("nmTransitionAnim")?.Value.Instanced,
+            ];
+
+            string firstName = animationNames.FirstOrDefault(name => !string.IsNullOrWhiteSpace(name) && name != "None");
+            return firstName ?? "No animation assigned";
         }
 
         private void LoadGestureProperties()
@@ -512,7 +625,7 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            if (!TryResolveAnimationSource(anim, out string filePath, out int animUIndex))
+            if (!TryResolveAnimationSource(anim, out string filePath, out int animUIndex, ReferenceEquals(anim, SelectedAnimation) ? SelectedAnimationSource : null))
             {
                 previewControl.ClearAnimation();
                 return;
@@ -533,12 +646,7 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private string GetFilePath(int fileKey)
         {
-            if (fileKey < 0 || fileKey >= _fileListExtended.Count) return null;
-            var (fileName, contentDir) = _fileListExtended[fileKey];
-            string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
-            if (rootPath == null || !Directory.Exists(rootPath)) return null;
-            return Directory.EnumerateFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories)
-                .FirstOrDefault(f => f.Contains(contentDir));
+            return TryGetFilePath(fileKey, out string filePath, out _, out _) ? filePath : null;
         }
 
         private void ImportAnimation_Click(object sender, RoutedEventArgs e)
@@ -586,7 +694,7 @@ namespace LegendaryExplorer.Dialogs
                 else
                 {
                     // For BioEvtSysTrackGesture, create BioGestureData and BioTrackKey
-                    AddGestureEntry(setName, seqName, poseChecked, gestureChecked, transitionChecked, startingPoseChecked);
+                    AddGestureEntry(setName, seqName, poseChecked, gestureChecked, transitionChecked, startingPoseChecked, SelectedGestureImportTarget?.GestureIndex);
                 }
 
                 // Reload the gesture list
@@ -607,9 +715,10 @@ namespace LegendaryExplorer.Dialogs
         /// and sets m_bUseDynamicAnimSets on the gesture track.
         /// Returns the (setName, seqName) for use in gesture property assignment.
         /// </summary>
-        private (string setName, string seqName) ImportAnimationFromDatabase(AnimationRecord animation)
+        private (string setName, string seqName) ImportAnimationFromDatabase(AnimationRecord animation, AnimationSourceOption preferredSource = null)
         {
-            if (!TryResolveAnimationSource(animation, out string sourceFilePath, out int animUIndex))
+            preferredSource ??= ReferenceEquals(animation, SelectedAnimation) ? SelectedAnimationSource : null;
+            if (!TryResolveAnimationSource(animation, out string sourceFilePath, out int animUIndex, preferredSource))
             {
                 throw new Exception("Could not resolve the animation's source file. Make sure the game is properly configured.");
             }
@@ -617,8 +726,15 @@ namespace LegendaryExplorer.Dialogs
             using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(sourceFilePath);
             ExportEntry sourceAnimSeq = sourcePackage.GetUExport(animUIndex);
 
-            IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceAnimSeq.ParentFullPath, sourcePackage, _pcc, new RelinkerOptionsPackage());
-            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceAnimSeq, _pcc, parent, true, new RelinkerOptionsPackage(), out IEntry importedEntry);
+            var relinkerOptions = new RelinkerOptionsPackage
+            {
+                ImportExportDependencies = true,
+                PortImportsMemorySafe = true,
+                PortExportsAsImportsWhenPossible = true,
+            };
+
+            IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceAnimSeq.ParentFullPath, sourcePackage, _pcc, relinkerOptions);
+            EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceAnimSeq, _pcc, parent, true, relinkerOptions, out IEntry importedEntry);
             ExportEntry importedAnimSeq = (ExportEntry)importedEntry;
 
             NameReference seqNameRef = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
@@ -638,30 +754,113 @@ namespace LegendaryExplorer.Dialogs
             return (setName, seqNameRef.Name);
         }
 
-        private bool TryResolveAnimationSource(AnimationRecord anim, out string filePath, out int uIndex)
+        private bool TryResolveAnimationSource(AnimationRecord anim, out string filePath, out int uIndex, AnimationSourceOption preferredSource = null)
         {
             filePath = null;
             uIndex = 0;
             if (anim?.Usages == null || !anim.Usages.Any()) return false;
+
+            if (preferredSource != null && File.Exists(preferredSource.FilePath))
+            {
+                filePath = preferredSource.FilePath;
+                uIndex = preferredSource.UIndex;
+                return true;
+            }
 
             foreach (var usage in anim.Usages)
             {
                 int fileListIndex = usage.FileKey;
                 uIndex = usage.UIndex;
 
-                if (fileListIndex < 0 || fileListIndex >= _fileListExtended.Count) continue;
-
-                var (fileName, contentDir) = _fileListExtended[fileListIndex];
-                string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
-                if (rootPath == null || !Directory.Exists(rootPath)) continue;
-
-                filePath = Directory.EnumerateFiles(rootPath, $"{fileName}.*", SearchOption.AllDirectories)
-                    .FirstOrDefault(f => f.Contains(contentDir));
+                if (!TryGetFilePath(fileListIndex, out filePath, out _, out _)) continue;
 
                 if (filePath != null) return true;
             }
 
             return false;
+        }
+
+        private void RefreshSelectedAnimationSources()
+        {
+            List<AnimationSourceOption> options = GetAnimationSourceOptions(SelectedAnimation);
+            AvailableAnimationSources.ReplaceAll(options);
+
+            if (options.Count == 0)
+            {
+                SelectedAnimationSource = null;
+                return;
+            }
+
+            if (SelectedAnimationSource != null)
+            {
+                AnimationSourceOption matchingOption = options.FirstOrDefault(option =>
+                    option.UIndex == SelectedAnimationSource.UIndex &&
+                    option.FilePath.CaseInsensitiveEquals(SelectedAnimationSource.FilePath));
+                if (matchingOption != null)
+                {
+                    SelectedAnimationSource = matchingOption;
+                    return;
+                }
+            }
+
+            SelectedAnimationSource = options[0];
+        }
+
+        private List<AnimationSourceOption> GetAnimationSourceOptions(AnimationRecord anim)
+        {
+            if (anim?.Usages == null || !anim.Usages.Any())
+            {
+                return [];
+            }
+
+            var options = new List<AnimationSourceOption>();
+            foreach (AnimUsage usage in anim.Usages)
+            {
+                if (!TryGetFilePath(usage.FileKey, out string filePath, out string fileName, out string contentDir))
+                {
+                    continue;
+                }
+
+                if (options.Any(option => option.UIndex == usage.UIndex && option.FilePath.CaseInsensitiveEquals(filePath)))
+                {
+                    continue;
+                }
+
+                options.Add(new AnimationSourceOption
+                {
+                    DisplayName = $"{fileName} ({contentDir})",
+                    FilePath = filePath,
+                    UIndex = usage.UIndex,
+                });
+            }
+
+            return options;
+        }
+
+        private bool TryGetFilePath(int fileKey, out string filePath, out string fileName, out string contentDir)
+        {
+            filePath = null;
+            fileName = null;
+            contentDir = null;
+
+            if (fileKey < 0 || fileKey >= _fileListExtended.Count)
+            {
+                return false;
+            }
+
+            (fileName, contentDir) = _fileListExtended[fileKey];
+            string fileNamePattern = fileName;
+            string contentDirPath = contentDir;
+            string rootPath = MEDirectories.GetDefaultGamePath(_selectedAnimSourceGame);
+            if (rootPath == null || !Directory.Exists(rootPath))
+            {
+                return false;
+            }
+
+            filePath = Directory.EnumerateFiles(rootPath, $"{fileNamePattern}.*", SearchOption.AllDirectories)
+                .FirstOrDefault(f => f.Contains(contentDirPath));
+
+            return filePath != null;
         }
 
         /// <summary>
@@ -974,7 +1173,7 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private void AddGestureEntry(string animSetName, string animSeqName, bool pose, bool gesture, bool transition, bool startingPose)
+        private void AddGestureEntry(string animSetName, string animSeqName, bool pose, bool gesture, bool transition, bool startingPose, int? targetGestureIndex)
         {
             MEGame game = _pcc.Game;
 
@@ -1029,12 +1228,26 @@ namespace LegendaryExplorer.Dialogs
 
             // Add to m_aGestures
             var gestures = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aGestures") ?? new ArrayProperty<StructProperty>("m_aGestures");
-            gestures.Add(gestureStruct);
+            if (targetGestureIndex is int gestureIndex && gestureIndex >= 0 && gestureIndex < gestures.Count)
+            {
+                gestures[gestureIndex] = gestureStruct;
+            }
+            else
+            {
+                gestures.Add(gestureStruct);
+            }
             _gestureTrackExport.WriteProperty(gestures);
 
             // Add to m_aTrackKeys
             var trackKeys = _gestureTrackExport.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys") ?? new ArrayProperty<StructProperty>("m_aTrackKeys");
-            trackKeys.Add(trackKeyStruct);
+            if (targetGestureIndex is int trackKeyIndex && trackKeyIndex >= 0 && trackKeyIndex < trackKeys.Count)
+            {
+                trackKeys[trackKeyIndex] = trackKeyStruct;
+            }
+            else
+            {
+                trackKeys.Add(trackKeyStruct);
+            }
             _gestureTrackExport.WriteProperty(trackKeys);
 
             // Group 4: Starting Pose (top-level properties on the track, not per-gesture)
@@ -1090,6 +1303,7 @@ namespace LegendaryExplorer.Dialogs
             CustomWindowChrome.ApplyCustomChrome(pickerWindow);
 
             AnimationRecord selectedAnim = null;
+            AnimationSourceOption selectedSource = null;
             IMEPackage pickerAnimPcc = null;
 
             // Preview control
@@ -1127,17 +1341,27 @@ namespace LegendaryExplorer.Dialogs
                 ItemsSource = AvailableSourceGames,
                 SelectedItem = _selectedAnimSourceGame
             };
+            var sourcePackageCombo = new ComboBox
+            {
+                Margin = new Thickness(5, 0, 5, 4),
+                DisplayMemberPath = "DisplayName"
+            };
             var searchPanel = new DockPanel { Margin = new Thickness(5, 0, 5, 4) };
             var sourceGameLabel = new TextBlock { Text = "Source Game: ", VerticalAlignment = VerticalAlignment.Center };
             var searchLabel = new TextBlock { Text = "  Search: ", VerticalAlignment = VerticalAlignment.Center };
+            var sourcePackagePanel = new DockPanel { Margin = new Thickness(5, 0, 5, 4) };
+            var sourcePackageLabel = new TextBlock { Text = "Source Package: ", VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(sourceGameLabel, Dock.Left);
             DockPanel.SetDock(sourceGameCombo, Dock.Left);
             DockPanel.SetDock(searchLabel, Dock.Left);
+            DockPanel.SetDock(sourcePackageLabel, Dock.Left);
             searchBox.Margin = new Thickness(0);
             searchPanel.Children.Add(sourceGameLabel);
             searchPanel.Children.Add(sourceGameCombo);
             searchPanel.Children.Add(searchLabel);
             searchPanel.Children.Add(searchBox);
+            sourcePackagePanel.Children.Add(sourcePackageLabel);
+            sourcePackagePanel.Children.Add(sourcePackageCombo);
             var statusText = new TextBlock
             {
                 Margin = new Thickness(5, 0, 5, 4),
@@ -1177,12 +1401,34 @@ namespace LegendaryExplorer.Dialogs
                 statusText.Text = $"{filteredAnimations.Count} / {_allAnimations.Count} animations shown.";
             }
 
+            void RefreshPickerSourceOptions(AnimationRecord anim)
+            {
+                List<AnimationSourceOption> options = GetAnimationSourceOptions(anim);
+                sourcePackageCombo.ItemsSource = options;
+
+                if (options.Count == 0)
+                {
+                    selectedSource = null;
+                    sourcePackageCombo.SelectedItem = null;
+                    return;
+                }
+
+                AnimationSourceOption matchingOption = selectedSource != null
+                    ? options.FirstOrDefault(option => option.UIndex == selectedSource.UIndex && option.FilePath.CaseInsensitiveEquals(selectedSource.FilePath))
+                    : null;
+                selectedSource = matchingOption ?? options[0];
+                sourcePackageCombo.SelectedItem = selectedSource;
+            }
+
             void RefreshPickerAnimationBrowser()
             {
                 selectedAnim = null;
+                selectedSource = null;
                 listBox.SelectedItem = null;
                 detailsText.Text = GetAnimationDetailsText(null);
                 pickerPreview.ClearAnimation();
+                sourcePackageCombo.ItemsSource = null;
+                sourcePackageCombo.SelectedItem = null;
                 meshCombo.ItemsSource = _skeletonMeshes;
                 meshCombo.SelectedItem = PreviewMeshComboBox.SelectedItem as MeshRecord;
                 if (meshCombo.SelectedItem is MeshRecord selectedMesh)
@@ -1198,10 +1444,12 @@ namespace LegendaryExplorer.Dialogs
             listBox.SelectionChanged += (s, args) =>
             {
                 var anim = listBox.SelectedItem as AnimationRecord;
+                selectedAnim = anim;
+                RefreshPickerSourceOptions(anim);
                 detailsText.Text = GetAnimationDetailsText(anim);
                 if (anim != null && anim.Usages.Any())
                 {
-                    if (TryResolveAnimationSource(anim, out string fp, out int uIdx))
+                    if (TryResolveAnimationSource(anim, out string fp, out int uIdx, selectedSource))
                     {
                         pickerAnimPcc?.Dispose();
                         pickerAnimPcc = MEPackageHandler.OpenMEPackage(fp);
@@ -1216,6 +1464,23 @@ namespace LegendaryExplorer.Dialogs
                 {
                     pickerPreview.ClearAnimation();
                 }
+            };
+            sourcePackageCombo.SelectionChanged += (s, args) =>
+            {
+                selectedSource = sourcePackageCombo.SelectedItem as AnimationSourceOption;
+                if (selectedAnim != null && TryResolveAnimationSource(selectedAnim, out string fp, out int uIdx, selectedSource))
+                {
+                    pickerAnimPcc?.Dispose();
+                    pickerAnimPcc = MEPackageHandler.OpenMEPackage(fp);
+                    if (pickerAnimPcc.IsUExport(uIdx))
+                    {
+                        pickerPreview.LoadAnimSequence(pickerAnimPcc.GetUExport(uIdx));
+                        pickerPreview.Play();
+                        return;
+                    }
+                }
+
+                pickerPreview.ClearAnimation();
             };
             listBox.MouseDoubleClick += (s, args) =>
             {
@@ -1254,9 +1519,11 @@ namespace LegendaryExplorer.Dialogs
             var listHeader = new TextBlock { Text = "Animations from Asset Database", FontWeight = FontWeights.Bold, Margin = new Thickness(5, 0, 5, 4) };
             DockPanel.SetDock(listHeader, Dock.Top);
             DockPanel.SetDock(searchPanel, Dock.Top);
+            DockPanel.SetDock(sourcePackagePanel, Dock.Top);
             DockPanel.SetDock(statusText, Dock.Top);
             listPanel.Children.Add(listHeader);
             listPanel.Children.Add(searchPanel);
+            listPanel.Children.Add(sourcePackagePanel);
             listPanel.Children.Add(statusText);
             listPanel.Children.Add(listBox);
 
@@ -1305,7 +1572,7 @@ namespace LegendaryExplorer.Dialogs
             if (pickerWindow.ShowDialog() != true || selectedAnim == null)
                 return null;
 
-            return ImportAnimationFromDatabase(selectedAnim);
+            return ImportAnimationFromDatabase(selectedAnim, selectedSource);
         }
 
         private void BrowsePoseAnim_Click(object sender, RoutedEventArgs e)
@@ -1538,9 +1805,7 @@ namespace LegendaryExplorer.Dialogs
 
             // Ambient performances are SFXAmbPerfGameData, not AnimSequences.
             // Find the first AnimSequence child to preview.
-            var usage = anim.Usages.First();
-            string filePath = GetFilePath(usage.FileKey);
-            if (filePath == null)
+            if (!TryResolveAmbPerfSource(anim, out string filePath, out int ambientPerfUIndex, SelectedAmbPerfSource))
             {
                 AmbPerfPreviewControl.ClearAnimation();
                 return;
@@ -1549,13 +1814,13 @@ namespace LegendaryExplorer.Dialogs
             _ambPerfPreviewPcc?.Dispose();
             _ambPerfPreviewPcc = MEPackageHandler.OpenMEPackage(filePath);
 
-            if (!_ambPerfPreviewPcc.IsUExport(usage.UIndex))
+            if (!_ambPerfPreviewPcc.IsUExport(ambientPerfUIndex))
             {
                 AmbPerfPreviewControl.ClearAnimation();
                 return;
             }
 
-            ExportEntry ambPerfExport = _ambPerfPreviewPcc.GetUExport(usage.UIndex);
+            ExportEntry ambPerfExport = _ambPerfPreviewPcc.GetUExport(ambientPerfUIndex);
 
             // Find a child AnimSequence to preview
             ExportEntry animSeqToPreview = null;
@@ -1616,27 +1881,10 @@ namespace LegendaryExplorer.Dialogs
         /// </summary>
         private void ImportAmbientPerformance(AnimationRecord ambPerf)
         {
-            if (!ambPerf.Usages.Any())
+            if (ambPerf?.Usages == null || !ambPerf.Usages.Any())
                 throw new Exception("No usages found for this ambient performance.");
 
-            // Find the source SFXAmbPerfGameData export
-            string sourceFilePath = null;
-            int sourceUIndex = 0;
-            foreach (var usage in ambPerf.Usages)
-            {
-                string filePath = GetFilePath(usage.FileKey);
-                if (filePath == null) continue;
-
-                using var testPkg = MEPackageHandler.OpenMEPackage(filePath);
-                if (testPkg.IsUExport(usage.UIndex) && testPkg.GetUExport(usage.UIndex).ClassName == "SFXAmbPerfGameData")
-                {
-                    sourceFilePath = filePath;
-                    sourceUIndex = usage.UIndex;
-                    break;
-                }
-            }
-
-            if (sourceFilePath == null)
+            if (!TryResolveAmbPerfSource(ambPerf, out string sourceFilePath, out int sourceUIndex, SelectedAmbPerfSource))
                 throw new Exception("Could not resolve the ambient performance's source file.");
 
             using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(sourceFilePath);
@@ -1644,14 +1892,120 @@ namespace LegendaryExplorer.Dialogs
 
             // Preserve the original package hierarchy (e.g. BIOG_GesturesConfig.WalkToThinkingFrustrated)
             // rather than parenting under SFXModule_Gestures
-            IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceExport.ParentFullPath, sourcePackage, _pcc, new RelinkerOptionsPackage());
-
-            var rop = new RelinkerOptionsPackage();
+            var rop = new RelinkerOptionsPackage
+            {
+                ImportExportDependencies = true,
+                PortImportsMemorySafe = true,
+                PortExportsAsImportsWhenPossible = true,
+            };
+            IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceExport.ParentFullPath, sourcePackage, _pcc, rop);
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneTreeAsChild,
                 sourceExport, _pcc, parent, true, rop, out IEntry importedEntry);
 
             // Set m_pPerfGameData on the gesture module
             _gestureTrackExport.WriteProperty(new ObjectProperty(importedEntry.UIndex, "m_pPerfGameData"));
+        }
+
+        private void RefreshSelectedAmbPerfSources()
+        {
+            List<AnimationSourceOption> options = GetAmbientPerformanceSourceOptions(SelectedAmbPerf);
+            AvailableAmbPerfSources.ReplaceAll(options);
+
+            if (options.Count == 0)
+            {
+                SelectedAmbPerfSource = null;
+                return;
+            }
+
+            if (SelectedAmbPerfSource != null)
+            {
+                AnimationSourceOption matchingOption = options.FirstOrDefault(option =>
+                    option.UIndex == SelectedAmbPerfSource.UIndex &&
+                    option.FilePath.CaseInsensitiveEquals(SelectedAmbPerfSource.FilePath));
+                if (matchingOption != null)
+                {
+                    SelectedAmbPerfSource = matchingOption;
+                    return;
+                }
+            }
+
+            SelectedAmbPerfSource = options[0];
+        }
+
+        private List<AnimationSourceOption> GetAmbientPerformanceSourceOptions(AnimationRecord ambPerf)
+        {
+            if (ambPerf?.Usages == null || !ambPerf.Usages.Any())
+            {
+                return [];
+            }
+
+            var options = new List<AnimationSourceOption>();
+            foreach (AnimUsage usage in ambPerf.Usages)
+            {
+                if (!TryGetFilePath(usage.FileKey, out string filePath, out string fileName, out string contentDir))
+                {
+                    continue;
+                }
+
+                using var testPkg = MEPackageHandler.OpenMEPackage(filePath);
+                if (!testPkg.IsUExport(usage.UIndex) || testPkg.GetUExport(usage.UIndex).ClassName != "SFXAmbPerfGameData")
+                {
+                    continue;
+                }
+
+                if (options.Any(option => option.UIndex == usage.UIndex && option.FilePath.CaseInsensitiveEquals(filePath)))
+                {
+                    continue;
+                }
+
+                options.Add(new AnimationSourceOption
+                {
+                    DisplayName = $"{fileName} ({contentDir})",
+                    FilePath = filePath,
+                    UIndex = usage.UIndex,
+                });
+            }
+
+            return options;
+        }
+
+        private bool TryResolveAmbPerfSource(AnimationRecord ambPerf, out string filePath, out int uIndex, AnimationSourceOption preferredSource = null)
+        {
+            filePath = null;
+            uIndex = 0;
+            if (ambPerf?.Usages == null || !ambPerf.Usages.Any())
+            {
+                return false;
+            }
+
+            if (preferredSource != null && File.Exists(preferredSource.FilePath))
+            {
+                using var preferredPkg = MEPackageHandler.OpenMEPackage(preferredSource.FilePath);
+                if (preferredPkg.IsUExport(preferredSource.UIndex) && preferredPkg.GetUExport(preferredSource.UIndex).ClassName == "SFXAmbPerfGameData")
+                {
+                    filePath = preferredSource.FilePath;
+                    uIndex = preferredSource.UIndex;
+                    return true;
+                }
+            }
+
+            foreach (AnimUsage usage in ambPerf.Usages)
+            {
+                if (!TryGetFilePath(usage.FileKey, out string candidateFilePath, out _, out _))
+                {
+                    continue;
+                }
+
+                using var testPkg = MEPackageHandler.OpenMEPackage(candidateFilePath);
+                if (testPkg.IsUExport(usage.UIndex) && testPkg.GetUExport(usage.UIndex).ClassName == "SFXAmbPerfGameData")
+                {
+                    filePath = candidateFilePath;
+                    uIndex = usage.UIndex;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         #endregion
