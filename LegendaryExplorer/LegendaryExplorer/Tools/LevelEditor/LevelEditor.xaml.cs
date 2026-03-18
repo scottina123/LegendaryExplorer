@@ -2374,6 +2374,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             var rop = new RelinkerOptionsPackage
             {
                 ImportExportDependencies = true,
+                PortImportsMemorySafe = true,
                 Cache = new PackageCache()
             };
 
