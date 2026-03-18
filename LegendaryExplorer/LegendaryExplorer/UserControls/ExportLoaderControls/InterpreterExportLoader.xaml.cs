@@ -501,7 +501,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 var araryProperty = (ArrayPropertyBase)SelectedItem.Property;
                 ForcedRescanOffset = (int)araryProperty.StartOffset;
-                araryProperty.Clear();
+
+                if (TryGetSynchronizedStructArrays(SelectedItem, araryProperty, out var syncedArrays))
+                {
+                    foreach (var syncedArray in syncedArrays)
+                    {
+                        syncedArray.Clear();
+                    }
+                }
+                else
+                {
+                    araryProperty.Clear();
+                }
+
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
         }
@@ -2857,30 +2869,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
 
-                if (TryGetBioEvtSysTrackGestureSyncInfo(propertyToAddItemTo, out var targetStructArray, out var pairedStructArray, out bool targetIsTrackKeys))
+                if (TryGetSynchronizedStructArrays(tvi, propertyToAddItemTo, out var syncedArrays))
                 {
                     bool isInImmutable = IsInImmutable(tvi);
                     for (int i = 0; i < count; i++)
                     {
                         int currentInsertIndex = insertIndex + i;
-                        var gestureElement = CreateStructArrayElement(targetIsTrackKeys ? pairedStructArray : targetStructArray, containingType, isInImmutable, "BioGestureData");
-                        var trackKeyElement = CreateStructArrayElement(targetIsTrackKeys ? targetStructArray : pairedStructArray, containingType, isInImmutable, "BioTrackKey");
-                        if (gestureElement is null || trackKeyElement is null)
+                        foreach (var syncedArray in syncedArrays)
                         {
-                            return;
-                        }
+                            var syncedElement = CreateStructArrayElement(syncedArray, containingType, isInImmutable, GetFallbackStructType(syncedArray, tvi), currentInsertIndex - 1);
+                            if (syncedElement is null)
+                            {
+                                return;
+                            }
 
-                        SetBioTrackKeyTime(trackKeyElement, targetIsTrackKeys ? targetStructArray : pairedStructArray, currentInsertIndex);
-
-                        if (targetIsTrackKeys)
-                        {
-                            targetStructArray.Insert(currentInsertIndex, trackKeyElement);
-                            pairedStructArray.Insert(currentInsertIndex, gestureElement);
-                        }
-                        else
-                        {
-                            targetStructArray.Insert(currentInsertIndex, gestureElement);
-                            pairedStructArray.Insert(currentInsertIndex, trackKeyElement);
+                            InitializeSyncedStructArrayElement(syncedElement, syncedArray);
+                            syncedArray.Insert(currentInsertIndex, syncedElement);
                         }
                     }
 
@@ -2934,29 +2938,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             break;
                         case ArrayProperty<StructProperty> astructp:
                             {
-                                if (astructp.Count > 0)
+                                var isInImmutable = IsInImmutable(tvi);
+                                var element = CreateStructArrayElement(astructp, containingType, isInImmutable, sourceIndex: insertIndex + i - 1);
+                                if (element != null)
                                 {
-                                    astructp.Insert(insertIndex + i, astructp.Last()); //Bad form, but writing and reparse will correct it
-                                    break;
-                                }
-
-                                PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType);
-                                if (p == null)
-                                {
-                                    //Attempt dynamic lookup
-                                    if (!(CurrentLoadedExport.Class is ExportEntry exportToBuildFor))
-                                    {
-                                        exportToBuildFor = CurrentLoadedExport;
-                                    }
-                                    ClassInfo classInfo = GlobalUnrealObjectInfo.generateClassInfo(exportToBuildFor);
-                                    p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, astructp.Name, containingType, classInfo);
-                                }
-                                if (p != null)
-                                {
-                                    string typeName = p.Reference;
-                                    PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, typeName, true, Pcc);
-                                    var isInImmutable = IsInImmutable(tvi);
-                                    astructp.Insert(insertIndex + i, new StructProperty(typeName, props, isImmutable: isInImmutable || GlobalUnrealObjectInfo.IsImmutable(typeName, Pcc.Game)));
+                                    astructp.Insert(insertIndex + i, element);
                                 }
                             }
                             break;
@@ -2971,48 +2957,126 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private bool TryGetBioEvtSysTrackGestureSyncInfo(ArrayPropertyBase arrayProperty, out ArrayProperty<StructProperty> targetArray, out ArrayProperty<StructProperty> pairedArray, out bool targetIsTrackKeys)
+        private bool TryGetSynchronizedStructArrays(UPropertyTreeViewEntry tvi, ArrayPropertyBase arrayProperty, out List<ArrayProperty<StructProperty>> syncedArrays)
         {
-            targetArray = null;
-            pairedArray = null;
-            targetIsTrackKeys = false;
+            syncedArrays = null;
 
             if (!string.Equals(CurrentLoadedExport?.ClassName, "BioEvtSysTrackGesture", StringComparison.Ordinal)
                 || arrayProperty is not ArrayProperty<StructProperty> structArray)
             {
-                return false;
+                if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackMove", StringComparison.Ordinal)
+                    || arrayProperty is not ArrayProperty<StructProperty>)
+                {
+                    return false;
+                }
+
+                var owningStruct = GetOwningStructProperty(tvi, arrayProperty);
+                if (arrayProperty.Name.Name != "Points"
+                    || owningStruct?.Name.Name is not ("PosTrack" or "EulerTrack" or "LookupTrack"))
+                {
+                    return false;
+                }
+
+                var posTrack = CurrentLoadedProperties.GetProp<StructProperty>("PosTrack");
+                var eulerTrack = CurrentLoadedProperties.GetProp<StructProperty>("EulerTrack");
+                var lookupTrack = CurrentLoadedProperties.GetProp<StructProperty>("LookupTrack");
+                var posPoints = GetOrCreateChildStructArray(posTrack, "Points", "InterpCurvePointVector");
+                var eulerPoints = GetOrCreateChildStructArray(eulerTrack, "Points", "InterpCurvePointVector");
+                var lookupPoints = GetOrCreateChildStructArray(lookupTrack, "Points", "InterpLookupPoint");
+                if (posPoints is null || eulerPoints is null || lookupPoints is null)
+                {
+                    return false;
+                }
+
+                syncedArrays = [posPoints, eulerPoints, lookupPoints];
+                return true;
             }
 
-            string pairedArrayName;
             switch (arrayProperty.Name.Name)
             {
                 case "m_aGestures":
-                    pairedArrayName = "m_aTrackKeys";
-                    break;
                 case "m_aTrackKeys":
-                    pairedArrayName = "m_aGestures";
-                    targetIsTrackKeys = true;
-                    break;
+                    var gestures = GetOrCreateRootStructArray("m_aGestures", "BioGestureData");
+                    var trackKeys = GetOrCreateRootStructArray("m_aTrackKeys", "BioTrackKey");
+                    if (gestures is null || trackKeys is null)
+                    {
+                        return false;
+                    }
+
+                    syncedArrays = [gestures, trackKeys];
+                    return true;
                 default:
                     return false;
             }
-
-            targetArray = structArray;
-            pairedArray = CurrentLoadedProperties.GetProp<ArrayProperty<StructProperty>>(pairedArrayName);
-            if (pairedArray is null)
-            {
-                pairedArray = new ArrayProperty<StructProperty>(pairedArrayName);
-                CurrentLoadedProperties.AddOrReplaceProp(pairedArray);
-            }
-
-            return true;
         }
 
-        private StructProperty CreateStructArrayElement(ArrayProperty<StructProperty> arrayProperty, string containingType, bool isInImmutable, string fallbackStructType = null)
+        private ArrayProperty<StructProperty> GetOrCreateRootStructArray(string arrayName, string reference)
+        {
+            var array = CurrentLoadedProperties.GetProp<ArrayProperty<StructProperty>>(arrayName);
+            if (array is null)
+            {
+                array = new ArrayProperty<StructProperty>(arrayName) { Reference = reference };
+                CurrentLoadedProperties.AddOrReplaceProp(array);
+            }
+
+            return array;
+        }
+
+        private static ArrayProperty<StructProperty> GetOrCreateChildStructArray(StructProperty parentStruct, string arrayName, string reference)
+        {
+            if (parentStruct is null)
+            {
+                return null;
+            }
+
+            var array = parentStruct.Properties.GetProp<ArrayProperty<StructProperty>>(arrayName);
+            if (array is null)
+            {
+                array = new ArrayProperty<StructProperty>(arrayName) { Reference = reference };
+                parentStruct.Properties.AddOrReplaceProp(array);
+            }
+
+            return array;
+        }
+
+        private static StructProperty GetOwningStructProperty(UPropertyTreeViewEntry tvi, ArrayPropertyBase arrayProperty)
+        {
+            if (tvi.Property == arrayProperty)
+            {
+                return tvi.UPParent?.Property as StructProperty;
+            }
+
+            if (tvi.UPParent?.Property == arrayProperty)
+            {
+                return tvi.UPParent.UPParent?.Property as StructProperty;
+            }
+
+            return null;
+        }
+
+        private static string GetFallbackStructType(ArrayProperty<StructProperty> arrayProperty, UPropertyTreeViewEntry tvi)
+        {
+            if (!string.IsNullOrEmpty(arrayProperty.Reference))
+            {
+                return arrayProperty.Reference;
+            }
+
+            return arrayProperty.Name.Name switch
+            {
+                "m_aGestures" => "BioGestureData",
+                "m_aTrackKeys" => "BioTrackKey",
+                "Points" when GetOwningStructProperty(tvi, arrayProperty)?.Name.Name == "LookupTrack" => "InterpLookupPoint",
+                "Points" => "InterpCurvePointVector",
+                _ => null,
+            };
+        }
+
+        private StructProperty CreateStructArrayElement(ArrayProperty<StructProperty> arrayProperty, string containingType, bool isInImmutable, string fallbackStructType = null, int sourceIndex = -1)
         {
             if (arrayProperty.Count > 0)
             {
-                return arrayProperty.Last().DeepClone();
+                int cloneIndex = Math.Clamp(sourceIndex, 0, arrayProperty.Count - 1);
+                return arrayProperty[cloneIndex].DeepClone();
             }
 
             string typeName = fallbackStructType;
@@ -3038,17 +3102,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return new StructProperty(typeName, props, isImmutable: isInImmutable || GlobalUnrealObjectInfo.IsImmutable(typeName, Pcc.Game));
         }
 
-        private static void SetBioTrackKeyTime(StructProperty trackKey, ArrayProperty<StructProperty> trackKeys, int insertIndex)
+        private static void InitializeSyncedStructArrayElement(StructProperty element, ArrayProperty<StructProperty> arrayProperty)
         {
-            float time = 0f;
-            if (trackKeys.Count > 0)
+            switch (element.StructType)
             {
-                time = trackKeys
-                    .Select(key => key.GetProp<FloatProperty>("fTime")?.Value ?? 0f)
+                case "BioTrackKey":
+                    SetMaxIncrementedFloatProperty(element, arrayProperty, "fTime");
+                    break;
+                case "InterpCurvePointVector":
+                    SetMaxIncrementedFloatProperty(element, arrayProperty, "InVal");
+                    break;
+                case "InterpLookupPoint":
+                    SetMaxIncrementedFloatProperty(element, arrayProperty, "Time");
+                    break;
+            }
+        }
+
+        private static void SetMaxIncrementedFloatProperty(StructProperty element, ArrayProperty<StructProperty> arrayProperty, string propertyName)
+        {
+            float value = 0f;
+            if (arrayProperty.Count > 0)
+            {
+                value = arrayProperty
+                    .Select(item => item.GetProp<FloatProperty>(propertyName)?.Value ?? 0f)
                     .Max() + 1f;
             }
 
-            trackKey.Properties.AddOrReplaceProp(new FloatProperty(time, "fTime"));
+            element.Properties.AddOrReplaceProp(new FloatProperty(value, propertyName));
         }
 
         private bool IsInImmutable(UPropertyTreeViewEntry tvi)
@@ -3087,13 +3167,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         ForcedRescanOffset = (int)arrayProperty[index == arrayProperty.Count - 1 ? index - 1 : index].StartOffset;
                     }
 
-                    if (TryGetBioEvtSysTrackGestureSyncInfo(arrayProperty, out _, out var pairedArray, out _)
-                        && index < pairedArray.Count)
+                    if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
                     {
-                        pairedArray.RemoveAt(index);
+                        foreach (var syncedArray in syncedArrays.Where(a => index < a.Count))
+                        {
+                            syncedArray.RemoveAt(index);
+                        }
                     }
-
-                    arrayProperty.RemoveAt(index);
+                    else
+                    {
+                        arrayProperty.RemoveAt(index);
+                    }
 
                     CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
                 }
@@ -3160,7 +3244,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 int swapIndex = up ? index - 1 : index + 1;
                 //selection should be changed to the location of the element we are swapping with
                 ForcedRescanOffset = (int)arrayProperty[swapIndex].StartOffset;
-                arrayProperty.SwapElements(index, swapIndex);
+                if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
+                {
+                    foreach (var syncedArray in syncedArrays)
+                    {
+                        syncedArray.SwapElements(index, swapIndex);
+                    }
+                }
+                else
+                {
+                    arrayProperty.SwapElements(index, swapIndex);
+                }
                 //Will force reload
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
@@ -3180,16 +3274,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 if (destinationIndex < index)
                 {
-                    for (int i = index; i > destinationIndex; i--)
+                    if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
                     {
-                        arrayProperty.SwapElements(i, i - 1);
+                        for (int i = index; i > destinationIndex; i--)
+                        {
+                            foreach (var syncedArray in syncedArrays)
+                            {
+                                syncedArray.SwapElements(i, i - 1);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int i = index; i > destinationIndex; i--)
+                        {
+                            arrayProperty.SwapElements(i, i - 1);
+                        }
                     }
                 }
                 else
                 {
-                    for (int i = index; i < destinationIndex; i++)
+                    if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
                     {
-                        arrayProperty.SwapElements(i, i + 1);
+                        for (int i = index; i < destinationIndex; i++)
+                        {
+                            foreach (var syncedArray in syncedArrays)
+                            {
+                                syncedArray.SwapElements(i, i + 1);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int i = index; i < destinationIndex; i++)
+                        {
+                            arrayProperty.SwapElements(i, i + 1);
+                        }
                     }
                 }
 
