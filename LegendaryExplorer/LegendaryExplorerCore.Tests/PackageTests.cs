@@ -4,6 +4,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Localization;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.ME1.Unreal.UnhoodBytecode;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -405,6 +407,29 @@ namespace LegendaryExplorerCore.Tests
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             return new string(Enumerable.Repeat(chars, length)
                 .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+
+        [TestMethod]
+        public void TestReferenceCheckerFlagsTrashedArchetype()
+        {
+            GlobalTest.Init();
+
+            using var package = MEPackageHandler.CreateMemoryEmptyPackage("ReferenceCheckerTest.pcc", MEGame.LE3);
+            var trashedArchetype = package.CreateExport("ArchetypeToTrash", "Object", indexed: false);
+            var consumer = package.CreateExport("ArchetypeConsumer", "Object", indexed: false);
+            consumer.Archetype = trashedArchetype;
+
+            EntryPruner.TrashEntries(package, [trashedArchetype]);
+
+            var referenceCheckPackage = new ReferenceCheckPackage();
+            EntryChecker.CheckReferences(referenceCheckPackage, package, LECLocalizationShim.NonLocalizedStringConverter);
+
+            Assert.IsTrue(
+                referenceCheckPackage.GetSignificantIssues().Any(issue =>
+                    ReferenceEquals(issue.Entry, consumer)
+                    && issue.Message.Contains("Header Archetype", StringComparison.Ordinal)
+                    && issue.Message.Contains("Trashed object", StringComparison.Ordinal)),
+                "The reference checker should report trashed archetype references.");
         }
 
         [TestMethod]

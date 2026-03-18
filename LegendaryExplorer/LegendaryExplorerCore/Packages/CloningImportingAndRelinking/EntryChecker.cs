@@ -147,9 +147,16 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 {
                     checkName(item, localizationDelegate, () => exp.ObjectName, "Object Name", $"export {exp.UIndex}", relativePath, fName, exp);
 
-                    if (exp.idxArchetype != 0 && !package.IsEntry(exp.idxArchetype))
+                    if (exp.idxArchetype != 0)
                     {
-                        item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningArchetypeOutsideTables, prefix, exp.idxArchetype), exp);
+                        if (!package.IsEntry(exp.idxArchetype))
+                        {
+                            item.AddSignificantIssue(localizationDelegate(LECLocalizationShim.string_interp_warningArchetypeOutsideTables, prefix, exp.idxArchetype), exp);
+                        }
+                        else if (IsTrashedReference(package.GetEntry(exp.idxArchetype)))
+                        {
+                            item.AddSignificantIssue($"{prefix} Header Archetype ({exp.idxArchetype}) is a Trashed object", exp);
+                        }
                     }
 
                     if (exp.idxSuperClass != 0 && !package.IsEntry(exp.idxSuperClass))
@@ -299,6 +306,18 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             {
                 item.AddBlockingError(localizationDelegate(LECLocalizationShim.string_interp_refCheckInvalidNameValue, relativePath ?? fName, nameBeingChecked, itemBeingChecked), entry);
             }
+        }
+
+        private static bool IsTrashedReference(IEntry entry)
+        {
+            if (entry is null)
+            {
+                return false;
+            }
+
+            string objectName = entry.ObjectName.Name;
+            return objectName.CaseInsensitiveEquals(UnrealPackageFile.TrashPackageName)
+                || entry.ClassName == "Package" && objectName.CaseInsensitiveEquals("Trash");
         }
 
         private static void recursiveCheckProperty(ReferenceCheckPackage item, LECLocalizationShim.GetLocalizedStringDelegate localizationDelegate, string relativePath, string containingClassOrStructName, IEntry entry, Property property)
