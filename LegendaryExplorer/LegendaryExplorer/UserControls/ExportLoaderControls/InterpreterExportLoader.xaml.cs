@@ -2678,6 +2678,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             if (float.TryParse(Value_TextBox.Text, out float f) && f != fp.Value)
                             {
                                 fp.Value = f;
+                                SyncInterpTrackMovePointTimesForEditedProperty(tvi, f);
                                 updated = true;
                             }
                         }
@@ -3098,6 +3099,68 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return true;
         }
 
+        private void SyncInterpTrackMovePointTimesForEditedProperty(UPropertyTreeViewEntry tvi, float newValue)
+        {
+            if (!TryGetInterpTrackMovePointPropertyContext(tvi, out int pointIndex))
+            {
+                return;
+            }
+
+            SyncInterpTrackMovePointTimes(pointIndex, newValue);
+        }
+
+        private bool TryGetInterpTrackMovePointPropertyContext(UPropertyTreeViewEntry tvi, out int pointIndex)
+        {
+            pointIndex = -1;
+            if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackMove", StringComparison.Ordinal)
+                || tvi?.Property is not FloatProperty floatProperty
+                || floatProperty.Name.Name is not ("InVal" or "Time")
+                || tvi.UPParent?.Property is not StructProperty
+                || tvi.UPParent.UPParent?.Property is not ArrayProperty<StructProperty> pointsArray
+                || pointsArray.Name.Name != "Points")
+            {
+                return false;
+            }
+
+            var owningStruct = tvi.UPParent.UPParent.UPParent?.Property as StructProperty;
+            if (owningStruct?.Name.Name is not ("PosTrack" or "EulerTrack" or "LookupTrack"))
+            {
+                return false;
+            }
+
+            pointIndex = tvi.UPParent.UPParent.ChildrenProperties.IndexOf(tvi.UPParent);
+            return pointIndex >= 0;
+        }
+
+        private void SyncInterpTrackMovePointTimes(int pointIndex, float newValue)
+        {
+            var posTrack = CurrentLoadedProperties.GetProp<StructProperty>("PosTrack");
+            var eulerTrack = CurrentLoadedProperties.GetProp<StructProperty>("EulerTrack");
+            var lookupTrack = CurrentLoadedProperties.GetProp<StructProperty>("LookupTrack");
+
+            var posPoints = posTrack?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var eulerPoints = eulerTrack?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var lookupPoints = lookupTrack?.GetProp<ArrayProperty<StructProperty>>("Points");
+
+            SetSyncedPointTime(posPoints, pointIndex, "InVal", newValue);
+            SetSyncedPointTime(eulerPoints, pointIndex, "InVal", newValue);
+            SetSyncedPointTime(lookupPoints, pointIndex, "Time", newValue);
+        }
+
+        private static void SetSyncedPointTime(ArrayProperty<StructProperty> pointsArray, int pointIndex, string propertyName, float newValue)
+        {
+            if (pointsArray == null || pointIndex < 0 || pointIndex >= pointsArray.Count)
+            {
+                return;
+            }
+
+            var timeProperty = pointsArray[pointIndex].GetProp<FloatProperty>(propertyName);
+            if (timeProperty != null)
+            {
+                timeProperty.Value = newValue;
+            }
+        }
+
         private ArrayProperty<StructProperty> GetOrCreateRootStructArray(string arrayName, string reference)
         {
             var array = CurrentLoadedProperties.GetProp<ArrayProperty<StructProperty>>(arrayName);
@@ -3338,6 +3401,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         syncedArray.SwapElements(index, swapIndex);
                     }
+
+                    if (TryGetInterpTrackMoveSynchronizedStructArrays(tvi, arrayProperty, out _)
+                        && arrayProperty is ArrayProperty<StructProperty> pointArray)
+                    {
+                        SyncInterpTrackMovePointTimesFromSourceArray(pointArray, index, swapIndex);
+                    }
                 }
                 else
                 {
@@ -3371,6 +3440,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 syncedArray.SwapElements(i, i - 1);
                             }
                         }
+
+                        if (TryGetInterpTrackMoveSynchronizedStructArrays(tvi, arrayProperty, out _)
+                            && arrayProperty is ArrayProperty<StructProperty> pointArray)
+                        {
+                            SyncInterpTrackMovePointTimesFromSourceArray(pointArray, Enumerable.Range(destinationIndex, index - destinationIndex + 1).ToArray());
+                        }
                     }
                     else
                     {
@@ -3391,6 +3466,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 syncedArray.SwapElements(i, i + 1);
                             }
                         }
+
+                        if (TryGetInterpTrackMoveSynchronizedStructArrays(tvi, arrayProperty, out _)
+                            && arrayProperty is ArrayProperty<StructProperty> pointArray)
+                        {
+                            SyncInterpTrackMovePointTimesFromSourceArray(pointArray, Enumerable.Range(index, destinationIndex - index + 1).ToArray());
+                        }
                     }
                     else
                     {
@@ -3402,6 +3483,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            }
+        }
+
+        private void SyncInterpTrackMovePointTimesFromSourceArray(ArrayProperty<StructProperty> sourceArray, params int[] affectedIndexes)
+        {
+            if (sourceArray == null || affectedIndexes == null)
+            {
+                return;
+            }
+
+            string sourcePropertyName = sourceArray.Reference == "InterpLookupPoint" ? "Time" : "InVal";
+            foreach (int pointIndex in affectedIndexes.Distinct())
+            {
+                if (pointIndex < 0 || pointIndex >= sourceArray.Count)
+                {
+                    continue;
+                }
+
+                float? syncedValue = sourceArray[pointIndex].GetProp<FloatProperty>(sourcePropertyName)?.Value;
+                if (syncedValue.HasValue)
+                {
+                    SyncInterpTrackMovePointTimes(pointIndex, syncedValue.Value);
+                }
             }
         }
 
