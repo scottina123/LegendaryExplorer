@@ -2961,53 +2961,122 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             syncedArrays = null;
 
-            if (!string.Equals(CurrentLoadedExport?.ClassName, "BioEvtSysTrackGesture", StringComparison.Ordinal)
-                || arrayProperty is not ArrayProperty<StructProperty> structArray)
+            if (arrayProperty is not ArrayProperty<StructProperty>)
             {
-                if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackMove", StringComparison.Ordinal)
-                    || arrayProperty is not ArrayProperty<StructProperty>)
-                {
-                    return false;
-                }
+                return false;
+            }
 
-                var owningStruct = GetOwningStructProperty(tvi, arrayProperty);
-                if (arrayProperty.Name.Name != "Points"
-                    || owningStruct?.Name.Name is not ("PosTrack" or "EulerTrack" or "LookupTrack"))
-                {
-                    return false;
-                }
-
-                var posTrack = CurrentLoadedProperties.GetProp<StructProperty>("PosTrack");
-                var eulerTrack = CurrentLoadedProperties.GetProp<StructProperty>("EulerTrack");
-                var lookupTrack = CurrentLoadedProperties.GetProp<StructProperty>("LookupTrack");
-                var posPoints = GetOrCreateChildStructArray(posTrack, "Points", "InterpCurvePointVector");
-                var eulerPoints = GetOrCreateChildStructArray(eulerTrack, "Points", "InterpCurvePointVector");
-                var lookupPoints = GetOrCreateChildStructArray(lookupTrack, "Points", "InterpLookupPoint");
-                if (posPoints is null || eulerPoints is null || lookupPoints is null)
-                {
-                    return false;
-                }
-
-                syncedArrays = [posPoints, eulerPoints, lookupPoints];
+            if (TryGetBioInterpTrackSynchronizedStructArrays(arrayProperty, out syncedArrays))
+            {
                 return true;
             }
 
-            switch (arrayProperty.Name.Name)
+            if (TryGetInterpTrackMoveSynchronizedStructArrays(tvi, arrayProperty, out syncedArrays))
             {
-                case "m_aGestures":
-                case "m_aTrackKeys":
-                    var gestures = GetOrCreateRootStructArray("m_aGestures", "BioGestureData");
-                    var trackKeys = GetOrCreateRootStructArray("m_aTrackKeys", "BioTrackKey");
-                    if (gestures is null || trackKeys is null)
-                    {
-                        return false;
-                    }
-
-                    syncedArrays = [gestures, trackKeys];
-                    return true;
-                default:
-                    return false;
+                return true;
             }
+
+            if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackSound", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var vectorTrack = CurrentLoadedProperties.GetProp<StructProperty>("VectorTrack");
+            var points = GetOrCreateChildStructArray(vectorTrack, "Points", "InterpCurvePointVector");
+            var sounds = GetOrCreateRootStructArray("Sounds", null);
+            if (points is null || sounds is null)
+            {
+                return false;
+            }
+
+            var owningStruct = GetOwningStructProperty(tvi, arrayProperty);
+            if (arrayProperty.Name.Name == "Sounds" || (arrayProperty.Name.Name == "Points" && owningStruct?.Name.Name == "VectorTrack"))
+            {
+                syncedArrays = [points, sounds];
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetBioInterpTrackSynchronizedStructArrays(ArrayPropertyBase arrayProperty, out List<ArrayProperty<StructProperty>> syncedArrays)
+        {
+            syncedArrays = null;
+            if (CurrentLoadedExport?.IsA("BioInterpTrack") != true)
+            {
+                return false;
+            }
+
+            string secondaryArrayName = GetBioInterpTrackSecondaryArrayName();
+            if (secondaryArrayName == null || (arrayProperty.Name.Name != "m_aTrackKeys" && arrayProperty.Name.Name != secondaryArrayName))
+            {
+                return false;
+            }
+
+            var trackKeys = GetOrCreateRootStructArray("m_aTrackKeys", "BioTrackKey");
+            var secondaryArray = GetOrCreateRootStructArray(secondaryArrayName, null);
+            if (trackKeys is null || secondaryArray is null)
+            {
+                return false;
+            }
+
+            syncedArrays = [trackKeys, secondaryArray];
+            return true;
+        }
+
+        private string GetBioInterpTrackSecondaryArrayName()
+        {
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackLighting")) return "m_aLightingKeys";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackLookAt")) return "m_aLookAtKeys";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackProp")) return "m_aPropKeys";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackSetFacing")) return "m_aFacingKeys";
+            if (CurrentLoadedExport.IsA("SFXGameInterpTrackProcFoley")) return "m_aProcFoleyStartStopKeys";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackPlayFaceOnlyVO")) return "m_aFOVOKeys";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackToggleBase")) return "m_aToggleKeyData";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackDOF")) return "m_aDOFData";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackGesture")) return "m_aGestures";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackInterrupt")) return "m_aInterruptData";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackSubtitles")) return "m_aSubtitleData";
+            if (CurrentLoadedExport.IsA("BioEvtSysTrackSwitchCamera")) return "m_aCameras";
+            if (CurrentLoadedExport.IsA("BioInterpTrackRotationMode")) return "EventTrack";
+            if (CurrentLoadedExport.IsA("SFXGameInterpTrackWwiseMicLock")) return "m_aMicLockKeys";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackAttachCrustEffect")) return "m_aCrustEffectKeyData";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackBlackScreen")) return "m_aBlackScreenKeyData";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackLightEnvQuality")) return "m_aLightEnvKeyData";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackMovieBase")) return "m_aMovieKeyData";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackSetPlayerNearClipPlane")) return "m_aNearClipKeyData";
+            if (CurrentLoadedExport.IsA("SFXInterpTrackSetWeaponInstant")) return "m_aWeaponClassKeyData";
+            return null;
+        }
+
+        private bool TryGetInterpTrackMoveSynchronizedStructArrays(UPropertyTreeViewEntry tvi, ArrayPropertyBase arrayProperty, out List<ArrayProperty<StructProperty>> syncedArrays)
+        {
+            syncedArrays = null;
+            if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackMove", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var owningStruct = GetOwningStructProperty(tvi, arrayProperty);
+            if (arrayProperty.Name.Name != "Points"
+                || owningStruct?.Name.Name is not ("PosTrack" or "EulerTrack" or "LookupTrack"))
+            {
+                return false;
+            }
+
+            var posTrack = CurrentLoadedProperties.GetProp<StructProperty>("PosTrack");
+            var eulerTrack = CurrentLoadedProperties.GetProp<StructProperty>("EulerTrack");
+            var lookupTrack = CurrentLoadedProperties.GetProp<StructProperty>("LookupTrack");
+            var posPoints = GetOrCreateChildStructArray(posTrack, "Points", "InterpCurvePointVector");
+            var eulerPoints = GetOrCreateChildStructArray(eulerTrack, "Points", "InterpCurvePointVector");
+            var lookupPoints = GetOrCreateChildStructArray(lookupTrack, "Points", "InterpLookupPoint");
+            if (posPoints is null || eulerPoints is null || lookupPoints is null)
+            {
+                return false;
+            }
+
+            syncedArrays = [posPoints, eulerPoints, lookupPoints];
+            return true;
         }
 
         private ArrayProperty<StructProperty> GetOrCreateRootStructArray(string arrayName, string reference)
