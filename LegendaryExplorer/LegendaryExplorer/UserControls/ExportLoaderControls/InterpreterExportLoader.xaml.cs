@@ -2903,7 +2903,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 return;
                             }
 
-                            InitializeSyncedStructArrayElement(syncedElement, syncedArray);
+                            InitializeSyncedStructArrayElement(syncedElement, syncedArray, currentInsertIndex - 1);
                             syncedArray.Insert(currentInsertIndex, syncedElement);
                         }
                     }
@@ -3253,30 +3253,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return new StructProperty(typeName, props, isImmutable: isInImmutable || GlobalUnrealObjectInfo.IsImmutable(typeName, Pcc.Game));
         }
 
-        private static void InitializeSyncedStructArrayElement(StructProperty element, ArrayProperty<StructProperty> arrayProperty)
+        private static void InitializeSyncedStructArrayElement(StructProperty element, ArrayProperty<StructProperty> arrayProperty, int sourceIndex)
         {
             switch (element.StructType)
             {
                 case "BioTrackKey":
-                    SetMaxIncrementedFloatProperty(element, arrayProperty, "fTime");
+                    SetIncrementedFloatPropertyFromSource(element, arrayProperty, "fTime", sourceIndex);
                     break;
                 case "InterpCurvePointVector":
-                    SetMaxIncrementedFloatProperty(element, arrayProperty, "InVal");
+                    SetIncrementedFloatPropertyFromSource(element, arrayProperty, "InVal", sourceIndex);
                     break;
                 case "InterpLookupPoint":
-                    SetMaxIncrementedFloatProperty(element, arrayProperty, "Time");
+                    SetIncrementedFloatPropertyFromSource(element, arrayProperty, "Time", sourceIndex);
                     break;
             }
         }
 
-        private static void SetMaxIncrementedFloatProperty(StructProperty element, ArrayProperty<StructProperty> arrayProperty, string propertyName)
+        private static void SetIncrementedFloatPropertyFromSource(StructProperty element, ArrayProperty<StructProperty> arrayProperty, string propertyName, int sourceIndex)
         {
-            float value = 0f;
+            float value = element.GetProp<FloatProperty>(propertyName)?.Value ?? 0f;
+            if (sourceIndex >= 0 && sourceIndex < arrayProperty.Count)
+            {
+                value = arrayProperty[sourceIndex].GetProp<FloatProperty>(propertyName)?.Value ?? value;
+            }
+
             if (arrayProperty.Count > 0)
             {
-                value = arrayProperty
-                    .Select(item => item.GetProp<FloatProperty>(propertyName)?.Value ?? 0f)
-                    .Max() + 1f;
+                value += 1f;
             }
 
             element.Properties.AddOrReplaceProp(new FloatProperty(value, propertyName));
