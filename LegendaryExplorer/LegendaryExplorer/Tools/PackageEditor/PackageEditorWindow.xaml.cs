@@ -179,6 +179,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     {
                         case CurrentViewMode.Names:
                             TextSearch.SetTextPath(LeftSide_ListView, "Name");
+                            ClearPreviewPane();
                             break;
                         case CurrentViewMode.Imports:
                             TextSearch.SetTextPath(LeftSide_ListView, "ObjectName");
@@ -231,13 +232,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         ForwardsEntries.Clear(); //forward list is no longer valid
                     }
 
-                    Preview();
+                    ApplySelectionPreview();
                 }
             }
         }
 
         private int QueuedGotoNumber;
         private bool IsLoadingFile;
+        private bool _delaySelectionPreview;
+        private DispatcherOperation _pendingPreviewOperation;
+        private bool _pendingPreviewIsRefresh;
 
         /// <summary>
         /// Caches FaceFXAnimSet export UIndex -> ObjectName so we can detect renames in HandleUpdate.
@@ -4310,6 +4314,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// <param name="loadingSize"></param>
         private void preloadPackage(string loadingName, long loadingSize)
         {
+            CancelPendingPreview();
             BusyText = $"Loading {loadingName}";
             IsBusy = true;
             IsLoadingFile = true;
@@ -4835,7 +4840,81 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void LeftSide_SelectedItemChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
+            if (CurrentView == CurrentViewMode.Names)
+            {
+                return;
+            }
+
+            ApplySelectionPreview();
+        }
+
+        private void ApplySelectionPreview()
+        {
+            if (_delaySelectionPreview)
+            {
+                RequestPreview();
+                return;
+            }
+
+            CancelPendingPreview();
             Preview();
+        }
+
+        private void RequestPreview(bool isRefresh = false)
+        {
+            _pendingPreviewIsRefresh |= isRefresh;
+
+            if (_pendingPreviewOperation?.Status == DispatcherOperationStatus.Pending)
+            {
+                _pendingPreviewOperation.Abort();
+            }
+
+            _pendingPreviewOperation = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                _pendingPreviewOperation = null;
+                bool refresh = _pendingPreviewIsRefresh;
+                _pendingPreviewIsRefresh = false;
+                Preview(refresh);
+            }));
+        }
+
+        private void CancelPendingPreview()
+        {
+            _pendingPreviewIsRefresh = false;
+            if (_pendingPreviewOperation?.Status == DispatcherOperationStatus.Pending)
+            {
+                _pendingPreviewOperation.Abort();
+            }
+
+            _pendingPreviewOperation = null;
+        }
+
+        private void RunWithDeferredPreview(Action action)
+        {
+            _delaySelectionPreview = true;
+            try
+            {
+                action();
+            }
+            finally
+            {
+                _delaySelectionPreview = false;
+            }
+        }
+
+        private void ClearPreviewPane()
+        {
+            CancelPendingPreview();
+            foreach (ExportLoaderControl exportLoader in ExportLoaders.Keys)
+            {
+                exportLoader.UnloadExport();
+            }
+
+            EditorTabs.IsEnabled = false;
+            Metadata_Tab.Visibility = Visibility.Collapsed;
+            MetadataTab_MetadataEditor.ClearMetadataPane();
+            Intro_Tab.Visibility = Visibility.Visible;
+            Intro_Tab.IsSelected = true;
         }
 
         /// <summary>
@@ -4847,16 +4926,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (!TryGetSelectedEntry(out IEntry selectedEntry))
             {
-                foreach (ExportLoaderControl exportLoader in ExportLoaders.Keys)
-                {
-                    exportLoader.UnloadExport();
-                }
-
-                EditorTabs.IsEnabled = false;
-                Metadata_Tab.Visibility = Visibility.Collapsed;
-                MetadataTab_MetadataEditor.ClearMetadataPane();
-                Intro_Tab.Visibility = Visibility.Visible;
-                Intro_Tab.IsSelected = true;
+                ClearPreviewPane();
                 return;
             }
 
@@ -5322,64 +5392,67 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            if (CurrentView == CurrentViewMode.Tree)
+            RunWithDeferredPreview(() =>
             {
-                TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
-                List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
-                int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                LoopFunc(ref pos,
-                    items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
-                for (int i = pos, numSearched = 0;
-                    numSearched < items.Count;
-                    LoopFunc(ref i, items.Count), numSearched++)
+                if (CurrentView == CurrentViewMode.Tree)
                 {
-                    //int curIndex = (i + pos) % items.Count;
-                    TreeViewEntry node = items[i];
-                    if (node.Entry == null)
+                    TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
+                    List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
+                    int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
+                    LoopFunc(ref pos,
+                        items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
+                    for (int i = pos, numSearched = 0;
+                        numSearched < items.Count;
+                        LoopFunc(ref i, items.Count), numSearched++)
                     {
-                        continue;
-                    }
+                        //int curIndex = (i + pos) % items.Count;
+                        TreeViewEntry node = items[i];
+                        if (node.Entry == null)
+                        {
+                            continue;
+                        }
 
-                    if (node.Entry.ClassName.Equals(searchClass))
-                    {
-                        node.IsProgramaticallySelecting = true;
-                        SelectedItem = node;
-                        break;
+                        if (node.Entry.ClassName.Equals(searchClass))
+                        {
+                            node.IsProgramaticallySelecting = true;
+                            SelectedItem = node;
+                            break;
+                        }
                     }
                 }
-            }
-            else
-            {
-                //Todo: Loopfunc
-                int n = LeftSide_ListView.SelectedIndex;
-                int start;
-                if (n == -1)
-                    start = 0;
                 else
-                    start = n + 1;
-                if (CurrentView == CurrentViewMode.Exports)
                 {
-                    for (int i = start; i < Pcc.Exports.Count; i++)
+                    //Todo: Loopfunc
+                    int n = LeftSide_ListView.SelectedIndex;
+                    int start;
+                    if (n == -1)
+                        start = 0;
+                    else
+                        start = n + 1;
+                    if (CurrentView == CurrentViewMode.Exports)
                     {
-                        if (Pcc.Exports[i].ClassName == searchClass)
+                        for (int i = start; i < Pcc.Exports.Count; i++)
                         {
-                            LeftSide_ListView.SelectedIndex = i;
-                            break;
+                            if (Pcc.Exports[i].ClassName == searchClass)
+                            {
+                                LeftSide_ListView.SelectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    else if (CurrentView == CurrentViewMode.Imports)
+                    {
+                        for (int i = start; i < Pcc.Imports.Count; i++)
+                        {
+                            if (Pcc.Imports[i].ClassName == searchClass)
+                            {
+                                LeftSide_ListView.SelectedIndex = i;
+                                break;
+                            }
                         }
                     }
                 }
-                else if (CurrentView == CurrentViewMode.Imports)
-                {
-                    for (int i = start; i < Pcc.Imports.Count; i++)
-                    {
-                        if (Pcc.Imports[i].ClassName == searchClass)
-                        {
-                            LeftSide_ListView.SelectedIndex = i;
-                            break;
-                        }
-                    }
-                }
-            }
+            });
         }
 
         /// <summary>
@@ -5454,93 +5527,96 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            if (CurrentView == CurrentViewMode.Names)
+            RunWithDeferredPreview(() =>
             {
-                LoopFunc(ref start,
-                    Pcc.NameCount); //increment 1 forward or back to start so we don't immediately find ourself.
-                for (int i = start, numSearched = 0;
-                    numSearched < Pcc.Names.Count;
-                    LoopFunc(ref i, Pcc.NameCount), numSearched++)
+                if (CurrentView == CurrentViewMode.Names)
                 {
-                    if (Pcc.Names[i].Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                    LoopFunc(ref start,
+                        Pcc.NameCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    for (int i = start, numSearched = 0;
+                        numSearched < Pcc.Names.Count;
+                        LoopFunc(ref i, Pcc.NameCount), numSearched++)
                     {
-                        LeftSide_ListView.SelectedIndex = i;
-                        break;
+                        if (Pcc.Names[i].Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            LeftSide_ListView.SelectedIndex = i;
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (CurrentView == CurrentViewMode.Imports)
-            {
-                LoopFunc(ref start,
-                    Pcc.ImportCount); //increment 1 forward or back to start so we don't immediately find ourself.
-                for (int i = start, numSearched = 0;
-                    numSearched < Pcc.Imports.Count;
-                    LoopFunc(ref i, Pcc.ImportCount), numSearched++)
+                if (CurrentView == CurrentViewMode.Imports)
                 {
-                    if (Pcc.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                    LoopFunc(ref start,
+                        Pcc.ImportCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    for (int i = start, numSearched = 0;
+                        numSearched < Pcc.Imports.Count;
+                        LoopFunc(ref i, Pcc.ImportCount), numSearched++)
                     {
-                        LeftSide_ListView.SelectedIndex = i;
-                        break;
-                    }
+                        if (Pcc.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            LeftSide_ListView.SelectedIndex = i;
+                            break;
+                        }
 
-                    //if (i >= Imports.Count - 1)
-                    //{
-                    //    i = -1;
-                    //}
-                }
-            }
-
-            if (CurrentView == CurrentViewMode.Exports)
-            {
-                LoopFunc(ref start,
-                    Pcc.ExportCount); //increment 1 forward or back to start so we don't immediately find ourself.
-                for (int i = start, numSearched = 0;
-                    numSearched < Pcc.Exports.Count;
-                    LoopFunc(ref i, Pcc.ExportCount), numSearched++)
-                {
-                    if (Pcc.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        LeftSide_ListView.SelectedIndex = i;
-                        break;
-                    }
-
-                    //if (i >= Exports.Count - 1)
-                    //{
-                    //    i = -1;
-                    //}
-                }
-            }
-
-            if (CurrentView == CurrentViewMode.Tree && AllTreeViewNodesX.Count > 0)
-            {
-                TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
-                var items = AllTreeViewNodesX[0].FlattenTree();
-                int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                LoopFunc(ref pos,
-                    items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
-
-                //Start at the selected node, then search up or down the number of items in the list. If nothing is found, ding.
-                for (int numSearched = 0; numSearched < items.Count; LoopFunc(ref pos, items.Count), numSearched++)
-
-                //for (int i = 0; i < items.Count; LoopFunc(ref i, items.Count))
-                {
-                    //int curIndex = (i + pos) % items.Count;
-                    TreeViewEntry node = items[pos];
-                    if (node.Entry == null)
-                    {
-                        continue;
-                    }
-
-                    if (node.Entry.ObjectName.Instanced.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        node.IsProgramaticallySelecting = true;
-                        SelectedItem = node;
-                        //node.IsSelected = true;
-                        break;
+                        //if (i >= Imports.Count - 1)
+                        //{
+                        //    i = -1;
+                        //}
                     }
                 }
-            }
+
+                if (CurrentView == CurrentViewMode.Exports)
+                {
+                    LoopFunc(ref start,
+                        Pcc.ExportCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    for (int i = start, numSearched = 0;
+                        numSearched < Pcc.Exports.Count;
+                        LoopFunc(ref i, Pcc.ExportCount), numSearched++)
+                    {
+                        if (Pcc.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            LeftSide_ListView.SelectedIndex = i;
+                            break;
+                        }
+
+                        //if (i >= Exports.Count - 1)
+                        //{
+                        //    i = -1;
+                        //}
+                    }
+                }
+
+                if (CurrentView == CurrentViewMode.Tree && AllTreeViewNodesX.Count > 0)
+                {
+                    TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
+                    var items = AllTreeViewNodesX[0].FlattenTree();
+                    int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
+                    LoopFunc(ref pos,
+                        items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
+
+                    //Start at the selected node, then search up or down the number of items in the list. If nothing is found, ding.
+                    for (int numSearched = 0; numSearched < items.Count; LoopFunc(ref pos, items.Count), numSearched++)
+
+                    //for (int i = 0; i < items.Count; LoopFunc(ref i, items.Count))
+                    {
+                        //int curIndex = (i + pos) % items.Count;
+                        TreeViewEntry node = items[pos];
+                        if (node.Entry == null)
+                        {
+                            continue;
+                        }
+
+                        if (node.Entry.ObjectName.Instanced.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            node.IsProgramaticallySelecting = true;
+                            SelectedItem = node;
+                            //node.IsSelected = true;
+                            break;
+                        }
+                    }
+                }
+            });
         }
 
         private void Window_Drop(object sender, DragEventArgs e)
