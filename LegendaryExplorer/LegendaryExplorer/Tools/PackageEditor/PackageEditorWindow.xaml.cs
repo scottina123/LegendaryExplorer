@@ -1459,19 +1459,19 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             if (exp.ClassName == "InterpData")
             {
-                AdjustInterpTimeOffsets(new Tools.InterpEditor.InterpData(exp).ShiftTrackTimes, "Adjust InterpData Time Offsets");
+                AdjustInterpTimeOffsets(timeOffset => Tools.InterpEditor.InterpTrack.ShiftTimePropertiesUnderExport(exp, timeOffset), "Adjust InterpData Time Offsets");
                 return;
             }
 
             if (exp.IsA("InterpGroup"))
             {
-                AdjustInterpTimeOffsets(new Tools.InterpEditor.InterpGroup(exp).ShiftTrackTimes, "Adjust InterpGroup Time Offsets");
+                AdjustInterpTimeOffsets(timeOffset => Tools.InterpEditor.InterpTrack.ShiftTimePropertiesUnderExport(exp, timeOffset), "Adjust InterpGroup Time Offsets");
                 return;
             }
 
-            if (TryCreateInterpTrack(exp, out Tools.InterpEditor.InterpTrack track))
+            if (Tools.InterpEditor.InterpTrack.IsTimeShiftableTrack(exp))
             {
-                AdjustInterpTimeOffsets(track.ShiftKeyTimes, "Adjust InterpTrack Time Offsets");
+                AdjustInterpTimeOffsets(timeOffset => Tools.InterpEditor.InterpTrack.ShiftTimeProperties(exp, timeOffset), "Adjust InterpTrack Time Offsets");
             }
         }
 
@@ -1513,21 +1513,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return true;
             }
 
-            return TryCreateInterpTrack(exp, out _);
-        }
-
-        private static bool TryCreateInterpTrack(ExportEntry exp, out Tools.InterpEditor.InterpTrack track)
-        {
-            try
-            {
-                track = Tools.InterpEditor.InterpTrack.CreateInterpTrackForExport(exp);
-                return true;
-            }
-            catch (FormatException)
-            {
-                track = null;
-                return false;
-            }
+            return Tools.InterpEditor.InterpTrack.IsTimeShiftableTrack(exp);
         }
 
         private bool CanOpenExportIn(object obj)

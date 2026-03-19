@@ -123,7 +123,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     AdjustTimeOffsets(track.ShiftKeyTimes, "Adjust InterpTrack Time Offsets", track.Export);
                     break;
                 case InterpGroup group:
-                    AdjustTimeOffsets(group.ShiftTrackTimes, "Adjust InterpGroup Time Offsets", group.Export);
+                    AdjustTimeOffsets(timeOffset => InterpTrack.ShiftTimePropertiesUnderExport(group.Export, timeOffset), "Adjust InterpGroup Time Offsets", group.Export);
                     break;
             }
         }
@@ -134,7 +134,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (InterpData is not null)
             {
-                AdjustTimeOffsets(InterpData.ShiftTrackTimes, "Adjust InterpData Time Offsets");
+                AdjustTimeOffsets(timeOffset => InterpTrack.ShiftTimePropertiesUnderExport(CurrentLoadedExport, timeOffset), "Adjust InterpData Time Offsets");
             }
         }
 

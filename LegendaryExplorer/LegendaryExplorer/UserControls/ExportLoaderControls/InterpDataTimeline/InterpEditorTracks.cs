@@ -112,11 +112,37 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 .FirstOrDefault(i => i != null);
         }
 
-        public int ShiftTrackTimes(float timeOffset) => Tracks.Sum(track => track.ShiftKeyTimes(timeOffset));
+        public int ShiftTrackTimes(float timeOffset)
+        {
+            if (timeOffset == 0)
+            {
+                return 0;
+            }
+
+            int shiftCount = 0;
+            var tracksProp = Export.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+            if (tracksProp != null)
+            {
+                foreach (var trackExport in tracksProp.Where(prop => Export.FileRef.IsUExport(prop.Value)).Select(prop => Export.FileRef.GetUExport(prop.Value)))
+                {
+                    shiftCount += InterpTrack.ShiftTimeProperties(trackExport, timeOffset);
+                }
+            }
+
+            return shiftCount;
+        }
     }
 
     public abstract partial class InterpTrack : NotifyPropertyChangedBase
     {
+        private static readonly HashSet<string> ShiftableTimePropertyNames = new(StringComparer.Ordinal)
+        {
+            "Time",
+            "fTime",
+            "StartTime",
+            "InVal",
+            "m_fSceneLength"
+        };
         public ExportEntry Export { get; }
 
         public InterpGroup Group { get; set; }
@@ -374,18 +400,85 @@ namespace LegendaryExplorer.Tools.InterpEditor
 
         public virtual int ShiftKeyTimes(float timeOffset)
         {
-            if (timeOffset == 0 || Keys.Count == 0)
+            return ShiftTimeProperties(Export, timeOffset);
+        }
+
+        public static int ShiftTimeProperties(ExportEntry export, float timeOffset)
+        {
+            if (export is null || timeOffset == 0)
             {
                 return 0;
             }
 
-            float[] shiftedTimes = Keys.Select(key => key.Time + timeOffset).ToArray();
-            for (int i = 0; i < shiftedTimes.Length; i++)
+            if (!IsTimeShiftableTrack(export) && export.ClassName != "SFXSceneGroup")
             {
-                UpdateKeyTime(i, shiftedTimes[i]);
+                return 0;
             }
 
-            return shiftedTimes.Length;
+            var props = export.GetProperties();
+            int shiftedPropertyCount = ShiftTimeProperties(props, timeOffset);
+            if (shiftedPropertyCount > 0)
+            {
+                export.WriteProperties(props);
+            }
+
+            return shiftedPropertyCount;
+        }
+
+        public static bool IsTimeShiftableTrack(ExportEntry export)
+        {
+            if (export is null)
+            {
+                return false;
+            }
+
+            return export.IsA("InterpTrack")
+                   || export.IsA("BioInterpTrack")
+                   || export.ClassName == "SFXSceneGroup"
+                   || export.ClassName.Contains("InterpTrack", StringComparison.Ordinal)
+                   || export.ClassName.StartsWith("BioEvtSysTrack", StringComparison.Ordinal);
+        }
+
+        public static int ShiftTimePropertiesUnderExport(ExportEntry rootExport, float timeOffset)
+        {
+            if (rootExport is null || timeOffset == 0)
+            {
+                return 0;
+            }
+
+            int shiftedPropertyCount = 0;
+            foreach (ExportEntry export in rootExport.FileRef.Exports.Where(exp => exp == rootExport || exp.IsDescendantOf(rootExport)))
+            {
+                shiftedPropertyCount += ShiftTimeProperties(export, timeOffset);
+            }
+
+            return shiftedPropertyCount;
+        }
+
+        private static int ShiftTimeProperties(PropertyCollection props, float timeOffset)
+        {
+            int shiftedPropertyCount = 0;
+            foreach (Property property in props)
+            {
+                switch (property)
+                {
+                    case FloatProperty floatProperty when ShiftableTimePropertyNames.Contains(floatProperty.Name.Instanced):
+                        floatProperty.Value += timeOffset;
+                        shiftedPropertyCount++;
+                        break;
+                    case StructProperty structProperty:
+                        shiftedPropertyCount += ShiftTimeProperties(structProperty.Properties, timeOffset);
+                        break;
+                    case ArrayProperty<StructProperty> structArray:
+                        foreach (var structElement in structArray)
+                        {
+                            shiftedPropertyCount += ShiftTimeProperties(structElement.Properties, timeOffset);
+                        }
+                        break;
+                }
+            }
+
+            return shiftedPropertyCount;
         }
 
         #region Key Manipulation Helpers
