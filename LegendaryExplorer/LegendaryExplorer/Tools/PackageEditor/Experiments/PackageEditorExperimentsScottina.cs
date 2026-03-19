@@ -67,13 +67,95 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             List<string> Failures,
             List<string> Warnings);
 
-        public static void FixBrokenMaterialsUsingAssetDatabase(PackageEditorWindow pew)
+        private sealed record FaceFxLineSectionDeleteSummary(
+            int ModifiedAssetCount,
+            int ModifiedLineCount,
+            List<string> Failures);
+
+        public static void DeleteSectionOfLineForAllFaceFxAssets(PackageEditorWindow pew)
         {
             if (pew?.Pcc == null)
             {
                 return;
             }
 
+            List<ExportEntry> faceFxAssets = pew.Pcc.Exports.Where(exp => exp.ClassName == "FaceFXAsset").ToList();
+            if (faceFxAssets.Count == 0)
+            {
+                MessageBox.Show(pew, "No FaceFXAsset exports were found in the current package.", "Delete FaceFX line section", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            List<string> lineNames = GetFaceFxLineNames(faceFxAssets);
+            if (lineNames.Count == 0)
+            {
+                MessageBox.Show(pew, "No FaceFX lines were found in the current package.", "Delete FaceFX line section", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string lineName = InputComboBoxDialog.GetValue(pew,
+                "Select the FaceFX line name to edit in all FaceFXAssets.",
+                "Delete FaceFX line section",
+                lineNames,
+                lineNames.FirstOrDefault());
+            if (string.IsNullOrWhiteSpace(lineName))
+            {
+                return;
+            }
+
+            var timeRange = GetFaceFxTimeRange(pew, lineName);
+            if (timeRange.span < 0)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(pew,
+                    $"This will delete the section from {timeRange.start} to {timeRange.end} on every FaceFXAsset line named '{lineName}' in the current package.\n\nContinue?",
+                    "Delete FaceFX line section",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            pew.BusyText = "Deleting FaceFX line sections";
+            pew.IsBusy = true;
+
+            Task.Run(() => DeleteFaceFxLineSection(faceFxAssets, lineName, timeRange.start, timeRange.end, timeRange.span))
+                .ContinueWithOnUIThread(task =>
+                {
+                    pew.IsBusy = false;
+
+                    if (task.Exception != null)
+                    {
+                        MessageBox.Show(pew, task.Exception.FlattenException(), "Delete FaceFX line section", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    FaceFxLineSectionDeleteSummary summary = task.Result;
+                    if (summary.Failures.Count == 0)
+                    {
+                        MessageBox.Show(pew,
+                            $"Deleted the requested section from {summary.ModifiedLineCount} FaceFX line{(summary.ModifiedLineCount == 1 ? string.Empty : "s")} across {summary.ModifiedAssetCount} FaceFXAsset export{(summary.ModifiedAssetCount == 1 ? string.Empty : "s")}.",
+                            "Delete FaceFX line section",
+                            MessageBoxButton.OK,
+                            summary.ModifiedLineCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    new ListDialog(summary.Failures,
+                        $"FaceFX line section delete results ({summary.ModifiedLineCount} lines modified)",
+                        "Some FaceFXAssets could not be processed.",
+                        pew).Show();
+                });
+        }
+
+        public static void FixBrokenMaterialsUsingAssetDatabase(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
             if (!pew.Pcc.Game.IsMEGame())
             {
                 MessageBox.Show(pew, "Broken material repair is only supported for Mass Effect package files.", "Fix broken materials", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -155,6 +237,132 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         "The following items could not be fully repaired or reported relink warnings.",
                         pew).Show();
                 });
+        }
+
+        private static List<string> GetFaceFxLineNames(List<ExportEntry> faceFxAssets)
+        {
+            var lineNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ExportEntry export in faceFxAssets)
+            {
+                try
+                {
+                    foreach (FaceFXLine line in ObjectBinary.From<FaceFXAsset>(export).Lines ?? [])
+                    {
+                        if (!string.IsNullOrWhiteSpace(line.NameAsString))
+                        {
+                            lineNames.Add(line.NameAsString);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore exports that fail to parse; bulk operation will report processing failures later.
+                }
+            }
+
+            return lineNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private static (float start, float end, float span) GetFaceFxTimeRange(Window owner, string lineName)
+        {
+            string startPrompt = PromptDialog.Prompt(owner, $"Enter the start time to delete from '{lineName}':", "Delete FaceFX line section");
+            string endPrompt = PromptDialog.Prompt(owner, $"Enter the end time to delete from '{lineName}':", "Delete FaceFX line section");
+            if (!(float.TryParse(startPrompt, out float start) && float.TryParse(endPrompt, out float end)))
+            {
+                MessageBox.Show(owner, "You must enter two valid time values. For example, 3 and a half seconds would be entered as 3.5.", "Delete FaceFX line section", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return (0, 0, -1);
+            }
+
+            float span = end - start;
+            if (span <= 0)
+            {
+                MessageBox.Show(owner, "The end time must be after the start time!", "Delete FaceFX line section", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return (0, 0, -1);
+            }
+
+            return (start, end, span);
+        }
+
+        private static FaceFxLineSectionDeleteSummary DeleteFaceFxLineSection(IEnumerable<ExportEntry> faceFxAssets, string lineName, float start, float end, float span)
+        {
+            int modifiedAssetCount = 0;
+            int modifiedLineCount = 0;
+            var failures = new List<string>();
+
+            foreach (ExportEntry export in faceFxAssets)
+            {
+                try
+                {
+                    FaceFXAsset faceFxAsset = ObjectBinary.From<FaceFXAsset>(export);
+                    int modifiedLinesInAsset = 0;
+                    foreach (FaceFXLine line in faceFxAsset.Lines.Where(line => string.Equals(line.NameAsString, lineName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (DeleteFaceFxLineSection(line, start, end, span))
+                        {
+                            modifiedLinesInAsset++;
+                        }
+                    }
+
+                    if (modifiedLinesInAsset > 0)
+                    {
+                        export.WriteBinary(faceFxAsset);
+                        modifiedAssetCount++;
+                        modifiedLineCount += modifiedLinesInAsset;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: {ex.Message}");
+                }
+            }
+
+            return new FaceFxLineSectionDeleteSummary(modifiedAssetCount, modifiedLineCount, failures);
+        }
+
+        private static bool DeleteFaceFxLineSection(FaceFXLine line, float start, float end, float span)
+        {
+            bool modified = false;
+            var newPoints = new List<FaceFXControlPoint>();
+            for (int i = 0, j = 0; i < line.NumKeys.Count; i++)
+            {
+                int originalKeyCount = line.NumKeys[i];
+                int keptPoints = 0;
+                for (int k = 0; k < originalKeyCount; k++)
+                {
+                    FaceFXControlPoint point = line.Points[j + k];
+                    if (point.time < start)
+                    {
+                        newPoints.Add(point);
+                        keptPoints++;
+                    }
+                    else if (point.time > end)
+                    {
+                        point.time -= span;
+                        newPoints.Add(point);
+                        keptPoints++;
+                        modified = true;
+                    }
+                    else
+                    {
+                        modified = true;
+                    }
+                }
+
+                j += originalKeyCount;
+                line.NumKeys[i] = keptPoints;
+                if (keptPoints != originalKeyCount)
+                {
+                    modified = true;
+                }
+            }
+
+            if (!modified)
+            {
+                return false;
+            }
+
+            line.Points = newPoints;
+            return true;
         }
 
         private static RepairSummary RepairBrokenMaterials(IMEPackage package, string assetDbPath, string gamePath, List<ExportEntry> brokenMaterials)

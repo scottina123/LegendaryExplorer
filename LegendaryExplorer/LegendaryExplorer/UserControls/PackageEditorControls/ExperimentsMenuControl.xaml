@@ -244,6 +244,7 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
         <MenuItem Header="Shift all InterpTrackMove in package" Click="ShiftInterpTrackMovePackageWide"/>
         <MenuItem Header="Extract FaceFXAsset Combine_Node names" Click="ExtractFaceFXCombineNodeNames_Click" ToolTip="Extracts the names of all Combine_Nodes from the selected FaceFXAsset export."/>
         <MenuItem Header="Export FaceFXAsset to XML" Click="ExportFaceFXAssetToXml_Click" ToolTip="Exports the selected FaceFXAsset's bones and mapping data to an XML file."/>
+        <MenuItem Header="Delete section of FaceFX line in all FaceFXAssets" Click="DeleteFaceFxLineSectionInAllAssets_Click" ToolTip="Deletes a selected time range from a chosen FaceFX line name across every FaceFXAsset export in the open package."/>
         <MenuItem Header="LE2/LE3: Bulk Import Audio" Click="BulkImportAudio_Click" ToolTip="Bulk import WAV files as audio into LE2/LE3 packages."/>
         <MenuItem Header="Gesture Animation Importer" Click="GestureAnimationImporter_Click" ToolTip="Import animations from the asset database into a BioEvtSysTrackGesture and manage gesture entries. Select a BioEvtSysTrackGesture export first."/>
         <MenuItem Header="Fix broken materials using AssetDB" Click="FixBrokenMaterialsUsingAssetDb_Click" ToolTip="Repairs all broken Material and MaterialInstance exports in the open package by replacing them with the closest asset database match while restoring the original material parameters."/>

@@ -882,6 +882,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.FixBrokenMaterialsUsingAssetDatabase(GetPEWindow());
         }
 
+        private void DeleteFaceFxLineSectionInAllAssets_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.DeleteSectionOfLineForAllFaceFxAssets(GetPEWindow());
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))
