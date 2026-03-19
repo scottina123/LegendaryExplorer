@@ -14,6 +14,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using System.Windows.Interop;
+using Key = System.Windows.Input.Key;
 using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor;
@@ -356,6 +357,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
         public ICommand ShiftLevelActorsCommand { get; set; }
+        public ICommand AdjustInterpTimeOffsetsCommand { get; set; }
         public ICommand AddAllAssetsToReferencerCommand { get; set; }
         public ICommand CloneTreeToFolderCommand { get; set; }
 
@@ -425,6 +427,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
             ShiftLevelActorsCommand = new GenericCommand(ShiftSelectedLevelActors, CanShiftSelectedLevelActors);
+            AdjustInterpTimeOffsetsCommand = new GenericCommand(AdjustSelectedInterpTimeOffsets, CanAdjustSelectedInterpTimeOffsets);
             AddAllAssetsToReferencerCommand = new GenericCommand(AddAllAssetsToReferencer, ObjectReferencerIsSelected);
             CloneTreeToFolderCommand = new GenericCommand(CloneTreeToFolder, ExportIsSelected);
 
@@ -1447,6 +1450,45 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void AdjustSelectedInterpTimeOffsets()
+        {
+            if (!TryGetSelectedExport(out ExportEntry exp))
+            {
+                return;
+            }
+
+            if (exp.ClassName == "InterpData")
+            {
+                AdjustInterpTimeOffsets(new Tools.InterpEditor.InterpData(exp).ShiftTrackTimes, "Adjust InterpData Time Offsets");
+                return;
+            }
+
+            if (exp.IsA("InterpGroup"))
+            {
+                AdjustInterpTimeOffsets(new Tools.InterpEditor.InterpGroup(exp).ShiftTrackTimes, "Adjust InterpGroup Time Offsets");
+                return;
+            }
+
+            if (TryCreateInterpTrack(exp, out Tools.InterpEditor.InterpTrack track))
+            {
+                AdjustInterpTimeOffsets(track.ShiftKeyTimes, "Adjust InterpTrack Time Offsets");
+            }
+        }
+
+        private void AdjustInterpTimeOffsets(Func<float, int> shiftAction, string title)
+        {
+            var dialog = new ShiftInterpTrackDialog(includeTimeOffset: true, includeAnchorObjectMoves: false, title, includeSpatialOffsets: false)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                shiftAction(dialog.Parameters.TimeOffset);
+                Preview();
+            }
+        }
+
         private void AddInterpTrack()
         {
             if (TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup"))
@@ -1456,6 +1498,35 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(exp, info.ClassName);
                     MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
                 }
+            }
+        }
+
+        private bool CanAdjustSelectedInterpTimeOffsets()
+        {
+            if (!TryGetSelectedExport(out ExportEntry exp))
+            {
+                return false;
+            }
+
+            if (exp.ClassName == "InterpData" || exp.IsA("InterpGroup"))
+            {
+                return true;
+            }
+
+            return TryCreateInterpTrack(exp, out _);
+        }
+
+        private static bool TryCreateInterpTrack(ExportEntry exp, out Tools.InterpEditor.InterpTrack track)
+        {
+            try
+            {
+                track = Tools.InterpEditor.InterpTrack.CreateInterpTrackForExport(exp);
+                return true;
+            }
+            catch (FormatException)
+            {
+                track = null;
+                return false;
             }
         }
 

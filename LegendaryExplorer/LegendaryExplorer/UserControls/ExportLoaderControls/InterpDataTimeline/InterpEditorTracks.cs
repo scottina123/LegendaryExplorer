@@ -39,6 +39,8 @@ namespace LegendaryExplorer.Tools.InterpEditor
                 }
             }
         }
+
+        public int ShiftTrackTimes(float timeOffset) => Groups.Sum(group => group.ShiftTrackTimes(timeOffset));
     }
 
     public partial class InterpGroup : NotifyPropertyChangedBase
@@ -109,6 +111,8 @@ namespace LegendaryExplorer.Tools.InterpEditor
             return Tracks.Select(t => t.Export.GetProperty<IntProperty>("m_nStrRefID")?.Value)
                 .FirstOrDefault(i => i != null);
         }
+
+        public int ShiftTrackTimes(float timeOffset) => Tracks.Sum(track => track.ShiftKeyTimes(timeOffset));
     }
 
     public abstract partial class InterpTrack : NotifyPropertyChangedBase
@@ -368,6 +372,22 @@ namespace LegendaryExplorer.Tools.InterpEditor
         /// </summary>
         public abstract void InsertKey(float time);
 
+        public virtual int ShiftKeyTimes(float timeOffset)
+        {
+            if (timeOffset == 0 || Keys.Count == 0)
+            {
+                return 0;
+            }
+
+            float[] shiftedTimes = Keys.Select(key => key.Time + timeOffset).ToArray();
+            for (int i = 0; i < shiftedTimes.Length; i++)
+            {
+                UpdateKeyTime(i, shiftedTimes[i]);
+            }
+
+            return shiftedTimes.Length;
+        }
+
         #region Key Manipulation Helpers
         /// <summary>
         /// Generates a StructProperty with default values for insertion into an array.
@@ -616,14 +636,38 @@ namespace LegendaryExplorer.Tools.InterpEditor
             }
         }
 
-        public override void UpdateKeyTime(int keyIndex, float newTime) =>
+        public override void UpdateKeyTime(int keyIndex, float newTime)
+        {
+            if (SecondaryArrayName is null)
+            {
+                UpdateTimeInArray("m_aTrackKeys", keyIndex, newTime, "fTime");
+                return;
+            }
+
             UpdateTimeInArrayWithSecondary<StrProperty>("m_aTrackKeys", keyIndex, newTime, "fTime", SecondaryArrayName);
+        }
 
-        public override void DeleteKey(int keyIndex) =>
+        public override void DeleteKey(int keyIndex)
+        {
+            if (SecondaryArrayName is null)
+            {
+                DeleteKeyFromArray("m_aTrackKeys", keyIndex);
+                return;
+            }
+
             DeleteKeyFromArrayWithSecondary<StrProperty>("m_aTrackKeys", keyIndex, SecondaryArrayName);
+        }
 
-        public override void InsertKey(float time) =>
+        public override void InsertKey(float time)
+        {
+            if (SecondaryArrayName is null)
+            {
+                InsertKeyInArray("m_aTrackKeys", time, "fTime", Export.ClassName);
+                return;
+            }
+
             InsertKeyInArrayWithSecondary("m_aTrackKeys", time, "fTime", Export.ClassName, SecondaryArrayName);
+        }
     }
 
     public partial class SFXGameActorInterpTrack : BioInterpTrack

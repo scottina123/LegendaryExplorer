@@ -36,12 +36,20 @@ namespace LegendaryExplorer.Dialogs
         {
         }
 
-        public ShiftInterpTrackDialog(bool includeTimeOffset, bool includeAnchorObjectMoves, string title)
+        public ShiftInterpTrackDialog(bool includeTimeOffset, bool includeAnchorObjectMoves, string title, bool includeSpatialOffsets = true)
         {
             Parameters = new ShiftInterpTrackParameters();
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
             Title = title;
+            if (FindName("PositionOffsetGroupBox") is FrameworkElement positionOffsetGroupBox)
+            {
+                positionOffsetGroupBox.Visibility = includeSpatialOffsets ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (FindName("RotationOffsetGroupBox") is FrameworkElement rotationOffsetGroupBox)
+            {
+                rotationOffsetGroupBox.Visibility = includeSpatialOffsets ? Visibility.Visible : Visibility.Collapsed;
+            }
             if (FindName("TimeOffsetGroupBox") is FrameworkElement timeOffsetGroupBox)
             {
                 timeOffsetGroupBox.Visibility = includeTimeOffset ? Visibility.Visible : Visibility.Collapsed;

@@ -100,6 +100,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand AddTrackCmd { get; set; }
         public ICommand RenameTrackCommand { get; set; }
         public ICommand InsertKeyCmd { get; set; }
+        public ICommand AdjustSelectedTimeOffsetsCommand { get; set; }
+        public ICommand AdjustInterpDataTimeOffsetsCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -109,6 +111,52 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddTrackCmd = new GenericCommand(AddTrack, CanAddTrack);
             RenameTrackCommand = new GenericCommand(RenameTrack, CanRenameTrack);
             InsertKeyCmd = new GenericCommand(InsertKeyAtTime, () => MatineeTree.SelectedItem is InterpTrack);
+            AdjustSelectedTimeOffsetsCommand = new GenericCommand(AdjustSelectedTimeOffsets, CanAdjustSelectedTimeOffsets);
+            AdjustInterpDataTimeOffsetsCommand = new GenericCommand(AdjustInterpDataTimeOffsets, () => HasData(null));
+        }
+
+        private void AdjustSelectedTimeOffsets()
+        {
+            switch (MatineeTree.SelectedItem)
+            {
+                case InterpTrack track:
+                    AdjustTimeOffsets(track.ShiftKeyTimes, "Adjust InterpTrack Time Offsets", track.Export);
+                    break;
+                case InterpGroup group:
+                    AdjustTimeOffsets(group.ShiftTrackTimes, "Adjust InterpGroup Time Offsets", group.Export);
+                    break;
+            }
+        }
+
+        private bool CanAdjustSelectedTimeOffsets() => MatineeTree?.SelectedItem is InterpTrack or InterpGroup;
+
+        private void AdjustInterpDataTimeOffsets()
+        {
+            if (InterpData is not null)
+            {
+                AdjustTimeOffsets(InterpData.ShiftTrackTimes, "Adjust InterpData Time Offsets");
+            }
+        }
+
+        private void AdjustTimeOffsets(Func<float, int> shiftAction, string title, ExportEntry exportToReselect = null)
+        {
+            var dialog = new ShiftInterpTrackDialog(includeTimeOffset: true, includeAnchorObjectMoves: false, title, includeSpatialOffsets: false)
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            shiftAction(dialog.Parameters.TimeOffset);
+            LoadGroups();
+
+            if (exportToReselect is not null)
+            {
+                SelectExport(exportToReselect);
+            }
         }
 
         private void AddTrack()
