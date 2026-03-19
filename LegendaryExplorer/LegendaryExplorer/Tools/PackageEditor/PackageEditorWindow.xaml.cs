@@ -314,6 +314,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand LECLEditorCommand { get; set; }
         public ICommand CreateNewPackageGUIDCommand { get; set; }
         public ICommand RestoreExportCommand { get; set; }
+        public ICommand RestoreExportTreeCommand { get; set; }
         public ICommand SetPackageAsFilenamePackageCommand { get; set; }
         public ICommand FindEntryViaTagCommand { get; set; }
         public ICommand PopoutCurrentViewCommand { get; set; }
@@ -439,6 +440,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ExtractToPackageCommand = new GenericCommand(ExtractEntryToNewPackage, ExportIsSelected);
 
             RestoreExportCommand = new GenericCommand(RestoreExportData, ExportIsSelected);
+            RestoreExportTreeCommand = new GenericCommand(RestoreExportDataForWholeTree, ExportIsSelected);
             OpenOtherVersionCommand = new GenericCommand(OpenOtherVersion, IsLoadedPackageME);
             OpenHighestMountedCommand = new GenericCommand(OpenHighestMountedVersion, IsLoadedPackageME);
             OpenHighestMountedLinkedFileCommand = new GenericCommand(OpenHighestMountedLinkedFile, IsLoadedPackageME);
@@ -1119,6 +1121,25 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void RestoreExportData()
         {
+            RestoreExportData(restoreWholeTree: false);
+        }
+
+        private void RestoreExportDataForWholeTree()
+        {
+            RestoreExportData(restoreWholeTree: true);
+        }
+
+        private void RestoreExportData(bool restoreWholeTree)
+        {
+            if (!TryGetSelectedExport(out var selectedExport))
+            {
+                return;
+            }
+
+            var exportsToRestore = restoreWholeTree
+                ? selectedExport.GetAllDescendants().OfType<ExportEntry>().Prepend(selectedExport).ToList()
+                : [selectedExport];
+
             if (!Pcc.Game.IsLEGame() && !Pcc.Game.IsOTGame())
             {
                 MessageBox.Show(this, "Not a supported file for restoring export data. Only LE/OT files are supported.");
@@ -1148,13 +1169,62 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     return;
                 }
 
-                var restorePackage = MEPackageHandler.OpenMEPackage(choice, forceLoadFromDisk: true);
-                if (TryGetSelectedExport(out var exportToOvewrite))
+                using var restorePackage = OpenRestoreCandidatePackage(foundCandidates.Result, choice);
+                if (restorePackage == null)
                 {
-                    var sourceExport = restorePackage.GetUExport(exportToOvewrite.UIndex);
-                    exportToOvewrite.Data = sourceExport.Data;
+                    MessageBox.Show(this, "Could not open the selected unmodded package.");
+                    return;
                 }
+
+                int restoredCount = 0;
+                int skippedCount = 0;
+                foreach (var exportToRestore in exportsToRestore)
+                {
+                    if (!restorePackage.IsUExport(exportToRestore.UIndex))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    var sourceExport = restorePackage.GetUExport(exportToRestore.UIndex);
+                    if (!string.Equals(sourceExport.ClassName, exportToRestore.ClassName, StringComparison.Ordinal))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    exportToRestore.Data = sourceExport.Data;
+                    restoredCount++;
+                }
+
+                Preview(true);
+                MessageBox.Show(this,
+                    restoreWholeTree
+                        ? $"Restored export data for {restoredCount} export(s). Skipped {skippedCount}."
+                        : restoredCount == 1
+                            ? "Restored export data."
+                            : $"No export data was restored. Skipped {skippedCount}.");
             });
+        }
+
+        private IMEPackage OpenRestoreCandidatePackage(SharedPackageTools.UnmoddedCandidatesLookup candidates, string choice)
+        {
+            if (candidates.DiskFiles.Contains(choice))
+            {
+                return MEPackageHandler.OpenMEPackage(choice, forceLoadFromDisk: true);
+            }
+
+            if (candidates.SFARPackageStreams.TryGetValue(choice, out Stream packageStream))
+            {
+                if (packageStream.CanSeek)
+                {
+                    packageStream.Position = 0;
+                }
+
+                return MEPackageHandler.OpenMEPackageFromStream(packageStream, Pcc.FilePath);
+            }
+
+            return null;
         }
 
         private void ExtractEntryToNewPackage()
