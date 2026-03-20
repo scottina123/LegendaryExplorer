@@ -727,11 +727,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 bool addedAnyProperty = TryAddRootProperty(propName, staticArrayIndex, propInfo);
 
                 if (staticArrayIndex == 0
-                    && TryGetLinkedBioInterpTrackPropertyName(propName, out NameReference linkedPropertyName)
-                    && !RootPropertyExists(linkedPropertyName)
-                    && GetRootPropertyInfo(linkedPropertyName) is PropertyInfo linkedPropInfo)
+                    && TryGetLinkedRootPropertyNames(propName, out List<NameReference> linkedPropertyNames))
                 {
-                    addedAnyProperty |= TryAddRootProperty(linkedPropertyName, 0, linkedPropInfo);
+                    foreach (NameReference linkedPropertyName in linkedPropertyNames)
+                    {
+                        if (!RootPropertyExists(linkedPropertyName)
+                            && GetRootPropertyInfo(linkedPropertyName) is PropertyInfo linkedPropInfo)
+                        {
+                            addedAnyProperty |= TryAddRootProperty(linkedPropertyName, 0, linkedPropInfo);
+                        }
+                    }
                 }
 
                 if (addedAnyProperty)
@@ -749,11 +754,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     var propertiesToRemove = new List<Property> { tvi.Property };
                     if (tvi.Property.StaticArrayIndex == 0
-                        && TryGetLinkedBioInterpTrackPropertyName(tvi.Property.Name, out NameReference linkedPropertyName))
+                        && TryGetLinkedRootPropertyNames(tvi.Property.Name, out List<NameReference> linkedPropertyNames))
                     {
                         foreach (Property property in CurrentLoadedProperties)
                         {
-                            if (property != tvi.Property && property.StaticArrayIndex == 0 && property.Name == linkedPropertyName)
+                            if (property != tvi.Property
+                                && property.StaticArrayIndex == 0
+                                && linkedPropertyNames.Contains(property.Name)
+                                && !propertiesToRemove.Contains(property))
                             {
                                 propertiesToRemove.Add(property);
                             }
@@ -834,9 +842,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             };
         }
 
-        private bool TryGetLinkedBioInterpTrackPropertyName(NameReference propertyName, out NameReference linkedPropertyName)
+        private bool TryGetLinkedRootPropertyNames(NameReference propertyName, out List<NameReference> linkedPropertyNames)
         {
-            linkedPropertyName = default;
+            linkedPropertyNames = null;
+
+            if (TryGetLinkedBioInterpTrackPropertyNames(propertyName, out linkedPropertyNames))
+            {
+                return true;
+            }
+
+            return TryGetLinkedInterpTrackMovePropertyNames(propertyName, out linkedPropertyNames);
+        }
+
+        private bool TryGetLinkedBioInterpTrackPropertyNames(NameReference propertyName, out List<NameReference> linkedPropertyNames)
+        {
+            linkedPropertyNames = null;
 
             string secondaryArrayName = GetBioInterpTrackSecondaryArrayName();
             if (secondaryArrayName == null)
@@ -846,17 +866,40 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (propertyName.Name == "m_aTrackKeys")
             {
-                linkedPropertyName = new NameReference(secondaryArrayName);
+                linkedPropertyNames = [new NameReference(secondaryArrayName)];
                 return true;
             }
 
             if (propertyName.Name == secondaryArrayName)
             {
-                linkedPropertyName = new NameReference("m_aTrackKeys");
+                linkedPropertyNames = [new NameReference("m_aTrackKeys")];
                 return true;
             }
 
             return false;
+        }
+
+        private bool TryGetLinkedInterpTrackMovePropertyNames(NameReference propertyName, out List<NameReference> linkedPropertyNames)
+        {
+            linkedPropertyNames = null;
+            if (!string.Equals(CurrentLoadedExport?.ClassName, "InterpTrackMove", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (propertyName.Name is not ("PosTrack" or "EulerTrack" or "LookupTrack"))
+            {
+                return false;
+            }
+
+            linkedPropertyNames =
+            [
+                new NameReference("PosTrack"),
+                new NameReference("EulerTrack"),
+                new NameReference("LookupTrack")
+            ];
+            linkedPropertyNames.RemoveAll(name => name == propertyName);
+            return linkedPropertyNames.Count > 0;
         }
 
         private bool CanRemoveProperty()
