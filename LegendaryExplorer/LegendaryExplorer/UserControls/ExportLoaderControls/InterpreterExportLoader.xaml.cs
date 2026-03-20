@@ -2302,6 +2302,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void SecondLinkedNodePanel_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: UPropertyTreeViewEntry { SecondLinkedNode: not null } ownerNode })
+            {
+                ApplySelectedTreeItem(ownerNode.SecondLinkedNode);
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.SecondLinkedNode)));
+                e.Handled = true;
+            }
+        }
+
         /// <summary>
         /// Updates the object combobox based on the property
         /// </summary>
@@ -3671,7 +3681,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void MergeLinkedTrackRows(UPropertyTreeViewEntry topLevelTree)
         {
-            if (topLevelTree is null || CurrentLoadedExport?.IsA("BioInterpTrack") != true)
+            if (topLevelTree is null || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            if (string.Equals(CurrentLoadedExport.ClassName, "InterpTrackMove", StringComparison.Ordinal))
+            {
+                MergeInterpTrackMoveRows(topLevelTree);
+                return;
+            }
+
+            if (CurrentLoadedExport.IsA("BioInterpTrack") != true)
             {
                 return;
             }
@@ -3713,6 +3734,47 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 LinkTrackRows(primaryNode.ChildrenProperties[i], linkedNode.ChildrenProperties[i]);
             }
+        }
+
+        private static void LinkTrackRows(UPropertyTreeViewEntry primaryNode, UPropertyTreeViewEntry linkedNode, UPropertyTreeViewEntry secondLinkedNode)
+        {
+            if (primaryNode is null)
+            {
+                return;
+            }
+
+            if (linkedNode is not null)
+            {
+                primaryNode.LinkedNode = linkedNode;
+            }
+
+            if (secondLinkedNode is not null)
+            {
+                primaryNode.SecondLinkedNode = secondLinkedNode;
+            }
+
+            for (int i = 0; i < primaryNode.ChildrenProperties.Count; i++)
+            {
+                LinkTrackRows(
+                    primaryNode.ChildrenProperties[i],
+                    linkedNode?.ChildrenProperties.ElementAtOrDefault(i),
+                    secondLinkedNode?.ChildrenProperties.ElementAtOrDefault(i));
+            }
+        }
+
+        private static void MergeInterpTrackMoveRows(UPropertyTreeViewEntry topLevelTree)
+        {
+            UPropertyTreeViewEntry posTrackNode = topLevelTree.ChildrenProperties.FirstOrDefault(node => node.Property?.Name.Name == "PosTrack");
+            UPropertyTreeViewEntry eulerTrackNode = topLevelTree.ChildrenProperties.FirstOrDefault(node => node.Property?.Name.Name == "EulerTrack");
+            UPropertyTreeViewEntry lookupTrackNode = topLevelTree.ChildrenProperties.FirstOrDefault(node => node.Property?.Name.Name == "LookupTrack");
+            if (posTrackNode is null || eulerTrackNode is null || lookupTrackNode is null)
+            {
+                return;
+            }
+
+            eulerTrackNode.IsVisible = false;
+            lookupTrackNode.IsVisible = false;
+            LinkTrackRows(posTrackNode, eulerTrackNode, lookupTrackNode);
         }
     }
 
@@ -3875,6 +3937,66 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public string LinkedParsedValue => LinkedNode?.ParsedValue ?? "";
         public string LinkedPropertyType => LinkedNode?.PropertyType ?? "";
         public bool IsLinkedEditorSelected => LinkedNode?.IsEditorSelected == true;
+
+        private UPropertyTreeViewEntry _secondLinkedNode;
+        public UPropertyTreeViewEntry SecondLinkedNode
+        {
+            get => _secondLinkedNode;
+            set
+            {
+                if (_secondLinkedNode is not null)
+                {
+                    _secondLinkedNode.PropertyChanged -= SecondLinkedNodeOnPropertyChanged;
+                }
+
+                if (SetProperty(ref _secondLinkedNode, value))
+                {
+                    if (_secondLinkedNode is not null)
+                    {
+                        _secondLinkedNode.PropertyChanged += SecondLinkedNodeOnPropertyChanged;
+                    }
+
+                    OnPropertyChanged(nameof(HasSecondLinkedNode));
+                    OnPropertyChanged(nameof(SecondLinkedDisplayName));
+                    OnPropertyChanged(nameof(SecondLinkedEditableValue));
+                    OnPropertyChanged(nameof(SecondLinkedParsedValue));
+                    OnPropertyChanged(nameof(SecondLinkedPropertyType));
+                    OnPropertyChanged(nameof(IsSecondLinkedEditorSelected));
+                }
+            }
+        }
+
+        private void SecondLinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected))
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(DisplayName):
+                        OnPropertyChanged(nameof(SecondLinkedDisplayName));
+                        break;
+                    case nameof(EditableValue):
+                        OnPropertyChanged(nameof(SecondLinkedEditableValue));
+                        break;
+                    case nameof(ParsedValue):
+                        OnPropertyChanged(nameof(SecondLinkedParsedValue));
+                        break;
+                    case nameof(PropertyType):
+                        OnPropertyChanged(nameof(SecondLinkedPropertyType));
+                        break;
+                    case nameof(IsEditorSelected):
+                        OnPropertyChanged(nameof(IsSecondLinkedEditorSelected));
+                        break;
+                }
+            }
+        }
+
+        public bool HasSecondLinkedNode => SecondLinkedNode is not null;
+        public string SecondLinkedDisplayName => SecondLinkedNode?.DisplayName ?? "";
+        public string SecondLinkedEditableValue => SecondLinkedNode?.EditableValue ?? "";
+        public string SecondLinkedParsedValue => SecondLinkedNode?.ParsedValue ?? "";
+        public string SecondLinkedPropertyType => SecondLinkedNode?.PropertyType ?? "";
+        public bool IsSecondLinkedEditorSelected => SecondLinkedNode?.IsEditorSelected == true;
 
         private bool _isEditorSelected;
         public bool IsEditorSelected

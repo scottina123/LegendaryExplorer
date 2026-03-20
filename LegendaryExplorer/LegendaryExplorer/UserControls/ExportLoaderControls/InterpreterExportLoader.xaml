@@ -179,6 +179,8 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -209,6 +211,18 @@
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Grid.Column="2" Grid.Row="1" x:Name="PropertyItem_LinkedDisplayType" FontSize="10" Text="{Binding LinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
+                                           Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <TextBlock Grid.Column="3" Grid.Row="0" Grid.RowSpan="2" Text="⇔" Margin="8,0" VerticalAlignment="Center"
+                                           Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Border x:Name="PropertyItem_SecondLinkedSelectionBorder" Grid.Column="4" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" PreviewMouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PropertyItem_SecondLinkedDisplayName" Text="{Binding SecondLinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
+                                        <TextBlock x:Name="PropertyItem_SecondLinkedEditableValue" Margin="5,0,0,0" Text="{Binding SecondLinkedEditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold"
+                                                   Visibility="{Binding SecondLinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Grid.Column="4" Grid.Row="1" x:Name="PropertyItem_SecondLinkedDisplayType" FontSize="10" Text="{Binding SecondLinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </Grid>
                             <b:Interaction.Triggers>
@@ -331,6 +345,10 @@
                             <DataTrigger Binding="{Binding IsLinkedEditorSelected}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedSelectionBorder" Property="Background" Value="#004080"/>
                                 <Setter TargetName="PropertyItem_LinkedDisplayType" Property="Background" Value="#004080"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsSecondLinkedEditorSelected}" Value="True">
+                                <Setter TargetName="PropertyItem_SecondLinkedSelectionBorder" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_SecondLinkedDisplayType" Property="Background" Value="#004080"/>
                             </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
