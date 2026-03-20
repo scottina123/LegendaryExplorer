@@ -326,9 +326,11 @@
                             </MultiDataTrigger>
                             <DataTrigger Binding="{Binding IsEditorSelected}" Value="True">
                                 <Setter TargetName="PropertyItem_PrimarySelectionBorder" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_DisplayType" Property="Background" Value="#004080"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsLinkedEditorSelected}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedSelectionBorder" Property="Background" Value="#004080"/>
+                                <Setter TargetName="PropertyItem_LinkedDisplayType" Property="Background" Value="#004080"/>
                             </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
