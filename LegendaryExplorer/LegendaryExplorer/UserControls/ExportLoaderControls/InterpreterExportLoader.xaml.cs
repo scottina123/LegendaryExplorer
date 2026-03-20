@@ -724,66 +724,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (AddPropertyDialog.GetProperty(CurrentLoadedExport, props, Pcc.Game, Window.GetWindow(this)) is (NameReference propName, int staticArrayIndex, PropertyInfo propInfo))
             {
-                Property newProperty = null;
-                //Todo: Maybe lookup the default value?
-                switch (propInfo.Type)
+                bool addedAnyProperty = TryAddRootProperty(propName, staticArrayIndex, propInfo);
+
+                if (staticArrayIndex == 0
+                    && TryGetLinkedBioInterpTrackPropertyName(propName, out NameReference linkedPropertyName)
+                    && !RootPropertyExists(linkedPropertyName)
+                    && GetRootPropertyInfo(linkedPropertyName) is PropertyInfo linkedPropInfo)
                 {
-                    case PropertyType.IntProperty:
-                        newProperty = new IntProperty(0, propName);
-                        break;
-                    case PropertyType.BoolProperty:
-                        newProperty = new BoolProperty(false, propName);
-                        break;
-                    case PropertyType.FloatProperty:
-                        newProperty = new FloatProperty(0.0f, propName);
-                        break;
-                    case PropertyType.StringRefProperty:
-                        newProperty = new StringRefProperty(propName);
-                        break;
-                    case PropertyType.StrProperty:
-                        newProperty = new StrProperty("", propName);
-                        break;
-                    case PropertyType.ArrayProperty:
-                        newProperty = new ArrayProperty<IntProperty>(propName); //We can just set it to int as it will be reparsed and resolved.
-                        break;
-                    case PropertyType.NameProperty:
-                        newProperty = new NameProperty("None", propName);
-                        break;
-                    case PropertyType.ByteProperty:
-                        if (propInfo.IsEnumProp())
-                        {
-                            newProperty = new EnumProperty(propInfo.Reference, Pcc.Game, propName);
-                        }
-                        else
-                        {
-                            newProperty = new ByteProperty(0, propName);
-                        }
-                        break;
-                    case PropertyType.BioMask4Property:
-                        newProperty = new BioMask4Property(0, propName);
-                        break;
-                    case PropertyType.ObjectProperty:
-                        newProperty = new ObjectProperty(0, propName);
-                        break;
-                    case PropertyType.DelegateProperty:
-                        newProperty = new DelegateProperty("None", 0, propName);
-                        break;
-                    case PropertyType.StructProperty:
-                        PropertyCollection structProps = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, propInfo.Reference, true, CurrentLoadedExport.FileRef);
-                        newProperty = new StructProperty(propInfo.Reference, structProps, propName, isImmutable: GlobalUnrealObjectInfo.IsImmutable(propInfo.Reference, Pcc.Game));
-                        break;
+                    addedAnyProperty |= TryAddRootProperty(linkedPropertyName, 0, linkedPropInfo);
                 }
 
-                //UProperty property = generateNewProperty(prop.Item1, currentInfo);
-                if (newProperty != null)
+                if (addedAnyProperty)
                 {
-                    newProperty.StaticArrayIndex = staticArrayIndex;
-                    CurrentLoadedProperties.Insert(CurrentLoadedProperties.Count - 1, newProperty); //insert before noneproperty
-                    ForcedRescanOffset = CurrentLoadedProperties.Last().StartOffset;
+                    CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
                 }
-                //Todo: Create new node, prevent refresh of this instance.
-                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
-                //End Todo
             }
         }
 
@@ -793,7 +747,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (tvi.UPParent.UPParent == null)
                 {
-                    CurrentLoadedProperties.Remove(tvi.Property);
+                    var propertiesToRemove = new List<Property> { tvi.Property };
+                    if (tvi.Property.StaticArrayIndex == 0
+                        && TryGetLinkedBioInterpTrackPropertyName(tvi.Property.Name, out NameReference linkedPropertyName))
+                    {
+                        foreach (Property property in CurrentLoadedProperties)
+                        {
+                            if (property != tvi.Property && property.StaticArrayIndex == 0 && property.Name == linkedPropertyName)
+                            {
+                                propertiesToRemove.Add(property);
+                            }
+                        }
+                    }
+
+                    foreach (Property property in propertiesToRemove)
+                    {
+                        CurrentLoadedProperties.Remove(property);
+                    }
                 }
                 else if (tvi.UPParent.Property is StructProperty sp) //inside struct
                 {
@@ -801,6 +771,92 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
+        }
+
+        private bool RootPropertyExists(NameReference propertyName, int staticArrayIndex = 0)
+        {
+            foreach (Property property in CurrentLoadedProperties)
+            {
+                if (property.Name == propertyName && property.StaticArrayIndex == staticArrayIndex)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private PropertyInfo GetRootPropertyInfo(NameReference propertyName)
+        {
+            return GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, propertyName, CurrentLoadedExport.ClassName, containingExport: CurrentLoadedExport);
+        }
+
+        private bool TryAddRootProperty(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
+        {
+            if (RootPropertyExists(propertyName, staticArrayIndex))
+            {
+                return false;
+            }
+
+            Property newProperty = CreateProperty(propertyName, propertyInfo);
+            if (newProperty == null)
+            {
+                return false;
+            }
+
+            newProperty.StaticArrayIndex = staticArrayIndex;
+            CurrentLoadedProperties.Insert(Math.Max(0, CurrentLoadedProperties.Count - 1), newProperty);
+            ForcedRescanOffset = CurrentLoadedProperties.Last().StartOffset;
+            return true;
+        }
+
+        private Property CreateProperty(NameReference propertyName, PropertyInfo propertyInfo)
+        {
+            return propertyInfo.Type switch
+            {
+                PropertyType.IntProperty => new IntProperty(0, propertyName),
+                PropertyType.BoolProperty => new BoolProperty(false, propertyName),
+                PropertyType.FloatProperty => new FloatProperty(0.0f, propertyName),
+                PropertyType.StringRefProperty => new StringRefProperty(propertyName),
+                PropertyType.StrProperty => new StrProperty("", propertyName),
+                PropertyType.ArrayProperty => new ArrayProperty<IntProperty>(propertyName),
+                PropertyType.NameProperty => new NameProperty("None", propertyName),
+                PropertyType.ByteProperty when propertyInfo.IsEnumProp() => new EnumProperty(propertyInfo.Reference, Pcc.Game, propertyName),
+                PropertyType.ByteProperty => new ByteProperty(0, propertyName),
+                PropertyType.BioMask4Property => new BioMask4Property(0, propertyName),
+                PropertyType.ObjectProperty => new ObjectProperty(0, propertyName),
+                PropertyType.DelegateProperty => new DelegateProperty("None", 0, propertyName),
+                PropertyType.StructProperty => new StructProperty(propertyInfo.Reference,
+                    GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, propertyInfo.Reference, true, CurrentLoadedExport.FileRef),
+                    propertyName,
+                    isImmutable: GlobalUnrealObjectInfo.IsImmutable(propertyInfo.Reference, Pcc.Game)),
+                _ => null
+            };
+        }
+
+        private bool TryGetLinkedBioInterpTrackPropertyName(NameReference propertyName, out NameReference linkedPropertyName)
+        {
+            linkedPropertyName = default;
+
+            string secondaryArrayName = GetBioInterpTrackSecondaryArrayName();
+            if (secondaryArrayName == null)
+            {
+                return false;
+            }
+
+            if (propertyName.Name == "m_aTrackKeys")
+            {
+                linkedPropertyName = new NameReference(secondaryArrayName);
+                return true;
+            }
+
+            if (propertyName.Name == secondaryArrayName)
+            {
+                linkedPropertyName = new NameReference("m_aTrackKeys");
+                return true;
+            }
+
+            return false;
         }
 
         private bool CanRemoveProperty()
