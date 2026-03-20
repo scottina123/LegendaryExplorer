@@ -3362,6 +3362,34 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private void CreateEmptySubsequence_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (SelectedSequence == null)
+            {
+                return;
+            }
+
+            if (!SelectedSequence.IsSequence())
+            {
+                MessageBox.Show(this, "Subsequences can only be created under Sequence exports.");
+                return;
+            }
+
+            var sequenceName = PromptDialog.Prompt(this, "Enter a name for the new subsequence.",
+                "Create Empty Subsequence", "Sequence", true);
+            if (string.IsNullOrWhiteSpace(sequenceName))
+            {
+                return;
+            }
+
+            var newSequence = SequenceObjectCreator.CreateSequence(SelectedSequence, sequenceName.Trim());
+            customSaveData[newSequence.UIndex] =
+                new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+
+            LoadSequences();
+            GoToExport(newSequence);
+        }
+
         private void showOutputNumbers_Click(object sender, EventArgs e)
         {
             SObj.OutputNumbers = ShowOutputNumbers_MenuItem.IsChecked;

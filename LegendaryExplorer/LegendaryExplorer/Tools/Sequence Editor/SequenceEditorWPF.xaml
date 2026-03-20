@@ -114,6 +114,7 @@
         </ContextMenu>
         <ContextMenu x:Key="backContextMenu">
             <MenuItem Header="Add Existing Object" Click="AddObject_Clicked" ToolTip="Add existing Sequence Object to this Sequence"/>
+            <MenuItem Header="Create Empty Subsequence" Click="CreateEmptySubsequence_Clicked" ToolTip="Create a new empty child sequence under the current sequence"/>
         </ContextMenu>
         <ContextMenu x:Key="currentObjectsContextMenu">
             <MenuItem Header="Open in Package Editor" Click="CurrentObjects_OpenInPackageEditor_Click" />
