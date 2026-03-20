@@ -8,6 +8,7 @@
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
         xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
         xmlns:sharedUi="clr-namespace:LegendaryExplorer.SharedUI"
+        xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
         xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
         xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
@@ -133,6 +134,9 @@
                         <CheckBox Content="SkeletalMeshes" Margin="5,0" IsChecked="{Binding ShowSkeletalMeshes}"/>
                         <CheckBox Content="StaticMeshes" IsChecked="{Binding ShowStaticMeshes}"/>
                     </StackPanel>
+                    <controls:SearchBox DockPanel.Dock="Top" Margin="5,0,5,5"
+                                        WatermarkText="Search meshes"
+                                        TextChanged="MeshSearchBox_OnTextChanged"/>
                     <ListBox  ItemsSource="{Binding MeshExports}" Name="MeshExportsList" SelectedItem="{Binding CurrentExport}" 
                               HorizontalContentAlignment="Stretch"
                               Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">

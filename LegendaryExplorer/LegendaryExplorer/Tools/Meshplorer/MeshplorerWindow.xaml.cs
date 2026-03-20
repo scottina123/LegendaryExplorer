@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
+using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
@@ -96,6 +97,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         private bool _showStaticMeshes = true;
         private bool _showSkeletalMeshes = true;
         private bool _showBrushes = true;
+        private string _meshSearchText;
 
         public bool ShowStaticMeshes
         {
@@ -126,18 +128,45 @@ namespace LegendaryExplorer.Tools.Meshplorer
             }
         }
 
+        public string MeshSearchText
+        {
+            get => _meshSearchText;
+            set
+            {
+                SetProperty(ref _meshSearchText, value);
+                MeshesView.Refresh();
+            }
+        }
+
         public ICollectionView MeshesView => CollectionViewSource.GetDefaultView(MeshExports);
         private bool FilterExportList(object obj)
         {
             if (obj is ExportEntry exp)
             {
-                if (exp.ClassName == "SkeletalMesh" && ShowSkeletalMeshes) return true;
-                if (exp.ClassName == "Brush" && ShowBrushes) return true;
-                if (exp.ClassName == "StaticMesh" && ShowStaticMeshes) return true;
+                bool matchesMeshType = (exp.ClassName == "SkeletalMesh" && ShowSkeletalMeshes)
+                                       || (exp.ClassName == "Brush" && ShowBrushes)
+                                       || (exp.ClassName == "StaticMesh" && ShowStaticMeshes);
+
+                if (!matchesMeshType)
+                {
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(MeshSearchText))
+                {
+                    return true;
+                }
+
+                return ContainsSearchText(exp.ObjectName.Instanced)
+                       || ContainsSearchText(exp.ParentFullPath)
+                       || ContainsSearchText(exp.ClassName)
+                       || ContainsSearchText(exp.UIndex.ToString());
             }
 
             return false;
         }
+
+        private bool ContainsSearchText(string value) => value?.Contains(MeshSearchText.Trim(), StringComparison.OrdinalIgnoreCase) == true;
 
         public ICommand OpenFileCommand { get; set; }
         public ICommand SaveFileCommand { get; set; }
@@ -692,6 +721,11 @@ namespace LegendaryExplorer.Tools.Meshplorer
                 p.LoadFile(export.FileRef.FilePath, export.UIndex);
                 p.Activate(); //bring to front
             }
+        }
+
+        private void MeshSearchBox_OnTextChanged(SearchBox sender, string newText)
+        {
+            MeshSearchText = newText;
         }
 
         private void MeshplorerWPF_OnLoaded(object sender, RoutedEventArgs e)
