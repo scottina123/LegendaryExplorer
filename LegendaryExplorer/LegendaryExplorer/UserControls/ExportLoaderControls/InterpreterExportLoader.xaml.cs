@@ -235,6 +235,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _selectedItem, value);
         }
 
+        private UPropertyTreeViewEntry _treeSelectedItem;
+        public UPropertyTreeViewEntry TreeSelectedItem
+        {
+            get => _treeSelectedItem;
+            set => SetProperty(ref _treeSelectedItem, value);
+        }
+
         #region Commands
         public ICommand RemovePropertyCommand { get; set; }
         public ICommand AddPropertyCommand { get; set; }
@@ -1076,6 +1083,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
                     }
+                    MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
                 }
                 catch (Exception ex)
@@ -1151,7 +1159,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private string CaptureSelectedNodePath()
         {
-            return SelectedItem is { } selectedItem ? GetNodePath(selectedItem) : null;
+            return TreeSelectedItem is { } selectedItem ? GetNodePath(selectedItem) : null;
         }
 
         private void RestoreExpandedNodePaths(UPropertyTreeViewEntry root)
@@ -2146,7 +2154,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             // Without this delegate, the item selected will randomly be a parent item instead.
             // From https://www.codeproject.com/Tips/208896/WPF-TreeView-SelectedItemChanged-called-twice
             Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(e.NewValue as UPropertyTreeViewEntry)));
-            UPropertyTreeViewEntry newSelectedItem = (UPropertyTreeViewEntry)e.NewValue;
+            ApplySelectedTreeItem((UPropertyTreeViewEntry)e.NewValue);
+        }
+
+        private void ApplySelectedTreeItem(UPropertyTreeViewEntry newSelectedItem)
+        {
+            UpdateEditorSelection(newSelectedItem);
             SelectedItem = newSelectedItem;
             //list of visible elements for editing
             var SupportedEditorSetElements = new List<FrameworkElement>();
@@ -2268,6 +2281,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             foreach (FrameworkElement fe in EditorSetElements)
             {
                 fe.Visibility = SupportedEditorSetElements.Contains(fe) ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        private void UpdateEditorSelection(UPropertyTreeViewEntry selectedItem)
+        {
+            foreach (UPropertyTreeViewEntry node in PropertyNodes.SelectMany(node => node.FlattenTree()))
+            {
+                node.IsEditorSelected = ReferenceEquals(node, selectedItem);
+            }
+        }
+
+        private void LinkedNodePanel_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: UPropertyTreeViewEntry { LinkedNode: not null } ownerNode })
+            {
+                ApplySelectedTreeItem(ownerNode.LinkedNode);
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.LinkedNode)));
+                e.Handled = true;
             }
         }
 
@@ -3637,6 +3668,52 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             Interpreter_SaveHexChanges();
         }
+
+        private void MergeLinkedTrackRows(UPropertyTreeViewEntry topLevelTree)
+        {
+            if (topLevelTree is null || CurrentLoadedExport?.IsA("BioInterpTrack") != true)
+            {
+                return;
+            }
+
+            string secondaryArrayName = GetBioInterpTrackSecondaryArrayName();
+            if (secondaryArrayName is null)
+            {
+                return;
+            }
+
+            UPropertyTreeViewEntry trackKeysNode = topLevelTree.ChildrenProperties.FirstOrDefault(node => node.Property?.Name.Name == "m_aTrackKeys");
+            UPropertyTreeViewEntry secondaryNode = topLevelTree.ChildrenProperties.FirstOrDefault(node => node.Property?.Name.Name == secondaryArrayName);
+            if (trackKeysNode is null || secondaryNode is null)
+            {
+                return;
+            }
+
+            trackKeysNode.IsVisible = false;
+            secondaryNode.LinkedNode = trackKeysNode;
+
+            int linkedCount = Math.Min(trackKeysNode.ChildrenProperties.Count, secondaryNode.ChildrenProperties.Count);
+            for (int i = 0; i < linkedCount; i++)
+            {
+                LinkTrackRows(secondaryNode.ChildrenProperties[i], trackKeysNode.ChildrenProperties[i]);
+            }
+        }
+
+        private static void LinkTrackRows(UPropertyTreeViewEntry primaryNode, UPropertyTreeViewEntry linkedNode)
+        {
+            if (primaryNode is null || linkedNode is null)
+            {
+                return;
+            }
+
+            primaryNode.LinkedNode = linkedNode;
+
+            int linkedCount = Math.Min(primaryNode.ChildrenProperties.Count, linkedNode.ChildrenProperties.Count);
+            for (int i = 0; i < linkedCount; i++)
+            {
+                LinkTrackRows(primaryNode.ChildrenProperties[i], linkedNode.ChildrenProperties[i]);
+            }
+        }
     }
 
     [DebuggerDisplay("UPropertyTreeViewEntry | {" + nameof(DisplayName) + "}")]
@@ -3730,6 +3807,80 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             get => isExpanded;
             set => SetProperty(ref isExpanded, value);
+        }
+
+        private bool _isVisible = true;
+        public bool IsVisible
+        {
+            get => _isVisible;
+            set => SetProperty(ref _isVisible, value);
+        }
+
+        private UPropertyTreeViewEntry _linkedNode;
+        public UPropertyTreeViewEntry LinkedNode
+        {
+            get => _linkedNode;
+            set
+            {
+                if (_linkedNode is not null)
+                {
+                    _linkedNode.PropertyChanged -= LinkedNodeOnPropertyChanged;
+                }
+
+                if (SetProperty(ref _linkedNode, value))
+                {
+                    if (_linkedNode is not null)
+                    {
+                        _linkedNode.PropertyChanged += LinkedNodeOnPropertyChanged;
+                    }
+
+                    OnPropertyChanged(nameof(HasLinkedNode));
+                    OnPropertyChanged(nameof(LinkedDisplayName));
+                    OnPropertyChanged(nameof(LinkedEditableValue));
+                    OnPropertyChanged(nameof(LinkedParsedValue));
+                    OnPropertyChanged(nameof(LinkedPropertyType));
+                    OnPropertyChanged(nameof(IsLinkedEditorSelected));
+                }
+            }
+        }
+
+        private void LinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected))
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(DisplayName):
+                        OnPropertyChanged(nameof(LinkedDisplayName));
+                        break;
+                    case nameof(EditableValue):
+                        OnPropertyChanged(nameof(LinkedEditableValue));
+                        break;
+                    case nameof(ParsedValue):
+                        OnPropertyChanged(nameof(LinkedParsedValue));
+                        break;
+                    case nameof(PropertyType):
+                        OnPropertyChanged(nameof(LinkedPropertyType));
+                        break;
+                    case nameof(IsEditorSelected):
+                        OnPropertyChanged(nameof(IsLinkedEditorSelected));
+                        break;
+                }
+            }
+        }
+
+        public bool HasLinkedNode => LinkedNode is not null;
+        public string LinkedDisplayName => LinkedNode?.DisplayName ?? "";
+        public string LinkedEditableValue => LinkedNode?.EditableValue ?? "";
+        public string LinkedParsedValue => LinkedNode?.ParsedValue ?? "";
+        public string LinkedPropertyType => LinkedNode?.PropertyType ?? "";
+        public bool IsLinkedEditorSelected => LinkedNode?.IsEditorSelected == true;
+
+        private bool _isEditorSelected;
+        public bool IsEditorSelected
+        {
+            get => _isEditorSelected;
+            set => SetProperty(ref _isEditorSelected, value);
         }
 
         // Interface implementation

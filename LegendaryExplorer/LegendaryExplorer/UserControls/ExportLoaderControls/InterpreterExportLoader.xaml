@@ -169,27 +169,46 @@
                                          ItemsSource="{Binding PropertyNodes, Mode=OneTime}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" 
                                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                 <b:Interaction.Behaviors>
-                    <peregrineTreeView:TreeSelectionBehavior SelectedItem="{Binding SelectedItem, Mode=TwoWay}" />
+                    <peregrineTreeView:TreeSelectionBehavior SelectedItem="{Binding TreeSelectedItem, Mode=TwoWay}" />
                 </b:Interaction.Behaviors>
                 <controls:StretchingTreeView.Resources>
                     <HierarchicalDataTemplate DataType="{x:Type global:UPropertyTreeViewEntry}" ItemsSource="{Binding ChildrenProperties, Mode=OneTime}">
                         <Border x:Name="PropertyItem_Container" Margin="1" Padding="{Binding Path=(SharedUI:TouchComfySettings.InterpreterWPFNodeMargin)}">
                             <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="PropertyItem_Offset" Text="{Binding Property.StartOffset, StringFormat='{}{0:X5}:', Mode=OneTime}" VerticalAlignment="Top" Padding="0,0,4,0"
-                                               Visibility="{Binding ShowPropOffsets, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                    <TextBlock x:Name="PropertyItem_DisplayName" Text="{Binding DisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
-                                    <TextBlock x:Name="PropertyItem_EditableValue" Margin="5,0,0,0" Text="{Binding EditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold" 
-                                               Visibility="{Binding EditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
-                                    <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
-                                    <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
-                                                      SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
-                                </StackPanel>
+                                <Border x:Name="PropertyItem_PrimarySelectionBorder" Background="Transparent">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PropertyItem_Offset" Text="{Binding Property.StartOffset, StringFormat='{}{0:X5}:', Mode=OneTime}" VerticalAlignment="Top" Padding="0,0,4,0"
+                                                   Visibility="{Binding ShowPropOffsets, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock x:Name="PropertyItem_DisplayName" Text="{Binding DisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
+                                        <TextBlock x:Name="PropertyItem_EditableValue" Margin="5,0,0,0" Text="{Binding EditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold" 
+                                                   Visibility="{Binding EditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                        <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
+                                                          SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
+                                    </StackPanel>
+                                </Border>
                                 <TextBlock Grid.Row="1" x:Name="PropertyItem_DisplayType" FontSize="10" Text="{Binding PropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
+                                           Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="⇔" Margin="8,0" VerticalAlignment="Center"
+                                           Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Border x:Name="PropertyItem_LinkedSelectionBorder" Grid.Column="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" PreviewMouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PropertyItem_LinkedDisplayName" Text="{Binding LinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
+                                        <TextBlock x:Name="PropertyItem_LinkedEditableValue" Margin="5,0,0,0" Text="{Binding LinkedEditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold"
+                                                   Visibility="{Binding LinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Grid.Column="2" Grid.Row="1" x:Name="PropertyItem_LinkedDisplayType" FontSize="10" Text="{Binding LinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </Grid>
                             <b:Interaction.Triggers>
@@ -305,14 +324,20 @@
                                 <Setter TargetName="PropertyItem_DisplayType" Property="Foreground" Value="#b08a5a"/>
                                 <Setter TargetName="PropertyItem_Container" Property="Background" Value="#44ffb759"/>
                             </MultiDataTrigger>
+                            <DataTrigger Binding="{Binding IsEditorSelected}" Value="True">
+                                <Setter TargetName="PropertyItem_PrimarySelectionBorder" Property="Background" Value="#004080"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsLinkedEditorSelected}" Value="True">
+                                <Setter TargetName="PropertyItem_LinkedSelectionBorder" Property="Background" Value="#004080"/>
+                            </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
-                      Color="#004080" />
+                      Color="Transparent" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
                       Color="White" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
-                      Color="#004080" />
+                      Color="Transparent" />
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
                       Color="White" />
                 </controls:StretchingTreeView.Resources>
@@ -320,6 +345,7 @@
                     <Style TargetType="{x:Type TreeViewItem}">
                         <Setter Property="IsSelected" Value="{Binding Path=IsSelected, Mode=TwoWay}" />
                         <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
+                        <Setter Property="Visibility" Value="{Binding Path=IsVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </Style>
                 </controls:StretchingTreeView.ItemContainerStyle>
                 <controls:StretchingTreeView.ContextMenu>
