@@ -3386,8 +3386,21 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             customSaveData[newSequence.UIndex] =
                 new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
 
+            var currentSequence = SelectedSequence;
             LoadSequences();
-            GoToExport(newSequence);
+            RefreshView();
+
+            if (currentSequence != null)
+            {
+                var currentTreeNode = TreeViewRootNodes.SelectMany(node => node.FlattenTree())
+                    .FirstOrDefault(node => node.UIndex == currentSequence.UIndex);
+                if (currentTreeNode != null)
+                {
+                    currentTreeNode.ExpandParents();
+                    currentTreeNode.IsSelected = true;
+                    _selectedItem = currentTreeNode;
+                }
+            }
         }
 
         private void showOutputNumbers_Click(object sender, EventArgs e)
