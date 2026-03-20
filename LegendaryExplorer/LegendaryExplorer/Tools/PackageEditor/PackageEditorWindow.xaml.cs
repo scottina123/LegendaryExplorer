@@ -259,6 +259,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private string _gotoHintText = "UIndex";
         private bool SuppressSelectionEvent;
 
+        private bool _showOnlyEditedTreeViewItems;
+        private readonly HashSet<int> _comparedChangedEntryIndices = [];
+        public bool ShowOnlyEditedTreeViewItems
+        {
+            get => _showOnlyEditedTreeViewItems;
+            set
+            {
+                if (SetProperty(ref _showOnlyEditedTreeViewItems, value))
+                {
+                    ApplyTreeViewEditedFilter();
+                }
+            }
+        }
+
         public string GotoHintText
         {
             get => _gotoHintText;
@@ -4277,6 +4291,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// </summary>
         private void postloadPackage(string filePath, int goToIndex = 0)
         {
+            _comparedChangedEntryIndices.Clear();
             RefreshView();
             InitStuff();
             StatusBar_LeftMostText.Text = GetStatusBarText();
@@ -5872,6 +5887,85 @@ namespace LegendaryExplorer.Tools.PackageEditor
             LeftSide_TreeView.DataContext = this;
         }
 
+        private async void ShowOnlyEditedTreeViewItems_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (ShowOnlyEditedTreeViewItems)
+            {
+                ShowOnlyEditedTreeViewItems = false;
+                return;
+            }
+
+            if (!SharedPackageTools.CanCompareToUnmodded(this))
+            {
+                MessageBox.Show(this, "Can only compare packages from the Original Trilogy or Legendary Edition.",
+                    "Can't compare", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            IsBusy = true;
+            BusyText = "Finding unmodded candidates...";
+            SharedPackageTools.UnmoddedCandidatesLookup foundCandidates;
+            try
+            {
+                foundCandidates = await Task.Run(() => SharedPackageTools.GetUnmoddedCandidatesForPackage(this));
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+
+            if (!foundCandidates.Any())
+            {
+                MessageBox.Show(this, "Cannot find any candidates for this file!");
+                return;
+            }
+
+            var choices = foundCandidates.DiskFiles.ToList();
+            choices.AddRange(foundCandidates.SFARPackageStreams.Select(x => x.Key));
+
+            var choice = InputComboBoxDialog.GetValue(this, "Choose file to compare to:",
+                "Unmodified file comparison", choices, choices.Last());
+            if (string.IsNullOrEmpty(choice))
+            {
+                return;
+            }
+
+            using var comparePackage = OpenRestoreCandidatePackage(foundCandidates, choice);
+            if (comparePackage == null)
+            {
+                MessageBox.Show(this, "Could not open the selected unmodded package.");
+                return;
+            }
+
+            IsBusy = true;
+            BusyText = "Comparing packages...";
+            List<EntryStringPair> results;
+            try
+            {
+                results = await Task.Run(() => Pcc.CompareToPackage(comparePackage));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Error comparing packages");
+                return;
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+
+            SetComparedChangedEntries(results);
+
+            if (_comparedChangedEntryIndices.Count == 0)
+            {
+                MessageBox.Show(this, "No changes between names/imports/exports were found between the files.", "Packages seem identical");
+                return;
+            }
+
+            ShowOnlyEditedTreeViewItems = true;
+            CurrentView = CurrentViewMode.Tree;
+        }
+
         private bool HasShaderCache() => PackageIsLoaded() && Pcc.Exports.Any(exp => exp.ClassName == "ShaderCache");
 
         private void CompactShaderCache()
@@ -5898,6 +5992,65 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     tv.RefreshSubText();
                 }
             }
+        }
+
+        private void ApplyTreeViewEditedFilter()
+        {
+            if (!AllTreeViewNodesX.Any)
+            {
+                return;
+            }
+
+            UpdateTreeViewEditedVisibility(AllTreeViewNodesX[0], isRoot: true);
+        }
+
+        private bool UpdateTreeViewEditedVisibility(TreeViewEntry node, bool isRoot = false)
+        {
+            bool hasVisibleEditedDescendant = false;
+            foreach (TreeViewEntry child in node.Sublinks)
+            {
+                hasVisibleEditedDescendant |= UpdateTreeViewEditedVisibility(child);
+            }
+
+            bool isEditedEntry = IsEditedTreeEntry(node.Entry);
+
+            bool isVisible = !ShowOnlyEditedTreeViewItems
+                             || isRoot
+                             || isEditedEntry
+                             || hasVisibleEditedDescendant;
+            node.IsVisibleInTree = isVisible;
+
+            if (ShowOnlyEditedTreeViewItems)
+            {
+                node.IsExpanded = isRoot || hasVisibleEditedDescendant;
+            }
+
+            return isVisible;
+        }
+
+        internal void SetComparedChangedEntries(IEnumerable<EntryStringPair> results)
+        {
+            _comparedChangedEntryIndices.Clear();
+
+            if (results != null)
+            {
+                foreach (int uIndex in results
+                             .Select(result => result.Entry)
+                             .Where(entry => entry?.FileRef == Pcc && entry.UIndex != 0)
+                             .Select(entry => entry.UIndex)
+                             .Distinct())
+                {
+                    _comparedChangedEntryIndices.Add(uIndex);
+                }
+            }
+
+            ApplyTreeViewEditedFilter();
+        }
+
+        private bool IsEditedTreeEntry(IEntry entry)
+        {
+            return entry is not null
+                && (entry.EntryHasPendingChanges || _comparedChangedEntryIndices.Contains(entry.UIndex));
         }
 
         private void Window_MouseUp(object sender, MouseButtonEventArgs e)

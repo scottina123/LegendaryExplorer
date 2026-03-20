@@ -116,6 +116,13 @@ namespace LegendaryExplorer.SharedUI
             set => SetProperty(ref isExpanded, value);
         }
 
+        private bool _isVisibleInTree = true;
+        public bool IsVisibleInTree
+        {
+            get => _isVisibleInTree;
+            set => SetProperty(ref _isVisibleInTree, value);
+        }
+
         public void ExpandParents()
         {
             if (Parent != null)
