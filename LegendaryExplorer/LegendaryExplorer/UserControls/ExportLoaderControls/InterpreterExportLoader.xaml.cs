@@ -2711,11 +2711,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             if (Value_ObjectComboBox.SelectedItem is IEntry ie)
                             {
                                 op.Value = ie.UIndex;
+                                SyncLinkedOpAndLinkAction(tvi, ie);
                                 updated = true;
                             }
                             else if (Value_ObjectComboBox.SelectedItem is ZeroUIndexClassEntry)
                             {
                                 op.Value = 0;
+                                SyncLinkedOpAndLinkAction(tvi, null);
                                 updated = true;
                             }
                             // This is old implementation; switched over 07/23/2023
@@ -2819,6 +2821,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 //StartScan();
             }
+        }
+
+        private static void SyncLinkedOpAndLinkAction(UPropertyTreeViewEntry treeViewEntry, IEntry linkedEntry)
+        {
+            if (treeViewEntry.Property is not ObjectProperty objectProperty || objectProperty.Name != "LinkedOp")
+            {
+                return;
+            }
+
+            if (treeViewEntry.UPParent?.Property is not StructProperty parentStruct)
+            {
+                return;
+            }
+
+            if (parentStruct.GetProp<NameProperty>("LinkAction") is not NameProperty linkAction)
+            {
+                return;
+            }
+
+            linkAction.Value = linkedEntry?.ObjectName ?? new NameReference("None");
         }
 
         private void ValueTextBox_KeyDown(object sender, KeyEventArgs e)
