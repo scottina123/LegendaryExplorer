@@ -665,8 +665,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             using var packageCache = new PackageCache { AlwaysOpenFromDisk = false };
             packageCache.InsertIntoCache(Pcc);
+            var defaultProperties = SequenceObjectCreator.GetSequenceObjectDefaults(Pcc, info, packageCache);
+            ApplyEditorCreationDefaults(info, defaultProperties);
             var newSeqObj = new ExportEntry(Pcc, SelectedSequence, Pcc.GetNextIndexedName(info.ClassName),
-                properties: SequenceObjectCreator.GetSequenceObjectDefaults(Pcc, info, packageCache))
+                properties: defaultProperties)
             {
                 Class = classEntry,
             };
@@ -686,6 +688,41 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             addObject(newSeqObj);
             EndBusy();
+        }
+
+        private void ApplyEditorCreationDefaults(ClassInfo info, PropertyCollection properties)
+        {
+            if (Pcc == null || info == null || properties == null)
+            {
+                return;
+            }
+
+            if (info.ClassName == "SeqAct_Delay"
+                && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "Duration", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new FloatProperty(1, "Duration"));
+            }
+
+            if (info.ClassName == "SeqAct_ConsoleCommand"
+                && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "Commands", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new ArrayProperty<StrProperty>([new StrProperty("")], "Commands"));
+            }
+
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_vSFXTeleportLocation", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(CommonStructs.Vector3Prop(0, 0, 0, "m_vSFXTeleportLocation"));
+            }
+
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_rSFXTeleportRotation", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(CommonStructs.RotatorProp(0, 0, 0, "m_rSFXTeleportRotation"));
+            }
+
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_bSFXTeleportDataIsValid", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new BoolProperty(true, "m_bSFXTeleportDataIsValid"));
+            }
         }
 
         private void CreateBlankBioDynamicAnimSet(ExportEntry ambientPerformanceExport)
