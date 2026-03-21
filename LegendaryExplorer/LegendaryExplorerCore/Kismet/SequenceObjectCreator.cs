@@ -125,6 +125,15 @@ namespace LegendaryExplorerCore.Kismet
             if (info.ClassName == "Sequence")
             {
                 defaults.Add(new ArrayProperty<ObjectProperty>("SequenceObjects"));
+                if (CreateDefaultSequenceLinkArray(pcc, "InputLinks", "In") is { } inputLinks)
+                {
+                    defaults.Add(inputLinks);
+                }
+
+                if (CreateDefaultSequenceLinkArray(pcc, "OutputLinks", "Out") is { } outputLinks)
+                {
+                    defaults.Add(outputLinks);
+                }
             }
             else if (info.IsA(SequenceVariableName, game))
             {
@@ -387,6 +396,22 @@ namespace LegendaryExplorerCore.Kismet
             defaults.Add(new IntProperty(objInstanceVersion, "ObjInstanceVersion"));
 
             return defaults;
+        }
+
+        private static ArrayProperty<StructProperty> CreateDefaultSequenceLinkArray(IMEPackage pcc, string propertyName, string linkDescription)
+        {
+            PropertyInfo linkPropertyInfo = GlobalUnrealObjectInfo.GetPropertyInfo(pcc.Game, propertyName, "Sequence");
+            if (linkPropertyInfo == null)
+            {
+                return null;
+            }
+
+            PropertyCollection linkDefaults = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, linkPropertyInfo.Reference, true, pcc);
+            linkDefaults.AddOrReplaceProp(new StrProperty(linkDescription, "LinkDesc"));
+
+            return new ArrayProperty<StructProperty>(
+                [new StructProperty(linkPropertyInfo.Reference, linkDefaults, isImmutable: false)],
+                propertyName);
         }
 
         #region OBJECT CREATION
