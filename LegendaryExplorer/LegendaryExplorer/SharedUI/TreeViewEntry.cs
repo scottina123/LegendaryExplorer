@@ -388,6 +388,11 @@ namespace LegendaryExplorer.SharedUI
                                     }
                                 }
                                 break;
+                            case "InterpData":
+                                {
+                                    _subtext = ResolveInterpDataSubtitle(ee);
+                                }
+                                break;
                             case "BioEvtSysTrackSubtitles":
                                 {
                                     var subtitleData = ee.GetProperty<ArrayProperty<StructProperty>>("m_aSubtitleData");
@@ -884,6 +889,56 @@ namespace LegendaryExplorer.SharedUI
 
             string resolved = TLKManagerWPF.GlobalFindStrRefbyID(strRef, ee.FileRef);
             return resolved == "No Data" ? null : resolved;
+        }
+
+        private string ResolveInterpDataSubtitle(ExportEntry interpData)
+        {
+            var lines = new List<string>();
+            var interpGroups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+            if (interpGroups == null)
+            {
+                return null;
+            }
+
+            foreach (var groupRef in interpGroups)
+            {
+                if (!interpData.FileRef.TryGetUExport(groupRef.Value, out ExportEntry group))
+                {
+                    continue;
+                }
+
+                var interpTracks = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+                if (interpTracks == null)
+                {
+                    continue;
+                }
+
+                foreach (var trackRef in interpTracks)
+                {
+                    if (!interpData.FileRef.TryGetUExport(trackRef.Value, out ExportEntry track))
+                    {
+                        continue;
+                    }
+
+                    AddInterpTrackSubtitleLines(track, lines);
+                }
+            }
+
+            return lines.Count > 0 ? string.Join("\n", lines.Distinct()) : null;
+        }
+
+        private void AddInterpTrackSubtitleLines(ExportEntry track, List<string> lines)
+        {
+            if (!string.Equals(track.ClassName, "BioEvtSysTrackVOElements", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string resolved = ResolveDisplayNameStringRef(track, track.GetProperty<IntProperty>("m_nStrRefID")?.Value ?? 0);
+            if (!string.IsNullOrWhiteSpace(resolved))
+            {
+                lines.Add(resolved);
+            }
         }
 
         private bool IsUsefulDisplayName(ExportEntry ee, string value)
