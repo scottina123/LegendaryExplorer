@@ -6,6 +6,7 @@
 	xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
     xmlns:local="clr-namespace:LegendaryExplorer.Tools.PlotEditor"
     xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
+    xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
     xmlns:Converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
 	mc:Ignorable="d"
 	DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -79,35 +80,47 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TabControl Grid.Column="0" Grid.Row="0" SelectedIndex="{Binding SelectedCodexTreeTabIndex}">
-            <TabItem Header="Primary">
-                <TreeView x:Name="PrimaryCodexTreeView"
-                          Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-                          ItemsSource="{Binding PrimaryCodexTreeItems}"
-                          SelectedItemChanged="CodexTreeView_SelectedItemChanged"
-                          ItemContainerStyle="{StaticResource CodexTreeViewItemStyle}" />
-            </TabItem>
-            <TabItem Header="Secondary">
-                <TreeView x:Name="SecondaryCodexTreeView"
-                          Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-                          ItemsSource="{Binding SecondaryCodexTreeItems}"
-                          SelectedItemChanged="CodexTreeView_SelectedItemChanged"
-                          ItemContainerStyle="{StaticResource CodexTreeViewItemStyle}" />
-            </TabItem>
-        </TabControl>
+        <Grid Grid.Column="0" Grid.Row="0" Grid.RowSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <Grid Grid.Column="0" Grid.Row="1" Margin="0,5,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="5" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="5" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            <controls:SearchBox Grid.Row="0" Margin="0,0,0,5"
+                                WatermarkText="Search title/description IDs or text"
+                                TextChanged="CodexSearchBox_TextChanged"/>
 
-            <Button Grid.Column="0" Content="Add Section" Click="AddCodexSection_Click"/>
-            <Button Grid.Column="2" Content="Add Page" Click="AddCodexPage_Click"/>
-            <Button Grid.Column="4" Content="Remove" Click="RemoveSelectedCodexItem_Click" IsEnabled="{Binding CanRemoveSelectedCodexItem}"/>
+            <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedCodexTreeTabIndex}">
+                <TabItem Header="Primary">
+                    <TreeView x:Name="PrimaryCodexTreeView"
+                              Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                              ItemsSource="{Binding PrimaryCodexTreeItems}"
+                              SelectedItemChanged="CodexTreeView_SelectedItemChanged"
+                              ItemContainerStyle="{StaticResource CodexTreeViewItemStyle}" />
+                </TabItem>
+                <TabItem Header="Secondary">
+                    <TreeView x:Name="SecondaryCodexTreeView"
+                              Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                              ItemsSource="{Binding SecondaryCodexTreeItems}"
+                              SelectedItemChanged="CodexTreeView_SelectedItemChanged"
+                              ItemContainerStyle="{StaticResource CodexTreeViewItemStyle}" />
+                </TabItem>
+            </TabControl>
+
+            <Grid Grid.Row="2" Margin="0,5,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Content="Add Section" Click="AddCodexSection_Click"/>
+                <Button Grid.Column="2" Content="Add Page" Click="AddCodexPage_Click"/>
+                <Button Grid.Column="4" Content="Remove" Click="RemoveSelectedCodexItem_Click" IsEnabled="{Binding CanRemoveSelectedCodexItem}"/>
+            </Grid>
         </Grid>
 
         <GridSplitter Grid.Column="1"
