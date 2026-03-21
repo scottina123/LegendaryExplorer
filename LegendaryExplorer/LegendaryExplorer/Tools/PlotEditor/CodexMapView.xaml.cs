@@ -31,9 +31,13 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private ObservableCollection<KeyValuePair<int, BioCodexPage>> _codexPages;
         private ObservableCollection<KeyValuePair<int, BioCodexSection>> _codexSections;
-        private ObservableCollection<object> _codexTreeItems;
+        private ObservableCollection<object> _primaryCodexTreeItems;
+        private ObservableCollection<object> _secondaryCodexTreeItems;
         private KeyValuePair<int, BioCodexPage> _selectedCodexPage;
         private KeyValuePair<int, BioCodexSection> _selectedCodexSection;
+        private int _selectedCodexTreeTabIndex;
+        private bool _isRefreshingCodexHierarchy;
+        private bool _isRefreshingSelectedText;
 
         public bool CanRemoveCodexPage
         {
@@ -89,10 +93,22 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
         }
 
-        public ObservableCollection<object> CodexTreeItems
+        public ObservableCollection<object> PrimaryCodexTreeItems
         {
-            get => _codexTreeItems;
-            set => SetProperty(ref _codexTreeItems, value);
+            get => _primaryCodexTreeItems;
+            set => SetProperty(ref _primaryCodexTreeItems, value);
+        }
+
+        public ObservableCollection<object> SecondaryCodexTreeItems
+        {
+            get => _secondaryCodexTreeItems;
+            set => SetProperty(ref _secondaryCodexTreeItems, value);
+        }
+
+        public int SelectedCodexTreeTabIndex
+        {
+            get => _selectedCodexTreeTabIndex;
+            set => SetProperty(ref _selectedCodexTreeTabIndex, value);
         }
 
         public KeyValuePair<int, BioCodexPage> SelectedCodexPage
@@ -304,16 +320,20 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             SelectedCodexPage = codexPage;
             SelectedCodexSection = default;
-            SelectTreeItem(FindPageTreeItem(codexPage.Key));
-            CodexTreeView.Focus();
+            var treeItem = FindPageTreeItem(codexPage.Key);
+            SelectTabForTreeItem(treeItem);
+            SelectTreeItem(treeItem);
+            GetSelectedCodexTreeView()?.Focus();
         }
 
         public void GoToCodexSection(KeyValuePair<int, BioCodexSection> codexSection)
         {
             SelectedCodexSection = codexSection;
             SelectedCodexPage = default;
-            SelectTreeItem(FindSectionTreeItem(codexSection.Key));
-            CodexTreeView.Focus();
+            var treeItem = FindSectionTreeItem(codexSection.Key);
+            SelectTabForTreeItem(treeItem);
+            SelectTreeItem(treeItem);
+            GetSelectedCodexTreeView()?.Focus();
         }
 
         public static bool TryFindCodexMap(IMEPackage pcc, out ExportEntry export, out int dataOffset)
@@ -512,16 +532,60 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void RefreshCodexHierarchy()
         {
+            if (_isRefreshingCodexHierarchy)
+            {
+                return;
+            }
+
+            _isRefreshingCodexHierarchy = true;
+
+            try
+            {
             var selectedPageId = SelectedCodexPage.Value != null ? SelectedCodexPage.Key : (int?)null;
             var selectedSectionId = SelectedCodexSection.Value != null ? SelectedCodexSection.Key : (int?)null;
-            var sectionIds = new HashSet<int>(CodexSections?.Select(pair => pair.Key) ?? Enumerable.Empty<int>());
+            var sections = CodexSections?.OrderBy(pair => pair.Key).ToList() ?? new List<KeyValuePair<int, BioCodexSection>>();
+            var sectionIds = new HashSet<int>(sections.Select(pair => pair.Key));
+            var pages = CodexPages?.OrderBy(pair => pair.Key).ToList() ?? new List<KeyValuePair<int, BioCodexPage>>();
+            var standalonePages = pages.Where(pair => !sectionIds.Contains(pair.Value.Section)).ToList();
+
+            PrimaryCodexTreeItems = BuildCodexTreeItems(
+                sections.Where(pair => pair.Value.IsPrimary),
+                pages,
+                Enumerable.Empty<KeyValuePair<int, BioCodexPage>>());
+
+            SecondaryCodexTreeItems = BuildCodexTreeItems(
+                sections.Where(pair => !pair.Value.IsPrimary),
+                pages,
+                standalonePages);
+
+            if (selectedPageId.HasValue)
+            {
+                var treeItem = FindPageTreeItem(selectedPageId.Value);
+                SelectTabForTreeItem(treeItem);
+                SelectTreeItem(treeItem);
+            }
+            else if (selectedSectionId.HasValue)
+            {
+                var treeItem = FindSectionTreeItem(selectedSectionId.Value);
+                SelectTabForTreeItem(treeItem);
+                SelectTreeItem(treeItem);
+            }
+            }
+            finally
+            {
+                _isRefreshingCodexHierarchy = false;
+            }
+        }
+
+        private ObservableCollection<object> BuildCodexTreeItems(IEnumerable<KeyValuePair<int, BioCodexSection>> sections, IEnumerable<KeyValuePair<int, BioCodexPage>> pages, IEnumerable<KeyValuePair<int, BioCodexPage>> standalonePages)
+        {
             var treeItems = new List<object>();
 
-            foreach (var section in CodexSections?.OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexSection>>())
+            foreach (var section in sections)
             {
                 var sectionItem = new CodexSectionTreeItem(section);
 
-                foreach (var page in CodexPages?.Where(pair => pair.Value.Section == section.Key).OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexPage>>())
+                foreach (var page in pages.Where(pair => pair.Value.Section == section.Key))
                 {
                     sectionItem.Pages.Add(new CodexPageTreeItem(page, sectionItem));
                 }
@@ -529,36 +593,22 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 treeItems.Add(sectionItem);
             }
 
-            foreach (var page in CodexPages?.Where(pair => !sectionIds.Contains(pair.Value.Section)).OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexPage>>())
+            foreach (var page in standalonePages)
             {
                 treeItems.Add(new CodexPageTreeItem(page));
             }
 
-            CodexTreeItems = InitCollection(treeItems);
-
-            if (selectedPageId.HasValue)
-            {
-                SelectTreeItem(FindPageTreeItem(selectedPageId.Value));
-            }
-            else if (selectedSectionId.HasValue)
-            {
-                SelectTreeItem(FindSectionTreeItem(selectedSectionId.Value));
-            }
+            return InitCollection(treeItems);
         }
 
         private CodexSectionTreeItem FindSectionTreeItem(int sectionId)
         {
-            return CodexTreeItems?.OfType<CodexSectionTreeItem>().FirstOrDefault(item => item.CodexSection.Key == sectionId);
+            return EnumerateCodexTreeItems().OfType<CodexSectionTreeItem>().FirstOrDefault(item => item.CodexSection.Key == sectionId);
         }
 
         private CodexPageTreeItem FindPageTreeItem(int pageId)
         {
-            if (CodexTreeItems == null)
-            {
-                return null;
-            }
-
-            foreach (var sectionItem in CodexTreeItems.OfType<CodexSectionTreeItem>())
+            foreach (var sectionItem in EnumerateCodexTreeItems().OfType<CodexSectionTreeItem>())
             {
                 var pageItem = sectionItem.Pages.FirstOrDefault(item => item.CodexPage.Key == pageId);
                 if (pageItem != null)
@@ -567,7 +617,35 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 }
             }
 
-            return CodexTreeItems.OfType<CodexPageTreeItem>().FirstOrDefault(item => item.CodexPage.Key == pageId);
+            return EnumerateCodexTreeItems().OfType<CodexPageTreeItem>().FirstOrDefault(item => item.CodexPage.Key == pageId);
+        }
+
+        private IEnumerable<object> EnumerateCodexTreeItems()
+        {
+            foreach (var treeItem in PrimaryCodexTreeItems ?? Enumerable.Empty<object>())
+            {
+                yield return treeItem;
+            }
+
+            foreach (var treeItem in SecondaryCodexTreeItems ?? Enumerable.Empty<object>())
+            {
+                yield return treeItem;
+            }
+        }
+
+        private void SelectTabForTreeItem(CodexTreeItemBase treeItem)
+        {
+            SelectedCodexTreeTabIndex = treeItem switch
+            {
+                CodexSectionTreeItem sectionItem => sectionItem.CodexSection.Value.IsPrimary ? 0 : 1,
+                CodexPageTreeItem { Parent: not null } pageItem => pageItem.Parent.CodexSection.Value.IsPrimary ? 0 : 1,
+                _ => 1
+            };
+        }
+
+        private System.Windows.Controls.TreeView GetSelectedCodexTreeView()
+        {
+            return SelectedCodexTreeTabIndex == 0 ? PrimaryCodexTreeView : SecondaryCodexTreeView;
         }
 
         private static void SelectTreeItem(CodexTreeItemBase treeItem)
@@ -587,12 +665,21 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void RefreshSelectedText()
         {
+            if (_isRefreshingSelectedText)
+            {
+                return;
+            }
+
+            _isRefreshingSelectedText = true;
+
+            try
+            {
             if (package != null)
             {
-                txt_cdxPgeDesc.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Description ?? 0, package);
-                txt_cdxPgeTitle.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Title ?? 0, package);
-                txt_cdxSecDesc.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Description ?? 0, package);
-                txt_cdxSecTitle.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Title ?? 0, package);
+                txt_cdxPgeDesc.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Description ?? 0, package) ?? string.Empty;
+                txt_cdxPgeTitle.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Title ?? 0, package) ?? string.Empty;
+                txt_cdxSecDesc.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Description ?? 0, package) ?? string.Empty;
+                txt_cdxSecTitle.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Title ?? 0, package) ?? string.Empty;
 
                 if (SelectedCodexPage.Value != null)
                 {
@@ -611,6 +698,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
             txt_cdxPgeTitle.Text = string.Empty;
             txt_cdxSecDesc.Text = string.Empty;
             txt_cdxSecTitle.Text = string.Empty;
+            }
+            finally
+            {
+                _isRefreshingSelectedText = false;
+            }
         }
 
         public abstract class CodexTreeItemBase : NotifyPropertyChangedBase
@@ -718,6 +810,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void CodexTreeView_SelectedItemChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
         {
+            if (_isRefreshingCodexHierarchy)
+            {
+                return;
+            }
+
             switch (e.NewValue)
             {
                 case CodexPageTreeItem pageItem:
@@ -739,6 +836,21 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void CodexPageSection_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
         {
+            if (_isRefreshingCodexHierarchy)
+            {
+                return;
+            }
+
+            RefreshCodexHierarchy();
+        }
+
+        private void CodexSectionIsPrimary_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (_isRefreshingCodexHierarchy)
+            {
+                return;
+            }
+
             RefreshCodexHierarchy();
         }
 
