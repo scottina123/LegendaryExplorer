@@ -25,6 +25,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.Meshplorer;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Dialogue;
@@ -75,6 +76,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private readonly record struct NameUsagePropertyPathSegment(string PropertyName, int? ArrayIndex);
 
         private readonly record struct TreeViewScrollState(double HorizontalOffset, double VerticalOffset);
+
+        private static readonly HashSet<string> CommonStringRefPropertyNames =
+        [
+            "m_nStrRefID",
+            "nLineStrRef",
+            "nStrRefID",
+            "m_iStringRef",
+            "m_iDescriptionStringRef",
+            "m_srStringID"
+        ];
 
         private sealed record NameArrayUsageMatch(
             ExportEntry Entry,
@@ -257,6 +268,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         }
 
         private string _gotoHintText = "UIndex";
+        private string _stringRefSearchText;
         private bool SuppressSelectionEvent;
 
         private bool _showOnlyEditedTreeViewItems;
@@ -277,6 +289,36 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             get => _gotoHintText;
             set => SetProperty(ref _gotoHintText, value);
+        }
+
+        public string StringRefSearchText
+        {
+            get => _stringRefSearchText;
+            set => SetProperty(ref _stringRefSearchText, value);
+        }
+
+        public double StringRefSearchBoxWidth
+        {
+            get
+            {
+                double width = ActualWidth;
+                if (width < 1250)
+                {
+                    return 40;
+                }
+
+                if (width < 1450)
+                {
+                    return 70;
+                }
+
+                if (width < 1650)
+                {
+                    return 100;
+                }
+
+                return 150;
+            }
         }
 
         private bool _showExperiments = App.IsDebug || Settings.PackageEditor_ShowExperiments;
@@ -344,6 +386,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand SaveFileCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
         public ICommand FindCommand { get; set; }
+        public ICommand SearchStringRefsCommand { get; set; }
         public ICommand FindAllClassInstancesCommand { get; set; }
         public ICommand GotoCommand { get; set; }
         public ICommand TabRightCommand { get; set; }
@@ -432,6 +475,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             SaveFileCommand = new GenericCommand(SaveFile, PackageIsLoaded);
             SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
             FindCommand = new GenericCommand(FocusSearch, PackageIsLoaded);
+            SearchStringRefsCommand = new GenericCommand(SearchStringRefs, PackageIsLoaded);
             GotoCommand = new GenericCommand(FocusGoto, PackageIsLoaded);
             TabRightCommand = new GenericCommand(TabRight, PackageIsLoaded);
             TabLeftCommand = new GenericCommand(TabLeft, PackageIsLoaded);
@@ -1994,6 +2038,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
             Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectObjectReferenceInRightPanel(clickedItem)));
         }
 
+        private void stringRefUsageDoubleClick(EntryStringPair clickedItem)
+        {
+            if (CurrentView is CurrentViewMode.Names)
+            {
+                SearchHintText = "Object name";
+                GotoHintText = "UIndex";
+                CurrentView = CurrentViewMode.Tree;
+            }
+
+            entryDoubleClick(clickedItem);
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectStringRefUsageInRightPanel(clickedItem)));
+        }
+
         private void SelectNameUsageInRightPanel(EntryStringPair clickedItem)
         {
             if (clickedItem?.Entry is null || clickedItem.Entry.UIndex == 0)
@@ -2061,6 +2119,22 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 BinaryInterpreter_Tab.IsSelected = true;
                 BinaryInterpreterTab_BinaryInterpreter.SetHexboxSelectedOffset(templateOwnerOffset);
             }
+        }
+
+        private void SelectStringRefUsageInRightPanel(EntryStringPair clickedItem)
+        {
+            if (clickedItem?.Entry is not ExportEntry || clickedItem.Entry.UIndex == 0)
+            {
+                return;
+            }
+
+            string usageDetail = GetUsageDetail(clickedItem);
+            if (string.IsNullOrWhiteSpace(usageDetail))
+            {
+                return;
+            }
+
+            TrySelectPropertyUsage(usageDetail, "StringRef: ", "Property: ");
         }
 
         private static string GetUsageDetail(EntryStringPair clickedItem)
@@ -2135,6 +2209,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     propertyPath = usageDetail[propertyPrefix.Length..];
                     break;
                 }
+            }
+
+            if (propertyPath != null)
+            {
+                int detailSeparatorIndex = propertyPath.IndexOf(" | ", StringComparison.Ordinal);
+                if (detailSeparatorIndex >= 0)
+                {
+                    propertyPath = propertyPath[..detailSeparatorIndex];
+                }
+
+                propertyPath = propertyPath.Trim();
             }
 
             if (propertyPath is null
@@ -5185,6 +5270,166 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void SearchStringRefs()
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            string searchTerm = StringRefSearchText?.Trim();
+            if (string.IsNullOrWhiteSpace(searchTerm))
+            {
+                return;
+            }
+
+            BusyText = $"Searching string refs for '{searchTerm}'...";
+            IsBusy = true;
+            Task.Run(() => FindStringRefUsages(searchTerm)).ContinueWithOnUIThread(prevTask =>
+            {
+                IsBusy = false;
+
+                List<EntryStringPair> results = prevTask.Result;
+                if (results.Count == 0)
+                {
+                    MessageBox.Show(this, $"No StringRef usages matching '{searchTerm}' were found.", "StringRef search");
+                    return;
+                }
+
+                new ListDialog(
+                    results,
+                    $"{results.Count} StringRef match{(results.Count == 1 ? string.Empty : "es")}",
+                    "Double-click a result to navigate to the owning export and property.",
+                    this)
+                {
+                    DoubleClickEntryHandler = stringRefUsageDoubleClick
+                }.Show();
+            });
+        }
+
+        private List<EntryStringPair> FindStringRefUsages(string searchTerm)
+        {
+            var results = new List<EntryStringPair>();
+            var resolvedTextCache = new Dictionary<int, string>();
+            int? exactStringRef = int.TryParse(searchTerm, out int parsedStringRef) ? parsedStringRef : null;
+
+            foreach (ExportEntry export in Pcc.Exports)
+            {
+                try
+                {
+                    CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache);
+                }
+                catch
+                {
+                    // Ignore exports that fail to parse so search can continue through the package.
+                }
+            }
+
+            return results
+                .OrderBy(result => result.Entry?.UIndex ?? int.MaxValue)
+                .ThenBy(result => result.Message, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private void CollectStringRefUsages(
+            PropertyCollection props,
+            ExportEntry export,
+            List<EntryStringPair> results,
+            string searchTerm,
+            int? exactStringRef,
+            string pathPrefix,
+            Dictionary<int, string> resolvedTextCache)
+        {
+            foreach (Property prop in props)
+            {
+                switch (prop)
+                {
+                    case StructProperty structProperty:
+                        CollectStringRefUsages(structProperty.Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structProperty.Name}.", resolvedTextCache);
+                        break;
+                    case ArrayProperty<StructProperty> structArray:
+                        for (int i = 0; i < structArray.Count; i++)
+                        {
+                            CollectStringRefUsages(structArray[i].Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structArray.Name}[{i}].", resolvedTextCache);
+                        }
+                        break;
+                    case ArrayProperty<StringRefProperty> stringRefArray:
+                        for (int i = 0; i < stringRefArray.Count; i++)
+                        {
+                            AddStringRefUsage(results, export, $"{pathPrefix}{stringRefArray.Name}[{i}] value", stringRefArray[i].Value, searchTerm, exactStringRef, resolvedTextCache);
+                        }
+                        break;
+                    case StringRefProperty stringRefProperty:
+                        AddStringRefUsage(results, export, $"{pathPrefix}{stringRefProperty.Name} value", stringRefProperty.Value, searchTerm, exactStringRef, resolvedTextCache);
+                        break;
+                    case IntProperty intProperty when IsStringRefIntProperty(intProperty):
+                        AddStringRefUsage(results, export, $"{pathPrefix}{intProperty.Name} value", intProperty.Value, searchTerm, exactStringRef, resolvedTextCache);
+                        break;
+                }
+            }
+        }
+
+        private void AddStringRefUsage(
+            List<EntryStringPair> results,
+            ExportEntry export,
+            string propertyPath,
+            int stringRef,
+            string searchTerm,
+            int? exactStringRef,
+            Dictionary<int, string> resolvedTextCache)
+        {
+            if (stringRef <= 0)
+            {
+                return;
+            }
+
+            string resolvedText = ResolveStringRefSearchText(export, stringRef, resolvedTextCache);
+            bool matches = exactStringRef.HasValue
+                ? stringRef == exactStringRef.Value
+                : !string.IsNullOrWhiteSpace(resolvedText)
+                  && resolvedText.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+
+            if (!matches)
+            {
+                return;
+            }
+
+            string message = $"#{export.UIndex} {export.ObjectName.Instanced}: StringRef: {propertyPath} | {stringRef}";
+            if (!string.IsNullOrWhiteSpace(resolvedText))
+            {
+                message += $" | {resolvedText.Replace("\r", string.Empty).Replace("\n", " ")}";
+            }
+
+            results.Add(new EntryStringPair(export, message));
+        }
+
+        private static bool IsStringRefIntProperty(IntProperty intProperty)
+        {
+            string propertyName = intProperty.Name.Name;
+            return !string.IsNullOrWhiteSpace(propertyName)
+                && (CommonStringRefPropertyNames.Contains(propertyName)
+                    || propertyName.Contains("StrRef", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Contains("StringRef", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Contains("StringID", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string ResolveStringRefSearchText(ExportEntry export, int stringRef, Dictionary<int, string> resolvedTextCache)
+        {
+            if (resolvedTextCache.TryGetValue(stringRef, out string resolvedText))
+            {
+                return resolvedText;
+            }
+
+            resolvedText = TLKManagerWPF.GlobalFindStrRefbyID(stringRef, export.FileRef);
+            if (resolvedText == "No Data")
+            {
+                resolvedText = null;
+            }
+
+            resolvedTextCache[stringRef] = resolvedText;
+            return resolvedText;
+        }
+
         /// <summary>
         /// Drag/drop dragover handler for the entry list treeview
         /// </summary>
@@ -6059,6 +6304,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 NavigateToPreviousEntry();
             if (e.ChangedButton.Equals(MouseButton.XButton2))
                 NavigateToNextEntry();
+        }
+
+        private void PackageEditorWPF_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            OnPropertyChanged(nameof(StringRefSearchBoxWidth));
         }
 
         private void NavigateToNextEntry()

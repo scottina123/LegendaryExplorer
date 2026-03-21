@@ -28,6 +28,7 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         AllowDrop="True"
+        SizeChanged="PackageEditorWPF_SizeChanged"
         PreviewMouseUp="Window_MouseUp"
         Closing="PackageEditorWPF_Closing"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -357,7 +358,7 @@
             </StatusBar>
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="32"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="1*"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
@@ -411,11 +412,15 @@
                         <controls:WatermarkTextBox Watermark="{Binding SearchHintText}" x:Name="Search_TextBox" Width="90" KeyUp="Searchbox_OnKeyUpHandler" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Press CTRL+F to automatically jump to this box"/>
                         <Button Content="Search" Click="SearchButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}"  Padding="10,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
-                        <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
-                        <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-                        <Button Content="Open linked" Command="{Binding OpenHighestMountedLinkedFileCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolTip="Open the highest mounted linked LOC file when viewing a base package, or the highest mounted base package when viewing a LOC file."/>
-                    </StackPanel>
+                    <controls:WatermarkTextBox Watermark="{Binding GotoHintText}" x:Name="Goto_TextBox" Width="70" Margin="5,0,0,0" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"  VerticalContentAlignment="Center" ToolTip="Press CTRL+G to automatically jump to this box"/>
+                    <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                    <controls:WatermarkTextBox Watermark="StringRef / text" Width="{Binding StringRefSearchBoxWidth}" Margin="5,0,0,0" Text="{Binding StringRefSearchText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" VerticalContentAlignment="Center" ToolTip="Search this package for StringRef values or resolved TLK text" ToolBar.OverflowMode="Never">
+                        <controls:WatermarkTextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding SearchStringRefsCommand}"/>
+                        </controls:WatermarkTextBox.InputBindings>
+                    </controls:WatermarkTextBox>
+                    <Button Content="Find strref" Command="{Binding SearchStringRefsCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolBar.OverflowMode="Never"/>
+                    <Button Content="Open linked" Command="{Binding OpenHighestMountedLinkedFileCommand}" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" ToolTip="Open the highest mounted linked LOC file when viewing a base package, or the highest mounted base package when viewing a LOC file."/>
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
                     <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
                 </ToolBar>
