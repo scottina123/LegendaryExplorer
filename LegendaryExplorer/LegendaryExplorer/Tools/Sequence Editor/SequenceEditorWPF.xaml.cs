@@ -2341,10 +2341,259 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private void AddInputEntry_Clicked(object sender, RoutedEventArgs e)
+        {
+            PromptAndAddNamedLinkEntry("InputLinks", "input", "In");
+        }
+
+        private void AddOutputEntry_Clicked(object sender, RoutedEventArgs e)
+        {
+            PromptAndAddNamedLinkEntry("OutputLinks", "output", "Out");
+        }
+
+        private void AddVariableEntry_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SObj { Export: { } export })
+            {
+                return;
+            }
+
+            if (!CanAddNamedLinkEntry(export, "VariableLinks"))
+            {
+                return;
+            }
+
+            if (PromptForVariableLinkEntry() is not { } variableEntry)
+            {
+                return;
+            }
+
+            AddNamedLinkEntry(export, "VariableLinks", variableEntry.EntryName, variableEntry.ExpectedTypeName);
+            RefreshView();
+        }
+
+        private record VariableLinkEntryDialogResult(string EntryName, string ExpectedTypeName);
+
+        private VariableLinkEntryDialogResult PromptForVariableLinkEntry()
+        {
+            var classOptions = GlobalUnrealObjectInfo.GetClasses(Pcc.Game).Values
+                .Where(x => x.IsA("SequenceVariable", Pcc.Game))
+                .Select(x => x.ClassName)
+                .OrderBy(x => x)
+                .ToList();
+
+            var nameTextBox = new TextBox
+            {
+                MinWidth = 260,
+                Text = "Variable"
+            };
+            var typeComboBox = new ComboBox
+            {
+                MinWidth = 260,
+                ItemsSource = classOptions,
+                SelectedItem = "SeqVar_Object",
+                IsEditable = false
+            };
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 80,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var dialog = new System.Windows.Window
+            {
+                Title = "Add variable entry",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(12),
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Label"
+                        },
+                        nameTextBox,
+                        new TextBlock
+                        {
+                            Margin = new Thickness(0, 10, 0, 0),
+                            Text = "Expected type"
+                        },
+                        typeComboBox,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Margin = new Thickness(0, 12, 0, 0),
+                            Children =
+                            {
+                                okButton,
+                                new Button
+                                {
+                                    Content = "Cancel",
+                                    IsCancel = true,
+                                    MinWidth = 80
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            void UpdateOkState()
+            {
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text) && typeComboBox.SelectedItem != null;
+            }
+
+            nameTextBox.TextChanged += (_, _) => UpdateOkState();
+            typeComboBox.SelectionChanged += (_, _) => UpdateOkState();
+            dialog.Loaded += (_, _) =>
+            {
+                nameTextBox.Focus();
+                nameTextBox.SelectAll();
+                UpdateOkState();
+            };
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            return dialog.ShowDialog() == true
+                ? new VariableLinkEntryDialogResult(nameTextBox.Text.Trim(), typeComboBox.SelectedItem as string)
+                : null;
+        }
+
+        private void PromptAndAddNamedLinkEntry(string propertyName, string entryType, string defaultName)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SObj { Export: { } export })
+            {
+                return;
+            }
+
+            if (!CanAddNamedLinkEntry(export, propertyName))
+            {
+                return;
+            }
+
+            var entryName = PromptDialog.Prompt(this,
+                $"Enter a label for the new {entryType} entry.",
+                "Enter label",
+                defaultName,
+                true);
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                return;
+            }
+
+            AddNamedLinkEntry(export, propertyName, entryName.Trim());
+            RefreshView();
+        }
+
+        private bool CanAddNamedLinkEntry(ExportEntry export, string propertyName)
+        {
+            return export != null
+                   && !export.IsA("SFXSceneShopNode")
+                   && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, propertyName, export.ClassName) != null;
+        }
+
+        private void AddNamedLinkEntry(ExportEntry export, string propertyName, string entryName, string expectedTypeName = null)
+        {
+            var props = export.GetProperties();
+            var linkArray = props.GetProp<ArrayProperty<StructProperty>>(propertyName)
+                            ?? new ArrayProperty<StructProperty>(propertyName);
+
+            if (CreateNamedLinkStruct(export, propertyName, entryName, expectedTypeName) is not { } linkStruct)
+            {
+                return;
+            }
+
+            linkArray.Add(linkStruct);
+            props.AddOrReplaceProp(linkArray);
+            export.WriteProperties(props);
+        }
+
+        private StructProperty CreateNamedLinkStruct(ExportEntry export, string propertyName, string entryName, string expectedTypeName = null)
+        {
+            PropertyInfo linkPropertyInfo = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, propertyName, export.ClassName);
+            if (linkPropertyInfo == null)
+            {
+                return null;
+            }
+
+            PropertyCollection linkDefaults = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, linkPropertyInfo.Reference, true, Pcc);
+            linkDefaults.AddOrReplaceProp(new StrProperty(entryName, "LinkDesc"));
+
+            switch (propertyName)
+            {
+                case "InputLinks":
+                    linkDefaults.AddOrReplaceProp(new NameProperty("None", "LinkAction"));
+                    linkDefaults.AddOrReplaceProp(new ObjectProperty(0, "LinkedOp"));
+                    linkDefaults.AddOrReplaceProp(new IntProperty(0, "QueuedActivations"));
+                    linkDefaults.AddOrReplaceProp(new BoolProperty(false, "bHasImpulse"));
+                    linkDefaults.AddOrReplaceProp(new BoolProperty(false, "bDisabled"));
+                    break;
+                case "OutputLinks":
+                    linkDefaults.AddOrReplaceProp(new ArrayProperty<StructProperty>("Links"));
+                    linkDefaults.AddOrReplaceProp(new NameProperty("None", "LinkAction"));
+                    linkDefaults.AddOrReplaceProp(new ObjectProperty(0, "LinkedOp"));
+                    linkDefaults.AddOrReplaceProp(new BoolProperty(false, "bHasImpulse"));
+                    linkDefaults.AddOrReplaceProp(new BoolProperty(false, "bDisabled"));
+                    break;
+                case "VariableLinks":
+                    linkDefaults.AddOrReplaceProp(new ArrayProperty<ObjectProperty>("LinkedVariables"));
+                    linkDefaults.AddOrReplaceProp(new NameProperty("None", "PropertyName"));
+                    linkDefaults.AddOrReplaceProp(new IntProperty(0, "MinVars"));
+                    linkDefaults.AddOrReplaceProp(new IntProperty(255, "MaxVars"));
+
+                    string resolvedExpectedTypeName = string.IsNullOrWhiteSpace(expectedTypeName)
+                        ? "SeqVar_Object"
+                        : expectedTypeName;
+                    var rop = new RelinkerOptionsPackage();
+                    if (EntryImporter.EnsureClassIsInFile(Pcc, resolvedExpectedTypeName, rop) is IEntry expectedType)
+                    {
+                        linkDefaults.AddOrReplaceProp(new ObjectProperty(expectedType, "ExpectedType"));
+                    }
+                    EntryImporterExtended.ShowRelinkResultsIfAny(rop);
+                    break;
+            }
+
+            return new StructProperty(linkPropertyInfo.Reference, linkDefaults, isImmutable: false);
+        }
+
         public void OpenNodeContextMenu(SObj obj)
         {
             if (FindResource("nodeContextMenu") is ContextMenu contextMenu)
             {
+                if (contextMenu.GetChild("addLinkEntryMenuItem") is MenuItem addLinkEntryMenuItem)
+                {
+                    bool canAddInput = CanAddNamedLinkEntry(obj.Export, "InputLinks");
+                    bool canAddOutput = CanAddNamedLinkEntry(obj.Export, "OutputLinks");
+                    bool canAddVariable = CanAddNamedLinkEntry(obj.Export, "VariableLinks");
+
+                    if (addLinkEntryMenuItem.GetChild("addInputEntryMenuItem") is MenuItem addInputEntryMenuItem)
+                    {
+                        addInputEntryMenuItem.Visibility = canAddInput ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    if (addLinkEntryMenuItem.GetChild("addOutputEntryMenuItem") is MenuItem addOutputEntryMenuItem)
+                    {
+                        addOutputEntryMenuItem.Visibility = canAddOutput ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    if (addLinkEntryMenuItem.GetChild("addVariableEntryMenuItem") is MenuItem addVariableEntryMenuItem)
+                    {
+                        addVariableEntryMenuItem.Visibility = canAddVariable ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    addLinkEntryMenuItem.Visibility = canAddInput || canAddOutput || canAddVariable
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
+
                 // BREAK LINKS CODE
                 if (contextMenu.GetChild("breakLinksMenuItem") is MenuItem breakLinksMenuItem)
                 {

@@ -73,6 +73,11 @@
             <MenuItem Header="Extract sequence (EXPERIMENTAL)" Name="extractSequenceMenuItem" Click="ExtractSequence_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
             <MenuItem Header="Trim unused variable links (EXPERIMENTAL)" Name="trimUnusedVariableLinksMenuItem" Click="TrimVariableLinks_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
             <MenuItem Header="Add switch outlink(s)" Name="addSwitchOutlinksMenuItem" Click="AddSwitchOutlinksMenuItem_Clicked"/>
+            <MenuItem Header="Add Link Entry" Name="addLinkEntryMenuItem">
+                <MenuItem Header="Add input entry" Name="addInputEntryMenuItem" Click="AddInputEntry_Clicked" />
+                <MenuItem Header="Add output entry" Name="addOutputEntryMenuItem" Click="AddOutputEntry_Clicked" />
+                <MenuItem Header="Add variable entry" Name="addVariableEntryMenuItem" Click="AddVariableEntry_Clicked" />
+            </MenuItem>
             <MenuItem Header="Copy InstancedFullPath" Name="copyInstancedFullPathMenuItem" Click="CopyInstancedFullPath_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
 
             <!-- SeqAct_Log Right Click -->
