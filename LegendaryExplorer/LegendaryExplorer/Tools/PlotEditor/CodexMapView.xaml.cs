@@ -31,6 +31,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private ObservableCollection<KeyValuePair<int, BioCodexPage>> _codexPages;
         private ObservableCollection<KeyValuePair<int, BioCodexSection>> _codexSections;
+        private ObservableCollection<object> _codexTreeItems;
         private KeyValuePair<int, BioCodexPage> _selectedCodexPage;
         private KeyValuePair<int, BioCodexSection> _selectedCodexSection;
 
@@ -60,6 +61,12 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
         }
 
+        public bool CanRemoveSelectedCodexItem => SelectedCodexPage.Value != null || SelectedCodexSection.Value != null;
+
+        public bool IsCodexPageSelected => SelectedCodexPage.Value != null;
+
+        public bool IsCodexSectionSelected => SelectedCodexSection.Value != null;
+
         public ObservableCollection<KeyValuePair<int, BioCodexPage>> CodexPages
         {
             get => _codexPages;
@@ -67,7 +74,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _codexPages, value);
                 OnPropertyChanged(nameof(CanRemoveCodexPage));
-                //CodexPagesListBox.ItemsSource = CodexPages;
+                RefreshCodexHierarchy();
             }
         }
 
@@ -78,7 +85,14 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _codexSections, value);
                 OnPropertyChanged(nameof(CanRemoveCodexSection));
+                RefreshCodexHierarchy();
             }
+        }
+
+        public ObservableCollection<object> CodexTreeItems
+        {
+            get => _codexTreeItems;
+            set => SetProperty(ref _codexTreeItems, value);
         }
 
         public KeyValuePair<int, BioCodexPage> SelectedCodexPage
@@ -88,6 +102,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _selectedCodexPage, value);
                 OnPropertyChanged(nameof(CanRemoveCodexPage));
+                OnPropertyChanged(nameof(CanRemoveSelectedCodexItem));
+                OnPropertyChanged(nameof(IsCodexPageSelected));
             }
         }
 
@@ -98,6 +114,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _selectedCodexSection, value);
                 OnPropertyChanged(nameof(CanRemoveCodexSection));
+                OnPropertyChanged(nameof(CanRemoveSelectedCodexItem));
+                OnPropertyChanged(nameof(IsCodexSectionSelected));
             }
         }
 
@@ -135,7 +153,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             var codexPagePair = new KeyValuePair<int, BioCodexPage>(id, codexPage ?? new BioCodexPage());
-            if (package.Game == MEGame.LE1)
+            if (package?.Game == MEGame.LE1)
             {
                 codexPagePair.Value.IsLE1 = true;
             }
@@ -143,6 +161,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             CodexPages.Add(codexPagePair);
 
             SelectedCodexPage = codexPagePair;
+            SelectedCodexSection = default;
+            RefreshCodexHierarchy();
         }
 
         public void addCodexSection()
@@ -184,6 +204,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             CodexSections.Add(codexSectionPair);
 
             SelectedCodexSection = codexSectionPair;
+            SelectedCodexPage = default;
+            RefreshCodexHierarchy();
         }
 
         public void ChangeCodexPageId()
@@ -280,18 +302,18 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void GoToCodexPage(KeyValuePair<int, BioCodexPage> codexPage)
         {
-            CodexTabControl.SelectedValue = CodexPagesTab;
             SelectedCodexPage = codexPage;
-            CodexPagesListBox.ScrollIntoView(SelectedCodexPage);
-            CodexPagesListBox.Focus();
+            SelectedCodexSection = default;
+            SelectTreeItem(FindPageTreeItem(codexPage.Key));
+            CodexTreeView.Focus();
         }
 
         public void GoToCodexSection(KeyValuePair<int, BioCodexSection> codexSection)
         {
-            CodexTabControl.SelectedValue = CodexSectionsTab;
             SelectedCodexSection = codexSection;
-            CodexSectionsListBox.ScrollIntoView(SelectedCodexSection);
-            CodexSectionsListBox.Focus();
+            SelectedCodexPage = default;
+            SelectTreeItem(FindSectionTreeItem(codexSection.Key));
+            CodexTreeView.Focus();
         }
 
         public static bool TryFindCodexMap(IMEPackage pcc, out ExportEntry export, out int dataOffset)
@@ -340,6 +362,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             package = pcc;
+            RefreshCodexHierarchy();
+            RefreshSelectedText();
         }
 
         public void RemoveCodexPage()
@@ -362,6 +386,12 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     ? CodexPages[index - 1]
                     : CodexPages.First();
             }
+            else
+            {
+                SelectedCodexPage = default;
+            }
+
+            RefreshCodexHierarchy();
         }
 
         public void removeCodexSection()
@@ -384,6 +414,12 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     ? CodexSections[index - 1]
                     : CodexSections.First();
             }
+            else
+            {
+                SelectedCodexSection = default;
+            }
+
+            RefreshCodexHierarchy();
         }
 
         public void SaveToPcc(IMEPackage pcc)
@@ -445,6 +481,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             CodexPages = InitCollection(codexMap.Pages.OrderBy(pair => pair.Key));
             CodexSections = InitCollection(codexMap.Sections.OrderBy(pair => pair.Key));
+            RefreshCodexHierarchy();
         }
         
         private static ObservableCollection<T> InitCollection<T>()
@@ -471,6 +508,158 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private int GetMaxCodexSectionId()
         {
             return CodexSections.Any() ? CodexSections.Max(pair => pair.Key) : -1;
+        }
+
+        private void RefreshCodexHierarchy()
+        {
+            var selectedPageId = SelectedCodexPage.Value != null ? SelectedCodexPage.Key : (int?)null;
+            var selectedSectionId = SelectedCodexSection.Value != null ? SelectedCodexSection.Key : (int?)null;
+            var sectionIds = new HashSet<int>(CodexSections?.Select(pair => pair.Key) ?? Enumerable.Empty<int>());
+            var treeItems = new List<object>();
+
+            foreach (var section in CodexSections?.OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexSection>>())
+            {
+                var sectionItem = new CodexSectionTreeItem(section);
+
+                foreach (var page in CodexPages?.Where(pair => pair.Value.Section == section.Key).OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexPage>>())
+                {
+                    sectionItem.Pages.Add(new CodexPageTreeItem(page, sectionItem));
+                }
+
+                treeItems.Add(sectionItem);
+            }
+
+            foreach (var page in CodexPages?.Where(pair => !sectionIds.Contains(pair.Value.Section)).OrderBy(pair => pair.Key) ?? Enumerable.Empty<KeyValuePair<int, BioCodexPage>>())
+            {
+                treeItems.Add(new CodexPageTreeItem(page));
+            }
+
+            CodexTreeItems = InitCollection(treeItems);
+
+            if (selectedPageId.HasValue)
+            {
+                SelectTreeItem(FindPageTreeItem(selectedPageId.Value));
+            }
+            else if (selectedSectionId.HasValue)
+            {
+                SelectTreeItem(FindSectionTreeItem(selectedSectionId.Value));
+            }
+        }
+
+        private CodexSectionTreeItem FindSectionTreeItem(int sectionId)
+        {
+            return CodexTreeItems?.OfType<CodexSectionTreeItem>().FirstOrDefault(item => item.CodexSection.Key == sectionId);
+        }
+
+        private CodexPageTreeItem FindPageTreeItem(int pageId)
+        {
+            if (CodexTreeItems == null)
+            {
+                return null;
+            }
+
+            foreach (var sectionItem in CodexTreeItems.OfType<CodexSectionTreeItem>())
+            {
+                var pageItem = sectionItem.Pages.FirstOrDefault(item => item.CodexPage.Key == pageId);
+                if (pageItem != null)
+                {
+                    return pageItem;
+                }
+            }
+
+            return CodexTreeItems.OfType<CodexPageTreeItem>().FirstOrDefault(item => item.CodexPage.Key == pageId);
+        }
+
+        private static void SelectTreeItem(CodexTreeItemBase treeItem)
+        {
+            if (treeItem == null)
+            {
+                return;
+            }
+
+            if (treeItem.Parent != null)
+            {
+                treeItem.Parent.IsExpanded = true;
+            }
+
+            treeItem.IsSelected = true;
+        }
+
+        private void RefreshSelectedText()
+        {
+            if (package != null)
+            {
+                txt_cdxPgeDesc.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Description ?? 0, package);
+                txt_cdxPgeTitle.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Title ?? 0, package);
+                txt_cdxSecDesc.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Description ?? 0, package);
+                txt_cdxSecTitle.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Title ?? 0, package);
+
+                if (SelectedCodexPage.Value != null)
+                {
+                    SelectedCodexPage.Value.TitleAsString = txt_cdxPgeTitle.Text;
+                }
+
+                if (SelectedCodexSection.Value != null)
+                {
+                    SelectedCodexSection.Value.TitleAsString = txt_cdxSecTitle.Text;
+                }
+
+                return;
+            }
+
+            txt_cdxPgeDesc.Text = string.Empty;
+            txt_cdxPgeTitle.Text = string.Empty;
+            txt_cdxSecDesc.Text = string.Empty;
+            txt_cdxSecTitle.Text = string.Empty;
+        }
+
+        public abstract class CodexTreeItemBase : NotifyPropertyChangedBase
+        {
+            private bool _isExpanded;
+            private bool _isSelected;
+
+            protected CodexTreeItemBase(CodexSectionTreeItem parent = null)
+            {
+                Parent = parent;
+            }
+
+            public CodexSectionTreeItem Parent { get; }
+
+            public bool IsExpanded
+            {
+                get => _isExpanded;
+                set => SetProperty(ref _isExpanded, value);
+            }
+
+            public bool IsSelected
+            {
+                get => _isSelected;
+                set => SetProperty(ref _isSelected, value);
+            }
+        }
+
+        public sealed class CodexSectionTreeItem : CodexTreeItemBase
+        {
+            public CodexSectionTreeItem(KeyValuePair<int, BioCodexSection> codexSection)
+            {
+                CodexSection = codexSection;
+                Pages = InitCollection<CodexPageTreeItem>();
+            }
+
+            public KeyValuePair<int, BioCodexSection> CodexSection { get; }
+
+            public ObservableCollection<CodexPageTreeItem> Pages { get; }
+        }
+
+        public sealed class CodexPageTreeItem : CodexTreeItemBase
+        {
+            public CodexPageTreeItem(KeyValuePair<int, BioCodexPage> codexPage, CodexSectionTreeItem parent = null)
+                : base(parent)
+            {
+                CodexPage = codexPage;
+            }
+
+            public KeyValuePair<int, BioCodexPage> CodexPage { get; }
         }
 
         private void ChangeCodexPageId_Click(object sender, System.Windows.RoutedEventArgs e)
@@ -513,18 +702,49 @@ namespace LegendaryExplorer.Tools.PlotEditor
             AddCodexPage();
         }
 
+        private void RemoveSelectedCodexItem_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (SelectedCodexPage.Value != null)
+            {
+                RemoveCodexPage();
+                return;
+            }
+
+            if (SelectedCodexSection.Value != null)
+            {
+                removeCodexSection();
+            }
+        }
+
+        private void CodexTreeView_SelectedItemChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
+        {
+            switch (e.NewValue)
+            {
+                case CodexPageTreeItem pageItem:
+                    SelectedCodexSection = default;
+                    SelectedCodexPage = pageItem.CodexPage;
+                    break;
+                case CodexSectionTreeItem sectionItem:
+                    SelectedCodexPage = default;
+                    SelectedCodexSection = sectionItem.CodexSection;
+                    break;
+                default:
+                    SelectedCodexPage = default;
+                    SelectedCodexSection = default;
+                    break;
+            }
+
+            RefreshSelectedText();
+        }
+
+        private void CodexPageSection_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
+        {
+            RefreshCodexHierarchy();
+        }
+
         private void txt_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
         {
-            if(package != null)
-            {
-                txt_cdxPgeDesc.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Description ?? 0, package);
-                txt_cdxPgeTitle.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Title ?? 0, package);
-                txt_cdxSecDesc.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Description ?? 0, package);
-                txt_cdxSecTitle.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Title ?? 0, package);
-
-                if (SelectedCodexPage.Value != null) SelectedCodexPage.Value.TitleAsString = txt_cdxPgeTitle.Text;
-                if (SelectedCodexSection.Value != null) SelectedCodexSection.Value.TitleAsString = txt_cdxSecTitle.Text;
-            }
+            RefreshSelectedText();
         }
     }
 }
