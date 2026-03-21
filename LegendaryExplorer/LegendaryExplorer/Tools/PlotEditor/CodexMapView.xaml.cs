@@ -389,12 +389,12 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             foreach (var page in CodexPages)
             {
-                page.Value.TitleAsString = GlobalFindStrRefbyID(page.Value.Title, pcc.Game, null);
+                page.Value.TitleAsString = StripWrappingQuotes(GlobalFindStrRefbyID(page.Value.Title, pcc.Game, null));
             }
 
             foreach (var section in CodexSections)
             {
-                section.Value.TitleAsString = GlobalFindStrRefbyID(section.Value.Title, pcc.Game, null);
+                section.Value.TitleAsString = StripWrappingQuotes(GlobalFindStrRefbyID(section.Value.Title, pcc.Game, null));
             }
 
             package = pcc;
@@ -640,8 +640,25 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private string ResolveStrRefText(int strRef)
         {
             return package != null
-                ? GlobalFindStrRefbyID(strRef, package) ?? string.Empty
+                ? StripWrappingQuotes(GlobalFindStrRefbyID(strRef, package))
                 : string.Empty;
+        }
+
+        private static string StripWrappingQuotes(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length < 2)
+            {
+                return text ?? string.Empty;
+            }
+
+            return (text[0], text[^1]) switch
+            {
+                ('"', '"') => text[1..^1],
+                ('\'', '\'') => text[1..^1],
+                ('“', '”') => text[1..^1],
+                ('‘', '’') => text[1..^1],
+                _ => text
+            };
         }
 
         private CodexSectionTreeItem FindSectionTreeItem(int sectionId)
@@ -717,30 +734,30 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             try
             {
-            if (package != null)
-            {
-                txt_cdxPgeDesc.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Description ?? 0, package) ?? string.Empty;
-                txt_cdxPgeTitle.Text = GlobalFindStrRefbyID(SelectedCodexPage.Value?.Title ?? 0, package) ?? string.Empty;
-                txt_cdxSecDesc.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Description ?? 0, package) ?? string.Empty;
-                txt_cdxSecTitle.Text = GlobalFindStrRefbyID(SelectedCodexSection.Value?.Title ?? 0, package) ?? string.Empty;
-
-                if (SelectedCodexPage.Value != null)
+                if (package != null)
                 {
-                    SelectedCodexPage.Value.TitleAsString = txt_cdxPgeTitle.Text;
+                    txt_cdxPgeDesc.Text = ResolveStrRefText(SelectedCodexPage.Value?.Description ?? 0);
+                    txt_cdxPgeTitle.Text = ResolveStrRefText(SelectedCodexPage.Value?.Title ?? 0);
+                    txt_cdxSecDesc.Text = ResolveStrRefText(SelectedCodexSection.Value?.Description ?? 0);
+                    txt_cdxSecTitle.Text = ResolveStrRefText(SelectedCodexSection.Value?.Title ?? 0);
+
+                    if (SelectedCodexPage.Value != null)
+                    {
+                        SelectedCodexPage.Value.TitleAsString = txt_cdxPgeTitle.Text;
+                    }
+
+                    if (SelectedCodexSection.Value != null)
+                    {
+                        SelectedCodexSection.Value.TitleAsString = txt_cdxSecTitle.Text;
+                    }
+
+                    return;
                 }
 
-                if (SelectedCodexSection.Value != null)
-                {
-                    SelectedCodexSection.Value.TitleAsString = txt_cdxSecTitle.Text;
-                }
-
-                return;
-            }
-
-            txt_cdxPgeDesc.Text = string.Empty;
-            txt_cdxPgeTitle.Text = string.Empty;
-            txt_cdxSecDesc.Text = string.Empty;
-            txt_cdxSecTitle.Text = string.Empty;
+                txt_cdxPgeDesc.Text = string.Empty;
+                txt_cdxPgeTitle.Text = string.Empty;
+                txt_cdxSecDesc.Text = string.Empty;
+                txt_cdxSecTitle.Text = string.Empty;
             }
             finally
             {

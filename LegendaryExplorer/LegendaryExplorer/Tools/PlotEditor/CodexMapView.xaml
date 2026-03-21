@@ -26,12 +26,101 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Name="CodexStringTextboxStyle" TargetType="{x:Type TextBox}">
+        <Style x:Key="CodexStringTextboxStyle" TargetType="{x:Type TextBox}">
             <Style.Triggers>
                 <Trigger Property="IsReadOnly" Value="True">
                     <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ResolvedTextContextMenuStyle" TargetType="{x:Type ContextMenu}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HasDropShadow" Value="False" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ContextMenu}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ResolvedTextMenuItemStyle" TargetType="{x:Type MenuItem}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type MenuItem}">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                SnapsToDevicePixels="True">
+                            <Grid Margin="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True" />
+                                <TextBlock x:Name="GestureText"
+                                           Grid.Column="1"
+                                           Margin="24,0,12,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           Opacity="0.75"
+                                           Text="{TemplateBinding InputGestureText}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                <Setter TargetName="GestureText" Property="Opacity" Value="1" />
+                            </Trigger>
+                            <Trigger Property="InputGestureText" Value="">
+                                <Setter TargetName="GestureText" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ResolvedCodexTextBoxStyle" TargetType="{x:Type TextBox}" BasedOn="{StaticResource CodexStringTextboxStyle}">
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu Style="{StaticResource ResolvedTextContextMenuStyle}">
+                        <MenuItem Header="Copy"
+                                  Style="{StaticResource ResolvedTextMenuItemStyle}"
+                                  Command="{x:Static ApplicationCommands.Copy}"
+                                  InputGestureText="Ctrl+C"
+                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                        <MenuItem Header="Select All"
+                                  Style="{StaticResource ResolvedTextMenuItemStyle}"
+                                  Command="{x:Static ApplicationCommands.SelectAll}"
+                                  InputGestureText="Ctrl+A"
+                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="CodexTreeViewItemStyle" TargetType="{x:Type TreeViewItem}">
@@ -159,13 +248,13 @@
                 <Label Content="Title:" Grid.Column="0" Grid.Row="1" />
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1" Margin="0,5"
                     Value="{Binding Path=SelectedCodexSection.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
-                <TextBox Name="txt_cdxSecTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True"
+                <TextBox Name="txt_cdxSecTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          VerticalAlignment="Center" Margin="10,5" Padding="3,3" HorizontalContentAlignment="Left"/>
 
                 <Label Content="Description:" Grid.Column="0" Grid.Row="2" />
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2" Margin="0,5"
                     Value="{Binding Path=SelectedCodexSection.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
-                <TextBox Name="txt_cdxSecDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True"
+                <TextBox Name="txt_cdxSecDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          Grid.RowSpan="5" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" MaxLines="8" Padding="3,3" Margin="10,5"
                          HorizontalContentAlignment="Left"/>
 
@@ -213,13 +302,13 @@
                 <Label Content="Title:" Grid.Column="0" Grid.Row="1" />
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1" Margin="0,5"
                     Value="{Binding Path=SelectedCodexPage.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
-                <TextBox Name="txt_cdxPgeTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True"
+                <TextBox Name="txt_cdxPgeTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          VerticalAlignment="Center" Padding="3,3" Margin="10,5" HorizontalContentAlignment="Left"/>
 
                 <Label Content="Description:" Grid.Column="0" Grid.Row="2" />
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2" Margin="0,5"
                     Value="{Binding Path=SelectedCodexPage.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
-                <TextBox Name="txt_cdxPgeDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True"
+                <TextBox Name="txt_cdxPgeDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          Grid.RowSpan="5" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"
                          HorizontalContentAlignment="Left" VerticalScrollBarVisibility="Auto"/>
 
