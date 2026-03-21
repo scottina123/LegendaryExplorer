@@ -61,6 +61,7 @@
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>
+                <MenuItem Name="VanillaPlotFiles_MenuItem" Header="_Vanilla Plot Files" Padding="4" />
                 <MenuItem HorizontalAlignment="Right"
                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <MenuItem.Header>

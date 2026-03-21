@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Gammtek.Conduit.MassEffect3.SFXGame.CodexMap;
 using Gammtek.Conduit.MassEffect3.SFXGame.QuestMap;
@@ -14,6 +15,8 @@ using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
+using LegendaryExplorerCore.GameFilesystem;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using Microsoft.Win32;
 
@@ -21,11 +24,24 @@ namespace LegendaryExplorer.Tools.PlotEditor
 {
     public partial class PlotEditorWindow : WPFBase, IRecents
     {
+        private static readonly string[] VanillaPlotFiles =
+        [
+            "SFXGameInfoSP_SF.pcc",
+            "Startup_HEN_PR_INT.pcc",
+            "Startup_EXP_Pack003_Base_INT.pcc",
+            "Startup_EXP_Pack003_INT.pcc",
+            "Startup_EXP_Pack002_INT.pcc",
+            "Startup_EXP_Pack001_INT.pcc",
+            "Startup_CON_END_INT.pcc",
+            "Startup_CON_DH1_INT.pcc",
+        ];
+
         public PlotEditorWindow() : base("Plot Editor")
         {
             GotoCommand = new GenericCommand(FocusGoto, () => Pcc != null);
 
             InitializeComponent();
+            PopulateVanillaPlotFilesMenu();
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
 
             FindObjectUsagesControl.parentRef = this;
@@ -45,6 +61,79 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             LoadFile(dlg.FileName);
+        }
+
+        private void PopulateVanillaPlotFilesMenu()
+        {
+            foreach (string fileName in VanillaPlotFiles)
+            {
+                var menuItem = new MenuItem
+                {
+                    Header = fileName,
+                    Tag = fileName,
+                };
+                menuItem.Click += VanillaPlotFileMenuItem_Click;
+                VanillaPlotFiles_MenuItem.Items.Add(menuItem);
+            }
+        }
+
+        private void VanillaPlotFileMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: string fileName })
+            {
+                return;
+            }
+
+            string le3Path = MEDirectories.GetDefaultGamePath(MEGame.LE3);
+            if (string.IsNullOrWhiteSpace(le3Path))
+            {
+                MessageBox.Show(this,
+                    "Vanilla plot files require a configured Mass Effect Legendary Edition 3 install path.",
+                    "Plot Editor",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string filePath = FindVanillaPlotFile(fileName, le3Path);
+            if (filePath == null)
+            {
+                MessageBox.Show(this,
+                    $"Could not locate '{fileName}' in the configured Mass Effect Legendary Edition 3 installation.",
+                    "Plot Editor",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            LoadFile(filePath);
+        }
+
+        private static string FindVanillaPlotFile(string fileName, string le3Path)
+        {
+            string basegamePath = Path.Combine(LE3Directory.GetCookedPCPath(le3Path), fileName);
+            if (File.Exists(basegamePath))
+            {
+                return basegamePath;
+            }
+
+            string dlcRoot = LE3Directory.GetDLCPath(le3Path);
+            foreach (string officialDlc in MEDirectories.OfficialDLC(MEGame.LE3))
+            {
+                string dlcPath = Path.Combine(dlcRoot, officialDlc);
+                if (!Directory.Exists(dlcPath))
+                {
+                    continue;
+                }
+
+                string match = Directory.EnumerateFiles(dlcPath, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
         }
 
         public void LoadFile(string path)
