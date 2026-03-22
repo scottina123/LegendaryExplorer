@@ -1605,6 +1605,7 @@ namespace LegendaryExplorer.DialogueEditor
                 IsLocalUpdate = false;  //Speaker change requires full reparse due to FaceFX/Rechart.
             }
             var needsRefresh = false; //Controls if refresh chart (auto happens on full parse)
+            var needsPlotSectionRefresh = false;
 
             switch (e.PropertyName)         // Props in both replies and entries. All Games.
             {
@@ -1620,20 +1621,26 @@ namespace LegendaryExplorer.DialogueEditor
                 case "ConditionalOrBool":
                     var nConditionalFunc = new IntProperty(node.ConditionalOrBool, "nConditionalFunc");
                     prop.Properties.AddOrReplaceProp(nConditionalFunc);
-                    needsRefresh = true;
+                    node.ConditionalPlotPath = node.FiresConditional
+                        ? PlotDatabases.FindPlotConditionalByID(node.ConditionalOrBool, Pcc.Game)?.Path
+                        : PlotDatabases.FindPlotBoolByID(node.ConditionalOrBool, Pcc.Game)?.Path;
+                    needsPlotSectionRefresh = true;
                     break;
                 case "ConditionalParam":
                     var nConditionalParam = new IntProperty(node.ConditionalParam, "nConditionalParam");
                     prop.Properties.AddOrReplaceProp(nConditionalParam);
+                    needsPlotSectionRefresh = true;
                     break;
                 case "Transition":
                     var nStateTransition = new IntProperty(node.Transition, "nStateTransition");
                     prop.Properties.AddOrReplaceProp(nStateTransition);
-                    needsRefresh = true;
+                    node.TransitionPlotPath = PlotDatabases.FindPlotTransitionByID(node.Transition, Pcc.Game)?.Path;
+                    needsPlotSectionRefresh = true;
                     break;
                 case "TransitionParam":
                     var nStateTransitionParam = new IntProperty(node.TransitionParam, "nStateTransitionParam");
                     prop.Properties.AddOrReplaceProp(nStateTransitionParam);
+                    needsPlotSectionRefresh = true;
                     break;
                 case "InterpLength":
                     if (node.InterpData != null)
@@ -1648,7 +1655,10 @@ namespace LegendaryExplorer.DialogueEditor
                 case "FiresConditional":
                     var bFireConditional = new BoolProperty(node.FiresConditional, "bFireConditional");
                     prop.Properties.AddOrReplaceProp(bFireConditional);
-                    needsRefresh = true;
+                    node.ConditionalPlotPath = node.FiresConditional
+                        ? PlotDatabases.FindPlotConditionalByID(node.ConditionalOrBool, Pcc.Game)?.Path
+                        : PlotDatabases.FindPlotBoolByID(node.ConditionalOrBool, Pcc.Game)?.Path;
+                    needsPlotSectionRefresh = true;
                     break;
                 case "IsAmbient":
                     var bAmbient = new BoolProperty(node.IsAmbient, "bAmbient");
@@ -1713,7 +1723,11 @@ namespace LegendaryExplorer.DialogueEditor
 
             RecreateNodesToProperties(SelectedConv);
 
-            if (needsRefresh)
+            if (needsPlotSectionRefresh)
+            {
+                RefreshNodePlotSectionsInGraph(node);
+            }
+            else if (needsRefresh)
                 RefreshView();
         }
 
@@ -3846,6 +3860,26 @@ namespace LegendaryExplorer.DialogueEditor
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
         }
 
+        private void RefreshNodePlotSectionsInGraph(DialogueNodeExtended node)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            var graphNode = CurrentObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(o => o.Node.NodeCount == node.NodeCount && o.Node.IsReply == node.IsReply);
+
+            if (graphNode != null)
+            {
+                graphNode.RefreshPlotSectionsInPlace();
+                graphEditor?.Refresh();
+            }
+
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
         private void UpdateNodeLineDerivedData(DialogueNodeExtended node)
         {
             if (node == null || Pcc == null)
@@ -3879,6 +3913,30 @@ namespace LegendaryExplorer.DialogueEditor
                 && x.ObjectName.Name.Contains(femaleSearch, StringComparison.OrdinalIgnoreCase));
             node.WwiseStream_Male = Pcc.Exports.FirstOrDefault(x => x.ClassName == "WwiseStream"
                 && x.ObjectName.Name.Contains(maleSearch, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void RefreshNodeInGraph(DialogueNodeExtended node, bool persistConversation = true)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            var graphNode = CurrentObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(o => o.Node.NodeCount == node.NodeCount && o.Node.IsReply == node.IsReply);
+
+            if (graphNode != null)
+            {
+                PushLocalGraphChanges(graphNode, persistConversation);
+            }
+            else if (persistConversation)
+            {
+                IsLocalUpdate = true;
+                RecreateNodesToProperties(SelectedConv);
+            }
+
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
         }
 
         public void BeginInlineLineStrRefEdit(DiagNode node, System.Drawing.Point editorScreenPoint, float editorWidth, float editorHeight, PointF clickOffsetInEditor)
@@ -4183,7 +4241,7 @@ namespace LegendaryExplorer.DialogueEditor
                 inlinePlotFieldEditClosing = false;
                 if (node != null)
                 {
-                    RefreshView();
+                    graphEditor?.Refresh();
                     DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
                 }
                 return;
@@ -4256,13 +4314,13 @@ namespace LegendaryExplorer.DialogueEditor
             if (changed)
             {
                 RecreateNodesToProperties(SelectedConv);
-                ForceRefresh(null);
+                RefreshNodePlotSectionsInGraph(node.Node);
             }
             else
             {
-                RefreshView();
+                graphEditor?.Refresh();
+                DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
             }
-            DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
             inlinePlotFieldEditClosing = false;
         }
 

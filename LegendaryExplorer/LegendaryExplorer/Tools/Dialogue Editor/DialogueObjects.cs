@@ -565,6 +565,11 @@ namespace LegendaryExplorer.DialogueEditor
         private readonly List<PlotFieldEditorInfo> plotFieldEditors = [];
         private static readonly Dictionary<string, (bool checksExpanded, bool transitionsExpanded)> plotSectionStates = [];
         private readonly string plotSectionStateKey;
+        private PNode plotChecksSection;
+        private PNode plotTransitionsSection;
+        private float plotSectionsStartY;
+        private float baseBoxHeightWithoutPlotSections;
+        private float nodeBoxWidth;
 
         public DiagNode(DialogueEditorWindow editor, DialogueNodeExtended node, float x, float y, ConvGraphEditor ConvGraphEditor)
             : base(ConvGraphEditor)
@@ -982,7 +987,8 @@ namespace LegendaryExplorer.DialogueEditor
                 e.Handled = true;
                 Node.PlotChecksExpanded = !Node.PlotChecksExpanded;
                 SavePlotSectionState();
-                Editor?.ForceRefreshFromGraph();
+                RefreshPlotSectionsInPlace();
+                g?.Refresh();
             };
 
             container.AddChild(arrowText);
@@ -1135,7 +1141,8 @@ namespace LegendaryExplorer.DialogueEditor
                 e.Handled = true;
                 Node.PlotTransitionsExpanded = !Node.PlotTransitionsExpanded;
                 SavePlotSectionState();
-                Editor?.ForceRefreshFromGraph();
+                RefreshPlotSectionsInPlace();
+                g?.Refresh();
             };
 
             container.AddChild(arrowText);
@@ -1305,6 +1312,45 @@ namespace LegendaryExplorer.DialogueEditor
             Editor?.UpdateInlinePlotFieldEditorPosition(this);
         }
 
+        public void RefreshPlotSectionsInPlace()
+        {
+            if (box == null || titleBox == null)
+            {
+                return;
+            }
+
+            plotFieldEditors.Clear();
+
+            if (plotChecksSection != null)
+            {
+                box.RemoveChild(plotChecksSection);
+                plotChecksSection = null;
+            }
+
+            if (plotTransitionsSection != null)
+            {
+                box.RemoveChild(plotTransitionsSection);
+                plotTransitionsSection = null;
+            }
+
+            float nextSectionY = plotSectionsStartY;
+            plotChecksSection = CreatePlotChecksSection(nextSectionY, nodeBoxWidth, out float checksSectionHeight);
+            nextSectionY += checksSectionHeight;
+
+            plotTransitionsSection = CreatePlotTransitionsSection(nextSectionY, nodeBoxWidth, out float transitionsSectionHeight);
+            nextSectionY += transitionsSectionHeight;
+
+            box.AddChild(plotChecksSection);
+            box.AddChild(plotTransitionsSection);
+
+            float newBoxHeight = baseBoxHeightWithoutPlotSections + checksSectionHeight + transitionsSectionHeight;
+            box.Bounds = new RectangleF(0, titleBox.Height + 2, nodeBoxWidth, newBoxHeight);
+            Bounds = new RectangleF(0, 0, nodeBoxWidth, titleBox.Height + 2 + newBoxHeight);
+
+            InvalidateFullBounds();
+            InvalidatePaint();
+        }
+
         private bool _isSelected;
         public override bool IsSelected
         {
@@ -1456,23 +1502,19 @@ namespace LegendaryExplorer.DialogueEditor
             nextSectionY += lineStrRefEditorHeight + 3;
 
             // Plot conditional/bool and transition sections
-            var plotSections = new List<PNode>();
+            plotSectionsStartY = nextSectionY;
+            baseBoxHeightWithoutPlotSections = nextSectionY;
 
             // Always show plot checks section (matches Plot Control tab)
-            {
-                var section = CreatePlotChecksSection(nextSectionY, w, out float sectionHeight);
-                plotSections.Add(section);
-                h += sectionHeight;
-                nextSectionY += sectionHeight;
-            }
+            plotChecksSection = CreatePlotChecksSection(nextSectionY, w, out float checksSectionHeight);
+            h += checksSectionHeight;
+            nextSectionY += checksSectionHeight;
 
             // Always show plot transitions section (matches Plot Control tab)
-            {
-                var section = CreatePlotTransitionsSection(nextSectionY, w, out float sectionHeight);
-                plotSections.Add(section);
-                h += sectionHeight;
-                nextSectionY += sectionHeight;
-            }
+            plotTransitionsSection = CreatePlotTransitionsSection(nextSectionY, w, out float transitionsSectionHeight);
+            h += transitionsSectionHeight;
+            nextSectionY += transitionsSectionHeight;
+            nodeBoxWidth = w;
 
             outLinkBox.TranslateBy(w, titleBox.Height + 2);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
@@ -1493,10 +1535,8 @@ namespace LegendaryExplorer.DialogueEditor
             insidetext.TranslateBy((w - iw) / 2, 0);
             box.AddChild(insidetext);
             box.AddChild(CreateLineStringRefEditor(w, lineStrRefY));
-            foreach (var section in plotSections)
-            {
-                box.AddChild(section);
-            }
+            box.AddChild(plotChecksSection);
+            box.AddChild(plotTransitionsSection);
             Bounds = new RectangleF(0, 0, w, h);
             AddChild(box);
             AddChild(titleBox);
