@@ -1688,7 +1688,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             return true;
         }
-        public void Layout()
+        public void Layout(bool useTransientSavedPositions = false)
         {
             if (CurrentObjects != null && CurrentObjects.Any())
             {
@@ -1706,7 +1706,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     //SAVED DATA
                     SaveData savedInfo = new(-1);
-                    if (SavedPositions.Any() && SaveViewMode != ESaveViewMode.AutoGenerate)
+                    if (SavedPositions.Any() && (SaveViewMode != ESaveViewMode.AutoGenerate || useTransientSavedPositions))
                     {
                         DObj obj1 = obj;
                         savedInfo = SavedPositions.FirstOrDefault(p => obj1.NodeUID == p.index);
@@ -2183,7 +2183,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        public void RefreshView()
+        private void RefreshViewCore(bool preserveLayout)
         {
             if (SelectedConv != null)
             {
@@ -2193,12 +2193,22 @@ namespace LegendaryExplorer.DialogueEditor
                     RefreshExportLoaders();
                 }
 
-                GenerateGraph();
+                GenerateGraph(preserveLayout);
                 if (SaveViewMode != ESaveViewMode.AutoGenerate)
                 {
                     saveView(false);
                 }
             }
+        }
+
+        public void RefreshView()
+        {
+            RefreshViewCore(false);
+        }
+
+        private void RefreshViewPreserveLayout()
+        {
+            RefreshViewCore(true);
         }
 
         /// <summary>
@@ -3678,7 +3688,7 @@ namespace LegendaryExplorer.DialogueEditor
             node.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(lineStrRef, "srText"));
 
             RecreateNodesToProperties(SelectedConv);
-            ForceRefresh(null);
+            ForceRefreshPreserveLayout();
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
         }
 
@@ -3792,7 +3802,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (node != null)
                 {
-                    RefreshView();
+                    graphEditor?.Refresh();
                     DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
                 }
                 else
@@ -3808,13 +3818,13 @@ namespace LegendaryExplorer.DialogueEditor
                 UpdateNodeLineStrRefFromGraph(node.Node, newRef);
                 if (!valueChanged)
                 {
-                    RefreshView();
+                    graphEditor?.Refresh();
                     DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
                 }
             }
             else
             {
-                RefreshView();
+                graphEditor?.Refresh();
                 DialogueNode_SelectByIndex(node.Node.NodeCount, node.Node.IsReply);
             }
         }
@@ -6207,7 +6217,7 @@ namespace LegendaryExplorer.DialogueEditor
             };
         }
 
-        private void ForceRefresh(object obj)
+        private void ForceRefreshCore(bool preserveLayout)
         {
             SelectedSpeakerList.ClearEx();
             SelectedObjects.ClearEx();
@@ -6226,12 +6236,29 @@ namespace LegendaryExplorer.DialogueEditor
                 FFXAnimsets.Add(exp);
             }
 
-            RefreshView();
+            if (preserveLayout)
+            {
+                RefreshViewPreserveLayout();
+            }
+            else
+            {
+                RefreshView();
+            }
 
             if (reselectedNodeID >= 0)
             {
                 DialogueNode_SelectByIndex(reselectedNodeID, reselectedNodeReply);
             }
+        }
+
+        private void ForceRefresh(object obj)
+        {
+            ForceRefreshCore(false);
+        }
+
+        private void ForceRefreshPreserveLayout()
+        {
+            ForceRefreshCore(true);
         }
 
         #endregion
