@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Resources;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Helpers;
@@ -148,6 +149,11 @@ public class MeshRenderContext : RenderContext
     private float lastFPSFrame;
     public string ErrorText;
 
+    private static RawColor4 GetStatsTextColor()
+    {
+        return Settings.Global_DarkMode_Enabled ? new RawColor4(1, 1, 1, 1) : new RawColor4(0, 0, 0, 1);
+    }
+
     /// <summary>
     /// Screen-space labels to be rendered as a D2D text overlay after 3D rendering.
     /// Populated by scene renderers, cleared each frame after drawing.
@@ -254,6 +260,7 @@ public class MeshRenderContext : RenderContext
                 if (App.IsDebug)
                 {
                     var size = RenderTarget2D.Size;
+                    statsTextBrush.Color = GetStatsTextColor();
                     RenderTarget2D.DrawText($"{FPS} fps\n{Camera.Position}", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
                 }
 
@@ -383,7 +390,7 @@ public class MeshRenderContext : RenderContext
 
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
         RenderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
-        statsTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        statsTextBrush = new D2D.SolidColorBrush(RenderTarget2D, GetStatsTextColor(), new D2D.BrushProperties { Opacity = 1 });
         errorTextBrush = new D2D.SolidColorBrush(RenderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
         using var dwFactory = new DW.Factory(DW.FactoryType.Shared);
         statsTextFormat = new DW.TextFormat(dwFactory, "Verdana", 12)

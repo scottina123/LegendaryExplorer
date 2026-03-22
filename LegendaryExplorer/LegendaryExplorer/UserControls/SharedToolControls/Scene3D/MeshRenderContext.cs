@@ -4,6 +4,7 @@ using System.IO;
 using
 System.Windows.Input;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using
 LegendaryExplorer.Resources;
 using System.Numerics;
@@ -128,6 +129,11 @@ public class MeshRenderContext : LegacyRenderContext
     private float lastFPSFrame;
     public string ErrorText;
 
+    private static RawColor4 GetStatsTextColor()
+    {
+        return Settings.Global_DarkMode_Enabled ? new RawColor4(1, 1, 1, 1) : new RawColor4(0, 0, 0, 1);
+    }
+
     /// <summary>
     /// Screen-space labels to be rendered as a D2D text overlay after 3D rendering.
     /// Populated by scene renderers, cleared each frame after drawing.
@@ -220,6 +226,7 @@ public class MeshRenderContext : LegacyRenderContext
                     if (App.IsDebug)
                     {
                         var size = renderTarget2D.Size;
+                        statsTextBrush.Color = GetStatsTextColor();
                         renderTarget2D.DrawText($"{FPS} fps", statsTextFormat, new RawRectangleF(0, 0, size.Width, size.Height), statsTextBrush);
                     }
 
@@ -330,7 +337,7 @@ public class MeshRenderContext : LegacyRenderContext
 
         using var factory = new D2D.Factory(D2D.FactoryType.SingleThreaded, App.IsDebug ? D2D.DebugLevel.Information : D2D.DebugLevel.None);
         renderTarget2D = new D2D.RenderTarget(factory, newBackBuffer.QueryInterface<Surface>(), new D2D.RenderTargetProperties(new D2D.PixelFormat(Format.Unknown, D2D.AlphaMode.Premultiplied)));
-        statsTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
+        statsTextBrush = new D2D.SolidColorBrush(renderTarget2D, GetStatsTextColor(), new D2D.BrushProperties { Opacity = 1 });
         errorTextBrush = new D2D.SolidColorBrush(renderTarget2D, new RawColor4(0.2f, 0, 0, 1), new D2D.BrushProperties { Opacity = 1 });
         using var dwFactory = new DW.Factory(DW.FactoryType.Shared);
         statsTextFormat = new DW.TextFormat(dwFactory, "Verdana", 12)
