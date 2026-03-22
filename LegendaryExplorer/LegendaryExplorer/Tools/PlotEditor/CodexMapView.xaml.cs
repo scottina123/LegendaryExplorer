@@ -4,13 +4,27 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
 using Gammtek.Conduit.MassEffect3.SFXGame.CodexMap;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PlotEditor.Dialogs;
 using LegendaryExplorer.SharedUI.Controls;
+using LegendaryExplorer.UnrealExtensions;
+using LegendaryExplorer.UnrealExtensions.Classes;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
 using LegendaryExplorer.Misc;
+using LegendaryExplorerCore.Audio;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Sound.Wwise;
+using LegendaryExplorerCore.Unreal;
+using Microsoft.Win32;
+using WwiseEventBinary = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseEvent;
+using WwiseStreamBinary = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseStream;
 
 namespace LegendaryExplorer.Tools.PlotEditor
 {
@@ -27,6 +41,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 		public CodexMapView()
 		{
             InitializeComponent();
+            Unloaded += CodexMapView_Unloaded;
             SetFromCodexMap(new BioCodexMap());
         }
 
@@ -40,6 +55,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private string _searchText;
         private bool _isRefreshingCodexHierarchy;
         private bool _isRefreshingSelectedText;
+        private SoundpanelAudioPlayer _codexAudioPlayer;
+        private string _currentCodexPageWwiseEventDisplay = string.Empty;
 
         public bool CanRemoveCodexPage
         {
@@ -72,6 +89,18 @@ namespace LegendaryExplorer.Tools.PlotEditor
         public bool IsCodexPageSelected => SelectedCodexPage.Value != null;
 
         public bool IsCodexSectionSelected => SelectedCodexSection.Value != null;
+
+        public bool CanAddCodexPageAudio => package != null && SelectedCodexPage.Value != null && package.Game is MEGame.LE2 or MEGame.LE3;
+
+        public bool HasCodexPageAudioReference => SelectedCodexPage.Value != null && SelectedCodexPage.Value.CodexSound != 0;
+
+        public bool CanStopCodexPageAudio => HasCodexPageAudioReference;
+
+        public string CurrentCodexPageWwiseEventDisplay
+        {
+            get => _currentCodexPageWwiseEventDisplay;
+            set => SetProperty(ref _currentCodexPageWwiseEventDisplay, value ?? string.Empty);
+        }
 
         public ObservableCollection<KeyValuePair<int, BioCodexPage>> CodexPages
         {
@@ -136,6 +165,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(CanRemoveCodexPage));
                 OnPropertyChanged(nameof(CanRemoveSelectedCodexItem));
                 OnPropertyChanged(nameof(IsCodexPageSelected));
+                StopCodexAudioPlayback();
+                RefreshCodexPageAudioState();
             }
         }
 
@@ -148,6 +179,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(CanRemoveCodexSection));
                 OnPropertyChanged(nameof(CanRemoveSelectedCodexItem));
                 OnPropertyChanged(nameof(IsCodexSectionSelected));
+                StopCodexAudioPlayback();
+                RefreshCodexPageAudioState();
             }
         }
 
@@ -398,6 +431,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             package = pcc;
+            RefreshCodexPageAudioState();
             RefreshCodexHierarchy();
             RefreshSelectedText();
         }
@@ -644,6 +678,505 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 : string.Empty;
         }
 
+        private void RefreshCodexPageAudioState()
+        {
+            OnPropertyChanged(nameof(CanAddCodexPageAudio));
+            OnPropertyChanged(nameof(HasCodexPageAudioReference));
+            CurrentCodexPageWwiseEventDisplay = GetCurrentCodexPageWwiseEventDisplay();
+        }
+
+        private string GetCurrentCodexPageWwiseEventDisplay()
+        {
+            if (SelectedCodexPage.Value == null)
+            {
+                return string.Empty;
+            }
+
+            if (SelectedCodexPage.Value.CodexSound == 0)
+            {
+                return "None";
+            }
+
+            if (package == null || !package.TryGetEntry(SelectedCodexPage.Value.CodexSound, out var entry) || entry == null)
+            {
+                return $"Unresolved ({SelectedCodexPage.Value.CodexSound})";
+            }
+
+            return $"{entry.InstancedFullPath} ({(entry is ImportEntry ? "Import" : "Export")} {entry.UIndex})";
+        }
+
+        private string GetCodexPageAudioBaseName()
+        {
+            if (SelectedCodexPage.Value == null)
+            {
+                return null;
+            }
+
+            var strRef = SelectedCodexPage.Value.Description > 0
+                ? SelectedCodexPage.Value.Description
+                : SelectedCodexPage.Value.Title > 0
+                    ? SelectedCodexPage.Value.Title
+                    : SelectedCodexPage.Key;
+
+            return $"VO_{strRef}";
+        }
+
+        private string GetPreferredCodexAudioPackageName()
+        {
+            if (package != null && SelectedCodexPage.Value != null && SelectedCodexPage.Value.CodexSound != 0 && package.TryGetEntry(SelectedCodexPage.Value.CodexSound, out var entry) && entry != null)
+            {
+                return entry.GetRootName();
+            }
+
+            return "audio";
+        }
+
+        private void StopCodexAudioPlayback()
+        {
+            if (_codexAudioPlayer != null)
+            {
+                _codexAudioPlayer.PlaybackStopType = SoundpanelAudioPlayer.PlaybackStopTypes.PlaybackStoppedByUser;
+                _codexAudioPlayer.Stop();
+                _codexAudioPlayer.Dispose();
+                _codexAudioPlayer = null;
+            }
+
+            RefreshCodexPageAudioState();
+        }
+
+        private bool TryResolveCodexPageWwiseEvent(out ExportEntry wwiseEventExport, out IMEPackage sourcePackage, out bool releasePackage, out string errorMessage)
+        {
+            wwiseEventExport = null;
+            sourcePackage = null;
+            releasePackage = false;
+            errorMessage = null;
+
+            if (package == null || SelectedCodexPage.Value == null)
+            {
+                errorMessage = "No codex page is selected.";
+                return false;
+            }
+
+            if (SelectedCodexPage.Value.CodexSound == 0)
+            {
+                errorMessage = "This codex page does not currently reference a WwiseEvent.";
+                return false;
+            }
+
+            if (!package.TryGetEntry(SelectedCodexPage.Value.CodexSound, out var entry) || entry == null)
+            {
+                errorMessage = $"Could not resolve codex sound reference {SelectedCodexPage.Value.CodexSound}.";
+                return false;
+            }
+
+            if (entry.ClassName != "WwiseEvent")
+            {
+                errorMessage = $"Codex sound points to {entry.ClassName}, not a WwiseEvent.";
+                return false;
+            }
+
+            if (entry is ExportEntry export)
+            {
+                wwiseEventExport = export;
+                sourcePackage = export.FileRef;
+                return true;
+            }
+
+            if (entry is ImportEntry import && TryOpenImportSourcePackage(import, out sourcePackage, out var sourcePath))
+            {
+                releasePackage = true;
+                wwiseEventExport = sourcePackage.FindExport(import.InstancedFullPath, "WwiseEvent");
+                if (wwiseEventExport != null)
+                {
+                    return true;
+                }
+
+                sourcePackage.Release();
+                sourcePackage = null;
+                releasePackage = false;
+                errorMessage = $"Found source package '{sourcePath}', but could not resolve export '{import.InstancedFullPath}'.";
+                return false;
+            }
+
+            errorMessage = $"Could not locate source package for imported WwiseEvent '{entry.InstancedFullPath}'.";
+            return false;
+        }
+
+        private bool TryResolveCodexPageWwiseStream(out ExportEntry wwiseStreamExport, out IMEPackage sourcePackage, out bool releasePackage, out string errorMessage)
+        {
+            wwiseStreamExport = null;
+            if (!TryResolveCodexPageWwiseEvent(out var wwiseEventExport, out sourcePackage, out releasePackage, out errorMessage))
+            {
+                return false;
+            }
+
+            if (TryGetLinkedWwiseStreamExport(wwiseEventExport, out wwiseStreamExport))
+            {
+                return true;
+            }
+
+            if (releasePackage)
+            {
+                sourcePackage.Release();
+                sourcePackage = null;
+                releasePackage = false;
+            }
+
+            errorMessage = $"Could not resolve a linked WwiseStream for '{wwiseEventExport.InstancedFullPath}'.";
+            return false;
+        }
+
+        private static bool TryGetLinkedWwiseStreamExport(ExportEntry wwiseEventExport, out ExportEntry wwiseStreamExport)
+        {
+            wwiseStreamExport = null;
+
+            if (wwiseEventExport == null)
+            {
+                return false;
+            }
+
+            int streamUIndex = 0;
+            if (wwiseEventExport.Game.IsGame3())
+            {
+                var eventBinary = wwiseEventExport.GetBinaryData<WwiseEventBinary>();
+                streamUIndex = eventBinary.Links?.SelectMany(link => link.WwiseStreams ?? Enumerable.Empty<int>()).FirstOrDefault() ?? 0;
+            }
+            else if (wwiseEventExport.Game is MEGame.LE2 or MEGame.ME2)
+            {
+                var references = wwiseEventExport.GetProperty<ArrayProperty<StructProperty>>("References");
+                var streams = references?.FirstOrDefault()?.Properties.GetProp<StructProperty>("Relationships")?.Properties.GetProp<ArrayProperty<ObjectProperty>>("Streams");
+                streamUIndex = streams?.FirstOrDefault()?.Value ?? 0;
+            }
+
+            return streamUIndex != 0
+                   && wwiseEventExport.FileRef.TryGetUExport(streamUIndex, out wwiseStreamExport)
+                   && wwiseStreamExport.ClassName == "WwiseStream";
+        }
+
+        private bool TryOpenImportSourcePackage(ImportEntry importEntry, out IMEPackage sourcePackage, out string sourcePath)
+        {
+            sourcePackage = null;
+            sourcePath = FindImportSourcePackagePath(importEntry);
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                sourcePackage = MEPackageHandler.OpenMEPackage(sourcePath);
+                return true;
+            }
+            catch
+            {
+                sourcePackage?.Release();
+                sourcePackage = null;
+                return false;
+            }
+        }
+
+        private string FindImportSourcePackagePath(ImportEntry importEntry)
+        {
+            if (package == null || importEntry == null)
+            {
+                return null;
+            }
+
+            var rootName = importEntry.GetRootName();
+            if (string.IsNullOrWhiteSpace(rootName))
+            {
+                return null;
+            }
+
+            var extensions = new[] { Path.GetExtension(package.FilePath), ".pcc", ".upk", ".u" }
+                .Where(ext => !string.IsNullOrWhiteSpace(ext))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var searchRoots = new[]
+            {
+                Path.GetDirectoryName(package.FilePath),
+                MEDirectories.GetCookedPath(package.Game),
+                MEDirectories.GetDLCPath(package.Game)
+            }
+            .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+            foreach (var root in searchRoots)
+            {
+                foreach (var ext in extensions)
+                {
+                    var candidate = Path.Combine(root, rootName + ext);
+                    if (File.Exists(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            foreach (var root in searchRoots)
+            {
+                foreach (var ext in extensions)
+                {
+                    try
+                    {
+                        var candidate = Directory.EnumerateFiles(root, rootName + ext, SearchOption.AllDirectories).FirstOrDefault();
+                        if (candidate != null)
+                        {
+                            return candidate;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private async Task AddCodexPageAudio()
+        {
+            if (!CanAddCodexPageAudio)
+            {
+                return;
+            }
+
+            var wavDialog = new OpenFileDialog
+            {
+                Filter = "Wave PCM|*.wav",
+                Title = "Select WAV file for codex page audio",
+                CustomPlaces = AppDirectories.GameCustomPlaces
+            };
+            if (wavDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var audioBaseName = GetCodexPageAudioBaseName();
+            var audioPackageName = GetPreferredCodexAudioPackageName();
+            var tempDir = Path.Combine(Path.GetTempPath(), $"LEX_CodexPageAudio_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDir);
+            var stagedWavPath = Path.Combine(tempDir, audioBaseName + ".wav");
+            File.Copy(wavDialog.FileName, stagedWavPath, true);
+
+            try
+            {
+                var dialog = new BulkAudioImportDialog(
+                    package,
+                    bankPackageName: audioPackageName,
+                    initialWavFiles: new[] { stagedWavPath },
+                    initialBankName: audioPackageName,
+                    isDialogueBank: true,
+                    generateGenderedEvents: false)
+                {
+                    Owner = Window.GetWindow(this)
+                };
+
+                if (dialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                var eventName = $"{audioBaseName}_Play";
+                var eventPath = $"{audioPackageName}.{eventName}";
+                var wwiseEventExport = package.FindExport(eventPath, "WwiseEvent")
+                    ?? package.Exports.FirstOrDefault(exp => exp.ClassName == "WwiseEvent" && exp.ObjectNameString.Equals(eventName, StringComparison.OrdinalIgnoreCase));
+
+                if (wwiseEventExport == null)
+                {
+                    MessageBox.Show($"Imported audio completed, but the new WwiseEvent '{eventName}' could not be found.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                SelectedCodexPage.Value.CodexSound = wwiseEventExport.UIndex;
+                RefreshCodexPageAudioState();
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private async Task ReplaceCodexPageAudio()
+        {
+            if (!HasCodexPageAudioReference)
+            {
+                return;
+            }
+
+            if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
+            {
+                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                if (!ReferenceEquals(sourcePackage, package))
+                {
+                    MessageBox.Show("Replace Audio is only supported for codex audio that already points to a local WwiseStream export. Use Add Audio to create a local override first.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                if (!WwiseCliHandler.CheckWwisePathForGame(package.Game))
+                {
+                    return;
+                }
+
+                var openFileDialog = new OpenFileDialog
+                {
+                    Filter = "Wave PCM|*.wav",
+                    CustomPlaces = AppDirectories.GameCustomPlaces,
+                    Title = "Select replacement WAV file"
+                };
+                if (openFileDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                var replaceDialog = new SoundReplaceOptionsDialog(Window.GetWindow(this), package.Game.IsGame3(), package.Game, wwiseStreamExport.GetProperty<NameProperty>("Filename")?.Value);
+                if (replaceDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                Mouse.OverrideCursor = Cursors.Wait;
+                try
+                {
+                    var convertedFile = await WwiseCliHandler.RunWwiseConversion(package.Game, openFileDialog.FileName, replaceDialog.ChosenSettings);
+                    ReplaceCodexPageAudioFromEncodedFile(wwiseStreamExport, convertedFile, replaceDialog.ChosenSettings);
+                }
+                finally
+                {
+                    Mouse.OverrideCursor = null;
+                }
+            }
+            finally
+            {
+                if (releasePackage)
+                {
+                    sourcePackage.Release();
+                }
+            }
+        }
+
+        private static void ReplaceCodexPageAudioFromEncodedFile(ExportEntry wwiseStreamExport, string filePath, WwiseConversionSettingsPackage conversionSettings)
+        {
+            var wwiseStream = wwiseStreamExport.GetBinaryData<WwiseStreamBinary>();
+            wwiseStream.ImportFromFile(filePath, wwiseStream.GetPathToAFC(conversionSettings?.DestinationAFCFile), conversionSettings?.DestinationAFCFile);
+            wwiseStreamExport.WriteBinary(wwiseStream);
+
+            if (conversionSettings?.UpdateReferencedEvents == true)
+            {
+                var audioInfo = wwiseStream.GetAudioInfo();
+                if (audioInfo != null)
+                {
+                    WwiseHelper.UpdateReferencedWwiseEventLengths(wwiseStreamExport, (float)audioInfo.GetLength().TotalMilliseconds);
+                }
+            }
+        }
+
+        private void PlayCodexPageAudio()
+        {
+            if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
+            {
+                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var stream = wwiseStreamExport.GetBinaryData<WwiseStreamBinary>().CreateWaveStream();
+                if (stream == null)
+                {
+                    MessageBox.Show("Could not decode the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                StopCodexAudioPlayback();
+                _codexAudioPlayer = new SoundpanelAudioPlayer(stream, 1f);
+                _codexAudioPlayer.PlaybackStopped += () =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        _codexAudioPlayer?.Dispose();
+                        _codexAudioPlayer = null;
+                        RefreshCodexPageAudioState();
+                    });
+                };
+                _codexAudioPlayer.Play(NAudio.Wave.PlaybackState.Stopped, 1f);
+                RefreshCodexPageAudioState();
+            }
+            finally
+            {
+                if (releasePackage)
+                {
+                    sourcePackage.Release();
+                }
+            }
+        }
+
+        private void RemoveCodexPageAudio()
+        {
+            if (!HasCodexPageAudioReference)
+            {
+                return;
+            }
+
+            StopCodexAudioPlayback();
+            SelectedCodexPage.Value.CodexSound = 0;
+            RefreshCodexPageAudioState();
+        }
+
+        private void ExtractCodexPageAudio()
+        {
+            if (!TryResolveCodexPageWwiseStream(out var wwiseStreamExport, out var sourcePackage, out var releasePackage, out var errorMessage))
+            {
+                MessageBox.Show(errorMessage, "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Wave PCM File|*.wav",
+                    FileName = wwiseStreamExport.ObjectNameString + ".wav"
+                };
+                if (saveFileDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                var wavPath = wwiseStreamExport.GetBinaryData<WwiseStreamBinary>().CreateWave();
+                if (wavPath == null || !File.Exists(wavPath))
+                {
+                    MessageBox.Show("Could not extract the linked WwiseStream.", "Codex Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                File.Copy(wavPath, saveFileDialog.FileName, true);
+            }
+            finally
+            {
+                if (releasePackage)
+                {
+                    sourcePackage.Release();
+                }
+            }
+        }
+
         private static string StripWrappingQuotes(string text)
         {
             if (string.IsNullOrEmpty(text) || text.Length < 2)
@@ -765,55 +1298,6 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
         }
 
-        public abstract class CodexTreeItemBase : NotifyPropertyChangedBase
-        {
-            private bool _isExpanded;
-            private bool _isSelected;
-
-            protected CodexTreeItemBase(CodexSectionTreeItem parent = null)
-            {
-                Parent = parent;
-            }
-
-            public CodexSectionTreeItem Parent { get; }
-
-            public bool IsExpanded
-            {
-                get => _isExpanded;
-                set => SetProperty(ref _isExpanded, value);
-            }
-
-            public bool IsSelected
-            {
-                get => _isSelected;
-                set => SetProperty(ref _isSelected, value);
-            }
-        }
-
-        public sealed class CodexSectionTreeItem : CodexTreeItemBase
-        {
-            public CodexSectionTreeItem(KeyValuePair<int, BioCodexSection> codexSection)
-            {
-                CodexSection = codexSection;
-                Pages = InitCollection<CodexPageTreeItem>();
-            }
-
-            public KeyValuePair<int, BioCodexSection> CodexSection { get; }
-
-            public ObservableCollection<CodexPageTreeItem> Pages { get; }
-        }
-
-        public sealed class CodexPageTreeItem : CodexTreeItemBase
-        {
-            public CodexPageTreeItem(KeyValuePair<int, BioCodexPage> codexPage, CodexSectionTreeItem parent = null)
-                : base(parent)
-            {
-                CodexPage = codexPage;
-            }
-
-            public KeyValuePair<int, BioCodexPage> CodexPage { get; }
-        }
-
         private void ChangeCodexPageId_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             ChangeCodexPageId();
@@ -923,6 +1407,41 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             RefreshSelectedText();
             RefreshCodexHierarchy();
+        }
+
+        private async void AddCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            await AddCodexPageAudio();
+        }
+
+        private void PlayCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            PlayCodexPageAudio();
+        }
+
+        private async void ReplaceCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            await ReplaceCodexPageAudio();
+        }
+
+        private void ExtractCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            ExtractCodexPageAudio();
+        }
+
+        private void StopCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            StopCodexAudioPlayback();
+        }
+
+        private void RemoveCodexPageAudio_Click(object sender, RoutedEventArgs e)
+        {
+            RemoveCodexPageAudio();
+        }
+
+        private void CodexMapView_Unloaded(object sender, RoutedEventArgs e)
+        {
+            StopCodexAudioPlayback();
         }
     }
 }

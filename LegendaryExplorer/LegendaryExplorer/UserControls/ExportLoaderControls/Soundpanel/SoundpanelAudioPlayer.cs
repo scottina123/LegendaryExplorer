@@ -30,6 +30,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             _output = new WaveOutEvent();
             _output.PlaybackStopped += _output_PlaybackStopped;
 
+            if (audioBuffer.CanSeek)
+            {
+                audioBuffer.Position = 0;
+            }
+
             if (audioBuffer is RawSourceWaveStream rwss)
             {
                 _output.Init(rwss);

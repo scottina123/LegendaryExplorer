@@ -78,7 +78,14 @@ namespace LegendaryExplorer.Dialogs
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
 
-        public BulkAudioImportDialog(IMEPackage package, string bankPackageName = "audio", string bankStreamingAudioPackageName = "int")
+        public BulkAudioImportDialog(
+            IMEPackage package,
+            string bankPackageName = "audio",
+            string bankStreamingAudioPackageName = "int",
+            IEnumerable<string> initialWavFiles = null,
+            string initialBankName = null,
+            bool? isDialogueBank = null,
+            bool? generateGenderedEvents = null)
         {
             _package = package;
             _bankPackageName = bankPackageName;
@@ -86,6 +93,29 @@ namespace LegendaryExplorer.Dialogs
             InitializeComponent();
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
+
+            if (!string.IsNullOrWhiteSpace(initialBankName))
+            {
+                BankNameTextBox.Text = initialBankName;
+            }
+
+            if (initialWavFiles != null)
+            {
+                foreach (var file in initialWavFiles.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    WavFiles.Add(file);
+                }
+            }
+
+            if (isDialogueBank.HasValue)
+            {
+                IsDialogueBankCheckBox.IsChecked = isDialogueBank.Value;
+            }
+
+            if (generateGenderedEvents.HasValue)
+            {
+                GenerateGenderedEventsCheckBox.IsChecked = generateGenderedEvents.Value;
+            }
         }
 
         private void AddFilesButton_Click(object sender, RoutedEventArgs e)
