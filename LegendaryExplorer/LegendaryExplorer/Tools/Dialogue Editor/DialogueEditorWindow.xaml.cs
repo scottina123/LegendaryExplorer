@@ -4570,9 +4570,15 @@ namespace LegendaryExplorer.DialogueEditor
             return incomingRows;
         }
 
-        private void CloneIncomingLinkToNode(DiagNode sourceNode, DiagNode targetNode)
+        private void CloneIncomingLinkToNode(DiagEdEdge sourceEdge, DiagNode targetNode, bool insertAtTop)
         {
-            if (sourceNode == null || targetNode == null)
+            if (sourceEdge?.originator is not DiagNode sourceNode || targetNode == null)
+            {
+                return;
+            }
+
+            int sourceLinkIndex = sourceNode.Outlinks.FindIndex(outlink => outlink.Edges.Contains(sourceEdge));
+            if (sourceLinkIndex < 0)
             {
                 return;
             }
@@ -4581,21 +4587,50 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 var entryList = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")
                                 ?? new ArrayProperty<IntProperty>("EntryList");
-                entryList.Add(new IntProperty(targetNode.NodeID));
+                var clonedLink = sourceLinkIndex < entryList.Count
+                    ? (IntProperty)entryList[sourceLinkIndex].DeepClone()
+                    : new IntProperty(targetNode.NodeID);
+                clonedLink.Value = targetNode.NodeID;
+                if (insertAtTop)
+                {
+                    entryList.Insert(0, clonedLink);
+                }
+                else
+                {
+                    entryList.Add(clonedLink);
+                }
                 sourceNode.NodeProp.Properties.AddOrReplaceProp(entryList);
             }
             else
             {
                 var replyList = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")
                                 ?? new ArrayProperty<StructProperty>("ReplyListNew");
-                replyList.Add(new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                StructProperty clonedLink;
+                if (sourceLinkIndex < replyList.Count)
                 {
-                    new IntProperty(targetNode.NodeID - 1000, "nIndex"),
-                    new StringRefProperty(663399, "srParaphrase"),
-                    new StrProperty(string.Empty, "sParaphrase"),
-                    new EnumProperty("REPLY_CATEGORY_DEFAULT", "EReplyCategory", Pcc.Game, "Category"),
-                    new NoneProperty()
-                }));
+                    clonedLink = (StructProperty)replyList[sourceLinkIndex].DeepClone();
+                    clonedLink.Properties.AddOrReplaceProp(new IntProperty(targetNode.NodeID - 1000, "nIndex"));
+                }
+                else
+                {
+                    clonedLink = new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                    {
+                        new IntProperty(targetNode.NodeID - 1000, "nIndex"),
+                        new StringRefProperty(663399, "srParaphrase"),
+                        new StrProperty(string.Empty, "sParaphrase"),
+                        new EnumProperty("REPLY_CATEGORY_DEFAULT", "EReplyCategory", Pcc.Game, "Category"),
+                        new NoneProperty()
+                    });
+                }
+
+                if (insertAtTop)
+                {
+                    replyList.Insert(0, clonedLink);
+                }
+                else
+                {
+                    replyList.Add(clonedLink);
+                }
                 sourceNode.NodeProp.Properties.AddOrReplaceProp(replyList);
             }
         }
@@ -5012,7 +5047,8 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Enabled = false;
             graphEditor.UseWaitCursor = true;
             bool cloneLinks = false;
-            List<DiagNode> inputNodes = [];
+            bool insertClonedLinksAtTop = false;
+            List<DiagEdEdge> inputEdges = [];
             if (command is "CloneReply" or "CloneEntry")
             {
                 if (MessageBox.Show("Clone links as well?", "Dialogue Editor", MessageBoxButton.YesNo) is MessageBoxResult.Yes)
@@ -5020,10 +5056,18 @@ namespace LegendaryExplorer.DialogueEditor
                     cloneLinks = true;
                     foreach (var edge in diagNode.InputEdges)
                     {
-                        if (edge.originator is DiagNode inputNode)
+                        if (edge.originator is DiagNode)
                         {
-                            inputNodes.Add(inputNode);
+                            inputEdges.Add(edge);
                         }
+                    }
+
+                    if (inputEdges.Count > 0)
+                    {
+                        insertClonedLinksAtTop = MessageBox.Show(
+                            "Should the cloned node be inserted at the top of each previous node's outgoing connections?",
+                            "Dialogue Editor",
+                            MessageBoxButton.YesNo) is MessageBoxResult.Yes;
                     }
                 }
             }
@@ -5108,10 +5152,13 @@ namespace LegendaryExplorer.DialogueEditor
             if (cloneLinks)
             {
                 using var suppressedPackageUpdates = SuppressPackageUpdates();
-                foreach (var inputNode in inputNodes)
+                foreach (var inputEdge in inputEdges)
                 {
-                    CloneIncomingLinkToNode(inputNode, node);
-                    PushLocalGraphChanges(inputNode, persistConversation: false);
+                    CloneIncomingLinkToNode(inputEdge, node, insertClonedLinksAtTop);
+                    if (inputEdge.originator is DiagNode inputNode)
+                    {
+                        PushLocalGraphChanges(inputNode, persistConversation: false);
+                    }
                 }
 
                 RecreateNodesToProperties(SelectedConv);
