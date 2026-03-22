@@ -627,7 +627,7 @@ namespace LegendaryExplorer.DialogueEditor
             button.Brush = new SolidBrush(Color.FromArgb(30, boxTextColor));
             button.Pen = new Pen(Color.FromArgb(150, boxTextColor));
 
-            button.MouseDown += (_, e) =>
+            button.Click += (_, e) =>
             {
                 if (e.Button != MouseButtons.Left)
                 {
@@ -783,7 +783,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ConstrainWidthToTextWidth = false,
                 Pickable = true
             };
-            speaker.MouseDown += (_, e) =>
+            speaker.Click += (_, e) =>
             {
                 if (e.Button != MouseButtons.Left) return;
                 e.Handled = true;
@@ -796,7 +796,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ConstrainWidthToTextWidth = false,
                 Pickable = true
             };
-            listener.MouseDown += (_, e) =>
+            listener.Click += (_, e) =>
             {
                 if (e.Button != MouseButtons.Left) return;
                 e.Handled = true;
