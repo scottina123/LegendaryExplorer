@@ -1244,6 +1244,8 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 ConvGraphEditor.UpdateEdge(edge);
             }
+
+            graphEditor.Refresh();
         }
 
         private void RemoveGraphObject(DObj obj)
@@ -4795,11 +4797,12 @@ namespace LegendaryExplorer.DialogueEditor
             int nodeCount = inlineLinkEditorNode.Node.NodeCount;
             bool isReply = inlineLinkEditorNode.Node.IsReply;
             inlineLinkEditorNeedsSave = false;
-            RecreateNodesToProperties(SelectedConv);
+            PushLocalGraphChanges(inlineLinkEditorNode);
 
             if (focusEditedNode)
             {
-                DialogueNode_SelectByIndex(nodeCount, isReply);
+                var refreshedNode = SelectDialogueNodeByIndex(nodeCount, isReply);
+                LoadInlineLinkEditor(refreshedNode);
                 BottomViewportTabControl.SelectedItem = LinkEditorTab;
             }
         }
