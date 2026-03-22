@@ -1347,6 +1347,7 @@ namespace LegendaryExplorer.DialogueEditor
             box.Bounds = new RectangleF(0, titleBox.Height + 2, nodeBoxWidth, newBoxHeight);
             Bounds = new RectangleF(0, 0, nodeBoxWidth, titleBox.Height + 2 + newBoxHeight);
 
+            MoveToFront();
             InvalidateFullBounds();
             InvalidatePaint();
         }
