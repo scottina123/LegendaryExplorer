@@ -25,6 +25,12 @@
         <sharedUi:BindingProxy x:Key="bindingProxy" Data="{Binding}"/>
         <BitmapImage x:Key="packageicon" UriSource="pack://application:,,,/Tools/PackageEditor/ExportIcons/icon_package.png"/>
         <BitmapImage x:Key="textureicon" UriSource="pack://application:,,,/Tools/PackageEditor/ExportIcons/icon_texture2d.png"/>
+        <Style x:Key="SectionHeaderTextBlockStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+        </Style>
         <ContextMenu x:Key="InstanceContextMenu">
             <MenuItem Header="Open instance in Package Editor" ToolTip="Opens a new Package Editor, focused on this instance" 
                       Command="{Binding Source={StaticResource bindingProxy}, Path=Data.OpenInstanceInPackageEditorCommand}" sharedUi:Bindings.VisibilityToEnabled="True">
@@ -100,9 +106,9 @@
                     <RowDefinition Height="15"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="In-memory unique textures" Grid.Column="0" FontWeight="Bold" TextAlignment="Center" Background="{x:Static Brushes.Bisque}"/>
-                <TextBlock Text="Package instances" Grid.Column="2" FontWeight="Bold" TextAlignment="Center" Background="{x:Static Brushes.Bisque}"/>
-                <TextBlock Text="Texture Viewer for instance" Grid.Column="5" FontWeight="Bold" TextAlignment="Center" Background="{x:Static Brushes.Bisque}"/>
+                <TextBlock Text="In-memory unique textures" Grid.Column="0" Style="{StaticResource SectionHeaderTextBlockStyle}"/>
+                <TextBlock Text="Package instances" Grid.Column="2" Style="{StaticResource SectionHeaderTextBlockStyle}"/>
+                <TextBlock Text="Texture Viewer for instance" Grid.Column="5" Style="{StaticResource SectionHeaderTextBlockStyle}"/>
                 <TreeView x:Name="LeftSide_TreeView" 
                           Visibility="{Binding SelectedFolder, Converter={StaticResource NullVisibilityConverter}}"
                           Grid.Column="0" 
