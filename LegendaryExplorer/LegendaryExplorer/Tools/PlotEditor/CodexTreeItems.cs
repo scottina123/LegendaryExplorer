@@ -32,13 +32,21 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
     public sealed class CodexSectionTreeItem : CodexTreeItemBase
     {
-        public CodexSectionTreeItem(KeyValuePair<int, BioCodexSection> codexSection)
+        public CodexSectionTreeItem(KeyValuePair<int, BioCodexSection> codexSection, bool isReadOnly = false, string readOnlyMessage = null)
         {
             CodexSection = codexSection;
+            IsReadOnly = isReadOnly;
+            ReadOnlyMessage = readOnlyMessage ?? string.Empty;
             Pages = new ObservableCollection<CodexPageTreeItem>();
         }
 
         public KeyValuePair<int, BioCodexSection> CodexSection { get; }
+
+        public bool IsReadOnly { get; }
+
+        public bool IsEditable => !IsReadOnly;
+
+        public string ReadOnlyMessage { get; }
 
         public ObservableCollection<CodexPageTreeItem> Pages { get; }
     }

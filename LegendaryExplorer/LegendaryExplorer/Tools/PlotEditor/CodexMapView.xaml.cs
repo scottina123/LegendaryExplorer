@@ -35,6 +35,17 @@ namespace LegendaryExplorer.Tools.PlotEditor
 	public partial class CodexMapView : NotifyPropertyChangedControlBase
 	{
         public static IMEPackage package;
+        private static readonly string[] VanillaPlotFiles =
+        [
+            "SFXGameInfoSP_SF.pcc",
+            "Startup_HEN_PR_INT.pcc",
+            "Startup_EXP_Pack003_Base_INT.pcc",
+            "Startup_EXP_Pack003_INT.pcc",
+            "Startup_EXP_Pack002_INT.pcc",
+            "Startup_EXP_Pack001_INT.pcc",
+            "Startup_CON_END_INT.pcc",
+            "Startup_CON_DH1_INT.pcc"
+        ];
 
 		/// <summary>
 		///   Initializes a new instance of the <see cref="CodexMapView" /> class.
@@ -58,6 +69,10 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private bool _isRefreshingSelectedText;
         private SoundpanelAudioPlayer _codexAudioPlayer;
         private string _currentCodexPageWwiseEventDisplay = string.Empty;
+        private string _selectedCodexSectionReadOnlyMessage = string.Empty;
+        private string _selectedCodexPageSectionReadOnlyMessage = string.Empty;
+        private readonly Dictionary<int, (KeyValuePair<int, BioCodexSection> CodexSection, string SourceFileName)> _vanillaCodexSections = [];
+        private readonly HashSet<string> _vanillaPlotFilePaths = new(StringComparer.OrdinalIgnoreCase);
 
         public bool CanRemoveCodexPage
         {
@@ -81,15 +96,51 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     return false;
                 }
 
-                return SelectedCodexSection.Value != null;
+                return SelectedCodexSection.Value != null && !IsSelectedCodexSectionReadOnly;
             }
         }
 
-        public bool CanRemoveSelectedCodexItem => SelectedCodexPage.Value != null || SelectedCodexSection.Value != null;
+        public bool CanRemoveSelectedCodexItem => SelectedCodexPage.Value != null || (SelectedCodexSection.Value != null && !IsSelectedCodexSectionReadOnly);
 
         public bool IsCodexPageSelected => SelectedCodexPage.Value != null;
 
         public bool IsCodexSectionSelected => SelectedCodexSection.Value != null;
+
+        public bool IsSelectedCodexSectionReadOnly => SelectedCodexSection.Value != null && TryGetReadOnlyCodexSectionInfo(SelectedCodexSection.Key, out _);
+
+        public bool IsSelectedCodexSectionEditable => !IsSelectedCodexSectionReadOnly;
+
+        public string SelectedCodexSectionReadOnlyMessage
+        {
+            get => _selectedCodexSectionReadOnlyMessage;
+            set
+            {
+                if (!SetProperty(ref _selectedCodexSectionReadOnlyMessage, value ?? string.Empty))
+                {
+                    return;
+                }
+
+                OnPropertyChanged(nameof(HasSelectedCodexSectionReadOnlyMessage));
+            }
+        }
+
+        public bool HasSelectedCodexSectionReadOnlyMessage => !string.IsNullOrWhiteSpace(SelectedCodexSectionReadOnlyMessage);
+
+        public string SelectedCodexPageSectionReadOnlyMessage
+        {
+            get => _selectedCodexPageSectionReadOnlyMessage;
+            set
+            {
+                if (!SetProperty(ref _selectedCodexPageSectionReadOnlyMessage, value ?? string.Empty))
+                {
+                    return;
+                }
+
+                OnPropertyChanged(nameof(HasSelectedCodexPageSectionReadOnlyMessage));
+            }
+        }
+
+        public bool HasSelectedCodexPageSectionReadOnlyMessage => !string.IsNullOrWhiteSpace(SelectedCodexPageSectionReadOnlyMessage);
 
         public bool CanAddCodexPageAudio => package != null && SelectedCodexPage.Value != null && package.Game is MEGame.LE2 or MEGame.LE3;
 
@@ -121,6 +172,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _codexSections, value);
                 OnPropertyChanged(nameof(CanRemoveCodexSection));
+                RefreshCodexSectionState();
                 RefreshCodexHierarchy();
             }
         }
@@ -168,6 +220,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(IsCodexPageSelected));
                 StopCodexAudioPlayback();
                 RefreshCodexPageAudioState();
+                RefreshCodexSectionState();
             }
         }
 
@@ -182,6 +235,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(IsCodexSectionSelected));
                 StopCodexAudioPlayback();
                 RefreshCodexPageAudioState();
+                RefreshCodexSectionState();
             }
         }
 
@@ -301,7 +355,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void ChangeCodexSectionId()
         {
-            if (SelectedCodexSection.Value == null)
+            if (SelectedCodexSection.Value == null || IsSelectedCodexSectionReadOnly)
             {
                 return;
             }
@@ -347,7 +401,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void CopyCodexSection()
         {
-            if (SelectedCodexSection.Value == null)
+            if (SelectedCodexSection.Value == null || IsSelectedCodexSectionReadOnly)
             {
                 return;
             }
@@ -432,7 +486,9 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             package = pcc;
+            LoadVanillaCodexSections();
             RefreshCodexPageAudioState();
+            RefreshCodexSectionState();
             RefreshCodexHierarchy();
             RefreshSelectedText();
         }
@@ -467,7 +523,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void removeCodexSection()
         {
-            if (CodexSections == null || SelectedCodexSection.Value == null)
+            if (CodexSections == null || SelectedCodexSection.Value == null || IsSelectedCodexSectionReadOnly)
             {
                 return;
             }
@@ -552,6 +608,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             CodexPages = InitCollection(codexMap.Pages.OrderBy(pair => pair.Key));
             CodexSections = InitCollection(codexMap.Sections.OrderBy(pair => pair.Key));
+            RefreshCodexSectionState();
             RefreshCodexHierarchy();
         }
         
@@ -594,18 +651,19 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 var selectedPageId = SelectedCodexPage.Value != null ? SelectedCodexPage.Key : (int?)null;
                 var selectedSectionId = SelectedCodexSection.Value != null ? SelectedCodexSection.Key : (int?)null;
-                var sections = CodexSections?.OrderBy(pair => pair.Key).ToList() ?? new List<KeyValuePair<int, BioCodexSection>>();
-                var sectionIds = new HashSet<int>(sections.Select(pair => pair.Key));
+                var sections = CodexSections?.OrderBy(pair => pair.Key).ToList() ?? [];
                 var pages = CodexPages?.OrderBy(pair => pair.Key).ToList() ?? new List<KeyValuePair<int, BioCodexPage>>();
-                var standalonePages = pages.Where(pair => !sectionIds.Contains(pair.Value.Section)).ToList();
+                var displayedSections = BuildDisplayedCodexSections(sections, pages);
+                var displayedSectionIds = new HashSet<int>(displayedSections.Select(section => section.CodexSection.Key));
+                var standalonePages = pages.Where(pair => !displayedSectionIds.Contains(pair.Value.Section)).ToList();
 
                 PrimaryCodexTreeItems = BuildCodexTreeItems(
-                    sections.Where(pair => pair.Value.IsPrimary),
+                    displayedSections.Where(section => section.CodexSection.Value.IsPrimary),
                     pages,
                     Enumerable.Empty<KeyValuePair<int, BioCodexPage>>());
 
                 SecondaryCodexTreeItems = BuildCodexTreeItems(
-                    sections.Where(pair => !pair.Value.IsPrimary),
+                    displayedSections.Where(section => !section.CodexSection.Value.IsPrimary),
                     pages,
                     standalonePages);
 
@@ -628,22 +686,22 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
         }
 
-        private ObservableCollection<object> BuildCodexTreeItems(IEnumerable<KeyValuePair<int, BioCodexSection>> sections, IEnumerable<KeyValuePair<int, BioCodexPage>> pages, IEnumerable<KeyValuePair<int, BioCodexPage>> standalonePages)
+        private ObservableCollection<object> BuildCodexTreeItems(IEnumerable<(KeyValuePair<int, BioCodexSection> CodexSection, bool IsReadOnly, string ReadOnlyMessage)> sections, IEnumerable<KeyValuePair<int, BioCodexPage>> pages, IEnumerable<KeyValuePair<int, BioCodexPage>> standalonePages)
         {
             var treeItems = new List<object>();
             var hasSearchText = !string.IsNullOrWhiteSpace(SearchText);
 
             foreach (var section in sections)
             {
-                var matchingPages = pages.Where(pair => pair.Value.Section == section.Key && MatchesSearch(pair.Value)).ToList();
-                if (hasSearchText && !MatchesSearch(section.Value) && matchingPages.Count == 0)
+                var matchingPages = pages.Where(pair => pair.Value.Section == section.CodexSection.Key && MatchesSearch(pair.Value)).ToList();
+                if (hasSearchText && !MatchesSearch(section.CodexSection.Value) && matchingPages.Count == 0)
                 {
                     continue;
                 }
 
-                var sectionItem = new CodexSectionTreeItem(section);
+                var sectionItem = new CodexSectionTreeItem(section.CodexSection, section.IsReadOnly, section.ReadOnlyMessage);
 
-                foreach (var page in hasSearchText ? matchingPages : pages.Where(pair => pair.Value.Section == section.Key))
+                foreach (var page in hasSearchText ? matchingPages : pages.Where(pair => pair.Value.Section == section.CodexSection.Key))
                 {
                     sectionItem.Pages.Add(new CodexPageTreeItem(page, sectionItem));
                 }
@@ -657,6 +715,181 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             return InitCollection(treeItems);
+        }
+
+        private List<(KeyValuePair<int, BioCodexSection> CodexSection, bool IsReadOnly, string ReadOnlyMessage)> BuildDisplayedCodexSections(IEnumerable<KeyValuePair<int, BioCodexSection>> sections, IEnumerable<KeyValuePair<int, BioCodexPage>> pages)
+        {
+            List<(KeyValuePair<int, BioCodexSection> CodexSection, bool IsReadOnly, string ReadOnlyMessage)> displayedSections = sections
+                .Select(section => (CodexSection: section, IsReadOnly: TryGetReadOnlyCodexSectionInfo(section.Key, out _), ReadOnlyMessage: GetCodexSectionReadOnlyMessage(section.Key, isImportedSection: false)))
+                .ToList();
+
+            var localSectionIds = new HashSet<int>(displayedSections.Select(section => section.CodexSection.Key));
+            foreach (var missingSectionId in pages.Select(pair => pair.Value.Section).Where(sectionId => sectionId > 0 && !localSectionIds.Contains(sectionId)).Distinct())
+            {
+                if (!TryGetReadOnlyCodexSectionInfo(missingSectionId, out var vanillaSectionInfo))
+                {
+                    continue;
+                }
+
+                displayedSections.Add((CodexSection: vanillaSectionInfo.CodexSection, IsReadOnly: true, ReadOnlyMessage: GetCodexSectionReadOnlyMessage(missingSectionId, isImportedSection: true)));
+            }
+
+            return displayedSections.OrderBy(section => section.CodexSection.Key).ToList();
+        }
+
+        private void RefreshCodexSectionState()
+        {
+            OnPropertyChanged(nameof(CanRemoveCodexSection));
+            OnPropertyChanged(nameof(CanRemoveSelectedCodexItem));
+            OnPropertyChanged(nameof(IsSelectedCodexSectionReadOnly));
+            OnPropertyChanged(nameof(IsSelectedCodexSectionEditable));
+
+            SelectedCodexSectionReadOnlyMessage = SelectedCodexSection.Value != null
+                ? GetCodexSectionReadOnlyMessage(SelectedCodexSection.Key, !HasLocalCodexSection(SelectedCodexSection.Key))
+                : string.Empty;
+
+            SelectedCodexPageSectionReadOnlyMessage = SelectedCodexPage.Value != null
+                ? GetCodexSectionReadOnlyMessage(SelectedCodexPage.Value.Section, !HasLocalCodexSection(SelectedCodexPage.Value.Section))
+                : string.Empty;
+        }
+
+        private bool HasLocalCodexSection(int sectionId)
+        {
+            return CodexSections?.Any(pair => pair.Key == sectionId) == true;
+        }
+
+        private bool TryGetReadOnlyCodexSectionInfo(int sectionId, out (KeyValuePair<int, BioCodexSection> CodexSection, string SourceFileName) sectionInfo)
+        {
+            if (sectionId > 0 && !IsCurrentPackageVanillaPlotFile() && _vanillaCodexSections.TryGetValue(sectionId, out sectionInfo))
+            {
+                return true;
+            }
+
+            sectionInfo = (default, string.Empty);
+            return false;
+        }
+
+        private bool IsCurrentPackageVanillaPlotFile()
+        {
+            return package != null && !string.IsNullOrWhiteSpace(package.FilePath) && _vanillaPlotFilePaths.Contains(package.FilePath);
+        }
+
+        private string GetCodexSectionReadOnlyMessage(int sectionId, bool isImportedSection)
+        {
+            if (!TryGetReadOnlyCodexSectionInfo(sectionId, out var sectionInfo))
+            {
+                return string.Empty;
+            }
+
+            var sourceText = string.IsNullOrWhiteSpace(sectionInfo.SourceFileName)
+                ? "a vanilla plot file"
+                : $"'{sectionInfo.SourceFileName}'";
+
+            return isImportedSection
+                ? $"Section {sectionId} is imported from {sourceText} and cannot be edited here."
+                : $"Section {sectionId} exists in {sourceText} and is read-only in this modded file.";
+        }
+
+        private void LoadVanillaCodexSections()
+        {
+            _vanillaCodexSections.Clear();
+            _vanillaPlotFilePaths.Clear();
+
+            if (package?.Game != MEGame.LE3)
+            {
+                return;
+            }
+
+            foreach (var vanillaPlotFilePath in FindVanillaPlotFilePaths())
+            {
+                _vanillaPlotFilePaths.Add(vanillaPlotFilePath);
+
+                IMEPackage vanillaPackage = null;
+                try
+                {
+                    vanillaPackage = MEPackageHandler.OpenMEPackage(vanillaPlotFilePath);
+                    if (!TryFindCodexMap(vanillaPackage, out var export, out var dataOffset))
+                    {
+                        continue;
+                    }
+
+                    using var stream = new MemoryStream(export.Data);
+                    stream.Seek(dataOffset, SeekOrigin.Begin);
+                    var codexMap = BinaryBioCodexMap.Load(stream, vanillaPackage.Game is MEGame.ME3 or MEGame.LE3 ? Encoding.UTF8 : Encoding.Latin1);
+
+                    foreach (var section in codexMap.Sections.OrderBy(pair => pair.Key))
+                    {
+                        if (_vanillaCodexSections.ContainsKey(section.Key))
+                        {
+                            continue;
+                        }
+
+                        var displaySection = new BioCodexSection(section.Value)
+                        {
+                            TitleAsString = StripWrappingQuotes(GlobalFindStrRefbyID(section.Value.Title, vanillaPackage.Game, null))
+                        };
+
+                        _vanillaCodexSections[section.Key] = (
+                            CodexSection: new KeyValuePair<int, BioCodexSection>(section.Key, displaySection),
+                            SourceFileName: Path.GetFileName(vanillaPlotFilePath));
+                    }
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    vanillaPackage?.Release();
+                }
+            }
+        }
+
+        private IEnumerable<string> FindVanillaPlotFilePaths()
+        {
+            if (package?.Game != MEGame.LE3)
+            {
+                yield break;
+            }
+
+            var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var cookedPath = MEDirectories.GetCookedPath(package.Game);
+            var dlcPath = MEDirectories.GetDLCPath(package.Game);
+
+            foreach (var fileName in VanillaPlotFiles)
+            {
+                string filePath = null;
+                if (!string.IsNullOrWhiteSpace(cookedPath))
+                {
+                    var basegamePath = Path.Combine(cookedPath, fileName);
+                    if (File.Exists(basegamePath))
+                    {
+                        filePath = basegamePath;
+                    }
+                }
+
+                if (filePath == null && !string.IsNullOrWhiteSpace(dlcPath))
+                {
+                    foreach (var officialDlc in MEDirectories.OfficialDLC(package.Game))
+                    {
+                        var officialDlcPath = Path.Combine(dlcPath, officialDlc);
+                        if (!Directory.Exists(officialDlcPath))
+                        {
+                            continue;
+                        }
+
+                        filePath = Directory.EnumerateFiles(officialDlcPath, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                        if (filePath != null)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (filePath != null && yieldedPaths.Add(filePath))
+                {
+                    yield return filePath;
+                }
+            }
         }
 
         private bool MatchesSearch(BioCodexEntry entry)
@@ -1437,6 +1670,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return;
             }
 
+            RefreshCodexSectionState();
             RefreshCodexHierarchy();
         }
 
