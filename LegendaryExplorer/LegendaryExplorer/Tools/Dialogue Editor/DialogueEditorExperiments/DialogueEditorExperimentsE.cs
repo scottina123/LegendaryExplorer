@@ -382,6 +382,8 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
             if (dew.Pcc != null && selectedDialogueNode != null)
             {
+                using var _ = dew.SuppressPackageUpdates();
+
                 // Need to check if the node has associated data
                 if (selectedDialogueNode.InterpData == null)
                 {
@@ -454,8 +456,11 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 StructProperty prop = node.NodeProp;
                 var nExportID = new IntProperty(newID, "nExportID");
                 prop.Properties.AddOrReplaceProp(nExportID);
+                node.ExportID = newID;
+                node.InterpData = newInterpData;
+                node.InterpLength = newInterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? -1;
                 dew.RecreateNodesToProperties(dew.SelectedConv);
-                dew.ForceRefreshCommand.Execute(null);
+                dew.SelectDialogueNodeByIndex(node.NodeCount, node.IsReply);
 
                 MessageBox.Show($"Node cloned and given the ExportID: {newID}.", "Success", MessageBoxButton.OK);
             }

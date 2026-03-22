@@ -589,6 +589,14 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        public void SyncIdentityFromNode()
+        {
+            NodeProp = Node.NodeProp;
+            NodeID = Node.IsReply ? Node.NodeCount + 1000 : Node.NodeCount;
+            NodeUID = NodeID;
+            listname = $"{(Node.IsReply ? "R" : "E")}{Node.NodeCount} {Node.Line}";
+        }
+
         private void SavePlotSectionState()
         {
             if (!string.IsNullOrEmpty(plotSectionStateKey))

@@ -156,6 +156,7 @@ namespace LegendaryExplorer.DialogueEditor
         private BlockingCollection<ConversationExtended> BackQueue = new();
         private BackgroundWorker BackParser = new();
         private readonly ConcurrentDictionary<int, byte> ownerResolutionInProgress = new();
+        private int suppressedPackageUpdateDepth;
         private bool NoUIRefresh; //stops graph refresh on update.
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
@@ -1222,13 +1223,17 @@ namespace LegendaryExplorer.DialogueEditor
         {
             convo.Export.WriteProperties(convo.BioConvo);
         }
-        public void PushLocalGraphChanges(DiagNode obj)
+        public void PushLocalGraphChanges(DiagNode obj, bool persistConversation = true)
         {
             IsLocalUpdate = true;
-            RecreateNodesToProperties(SelectedConv);
+            if (persistConversation)
+            {
+                RecreateNodesToProperties(SelectedConv);
+            }
 
             float newX = obj.X + obj.OffsetX;
             float newY = obj.Y + obj.OffsetY;
+            obj.SyncIdentityFromNode();
             obj.RemoveAllChildren();
             obj.RemoveConnections();
             obj.GetOutputLinks(obj.Node);
@@ -1238,6 +1243,106 @@ namespace LegendaryExplorer.DialogueEditor
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
                 ConvGraphEditor.UpdateEdge(edge);
+            }
+        }
+
+        private void RemoveGraphObject(DObj obj)
+        {
+            switch (obj)
+            {
+                case DiagNode diagNode:
+                    diagNode.RemoveConnections();
+                    diagNode.InputEdges.Clear();
+                    break;
+                case DStart startNode:
+                    startNode.RemoveConnections();
+                    break;
+            }
+
+            graphEditor.nodeLayer.RemoveChild(obj);
+            CurrentObjects.Remove(obj);
+            obj.Dispose();
+        }
+
+        private void RebuildStartNodesInPlace()
+        {
+            var existingStarts = CurrentObjects.OfType<DStart>().OrderBy(s => s.Order).ToList();
+            var startPositions = existingStarts.ToDictionary(s => s.Order, s => new PointF(s.X + s.OffsetX, s.Y + s.OffsetY));
+
+            foreach (var start in existingStarts)
+            {
+                RemoveGraphObject(start);
+            }
+
+            foreach (var startLink in SelectedConv.StartingList.OrderBy(kvp => kvp.Key))
+            {
+                PointF position = startPositions.TryGetValue(startLink.Key, out var savedPosition)
+                    ? savedPosition
+                    : new PointF(0, startLink.Key * 127);
+
+                var startNode = new DStart(this, startLink.Key, startLink.Value, position.X, position.Y, graphEditor);
+                CurrentObjects.Add(startNode);
+                graphEditor.addNode(startNode);
+                startNode.MouseDown += node_MouseDown;
+                startNode.Click += node_Click;
+            }
+        }
+
+        private void RebuildGraphInPlace(bool rebuildStarts = false)
+        {
+            foreach (var graphObject in CurrentObjects.OfType<DBox>().ToList())
+            {
+                graphObject.RemoveConnections();
+            }
+
+            graphEditor.edgeLayer.RemoveAllChildren();
+
+            foreach (var diagNode in CurrentObjects.OfType<DiagNode>())
+            {
+                diagNode.InputEdges.Clear();
+            }
+
+            if (rebuildStarts)
+            {
+                RebuildStartNodesInPlace();
+            }
+
+            foreach (var diagNode in CurrentObjects.OfType<DiagNode>().ToList())
+            {
+                float x = diagNode.X + diagNode.OffsetX;
+                float y = diagNode.Y + diagNode.OffsetY;
+                bool wasSelected = diagNode.IsSelected;
+
+                diagNode.SyncIdentityFromNode();
+                diagNode.RemoveAllChildren();
+                diagNode.GetOutputLinks(diagNode.Node);
+                diagNode.Layout(x, y);
+                diagNode.IsSelected = wasSelected;
+            }
+
+            foreach (var graphObject in CurrentObjects.OfType<DBox>())
+            {
+                graphObject.RecreateConnections(CurrentObjects);
+            }
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                ConvGraphEditor.UpdateEdge(edge);
+            }
+
+            graphEditor.Refresh();
+        }
+
+        private void ReindexConversationNodeCounts()
+        {
+            for (int i = 0; i < SelectedConv.EntryList.Count; i++)
+            {
+                SelectedConv.EntryList[i].NodeCount = i;
+            }
+
+            for (int i = 0; i < SelectedConv.ReplyList.Count; i++)
+            {
+                SelectedConv.ReplyList[i].NodeCount = i;
             }
         }
 
@@ -1367,12 +1472,15 @@ namespace LegendaryExplorer.DialogueEditor
         #region Handling-updates
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
-            if (Pcc == null || IsLocalUpdate)
+            if (Pcc == null || IsLocalUpdate || suppressedPackageUpdateDepth > 0)
             {
-                if (IsLocalUpdate) //If local load just refresh interpreter
+                if (IsLocalUpdate || suppressedPackageUpdateDepth > 0) //If local load just refresh interpreter
                 {
                     Properties_InterpreterWPF.LoadExport(SelectedConv.Export);
-                    IsLocalUpdate = false;
+                    if (suppressedPackageUpdateDepth == 0)
+                    {
+                        IsLocalUpdate = false;
+                    }
                 }
                 return; //nothing is loaded
             }
@@ -1483,6 +1591,10 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
             MirrorDialogueNode.GetType().GetProperty(e.PropertyName).SetValue(MirrorDialogueNode, newvalue);
+            if (e.PropertyName == "ExportID")
+            {
+                return;
+            }
             //IF PASS THEN RECREATE NODE
             var node = SelectedDialogueNode;
             var prop = node.NodeProp;
@@ -1522,14 +1634,6 @@ namespace LegendaryExplorer.DialogueEditor
                 case "TransitionParam":
                     var nStateTransitionParam = new IntProperty(node.TransitionParam, "nStateTransitionParam");
                     prop.Properties.AddOrReplaceProp(nStateTransitionParam);
-                    break;
-                case "ExportID":
-                    var nExportID = new IntProperty(node.ExportID, "nExportID");
-                    prop.Properties.AddOrReplaceProp(nExportID);
-                    node.InterpData = SelectedConv.ParseSingleNodeInterpData(node);
-                    var lengthprop = node.InterpData?.GetProperty<FloatProperty>("InterpLength");
-                    node.InterpLength = lengthprop?.Value ?? -1;
-                    needsRefresh = true;
                     break;
                 case "InterpLength":
                     if (node.InterpData != null)
@@ -1744,6 +1848,36 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     ConvGraphEditor.UpdateEdge(edge);
                 }
+            }
+        }
+
+        public IDisposable SuppressPackageUpdates()
+        {
+            suppressedPackageUpdateDepth++;
+            return new SuppressPackageUpdatesScope(this);
+        }
+
+        private void ReleaseSuppressedPackageUpdates()
+        {
+            if (suppressedPackageUpdateDepth > 0)
+            {
+                suppressedPackageUpdateDepth--;
+            }
+        }
+
+        private sealed class SuppressPackageUpdatesScope : IDisposable
+        {
+            private DialogueEditorWindow owner;
+
+            public SuppressPackageUpdatesScope(DialogueEditorWindow owner)
+            {
+                this.owner = owner;
+            }
+
+            public void Dispose()
+            {
+                owner?.ReleaseSuppressedPackageUpdates();
+                owner = null;
             }
         }
         private void AutoLayout()
@@ -4436,6 +4570,36 @@ namespace LegendaryExplorer.DialogueEditor
             return incomingRows;
         }
 
+        private void CloneIncomingLinkToNode(DiagNode sourceNode, DiagNode targetNode)
+        {
+            if (sourceNode == null || targetNode == null)
+            {
+                return;
+            }
+
+            if (sourceNode.Node.IsReply)
+            {
+                var entryList = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")
+                                ?? new ArrayProperty<IntProperty>("EntryList");
+                entryList.Add(new IntProperty(targetNode.NodeID));
+                sourceNode.NodeProp.Properties.AddOrReplaceProp(entryList);
+            }
+            else
+            {
+                var replyList = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")
+                                ?? new ArrayProperty<StructProperty>("ReplyListNew");
+                replyList.Add(new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                {
+                    new IntProperty(targetNode.NodeID - 1000, "nIndex"),
+                    new StringRefProperty(663399, "srParaphrase"),
+                    new StrProperty(string.Empty, "sParaphrase"),
+                    new EnumProperty("REPLY_CATEGORY_DEFAULT", "EReplyCategory", Pcc.Game, "Category"),
+                    new NoneProperty()
+                }));
+                sourceNode.NodeProp.Properties.AddOrReplaceProp(replyList);
+            }
+        }
+
         private void RebuildInlineLinkEditorRows(IEnumerable<ReplyChoiceNode> editableLinks = null, ReplyChoiceNode selectedLink = null)
         {
             if (inlineLinkEditorNode == null)
@@ -4931,19 +5095,31 @@ namespace LegendaryExplorer.DialogueEditor
             node.SetOffset(newX, newY);
             node.MouseDown += node_MouseDown;
             node.Click += node_Click;
+            node.RecreateConnections(CurrentObjects);
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                ConvGraphEditor.UpdateEdge(edge);
+            }
             DialogueNode_SelectByIndex(newIndex, isReply);
             graphEditor.Enabled = true;
             graphEditor.UseWaitCursor = false;
             graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
             graphEditor.Refresh();
-            PushConvoToFile(SelectedConv);
             if (cloneLinks)
             {
+                using var suppressedPackageUpdates = SuppressPackageUpdates();
                 foreach (var inputNode in inputNodes)
                 {
-                    inputNode.CreateLink(inputNode, node);
+                    CloneIncomingLinkToNode(inputNode, node);
+                    PushLocalGraphChanges(inputNode, persistConversation: false);
                 }
-                GenerateGraph(true);
+
+                RecreateNodesToProperties(SelectedConv);
+                PushConvoToFile(SelectedConv);
+            }
+            else
+            {
+                PushConvoToFile(SelectedConv);
             }
         }
         private void DialogueNode_DeleteLinks(object obj)
@@ -5040,6 +5216,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var deleteNode = SelectedDialogueNode;
+            var deleteGraphNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(n => n.Node.NodeCount == deleteNode.NodeCount && n.Node.IsReply == deleteNode.IsReply);
+            var affectedGraphNodes = CurrentObjects.OfType<DiagNode>()
+                .Where(n => n != deleteGraphNode &&
+                            (deleteNode.IsReply
+                                ? !n.Node.IsReply || n.Node.IsReply && n.Node.NodeCount > deleteNode.NodeCount
+                                : n.Node.IsReply || !n.Node.IsReply && n.Node.NodeCount > deleteNode.NodeCount))
+                .ToList();
             SelectedDialogueNode = null;
             SelectedObjects.ClearEx();
             int deleteID = deleteNode.NodeCount;
@@ -5114,7 +5297,28 @@ namespace LegendaryExplorer.DialogueEditor
 
                 SelectedConv.EntryList.RemoveAt(deleteID);
             }
+
+            ReindexConversationNodeCounts();
+            IsLocalUpdate = true;
             RecreateNodesToProperties(SelectedConv);
+
+            if (deleteGraphNode != null)
+            {
+                RemoveGraphObject(deleteGraphNode);
+            }
+
+            foreach (var graphNode in affectedGraphNodes)
+            {
+                PushLocalGraphChanges(graphNode, persistConversation: false);
+            }
+
+            if (!deleteNode.IsReply)
+            {
+                RebuildStartNodesInPlace();
+            }
+
+            graphEditor.Refresh();
+            Start_ListBoxUpdate();
         }
 
         private void StageDirections_TextChanged(object sender, KeyEventArgs e)
