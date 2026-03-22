@@ -274,6 +274,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand OpenInPackageEditorCommand { get; set; }
         public ICommand OpenInMeshplorerCommand { get; set; }
         public ICommand AttemptOpenImportDefinitionCommand { get; set; }
+        public ICommand MatchMaterialsToSkeletalMeshCommand { get; set; }
         private void LoadCommands()
         {
             AddPropertiesToStructCommand = new GenericCommand(AddPropertiesToStruct, CanAddPropertiesToStruct);
@@ -290,6 +291,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ClearArrayCommand = new GenericCommand(ClearArray, CanClearArray);
             PopoutInterpreterForObjectValueCommand = new GenericCommand(PopoutInterpreterForObj, ObjectPropertyExportIsSelected);
             OpenInMeshplorerCommand = new GenericCommand(OpenReferenceInMeshplorer, CanOpenInMeshplorer);
+            MatchMaterialsToSkeletalMeshCommand = new GenericCommand(MatchMaterialsToSkeletalMesh, CanMatchMaterialsToSkeletalMesh);
 
             SaveHexChangesCommand = new GenericCommand(Interpreter_SaveHexChanges, IsExportLoaded);
             ToggleHexBoxCommand = new GenericCommand(ToggleHexbox);
@@ -467,6 +469,235 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return false;
+        }
+
+        private void MatchMaterialsToSkeletalMesh()
+        {
+            if (!TryGetSelectedSupportedSkeletalMeshComponent(out ExportEntry componentExport))
+            {
+                return;
+            }
+
+            MatchMaterialsToSkeletalMesh(Window.GetWindow(this), componentExport);
+        }
+
+        internal static void MatchMaterialsToSkeletalMesh(Window owner, ExportEntry componentExport)
+        {
+            var componentProps = componentExport.GetProperties();
+            if (componentProps.GetProp<ObjectProperty>("SkeletalMesh") is not { Value: not 0 } skeletalMeshProp)
+            {
+                MessageBox.Show(owner, $"{componentExport.InstancedFullPath} does not reference a SkeletalMesh.");
+                return;
+            }
+
+            var cache = new PackageCache();
+            var skeletalMeshExport = skeletalMeshProp.ResolveToExport(componentExport.FileRef, cache);
+            if (skeletalMeshExport is null || !skeletalMeshExport.IsA("SkeletalMesh"))
+            {
+                MessageBox.Show(owner, $"Could not resolve the SkeletalMesh referenced by {componentExport.InstancedFullPath}.");
+                return;
+            }
+
+            SkeletalMesh skeletalMeshBinary;
+            try
+            {
+                skeletalMeshBinary = skeletalMeshExport.GetBinaryData<SkeletalMesh>();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(owner, $"Could not read SkeletalMesh materials for {skeletalMeshExport.InstancedFullPath}:{Environment.NewLine}{ex.Message}");
+                return;
+            }
+
+            int slotCount = skeletalMeshBinary.Materials?.Length ?? 0;
+            if (slotCount == 0)
+            {
+                MessageBox.Show(owner, $"{skeletalMeshExport.InstancedFullPath} has no material slots.");
+                return;
+            }
+
+            var materialsProp = componentProps.GetProp<ArrayProperty<ObjectProperty>>("Materials") ?? new ArrayProperty<ObjectProperty>("Materials");
+            ExportEntry templateMic = materialsProp
+                .Select(prop => componentExport.FileRef.GetEntry(prop.Value))
+                .OfType<ExportEntry>()
+                .FirstOrDefault(entry => entry.ClassName == "MaterialInstanceConstant");
+
+            int matchedSlotCount = 0;
+            int updatedMicCount = 0;
+            int createdMicCount = 0;
+
+            for (int slotIndex = 0; slotIndex < slotCount; slotIndex++)
+            {
+                IEntry sourceMaterialEntry = skeletalMeshExport.FileRef.GetEntry(skeletalMeshBinary.Materials[slotIndex]);
+                if (sourceMaterialEntry is null)
+                {
+                    SetMaterialSlotReference(materialsProp, slotIndex, null);
+                    matchedSlotCount++;
+                    continue;
+                }
+
+                IEntry localMaterialEntry;
+                try
+                {
+                    localMaterialEntry = GetOrAddLocalMaterialReference(sourceMaterialEntry, componentExport.FileRef, cache);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(owner,
+                        $"Could not create or locate a local reference for material slot {slotIndex} ({sourceMaterialEntry.InstancedFullPath}).{Environment.NewLine}{ex.Message}");
+                    return;
+                }
+
+                if (localMaterialEntry is null)
+                {
+                    MessageBox.Show(owner, $"Could not create or locate a local reference for material slot {slotIndex} ({sourceMaterialEntry.InstancedFullPath}).");
+                    return;
+                }
+
+                ExportEntry micExport;
+                if (slotIndex < materialsProp.Count
+                    && componentExport.FileRef.GetEntry(materialsProp[slotIndex].Value) is ExportEntry { ClassName: "MaterialInstanceConstant" } existingMic)
+                {
+                    micExport = existingMic;
+                    updatedMicCount++;
+                }
+                else
+                {
+                    micExport = templateMic is not null
+                        ? CloneMaterialInstanceConstant(templateMic, componentExport, localMaterialEntry, sourceMaterialEntry as ExportEntry)
+                        : CreateMaterialInstanceConstant(componentExport, localMaterialEntry, sourceMaterialEntry as ExportEntry);
+                    templateMic ??= micExport;
+                    createdMicCount++;
+                }
+
+                UpdateMaterialInstanceConstantParent(micExport, localMaterialEntry, sourceMaterialEntry as ExportEntry, regenerateGuid: false);
+                SetMaterialSlotReference(materialsProp, slotIndex, micExport);
+                matchedSlotCount++;
+            }
+
+            componentProps.AddOrReplaceProp(materialsProp);
+            componentExport.WriteProperties(componentProps);
+
+            MessageBox.Show(owner,
+                $"Matched {matchedSlotCount} material slot{(matchedSlotCount == 1 ? string.Empty : "s")} for {componentExport.ObjectName.Instanced}.{Environment.NewLine}Updated {updatedMicCount} existing MIC{(updatedMicCount == 1 ? string.Empty : "s")} and created {createdMicCount} new MIC{(createdMicCount == 1 ? string.Empty : "s")}.",
+                "Match materials to SkeletalMesh");
+        }
+
+        private bool CanMatchMaterialsToSkeletalMesh()
+        {
+            if (!TryGetSelectedSupportedSkeletalMeshComponent(out ExportEntry componentExport))
+            {
+                return false;
+            }
+
+            return CanMatchMaterialsToSkeletalMesh(componentExport);
+        }
+
+        internal static bool CanMatchMaterialsToSkeletalMesh(ExportEntry componentExport)
+        {
+            return componentExport is not null && componentExport.IsA("SkeletalMeshComponent");
+        }
+
+        private bool TryGetSelectedSupportedSkeletalMeshComponent(out ExportEntry componentExport)
+        {
+            componentExport = null;
+            if (CurrentLoadedExport is null
+                || SelectedItem?.Property is not ObjectProperty objectProperty
+                || !CurrentLoadedExport.FileRef.IsUExport(objectProperty.Value))
+            {
+                return false;
+            }
+
+            componentExport = CurrentLoadedExport.FileRef.GetUExport(objectProperty.Value);
+            return componentExport.IsA("SkeletalMeshComponent");
+        }
+
+        private static IEntry GetOrAddLocalMaterialReference(IEntry sourceMaterialEntry, IMEPackage destinationPackage, PackageCache cache)
+        {
+            if (sourceMaterialEntry is null)
+            {
+                return null;
+            }
+
+            if (sourceMaterialEntry.FileRef == destinationPackage)
+            {
+                return sourceMaterialEntry;
+            }
+
+            var rop = new RelinkerOptionsPackage
+            {
+                Cache = cache,
+                PortExportsAsImportsWhenPossible = true
+            };
+
+            return EntryImporter.GetOrAddCrossImportOrPackage(sourceMaterialEntry.InstancedFullPath, sourceMaterialEntry.FileRef, destinationPackage, rop);
+        }
+
+        private static ExportEntry CloneMaterialInstanceConstant(ExportEntry templateMic, ExportEntry componentExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport)
+        {
+            var clone = EntryCloner.CloneEntry(templateMic, newParentUIndex: componentExport.UIndex);
+            UpdateMaterialInstanceConstantParent(clone, parentMaterialEntry, sourceMaterialExport, regenerateGuid: true);
+            return clone;
+        }
+
+        private static ExportEntry CreateMaterialInstanceConstant(ExportEntry componentExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport)
+        {
+            string baseName = $"{componentExport.ObjectName.Name}_MIC";
+            var name = new NameReference(baseName);
+            string parentPath = componentExport.InstancedFullPath;
+            string testPath = $"{parentPath}.{name.Instanced}".TrimStart('.');
+            int suffix = 1;
+            while (componentExport.FileRef.FindEntry(testPath) != null)
+            {
+                suffix++;
+                name = new NameReference($"{baseName}{suffix}");
+                testPath = $"{parentPath}.{name.Instanced}".TrimStart('.');
+            }
+
+            var micExport = ExportCreator.CreateExport(componentExport.FileRef, name, "MaterialInstanceConstant", componentExport, indexed: false);
+            if (componentExport != null)
+            {
+                micExport.ExportFlags |= UnrealFlags.EExportFlags.ForcedExport;
+            }
+
+            UpdateMaterialInstanceConstantParent(micExport, parentMaterialEntry, sourceMaterialExport, regenerateGuid: true);
+            return micExport;
+        }
+
+        private static void UpdateMaterialInstanceConstantParent(ExportEntry micExport, IEntry parentMaterialEntry, ExportEntry sourceMaterialExport, bool regenerateGuid)
+        {
+            var micProps = micExport.GetProperties();
+            micProps.AddOrReplaceProp(new ObjectProperty(parentMaterialEntry, "Parent"));
+
+            if (sourceMaterialExport?.GetProperty<StructProperty>("LightingGuid")?.DeepClone() is StructProperty parentLightingGuid)
+            {
+                parentLightingGuid.Name = "ParentLightingGuid";
+                micProps.AddOrReplaceProp(parentLightingGuid);
+            }
+            else
+            {
+                micProps.RemoveNamedProperty("ParentLightingGuid");
+            }
+
+            if (regenerateGuid)
+            {
+                micProps.AddOrReplaceProp(CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid"));
+            }
+
+            micExport.WriteProperties(micProps);
+        }
+
+        private static void SetMaterialSlotReference(ArrayProperty<ObjectProperty> materialsProp, int slotIndex, IEntry entry)
+        {
+            var property = new ObjectProperty(entry);
+            if (slotIndex < materialsProp.Count)
+            {
+                materialsProp[slotIndex] = property;
+            }
+            else
+            {
+                materialsProp.Add(property);
+            }
         }
 
         private void OpenInPackageEditor()

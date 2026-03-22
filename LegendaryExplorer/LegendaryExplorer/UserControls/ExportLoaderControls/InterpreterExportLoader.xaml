@@ -396,6 +396,7 @@
                                 <Image Source="/Tools/Icons/packageeditorwpf_256x256.ico" Width="64"/>
                             </MenuItem.Icon>
                         </MenuItem>
+                        <MenuItem Header="Match MaterialInstanceConstants to SkeletalMesh" ToolTip="Makes the referenced SkeletalMeshComponent materials match the SkeletalMesh's material slots by updating or creating MaterialInstanceConstants." Command="{Binding MatchMaterialsToSkeletalMeshCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Open in Meshplorer" ToolTip="Opens the referenced export in Meshplorer" Command="{Binding OpenInMeshplorerCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
 
                             <MenuItem.Icon>

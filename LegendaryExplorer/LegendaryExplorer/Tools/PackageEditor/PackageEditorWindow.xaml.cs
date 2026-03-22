@@ -422,6 +422,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand AdjustInterpTimeOffsetsCommand { get; set; }
         public ICommand AddAllAssetsToReferencerCommand { get; set; }
         public ICommand CloneTreeToFolderCommand { get; set; }
+        public ICommand MatchMaterialsToSkeletalMeshCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -493,6 +494,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             AdjustInterpTimeOffsetsCommand = new GenericCommand(AdjustSelectedInterpTimeOffsets, CanAdjustSelectedInterpTimeOffsets);
             AddAllAssetsToReferencerCommand = new GenericCommand(AddAllAssetsToReferencer, ObjectReferencerIsSelected);
             CloneTreeToFolderCommand = new GenericCommand(CloneTreeToFolder, ExportIsSelected);
+            MatchMaterialsToSkeletalMeshCommand = new GenericCommand(MatchMaterialsToSkeletalMesh);
 
             NavigateToEntryCommand = new RelayCommand(NavigateToEntry, CanNavigateToEntry);
 
@@ -637,6 +639,27 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 AssetViewerWindow.PreviewAsset(currentExport);
             }
+        }
+
+        private void MatchMaterialsToSkeletalMesh()
+        {
+            if (TryGetSelectedExport(out var currentExport) && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(currentExport))
+            {
+                InterpreterExportLoader.MatchMaterialsToSkeletalMesh(this, currentExport);
+                Preview(true);
+                return;
+            }
+
+            MessageBox.Show(this,
+                "This action only works on SkeletalMeshComponent exports.",
+                "Match MaterialInstanceConstants to SkeletalMesh",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        private bool CanMatchMaterialsToSkeletalMesh()
+        {
+            return TryGetSelectedExport(out var currentExport) && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(currentExport);
         }
 
         private bool CanViewInAssetViewer()
@@ -6048,6 +6071,78 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     break;
 
             }
+        }
+
+        private void MatchMaterialsToSkeletalMesh_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: var dataContext } } })
+            {
+                MatchMaterialsToSkeletalMesh();
+                return;
+            }
+
+            ExportEntry export = dataContext switch
+            {
+                ExportEntry exportEntry => exportEntry,
+                TreeViewEntry { Entry: ExportEntry exportEntry } => exportEntry,
+                _ => null
+            };
+
+            if (export is null)
+            {
+                MatchMaterialsToSkeletalMesh();
+                return;
+            }
+
+            if (!InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(export))
+            {
+                MessageBox.Show(this,
+                    "This action only works on SkeletalMeshComponent exports.",
+                    "Match MaterialInstanceConstants to SkeletalMesh",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            InterpreterExportLoader.MatchMaterialsToSkeletalMesh(this, export);
+            if (ReferenceEquals(export, SelectedItem?.Entry) || GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
+            {
+                Preview(true);
+            }
+        }
+
+        private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu contextMenu)
+            {
+                return;
+            }
+
+            var matchMicMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "MatchMaterialsToSkeletalMesh"));
+            if (matchMicMenuItem is null)
+            {
+                return;
+            }
+
+            matchMicMenuItem.Visibility = TryGetContextMenuExport(contextMenu, out var export)
+                                          && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(export)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private static bool TryGetContextMenuExport(ContextMenu contextMenu, out ExportEntry export)
+        {
+            object dataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
+            export = dataContext switch
+            {
+                ExportEntry exportEntry => exportEntry,
+                TreeViewEntry { Entry: ExportEntry exportEntry } => exportEntry,
+                _ => null
+            };
+
+            return export is not null;
         }
 
         private void HexConverterMenuItem_Click(object sender, RoutedEventArgs e)
