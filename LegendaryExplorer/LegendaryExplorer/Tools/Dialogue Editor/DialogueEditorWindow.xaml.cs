@@ -4932,6 +4932,10 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             editLink.Index = links.FindIndex(selectedLink.Equals);
+            ParseInlineLink(editLink);
+            ReOrderInlineLinkEditorLinks(editLink);
+            inlineLinkEditorNeedsSave = true;
+            SaveInlineLinkEditorChanges(focusEditedNode: false);
 
             if (!inlineLinkEditorIsReply)
             {
@@ -4957,6 +4961,10 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 editLink.ReplyStrRef = strRef;
+                ParseInlineLink(editLink);
+                ReOrderInlineLinkEditorLinks(editLink);
+                inlineLinkEditorNeedsSave = true;
+                SaveInlineLinkEditorChanges(focusEditedNode: false);
 
                 string selectedCategory = InputComboBoxDialog.GetValue(this,
                     "Pick the wheel position or interrupt:",
@@ -5006,6 +5014,7 @@ namespace LegendaryExplorer.DialogueEditor
                     ParseInlineLink(link);
                     inlineLinkEditorNeedsSave = true;
                     ReOrderInlineLinkEditorLinks(link);
+                    SaveInlineLinkEditorChanges(focusEditedNode: false);
                 }
             }), DispatcherPriority.Background);
         }

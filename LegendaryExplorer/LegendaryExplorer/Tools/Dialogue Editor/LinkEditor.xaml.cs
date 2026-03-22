@@ -381,6 +381,23 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             datagrid_Links.MouseDoubleClick += Datagrid_Table_MouseDoubleClick;
+            datagrid_Links.CellEditEnding += Datagrid_Links_CellEditEnding;
+        }
+
+        private void Datagrid_Links_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (e.Row.Item is not ReplyChoiceNode { IsEditableLink: true } link)
+                {
+                    return;
+                }
+
+                ParseLink(link);
+                NeedsSave = true;
+                ReOrderTable(link);
+                SaveAndRefreshNode();
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         private void Datagrid_Table_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -417,6 +434,10 @@ namespace LegendaryExplorer.DialogueEditor
             if (string.IsNullOrEmpty(ldlg))
                 return;
             editLink.Index = links.FindIndex(ldlg.Equals);
+            ParseLink(editLink);
+            ReOrderTable(editLink);
+            NeedsSave = true;
+            SaveAndRefreshNode();
 
             if (!IsReply)
             {
@@ -451,6 +472,7 @@ namespace LegendaryExplorer.DialogueEditor
             ParseLink(editLink);
             ReOrderTable(editLink);
             NeedsSave = true;
+            SaveAndRefreshNode();
         }
 
         private void ReOrderTable(ReplyChoiceNode selectedLink = null)
@@ -498,6 +520,18 @@ namespace LegendaryExplorer.DialogueEditor
             NeedsSave = false;
         }
 
+        private void SaveAndRefreshNode()
+        {
+            if (!NeedsSave)
+            {
+                return;
+            }
+
+            SaveToProperties();
+            ParentWindow.PushLocalGraphChanges(Dnode);
+            NeedsPush = false;
+        }
+
         private bool HasActiveLink()
         {
             return datagrid_Links.SelectedItem is ReplyChoiceNode { IsEditableLink: true };
@@ -514,6 +548,7 @@ namespace LegendaryExplorer.DialogueEditor
             editableLinks.Remove(result);
             NeedsSave = true;
             ReOrderTable();
+            SaveAndRefreshNode();
         }
 
         private void CloneLink()
@@ -527,6 +562,7 @@ namespace LegendaryExplorer.DialogueEditor
             editableLinks.Add(new ReplyChoiceNode(donor) { Order = editableLinks.Count + 1 });
             NeedsSave = true;
             RebuildDisplayRows(editableLinks, donor);
+            SaveAndRefreshNode();
         }
 
         private void MoveLink(object obj)
@@ -562,6 +598,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             NeedsSave = true;
             ReOrderTable(selectedLink);
+            SaveAndRefreshNode();
         }
 
         private void GoToTargetNode(object obj)
