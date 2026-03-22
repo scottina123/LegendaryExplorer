@@ -324,7 +324,7 @@
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2" Margin="0,5"
                     Value="{Binding Path=SelectedCodexPage.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
                 <TextBox Name="txt_cdxPgeDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
-                         Grid.RowSpan="4" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"
+                         Grid.RowSpan="3" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"
                          HorizontalContentAlignment="Left" VerticalScrollBarVisibility="Auto"/>
 
                 <Label Content="Texture Index:" Grid.Column="0" Grid.Row="3" />
@@ -338,6 +338,24 @@
                 <Label Content="Section:" Grid.Column="0" Grid.Row="5" />
                 <xctk:IntegerUpDown Grid.Column="1" Grid.Row="5" Margin="0,5"
                     Text="{Binding Path=SelectedCodexPage.Value.Section, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="CodexPageSection_ValueChanged"/>
+                <ComboBox Grid.Column="2" Grid.Row="5"
+                          Margin="10,5"
+                          ItemsSource="{Binding VanillaCodexSectionOptions}"
+                          SelectedValue="{Binding Path=SelectedCodexPage.Value.Section, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          SelectedValuePath="Key"
+                          IsEnabled="{Binding HasVanillaCodexSectionOptions}"
+                          IsTextSearchEnabled="True">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Value.TitleAsString}" TextWrapping="Wrap" />
+                                <TextBlock Margin="6,0,0,0"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                           Text="{Binding Key, StringFormat='({0})'}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
                 <Label Content="Audio Event:" Grid.Column="0" Grid.Row="6" VerticalAlignment="Top" />
                 <TextBox Grid.Column="1" Grid.Row="6" Grid.ColumnSpan="2"

@@ -61,6 +61,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private ObservableCollection<KeyValuePair<int, BioCodexSection>> _codexSections;
         private ObservableCollection<object> _primaryCodexTreeItems;
         private ObservableCollection<object> _secondaryCodexTreeItems;
+        private ObservableCollection<KeyValuePair<int, BioCodexSection>> _vanillaCodexSectionOptions = [];
         private KeyValuePair<int, BioCodexPage> _selectedCodexPage;
         private KeyValuePair<int, BioCodexSection> _selectedCodexSection;
         private int _selectedCodexTreeTabIndex;
@@ -188,6 +189,22 @@ namespace LegendaryExplorer.Tools.PlotEditor
             get => _secondaryCodexTreeItems;
             set => SetProperty(ref _secondaryCodexTreeItems, value);
         }
+
+        public ObservableCollection<KeyValuePair<int, BioCodexSection>> VanillaCodexSectionOptions
+        {
+            get => _vanillaCodexSectionOptions;
+            set
+            {
+                if (!SetProperty(ref _vanillaCodexSectionOptions, value ?? []))
+                {
+                    return;
+                }
+
+                OnPropertyChanged(nameof(HasVanillaCodexSectionOptions));
+            }
+        }
+
+        public bool HasVanillaCodexSectionOptions => VanillaCodexSectionOptions.Count > 0;
 
         public int SelectedCodexTreeTabIndex
         {
@@ -797,6 +814,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             if (package?.Game != MEGame.LE3)
             {
+                RefreshVanillaCodexSectionOptions();
                 return;
             }
 
@@ -842,6 +860,15 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     vanillaPackage?.Release();
                 }
             }
+
+            RefreshVanillaCodexSectionOptions();
+        }
+
+        private void RefreshVanillaCodexSectionOptions()
+        {
+            VanillaCodexSectionOptions = InitCollection(_vanillaCodexSections.Values
+                .Select(sectionInfo => sectionInfo.CodexSection)
+                .OrderBy(section => section.Key));
         }
 
         private IEnumerable<string> FindVanillaPlotFilePaths()
