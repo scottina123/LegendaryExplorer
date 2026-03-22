@@ -1488,9 +1488,9 @@ namespace LegendaryExplorer.DialogueEditor
             var prop = node.NodeProp;
             IsLocalUpdate = true;  //Full reparse of changed convo not needed.
 
-            if (e.PropertyName == "LineStrRef" || e.PropertyName == "SpeakerIndex")
+            if (e.PropertyName == "SpeakerIndex")
             {
-                IsLocalUpdate = false;  //StrRef/Speaker change requires full reparse due to FaceFX/Rechart.
+                IsLocalUpdate = false;  //Speaker change requires full reparse due to FaceFX/Rechart.
             }
             var needsRefresh = false; //Controls if refresh chart (auto happens on full parse)
 
@@ -1503,7 +1503,8 @@ namespace LegendaryExplorer.DialogueEditor
                 case "LineStrRef":
                     var srText = new StringRefProperty(node.LineStrRef, "srText");
                     prop.Properties.AddOrReplaceProp(srText);
-                    break;
+                    ApplyLineStrRefChange(node);
+                    return;
                 case "ConditionalOrBool":
                     var nConditionalFunc = new IntProperty(node.ConditionalOrBool, "nConditionalFunc");
                     prop.Properties.AddOrReplaceProp(nConditionalFunc);
@@ -3687,9 +3688,63 @@ namespace LegendaryExplorer.DialogueEditor
             node.LineStrRef = lineStrRef;
             node.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(lineStrRef, "srText"));
 
-            RecreateNodesToProperties(SelectedConv);
-            ForceRefreshPreserveLayout();
+            ApplyLineStrRefChange(node);
+        }
+
+        private void ApplyLineStrRefChange(DialogueNodeExtended node)
+        {
+            UpdateNodeLineDerivedData(node);
+
+            var graphNode = CurrentObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(o => o.Node.NodeCount == node.NodeCount && o.Node.IsReply == node.IsReply);
+
+            if (graphNode != null)
+            {
+                PushLocalGraphChanges(graphNode);
+            }
+            else
+            {
+                IsLocalUpdate = true;
+                RecreateNodesToProperties(SelectedConv);
+            }
+
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+        }
+
+        private void UpdateNodeLineDerivedData(DialogueNodeExtended node)
+        {
+            if (node == null || Pcc == null)
+            {
+                return;
+            }
+
+            node.Line = GetDisplayTlkText(node.LineStrRef, Pcc);
+
+            if (node.Line != "No data" && !string.IsNullOrWhiteSpace(node.Line))
+            {
+                node.FaceFX_Female = $"FXA_{node.LineStrRef}_F";
+                node.FaceFX_Male = $"FXA_{node.LineStrRef}_M";
+            }
+            else
+            {
+                node.FaceFX_Female = "None";
+                node.FaceFX_Male = "None";
+            }
+
+            if (Pcc.Game is MEGame.LE1 or MEGame.ME1)
+            {
+                node.WwiseStream_Female = null;
+                node.WwiseStream_Male = null;
+                return;
+            }
+
+            string femaleSearch = $"{node.LineStrRef}_f";
+            string maleSearch = $"{node.LineStrRef}_m";
+            node.WwiseStream_Female = Pcc.Exports.FirstOrDefault(x => x.ClassName == "WwiseStream"
+                && x.ObjectName.Name.Contains(femaleSearch, StringComparison.OrdinalIgnoreCase));
+            node.WwiseStream_Male = Pcc.Exports.FirstOrDefault(x => x.ClassName == "WwiseStream"
+                && x.ObjectName.Name.Contains(maleSearch, StringComparison.OrdinalIgnoreCase));
         }
 
         public void BeginInlineLineStrRefEdit(DiagNode node, System.Drawing.Point editorScreenPoint, float editorWidth, float editorHeight, PointF clickOffsetInEditor)
