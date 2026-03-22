@@ -1600,11 +1600,8 @@ namespace LegendaryExplorer.DialogueEditor
             var prop = node.NodeProp;
             IsLocalUpdate = true;  //Full reparse of changed convo not needed.
 
-            if (e.PropertyName == "SpeakerIndex")
-            {
-                IsLocalUpdate = false;  //Speaker change requires full reparse due to FaceFX/Rechart.
-            }
             var needsRefresh = false; //Controls if refresh chart (auto happens on full parse)
+            var needsNodeRefresh = false;
             var needsPlotSectionRefresh = false;
 
             switch (e.PropertyName)         // Props in both replies and entries. All Games.
@@ -1612,6 +1609,11 @@ namespace LegendaryExplorer.DialogueEditor
                 case "Listener":
                     var nListenerIndex = new IntProperty(node.Listener, "nListenerIndex");
                     prop.Properties.AddOrReplaceProp(nListenerIndex);
+                    needsNodeRefresh = true;
+                    break;
+                case "SpeakerIndex":
+                    node.SpeakerTag = SelectedSpeakerList.FirstOrDefault(s => s.SpeakerID == node.SpeakerIndex);
+                    needsNodeRefresh = true;
                     break;
                 case "LineStrRef":
                     var srText = new StringRefProperty(node.LineStrRef, "srText");
@@ -1726,6 +1728,10 @@ namespace LegendaryExplorer.DialogueEditor
             if (needsPlotSectionRefresh)
             {
                 RefreshNodePlotSectionsInGraph(node);
+            }
+            else if (needsNodeRefresh)
+            {
+                RefreshNodeInGraph(node, persistConversation: false);
             }
             else if (needsRefresh)
                 RefreshView();
@@ -3807,8 +3813,7 @@ namespace LegendaryExplorer.DialogueEditor
             node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(speakerId, "nSpeakerIndex"));
 
             RecreateNodesToProperties(SelectedConv);
-            RefreshView();
-            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+            RefreshNodeInGraph(node, persistConversation: false);
         }
 
         public void UpdateNodeListenerFromGraph(DialogueNodeExtended node, int listenerId)
@@ -3822,8 +3827,7 @@ namespace LegendaryExplorer.DialogueEditor
             node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(listenerId, "nListenerIndex"));
 
             RecreateNodesToProperties(SelectedConv);
-            RefreshView();
-            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+            RefreshNodeInGraph(node, persistConversation: false);
         }
 
         public void UpdateNodeLineStrRefFromGraph(DialogueNodeExtended node, int lineStrRef)
