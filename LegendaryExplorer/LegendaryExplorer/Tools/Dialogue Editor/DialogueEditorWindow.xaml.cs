@@ -1992,6 +1992,8 @@ namespace LegendaryExplorer.DialogueEditor
                     currentrow++;
                 }
 
+                EnsureLayoutHasNoOverlaps();
+
                 foreach (DiagEdEdge edge in graphEditor.edgeLayer)
                 {
                     ConvGraphEditor.UpdateEdge(edge);
@@ -2129,6 +2131,8 @@ namespace LegendaryExplorer.DialogueEditor
                     break;
                 }
             }
+
+            EnsureLayoutHasNoOverlaps();
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
@@ -2277,7 +2281,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
 
-            EnsureWaterfallLayoutHasNoOverlaps();
+            EnsureLayoutHasNoOverlaps();
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
@@ -2285,7 +2289,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private void EnsureWaterfallLayoutHasNoOverlaps()
+        private void EnsureLayoutHasNoOverlaps()
         {
             const float overlapPadding = 8f;
             var positionedNodes = CurrentObjects
