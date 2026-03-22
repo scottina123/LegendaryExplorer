@@ -20,6 +20,7 @@ using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Sound.Wwise;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
@@ -782,20 +783,19 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return true;
             }
 
-            if (entry is ImportEntry import && TryOpenImportSourcePackage(import, out sourcePackage, out var sourcePath))
+            if (entry is ImportEntry import)
             {
-                releasePackage = true;
-                wwiseEventExport = sourcePackage.FindExport(import.InstancedFullPath, "WwiseEvent");
+                var localization = package.Localization == MELocalization.None
+                    ? "INT"
+                    : package.Localization.ToString();
+
+                wwiseEventExport = EntryImporter.ResolveImport(import, new PackageCache(), localization);
                 if (wwiseEventExport != null)
                 {
+                    sourcePackage = wwiseEventExport.FileRef;
+                    releasePackage = !ReferenceEquals(sourcePackage, package);
                     return true;
                 }
-
-                sourcePackage.Release();
-                sourcePackage = null;
-                releasePackage = false;
-                errorMessage = $"Found source package '{sourcePath}', but could not resolve export '{import.InstancedFullPath}'.";
-                return false;
             }
 
             errorMessage = $"Could not locate source package for imported WwiseEvent '{entry.InstancedFullPath}'.";
@@ -835,22 +835,74 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return false;
             }
 
-            int streamUIndex = 0;
+            var streamUIndexes = new List<int>();
             if (wwiseEventExport.Game.IsGame3())
             {
                 var eventBinary = wwiseEventExport.GetBinaryData<WwiseEventBinary>();
-                streamUIndex = eventBinary.Links?.SelectMany(link => link.WwiseStreams ?? Enumerable.Empty<int>()).FirstOrDefault() ?? 0;
+                streamUIndexes.AddRange(eventBinary.Links?.SelectMany(link => link.WwiseStreams ?? Enumerable.Empty<int>()) ?? Enumerable.Empty<int>());
             }
             else if (wwiseEventExport.Game is MEGame.LE2 or MEGame.ME2)
             {
                 var references = wwiseEventExport.GetProperty<ArrayProperty<StructProperty>>("References");
                 var streams = references?.FirstOrDefault()?.Properties.GetProp<StructProperty>("Relationships")?.Properties.GetProp<ArrayProperty<ObjectProperty>>("Streams");
-                streamUIndex = streams?.FirstOrDefault()?.Value ?? 0;
+                streamUIndexes.AddRange(streams?.Select(x => x.Value) ?? Enumerable.Empty<int>());
             }
 
-            return streamUIndex != 0
-                   && wwiseEventExport.FileRef.TryGetUExport(streamUIndex, out wwiseStreamExport)
-                   && wwiseStreamExport.ClassName == "WwiseStream";
+            var candidates = streamUIndexes
+                .Where(u => u != 0)
+                .Select(u => wwiseEventExport.FileRef.TryGetUExport(u, out var export) ? export : null)
+                .Where(export => export?.ClassName == "WwiseStream")
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            wwiseStreamExport = GetBestMatchingWwiseStreamExport(wwiseEventExport.ObjectNameString, candidates) ?? candidates[0];
+            return wwiseStreamExport != null;
+        }
+
+        private static ExportEntry GetBestMatchingWwiseStreamExport(string eventName, IEnumerable<ExportEntry> candidates)
+        {
+            if (string.IsNullOrWhiteSpace(eventName))
+            {
+                return candidates.FirstOrDefault();
+            }
+
+            var stringRef = eventName.Split('_', ',').FirstOrDefault(part => int.TryParse(part, out _));
+            var suffix = eventName.Contains("_f_", StringComparison.OrdinalIgnoreCase) || eventName.EndsWith("_f_Play", StringComparison.OrdinalIgnoreCase)
+                ? "_f"
+                : eventName.Contains("_m_", StringComparison.OrdinalIgnoreCase) || eventName.EndsWith("_m_Play", StringComparison.OrdinalIgnoreCase)
+                    ? "_m"
+                    : string.Empty;
+
+            ExportEntry bestMatch = null;
+            var bestScore = -1;
+
+            foreach (var candidate in candidates)
+            {
+                var name = candidate.ObjectNameString;
+                var score = 0;
+
+                if (!string.IsNullOrWhiteSpace(stringRef) && name.Contains(stringRef, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 2;
+                }
+
+                if (!string.IsNullOrWhiteSpace(suffix) && name.Contains(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 1;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestMatch = candidate;
+                }
+            }
+
+            return bestMatch;
         }
 
         private bool TryOpenImportSourcePackage(ImportEntry importEntry, out IMEPackage sourcePackage, out string sourcePath)
