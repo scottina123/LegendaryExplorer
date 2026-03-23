@@ -71,6 +71,45 @@ public class RecentFileSet
 
 public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IActorEditorContext
 {
+    private static readonly (string PropertyName, string DisplayName)[] LightingChannelMenuItems =
+    [
+        ("bInitialized", "bInitialized"),
+        ("BSP", "BSP"),
+        ("Static", "Static"),
+        ("Dynamic", "Dynamic"),
+        ("CompositeDynamic", "Composite Dynamic"),
+        ("Skybox", "Skybox"),
+        ("Unnamed_1", "Unnamed 1"),
+        ("Unnamed_2", "Unnamed 2"),
+        ("Unnamed_3", "Unnamed 3"),
+        ("Unnamed_4", "Unnamed 4"),
+        ("Unnamed_5", "Unnamed 5"),
+        ("Unnamed_6", "Unnamed 6"),
+        ("Cinematic_1", "Cinematic 1"),
+        ("Cinematic_2", "Cinematic 2"),
+        ("Cinematic_3", "Cinematic 3")
+    ];
+
+    private static readonly (string PropertyName, string DisplayName)[] CollisionMenuItems =
+    [
+        ("CollideActors", "Collide Actors"),
+        ("BlockActors", "Block Actors"),
+        ("BlockRigidBody", "Block Rigid Body")
+    ];
+
+    private static readonly (string PropertyName, string DisplayName)[] LightingMenuItems =
+    [
+        ("bAcceptsLights", "Accepts Lights"),
+        ("bAcceptsDynamicLights", "Accepts Dynamic Lights")
+    ];
+
+    private static readonly (string PropertyName, string DisplayName)[] ShadowMenuItems =
+    [
+        ("bCastDynamicShadow", "Cast Dynamic Shadow"),
+        ("CastShadow", "Cast Shadow"),
+        ("bCastHiddenShadow", "Cast Hidden Shadow")
+    ];
+
     public LevelEditorRenderContext RenderContext { get; }
 
     public ObservableCollectionExtended<OpenLevelFile> OpenFiles { get; } = [];
@@ -2197,10 +2236,38 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         contextMenu.Items.Add(openPEItem);
 
+        ExportEntry lightingTargetExport = GetLightingChannelsTargetExport(actor);
+        if (lightingTargetExport is not null)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+
+            var lightingChannelsMenu = BuildLightingChannelsMenu(actor, lightingTargetExport);
+            if (lightingChannelsMenu is not null)
+            {
+                contextMenu.Items.Add(lightingChannelsMenu);
+            }
+        }
+
         ExportEntry smcExport = GetStaticMeshComponentExport(actor);
         if (smcExport is not null)
         {
-            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            if (lightingTargetExport is null)
+            {
+                contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            }
+
+            var collisionMenu = BuildCollisionMenu(actor, smcExport);
+            if (collisionMenu is not null)
+            {
+                contextMenu.Items.Add(collisionMenu);
+            }
+
+            var shadowMenu = BuildShadowMenu(actor, smcExport);
+            if (shadowMenu is not null)
+            {
+                contextMenu.Items.Add(shadowMenu);
+            }
+
             var replaceMeshItem = new System.Windows.Controls.MenuItem
             {
                 Header = "Replace Static Mesh...",
@@ -2257,6 +2324,195 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         parentItem.Items.Add(metaItem);
 
         contextMenu.Items.Add(parentItem);
+    }
+
+    private System.Windows.Controls.MenuItem BuildLightingChannelsMenu(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return null;
+        }
+
+        var lightingChannelsMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = "Lighting Channels",
+            IsEnabled = !actor.IsReadOnly
+        };
+
+        foreach ((string propertyName, string displayName) in LightingChannelMenuItems)
+        {
+            var channelItem = new System.Windows.Controls.MenuItem
+            {
+                Header = displayName,
+                IsCheckable = true,
+                IsChecked = GetLightingChannelValue(componentExport, propertyName),
+                IsEnabled = !actor.IsReadOnly,
+                StaysOpenOnClick = true
+            };
+            channelItem.Click += (_, _) => SetLightingChannelValue(componentExport, propertyName, channelItem.IsChecked);
+            lightingChannelsMenu.Items.Add(channelItem);
+        }
+
+        if (componentExport.IsA("StaticMeshComponent"))
+        {
+            var lightingMenu = new System.Windows.Controls.MenuItem
+            {
+                Header = "Lighting",
+                IsEnabled = !actor.IsReadOnly
+            };
+
+            foreach ((string propertyName, string displayName) in LightingMenuItems)
+            {
+                var lightingItem = new System.Windows.Controls.MenuItem
+                {
+                    Header = displayName,
+                    IsCheckable = true,
+                    IsChecked = GetBoolPropertyValue(componentExport, propertyName),
+                    IsEnabled = !actor.IsReadOnly,
+                    StaysOpenOnClick = true
+                };
+                lightingItem.Click += (_, _) => SetBoolPropertyValue(componentExport, propertyName, lightingItem.IsChecked);
+                lightingMenu.Items.Add(lightingItem);
+            }
+
+            lightingChannelsMenu.Items.Add(new Separator());
+            lightingChannelsMenu.Items.Add(lightingMenu);
+        }
+
+        return lightingChannelsMenu;
+    }
+
+    private static bool GetLightingChannelValue(ExportEntry export, string propertyName)
+    {
+        var lightingChannels = export.GetProperty<StructProperty>("LightingChannels");
+        if (lightingChannels is null)
+        {
+            return false;
+        }
+
+        if (propertyName == "bInitialized")
+        {
+            return lightingChannels.Properties.GetProp<BoolProperty>("bInitialized")?.Value
+                   ?? lightingChannels.Properties.GetProp<BoolProperty>("bIsInitialized")?.Value
+                   ?? false;
+        }
+
+        return lightingChannels.Properties.GetProp<BoolProperty>(propertyName)?.Value ?? false;
+    }
+
+    private System.Windows.Controls.MenuItem BuildCollisionMenu(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return null;
+        }
+
+        var collisionMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = "Collision",
+            IsEnabled = !actor.IsReadOnly
+        };
+
+        foreach ((string propertyName, string displayName) in CollisionMenuItems)
+        {
+            var collisionItem = new System.Windows.Controls.MenuItem
+            {
+                Header = displayName,
+                IsCheckable = true,
+                IsChecked = GetBoolPropertyValue(componentExport, propertyName),
+                IsEnabled = !actor.IsReadOnly,
+                StaysOpenOnClick = true
+            };
+            collisionItem.Click += (_, _) => SetBoolPropertyValue(componentExport, propertyName, collisionItem.IsChecked);
+            collisionMenu.Items.Add(collisionItem);
+        }
+
+        return collisionMenu;
+    }
+
+    private System.Windows.Controls.MenuItem BuildShadowMenu(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return null;
+        }
+
+        var shadowMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = "Shadow",
+            IsEnabled = !actor.IsReadOnly
+        };
+
+        foreach ((string propertyName, string displayName) in ShadowMenuItems)
+        {
+            var shadowItem = new System.Windows.Controls.MenuItem
+            {
+                Header = displayName,
+                IsCheckable = true,
+                IsChecked = GetBoolPropertyValue(componentExport, propertyName),
+                IsEnabled = !actor.IsReadOnly,
+                StaysOpenOnClick = true
+            };
+            shadowItem.Click += (_, _) => SetBoolPropertyValue(componentExport, propertyName, shadowItem.IsChecked);
+            shadowMenu.Items.Add(shadowItem);
+        }
+
+        return shadowMenu;
+    }
+
+    private static bool GetBoolPropertyValue(ExportEntry export, string propertyName)
+    {
+        return export.GetProperty<BoolProperty>(propertyName)?.Value ?? false;
+    }
+
+    private static void SetBoolPropertyValue(ExportEntry export, string propertyName, bool value)
+    {
+        PropertyCollection props = export.GetProperties();
+        props.AddOrReplaceProp(new BoolProperty(value, propertyName));
+        export.WriteProperties(props);
+    }
+
+    private static void SetLightingChannelValue(ExportEntry export, string propertyName, bool value)
+    {
+        PropertyCollection props = export.GetProperties();
+        StructProperty lightingChannels = GetOrCreateLightingChannelsProperty(props);
+        if (propertyName == "bInitialized")
+        {
+            string initPropertyName = lightingChannels.Properties.GetProp<BoolProperty>("bInitialized") is not null
+                ? "bInitialized"
+                : lightingChannels.Properties.GetProp<BoolProperty>("bIsInitialized") is not null
+                    ? "bIsInitialized"
+                    : "bInitialized";
+            lightingChannels.Properties.AddOrReplaceProp(new BoolProperty(value, initPropertyName));
+        }
+        else
+        {
+            lightingChannels.Properties.AddOrReplaceProp(new BoolProperty(value, propertyName));
+        }
+        props.AddOrReplaceProp(lightingChannels);
+        export.WriteProperties(props);
+    }
+
+    private static StructProperty GetOrCreateLightingChannelsProperty(PropertyCollection props)
+    {
+        var lightingChannels = props.GetProp<StructProperty>("LightingChannels");
+        if (lightingChannels is null)
+        {
+            lightingChannels = new StructProperty("LightingChannelContainer", false,
+                new BoolProperty(true, "bInitialized"))
+            {
+                Name = "LightingChannels"
+            };
+            return lightingChannels;
+        }
+
+        if (lightingChannels.Properties.GetProp<BoolProperty>("bIsInitialized") is null
+            && lightingChannels.Properties.GetProp<BoolProperty>("bInitialized") is null)
+        {
+            lightingChannels.Properties.AddOrReplaceProp(new BoolProperty(true, "bInitialized"));
+        }
+
+        return lightingChannels;
     }
 
     #endregion
@@ -2425,6 +2681,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             StaticMeshComponentActorProxy => actor.Export,
             _ => null
         };
+
+    private static ExportEntry GetLightingChannelsTargetExport(ActorProxy actor)
+    {
+        if (actor.Export.IsA("StaticMeshComponent") || actor.Export.IsA("LightComponent"))
+        {
+            return actor.Export;
+        }
+
+        return actor.Components
+            .Select(component => component.Export)
+            .FirstOrDefault(export => export.IsA("StaticMeshComponent") || export.IsA("LightComponent"));
+    }
 
     private static ExportEntry FindNearestPackageExport(IEntry entry)
     {
