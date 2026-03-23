@@ -2682,6 +2682,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     }
 
                     bool removedFromLevel = selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
+                    RemoveFromStaticCollectionActors(itemsToTrash);
 
                     EntryPruner.TrashEntries(Pcc, itemsToTrash);
 
@@ -4216,6 +4217,69 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return true;
             }
             return false;
+        }
+
+        private void RemoveFromStaticCollectionActors(IEnumerable<IEntry> entriesToTrash)
+        {
+            var itemsToTrash = entriesToTrash.OfType<ExportEntry>().ToList();
+            if (itemsToTrash.Count == 0)
+            {
+                return;
+            }
+
+            var entriesToTrashSet = itemsToTrash.Cast<IEntry>().ToHashSet();
+            foreach (var componentGroup in itemsToTrash
+                         .Where(exp => exp.Parent is ExportEntry
+                         {
+                             ClassName: nameof(StaticMeshCollectionActor) or nameof(StaticLightCollectionActor)
+                         } parent && !entriesToTrashSet.Contains(parent))
+                         .GroupBy(exp => (ExportEntry)exp.Parent))
+            {
+                ExportEntry scaExp = componentGroup.Key;
+                if (ObjectBinary.From(scaExp) is not StaticCollectionActor scaBin)
+                {
+                    continue;
+                }
+
+                var componentsProp = scaExp.GetProperty<ArrayProperty<ObjectProperty>>(scaBin.ComponentPropName);
+                if (componentsProp == null || componentsProp.Count == 0)
+                {
+                    continue;
+                }
+
+                HashSet<int> componentUIndexes = [.. componentGroup.Select(exp => exp.UIndex)];
+                List<int> indicesToRemove = [];
+                for (int i = 0; i < componentsProp.Count; i++)
+                {
+                    if (componentUIndexes.Contains(componentsProp[i].Value))
+                    {
+                        indicesToRemove.Add(i);
+                    }
+                }
+
+                if (indicesToRemove.Count == 0)
+                {
+                    continue;
+                }
+
+                for (int i = indicesToRemove.Count - 1; i >= 0; i--)
+                {
+                    int indexToRemove = indicesToRemove[i];
+                    componentsProp.RemoveAt(indexToRemove);
+                    if (scaBin.Components != null && indexToRemove < scaBin.Components.Count)
+                    {
+                        scaBin.Components.RemoveAt(indexToRemove);
+                    }
+
+                    if (scaBin.LocalToWorldTransforms != null && indexToRemove < scaBin.LocalToWorldTransforms.Count)
+                    {
+                        scaBin.LocalToWorldTransforms.RemoveAt(indexToRemove);
+                    }
+                }
+
+                scaExp.WriteProperty(componentsProp);
+                scaExp.WriteBinary(scaBin);
+            }
         }
 
         private void ImportBinaryData() => ImportExpData(true);
