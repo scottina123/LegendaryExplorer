@@ -364,8 +364,15 @@
                     </TextBlock>
                 </StatusBarItem>
             </StatusBar>
+            <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,0" Visibility="{Binding IsMaterialSelectionMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock VerticalAlignment="Center" Text="{Binding MaterialSelectionPrompt}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <Button Content="Cancel" MinWidth="90" Click="CancelMaterialSelectionButton_Click"/>
+                    <Button Content="Use Selected Material" Margin="8,0,0,0" MinWidth="150" IsDefault="True" IsEnabled="{Binding HasSelectedMaterialRecord}" Click="SelectMaterialButton_Click"/>
+                </StackPanel>
+            </DockPanel>
             <DockPanel Name="MidDock">
-                <TabControl SelectedIndex="{Binding currentView, Mode=TwoWay}" SelectionChanged="TabControl_SelectionChanged">
+                <TabControl x:Name="MainTabControl" SelectedIndex="{Binding currentView, Mode=TwoWay}" SelectionChanged="TabControl_SelectionChanged">
                     <TabControl.Template>
                         <ControlTemplate TargetType="{x:Type TabControl}">
                             <Grid KeyboardNavigation.TabNavigation="Local" SnapsToDevicePixels="True">
@@ -672,6 +679,7 @@
                                     <ComboBox Width="190" Margin="0,0,12,0"
                                               ItemsSource="{Binding MaterialTypeFilters}"
                                               SelectedItem="{Binding SelectedMaterialTypeFilter, Mode=TwoWay}"
+                                              IsEnabled="{Binding IsMaterialSelectionMode, Converter={StaticResource InverseBooleanConverter}}"
                                               IsTextSearchEnabled="True"/>
                                     <TextBlock Text="Used On:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                     <controls:FlagsComboBox Width="190" Margin="0,0,12,0"
@@ -721,7 +729,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
-                            <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="2" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed">
+                            <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="2" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed" MouseDoubleClick="SelectedMaterial_DoubleClick">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>

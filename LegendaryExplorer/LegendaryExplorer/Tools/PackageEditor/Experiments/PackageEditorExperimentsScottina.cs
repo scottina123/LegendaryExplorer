@@ -59,7 +59,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private sealed record PreservedMaterialState(
             string[] PropertyNames,
             Dictionary<string, Property> Properties,
-            Material OriginalBinary);
+            Material OriginalBinary,
+            MaterialInstance OriginalInstanceBinary);
 
         private sealed record RepairSummary(
             int FixedCount,
@@ -148,6 +149,117 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         "Some FaceFXAssets could not be processed.",
                         pew).Show();
                 });
+        }
+
+        public static void RestoreMaterialFromChosenAssetDatabase(PackageEditorWindow pew, ExportEntry export, Action onCompleted = null)
+        {
+            if (pew?.Pcc == null || export == null)
+            {
+                return;
+            }
+
+            bool isMaterial = export.ClassName == "Material";
+            bool isMaterialInstance = export.IsA("MaterialInstanceConstant");
+            if (!isMaterial && !isMaterialInstance)
+            {
+                MessageBox.Show(pew, "This action is only available for Material and MaterialInstanceConstant exports.", "Restore material from asset database", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!pew.Pcc.Game.IsMEGame())
+            {
+                MessageBox.Show(pew, "Material restore is only supported for Mass Effect package files.", "Restore material from asset database", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Settings.AssetDBPath) || !File.Exists(Settings.AssetDBPath))
+            {
+                MessageBox.Show(pew, "Asset Database not found. Configure or build the Asset Database first.", "Restore material from asset database", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string gamePath = MEDirectories.GetDefaultGamePath(pew.Pcc.Game);
+            if (string.IsNullOrWhiteSpace(gamePath) || !Directory.Exists(gamePath))
+            {
+                MessageBox.Show(pew, $"No {pew.Pcc.Game} installation was found. Configure the game path first.", "Restore material from asset database", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            AssetDatabaseWindow.ShowMaterialPicker(pew, pew.Pcc.Game, isMaterialInstance, selection =>
+            {
+                if (selection?.Material == null)
+                {
+                    return;
+                }
+
+                bool preserveMicUniformExpressionTextures = false;
+                if (isMaterialInstance)
+                {
+                    var preserveResult = MessageBox.Show(pew,
+                        "Preserve UniformExpressionTextures from the original MaterialInstanceConstant binary?",
+                        "Restore material from asset database",
+                        MessageBoxButton.YesNoCancel,
+                        MessageBoxImage.Question);
+                    if (preserveResult == MessageBoxResult.Cancel)
+                    {
+                        return;
+                    }
+
+                    preserveMicUniformExpressionTextures = preserveResult == MessageBoxResult.Yes;
+                }
+
+                pew.BusyText = "Restoring material from asset database";
+                pew.IsBusy = true;
+
+                Task.Run(() => RestoreMaterialFromChosenRecord(pew.Pcc, export, Settings.AssetDBPath, gamePath, selection.Material, preserveMicUniformExpressionTextures))
+                    .ContinueWithOnUIThread(task =>
+                    {
+                        pew.IsBusy = false;
+
+                        if (task.Exception != null)
+                        {
+                            MessageBox.Show(pew, task.Exception.FlattenException(), "Restore material from asset database", MessageBoxButton.OK, MessageBoxImage.Error);
+                            return;
+                        }
+
+                        RepairSummary summary = task.Result;
+                        if (summary.FixedCount > 0)
+                        {
+                            onCompleted?.Invoke();
+                        }
+
+                        if (summary.Failures.Count == 0 && summary.WarningCount == 0)
+                        {
+                            MessageBox.Show(pew,
+                                $"Restored #{export.UIndex} {export.InstancedFullPath} using '{selection.Material.DisplayString}'.",
+                                "Restore material from asset database",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+                            return;
+                        }
+
+                        var lines = new List<string>();
+                        if (summary.Failures.Count > 0)
+                        {
+                            lines.AddRange(summary.Failures);
+                        }
+
+                        if (summary.Warnings.Count > 0)
+                        {
+                            if (lines.Count > 0)
+                            {
+                                lines.Add(string.Empty);
+                            }
+
+                            lines.AddRange(summary.Warnings);
+                        }
+
+                        new ListDialog(lines,
+                            "Restore material from asset database",
+                            "The selected donor was applied, but warnings or failures were reported.",
+                            pew).Show();
+                    });
+            }, export.ObjectName.Name);
         }
 
         public static void FixBrokenMaterialsUsingAssetDatabase(PackageEditorWindow pew)
@@ -438,6 +550,59 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             return new RepairSummary(fixedCount, warnings.Count, failures, warnings);
         }
 
+        private static RepairSummary RestoreMaterialFromChosenRecord(IMEPackage package, ExportEntry targetExport, string assetDbPath, string gamePath, MaterialRecord selectedMaterial, bool preserveMicUniformExpressionTextures)
+        {
+            var assetDb = new AssetDB();
+            AssetDatabaseWindow.LoadDatabase(assetDbPath, package.Game, assetDb, CancellationToken.None).GetAwaiter().GetResult();
+            if (assetDb.Materials.Count == 0)
+            {
+                throw new InvalidOperationException($"The asset database does not contain any material records for {package.Game}.");
+            }
+
+            PreservedMaterialState preservedState = CapturePreservedState(targetExport);
+            var filePathCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var donorPackage = TryOpenBestDonorPackage(assetDb, package.Game, gamePath, [selectedMaterial], targetExport, filePathCache, out var donorExport, out var donorDescription);
+            if (donorPackage == null || donorExport == null)
+            {
+                return new RepairSummary(0, 0,
+                    [$"FAILED #{targetExport.UIndex} {targetExport.InstancedFullPath}: unable to open the selected donor material from the asset database."],
+                    []);
+            }
+
+            var rop = new RelinkerOptionsPackage
+            {
+                Cache = new PackageCache(),
+                ImportExportDependencies = true,
+                PortImportsMemorySafe = true,
+                PortExportsAsImportsWhenPossible = false
+            };
+            List<EntryStringPair> relinkIssues = EntryImporter.ImportAndRelinkEntries(
+                EntryImporter.PortingOption.ReplaceSingularWithRelink,
+                donorExport,
+                package,
+                targetExport,
+                true,
+                rop,
+                out _);
+
+            RestorePreservedState(targetExport, preservedState, preserveMicUniformExpressionTextures);
+
+            if (ShaderCacheManipulator.IsMaterialBroken(targetExport))
+            {
+                return new RepairSummary(0, 0,
+                    [$"FAILED #{targetExport.UIndex} {targetExport.InstancedFullPath}: donor '{donorDescription}' was applied, but the material still reports as broken."],
+                    []);
+            }
+
+            var warnings = new List<string>();
+            if (relinkIssues.Count > 0)
+            {
+                warnings.Add($"WARNING #{targetExport.UIndex} {targetExport.InstancedFullPath}: restored using '{donorDescription}', but {relinkIssues.Count} relink issue(s) were reported.");
+            }
+
+            return new RepairSummary(1, warnings.Count, [], warnings);
+        }
+
         private static PreservedMaterialState CapturePreservedState(ExportEntry export)
         {
             string[] propertyNames = export.ClassName == "Material"
@@ -455,10 +620,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             Material originalBinary = export.ClassName == "Material" ? export.GetBinaryData<Material>() : null;
-            return new PreservedMaterialState(propertyNames, preservedProps, originalBinary);
+            MaterialInstance originalInstanceBinary = export.IsA("MaterialInstance") ? export.GetBinaryData<MaterialInstance>() : null;
+            return new PreservedMaterialState(propertyNames, preservedProps, originalBinary, originalInstanceBinary);
         }
 
-        private static void RestorePreservedState(ExportEntry export, PreservedMaterialState state)
+        private static void RestorePreservedState(ExportEntry export, PreservedMaterialState state, bool preserveMicUniformExpressionTextures = false)
         {
             PropertyCollection props = export.GetProperties();
             foreach (string propertyName in state.PropertyNames)
@@ -479,9 +645,45 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 RestoreMaterialParameterData(state.OriginalBinary, donorBinary, export.Game);
                 export.WritePropertiesAndBinary(props, donorBinary);
             }
+            else if (state.OriginalInstanceBinary != null)
+            {
+                if (preserveMicUniformExpressionTextures)
+                {
+                    MaterialInstance donorBinary = export.GetBinaryData<MaterialInstance>();
+                    RestoreMaterialInstanceUniformExpressionTextures(state.OriginalInstanceBinary, donorBinary, export.Game);
+                    export.WritePropertiesAndBinary(props, donorBinary);
+                }
+                else
+                {
+                    export.WriteProperties(props);
+                }
+            }
             else
             {
                 export.WriteProperties(props);
+            }
+        }
+
+        private static void RestoreMaterialInstanceUniformExpressionTextures(MaterialInstance originalBinary, MaterialInstance donorBinary, MEGame game)
+        {
+            if (originalBinary?.SM3StaticPermutationResource != null && donorBinary?.SM3StaticPermutationResource != null)
+            {
+                RestoreMaterialInstanceUniformExpressionTextures(originalBinary.SM3StaticPermutationResource, donorBinary.SM3StaticPermutationResource, game);
+            }
+
+            if (game != MEGame.UDK && originalBinary?.SM2StaticPermutationResource != null && donorBinary?.SM2StaticPermutationResource != null)
+            {
+                RestoreMaterialInstanceUniformExpressionTextures(originalBinary.SM2StaticPermutationResource, donorBinary.SM2StaticPermutationResource, game);
+            }
+        }
+
+        private static void RestoreMaterialInstanceUniformExpressionTextures(MaterialResource source, MaterialResource target, MEGame game)
+        {
+            target.UniformExpressionTextures = source.UniformExpressionTextures?.ToArray() ?? [];
+            if (game < MEGame.ME3)
+            {
+                target.Uniform2DTextureExpressions = source.Uniform2DTextureExpressions?.ToArray() ?? [];
+                target.UniformCubeTextureExpressions = source.UniformCubeTextureExpressions?.ToArray() ?? [];
             }
         }
 

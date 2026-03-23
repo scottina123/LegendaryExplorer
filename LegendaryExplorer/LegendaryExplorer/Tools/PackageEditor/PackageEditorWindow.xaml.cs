@@ -662,6 +662,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return TryGetSelectedExport(out var currentExport) && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(currentExport);
         }
 
+        private static bool CanRestoreMaterialFromAssetDatabase(ExportEntry export)
+        {
+            return export is not null && (export.ClassName == "Material" || export.IsA("MaterialInstanceConstant"));
+        }
+
         private bool CanViewInAssetViewer()
         {
             if (Pcc != null && Pcc.Game.IsLEGame() && TryGetSelectedExport(out var currentExport) && GameController.TryGetMEProcess(currentExport.Game, out _) && AssetViewerWindow.SupportsAsset(currentExport))
@@ -6111,6 +6116,37 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void RestoreMaterialFromAssetDatabase_Click(object sender, RoutedEventArgs e)
+        {
+            ExportEntry export = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuExport(contextMenu, out var contextExport))
+            {
+                export = contextExport;
+            }
+            else
+            {
+                TryGetSelectedExport(out export);
+            }
+
+            if (!CanRestoreMaterialFromAssetDatabase(export))
+            {
+                MessageBox.Show(this,
+                    "This action only works on Material and MaterialInstanceConstant exports.",
+                    "Restore from Asset Database material",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            PackageEditorExperimentsScottina.RestoreMaterialFromChosenAssetDatabase(this, export, () =>
+            {
+                if (ReferenceEquals(export, SelectedItem?.Entry) || GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
+                {
+                    Preview(true);
+                }
+            });
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -6121,15 +6157,29 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var matchMicMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "MatchMaterialsToSkeletalMesh"));
-            if (matchMicMenuItem is null)
+            var restoreMaterialMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "RestoreMaterialFromAssetDatabase"));
+            if (matchMicMenuItem is null && restoreMaterialMenuItem is null)
             {
                 return;
             }
 
-            matchMicMenuItem.Visibility = TryGetContextMenuExport(contextMenu, out var export)
-                                          && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(export)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            bool hasExport = TryGetContextMenuExport(contextMenu, out var export);
+
+            if (matchMicMenuItem is not null)
+            {
+                matchMicMenuItem.Visibility = hasExport && InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (restoreMaterialMenuItem is not null)
+            {
+                restoreMaterialMenuItem.Visibility = hasExport && CanRestoreMaterialFromAssetDatabase(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
         }
 
         private static bool TryGetContextMenuExport(ContextMenu contextMenu, out ExportEntry export)

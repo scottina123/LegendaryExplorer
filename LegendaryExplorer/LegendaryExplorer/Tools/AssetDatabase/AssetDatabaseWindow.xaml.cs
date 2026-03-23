@@ -162,6 +162,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public const string dbCurrentBuild = "9.5"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
+        private readonly bool _isMaterialSelectionMode;
+        private readonly bool _selectMaterialInstancesOnly;
+        private readonly string _initialMaterialSearchText;
+        private Action<MaterialSelectionResult> _materialSelectionHandler;
         private int _currentView;
         public int currentView
         {
@@ -172,6 +176,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 SetProperty(ref _currentView, value);
             }
         }
+
+        public bool IsMaterialSelectionMode => _isMaterialSelectionMode;
+
+        public bool HasSelectedMaterialRecord => lstbx_Materials?.SelectedItem is MaterialRecord;
+
+        public string MaterialSelectionPrompt => _selectMaterialInstancesOnly
+            ? "Select the donor MaterialInstanceConstant to restore from."
+            : "Select the donor Material to restore from.";
+
+        public MaterialSelectionResult SelectedMaterialDialogResult { get; private set; }
 
         private bool _isBusy;
         public bool IsBusy
@@ -330,6 +344,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string LineConversationSearchColumn = "Line Conversation";
         private const string FileLineSearchColumn = "File";
         private const string LocationLineSearchColumn = "Location";
+
+        public sealed record MaterialSelectionResult(MaterialRecord Material);
 
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
         public string SelectedMeshTypeFilter
@@ -712,6 +728,27 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             InitializeComponent();
         }
 
+        public AssetDatabaseWindow(MEGame game, bool materialSelectionMode, bool selectMaterialInstancesOnly, string initialMaterialSearchText = null) : this()
+        {
+            CurrentGame = game;
+            _isMaterialSelectionMode = materialSelectionMode;
+            _selectMaterialInstancesOnly = selectMaterialInstancesOnly;
+            _initialMaterialSearchText = initialMaterialSearchText?.Trim();
+        }
+
+        public static void ShowMaterialPicker(Window owner, MEGame game, bool selectMaterialInstancesOnly, Action<MaterialSelectionResult> onMaterialSelected, string initialMaterialSearchText = null)
+        {
+            var picker = new AssetDatabaseWindow(game, true, selectMaterialInstancesOnly, initialMaterialSearchText)
+            {
+                Owner = owner,
+                WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
+            };
+
+            picker._materialSelectionHandler = onMaterialSelected;
+            picker.Show();
+            picker.Activate();
+        }
+
         private void LoadCommands()
         {
             GenerateDBCommand = new GenericCommand(GenerateDatabase);
@@ -765,6 +802,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
                 SwitchGame(gameDbToLoad);
             }
+
+            if (_isMaterialSelectionMode)
+            {
+                ConfigureMaterialSelectionMode();
+            }
+
             Activate();
         }
 
@@ -2049,6 +2092,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                         GetConvoLinesBackground();
                         StartOwnerNamePrewarm();
+
+                        if (_isMaterialSelectionMode)
+                        {
+                            ConfigureMaterialSelectionMode();
+                        }
                     }
                 }).ContinueWith(x =>
                 {
@@ -2638,6 +2686,33 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     menu_OpenUsage.Header = "Open Usage";
                 }
                 previousView = currentView;
+            }
+        }
+
+        private void ConfigureMaterialSelectionMode()
+        {
+            Title = _selectMaterialInstancesOnly ? "Select donor MaterialInstanceConstant" : "Select donor Material";
+            FilterWatermark = _selectMaterialInstancesOnly ? "Search donor MaterialInstanceConstants" : "Search donor materials";
+
+            if (MainTabControl != null)
+            {
+                for (int i = 0; i < MainTabControl.Items.Count; i++)
+                {
+                    if (MainTabControl.Items[i] is TabItem tab)
+                    {
+                        tab.Visibility = i == 2 ? Visibility.Visible : Visibility.Collapsed;
+                    }
+                }
+            }
+
+            currentView = 2;
+            SelectedMaterialTypeFilter = _selectMaterialInstancesOnly ? MaterialInstanceConstantFilterOption : NormalMaterialFilterOption;
+            FilterText = _initialMaterialSearchText ?? string.Empty;
+            Filter();
+
+            if (lstbx_Materials?.SelectedItem is null && lstbx_Materials?.Items.Count > 0)
+            {
+                lstbx_Materials.SelectedIndex = 0;
             }
         }
 
@@ -5219,6 +5294,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void SelectedMaterial_Changed(object sender, SelectionChangedEventArgs e)
         {
+            OnPropertyChanged(nameof(HasSelectedMaterialRecord));
             MaterialEditorExportLoader_Control?.UnloadExport();
             if (sender is ListBoxScroll lbs && lbs.SelectedItem is MaterialRecord mr)
             {
@@ -5242,6 +5318,43 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     }
                 }
             }
+        }
+
+        private void SelectedMaterial_DoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (_isMaterialSelectionMode)
+            {
+                ConfirmSelectedMaterial();
+            }
+        }
+
+        private void SelectMaterialButton_Click(object sender, RoutedEventArgs e)
+        {
+            ConfirmSelectedMaterial();
+        }
+
+        private void CancelMaterialSelectionButton_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void ConfirmSelectedMaterial()
+        {
+            if (lstbx_Materials?.SelectedItem is not MaterialRecord materialRecord)
+            {
+                return;
+            }
+
+            SelectedMaterialDialogResult = new MaterialSelectionResult(materialRecord);
+
+            if (_isMaterialSelectionMode)
+            {
+                _materialSelectionHandler?.Invoke(SelectedMaterialDialogResult);
+                Close();
+                return;
+            }
+
+            DialogResult = true;
         }
 
         private void Material_LoadInLiveMaterialEditor(object sender, RoutedEventArgs e)
