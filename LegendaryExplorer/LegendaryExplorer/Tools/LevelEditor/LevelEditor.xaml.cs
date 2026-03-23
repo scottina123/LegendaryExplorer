@@ -1211,9 +1211,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ViewActorPropertiesCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 0), () => SelectedActor is not null);
         ViewActorMetadataCommand = new GenericCommand(() => LoadExportIntoTabs(SelectedActor?.Export, 1), () => SelectedActor is not null);
         CloneActorTreeCommand = new GenericCommand(CloneActorTree,
-            () => SelectedActor is not null and not CollectionActorComponentProxy && !SelectedActor.IsReadOnly);
+            () => SelectedActor is not null && !SelectedActor.IsReadOnly);
         TrashActorCommand = new GenericCommand(TrashActor,
-            () => SelectedActor is not null and not CollectionActorComponentProxy && !SelectedActor.IsReadOnly);
+            () => SelectedActor is not null && !SelectedActor.IsReadOnly);
     }
 
     #endregion
@@ -1538,7 +1538,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             int reselectUIndex = 0;
             (Vector3, float, float) savedCamPOV = default;
             Vector3 savedActorPos = default;
-            List<ExportEntry> collectionActorsToUpdate = [];
+            HashSet<int> collectionActorsToUpdate = [];
             for (int i = file.Actors.Count - 1; i >= 0; i--)
             {
                 ActorProxy alteredActor = file.Actors[i];
@@ -1553,7 +1553,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     }
                     if (alteredActor is CollectionActorComponentProxy cacp)
                     {
-                        collectionActorsToUpdate.Add(cacp.CollectionActorExport);
+                        collectionActorsToUpdate.Add(cacp.CollectionActorExport.UIndex);
                         continue;
                     }
                     RemoveActor(alteredActor);
@@ -1565,16 +1565,17 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     }
                 }
             }
-            foreach (var collectionActor in collectionActorsToUpdate)
+            foreach (int collectionActorUIndex in collectionActorsToUpdate)
             {
                 for (int i = file.Actors.Count - 1; i >= 0; i--)
                 {
-                    if (file.Actors[i] is CollectionActorComponentProxy)
+                    if (file.Actors[i] is CollectionActorComponentProxy cacp
+                        && cacp.CollectionActorExport.UIndex == collectionActorUIndex)
                     {
                         RemoveActor(file.Actors[i]);
                     }
                 }
-                if (file.Package.GetEntry(collectionActor.UIndex) is ExportEntry newCollectionActor)
+                if (file.Package.GetEntry(collectionActorUIndex) is ExportEntry newCollectionActor)
                 {
                     string className = newCollectionActor.ClassName;
                     if (className is "StaticMeshCollectionActor")
@@ -1590,6 +1591,23 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                             }
                         }
                     }
+                    else if (className is "StaticLightCollectionActor")
+                    {
+                        var slca = newCollectionActor.GetBinaryData<StaticLightCollectionActor>();
+                        for (int i = 0; i < slca.Components.Count; i++)
+                        {
+                            if (file.Package.TryGetUExport(slca.Components[i], out ExportEntry lightExport))
+                            {
+                                ActorProxy lightActor = GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "SpotLightComponent", lightExport.Game)
+                                    ? new SpotLightComponentActorProxy(this, lightExport, slca, i)
+                                    : GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "DirectionalLightComponent", lightExport.Game)
+                                        ? new DirectionalLightComponentActorProxy(this, lightExport, slca, i)
+                                        : new PointLightComponentActorProxy(this, lightExport, slca, i);
+                                lightActor.OwningFile = file;
+                                AddActor(lightActor, false);
+                            }
+                        }
+                    }
                 }
             }
             if (updated)
@@ -1597,7 +1615,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 Actors.Sort(a => a.Export.UIndex);
                 UpdateGlobalDirtyState();
             }
-            if (reselectUIndex is not 0)
+
+            if (_pendingSelect.UIndex > 0 && _pendingSelect.Package == file.Package)
+            {
+                SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == _pendingSelect.UIndex && a.Export.FileRef == file.Package);
+                _pendingSelect = default;
+            }
+            else if (reselectUIndex is not 0)
             {
                 SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == reselectUIndex && a.Export.FileRef == file.Package);
                 if (SelectedActor is not null)
@@ -2247,19 +2271,27 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void CloneActorTree(ActorProxy actor)
     {
-        if (actor is CollectionActorComponentProxy)
-        {
-            MessageBox.Show(this,
-                "Collection actor components cannot be cloned from the Level Editor.\nUse the Package Editor to modify StaticMeshCollectionActor or StaticLightCollectionActor entries.",
-                "Cannot Clone");
-            return;
-        }
-
         ExportEntry clonedExport = EntryCloner.CloneTree(actor.Export);
 
-        Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
-        levelBin.Actors.Add(clonedExport.UIndex);
-        actor.OwningFile.LevelExport.WriteBinary(levelBin);
+        if (actor is CollectionActorComponentProxy collectionActorComponent)
+        {
+            if (!TryAddClonedCollectionActorComponent(collectionActorComponent, clonedExport))
+            {
+                EntryPruner.TrashEntryAndDescendants(clonedExport);
+                MessageBox.Show(this,
+                    "The collection component was cloned, but it could not be added to the parent collection actor.",
+                    "Clone Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+        }
+        else
+        {
+            Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
+            levelBin.Actors.Add(clonedExport.UIndex);
+            actor.OwningFile.LevelExport.WriteBinary(levelBin);
+        }
 
         _pendingSelect = (clonedExport.UIndex, actor.OwningFile.Package);
         UndoHistory.Clear();
@@ -2274,14 +2306,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void TrashActor(ActorProxy actor)
     {
-        if (actor is CollectionActorComponentProxy)
-        {
-            MessageBox.Show(this,
-                "Collection actor components cannot be deleted from the Level Editor.\nUse the Package Editor to modify StaticMeshCollectionActor or StaticLightCollectionActor entries.",
-                "Cannot Delete");
-            return;
-        }
-
         if (MessageBox.Show(this,
                 $"Permanently delete '{actor.Export.ObjectName.Instanced}'?\n\nThe export and all its children will be trashed and cannot be recovered via Undo.",
                 "Confirm Delete",
@@ -2290,13 +2314,103 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             return;
         }
 
-        Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
-        levelBin.Actors.Remove(actor.Export.UIndex);
-        actor.OwningFile.LevelExport.WriteBinary(levelBin);
+        if (actor is CollectionActorComponentProxy collectionActorComponent)
+        {
+            if (!TryRemoveCollectionActorComponent(collectionActorComponent))
+            {
+                MessageBox.Show(this,
+                    "The collection component could not be removed from the parent collection actor.",
+                    "Delete Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+        }
+        else
+        {
+            Level levelBin = actor.OwningFile.LevelExport.GetBinaryData<Level>();
+            levelBin.Actors.Remove(actor.Export.UIndex);
+            actor.OwningFile.LevelExport.WriteBinary(levelBin);
+        }
 
         EntryPruner.TrashEntryAndDescendants(actor.Export);
         UndoHistory.Clear();
         _preEditSnapshot = null;
+    }
+
+    private static bool TryAddClonedCollectionActorComponent(CollectionActorComponentProxy actor, ExportEntry clonedExport)
+    {
+        if (ObjectBinary.From(actor.CollectionActorExport) is not StaticCollectionActor collectionActor)
+        {
+            return false;
+        }
+
+        var componentsProp = actor.CollectionActorExport.GetProperty<ArrayProperty<ObjectProperty>>(collectionActor.ComponentPropName);
+        if (componentsProp == null)
+        {
+            return false;
+        }
+
+        int originalIndex = componentsProp.IndexOf(new ObjectProperty(actor.Export));
+        if (originalIndex < 0 || originalIndex >= collectionActor.LocalToWorldTransforms.Count)
+        {
+            return false;
+        }
+
+        componentsProp.Add(new ObjectProperty(clonedExport));
+        actor.CollectionActorExport.WriteProperty(componentsProp);
+
+        collectionActor.Components ??= [];
+        collectionActor.LocalToWorldTransforms ??= [];
+        collectionActor.Components.Add(clonedExport.UIndex);
+        collectionActor.LocalToWorldTransforms.Add(collectionActor.LocalToWorldTransforms[originalIndex]);
+        actor.CollectionActorExport.WriteBinary(collectionActor);
+        return true;
+    }
+
+    private static bool TryRemoveCollectionActorComponent(CollectionActorComponentProxy actor)
+    {
+        if (ObjectBinary.From(actor.CollectionActorExport) is not StaticCollectionActor collectionActor)
+        {
+            return false;
+        }
+
+        var componentsProp = actor.CollectionActorExport.GetProperty<ArrayProperty<ObjectProperty>>(collectionActor.ComponentPropName);
+        if (componentsProp == null)
+        {
+            return false;
+        }
+
+        int indexToRemove = -1;
+        for (int i = 0; i < componentsProp.Count; i++)
+        {
+            if (componentsProp[i].Value == actor.Export.UIndex)
+            {
+                indexToRemove = i;
+                break;
+            }
+        }
+
+        if (indexToRemove < 0)
+        {
+            return false;
+        }
+
+        componentsProp.RemoveAt(indexToRemove);
+        actor.CollectionActorExport.WriteProperty(componentsProp);
+
+        if (collectionActor.Components != null && indexToRemove < collectionActor.Components.Count)
+        {
+            collectionActor.Components.RemoveAt(indexToRemove);
+        }
+
+        if (collectionActor.LocalToWorldTransforms != null && indexToRemove < collectionActor.LocalToWorldTransforms.Count)
+        {
+            collectionActor.LocalToWorldTransforms.RemoveAt(indexToRemove);
+        }
+
+        actor.CollectionActorExport.WriteBinary(collectionActor);
+        return true;
     }
 
     #endregion
