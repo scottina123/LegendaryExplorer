@@ -50,6 +50,7 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorer.Packages;
 using LegendaryExplorerCore.Localization;
+using LegendaryExplorerCore.Pathing;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.GameInterop;
@@ -665,6 +666,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private static bool CanRestoreMaterialFromAssetDatabase(ExportEntry export)
         {
             return export is not null && (export.ClassName == "Material" || export.IsA("MaterialInstanceConstant"));
+        }
+
+        private static bool CanAddMissingTexturesToInstancesMap(ExportEntry export)
+        {
+            return export is { ClassName: "Level", InstancedFullPath: "TheWorld.PersistentLevel" };
         }
 
         private bool CanViewInAssetViewer()
@@ -6147,6 +6153,60 @@ namespace LegendaryExplorer.Tools.PackageEditor
             });
         }
 
+        private void AddMissingTexturesToInstancesMap_Click(object sender, RoutedEventArgs e)
+        {
+            ExportEntry export = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuExport(contextMenu, out var contextExport))
+            {
+                export = contextExport;
+            }
+            else
+            {
+                TryGetSelectedExport(out export);
+            }
+
+            if (!CanAddMissingTexturesToInstancesMap(export))
+            {
+                MessageBox.Show(this,
+                    "This action only works on TheWorld.PersistentLevel.",
+                    "Add missing textures to TextureToInstancesMap",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            IsBusy = true;
+            BusyText = "Adding missing textures to TextureToInstancesMap...";
+            Task.Run(() => LevelTools.AddMissingTexturesToInstancesMap(Pcc, TieredPackageCache.GetGlobalPackageCache(Pcc.Game))).ContinueWithOnUIThread(task =>
+            {
+                IsBusy = false;
+
+                if (task.Exception is not null)
+                {
+                    MessageBox.Show(this,
+                        "Error adding missing textures to TextureToInstancesMap:\n" + task.Exception.FlattenException(),
+                        "Add missing textures to TextureToInstancesMap",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return;
+                }
+
+                if (ReferenceEquals(export, SelectedItem?.Entry) || GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
+                {
+                    Preview(true);
+                }
+
+                int addedCount = task.Result;
+                MessageBox.Show(this,
+                    addedCount > 0
+                        ? $"Added {addedCount} missing texture entr{(addedCount == 1 ? "y" : "ies")} to PersistentLevel.TextureToInstancesMap."
+                        : "No missing streamed textures were found to add to PersistentLevel.TextureToInstancesMap.",
+                    "Add missing textures to TextureToInstancesMap",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            });
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -6160,7 +6220,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var restoreMaterialMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "RestoreMaterialFromAssetDatabase"));
-            if (matchMicMenuItem is null && restoreMaterialMenuItem is null)
+            var addMissingTexturesMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "AddMissingTexturesToInstancesMap"));
+            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null)
             {
                 return;
             }
@@ -6177,6 +6240,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (restoreMaterialMenuItem is not null)
             {
                 restoreMaterialMenuItem.Visibility = hasExport && CanRestoreMaterialFromAssetDatabase(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (addMissingTexturesMenuItem is not null)
+            {
+                addMissingTexturesMenuItem.Visibility = hasExport && CanAddMissingTexturesToInstancesMap(export)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }

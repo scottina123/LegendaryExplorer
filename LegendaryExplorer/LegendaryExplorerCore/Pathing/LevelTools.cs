@@ -28,6 +28,63 @@ namespace LegendaryExplorerCore.Pathing
         public static void CalculateTextureToInstancesMap(IMEPackage package, TieredPackageCache cache)
         {
             LECLog.Information($"Calculating TextureToInstancesMap for {package.FileNameNoExtension}");
+            var textureToInstancesMap = BuildTextureToInstancesMap(package, cache);
+
+            var levelExp = package.GetLevel();
+            var level = package.GetLevelBinary();
+
+            level.TextureToInstancesMap = new UMultiMap<int, StreamableTextureInstanceList>(textureToInstancesMap.Count);
+            foreach (var tex in textureToInstancesMap)
+            {
+                level.TextureToInstancesMap[tex.Key.UIndex] = new StreamableTextureInstanceList()
+                {
+                    Instances = tex.Value.ToArray()
+                };
+            }
+
+            levelExp.WriteBinary(level);
+        }
+
+        public static int AddMissingTexturesToInstancesMap(IMEPackage package, TieredPackageCache cache)
+        {
+            LECLog.Information($"Adding missing TextureToInstancesMap entries for {package.FileNameNoExtension}");
+
+            var levelExp = package.GetLevel();
+            var level = package.GetLevelBinary();
+            if (levelExp is null || level is null)
+            {
+                return 0;
+            }
+
+            var textureToInstancesMap = BuildTextureToInstancesMap(package, cache);
+            level.TextureToInstancesMap ??= [];
+
+            HashSet<int> existingTextureUIndexes = [.. level.TextureToInstancesMap.Keys];
+            int addedCount = 0;
+            foreach (var tex in textureToInstancesMap)
+            {
+                if (!existingTextureUIndexes.Add(tex.Key.UIndex))
+                {
+                    continue;
+                }
+
+                level.TextureToInstancesMap[tex.Key.UIndex] = new StreamableTextureInstanceList
+                {
+                    Instances = tex.Value.ToArray()
+                };
+                addedCount++;
+            }
+
+            if (addedCount > 0)
+            {
+                levelExp.WriteBinary(level);
+            }
+
+            return addedCount;
+        }
+
+        private static Dictionary<IEntry, List<StreamableTextureInstance>> BuildTextureToInstancesMap(IMEPackage package, TieredPackageCache cache)
+        {
             var textureToInstancesMap = new Dictionary<IEntry, List<StreamableTextureInstance>>();
 
             // Look at all components
@@ -235,23 +292,7 @@ namespace LegendaryExplorerCore.Pathing
                     });
                 }
             }
-            // We now have location and list of textures
-            // Build the map.
-
-            var levelExp = package.GetLevel();
-            var level = package.GetLevelBinary();
-
-            level.TextureToInstancesMap = new UMultiMap<int, StreamableTextureInstanceList>(textureToInstancesMap.Count);
-            foreach (var tex in textureToInstancesMap)
-            {
-                level.TextureToInstancesMap[tex.Key.UIndex] = new StreamableTextureInstanceList()
-                {
-                    Instances = tex.Value.ToArray()
-                };
-            }
-
-            levelExp.WriteBinary(level);
-
+            return textureToInstancesMap;
         }
 
         // Todo: Merge all the uses of these.
