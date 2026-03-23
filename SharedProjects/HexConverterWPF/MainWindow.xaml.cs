@@ -155,6 +155,7 @@ namespace HexConverter
             DataContext = this;
             FloatText = BigEndianText = LittleEndianText = SignedIntegerText = UnsignedIntegerText = 0.ToString();
             InitializeComponent();
+            SourceInitialized += (_, _) => App.ApplyNativeDarkMode(this);
             AllInputTextBoxes = new List<TextBox>(new[] { Float_TextBox, BigEndian_TextBox, LittleEndian_TextBox, Signed_TextBox, Unsigned_TextBox, UnrealRot_TextBox });
             HexInputTextBoxes = new List<TextBox>(new[] { BigEndian_TextBox, LittleEndian_TextBox });
             DecInputTextBoxes = new List<TextBox>(new[] { Float_TextBox, Signed_TextBox, Unsigned_TextBox });
