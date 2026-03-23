@@ -24,6 +24,7 @@ using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using
 Microsoft.Win32;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using
 Newtonsoft.Json;
 using System;
@@ -2268,6 +2269,22 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 contextMenu.Items.Add(shadowMenu);
             }
 
+            var stripLightMapItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Strip LightMap (EXPERIMENTAL)",
+                IsEnabled = !actor.IsReadOnly
+            };
+            stripLightMapItem.Click += (_, _) => StripStaticMeshComponentLightmap(actor, smcExport);
+            contextMenu.Items.Add(stripLightMapItem);
+
+            var stripShadowMapItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Strip ShadowMap (EXPERIMENTAL)",
+                IsEnabled = !actor.IsReadOnly
+            };
+            stripShadowMapItem.Click += (_, _) => StripStaticMeshComponentShadowmap(actor, smcExport);
+            contextMenu.Items.Add(stripShadowMapItem);
+
             var replaceMeshItem = new System.Windows.Controls.MenuItem
             {
                 Header = "Replace Static Mesh...",
@@ -2679,8 +2696,34 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             StaticMeshActorProxy sma   => sma.StaticMeshComponent?.Export,
             DynamicSMActorProxy  dsma  => dsma.StaticMeshComponent?.Export,
             StaticMeshComponentActorProxy => actor.Export,
-            _ => null
+            _ => actor.Components
+                .Select(component => component.Export)
+                .FirstOrDefault(export => export.IsA("StaticMeshComponent"))
         };
+
+    private void StripStaticMeshComponentLightmap(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return;
+        }
+
+        SelectedActor = actor;
+        PackageEditorExperimentsM.StripLightmap(componentExport);
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void StripStaticMeshComponentShadowmap(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return;
+        }
+
+        SelectedActor = actor;
+        PackageEditorExperimentsM.StripShadowmap(componentExport);
+        SceneViewer?.MarkRenderDirty();
+    }
 
     private static ExportEntry GetLightingChannelsTargetExport(ActorProxy actor)
     {
