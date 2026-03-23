@@ -678,6 +678,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return export is { ClassName: "StaticMeshComponent", IsDefaultObject: false };
         }
 
+        private static bool CanStripShadowmap(ExportEntry export)
+        {
+            return export is { ClassName: "StaticMeshComponent", IsDefaultObject: false };
+        }
+
         private bool CanViewInAssetViewer()
         {
             if (Pcc != null && Pcc.Game.IsLEGame() && TryGetSelectedExport(out var currentExport) && GameController.TryGetMEProcess(currentExport.Game, out _) && AssetViewerWindow.SupportsAsset(currentExport))
@@ -1934,6 +1939,35 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             await Pcc.SaveAsync();
             if (GetSelected(out _))
+            {
+                Preview(true);
+            }
+        }
+
+        private void StripShadowmap_Click(object sender, RoutedEventArgs e)
+        {
+            ExportEntry export = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuExport(contextMenu, out var contextExport))
+            {
+                export = contextExport;
+            }
+            else
+            {
+                TryGetSelectedExport(out export);
+            }
+
+            if (!CanStripShadowmap(export))
+            {
+                MessageBox.Show(this,
+                    "This action only works on StaticMeshComponent exports.",
+                    "Strip ShadowMap",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            PackageEditorExperimentsM.StripShadowmap(export);
+            if (ReferenceEquals(export, SelectedItem?.Entry) || GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
             {
                 Preview(true);
             }
@@ -6324,7 +6358,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var stripLightmapMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "StripLightmap"));
-            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null)
+            var stripShadowmapMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "StripShadowmap"));
+            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null)
             {
                 return;
             }
@@ -6355,6 +6392,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (stripLightmapMenuItem is not null)
             {
                 stripLightmapMenuItem.Visibility = hasExport && CanStripLightmap(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (stripShadowmapMenuItem is not null)
+            {
+                stripShadowmapMenuItem.Visibility = hasExport && CanStripShadowmap(export)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }

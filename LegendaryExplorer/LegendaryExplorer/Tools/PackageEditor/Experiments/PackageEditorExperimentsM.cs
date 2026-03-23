@@ -4276,6 +4276,35 @@ defaultproperties
             exp.WriteBinary(smc);
         }
 
+        public static void StripShadowmap(PackageEditorWindow peWindow)
+        {
+            if (!peWindow.TryGetSelectedExport(out var exp) ||
+                (exp.IsDefaultObject || exp.ClassName != "StaticMeshComponent"))
+            {
+                MessageBox.Show("Unsupported export - must select a StaticMeshComponent");
+                return;
+            }
+
+            StripShadowmap(exp);
+        }
+
+        public static void StripShadowmap(ExportEntry exp)
+        {
+            if (exp is null || exp.IsDefaultObject || exp.ClassName != "StaticMeshComponent")
+            {
+                return;
+            }
+
+            var smc = ObjectBinary.From<StaticMeshComponent>(exp);
+            foreach (var lod in smc.LODData)
+            {
+                lod.ShadowMaps = [];
+                lod.ShadowVertexBuffers = [];
+            }
+
+            exp.WriteBinary(smc);
+        }
+
         public static void FixFXAMemoryNames(PackageEditorWindow peWindow)
         {
             if (peWindow == null || peWindow.Pcc == null)

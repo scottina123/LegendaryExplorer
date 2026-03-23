@@ -159,6 +159,11 @@
                       Click="StripLightmap_Click"
                       Tag="StripLightmap"
                       Visibility="Collapsed"/>
+            <MenuItem Header="Strip ShadowMap (EXPERIMENTAL)"
+                      ToolTip="Removes embedded shadowmap data from this StaticMeshComponent export."
+                      Click="StripShadowmap_Click"
+                      Tag="StripShadowmap"
+                      Visibility="Collapsed"/>
             <MenuItem Header="Package utilities" Command="{Binding PackageExportIsSelectedCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
                 <MenuItem Header="Generate new GUID for package" ToolTip="Generates a new GUID for this package. Only use this if you really know what you're doing." Command="{Binding CreateNewPackageGUIDCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                 <MenuItem Header="Set as filename package" ToolTip="Sets the name of this export to the same as the file." Command="{Binding SetPackageAsFilenamePackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
