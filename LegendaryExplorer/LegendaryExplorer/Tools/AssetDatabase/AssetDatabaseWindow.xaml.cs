@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -4250,6 +4251,65 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return true;
         }
 
+        private IComparer CreateLineSortComparer(string header, ListSortDirection direction)
+        {
+            int directionMultiplier = direction == ListSortDirection.Ascending ? 1 : -1;
+            return Comparer<object>.Create((left, right) => directionMultiplier * CompareLines(left as ConvoLine, right as ConvoLine, header));
+        }
+
+        private int CompareLines(ConvoLine left, ConvoLine right, string header)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return -1;
+            }
+
+            if (right is null)
+            {
+                return 1;
+            }
+
+            int comparison = header switch
+            {
+                SpeakerLineSearchColumn => CompareLineValues(GetSpeakerDisplayForSearch(left), GetSpeakerDisplayForSearch(right)),
+                TlkStringRefLineSearchColumn => left.StrRef.CompareTo(right.StrRef),
+                LineTextSearchColumn => CompareLineValues(left.DisplayLine, right.DisplayLine),
+                LineConversationSearchColumn => CompareLineValues(left.Convo, right.Convo),
+                FileLineSearchColumn => CompareLineValues(GetConvoFileValue(left.Convo), GetConvoFileValue(right.Convo)),
+                LocationLineSearchColumn => CompareLineValues(GetConvoLocationValue(left.Convo), GetConvoLocationValue(right.Convo)),
+                _ => 0
+            };
+
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = CompareLineValues(left.Convo, right.Convo);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = left.StrRef.CompareTo(right.StrRef);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            return CompareLineValues(left.DisplayLine, right.DisplayLine);
+        }
+
+        private static int CompareLineValues(string left, string right)
+        {
+            return StringComparer.CurrentCultureIgnoreCase.Compare(left ?? string.Empty, right ?? string.Empty);
+        }
+
         private bool FileFilter(object d)
         {
             bool showthis = true;
@@ -4431,9 +4491,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                             break;
                         case 8:
                             ICollectionView linedataView = CollectionViewSource.GetDefaultView(lstbx_Lines.ItemsSource);
-                            primarySort = headerClicked.Column.Header.ToString();
                             linedataView.SortDescriptions.Clear();
-                            linedataView.SortDescriptions.Add(new SortDescription(primarySort, direction));
+                            if (linedataView is ListCollectionView listCollectionView)
+                            {
+                                listCollectionView.CustomSort = CreateLineSortComparer(headerClicked.Column.Header?.ToString(), direction);
+                            }
                             linedataView.Refresh();
                             lstbx_Lines.ItemsSource = linedataView;
                             break;
