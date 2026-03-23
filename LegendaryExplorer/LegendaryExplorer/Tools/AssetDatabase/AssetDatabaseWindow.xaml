@@ -779,9 +779,10 @@
                                 <ColumnDefinition Width="15*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Meshes" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Meshes within the game" Grid.Row="0" Grid.Column="0"/>
-                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
                                 <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding MeshTypeFilters}"
                                           SelectedItem="{Binding SelectedMeshTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
@@ -854,14 +855,16 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Textures" Style="{StaticResource ColumnHeaderStyle}" ToolTip="All the textures in the game (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
-                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
                                 <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170" Margin="0,0,12,0"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding TextureTypeFilters}"
                                           SelectedItem="{Binding SelectedTextureTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
                                 <TextBlock Text="Size:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding TextureSizeFilters}"
                                           SelectedItem="{Binding SelectedTextureSizeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
@@ -921,9 +924,10 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Animsequences / Ambient Performance Tracks" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" HorizontalAlignment="Stretch" Padding="3" ToolTip="Animations within the game" Grid.Row="0" Grid.Column="0"/>
-                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
                                 <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding AnimationTypeFilters}"
                                           SelectedItem="{Binding SelectedAnimationTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
@@ -999,9 +1003,10 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Particle Systems and Receiver Effects (Visual Effects)" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Particle systems (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
-                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2">
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
                                 <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox Width="170"
+                                          HorizontalAlignment="Left"
                                           ItemsSource="{Binding VfxTypeFilters}"
                                           SelectedItem="{Binding SelectedVfxTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
