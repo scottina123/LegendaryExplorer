@@ -1,13 +1,20 @@
 using System.Collections;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 
 namespace LegendaryExplorer.Tools.AssetDatabase
 {
     public partial class AssetUsagesPanel : UserControl
     {
         public static readonly DependencyProperty UsagesSourceProperty =
-            DependencyProperty.Register(nameof(UsagesSource), typeof(IEnumerable), typeof(AssetUsagesPanel));
+            DependencyProperty.Register(nameof(UsagesSource), typeof(IEnumerable), typeof(AssetUsagesPanel),
+                new PropertyMetadata(null, OnUsagesSourceChanged));
+
+        public static readonly DependencyProperty FilterTextProperty =
+            DependencyProperty.Register(nameof(FilterText), typeof(string), typeof(AssetUsagesPanel),
+                new PropertyMetadata(string.Empty, OnFilterTextChanged));
 
         public static readonly DependencyProperty HeaderTextProperty =
             DependencyProperty.Register(nameof(HeaderText), typeof(string), typeof(AssetUsagesPanel),
@@ -30,6 +37,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             get => (string)GetValue(HeaderTextProperty);
             set => SetValue(HeaderTextProperty, value);
+        }
+
+        public string FilterText
+        {
+            get => (string)GetValue(FilterTextProperty);
+            set => SetValue(FilterTextProperty, value);
         }
 
         public string HeaderToolTip
@@ -60,6 +73,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 SetDefaultContextMenu();
             }
+
+            RefreshFilter();
         }
 
         private static void OnUsageContextMenuChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -68,6 +83,48 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 panel.internalListBox.ContextMenu = e.NewValue as ContextMenu;
             }
+        }
+
+        private static void OnUsagesSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is AssetUsagesPanel panel)
+            {
+                panel.RefreshFilter();
+            }
+        }
+
+        private static void OnFilterTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is AssetUsagesPanel panel)
+            {
+                panel.RefreshFilter();
+            }
+        }
+
+        public void RefreshFilter()
+        {
+            if (internalListBox?.ItemsSource == null)
+            {
+                return;
+            }
+
+            ICollectionView view = CollectionViewSource.GetDefaultView(internalListBox.ItemsSource);
+            if (view == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(FilterText))
+            {
+                view.Filter = null;
+            }
+            else
+            {
+                view.Filter = item => Window.GetWindow(this) is AssetDatabaseWindow window
+                    && window.UsageMatchesSearch(item, FilterText);
+            }
+
+            view.Refresh();
         }
 
         private void SetDefaultContextMenu()

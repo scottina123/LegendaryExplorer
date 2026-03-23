@@ -191,6 +191,36 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             get => _busyHeader;
             set => SetProperty(ref _busyHeader, value);
         }
+        private string _filterText = string.Empty;
+        public string FilterText
+        {
+            get => _filterText;
+            set => SetProperty(ref _filterText, value);
+        }
+        private string _filterWatermark = "Search";
+        public string FilterWatermark
+        {
+            get => _filterWatermark;
+            set => SetProperty(ref _filterWatermark, value);
+        }
+        private string _usageFilterText = string.Empty;
+        public string UsageFilterText
+        {
+            get => _usageFilterText;
+            set
+            {
+                if (SetProperty(ref _usageFilterText, value))
+                {
+                    RefreshUsageViews();
+                }
+            }
+        }
+        private bool _showUsageFilter;
+        public bool ShowUsageFilter
+        {
+            get => _showUsageFilter;
+            set => SetProperty(ref _showUsageFilter, value);
+        }
         private bool _BusyBarInd;
         public bool BusyBarInd
         {
@@ -927,7 +957,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshMaterialUsageDropdownFilters();
             RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
-            FilterBox.Clear();
+            FilterText = string.Empty;
             Filter();
         }
 
@@ -2175,9 +2205,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 MessageBox.Show("SuperClass unknown.");
                 return;
             }
-            if (FilterBox.Text != null)
+            if (FilterText != null)
             {
-                FilterBox.Clear();
+                FilterText = string.Empty;
                 Filter();
             }
             var scidx = CurrentDataBase.ClassRecords.IndexOf(CurrentDataBase.ClassRecords.FirstOrDefault(r => r.Class == sClass));
@@ -2546,7 +2576,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             if (currentView != previousView)
             {
-                FilterBox.Clear();
+                FilterText = string.Empty;
+                UsageFilterText = string.Empty;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9;
                 Filter();
                 switch (currentView)
                 {
@@ -2555,18 +2587,20 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         {
                             RefreshMaterialTextureDropdownFilters();
                         }
-                        FilterBox.Watermark = "Search (by material name or parent package)";
+                        FilterWatermark = "Search (by material name or parent package)";
                         break;
                     case 4:
-                        FilterBox.Watermark = "Search (by texture name, package, type, size, or CRC if compiled)";
+                        FilterWatermark = "Search (by texture name, package, type, size, or CRC if compiled)";
                         break;
                     case 0:
-                        FilterBox.Watermark = "Search (by filename or source directory)";
+                        FilterWatermark = "Search (by filename or source directory)";
                         break;
                     default:
-                        FilterBox.Watermark = "Search";
+                        FilterWatermark = "Search";
                         break;
                 }
+
+                RefreshUsageViews();
 
                 if (previousView == 3)
                 {
@@ -2690,7 +2724,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             e.Handled = true;
             if (currentView == 9)
             {
-                FilterBox.Clear();
+                FilterText = string.Empty;
                 Filter();
             }
         }
@@ -2706,6 +2740,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     SelectedPlotUsages.Clear();
                     SelectedPlotUsages.AddRange(selectedRecord.Usages);
                 }
+
+                RefreshUsageView(lstbx_PlotUsages);
             }
         }
 
@@ -4195,6 +4231,90 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return !string.IsNullOrEmpty(source) && source.Contains(searchText, StringComparison.CurrentCultureIgnoreCase);
         }
 
+        public string GetUsageDisplayText(object usage)
+        {
+            if (!TryGetUsageKeys(usage, out int fileKey, out int uIndex)
+                || fileKey < 0
+                || fileKey >= FileListExtended.Count)
+            {
+                return usage?.ToString() ?? string.Empty;
+            }
+
+            var (fileName, directory, _) = FileListExtended[fileKey];
+            return $"{fileName}  # {uIndex}   {directory} ";
+        }
+
+        public bool UsageMatchesSearch(object usage, string searchText)
+        {
+            return string.IsNullOrWhiteSpace(searchText) || ContainsText(GetUsageDisplayText(usage), searchText);
+        }
+
+        private static bool TryGetUsageKeys(object usage, out int fileKey, out int uIndex)
+        {
+            fileKey = -1;
+            uIndex = 0;
+
+            if (usage is IAssetUsage assetUsage)
+            {
+                fileKey = assetUsage.FileKey;
+                uIndex = assetUsage.UIndex;
+                return true;
+            }
+
+            var usageType = usage?.GetType();
+            var fileKeyProperty = usageType?.GetProperty(nameof(IAssetUsage.FileKey));
+            var uIndexProperty = usageType?.GetProperty(nameof(IAssetUsage.UIndex));
+            if (fileKeyProperty?.PropertyType == typeof(int)
+                && uIndexProperty?.PropertyType == typeof(int)
+                && fileKeyProperty.GetValue(usage) is int reflectedFileKey
+                && uIndexProperty.GetValue(usage) is int reflectedUIndex)
+            {
+                fileKey = reflectedFileKey;
+                uIndex = reflectedUIndex;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void RefreshUsageViews()
+        {
+            materialsUsagesPanel?.RefreshFilter();
+            meshesUsagesPanel?.RefreshFilter();
+            texturesUsagesPanel?.RefreshFilter();
+            animationsUsagesPanel?.RefreshFilter();
+            vfxUsagesPanel?.RefreshFilter();
+            guiUsagesPanel?.RefreshFilter();
+
+            RefreshUsageView(lstbx_Usages);
+            RefreshUsageView(lstbx_PlotUsages);
+        }
+
+        private void RefreshUsageView(ItemsControl listControl)
+        {
+            if (listControl?.ItemsSource == null)
+            {
+                return;
+            }
+
+            var view = CollectionViewSource.GetDefaultView(listControl.ItemsSource);
+            if (view == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(UsageFilterText))
+            {
+                view.Filter = null;
+            }
+            else
+            {
+                view.Filter = item => UsageMatchesSearch(item, UsageFilterText);
+            }
+
+            view.Refresh();
+        }
+
         private string GetConvoFileValue(string convoName)
         {
             if (!TryGetConvoFileInfo(convoName, out var fileName, out _))
@@ -4314,7 +4434,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             bool showthis = true;
             var f = (FileDirPair)d;
-            var t = FilterBox.Text;
+            var t = FilterText;
             if (!string.IsNullOrEmpty(t))
             {
                 showthis = f.FileName.Contains(t, StringComparison.CurrentCultureIgnoreCase);
@@ -4328,7 +4448,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void Filter()
         {
-            AssetFilters.SetSearch(FilterBox.Text);
+            AssetFilters.SetSearch(FilterText);
             switch (currentView)
             {
                 case 1: //Classes
@@ -4716,6 +4836,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     return list;
                 });
             }
+
+            RefreshUsageView(lstbx_Usages);
         }
 
         #endregion

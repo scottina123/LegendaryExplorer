@@ -228,8 +228,6 @@
     <xctk:BusyIndicator x:Name="dbBusyIndicator" IsBusy="{Binding IsBusy, FallbackValue=False}" Style="{StaticResource AssetDatabaseBusyIndicatorStyle}">
         <DockPanel>
             <DockPanel DockPanel.Dock="Top">
-                <xctk:WatermarkTextBox DockPanel.Dock="Right" Watermark="Search" Name="FilterBox" Width="300" KeyUp="FilterBox_KeyUp" ToolTip="Filter and find classes" HorizontalAlignment="Right" HorizontalContentAlignment="Left" IsEnabled="True">
-                </xctk:WatermarkTextBox>
                 <Menu Name="TopDock">
                     <MenuItem Header="Database" Padding="4" >
                         <MenuItem Header="Generate New Database" Command="{Binding GenerateDBCommand}" InputGestureText="Ctrl+G" ToolTip="Scan Game Properties"/>
@@ -368,6 +366,66 @@
             </StatusBar>
             <DockPanel Name="MidDock">
                 <TabControl SelectedIndex="{Binding currentView, Mode=TwoWay}" SelectionChanged="TabControl_SelectionChanged">
+                    <TabControl.Template>
+                        <ControlTemplate TargetType="{x:Type TabControl}">
+                            <Grid KeyboardNavigation.TabNavigation="Local" SnapsToDevicePixels="True">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TabPanel Grid.Row="0"
+                                          x:Name="HeaderPanel"
+                                          IsItemsHost="True"
+                                          Margin="2,2,2,0"
+                                          KeyboardNavigation.TabIndex="1"
+                                          Background="Transparent"/>
+                                <Border Grid.Row="1"
+                                        Margin="2,0,2,0"
+                                        Padding="4,4,4,2"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                        BorderThickness="1,0,1,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <xctk:WatermarkTextBox Grid.Column="0"
+                                                               Width="300"
+                                                               HorizontalAlignment="Left"
+                                                               HorizontalContentAlignment="Left"
+                                                               KeyUp="FilterBox_KeyUp"
+                                                               ToolTip="Filter and find classes"
+                                                               Text="{Binding FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                               Watermark="{Binding FilterWatermark, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <xctk:WatermarkTextBox Grid.Column="2"
+                                                               Width="300"
+                                                               Margin="12,0,0,0"
+                                                               HorizontalAlignment="Right"
+                                                               HorizontalContentAlignment="Left"
+                                                               ToolTip="Filter the usages list"
+                                                               Text="{Binding UsageFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                               Visibility="{Binding ShowUsageFilter, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                               Watermark="Search usages"/>
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Row="2"
+                                        Margin="2,0,2,2"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        KeyboardNavigation.DirectionalNavigation="Contained"
+                                        KeyboardNavigation.TabNavigation="Local">
+                                    <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                      ContentSource="SelectedContent"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </TabControl.Template>
                     <!-- FileList -->
                     <TabItem Header="Files" TabIndex="0">
                         <DockPanel DockPanel.Dock="Left" MinWidth="300">
@@ -702,6 +760,7 @@
                             <materialEditor:MaterialEditorExportLoader x:Name="MaterialEditorExportLoader_Control" Grid.Row="2" Grid.Column="2" IsReadOnly="True" ShowSaveBar="False" AlwaysLoadData="True" MinWidth="200"/>
                             <GridSplitter Grid.RowSpan="3" Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
                             <assetDatabase:AssetUsagesPanel x:Name="materialsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="4"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Materials}"
                                                            HeaderToolTip="All the files that use the material (grey is official DLC with shadercache)&#x0a;Right click to open in Package Editor"/>
                         </Grid>
@@ -764,6 +823,7 @@
                                 </DockPanel>
                             </Border>
                             <assetDatabase:AssetUsagesPanel x:Name="meshesUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Meshes}"
                                                            HeaderToolTip="Every file that uses this Mesh&#x0a;Right click to open in Package Editor">
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
@@ -842,6 +902,7 @@
                                 </DockPanel>
                             </Border>
                             <assetDatabase:AssetUsagesPanel x:Name="texturesUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Textures}"
                                                            HeaderToolTip="Every file that uses this texture&#x0a;Right click to open in Package Editor"/>
                         </Grid>
@@ -919,6 +980,7 @@
                             </Border>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Details of each animation" Grid.Row="0" Grid.Column="2"/>
                             <assetDatabase:AssetUsagesPanel x:Name="animationsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Anims}"
                                                            HeaderToolTip="Every file that uses this animsequence&#x0a;Right click to open in Package Editor"/>
                         </Grid>
@@ -975,6 +1037,7 @@
                                 </StackPanel>
                             </Border>
                             <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Particles}"
                                                            HeaderToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor"/>
                         </Grid>
@@ -1013,6 +1076,7 @@
                                 </StackPanel>
                             </Border>
                             <assetDatabase:AssetUsagesPanel x:Name="guiUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Scaleform}"
                                                            HeaderToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor"/>
                         </Grid>
