@@ -4257,6 +4257,16 @@ defaultproperties
                 return;
             }
 
+            StripLightmap(exp);
+        }
+
+        public static void StripLightmap(ExportEntry exp)
+        {
+            if (exp is null || exp.IsDefaultObject || exp.ClassName != "StaticMeshComponent")
+            {
+                return;
+            }
+
             var smc = ObjectBinary.From<StaticMeshComponent>(exp);
             foreach (var lod in smc.LODData)
             {

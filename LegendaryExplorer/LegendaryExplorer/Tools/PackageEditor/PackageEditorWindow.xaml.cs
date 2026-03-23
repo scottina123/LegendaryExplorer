@@ -673,6 +673,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return export is { ClassName: "Level", InstancedFullPath: "TheWorld.PersistentLevel" };
         }
 
+        private static bool CanStripLightmap(ExportEntry export)
+        {
+            return export is { ClassName: "StaticMeshComponent", IsDefaultObject: false };
+        }
+
         private bool CanViewInAssetViewer()
         {
             if (Pcc != null && Pcc.Game.IsLEGame() && TryGetSelectedExport(out var currentExport) && GameController.TryGetMEProcess(currentExport.Game, out _) && AssetViewerWindow.SupportsAsset(currentExport))
@@ -6271,6 +6276,35 @@ namespace LegendaryExplorer.Tools.PackageEditor
             });
         }
 
+        private void StripLightmap_Click(object sender, RoutedEventArgs e)
+        {
+            ExportEntry export = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuExport(contextMenu, out var contextExport))
+            {
+                export = contextExport;
+            }
+            else
+            {
+                TryGetSelectedExport(out export);
+            }
+
+            if (!CanStripLightmap(export))
+            {
+                MessageBox.Show(this,
+                    "This action only works on StaticMeshComponent exports.",
+                    "Strip LightMap",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            PackageEditorExperimentsM.StripLightmap(export);
+            if (ReferenceEquals(export, SelectedItem?.Entry) || GetSelected(out int selectedIndex) && selectedIndex == export.UIndex)
+            {
+                Preview(true);
+            }
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -6287,7 +6321,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var addMissingTexturesMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "AddMissingTexturesToInstancesMap"));
-            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null)
+            var stripLightmapMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "StripLightmap"));
+            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null)
             {
                 return;
             }
@@ -6311,6 +6348,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (addMissingTexturesMenuItem is not null)
             {
                 addMissingTexturesMenuItem.Visibility = hasExport && CanAddMissingTexturesToInstancesMap(export)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+
+            if (stripLightmapMenuItem is not null)
+            {
+                stripLightmapMenuItem.Visibility = hasExport && CanStripLightmap(export)
                     ? Visibility.Visible
                     : Visibility.Collapsed;
             }

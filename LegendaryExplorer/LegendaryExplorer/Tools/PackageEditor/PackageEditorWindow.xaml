@@ -154,6 +154,11 @@
                       Click="AddMissingTexturesToInstancesMap_Click"
                       Tag="AddMissingTexturesToInstancesMap"
                       Visibility="Collapsed"/>
+            <MenuItem Header="Strip LightMap (EXPERIMENTAL)"
+                      ToolTip="Removes embedded lightmap data from this StaticMeshComponent export."
+                      Click="StripLightmap_Click"
+                      Tag="StripLightmap"
+                      Visibility="Collapsed"/>
             <MenuItem Header="Package utilities" Command="{Binding PackageExportIsSelectedCommand}" SharedUI:Bindings.VisibilityToEnabled="True">
                 <MenuItem Header="Generate new GUID for package" ToolTip="Generates a new GUID for this package. Only use this if you really know what you're doing." Command="{Binding CreateNewPackageGUIDCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                 <MenuItem Header="Set as filename package" ToolTip="Sets the name of this export to the same as the file." Command="{Binding SetPackageAsFilenamePackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
