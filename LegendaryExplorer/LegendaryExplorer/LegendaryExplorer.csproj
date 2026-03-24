@@ -554,6 +554,7 @@
 	  <Folder Include="LegendaryExplorer\Dialogs\" />
 	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
 	  <Folder Include="LegendaryExplorer\Tools\Dialogue Editor\DialogueEditorExperiments\" />
+	  <Folder Include="LegendaryExplorer\Tools\LevelEditor\" />
 	</ItemGroup>
 
 	<PropertyGroup>

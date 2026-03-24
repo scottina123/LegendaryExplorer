@@ -2414,7 +2414,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                    ?? false;
         }
 
-        return lightingChannels.Properties.GetProp<BoolProperty>(propertyName)?.Value ?? false;
+        return lightingChannels.Properties.GetProp<BoolProperty>(NameReference.FromInstancedString(propertyName))?.Value ?? false;
     }
 
     private System.Windows.Controls.MenuItem BuildCollisionMenu(ActorProxy actor, ExportEntry componentExport)
@@ -2504,7 +2504,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
         else
         {
-            lightingChannels.Properties.AddOrReplaceProp(new BoolProperty(value, propertyName));
+            NameReference nameRef = NameReference.FromInstancedString(propertyName);
+            lightingChannels.Properties.AddOrReplaceProp(new BoolProperty(value, nameRef));
         }
         props.AddOrReplaceProp(lightingChannels);
         export.WriteProperties(props);
