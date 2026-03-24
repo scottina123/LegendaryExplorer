@@ -267,7 +267,7 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 public class PointLightComponentProxy : PrimitiveComponentProxy
 {
     public float Radius { get; set; }
-    public float Brightness { get; private set; }
+    public float Brightness { get; set; }
     public System.Drawing.Color LightColor { get; set; }
     public System.Drawing.Color LightEnv_BouncedModulationColor { get; set; }
     public bool ApplyBouncedModulationColor { get; set; }
@@ -307,6 +307,7 @@ public class PointLightComponentProxy : PrimitiveComponentProxy
     public virtual void CommitChanges()
     {
         Properties.AddOrReplaceProp(new FloatProperty(Radius, "Radius"));
+        Properties.AddOrReplaceProp(new FloatProperty(Brightness, "Brightness"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightEnv_BouncedModulationColor, "LightEnv_BouncedModulationColor"));
         Export.WriteProperties(Properties);
@@ -370,7 +371,7 @@ public class SpotLightComponentProxy : PointLightComponentProxy
 
 public class DirectionalLightComponentProxy : PrimitiveComponentProxy
 {
-    public float Brightness { get; private set; }
+    public float Brightness { get; set; }
     public System.Drawing.Color LightColor { get; set; }
 
     public Vector3 EffectiveLightColor => new(LightColor.R / 255f, LightColor.G / 255f, LightColor.B / 255f);
@@ -390,6 +391,7 @@ public class DirectionalLightComponentProxy : PrimitiveComponentProxy
 
     public void CommitChanges()
     {
+        Properties.AddOrReplaceProp(new FloatProperty(Brightness, "Brightness"));
         Properties.AddOrReplaceProp(CommonStructs.ColorProp(LightColor, "LightColor"));
         Export.WriteProperties(Properties);
     }

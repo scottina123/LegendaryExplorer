@@ -173,6 +173,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public virtual bool HasBouncedModulationColor => false;
     public virtual bool HasConeAngles => false;
     public virtual float LightRadius { get => 0f; set { } }
+    public virtual float Brightness { get => 0f; set { } }
     public virtual float InnerConeAngle { get => 0f; set { } }
     public virtual float OuterConeAngle { get => 0f; set { } }
     public virtual MediaColor LightColor { get => default; set { } }
@@ -756,6 +757,18 @@ public class PointLightActorProxy : ActorProxy
         }
     }
 
+    public override float Brightness
+    {
+        get => LightComponent?.Brightness ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Brightness == value) return;
+            LightComponent.Brightness = value;
+            OnPropertyChanged(nameof(Brightness));
+            MarkAuxiliaryChanged();
+        }
+    }
+
     public override void CommitChanges(PackageCache packageCache = null)
     {
         LightComponent?.CommitChanges();
@@ -835,6 +848,18 @@ public class DirectionalLightActorProxy : ActorProxy
     }
 
     public override bool HasLightSettings => LightComponent is not null;
+
+    public override float Brightness
+    {
+        get => LightComponent?.Brightness ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Brightness == value) return;
+            LightComponent.Brightness = value;
+            OnPropertyChanged(nameof(Brightness));
+            MarkAuxiliaryChanged();
+        }
+    }
 
     public override void CommitChanges(PackageCache packageCache = null)
     {
@@ -1020,6 +1045,18 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
         }
     }
 
+    public override float Brightness
+    {
+        get => LightComponent?.Brightness ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Brightness == value) return;
+            LightComponent.Brightness = value;
+            OnPropertyChanged(nameof(Brightness));
+            MarkAuxiliaryChanged();
+        }
+    }
+
     public override void CommitChanges(StaticCollectionActor collectionActor)
     {
         base.CommitChanges(collectionActor);
@@ -1103,6 +1140,18 @@ public class DirectionalLightComponentActorProxy : CollectionActorComponentProxy
     }
 
     public override bool HasLightSettings => LightComponent is not null;
+
+    public override float Brightness
+    {
+        get => LightComponent?.Brightness ?? 0f;
+        set
+        {
+            if (IsReadOnly || LightComponent is null || LightComponent.Brightness == value) return;
+            LightComponent.Brightness = value;
+            OnPropertyChanged(nameof(Brightness));
+            MarkAuxiliaryChanged();
+        }
+    }
 
     public override void CommitChanges(StaticCollectionActor collectionActor)
     {

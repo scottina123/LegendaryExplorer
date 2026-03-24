@@ -1793,6 +1793,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (_isApplyingUndoRedo || RenderContext.TransformWidget.IsDragging) return;
 
         if (e.PropertyName is nameof(ActorProxy.LightRadius)
+            or nameof(ActorProxy.Brightness)
             or nameof(ActorProxy.InnerConeAngle)
             or nameof(ActorProxy.OuterConeAngle)
             or nameof(ActorProxy.LightColor)
