@@ -304,6 +304,8 @@
                     <StackPanel  DockPanel.Dock="Top" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0" Height="24">
                         <xctk:WatermarkTextBox Watermark="UIndex" Name="Goto_TextBox" Width="70" KeyUp="Goto_TextBox_KeyUp" IsEnabled="{Binding HasAnyFileOpen}"  VerticalContentAlignment="Center"/>
                         <Button Content="Goto #" Click="GotoButton_Clicked" IsEnabled="{Binding HasAnyFileOpen}" Style="{StaticResource {x:Type Button}}" Padding="7,0"/>
+                        <Button Content="Add File..." Command="{Binding AddFileCommand}" Style="{StaticResource {x:Type Button}}" Padding="7,0" Margin="4,0,0,0"
+                                ToolTip="Add another level file to the scene (Ctrl+Shift+O)"/>
                     </StackPanel>
                     <xctk:WatermarkTextBox DockPanel.Dock="Top" Watermark="Search actors..." Name="ActorFilter_TextBox" Margin="5,2,5,2" Height="22"
                                            KeyUp="ActorFilter_TextBox_KeyUp" IsEnabled="{Binding HasAnyFileOpen}" VerticalContentAlignment="Center"/>
