@@ -2268,6 +2268,36 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void OnViewportRightClickActor(ActorProxy actor)
     {
+        var contextMenu = BuildActorContextMenu(actor);
+        contextMenu.PlacementTarget = SceneViewer;
+        contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        contextMenu.IsOpen = true;
+    }
+
+    private void MeshExportsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (e.OriginalSource is not FrameworkElement fe) { e.Handled = true; return; }
+
+        ActorProxy actor = null;
+        DependencyObject current = fe;
+        while (current is not null)
+        {
+            if (current is ListBoxItem lbi && lbi.DataContext is ActorProxy a) { actor = a; break; }
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+
+        if (actor is null) { e.Handled = true; return; }
+
+        SelectedActor = actor;
+        var contextMenu = BuildActorContextMenu(actor);
+        contextMenu.PlacementTarget = fe;
+        contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+        contextMenu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private System.Windows.Controls.ContextMenu BuildActorContextMenu(ActorProxy actor)
+    {
         var contextMenu = new System.Windows.Controls.ContextMenu();
 
         AddPropertiesMenuItems(contextMenu, actor.Export,
@@ -2482,9 +2512,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
         contextMenu.Items.Add(trashItem);
 
-        contextMenu.PlacementTarget = SceneViewer;
-        contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
-        contextMenu.IsOpen = true;
+        return contextMenu;
     }
 
     private void AddPropertiesMenuItems(System.Windows.Controls.ContextMenu contextMenu, ExportEntry export, string label)
