@@ -1791,6 +1791,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         if (_isRefreshingActorFromPackageUpdate) return;
         if (_isApplyingUndoRedo || RenderContext.TransformWidget.IsDragging) return;
+
+        if (e.PropertyName is nameof(ActorProxy.LightRadius)
+            or nameof(ActorProxy.InnerConeAngle)
+            or nameof(ActorProxy.OuterConeAngle)
+            or nameof(ActorProxy.LightColor)
+            or nameof(ActorProxy.LightEnv_BouncedModulationColor)
+            or nameof(ActorProxy.ApplyBouncedModulationColor))
+        {
+            SceneViewer?.MarkRenderDirty();
+            return;
+        }
+
         if (e.PropertyName is not (nameof(ActorProxy.Location) or nameof(ActorProxy.Rotation) or nameof(ActorProxy.DrawScale) or nameof(ActorProxy.DrawScale3D))) return;
 
         SceneViewer?.MarkRenderDirty();
