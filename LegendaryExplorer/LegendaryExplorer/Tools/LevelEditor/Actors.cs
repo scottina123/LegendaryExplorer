@@ -429,6 +429,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     {
         foreach (var component in Components)
         {
+            context.CurrentLightingChannelMask = component.LightingChannelMask;
             component.Render(context, pass);
         }
     }
@@ -818,7 +819,8 @@ public class PointLightActorProxy : ActorProxy
             false,
             LocalToWorld.GetAxis(0).Normal(),
             0f,
-            0f);
+            0f,
+            LightComponent.LightingChannelMask);
         return true;
     }
 }
@@ -905,7 +907,8 @@ public class SpotLightActorProxy : PointLightActorProxy
             true,
             LocalToWorld.GetAxis(0).Normal(),
             LightComponent.InnerConeAngle,
-            LightComponent.OuterConeAngle);
+            LightComponent.OuterConeAngle,
+            LightComponent.LightingChannelMask);
         return true;
     }
 }
@@ -1080,7 +1083,8 @@ public class PointLightComponentActorProxy : CollectionActorComponentProxy
             false,
             LocalToWorld.GetAxis(0).Normal(),
             0f,
-            0f);
+            0f,
+            LightComponent.LightingChannelMask);
         return true;
     }
 }
@@ -1170,7 +1174,8 @@ public class SpotLightComponentActorProxy : PointLightComponentActorProxy
             true,
             LocalToWorld.GetAxis(0).Normal(),
             SpotLightComponent.InnerConeAngle,
-            SpotLightComponent.OuterConeAngle);
+            SpotLightComponent.OuterConeAngle,
+            SpotLightComponent.LightingChannelMask);
         return true;
     }
 }

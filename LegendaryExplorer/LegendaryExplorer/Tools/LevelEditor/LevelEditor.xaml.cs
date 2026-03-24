@@ -2476,7 +2476,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 IsEnabled = !actor.IsReadOnly,
                 StaysOpenOnClick = true
             };
-            channelItem.Click += (_, _) => SetLightingChannelValue(componentExport, propertyName, channelItem.IsChecked);
+            channelItem.Click += (_, _) =>
+            {
+                SetLightingChannelValue(componentExport, propertyName, channelItem.IsChecked);
+                actor.Components.FirstOrDefault(c => c.Export == componentExport)?.RefreshFromExport();
+                SceneViewer?.MarkRenderDirty();
+            };
             lightingChannelsMenu.Items.Add(channelItem);
         }
 
@@ -2838,14 +2843,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private static ExportEntry GetLightingChannelsTargetExport(ActorProxy actor)
     {
-        if (actor.Export.IsA("StaticMeshComponent") || actor.Export.IsA("LightComponent"))
+        if (actor.Export.IsA("StaticMeshComponent") || actor.Export.IsA("SkeletalMeshComponent") || actor.Export.IsA("LightComponent"))
         {
             return actor.Export;
         }
 
         return actor.Components
             .Select(component => component.Export)
-            .FirstOrDefault(export => export.IsA("StaticMeshComponent") || export.IsA("LightComponent"));
+            .FirstOrDefault(export => export.IsA("StaticMeshComponent") || export.IsA("SkeletalMeshComponent") || export.IsA("LightComponent"));
     }
 
     private static ExportEntry FindNearestPackageExport(IEntry entry)

@@ -71,6 +71,41 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
 
     public bool IsVisible { get; set; } = true;
 
+    public uint LightingChannelMask;
+
+    private static readonly string[] LightingChannelNames =
+    [
+        "bInitialized", "BSP", "Static", "Dynamic", "CompositeDynamic", "Skybox",
+        "Unnamed_1", "Unnamed_2", "Unnamed_3", "Unnamed_4", "Unnamed_5", "Unnamed_6",
+        "Cinematic_1", "Cinematic_2", "Cinematic_3", "Cinematic_4", "Cinematic_5", "Cinematic_6",
+        "Cinematic_7", "Cinematic_8", "Cinematic_9", "Cinematic_10",
+        "Gameplay_1", "Gameplay_2", "Gameplay_3", "Gameplay_4", "Crowd"
+    ];
+
+    public static uint ReadLightingChannelMask(PropertyCollection properties)
+    {
+        var lightingChannels = properties.GetProp<StructProperty>("LightingChannels");
+        if (lightingChannels is null)
+            return 0;
+
+        uint mask = 0;
+        if (lightingChannels.Properties.GetProp<BoolProperty>("bInitialized")?.Value == true
+            || lightingChannels.Properties.GetProp<BoolProperty>("bIsInitialized")?.Value == true)
+        {
+            mask |= 1u;
+        }
+
+        for (int i = 1; i < LightingChannelNames.Length; i++)
+        {
+            if (lightingChannels.Properties.GetProp<BoolProperty>(NameReference.FromInstancedString(LightingChannelNames[i]))?.Value == true)
+            {
+                mask |= (1u << i);
+            }
+        }
+
+        return mask;
+    }
+
     protected PrimitiveComponentProxy(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)
     {
         Actor = parent;
@@ -95,6 +130,8 @@ public class PrimitiveComponentProxy : NotifyPropertyChangedBase, IDisposable
         absoluteTranslation = Properties.GetProp<BoolProperty>("AbsoluteTranslation")?.Value ?? false;
         absoluteRotation = Properties.GetProp<BoolProperty>("AbsoluteRotation")?.Value ?? false;
         absoluteScale = Properties.GetProp<BoolProperty>("AbsoluteScale")?.Value ?? false;
+
+        LightingChannelMask = ReadLightingChannelMask(Properties);
     }
 
     public static PrimitiveComponentProxy Create(MeshRenderContext context, ExportEntry componentExport, ActorProxy parent)

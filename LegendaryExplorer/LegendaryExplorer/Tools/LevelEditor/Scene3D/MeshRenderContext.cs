@@ -161,6 +161,7 @@ public class MeshRenderContext : RenderContext
     public List<ScreenLabel> ScreenLabels { get; } = [];
 
     public Vector3 CurrentHitTestId;
+    public uint CurrentLightingChannelMask;
 
     public event EventHandler<float> UpdateScene;
     public event EventHandler RenderScene;
@@ -483,9 +484,12 @@ public class MeshRenderContext : RenderContext
         Span<int> nearestLightIndexes = stackalloc int[4] { -1, -1, -1, -1 };
         Span<float> nearestLightDistances = stackalloc float[4] { float.MaxValue, float.MaxValue, float.MaxValue, float.MaxValue };
 
+        uint meshMask = CurrentLightingChannelMask;
         for (int i = 0; i < SceneLights.Count; i++)
         {
             SceneLight light = SceneLights[i];
+            if (!SceneLight.ChannelsOverlap(light.LightingChannelMask, meshMask))
+                continue;
             float distanceSquared = Vector3.DistanceSquared(light.Position, objectPosition);
             for (int slot = 0; slot < nearestLightDistances.Length; slot++)
             {
