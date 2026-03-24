@@ -1244,6 +1244,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand ViewActorMetadataCommand { get; set; }
     public ICommand CloneActorTreeCommand { get; set; }
     public ICommand TrashActorCommand { get; set; }
+    public ICommand SnapActorToCameraCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -1286,6 +1287,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             () => SelectedActor is not null && !SelectedActor.IsReadOnly);
         TrashActorCommand = new GenericCommand(TrashActor,
             () => SelectedActor is not null && !SelectedActor.IsReadOnly);
+        SnapActorToCameraCommand = new GenericCommand(SnapActorToCamera,
+            () => SelectedActor is not null && !SelectedActor.IsReadOnly);
+    }
+
+    private void SnapActorToCamera()
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly) return;
+        SelectedActor.Location = RenderContext.Camera.Position;
+        SceneViewer?.MarkRenderDirty();
     }
 
     #endregion

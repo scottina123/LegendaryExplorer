@@ -546,6 +546,9 @@
                     </GroupBox>
                     <GroupBox Header="Actor Position" Margin="5,0,5,5" BorderThickness="2" Padding="5">
                         <StackPanel Orientation="Vertical">
+                            <Button Content="Snap to Camera" Margin="0,0,0,5" Padding="6,2" HorizontalAlignment="Left"
+                                    Command="{Binding DataContext.SnapActorToCameraCommand, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}"
+                                    ToolTip="Move this actor to the camera's current position"/>
                             <StackPanel Orientation="Horizontal">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="X:  " VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
