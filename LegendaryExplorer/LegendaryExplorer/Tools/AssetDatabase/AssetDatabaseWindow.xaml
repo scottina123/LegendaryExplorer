@@ -215,6 +215,37 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="NoFocusBorderListViewStyle" TargetType="{x:Type ListView}">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+            <Setter Property="ScrollViewer.PanningMode" Value="Both"/>
+            <Setter Property="Stylus.IsFlicksEnabled" Value="False"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListView}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer Style="{DynamicResource {x:Static GridView.GridViewScrollViewerStyleKey}}"
+                                          Focusable="False"
+                                          Padding="{TemplateBinding Padding}">
+                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </ScrollViewer>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="G" Modifiers="Control"  Command="{Binding GenerateDBCommand}"/>
@@ -485,18 +516,7 @@
                                     </DockPanel>
                                 </Expander>
                                 <ListView x:Name="lstbx_Files" DockPanel.Dock="Bottom" MinWidth="300" ItemsSource="{Binding Path=FileListExtended}" GridViewColumnHeader.Click="views_ColumnHeader_Click"
-                                          Style="{x:Null}"
-                                          Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-                                          Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
-                                          BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                                          BorderThickness="1"
-                                          Padding="1"
-                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                          ScrollViewer.CanContentScroll="True"
-                                          ScrollViewer.PanningMode="Both"
-                                          Stylus.IsFlicksEnabled="False"
-                                          VerticalContentAlignment="Center">
+                                          Style="{StaticResource NoFocusBorderListViewStyle}">
                                     <ListView.View>
                                         <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
                                             <GridViewColumn DisplayMemberBinding="{Binding FileName}" Width="260" Header="File"/>
@@ -1149,18 +1169,7 @@
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>
                             <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged" PreviewMouseRightButtonDown="lstbx_Lines_PreviewMouseRightButtonDown"
-                                      Style="{x:Null}"
-                                      Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-                                      Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
-                                      BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                                      BorderThickness="1"
-                                      Padding="1"
-                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                      ScrollViewer.CanContentScroll="True"
-                                      ScrollViewer.PanningMode="Both"
-                                      Stylus.IsFlicksEnabled="False"
-                                      VerticalContentAlignment="Center">
+                                      Style="{StaticResource NoFocusBorderListViewStyle}">
                                 <ListView.View>
                                     <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
                                         <GridViewColumn Width="220" Header="Speaker">
