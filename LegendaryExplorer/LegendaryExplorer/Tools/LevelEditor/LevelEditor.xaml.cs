@@ -466,7 +466,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.BackgroundColor = _backgroundColor;
         ActorsView = CollectionViewSource.GetDefaultView(Actors);
         ActorsView.Filter = ActorFilter;
-        ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFileName)));
+        ActorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActorProxy.OwningFile)));
 
         LoadCommands();
         InitializeComponent();

@@ -308,31 +308,6 @@
                     <xctk:WatermarkTextBox DockPanel.Dock="Top" Watermark="Search actors..." Name="ActorFilter_TextBox" Margin="5,2,5,2" Height="22"
                                            KeyUp="ActorFilter_TextBox_KeyUp" IsEnabled="{Binding HasAnyFileOpen}" VerticalContentAlignment="Center"/>
 
-                    <DockPanel DockPanel.Dock="Top" Margin="5,0,5,2"
-                               Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                               Visibility="{Binding ActiveFile, Converter={StaticResource NullVisibilityConverter}}">
-                        <Button DockPanel.Dock="Right" Content="X" Padding="4,0" Margin="2,0"
-                                Command="{Binding CloseFileCommand}"
-                                CommandParameter="{Binding ActiveFile}" ToolTip="Close this file" FontSize="10"/>
-                        <Button DockPanel.Dock="Right" Content="Save" Padding="4,0" Margin="2,0"
-                                Command="{Binding SaveSingleFileCommand}"
-                                CommandParameter="{Binding ActiveFile}" ToolTip="Save this file" FontSize="10"/>
-                        <Button DockPanel.Dock="Right" Content="Commit" Padding="4,0" Margin="2,0"
-                                Command="{Binding CommitSingleFileCommand}"
-                                CommandParameter="{Binding ActiveFile}" ToolTip="Commit Level Editor changes for this file" FontSize="10"/>
-                        <ToggleButton DockPanel.Dock="Right" Padding="2,0" Margin="2,0"
-                                      IsChecked="{Binding ActiveFile.IsReadOnly, Mode=TwoWay}"
-                                      ToolTip="Toggle read-only — actors cannot be edited when enabled">
-                            <Grid Width="12" Height="12">
-                                <fa:ImageAwesome Icon="Solid_Lock" Width="12"
-                                                 Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <fa:ImageAwesome Icon="Solid_LockOpen" Width="12"
-                                                 Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Not'}"/>
-                            </Grid>
-                        </ToggleButton>
-                        <TextBlock Text="{Binding ActiveFile.FileName}" FontWeight="Bold" Padding="4,2" VerticalAlignment="Center"/>
-                    </DockPanel>
-
                     <TextBlock DockPanel.Dock="Bottom" Text="{Binding TextBelowActors}" TextWrapping="Wrap"/>
 
                     <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding ActorsView}" Name="MeshExportsList" SelectedItem="{Binding SelectedActor}" HorizontalContentAlignment="Stretch"
