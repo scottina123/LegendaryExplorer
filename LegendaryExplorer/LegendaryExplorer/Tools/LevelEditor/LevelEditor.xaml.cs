@@ -23,6 +23,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using
 Microsoft.Win32;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -2338,6 +2339,68 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     skeletalMenu.Items.Add(subItem);
                 }
                 contextMenu.Items.Add(skeletalMenu);
+            }
+        }
+
+        if (actor is SFXSkeletalMeshActorProxy)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            var gestureItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Open Gesture Animation Importer...",
+                IsEnabled = !actor.IsReadOnly
+            };
+            gestureItem.Click += (_, _) =>
+            {
+                var dialog = new GestureAnimationImporterDialog(actor.Export, this);
+                dialog.ShowDialog();
+            };
+            contextMenu.Items.Add(gestureItem);
+        }
+        else if (actor is SFXStuntActorProxy)
+        {
+            var gestureModules = actor.Export.FileRef.Exports
+                .Where(e => e.idxLink == actor.Export.UIndex && e.ClassName == "SFXModule_Gestures")
+                .ToList();
+            if (gestureModules.Count > 0)
+            {
+                contextMenu.Items.Add(new System.Windows.Controls.Separator());
+                if (gestureModules.Count == 1)
+                {
+                    var gestureItem = new System.Windows.Controls.MenuItem
+                    {
+                        Header = "Open Gesture Animation Importer...",
+                        IsEnabled = !actor.IsReadOnly
+                    };
+                    gestureItem.Click += (_, _) =>
+                    {
+                        var dialog = new GestureAnimationImporterDialog(gestureModules[0], this);
+                        dialog.ShowDialog();
+                    };
+                    contextMenu.Items.Add(gestureItem);
+                }
+                else
+                {
+                    var gestureMenu = new System.Windows.Controls.MenuItem
+                    {
+                        Header = "Open Gesture Animation Importer"
+                    };
+                    foreach (var module in gestureModules)
+                    {
+                        var subItem = new System.Windows.Controls.MenuItem
+                        {
+                            Header = $"{module.UIndex}: {module.ObjectName.Instanced}",
+                            IsEnabled = !actor.IsReadOnly
+                        };
+                        subItem.Click += (_, _) =>
+                        {
+                            var dialog = new GestureAnimationImporterDialog(module, this);
+                            dialog.ShowDialog();
+                        };
+                        gestureMenu.Items.Add(subItem);
+                    }
+                    contextMenu.Items.Add(gestureMenu);
+                }
             }
         }
 
