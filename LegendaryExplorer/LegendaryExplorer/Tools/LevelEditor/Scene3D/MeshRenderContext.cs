@@ -82,7 +82,11 @@ public class MeshRenderContext : RenderContext
         S = 0b100,
         D = 0b1000,
         Q = 0b10000,
-        E = 0b100000
+        E = 0b100000,
+        Up = 0b1000000,
+        Down = 0b10000000,
+        Left = 0b100000000,
+        Right = 0b1000000000
     }
 
     public Color BackgroundColor = Color.FromArgb(255, 255, 255, 255); //Default
@@ -218,6 +222,22 @@ public class MeshRenderContext : RenderContext
             if (PressedKeys.HasFlag(KeyStates.E))
             {
                 Camera.Position += Vector3.UnitZ * timestep * CameraSpeed;
+            }
+            if (PressedKeys.HasFlag(KeyStates.Up))
+            {
+                Camera.Position += Vector3.UnitZ * timestep * CameraSpeed;
+            }
+            if (PressedKeys.HasFlag(KeyStates.Down))
+            {
+                Camera.Position -= Vector3.UnitZ * timestep * CameraSpeed;
+            }
+            if (PressedKeys.HasFlag(KeyStates.Left))
+            {
+                Camera.Yaw -= timestep * 1.5f;
+            }
+            if (PressedKeys.HasFlag(KeyStates.Right))
+            {
+                Camera.Yaw += timestep * 1.5f;
             }
         }
 
@@ -706,6 +726,18 @@ public class MeshRenderContext : RenderContext
             case Key.E:
                 PressedKeys |= KeyStates.E;
                 return true;
+            case Key.Up:
+                PressedKeys |= KeyStates.Up;
+                return true;
+            case Key.Down:
+                PressedKeys |= KeyStates.Down;
+                return true;
+            case Key.Left:
+                PressedKeys |= KeyStates.Left;
+                return true;
+            case Key.Right:
+                PressedKeys |= KeyStates.Right;
+                return true;
             default:
                 return false;
         }
@@ -737,6 +769,18 @@ public class MeshRenderContext : RenderContext
                 return true;
             case Key.E:
                 PressedKeys &= ~KeyStates.E;
+                return true;
+            case Key.Up:
+                PressedKeys &= ~KeyStates.Up;
+                return true;
+            case Key.Down:
+                PressedKeys &= ~KeyStates.Down;
+                return true;
+            case Key.Left:
+                PressedKeys &= ~KeyStates.Left;
+                return true;
+            case Key.Right:
+                PressedKeys &= ~KeyStates.Right;
                 return true;
             default:
                 return false;
