@@ -70,6 +70,7 @@ VS_OUT VSMain(VS_IN input) {
 #define FLAG_ENABLEBLUECHANNEL (1 << 4)
 #define FLAG_ENABLEALPHACHANNEL (1 << 5)
 #define FLAG_PRESERVETEXTUREALPHA (1 << 6)
+#define FLAG_UNLIT (1 << 7)
 
 //level editor flags
 #define FLAG_WIREFRAME (1 << 29)
@@ -108,41 +109,46 @@ PS_OUT PSMain(PS_IN input) {
 		}
 	}
 	
-	float3 normal = normalize(input.normal);
-	float3 lighting = AmbientColor.rgb;
+	float3 lighting = float3(1.0, 1.0, 1.0);
 
-	[unroll]
-	for (int i = 0; i < 4; i++)
+	if ((Flags & FLAG_UNLIT) == 0)
 	{
-		float radius = LightPositionRadius[i].w;
-		if (radius <= 0.0)
+		float3 normal = normalize(input.normal);
+		lighting = AmbientColor.rgb;
+
+		[unroll]
+		for (int i = 0; i < 4; i++)
 		{
-			continue;
+			float radius = LightPositionRadius[i].w;
+			if (radius <= 0.0)
+			{
+				continue;
+			}
+
+			float3 lightVector = LightPositionRadius[i].xyz - input.worldPos;
+			float distanceToLight = length(lightVector);
+			if (distanceToLight >= radius)
+			{
+				continue;
+			}
+
+			float3 L = lightVector / max(distanceToLight, 0.0001);
+			float attenuation = saturate(1.0 - distanceToLight / radius);
+			attenuation *= attenuation;
+			float coneAttenuation = 1.0;
+
+			if (LightOuterConeAndType[i].y > 0.5)
+			{
+				float3 lightDirection = normalize(LightDirectionInnerCone[i].xyz);
+				float spotCos = dot(-L, lightDirection);
+				float outerCone = LightOuterConeAndType[i].x;
+				float innerCone = LightDirectionInnerCone[i].w;
+				coneAttenuation = saturate((spotCos - outerCone) / max(innerCone - outerCone, 0.0001));
+			}
+
+			float lambert = saturate(dot(normal, L));
+			lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * lambert * attenuation * coneAttenuation);
 		}
-
-		float3 lightVector = LightPositionRadius[i].xyz - input.worldPos;
-		float distanceToLight = length(lightVector);
-		if (distanceToLight >= radius)
-		{
-			continue;
-		}
-
-		float3 L = lightVector / max(distanceToLight, 0.0001);
-		float attenuation = saturate(1.0 - distanceToLight / radius);
-		attenuation *= attenuation;
-		float coneAttenuation = 1.0;
-
-		if (LightOuterConeAndType[i].y > 0.5)
-		{
-			float3 lightDirection = normalize(LightDirectionInnerCone[i].xyz);
-			float spotCos = dot(-L, lightDirection);
-			float outerCone = LightOuterConeAndType[i].x;
-			float innerCone = LightDirectionInnerCone[i].w;
-			coneAttenuation = saturate((spotCos - outerCone) / max(innerCone - outerCone, 0.0001));
-		}
-
-		float lambert = saturate(dot(normal, L));
-		lighting += LightColorIntensity[i].rgb * (LightColorIntensity[i].a * lambert * attenuation * coneAttenuation);
 	}
 
  float outputAlpha = ((Flags & FLAG_PRESERVETEXTUREALPHA) == FLAG_PRESERVETEXTUREALPHA) ? textureValue.a : 1.0f;

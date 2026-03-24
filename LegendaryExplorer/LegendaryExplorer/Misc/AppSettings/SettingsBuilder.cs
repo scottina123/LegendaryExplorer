@@ -252,6 +252,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_showvolumetrics;
             set => SetProperty(ref _leveleditor_showvolumetrics, value);
         }
+        private static bool _leveleditor_unlit = false;
+        public static bool LevelEditor_Unlit {
+            get => _leveleditor_unlit;
+            set => SetProperty(ref _leveleditor_unlit, value);
+        }
         private static string _assetdb_defaultgame = "";
         public static string AssetDB_DefaultGame {
             get => _assetdb_defaultgame;

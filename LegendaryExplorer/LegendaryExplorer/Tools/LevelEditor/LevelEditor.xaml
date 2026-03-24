@@ -125,6 +125,7 @@
                     <ToggleButton Content="Show Volumes" ToolTip="Show volume wireframes" IsChecked="{Binding ShowVolumes}"/>
                     <ToggleButton Content="Show Volumetric Meshes" IsChecked="{Binding ShowVolumetrics}"
                                   ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
+                    <ToggleButton Content="Unlit" ToolTip="Display the scene without lighting" IsChecked="{Binding Unlit}"/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,6,0">

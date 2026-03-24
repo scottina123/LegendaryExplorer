@@ -227,6 +227,24 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _unlit = Settings.LevelEditor_Unlit;
+    public bool Unlit
+    {
+        get => _unlit;
+        set
+        {
+            if (SetProperty(ref _unlit, value))
+            {
+                Settings.LevelEditor_Unlit = value;
+                if (value)
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+                else
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Unlit;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     #region ISceneRenderContextConfigurable
 
     private bool _setAlphaToBlack = true;
@@ -1948,6 +1966,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.RenderScene += RenderScene;
         RenderContext.SelectActor += ViewportActorSelect;
         RenderContext.RightClickActor += OnViewportRightClickActor;
+
+        if (_unlit)
+            RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
 
         if (!string.IsNullOrEmpty(FileQueuedForLoad))
         {
