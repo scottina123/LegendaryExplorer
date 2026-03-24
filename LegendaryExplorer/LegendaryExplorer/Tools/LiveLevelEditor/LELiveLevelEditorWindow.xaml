@@ -39,7 +39,7 @@
             <TabControl>
                 <TabItem Name="instructionsTab" Header="Instructions" Visibility="{Binding ReadyToView, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <Grid Width="523">
-                        <Border BorderBrush="LightSlateGray" BorderThickness="0.65">
+                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65">
                             <StackPanel MinWidth="200" Margin="8">
                                 <TextBlock x:Name="welcomeTextBlock" Text="Welcome to Live Level Editor" Margin="0,5,0,0" />
                                 <TextBlock Text="Requirements:" Margin="0,5,0,0" />
@@ -99,7 +99,7 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <controls:ListBoxScroll x:Name="listBoxPackages" ItemsSource="{Binding ActorDict}" DisplayMemberPath="Key" SelectedValuePath="Value" ContextMenu="{StaticResource packagesContextMenu}" Grid.Row="0" Grid.RowSpan="3"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="0" Grid.Column="2" >
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="0" Grid.Column="2" >
                                 <DockPanel>
                                     <controls:SearchBox x:Name="actorFilterSearchBox" DockPanel.Dock="Top" WatermarkText="Filter Actors (In selected file)" TextChanged="ActorFilterSearchBox_OnTextChanged"/>
                                     <controls:ListBoxScroll

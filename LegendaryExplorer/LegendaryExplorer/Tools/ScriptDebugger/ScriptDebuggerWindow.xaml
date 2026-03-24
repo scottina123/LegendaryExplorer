@@ -210,7 +210,7 @@
                                   Panel.ZIndex="60" />
                     <Grid Grid.Row="3" Grid.Column="2" IsEnabled="{Binding IsAttached, Converter={StaticResource InverseBooleanConverter}}"
                           sharedUi:Bindings.VisibilityToEnabled="True">
-                        <Border BorderBrush="LightSlateGray" BorderThickness="0.65">
+                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65">
                             <StackPanel MinWidth="200" Margin="8">
                                 <TextBlock Text="Welcome to Script Debugger" Margin="0,5,0,0" />
                                 <TextBlock Text="Requirements:" Margin="0,5,0,0" />

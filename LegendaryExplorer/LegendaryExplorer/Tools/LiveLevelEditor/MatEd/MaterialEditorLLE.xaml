@@ -70,7 +70,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="0" Grid.Column="2" >
+                        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="0" Grid.Column="2" >
                             <DockPanel>
                                 <controls:SearchBox x:Name="materialFilterSearchBox" DockPanel.Dock="Top" WatermarkText="Filter Loaded Materials" TextChanged="MaterialFilterSearchBox_OnTextChanged"/>
                                 <controls:ListBoxScroll

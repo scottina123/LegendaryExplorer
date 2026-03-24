@@ -167,7 +167,8 @@
             <controls:StretchingTreeView x:Name="Interpreter_TreeView" Grid.Row="0" Grid.Column="2" Width="Auto" 
                                          FontFamily="Consolas" SelectedItemChanged="Interpreter_TreeViewSelectedItemChanged" 
                                          ItemsSource="{Binding PropertyNodes, Mode=OneTime}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" 
-                                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                         VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                         BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
                 <b:Interaction.Behaviors>
                     <peregrineTreeView:TreeSelectionBehavior SelectedItem="{Binding TreeSelectedItem, Mode=TwoWay}" />
                 </b:Interaction.Behaviors>
