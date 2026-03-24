@@ -2829,58 +2829,71 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private async void ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport)
     {
-        var picker = new StaticMeshPickerDialog(Game, this);
+        var picker = new StaticMeshPickerDialog(Game, componentExport.FileRef, this);
         if (picker.ShowDialog() != true || picker.SelectedResult is null) return;
 
         var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
 
         IsBusy = true;
-        BusyText = "Importing mesh...";
+        BusyText = "Replacing static mesh...";
         await Task.Delay(1).ConfigureAwait(true);
 
         try
         {
-            using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
-            ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
-            ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
-
-            var rop = new RelinkerOptionsPackage
+            if (sourcePath is null)
             {
-                ImportExportDependencies = true,
-                PortImportsMemorySafe = true,
-                Cache = new PackageCache()
-            };
-
-            var relinkResults = EntryImporter.ImportAndRelinkEntries(
-                EntryImporter.PortingOption.CloneAllDependencies,
-                meshExport,
-                componentExport.FileRef,
-                importParent,
-                true,
-                rop,
-                out IEntry importedEntry);
-
-            if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
-            {
-                importedExport.Parent = importParent;
-            }
-
-            if (importedEntry is not null)
-            {
+                // Local mesh – just update the property reference
                 var props = componentExport.GetProperties();
-                props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "StaticMesh"));
+                props.AddOrReplaceProp(new ObjectProperty(sourceUIndex, "StaticMesh"));
                 componentExport.WriteProperties(props);
             }
-
-            if (relinkResults?.Count > 0)
+            else
             {
-                string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
-                MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
+                // External mesh – import with dependencies
+                using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
+                ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
+                ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
+
+                var rop = new RelinkerOptionsPackage
+                {
+                    ImportExportDependencies = true,
+                    PortImportsMemorySafe = true,
+                    Cache = new PackageCache()
+                };
+
+                var relinkResults = EntryImporter.ImportAndRelinkEntries(
+                    EntryImporter.PortingOption.CloneAllDependencies,
+                    meshExport,
+                    componentExport.FileRef,
+                    importParent,
+                    true,
+                    rop,
+                    out IEntry importedEntry);
+
+                if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
+                {
+                    importedExport.Parent = importParent;
+                }
+
+                if (importedEntry is not null)
+                {
+                    var props = componentExport.GetProperties();
+                    props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "StaticMesh"));
+                    componentExport.WriteProperties(props);
+                }
+
+                if (relinkResults?.Count > 0)
+                {
+                    string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
+                    MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
+                }
             }
+
+            RefreshActorInViewport(actor);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Failed to import mesh:\n{ex.Message}", "Import Error");
+            MessageBox.Show(this, $"Failed to replace static mesh:\n{ex.Message}", "Error");
         }
         finally
         {
@@ -2889,6 +2902,36 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     #endregion
+
+    private void RefreshActorInViewport(ActorProxy oldActor)
+    {
+        bool wasSelected = SelectedActor == oldActor;
+        var owningFile = oldActor.OwningFile;
+        ExportEntry actorExport = oldActor.Export;
+
+        // Remove the old proxy from the scene
+        if (Actors.Remove(oldActor))
+        {
+            owningFile?.Actors.Remove(oldActor);
+            RenderContext.RemoveActor(oldActor);
+            oldActor.Dispose();
+        }
+
+        // Recreate from the same export
+        if (ActorProxy.Create(this, actorExport) is { } newActor)
+        {
+            newActor.OwningFile = owningFile;
+            Actors.Add(newActor);
+            owningFile?.Actors.Add(newActor);
+            RenderContext.AddActor(newActor);
+            Actors.Sort(a => a.Export.UIndex);
+
+            if (wasSelected)
+            {
+                SelectedActor = newActor;
+            }
+        }
+    }
 
     #region Skeletal Mesh Replacement
 
@@ -2976,36 +3019,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    private void RefreshActorInViewport(ActorProxy oldActor)
-    {
-        bool wasSelected = SelectedActor == oldActor;
-        var owningFile = oldActor.OwningFile;
-        ExportEntry actorExport = oldActor.Export;
-
-        // Remove the old proxy from the scene
-        if (Actors.Remove(oldActor))
-        {
-            owningFile?.Actors.Remove(oldActor);
-            RenderContext.RemoveActor(oldActor);
-            oldActor.Dispose();
-        }
-
-        // Recreate from the same export
-        if (ActorProxy.Create(this, actorExport) is { } newActor)
-        {
-            newActor.OwningFile = owningFile;
-            Actors.Add(newActor);
-            owningFile?.Actors.Add(newActor);
-            RenderContext.AddActor(newActor);
-            Actors.Sort(a => a.Export.UIndex);
-
-            if (wasSelected)
-            {
-                SelectedActor = newActor;
-            }
         }
     }
 
