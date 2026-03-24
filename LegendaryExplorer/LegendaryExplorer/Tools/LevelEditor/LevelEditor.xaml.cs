@@ -88,7 +88,19 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ("Unnamed_6", "Unnamed 6"),
         ("Cinematic_1", "Cinematic 1"),
         ("Cinematic_2", "Cinematic 2"),
-        ("Cinematic_3", "Cinematic 3")
+        ("Cinematic_3", "Cinematic 3"),
+        ("Cinematic_4", "Cinematic 4"),
+        ("Cinematic_5", "Cinematic 5"),
+        ("Cinematic_6", "Cinematic 6"),
+        ("Cinematic_7", "Cinematic 7"),
+        ("Cinematic_8", "Cinematic 8"),
+        ("Cinematic_9", "Cinematic 9"),
+        ("Cinematic_10", "Cinematic 10"),
+        ("Gameplay_1", "Gameplay 1"),
+        ("Gameplay_2", "Gameplay 2"),
+        ("Gameplay_3", "Gameplay 3"),
+        ("Gameplay_4", "Gameplay 4"),
+        ("Crowd", "Crowd")
     ];
 
     private static readonly (string PropertyName, string DisplayName)[] CollisionMenuItems =
