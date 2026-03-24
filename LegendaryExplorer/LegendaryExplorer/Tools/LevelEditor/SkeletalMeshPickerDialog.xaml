@@ -1,0 +1,86 @@
+<misc:NotifyPropertyChangedWindowBase
+        x:Class="LegendaryExplorer.Tools.LevelEditor.SkeletalMeshPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
+        mc:Ignorable="d"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Title="Replace Skeletal Mesh" Height="640" Width="900"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
+    <Grid Margin="6">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="1.5*"/>
+            </Grid.ColumnDefinitions>
+            <!-- Left: Tabbed mesh selection -->
+            <TabControl Grid.Column="0" SelectedIndex="{Binding SelectedTabIndex}">
+                <!-- Tab 1: Local package meshes -->
+                <TabItem Header="Package Meshes">
+                    <DockPanel>
+                        <xctk:WatermarkTextBox DockPanel.Dock="Top" x:Name="LocalFilterBox" Watermark="Filter meshes..."
+                                               Margin="0,4,0,3" Height="22" VerticalContentAlignment="Center"
+                                               TextChanged="LocalFilterBox_TextChanged"/>
+                        <ListBox ItemsSource="{Binding FilteredLocalMeshes}"
+                                 SelectedItem="{Binding SelectedLocalMesh}"
+                                 DisplayMemberPath="DisplayName"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling"/>
+                    </DockPanel>
+                </TabItem>
+                <!-- Tab 2: Asset Database meshes -->
+                <TabItem Header="Asset Database">
+                    <xctk:BusyIndicator IsBusy="{Binding IsLoading}" BusyContent="{Binding LoadingText}">
+                        <DockPanel>
+                            <xctk:WatermarkTextBox DockPanel.Dock="Top" x:Name="DbFilterBox" Watermark="Filter meshes..."
+                                                   Margin="0,4,0,3" Height="22" VerticalContentAlignment="Center"
+                                                   TextChanged="DbFilterBox_TextChanged"/>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <ListBox Grid.Row="0" ItemsSource="{Binding FilteredDbMeshRecords}"
+                                         SelectedItem="{Binding SelectedDbMesh}"
+                                         DisplayMemberPath="MeshName"
+                                         VirtualizingStackPanel.IsVirtualizing="True"
+                                         VirtualizingStackPanel.VirtualizationMode="Recycling"/>
+                                <TextBlock Grid.Row="1" Text="Source File:" FontWeight="Bold" Margin="0,4,0,2"/>
+                                <ListBox Grid.Row="2" ItemsSource="{Binding UsageItems}"
+                                         SelectedItem="{Binding SelectedUsage}"
+                                         DisplayMemberPath="DisplayName"
+                                         MaxHeight="120"/>
+                            </Grid>
+                        </DockPanel>
+                    </xctk:BusyIndicator>
+                </TabItem>
+            </TabControl>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+            <!-- Right: shared mesh preview -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="120"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Mesh Preview" FontWeight="Bold" Margin="0,0,0,2"/>
+                <exportLoaderControls:MeshRenderer Grid.Row="1" x:Name="MeshPreview"/>
+            </Grid>
+        </Grid>
+        <!-- Buttons -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+            <Button Content="OK" Width="70" Command="{Binding OKCommand}" IsDefault="True"/>
+            <Button Content="Cancel" Width="70" Margin="6,0,0,0" Click="CancelButton_Click" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</misc:NotifyPropertyChangedWindowBase>

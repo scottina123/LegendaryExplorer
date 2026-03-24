@@ -25,6 +25,7 @@ using
 Microsoft.Win32;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using
 Newtonsoft.Json;
 using System;
@@ -2306,6 +2307,40 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             contextMenu.Items.Add(replaceMeshItem);
         }
 
+        var skeletalMeshComponents = GetSkeletalMeshComponentExports(actor);
+        if (skeletalMeshComponents.Count > 0)
+        {
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            if (skeletalMeshComponents.Count == 1)
+            {
+                var replaceSkeletalItem = new System.Windows.Controls.MenuItem
+                {
+                    Header = "Replace Skeletal Mesh...",
+                    IsEnabled = !actor.IsReadOnly
+                };
+                replaceSkeletalItem.Click += (_, _) => ReplaceSkeletalMesh(actor, skeletalMeshComponents[0]);
+                contextMenu.Items.Add(replaceSkeletalItem);
+            }
+            else
+            {
+                var skeletalMenu = new System.Windows.Controls.MenuItem
+                {
+                    Header = "Replace Skeletal Mesh"
+                };
+                foreach (var smc in skeletalMeshComponents)
+                {
+                    var subItem = new System.Windows.Controls.MenuItem
+                    {
+                        Header = $"{smc.UIndex}: {smc.ObjectName.Instanced}",
+                        IsEnabled = !actor.IsReadOnly
+                    };
+                    subItem.Click += (_, _) => ReplaceSkeletalMesh(actor, smc);
+                    skeletalMenu.Items.Add(subItem);
+                }
+                contextMenu.Items.Add(skeletalMenu);
+            }
+        }
+
         if (actor is not CollectionActorComponentProxy)
         {
             contextMenu.Items.Add(new System.Windows.Controls.Separator());
@@ -2850,6 +2885,127 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    #endregion
+
+    #region Skeletal Mesh Replacement
+
+    private static List<ExportEntry> GetSkeletalMeshComponentExports(ActorProxy actor) =>
+        actor.Components
+            .Select(c => c.Export)
+            .Where(e => e.IsA("SkeletalMeshComponent"))
+            .ToList();
+
+    private async void ReplaceSkeletalMesh(ActorProxy actor, ExportEntry componentExport)
+    {
+        var picker = new SkeletalMeshPickerDialog(Game, componentExport.FileRef, this);
+        if (picker.ShowDialog() != true || picker.SelectedResult is null) return;
+
+        var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
+
+        IsBusy = true;
+        BusyText = "Replacing skeletal mesh...";
+        await Task.Delay(1).ConfigureAwait(true);
+
+        try
+        {
+            if (sourcePath is null)
+            {
+                // Local mesh – just update the property reference
+                var props = componentExport.GetProperties();
+                props.AddOrReplaceProp(new ObjectProperty(sourceUIndex, "SkeletalMesh"));
+                componentExport.WriteProperties(props);
+            }
+            else
+            {
+                // External mesh – import with dependencies
+                using IMEPackage sourcePcc = MEPackageHandler.OpenMEPackage(sourcePath);
+                ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
+                ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
+
+                var rop = new RelinkerOptionsPackage
+                {
+                    ImportExportDependencies = true,
+                    PortImportsMemorySafe = true,
+                    Cache = new PackageCache()
+                };
+
+                var relinkResults = EntryImporter.ImportAndRelinkEntries(
+                    EntryImporter.PortingOption.CloneAllDependencies,
+                    meshExport,
+                    componentExport.FileRef,
+                    importParent,
+                    true,
+                    rop,
+                    out IEntry importedEntry);
+
+                if (importedEntry is ExportEntry importedExport && importParent is not null && importedExport.Parent != importParent)
+                {
+                    importedExport.Parent = importParent;
+                }
+
+                if (importedEntry is not null)
+                {
+                    var props = componentExport.GetProperties();
+                    props.AddOrReplaceProp(new ObjectProperty(importedEntry.UIndex, "SkeletalMesh"));
+                    componentExport.WriteProperties(props);
+                }
+
+                if (relinkResults?.Count > 0)
+                {
+                    string warnings = string.Join("\n", relinkResults.Select(r => r.Message));
+                    MessageBox.Show(this, $"Import completed with {relinkResults.Count} relink warning(s):\n{warnings}", "Import Warnings");
+                }
+            }
+
+            // Match MaterialInstanceConstants to the new SkeletalMesh
+            if (InterpreterExportLoader.CanMatchMaterialsToSkeletalMesh(componentExport))
+            {
+                InterpreterExportLoader.MatchMaterialsToSkeletalMesh(this, componentExport);
+            }
+
+            // Refresh the actor in the viewport so the new mesh is visible immediately
+            RefreshActorInViewport(actor);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to replace skeletal mesh:\n{ex.Message}", "Error");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void RefreshActorInViewport(ActorProxy oldActor)
+    {
+        bool wasSelected = SelectedActor == oldActor;
+        var owningFile = oldActor.OwningFile;
+        ExportEntry actorExport = oldActor.Export;
+
+        // Remove the old proxy from the scene
+        if (Actors.Remove(oldActor))
+        {
+            owningFile?.Actors.Remove(oldActor);
+            RenderContext.RemoveActor(oldActor);
+            oldActor.Dispose();
+        }
+
+        // Recreate from the same export
+        if (ActorProxy.Create(this, actorExport) is { } newActor)
+        {
+            newActor.OwningFile = owningFile;
+            Actors.Add(newActor);
+            owningFile?.Actors.Add(newActor);
+            RenderContext.AddActor(newActor);
+            Actors.Sort(a => a.Export.UIndex);
+
+            if (wasSelected)
+            {
+                SelectedActor = newActor;
+            }
         }
     }
 
