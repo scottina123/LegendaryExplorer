@@ -845,7 +845,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Viewer" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the viewer on or off" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
                                 <DockPanel x:Name="details_Mesh" MinWidth="350" Margin="3" >
                                     <ToggleButton x:Name="btn_MeshRenderToggle" Content="Toggle Mesh Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_MeshRenderToggle_Click" IsChecked="False"></ToggleButton>
                                     <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer" Visibility="Visible" />
@@ -923,7 +923,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Texture Viewer" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Click button to toggle the viewer" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
                                 <DockPanel x:Name="details_Textures" MinWidth="350" MaxWidth="550" Margin="3">
                                     <ToggleButton x:Name="btn_TextRenderToggle" Content="Toggle Texture Rendering" DockPanel.Dock="Bottom" MaxHeight="30" ClickMode="Release" Click="btn_TextRenderToggle_Click"/>
                                     <Grid>
@@ -990,7 +990,7 @@
                                 </controls:ListBoxScroll.ContextMenu>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Animation Preview and details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the animation preview on or off" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.7" Grid.Row="2" Grid.Column="1">
                                 <DockPanel MinWidth="350" Margin="3">
                                     <ToggleButton x:Name="btn_AnimPreviewToggle" Content="Toggle Animation Preview" MaxHeight="30" ClickMode="Release" 
                                                   Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"/>
@@ -1059,7 +1059,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
                                 <StackPanel x:Name="details_PS" MinWidth="200" Margin="3">
                                     <TextBlock Text="Parent Package: " Margin="0,5,0,0"/>
                                     <TextBlock Text="{Binding Path=SelectedItem.ParentPackage, ElementName=lstbx_Particles}" />
@@ -1103,7 +1103,7 @@
                                 </controls:ListBoxScroll.ItemContainerStyle>
                             </controls:ListBoxScroll>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
                                 <StackPanel x:Name="details_GUI" MinWidth="200" Margin="3">
 
                                 </StackPanel>
@@ -1246,7 +1246,7 @@
                                 </ListView.ContextMenu>
                             </ListView>
                             <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Additional details" Grid.Row="0" Grid.Column="1" Visibility="Collapsed"/>
-                            <Border BorderBrush="LightSlateGray" BorderThickness="0.65" Grid.Row="1" Grid.Column="1" Visibility="Collapsed">
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="1" Grid.Column="1" Visibility="Collapsed">
                                 <StackPanel Margin="5" Visibility="{Binding CurrentConvo.Item1, Converter={StaticResource NullVisibilityConverter}}" >
                                     <TextBlock Text="Conversation:" FontSize="14"/>
                                     <TextBlock Text="{Binding CurrentConvo.Item1}" FontSize="14" Margin="3"/>
