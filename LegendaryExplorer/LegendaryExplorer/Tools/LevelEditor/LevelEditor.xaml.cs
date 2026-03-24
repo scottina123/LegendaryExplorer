@@ -1566,7 +1566,25 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
         HashSet<int> updatedExports = relevantUpdates.Select(x => x.Index).ToHashSet();
-        if (_selectedPropertiesExport is not null
+
+        // Detect structural changes (level binary or collection actor binary modified).
+        // When structural changes are present (e.g. after clone/trash), skip the
+        // lightweight property-refresh path so the scene is fully reloaded.
+        bool structuralChange = updatedExports.Contains(file.LevelExport.UIndex);
+        if (!structuralChange)
+        {
+            foreach (var actor in file.Actors)
+            {
+                if (actor is CollectionActorComponentProxy cacp && updatedExports.Contains(cacp.CollectionActorExport.UIndex))
+                {
+                    structuralChange = true;
+                    break;
+                }
+            }
+        }
+
+        if (!structuralChange
+            && _selectedPropertiesExport is not null
             && _selectedPropertiesExportPackage == file.Package
             && updatedExports.Contains(_selectedPropertiesExportUIndex))
         {
@@ -2425,34 +2443,31 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             }
         }
 
-        if (actor is not CollectionActorComponentProxy)
+        contextMenu.Items.Add(new System.Windows.Controls.Separator());
+
+        var cloneTreeItem = new System.Windows.Controls.MenuItem
         {
-            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+            Header = "Clone Tree",
+            IsEnabled = !actor.IsReadOnly
+        };
+        cloneTreeItem.Click += (_, _) =>
+        {
+            SelectedActor = actor;
+            CloneActorTree(actor);
+        };
+        contextMenu.Items.Add(cloneTreeItem);
 
-            var cloneTreeItem = new System.Windows.Controls.MenuItem
-            {
-                Header = "Clone Tree",
-                IsEnabled = !actor.IsReadOnly
-            };
-            cloneTreeItem.Click += (_, _) =>
-            {
-                SelectedActor = actor;
-                CloneActorTree(actor);
-            };
-            contextMenu.Items.Add(cloneTreeItem);
-
-            var trashItem = new System.Windows.Controls.MenuItem
-            {
-                Header = "Trash Actor",
-                IsEnabled = !actor.IsReadOnly
-            };
-            trashItem.Click += (_, _) =>
-            {
-                SelectedActor = actor;
-                TrashActor(actor);
-            };
-            contextMenu.Items.Add(trashItem);
-        }
+        var trashItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "Trash Actor",
+            IsEnabled = !actor.IsReadOnly
+        };
+        trashItem.Click += (_, _) =>
+        {
+            SelectedActor = actor;
+            TrashActor(actor);
+        };
+        contextMenu.Items.Add(trashItem);
 
         contextMenu.PlacementTarget = SceneViewer;
         contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
