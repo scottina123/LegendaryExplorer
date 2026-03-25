@@ -1435,13 +1435,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 switch (toolName)
                 {
                     case "SequenceEditor":
-                        if (exp.IsA("SequenceObject"))
+                        if (TryGetSequenceEditorTargetExport(exp, out var sequenceTarget))
                         {
-                            if (exp.IsA("Sequence") && exp.Parent is ExportEntry parent && parent.IsA("SequenceReference"))
-                            {
-                                exp = parent;
-                            }
-                            new Sequence_Editor.SequenceEditorWPF(exp).Show();
+                            new Sequence_Editor.SequenceEditorWPF(sequenceTarget).Show();
                         }
                         break;
                     case "InterpViewer":
@@ -1521,6 +1517,44 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             galaxyMapTarget = null;
+            return false;
+        }
+
+        private static bool CanOpenInSequenceEditor(ExportEntry export)
+        {
+            return TryGetSequenceEditorTargetExport(export, out _);
+        }
+
+        private static bool TryGetSequenceEditorTargetExport(ExportEntry export, [NotNullWhen(true)] out ExportEntry? sequenceTarget)
+        {
+            if (export.IsA("Sequence"))
+            {
+                if (export.Parent is ExportEntry parent && parent.IsA("SequenceReference"))
+                {
+                    sequenceTarget = parent;
+                    return true;
+                }
+
+                sequenceTarget = export;
+                return true;
+            }
+
+            if (export.IsA("SequenceObject") || export.IsA("SFXSceneShopGameData"))
+            {
+                sequenceTarget = export;
+                return true;
+            }
+
+            for (ExportEntry current = export.Parent as ExportEntry; current is not null; current = current.Parent as ExportEntry)
+            {
+                if (current.IsA("SFXSceneShopGameData"))
+                {
+                    sequenceTarget = export;
+                    return true;
+                }
+            }
+
+            sequenceTarget = null;
             return false;
         }
 
@@ -1709,7 +1743,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     case "Soundplorer":
                         return Soundpanel.CanParseStatic(exp);
                     case "SequenceEditor":
-                        return exp.IsA("SequenceObject");
+                        return CanOpenInSequenceEditor(exp);
                     case "InterpViewer":
                         return exp.ClassName == "InterpData";
                     case "WwiseEditor":
