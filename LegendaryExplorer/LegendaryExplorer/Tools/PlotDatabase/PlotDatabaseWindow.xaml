@@ -309,7 +309,8 @@
                                     </ContentControl.Resources>
                                 </ContentControl>
                             </StackPanel>
-                            <ListView Name="LV_Plots" ItemsSource="{Binding ElementsTable}" SelectionChanged="LV_Plots_SelectionChanged" Margin="3" GridViewColumnHeader.Click="list_ColumnHeader_Click">
+                            <ListView Name="LV_Plots" ItemsSource="{Binding ElementsTable}" SelectionChanged="LV_Plots_SelectionChanged" Margin="3" GridViewColumnHeader.Click="list_ColumnHeader_Click"
+                                      ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <ListView.View>
                                     <GridView AllowsColumnReorder="True" ColumnHeaderContainerStyle="{StaticResource FileLVHeader}"  >
                                         <GridViewColumn Header="#" Width="25">

@@ -516,7 +516,8 @@
                                     </DockPanel>
                                 </Expander>
                                 <ListView x:Name="lstbx_Files" DockPanel.Dock="Bottom" MinWidth="300" ItemsSource="{Binding Path=FileListExtended}" GridViewColumnHeader.Click="views_ColumnHeader_Click"
-                                          Style="{StaticResource NoFocusBorderListViewStyle}">
+                                                           Style="{StaticResource NoFocusBorderListViewStyle}"
+                                                           ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                     <ListView.View>
                                         <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
                                             <GridViewColumn DisplayMemberBinding="{Binding FileName}" Width="260" Header="File"/>
@@ -1169,7 +1170,8 @@
                                 <ProgressBar IsIndeterminate="True" Visibility="{Binding IsGettingTLKs, Converter={StaticResource BoolToVisibilityConverter}}" Margin="3,0" Width="170" Height="15"/>
                             </StackPanel>
                             <ListView x:Name="lstbx_Lines" MinWidth="300" ItemsSource="{Binding CurrentDataBase.Lines}" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Grid.RowSpan="2" GridViewColumnHeader.Click="views_ColumnHeader_Click" SelectionChanged="lstbx_Lines_SelectionChanged" PreviewMouseRightButtonDown="lstbx_Lines_PreviewMouseRightButtonDown"
-                                      Style="{StaticResource NoFocusBorderListViewStyle}">
+                                      Style="{StaticResource NoFocusBorderListViewStyle}"
+                                      ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <ListView.View>
                                     <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
                                         <GridViewColumn Width="220" Header="Speaker">
