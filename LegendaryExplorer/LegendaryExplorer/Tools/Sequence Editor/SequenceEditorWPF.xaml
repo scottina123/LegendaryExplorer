@@ -662,6 +662,10 @@
                             <TabItem Header="Variables">
                                 <controls:ClassToolBox x:Name="variablesToolBox" />
                             </TabItem>
+                            <TabItem Header="Scene Shop"
+                                     Visibility="{Binding IsSceneShopSequenceSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <controls:ClassToolBox x:Name="sceneShopToolBox" />
+                            </TabItem>
                             <TabItem Header="Custom sequences" Visibility="{x:Static global:App.IsDebugVisibility}">
                                 <controls:GenericToolBox x:Name="customSequencesToolBox" />
                             </TabItem>

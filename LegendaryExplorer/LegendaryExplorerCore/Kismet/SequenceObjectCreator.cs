@@ -96,6 +96,12 @@ namespace LegendaryExplorerCore.Kismet
             return classes;
         }
 
+        public static List<ClassInfo> GetSFXSceneShopNodes(MEGame game)
+        {
+            List<ClassInfo> classes = GlobalUnrealObjectInfo.GetNonAbstractDerivedClassesOf("SFXSceneShopNode", game);
+            return classes;
+        }
+
         /// <summary>
         /// Creates the default sequence object properties that should be on a new sequence object
         /// </summary>
@@ -219,6 +225,8 @@ namespace LegendaryExplorerCore.Kismet
                 ArrayProperty<StructProperty> outLinksProp = null;
                 ArrayProperty<StructProperty> eventLinksProp = null;
                 ArrayProperty<StructProperty> inLinksProp = null;
+                ArrayProperty<StructProperty> sceneShopInputPinsProp = null;
+                ArrayProperty<StructProperty> sceneShopOutputPinsProp = null;
                 Dictionary<string, ClassInfo> classes = GlobalUnrealObjectInfo.GetClasses(game);
                 try
                 {
@@ -314,10 +322,24 @@ namespace LegendaryExplorerCore.Kismet
                                 {
                                     inLinksProp = ilp;
                                 }
+
+                                if (sceneShopInputPinsProp is null && prop.Name == "m_aInputPins" && prop is ArrayProperty<StructProperty> inputPins)
+                                {
+                                    sceneShopInputPinsProp = inputPins;
+                                }
+
+                                if (sceneShopOutputPinsProp is null && prop.Name == "m_aOutputPins" && prop is ArrayProperty<StructProperty> outputPins)
+                                {
+                                    sceneShopOutputPinsProp = outputPins;
+                                }
                             }
                             if (!pc.TryGetCachedPackage(loadPath, false, out _)) importPCC.Dispose(); // Can't do a using statement because of the pc out var - not good enough at c# to fix
                         }
-                        classes.TryGetValue(classInfo.baseClass, out classInfo);
+                        if (string.IsNullOrEmpty(classInfo.baseClass) || !classes.TryGetValue(classInfo.baseClass, out classInfo))
+                        {
+                            break;
+                        }
+
                         switch (classInfo.ClassName)
                         {
                             case SequenceConditionName:
@@ -354,6 +376,14 @@ namespace LegendaryExplorerCore.Kismet
                 {
                     defaults.Add(inLinksProp);
                 }
+                if (sceneShopInputPinsProp != null)
+                {
+                    defaults.Add(sceneShopInputPinsProp);
+                }
+                if (sceneShopOutputPinsProp != null)
+                {
+                    defaults.Add(sceneShopOutputPinsProp);
+                }
 
                 //remove links if empty
                 if (defaults.GetProp<ArrayProperty<StructProperty>>("OutputLinks") is { } outLinks && outLinks.IsEmpty())
@@ -389,6 +419,12 @@ namespace LegendaryExplorerCore.Kismet
                     case "BioSeqAct_PMCheckConditional":
                         defaults.Add(new IntProperty(0, "m_nIndex"));
                         break;
+                    case "SFXSceneShopNodeStart":
+                        AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aInputPins", "In");
+                        break;
+                    case "SFXSceneShopNodePlotCheck":
+                        AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aOutputPins", "Out");
+                        break;
                 }
             }
 
@@ -412,6 +448,29 @@ namespace LegendaryExplorerCore.Kismet
             return new ArrayProperty<StructProperty>(
                 [new StructProperty(linkPropertyInfo.Reference, linkDefaults, isImmutable: false)],
                 propertyName);
+        }
+
+        private static void AddDefaultSFXSceneShopPinIfMissing(IMEPackage pcc, ClassInfo info, PropertyCollection defaults, string propertyName, string pinName)
+        {
+            var pins = defaults.GetProp<ArrayProperty<StructProperty>>(propertyName)
+                       ?? new ArrayProperty<StructProperty>(propertyName);
+
+            if (pins.Any(pin => string.Equals(pin.GetProp<StrProperty>("sLinkName")?.Value, pinName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            PropertyInfo pinPropertyInfo = GlobalUnrealObjectInfo.GetPropertyInfo(pcc.Game, propertyName, info.ClassName, info);
+            if (pinPropertyInfo == null)
+            {
+                return;
+            }
+
+            PropertyCollection pinDefaults = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, pinPropertyInfo.Reference, true, pcc);
+            pinDefaults.AddOrReplaceProp(new StrProperty(pinName, "sLinkName"));
+            pinDefaults.AddOrReplaceProp(new ArrayProperty<StructProperty>("aLinks"));
+            pins.Add(new StructProperty(pinPropertyInfo.Reference, pinDefaults, isImmutable: false));
+            defaults.AddOrReplaceProp(pins);
         }
 
         #region OBJECT CREATION

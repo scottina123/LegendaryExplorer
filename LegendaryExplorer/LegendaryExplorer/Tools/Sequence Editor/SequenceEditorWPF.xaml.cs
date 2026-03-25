@@ -94,11 +94,24 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         }
 
         private ExportEntry _selectedSequence;
+        private bool _isSceneShopSequenceSelected;
 
         public ExportEntry SelectedSequence
         {
             get => _selectedSequence;
-            set => SetProperty(ref _selectedSequence, value);
+            set
+            {
+                if (SetProperty(ref _selectedSequence, value))
+                {
+                    IsSceneShopSequenceSelected = value?.IsA("SFXSceneShopGameData") == true;
+                }
+            }
+        }
+
+        public bool IsSceneShopSequenceSelected
+        {
+            get => _isSceneShopSequenceSelected;
+            private set => SetProperty(ref _isSceneShopSequenceSelected, value);
         }
 
         public record SavedViewData(Dictionary<int, PointF> Positions, RectangleF ViewBounds);
@@ -147,6 +160,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             actionsToolBox.DoubleClickCallback = CreateNewObject;
             conditionsToolBox.DoubleClickCallback = CreateNewObject;
             variablesToolBox.DoubleClickCallback = CreateNewObject;
+            sceneShopToolBox.DoubleClickCallback = CreateNewObject;
             customSequencesToolBox.DoubleClickCallback = CreateCustomSequence;
 
             favoritesToolBox.ShiftClickCallback = RemoveFavorite;
@@ -1056,6 +1070,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     .OrderBy(info => info.ClassName));
                 variablesToolBox.Classes.ClearEx();
                 variablesToolBox.Classes.AddRange(SequenceObjectCreator.GetSequenceVariables(Pcc.Game)
+                    .OrderBy(info => info.ClassName));
+                sceneShopToolBox.Classes.ClearEx();
+                sceneShopToolBox.Classes.AddRange(SequenceObjectCreator.GetSFXSceneShopNodes(Pcc.Game)
                     .OrderBy(info => info.ClassName));
 
                 if (includeCustomSequences)
