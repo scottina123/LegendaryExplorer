@@ -125,6 +125,13 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         ("bCastHiddenShadow", "Cast Hidden Shadow")
     ];
 
+    private static readonly (string PropertyName, string DisplayName)[] LightShadowMenuItems =
+    [
+        ("CastDynamicShadows", "Cast Dynamic Shadows"),
+        ("CastShadows", "Cast Shadows"),
+        ("CastStaticShadows", "Cast Static Shadows")
+    ];
+
     public LevelEditorRenderContext RenderContext { get; }
 
     public ObservableCollectionExtended<OpenLevelFile> OpenFiles { get; } = [];
@@ -2354,6 +2361,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             {
                 contextMenu.Items.Add(lightingChannelsMenu);
             }
+
+            if (lightingTargetExport.IsA("LightComponent"))
+            {
+                var lightShadowMenu = BuildLightShadowMenu(actor, lightingTargetExport);
+                if (lightShadowMenu is not null)
+                {
+                    contextMenu.Items.Add(lightShadowMenu);
+                }
+            }
         }
 
         ExportEntry smcExport = GetStaticMeshComponentExport(actor);
@@ -2664,6 +2680,36 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         };
 
         foreach ((string propertyName, string displayName) in ShadowMenuItems)
+        {
+            var shadowItem = new System.Windows.Controls.MenuItem
+            {
+                Header = displayName,
+                IsCheckable = true,
+                IsChecked = GetBoolPropertyValue(componentExport, propertyName),
+                IsEnabled = !actor.IsReadOnly,
+                StaysOpenOnClick = true
+            };
+            shadowItem.Click += (_, _) => SetBoolPropertyValue(componentExport, propertyName, shadowItem.IsChecked);
+            shadowMenu.Items.Add(shadowItem);
+        }
+
+        return shadowMenu;
+    }
+
+    private System.Windows.Controls.MenuItem BuildLightShadowMenu(ActorProxy actor, ExportEntry componentExport)
+    {
+        if (componentExport is null)
+        {
+            return null;
+        }
+
+        var shadowMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = "Shadows",
+            IsEnabled = !actor.IsReadOnly
+        };
+
+        foreach ((string propertyName, string displayName) in LightShadowMenuItems)
         {
             var shadowItem = new System.Windows.Controls.MenuItem
             {
