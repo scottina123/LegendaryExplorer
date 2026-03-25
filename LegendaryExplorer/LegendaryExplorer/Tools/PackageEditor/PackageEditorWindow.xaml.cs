@@ -4685,6 +4685,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
+            foreach (TreeViewEntry node in rootNodes)
+            {
+                node.SortChildren();
+            }
+
             return new List<TreeViewEntry>(rootNodes.Except(itemsToRemove));
         }
 

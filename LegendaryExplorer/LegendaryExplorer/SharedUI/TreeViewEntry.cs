@@ -980,12 +980,17 @@ namespace LegendaryExplorer.SharedUI
         /// </summary>
         internal void SortChildren()
         {
-            var exportNodes = Sublinks.Where(x => x.Entry.UIndex > 0).OrderBy(x => x.UIndex).ToList();
+            var exportNodes = Sublinks.Where(x => x.Entry.UIndex > 0).OrderBy(GetExportSortPriority).ThenBy(x => x.UIndex).ToList();
             var importNodes = Sublinks.Where(x => x.Entry.UIndex < 0).OrderByDescending(x => x.UIndex).ToList();
 
             exportNodes.AddRange(importNodes);
             Sublinks.ClearEx();
             Sublinks.AddRange(exportNodes);
+        }
+
+        private static int GetExportSortPriority(TreeViewEntry entry)
+        {
+            return entry.Entry is ExportEntry { ClassName: "World", ObjectName.Name: "TheWorld" } ? -1 : 0;
         }
 
         public void Dispose()
