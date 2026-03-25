@@ -180,6 +180,9 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public virtual MediaColor LightEnv_BouncedModulationColor { get => default; set { } }
     public virtual bool CanApplyBouncedModulationColor => false;
     public virtual bool ApplyBouncedModulationColor { get => false; set { } }
+    public virtual bool HasLightAffectsClassification => false;
+    public virtual string LightAffectsClassification { get => null; set { } }
+    public virtual IReadOnlyList<string> LightAffectsClassificationValues => [];
     public virtual bool TryGetSceneLight(out SceneLight light)
     {
         light = default;
@@ -836,6 +839,34 @@ public class PointLightActorProxy : ActorProxy
             LightComponent.LightingChannelMask);
         return true;
     }
+
+    public override bool HasLightAffectsClassification => true;
+    public override string LightAffectsClassification
+    {
+        get => Export.GetProperty<EnumProperty>("LightAffectsClassification")?.Value.Name ?? "LIGHTAFFECTS_All";
+        set
+        {
+            if (IsReadOnly) return;
+            var props = Export.GetProperties();
+            props.AddOrReplaceProp(new EnumProperty(value, "ELightAffectsClassification", Export.Game, "LightAffectsClassification"));
+            Export.WriteProperties(props);
+            OnPropertyChanged(nameof(LightAffectsClassification));
+        }
+    }
+    public override IReadOnlyList<string> LightAffectsClassificationValues
+    {
+        get
+        {
+            var values = GlobalUnrealObjectInfo.GetEnumValues(Export.Game, "ELightAffectsClassification");
+            if (values is not null)
+            {
+                var result = new List<string>(values.Count);
+                foreach (var v in values) result.Add(v.Name);
+                return result;
+            }
+            return ["LIGHTAFFECTS_All", "LIGHTAFFECTS_DynamicObjectsOnly", "LIGHTAFFECTS_StaticObjectsOnly", "LIGHTAFFECTS_DynamicThenStaticObjects", "LIGHTAFFECTS_None"];
+        }
+    }
 }
 
 public class DirectionalLightActorProxy : ActorProxy
@@ -878,6 +909,34 @@ public class DirectionalLightActorProxy : ActorProxy
             LightComponent.LightColor = newColor;
             OnPropertyChanged(nameof(LightColor));
             MarkAuxiliaryChanged();
+        }
+    }
+
+    public override bool HasLightAffectsClassification => true;
+    public override string LightAffectsClassification
+    {
+        get => Export.GetProperty<EnumProperty>("LightAffectsClassification")?.Value.Name ?? "LIGHTAFFECTS_All";
+        set
+        {
+            if (IsReadOnly) return;
+            var props = Export.GetProperties();
+            props.AddOrReplaceProp(new EnumProperty(value, "ELightAffectsClassification", Export.Game, "LightAffectsClassification"));
+            Export.WriteProperties(props);
+            OnPropertyChanged(nameof(LightAffectsClassification));
+        }
+    }
+    public override IReadOnlyList<string> LightAffectsClassificationValues
+    {
+        get
+        {
+            var values = GlobalUnrealObjectInfo.GetEnumValues(Export.Game, "ELightAffectsClassification");
+            if (values is not null)
+            {
+                var result = new List<string>(values.Count);
+                foreach (var v in values) result.Add(v.Name);
+                return result;
+            }
+            return ["LIGHTAFFECTS_All", "LIGHTAFFECTS_DynamicObjectsOnly", "LIGHTAFFECTS_StaticObjectsOnly", "LIGHTAFFECTS_DynamicThenStaticObjects", "LIGHTAFFECTS_None"];
         }
     }
 }

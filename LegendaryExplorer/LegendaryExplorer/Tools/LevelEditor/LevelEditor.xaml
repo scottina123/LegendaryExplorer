@@ -542,6 +542,13 @@
                                 <xctk:SingleUpDown Value="{Binding OuterConeAngle}" Minimum="0" Maximum="89.9"
                                                    Increment="1" ButtonSpinnerLocation="Left" FormatString="F2" Width="80"/>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0"
+                                        Visibility="{Binding HasLightAffectsClassification, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text=" Light Affects Classification:  " VerticalAlignment="Center" />
+                                <ComboBox ItemsSource="{Binding LightAffectsClassificationValues}"
+                                          SelectedItem="{Binding LightAffectsClassification, Mode=TwoWay}"
+                                          MinWidth="180" />
+                            </StackPanel>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Actor Position" Margin="5,0,5,5" BorderThickness="2" Padding="5">
