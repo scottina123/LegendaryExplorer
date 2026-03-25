@@ -2369,6 +2369,17 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 {
                     contextMenu.Items.Add(lightShadowMenu);
                 }
+
+                var enabledItem = new System.Windows.Controls.MenuItem
+                {
+                    Header = "Enabled",
+                    IsCheckable = true,
+                    IsChecked = GetBoolPropertyValue(actor.Export, "bEnabled"),
+                    IsEnabled = !actor.IsReadOnly,
+                    StaysOpenOnClick = true
+                };
+                enabledItem.Click += (_, _) => SetBoolPropertyValue(actor.Export, "bEnabled", enabledItem.IsChecked);
+                contextMenu.Items.Add(enabledItem);
             }
         }
 
