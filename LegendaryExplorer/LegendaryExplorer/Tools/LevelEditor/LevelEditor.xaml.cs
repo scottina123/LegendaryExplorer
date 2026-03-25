@@ -3237,6 +3237,21 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     #endregion
 
+    private void AddOtherLevel_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedActor is null) return;
+        string levelName = NewOtherLevel_TextBox.Text?.Trim();
+        if (string.IsNullOrEmpty(levelName)) return;
+        SelectedActor.AddOtherLevelToAffect(levelName);
+        NewOtherLevel_TextBox.Text = "";
+    }
+
+    private void RemoveOtherLevel_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedActor is null || OtherLevelsListBox.SelectedItem is not string selectedLevel) return;
+        SelectedActor.RemoveOtherLevelFromAffect(selectedLevel);
+    }
+
     private readonly struct RenderGuard : IDisposable
     {
         private readonly LevelEditor levelEditor;

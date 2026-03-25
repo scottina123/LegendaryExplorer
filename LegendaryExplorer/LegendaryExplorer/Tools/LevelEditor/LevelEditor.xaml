@@ -549,6 +549,23 @@
                                           SelectedItem="{Binding LightAffectsClassification, Mode=TwoWay}"
                                           MinWidth="180" />
                             </StackPanel>
+                            <StackPanel Orientation="Vertical" Margin="0,5,0,0"
+                                        Visibility="{Binding HasOtherLevelsToAffect, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text=" Other Levels To Affect:" Margin="0,0,0,3"/>
+                                <ListBox x:Name="OtherLevelsListBox"
+                                         ItemsSource="{Binding OtherLevelsToAffect}"
+                                         MaxHeight="80"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                    <xctk:WatermarkTextBox x:Name="NewOtherLevel_TextBox"
+                                                           Watermark="Level name..."
+                                                           Width="140"
+                                                           VerticalContentAlignment="Center"/>
+                                    <Button Content="Add" Margin="3,0,0,0" Padding="6,1"
+                                            Click="AddOtherLevel_Click"/>
+                                    <Button Content="Remove" Margin="3,0,0,0" Padding="6,1"
+                                            Click="RemoveOtherLevel_Click"/>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Actor Position" Margin="5,0,5,5" BorderThickness="2" Padding="5">

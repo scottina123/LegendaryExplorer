@@ -9,6 +9,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -183,6 +184,10 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     public virtual bool HasLightAffectsClassification => false;
     public virtual string LightAffectsClassification { get => null; set { } }
     public virtual IReadOnlyList<string> LightAffectsClassificationValues => [];
+    public virtual bool HasOtherLevelsToAffect => false;
+    public virtual ObservableCollection<string> OtherLevelsToAffect => null;
+    public virtual void AddOtherLevelToAffect(string levelName) { }
+    public virtual void RemoveOtherLevelFromAffect(string levelName) { }
     public virtual bool TryGetSceneLight(out SceneLight light)
     {
         light = default;
@@ -867,6 +872,45 @@ public class PointLightActorProxy : ActorProxy
             return ["LIGHTAFFECTS_All", "LIGHTAFFECTS_DynamicObjectsOnly", "LIGHTAFFECTS_StaticObjectsOnly", "LIGHTAFFECTS_DynamicThenStaticObjects", "LIGHTAFFECTS_None"];
         }
     }
+
+    private ObservableCollection<string> _otherLevelsToAffect;
+    public override bool HasOtherLevelsToAffect => LightComponent is not null;
+    public override ObservableCollection<string> OtherLevelsToAffect
+    {
+        get
+        {
+            if (_otherLevelsToAffect is null && LightComponent is not null)
+            {
+                _otherLevelsToAffect = [];
+                var arr = LightComponent.Export.GetProperty<ArrayProperty<NameProperty>>("OtherLevelsToAffect");
+                if (arr is not null)
+                {
+                    foreach (var n in arr) _otherLevelsToAffect.Add(n.Value.Name);
+                }
+            }
+            return _otherLevelsToAffect;
+        }
+    }
+    public override void AddOtherLevelToAffect(string levelName)
+    {
+        if (IsReadOnly || LightComponent is null || string.IsNullOrWhiteSpace(levelName)) return;
+        OtherLevelsToAffect.Add(levelName);
+        WriteOtherLevelsToAffect();
+    }
+    public override void RemoveOtherLevelFromAffect(string levelName)
+    {
+        if (IsReadOnly || LightComponent is null) return;
+        OtherLevelsToAffect.Remove(levelName);
+        WriteOtherLevelsToAffect();
+    }
+    private void WriteOtherLevelsToAffect()
+    {
+        if (LightComponent is null) return;
+        var arr = new ArrayProperty<NameProperty>("OtherLevelsToAffect");
+        foreach (var name in OtherLevelsToAffect) arr.Add(new NameProperty(name));
+        LightComponent.Properties.AddOrReplaceProp(arr);
+        LightComponent.Export.WriteProperties(LightComponent.Properties);
+    }
 }
 
 public class DirectionalLightActorProxy : ActorProxy
@@ -938,6 +982,45 @@ public class DirectionalLightActorProxy : ActorProxy
             }
             return ["LIGHTAFFECTS_All", "LIGHTAFFECTS_DynamicObjectsOnly", "LIGHTAFFECTS_StaticObjectsOnly", "LIGHTAFFECTS_DynamicThenStaticObjects", "LIGHTAFFECTS_None"];
         }
+    }
+
+    private ObservableCollection<string> _otherLevelsToAffect;
+    public override bool HasOtherLevelsToAffect => LightComponent is not null;
+    public override ObservableCollection<string> OtherLevelsToAffect
+    {
+        get
+        {
+            if (_otherLevelsToAffect is null && LightComponent is not null)
+            {
+                _otherLevelsToAffect = [];
+                var arr = LightComponent.Export.GetProperty<ArrayProperty<NameProperty>>("OtherLevelsToAffect");
+                if (arr is not null)
+                {
+                    foreach (var n in arr) _otherLevelsToAffect.Add(n.Value.Name);
+                }
+            }
+            return _otherLevelsToAffect;
+        }
+    }
+    public override void AddOtherLevelToAffect(string levelName)
+    {
+        if (IsReadOnly || LightComponent is null || string.IsNullOrWhiteSpace(levelName)) return;
+        OtherLevelsToAffect.Add(levelName);
+        WriteOtherLevelsToAffect();
+    }
+    public override void RemoveOtherLevelFromAffect(string levelName)
+    {
+        if (IsReadOnly || LightComponent is null) return;
+        OtherLevelsToAffect.Remove(levelName);
+        WriteOtherLevelsToAffect();
+    }
+    private void WriteOtherLevelsToAffect()
+    {
+        if (LightComponent is null) return;
+        var arr = new ArrayProperty<NameProperty>("OtherLevelsToAffect");
+        foreach (var name in OtherLevelsToAffect) arr.Add(new NameProperty(name));
+        LightComponent.Properties.AddOrReplaceProp(arr);
+        LightComponent.Export.WriteProperties(LightComponent.Properties);
     }
 }
 
