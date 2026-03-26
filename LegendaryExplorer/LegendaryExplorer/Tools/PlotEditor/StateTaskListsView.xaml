@@ -4,6 +4,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:questMap="clr-namespace:Gammtek.Conduit.MassEffect3.SFXGame.QuestMap"
+	xmlns:converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
     xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
     xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
     mc:Ignorable="d" 
@@ -11,6 +12,7 @@
 	d:DesignHeight="480" d:DesignWidth="640">
 	<!-- UserControl Resources -->
 	<UserControl.Resources>
+		<converters:NullOrEmptyStringVisibilityConverter x:Key="NullOrEmptyStringVisibilityConverter" />
 		<Style TargetType="{x:Type ListBox}" x:Key="ListBoxStyle" BasedOn="{StaticResource {x:Type ListBox}}">
 			<Style.Triggers>
 				<Trigger Property="HasItems" Value="True">
@@ -39,15 +41,22 @@
 						ItemsSource="{Binding StateTaskLists, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedStateTaskList, Mode=TwoWay}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding Key, StringFormat='State Task List \{0\}'}" Width="125">
-                        <TextBlock.ContextMenu>
+                    <StackPanel Width="125">
+						<StackPanel.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Change Id" Click="ChangeStateTaskListId_Click"/>
                                 <MenuItem Header="Copy" Click="CopyStateTaskList_Click"/>
                                 <MenuItem Header="Remove" Click="RemoveStateTaskList_Click"/>
                             </ContextMenu>
-                        </TextBlock.ContextMenu>
-                    </TextBlock>
+                        </StackPanel.ContextMenu>
+						<TextBlock Text="{Binding Key, StringFormat='State Task List \{0\}'}" />
+						<TextBlock FontSize="10"
+                                   Loaded="StateTaskListSubtitle_Loaded"
+								   DataContextChanged="StateTaskListSubtitle_DataContextChanged"
+								   TextWrapping="Wrap"
+								   Visibility="{Binding Text, RelativeSource={RelativeSource Self}, Converter={StaticResource NullOrEmptyStringVisibilityConverter}}">
+						</TextBlock>
+					</StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>

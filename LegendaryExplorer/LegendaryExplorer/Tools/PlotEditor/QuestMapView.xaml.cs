@@ -10,6 +10,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorer.Tools.PlotEditor.Dialogs;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
 
@@ -287,9 +288,12 @@ namespace LegendaryExplorer.Tools.PlotEditor
             {
                 SetProperty(ref _selectedQuestGoal, value);
                 RefreshGoalText();
+                OnPropertyChanged(nameof(SelectedQuestGoalStateText));
                 OnPropertyChanged(nameof(CanRemoveQuestGoal));
             }
         }
+
+        public string SelectedQuestGoalStateText => ResolvePlotBoolLabel(SelectedQuestGoal?.State ?? -1);
 
         public BioQuestPlotItem SelectedQuestPlotItem
         {
@@ -728,6 +732,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             _currentGame = game;
+            OnPropertyChanged(nameof(SelectedQuestGoalStateText));
+            BoolStateTaskListsControl.CurrentGame = game;
+            BoolStateTaskListsControl.StateTaskListSubtitleLookupType = "bool";
+            FloatStateTaskListsControl.CurrentGame = game;
+            IntStateTaskListsControl.CurrentGame = game;
 
             BoolStateTaskListsControl.SetStateTaskLists(questMap.BoolTaskEvals.OrderBy(pair => pair.Key));
             FloatStateTaskListsControl.SetStateTaskLists(questMap.FloatTaskEvals.OrderBy(pair => pair.Key));
@@ -813,6 +822,16 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             return GlobalFindStrRefbyID(tlkId, _currentGame);
+        }
+
+        private string ResolvePlotBoolLabel(int plotId)
+        {
+            if (plotId < 0 || _currentGame == MEGame.Unknown)
+            {
+                return null;
+            }
+
+            return PlotDatabases.FindPlotBoolByID(plotId, _currentGame)?.Label;
         }
 
         private static bool SearchTextMatches(string value, string searchText)
@@ -987,6 +1006,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void QuestSearchField_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
         {
+            OnPropertyChanged(nameof(SelectedQuestGoalStateText));
             ApplyQuestSearchFilter();
         }
     }

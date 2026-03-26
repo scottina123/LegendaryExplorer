@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using Gammtek.Conduit.MassEffect3.SFXGame.QuestMap;
 using LegendaryExplorer.Misc;
 using LegendaryExplorerCore.Gammtek;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorer.Tools.PlotEditor.Dialogs;
 
 namespace LegendaryExplorer.Tools.PlotEditor
@@ -27,6 +30,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private ObservableCollection<BioTaskEval> _visibleTaskEvals;
         private Dictionary<int, string> _questNamesById;
         private int? _filteredStateTaskListId;
+        private MEGame _currentGame = MEGame.Unknown;
+        private string _stateTaskListSubtitleLookupType;
 
         public bool CanAddTaskEval
         {
@@ -40,6 +45,18 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
                 return SelectedStateTaskList.Value != null;
             }
+        }
+
+        public MEGame CurrentGame
+        {
+            get => _currentGame;
+            set => SetProperty(ref _currentGame, value);
+        }
+
+        public string StateTaskListSubtitleLookupType
+        {
+            get => _stateTaskListSubtitleLookupType;
+            set => SetProperty(ref _stateTaskListSubtitleLookupType, value);
         }
 
         public bool CanRemoveStateTaskList
@@ -528,6 +545,42 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 : null;
             RefreshVisibleTaskEvals();
             SelectedTaskEval = VisibleTaskEvals.FirstOrDefault(taskEval => ReferenceEquals(taskEval, SelectedTaskEval)) ?? SelectedTaskEval;
+        }
+
+        private void StateTaskListSubtitle_Loaded(object sender, RoutedEventArgs e)
+        {
+            RefreshStateTaskListSubtitle(sender as TextBlock);
+        }
+
+        private void StateTaskListSubtitle_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            RefreshStateTaskListSubtitle(sender as TextBlock);
+        }
+
+        private void RefreshStateTaskListSubtitle(TextBlock textBlock)
+        {
+            if (textBlock?.DataContext is not KeyValuePair<int, BioStateTaskList> stateTaskList)
+            {
+                return;
+            }
+
+            textBlock.Text = GetStateTaskListSubtitle(stateTaskList.Key);
+        }
+
+        private string GetStateTaskListSubtitle(int id)
+        {
+            if (CurrentGame == MEGame.Unknown || string.IsNullOrWhiteSpace(StateTaskListSubtitleLookupType))
+            {
+                return string.Empty;
+            }
+
+            return StateTaskListSubtitleLookupType switch
+            {
+                "bool" => PlotDatabases.FindPlotBoolByID(id, CurrentGame)?.Label ?? string.Empty,
+                "float" => PlotDatabases.FindPlotFloatByID(id, CurrentGame)?.Label ?? string.Empty,
+                "int" => PlotDatabases.FindPlotIntByID(id, CurrentGame)?.Label ?? string.Empty,
+                _ => string.Empty
+            };
         }
     }
 }
