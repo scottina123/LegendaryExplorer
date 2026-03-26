@@ -14,6 +14,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
@@ -379,6 +380,26 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 GoToStateEvent(n);
             }
         }
+
+        private void OpenInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (GetExistingToolInstance(Pcc.FilePath, out PackageEditorWindow packageEditor))
+            {
+                packageEditor.RestoreAndBringToFront();
+                return;
+            }
+
+            PackageEditorWindow newPackageEditor = new();
+            newPackageEditor.Show();
+            newPackageEditor.LoadFile(Pcc.FilePath);
+            newPackageEditor.Activate();
+        }
+
         private void Goto_TextBox_KeyUp(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Return && !e.IsRepeat)

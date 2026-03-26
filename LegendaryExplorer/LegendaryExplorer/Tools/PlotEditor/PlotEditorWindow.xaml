@@ -77,6 +77,15 @@
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
                 </MenuItem>
                 <MenuItem Name="VanillaPlotFiles_MenuItem" Header="_Vanilla Plot Files" Padding="4" />
+                <MenuItem Style="{StaticResource EmbeddedMenuContentStyle}"
+                          Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <MenuItem.Header>
+                        <Button Content="Open in Package Editor"
+                                Click="OpenInPackageEditor_Click"
+                                IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"
+                                Padding="7,0" />
+                    </MenuItem.Header>
+                </MenuItem>
                 <MenuItem HorizontalAlignment="Right"
                           Style="{StaticResource EmbeddedMenuContentStyle}"
                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
