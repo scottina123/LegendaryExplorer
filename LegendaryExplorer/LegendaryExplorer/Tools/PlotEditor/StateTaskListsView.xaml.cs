@@ -237,7 +237,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void ChangeStateTaskListId()
         {
-            if (FilteredStateTaskListId.HasValue || SelectedStateTaskList.Value == null)
+            if (SelectedStateTaskList.Value == null)
             {
                 return;
             }
