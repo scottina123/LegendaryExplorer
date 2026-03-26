@@ -117,7 +117,7 @@
 						<!-- Grid Content -->
 						<ListBox x:Name="TaskEvalsListBox" Grid.Column="0" Grid.Row="0" Width="150" Style="{DynamicResource ListBoxStyle}"
 						    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-										ItemsSource="{Binding SelectedStateTaskList.Value.TaskEvals, NotifyOnTargetUpdated=True}"
+                                       ItemsSource="{Binding VisibleTaskEvals, NotifyOnTargetUpdated=True}"
 										SelectedItem="{Binding SelectedTaskEval, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type questMap:BioTaskEval}">

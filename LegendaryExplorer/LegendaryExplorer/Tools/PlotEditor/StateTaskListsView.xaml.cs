@@ -22,7 +22,10 @@ namespace LegendaryExplorer.Tools.PlotEditor
         }
         private KeyValuePair<int, BioStateTaskList> _selectedStateTaskList;
         private BioTaskEval _selectedTaskEval;
+        private ObservableCollection<KeyValuePair<int, BioStateTaskList>> _allStateTaskLists;
         private ObservableCollection<KeyValuePair<int, BioStateTaskList>> _stateTaskLists;
+        private ObservableCollection<BioTaskEval> _visibleTaskEvals;
+        private int? _filteredStateTaskListId;
 
         public bool CanAddTaskEval
         {
@@ -62,7 +65,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     return false;
                 }
 
-                if (SelectedStateTaskList.Value?.TaskEvals == null || !SelectedStateTaskList.Value.TaskEvals.Any())
+                if (VisibleTaskEvals == null || !VisibleTaskEvals.Any())
                 {
                     return false;
                 }
@@ -77,6 +80,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             set
             {
                 SetProperty(ref _selectedStateTaskList, value);
+                RefreshVisibleTaskEvals();
+                SelectedTaskEval = VisibleTaskEvals.FirstOrDefault();
                 OnPropertyChanged(nameof(CanAddTaskEval));
                 OnPropertyChanged(nameof(CanRemoveStateTaskList));
                 OnPropertyChanged(nameof(CanRemoveTaskEval));
@@ -89,6 +94,31 @@ namespace LegendaryExplorer.Tools.PlotEditor
             set
             {
                 SetProperty(ref _selectedTaskEval, value);
+                OnPropertyChanged(nameof(CanRemoveTaskEval));
+            }
+        }
+
+        public int? FilteredStateTaskListId
+        {
+            get => _filteredStateTaskListId;
+            set
+            {
+                SetProperty(ref _filteredStateTaskListId, value);
+                OnPropertyChanged(nameof(IsFilteredToSingleQuest));
+                ApplyFilter();
+            }
+        }
+
+        public bool IsFilteredToSingleQuest => FilteredStateTaskListId.HasValue;
+
+        public IEnumerable<KeyValuePair<int, BioStateTaskList>> AllStateTaskLists => _allStateTaskLists ?? Enumerable.Empty<KeyValuePair<int, BioStateTaskList>>();
+
+        public ObservableCollection<BioTaskEval> VisibleTaskEvals
+        {
+            get => _visibleTaskEvals;
+            set
+            {
+                SetProperty(ref _visibleTaskEvals, value);
                 OnPropertyChanged(nameof(CanRemoveTaskEval));
             }
         }
@@ -107,9 +137,19 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void AddStateTaskList()
         {
-            if (StateTaskLists == null)
+            if (FilteredStateTaskListId is int filteredId)
             {
-                StateTaskLists = InitCollection<KeyValuePair<int, BioStateTaskList>>();
+                if (AllStateTaskLists.Any(pair => pair.Value.TaskEvals.Any(taskEval => taskEval.Quest == filteredId)))
+                {
+                    ApplyFilter();
+                    return;
+                }
+
+                var stateTaskList = new BioStateTaskList();
+                stateTaskList.TaskEvals = InitCollection<BioTaskEval>();
+                stateTaskList.TaskEvals.Add(new BioTaskEval { Quest = filteredId });
+                AddStateTaskList(GetMaxStateTaskListId() + 1, stateTaskList);
+                return;
             }
 
             var dlg = new NewObjectDialog
@@ -128,13 +168,16 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void AddStateTaskList(int id, BioStateTaskList taskList = null)
         {
-            if (StateTaskLists == null)
-            {
-                StateTaskLists = InitCollection<KeyValuePair<int, BioStateTaskList>>();
-            }
+            EnsureAllStateTaskLists();
 
             if (id < 0)
             {
+                return;
+            }
+
+            if (_allStateTaskLists.Any(pair => pair.Key == id))
+            {
+                ApplyFilter();
                 return;
             }
 
@@ -149,9 +192,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             var stateTaskList = new KeyValuePair<int, BioStateTaskList>(id, taskList);
 
-            StateTaskLists.Add(stateTaskList);
+            _allStateTaskLists.Add(stateTaskList);
 
-            SelectedStateTaskList = stateTaskList;
+            ApplyFilter();
+
+            SelectedStateTaskList = StateTaskLists.FirstOrDefault(pair => pair.Key == id);
         }
 
         public void AddTaskEval()
@@ -171,14 +216,20 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 taskEval = new BioTaskEval();
             }
 
+            if (FilteredStateTaskListId is int filteredId)
+            {
+                taskEval.Quest = filteredId;
+            }
+
             SelectedStateTaskList.Value.TaskEvals.Add(taskEval);
 
+            RefreshVisibleTaskEvals();
             SelectedTaskEval = taskEval;
         }
 
         public void ChangeStateTaskListId()
         {
-            if (SelectedStateTaskList.Value == null)
+            if (FilteredStateTaskListId.HasValue || SelectedStateTaskList.Value == null)
             {
                 return;
             }
@@ -196,14 +247,14 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             var stateTaskList = SelectedStateTaskList.Value;
 
-            StateTaskLists.Remove(SelectedStateTaskList);
+            _allStateTaskLists.Remove(SelectedStateTaskList);
 
             AddStateTaskList(dlg.ObjectId, stateTaskList);
         }
 
         public void CopyStateTaskList()
         {
-            if (SelectedStateTaskList.Value == null)
+            if (FilteredStateTaskListId.HasValue || SelectedStateTaskList.Value == null)
             {
                 return;
             }
@@ -234,23 +285,32 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public void RemoveStateTaskList()
         {
-            if (StateTaskLists == null || SelectedStateTaskList.Value == null)
+            if (_allStateTaskLists == null || SelectedStateTaskList.Value == null)
             {
                 return;
             }
 
-            var index = StateTaskLists.IndexOf(SelectedStateTaskList);
+            var index = _allStateTaskLists.IndexOf(SelectedStateTaskList);
 
-            if (!StateTaskLists.Remove(SelectedStateTaskList))
+            if (!_allStateTaskLists.Remove(SelectedStateTaskList))
             {
                 return;
             }
+
+            ApplyFilter();
 
             if (StateTaskLists.Any())
             {
-                SelectedStateTaskList = ((index - 1) >= 0)
-                    ? StateTaskLists[index - 1]
-                    : StateTaskLists.First();
+                if (FilteredStateTaskListId.HasValue)
+                {
+                    SelectedStateTaskList = StateTaskLists.First();
+                }
+                else
+                {
+                    SelectedStateTaskList = ((index - 1) >= 0 && index - 1 < StateTaskLists.Count)
+                        ? StateTaskLists[index - 1]
+                        : StateTaskLists.First();
+                }
             }
         }
 
@@ -261,18 +321,24 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return;
             }
 
-            var index = SelectedStateTaskList.Value.TaskEvals.IndexOf(SelectedTaskEval);
+            var index = VisibleTaskEvals.IndexOf(SelectedTaskEval);
 
             if (!SelectedStateTaskList.Value.TaskEvals.Remove(SelectedTaskEval))
             {
                 return;
             }
 
-            if (SelectedStateTaskList.Value.TaskEvals.Any())
+            RefreshVisibleTaskEvals();
+
+            if (VisibleTaskEvals.Any())
             {
                 SelectedTaskEval = ((index - 1) >= 0)
-                    ? SelectedStateTaskList.Value.TaskEvals[index - 1]
-                    : SelectedStateTaskList.Value.TaskEvals.First();
+                    ? VisibleTaskEvals[index - 1]
+                    : VisibleTaskEvals.First();
+            }
+            else
+            {
+                SelectedTaskEval = null;
             }
         }
 
@@ -280,17 +346,93 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             if (collection == null)
             {
-                StateTaskLists = new ObservableCollection<KeyValuePair<int, BioStateTaskList>>();
+                _allStateTaskLists = new ObservableCollection<KeyValuePair<int, BioStateTaskList>>();
             }
             else
             {
-                StateTaskLists = InitCollection(collection);
+                _allStateTaskLists = InitCollection(collection);
 
-                foreach (var taskEval in StateTaskLists)
+                foreach (var taskEval in _allStateTaskLists)
                 {
                     taskEval.Value.TaskEvals = InitCollection(taskEval.Value.TaskEvals);
                 }
             }
+
+            ApplyFilter();
+        }
+
+        public void UpdateStateTaskListId(int oldId, int newId)
+        {
+            if (_allStateTaskLists == null || oldId < 0 || newId < 0 || oldId == newId)
+            {
+                return;
+            }
+
+            bool updatedAny = false;
+            foreach (KeyValuePair<int, BioStateTaskList> stateTaskList in _allStateTaskLists)
+            {
+                foreach (BioTaskEval taskEval in stateTaskList.Value.TaskEvals.Where(taskEval => taskEval.Quest == oldId))
+                {
+                    taskEval.Quest = newId;
+                    updatedAny = true;
+                }
+            }
+
+            if (!updatedAny)
+            {
+                return;
+            }
+
+            ApplyFilter();
+        }
+
+        private void EnsureAllStateTaskLists()
+        {
+            _allStateTaskLists ??= InitCollection<KeyValuePair<int, BioStateTaskList>>();
+        }
+
+        private void ApplyFilter()
+        {
+            EnsureAllStateTaskLists();
+
+            IEnumerable<KeyValuePair<int, BioStateTaskList>> filteredStateTaskLists = _allStateTaskLists;
+            if (FilteredStateTaskListId is int filteredId)
+            {
+                filteredStateTaskLists = filteredStateTaskLists.Where(pair => pair.Value.TaskEvals.Any(taskEval => taskEval.Quest == filteredId));
+            }
+
+            var previousSelection = _selectedStateTaskList;
+            StateTaskLists = InitCollection(filteredStateTaskLists);
+
+            if (!StateTaskLists.Any())
+            {
+                VisibleTaskEvals = InitCollection<BioTaskEval>();
+                SelectedTaskEval = null;
+                SelectedStateTaskList = default;
+                return;
+            }
+
+            SelectedStateTaskList = StateTaskLists.FirstOrDefault(pair => pair.Key == previousSelection.Key)
+                is var matchingPair && matchingPair.Value != null
+                    ? matchingPair
+                    : StateTaskLists.First();
+        }
+
+        private void RefreshVisibleTaskEvals()
+        {
+            if (SelectedStateTaskList.Value?.TaskEvals == null)
+            {
+                VisibleTaskEvals = InitCollection<BioTaskEval>();
+                return;
+            }
+
+            IEnumerable<BioTaskEval> visibleTaskEvals = SelectedStateTaskList.Value.TaskEvals;
+            if (FilteredStateTaskListId is int filteredId)
+            {
+                visibleTaskEvals = visibleTaskEvals.Where(taskEval => taskEval.Quest == filteredId);
+            }
+
+            VisibleTaskEvals = InitCollection(visibleTaskEvals);
         }
 
         
@@ -312,7 +454,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private int GetMaxStateTaskListId()
         {
-            return StateTaskLists.Any() ? StateTaskLists.Max(b => b.Key) : -1;
+            return AllStateTaskLists.Any() ? AllStateTaskLists.Max(b => b.Key) : -1;
         }
 
         private void ChangeStateTaskListId_Click(object sender, RoutedEventArgs e)

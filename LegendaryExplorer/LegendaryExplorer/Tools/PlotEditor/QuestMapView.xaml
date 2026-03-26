@@ -35,9 +35,7 @@
 
 	<!-- Content -->
 	<Grid>
-		<TabControl Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-			<TabItem Header="Quests">
-				<Grid>
+     <Grid>
 					<!-- Grid Definitions -->
 					<Grid.ColumnDefinitions>
 						<ColumnDefinition Width="Auto" />
@@ -511,20 +509,18 @@
 											Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 									</Grid>
 								</Grid>
+                          </TabItem>
+							<TabItem Header="Bool Task Evals">
+								<plotEditor:StateTaskListsView x:Name="BoolStateTaskListsControl" />
+							</TabItem>
+							<TabItem Header="Float Task Evals">
+								<plotEditor:StateTaskListsView x:Name="FloatStateTaskListsControl" />
+							</TabItem>
+							<TabItem Header="Int Task Evals">
+								<plotEditor:StateTaskListsView x:Name="IntStateTaskListsControl" />
 							</TabItem>
 						</TabControl>
 					</Grid>
 				</Grid>
-			</TabItem>
-			<TabItem Header="Bool Task Evals">
-				<plotEditor:StateTaskListsView x:Name="BoolStateTaskListsControl" />
-			</TabItem>
-			<TabItem Header="Float Task Evals">
-                <plotEditor:StateTaskListsView x:Name="FloatStateTaskListsControl" />
-			</TabItem>
-			<TabItem Header="Int Task Evals">
-                <plotEditor:StateTaskListsView x:Name="IntStateTaskListsControl" />
-			</TabItem>
-		</TabControl>
 	</Grid>
 </misc:NotifyPropertyChangedControlBase>

@@ -255,6 +255,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(CanRemoveQuestTask));
                 OnPropertyChanged(nameof(CanRemoveQuestTask));
                 OnPropertyChanged(nameof(CanMoveQuestTaskDown));
+                UpdateQuestTaskEvalFilters();
             }
         }
 
@@ -549,9 +550,9 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             var questMap = new BioQuestMap
             {
-                BoolTaskEvals = BoolStateTaskListsControl.StateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
-                FloatTaskEvals = FloatStateTaskListsControl.StateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
-                IntTaskEvals = IntStateTaskListsControl.StateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
+                BoolTaskEvals = BoolStateTaskListsControl.AllStateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
+                FloatTaskEvals = FloatStateTaskListsControl.AllStateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
+                IntTaskEvals = IntStateTaskListsControl.AllStateTaskLists.ToDictionary(pair => pair.Key, pair => pair.Value),
                 Quests = Quests.ToDictionary(pair => pair.Key, pair => pair.Value)
             };
 
@@ -576,11 +577,13 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return;
             }
 
+            int oldQuestId = SelectedQuest.Key;
             var quest = SelectedQuest.Value;
 
             Quests.Remove(SelectedQuest);
 
             AddQuest(dlg.ObjectId, quest);
+            RenameQuestTaskEvalLists(oldQuestId, dlg.ObjectId);
         }
 
         public void RemoveQuest()
@@ -719,6 +722,23 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     questTask.PlotItemIndices = InitCollection(questTask.PlotItemIndices);
                 }
             }
+
+            UpdateQuestTaskEvalFilters();
+        }
+
+        private void UpdateQuestTaskEvalFilters()
+        {
+            int? selectedQuestId = SelectedQuest.Value != null ? SelectedQuest.Key : null;
+            BoolStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
+            FloatStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
+            IntStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
+        }
+
+        private void RenameQuestTaskEvalLists(int oldQuestId, int newQuestId)
+        {
+            BoolStateTaskListsControl.UpdateStateTaskListId(oldQuestId, newQuestId);
+            FloatStateTaskListsControl.UpdateStateTaskListId(oldQuestId, newQuestId);
+            IntStateTaskListsControl.UpdateStateTaskListId(oldQuestId, newQuestId);
         }
 
         
