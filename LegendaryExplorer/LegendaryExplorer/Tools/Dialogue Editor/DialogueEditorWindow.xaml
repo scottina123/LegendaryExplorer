@@ -840,9 +840,6 @@
                                             <Setter Property="Background" Value="Transparent" />
                                             <Setter Property="FontWeight" Value="Normal" />
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsIncomingConnection}" Value="True">
-                                                    <Setter Property="Background" Value="#1A6AA84F" />
-                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsDividerRow}" Value="True">
                                                     <Setter Property="Background" Value="#334A4A4A" />
                                                     <Setter Property="Foreground" Value="#FFF4D35E" />
@@ -850,6 +847,21 @@
                                                     <Setter Property="BorderBrush" Value="#FF9A9A9A" />
                                                     <Setter Property="BorderThickness" Value="0,3,0,1" />
                                                     <Setter Property="IsHitTestVisible" Value="False" />
+                                                 <Setter Property="Template">
+                                                     <Setter.Value>
+                                                         <ControlTemplate TargetType="{x:Type DataGridRow}">
+                                                             <Border Background="{TemplateBinding Background}"
+                                                                     BorderBrush="{TemplateBinding BorderBrush}"
+                                                                     BorderThickness="{TemplateBinding BorderThickness}"
+                                                                     Padding="8,3">
+                                                                 <TextBlock Text="{Binding NodeIDLink}"
+                                                                            Foreground="{TemplateBinding Foreground}"
+                                                                            FontWeight="{TemplateBinding FontWeight}"
+                                                                            VerticalAlignment="Center" />
+                                                             </Border>
+                                                         </ControlTemplate>
+                                                     </Setter.Value>
+                                                 </Setter>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>

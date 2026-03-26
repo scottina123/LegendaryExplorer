@@ -4718,14 +4718,14 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (incomingRows.Count > 0)
             {
-                InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Incoming Connections"));
+                InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Incoming"));
                 foreach (var incomingRow in incomingRows)
                 {
                     InlineLinkEditorLinks.Add(incomingRow);
                 }
             }
 
-            InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Outgoing Connections"));
+            InlineLinkEditorLinks.Add(CreateLinkSectionDivider("Outgoing"));
             foreach (var outgoingLink in outgoingLinks)
             {
                 ParseInlineLink(outgoingLink);
