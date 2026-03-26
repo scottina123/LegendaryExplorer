@@ -26,6 +26,7 @@
 
 		private int _conditional;
 		private int _description;
+      private string _descriptionText;
 		private int _name;
 		private int _state;
 
@@ -47,6 +48,7 @@
 		{
 			Conditional = other.Conditional;
 			Description = other.Description;
+          DescriptionText = other.DescriptionText;
 			Name = other.Name;
 			State = other.State;
 		}
@@ -65,6 +67,12 @@
 		{
 			get { return _description; }
 			set { SetProperty(ref _description, value); }
+		}
+
+		public string DescriptionText
+		{
+			get { return _descriptionText; }
+			set { SetProperty(ref _descriptionText, value); }
 		}
 
 		/// <summary>

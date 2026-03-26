@@ -265,6 +265,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             set
             {
                 SetProperty(ref _selectedQuestGoal, value);
+                RefreshGoalText();
                 OnPropertyChanged(nameof(CanRemoveQuestGoal));
             }
         }
@@ -721,9 +722,30 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 {
                     questTask.PlotItemIndices = InitCollection(questTask.PlotItemIndices);
                 }
+
+                foreach (var questGoal in quest.Value.Goals)
+                {
+                    questGoal.DescriptionText = GlobalFindStrRefbyID(questGoal.Description, game);
+                }
             }
 
             UpdateQuestTaskEvalFilters();
+        }
+
+        private void RefreshGoalText()
+        {
+            if (SelectedQuestGoal == null)
+            {
+                txt_goalName.Text = txt_goalDesc.Text = "";
+                return;
+            }
+
+            if (CodexMapView.package != null)
+            {
+                txt_goalName.Text = GlobalFindStrRefbyID(SelectedQuestGoal.Name, CodexMapView.package);
+                txt_goalDesc.Text = GlobalFindStrRefbyID(SelectedQuestGoal.Description, CodexMapView.package);
+                SelectedQuestGoal.DescriptionText = txt_goalDesc.Text;
+            }
         }
 
         private void UpdateQuestTaskEvalFilters()
@@ -842,12 +864,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             if (CodexMapView.package != null)
             {
-                if (SelectedQuestGoal != null)
-                {
-                    txt_goalName.Text = GlobalFindStrRefbyID(SelectedQuestGoal.Name, CodexMapView.package);
-                    txt_goalDesc.Text = GlobalFindStrRefbyID(SelectedQuestGoal.Description, CodexMapView.package);
-                }
-                else txt_goalName.Text = txt_goalDesc.Text = "";
+                RefreshGoalText();
 
                 if (SelectedQuestTask != null)
                 {

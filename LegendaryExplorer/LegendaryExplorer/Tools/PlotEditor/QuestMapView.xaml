@@ -124,14 +124,19 @@
 										ItemsSource="{Binding SelectedQuest.Value.Goals, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuestGoal, Mode=TwoWay}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate DataType="{x:Type questMap:BioQuestGoal}">
-                                                <TextBlock Text="Goal" Width="125">
-                                                    <TextBlock.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="Copy" Click="CopyQuestGoal_Click"/>
-                                                            <MenuItem Header="Remove" Click="RemoveQuestGoal_Click" />
-                                                        </ContextMenu>
-                                                    </TextBlock.ContextMenu>
-                                                </TextBlock>
+                                                <StackPanel Width="125">
+													<TextBlock Text="Goal" />
+													<TextBlock Text="{Binding DescriptionText}"
+															   TextWrapping="Wrap"
+															   FontSize="10"
+															   Visibility="{Binding DescriptionText, Converter={StaticResource NullVisibilityConverter}}"/>
+													<StackPanel.ContextMenu>
+														<ContextMenu>
+															<MenuItem Header="Copy" Click="CopyQuestGoal_Click"/>
+															<MenuItem Header="Remove" Click="RemoveQuestGoal_Click" />
+														</ContextMenu>
+													</StackPanel.ContextMenu>
+												</StackPanel>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
