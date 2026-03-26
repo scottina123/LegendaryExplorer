@@ -104,6 +104,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     
     <!-- MenuItem styling with template to fix submenu popup background -->
     <Style TargetType="{x:Type MenuItem}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
         <Setter Property="BorderThickness" Value="1"/>
@@ -268,6 +269,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     
     <!-- ContextMenu styling with template -->
     <Style TargetType="{x:Type ContextMenu}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
         <Setter Property="Background" Value="#FF2D2D30"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
         <Setter Property="BorderBrush" Value="#FF3F3F46"/>
@@ -1548,9 +1550,20 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
     </Style>
     
-    <!-- Separator styling -->
-    <Style TargetType="{x:Type Separator}">
-        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="{x:Type Separator}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="2,4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Height="{TemplateBinding Height}"
+                            Background="{TemplateBinding Background}"
+                            SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     
     <!-- Dark-themed context menu for text controls (Cut/Copy/Paste) -->
