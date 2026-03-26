@@ -53,6 +53,7 @@ using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Pathing;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
 using LegendaryExplorer.Tools.AssetViewer;
+using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.GameInterop;
 using Xceed.Wpf.Toolkit;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -1483,6 +1484,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             new Meshplorer.MeshplorerWindow(exp).Show();
                         }
                         break;
+                    case "PlotEditor":
+                        PlotEditorWindow.OpenExportInPlotEditor(exp);
+                        break;
                     case "WwiseEditor":
                         if (exp.ClassName == "WwiseBank")
                         {
@@ -1738,6 +1742,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         return exp.ClassName == "FaceFXAnimSet";
                     case "Meshplorer":
                         return MeshRenderer.CanParseStatic(exp);
+                    case "PlotEditor":
+                        return PlotEditorWindow.CanOpenExport(exp);
                     case "PathfindingEditor":
                         return PathfindingEditor.PathfindingEditorWindow.CanParseStatic(exp);
                     case "Soundplorer":

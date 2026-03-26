@@ -171,6 +171,70 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
         }
 
+        public static bool CanOpenExport(ExportEntry export)
+        {
+            if (export == null || export.IsDefaultObject)
+            {
+                return false;
+            }
+
+            if (export.ClassName == "BioStateEventMap")
+            {
+                return export.ObjectName == "StateTransitionMap" || export.ObjectName == "ConsequenceMap";
+            }
+
+            return export.ClassName is "BioCodexMap" or "BioQuestMap" or "BioConsequenceMap" or "BioOutcomeMap";
+        }
+
+        public static void OpenExportInPlotEditor(ExportEntry export)
+        {
+            if (!CanOpenExport(export))
+            {
+                return;
+            }
+
+            if (GetExistingToolInstance(export.FileRef.FilePath, out PlotEditorWindow plotEditor))
+            {
+                plotEditor.RestoreAndBringToFront();
+                plotEditor.OpenExport(export);
+                return;
+            }
+
+            PlotEditorWindow newPlotEditor = new();
+            newPlotEditor.Show();
+            newPlotEditor.OpenExport(export);
+            newPlotEditor.Activate();
+        }
+
+        public void OpenExport(ExportEntry export)
+        {
+            if (!CanOpenExport(export))
+            {
+                return;
+            }
+
+            if (!string.Equals(Pcc?.FilePath, export.FileRef.FilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                LoadFile(export.FileRef.FilePath);
+            }
+
+            switch (export.ClassName)
+            {
+                case "BioCodexMap":
+                    MainTabControl.SelectedValue = CodexMapControl;
+                    break;
+                case "BioQuestMap":
+                    MainTabControl.SelectedValue = QuestMapControl;
+                    break;
+                case "BioConsequenceMap":
+                    MainTabControl.SelectedValue = ConsequenceMapControl;
+                    break;
+                case "BioStateEventMap":
+                    MainTabControl.SelectedValue = export.ObjectName == "ConsequenceMap" ? ConsequenceMapControl : StateEventMapControl;
+                    break;
+            }
+        }
+
         public async void SaveFile(string filepath = null)
         {
             if (Pcc == null)
