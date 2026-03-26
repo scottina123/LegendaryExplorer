@@ -729,6 +729,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 }
             }
 
+            RefreshTaskEvalQuestNames();
             UpdateQuestTaskEvalFilters();
         }
 
@@ -750,10 +751,18 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         private void UpdateQuestTaskEvalFilters()
         {
+            RefreshTaskEvalQuestNames();
             int? selectedQuestId = SelectedQuest.Value != null ? SelectedQuest.Key : null;
             BoolStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
             FloatStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
             IntStateTaskListsControl.FilteredStateTaskListId = selectedQuestId;
+        }
+
+        private void RefreshTaskEvalQuestNames()
+        {
+            BoolStateTaskListsControl.SetQuestNames(Quests);
+            FloatStateTaskListsControl.SetQuestNames(Quests);
+            IntStateTaskListsControl.SetQuestNames(Quests);
         }
 
         private void RenameQuestTaskEvalLists(int oldQuestId, int newQuestId)

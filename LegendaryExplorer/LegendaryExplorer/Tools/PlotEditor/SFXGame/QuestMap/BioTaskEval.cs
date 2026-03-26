@@ -25,6 +25,7 @@
 		public const int DefaultTask = 0;
 
 		private int _conditional;
+     private string _questName;
 		private int _quest;
 		private int _state;
 		private int _task;
@@ -53,6 +54,7 @@
 			: base(other)
 		{
 			Conditional = other.Conditional;
+            QuestName = other.QuestName;
 			Quest = other.Quest;
 			State = other.State;
 			Task = other.Task;
@@ -72,6 +74,12 @@
 		{
 			get { return _quest; }
 			set { SetProperty(ref _quest, value); }
+		}
+
+		public string QuestName
+		{
+			get { return _questName; }
+			set { SetProperty(ref _questName, value); }
 		}
 
 		/// <summary>

@@ -25,6 +25,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private ObservableCollection<KeyValuePair<int, BioStateTaskList>> _allStateTaskLists;
         private ObservableCollection<KeyValuePair<int, BioStateTaskList>> _stateTaskLists;
         private ObservableCollection<BioTaskEval> _visibleTaskEvals;
+        private Dictionary<int, string> _questNamesById;
         private int? _filteredStateTaskListId;
 
         public bool CanAddTaskEval
@@ -107,6 +108,13 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 OnPropertyChanged(nameof(IsFilteredToSingleQuest));
                 ApplyFilter();
             }
+        }
+
+        public void SetQuestNames(IEnumerable<KeyValuePair<int, BioQuest>> quests)
+        {
+            _questNamesById = quests?.ToDictionary(pair => pair.Key, pair => pair.Value?.QuestName) ?? new Dictionary<int, string>();
+            RefreshTaskEvalQuestNames();
+            RefreshVisibleTaskEvals();
         }
 
         public bool IsFilteredToSingleQuest => FilteredStateTaskListId.HasValue;
@@ -394,6 +402,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private void ApplyFilter()
         {
             EnsureAllStateTaskLists();
+            RefreshTaskEvalQuestNames();
 
             IEnumerable<KeyValuePair<int, BioStateTaskList>> filteredStateTaskLists = _allStateTaskLists;
             if (FilteredStateTaskListId is int filteredId)
@@ -433,6 +442,21 @@ namespace LegendaryExplorer.Tools.PlotEditor
             }
 
             VisibleTaskEvals = InitCollection(visibleTaskEvals);
+        }
+
+        private void RefreshTaskEvalQuestNames()
+        {
+            if (_allStateTaskLists == null)
+            {
+                return;
+            }
+
+            foreach (BioTaskEval taskEval in _allStateTaskLists.SelectMany(pair => pair.Value.TaskEvals))
+            {
+                taskEval.QuestName = _questNamesById != null && _questNamesById.TryGetValue(taskEval.Quest, out string questName)
+                    ? questName
+                    : null;
+            }
         }
 
         
@@ -490,6 +514,20 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private void AddTaskEval_Click(object sender, RoutedEventArgs e)
         {
             AddTaskEval();
+        }
+
+        private void TaskEvalQuest_ValueChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (SelectedTaskEval == null)
+            {
+                return;
+            }
+
+            SelectedTaskEval.QuestName = _questNamesById != null && _questNamesById.TryGetValue(SelectedTaskEval.Quest, out string questName)
+                ? questName
+                : null;
+            RefreshVisibleTaskEvals();
+            SelectedTaskEval = VisibleTaskEvals.FirstOrDefault(taskEval => ReferenceEquals(taskEval, SelectedTaskEval)) ?? SelectedTaskEval;
         }
     }
 }
