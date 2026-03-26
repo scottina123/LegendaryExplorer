@@ -4,6 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:primitives="clr-namespace:Xceed.Wpf.Toolkit.Primitives;assembly=DotNetProjects.Wpf.Extended.Toolkit"
+        xmlns:themes="clr-namespace:Xceed.Wpf.Toolkit.Themes;assembly=DotNetProjects.Wpf.Extended.Toolkit"
         xmlns:local="clr-namespace:LegendaryExplorer.Tools.TlkManagerNS"
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
         mc:Ignorable="d"
@@ -11,6 +13,58 @@
         Title="TLK Manager" Height="450" Width="800"
         Closing="TLKManager_Closing"
         d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
+
+    <bases:TrackingNotifyPropertyChangedWindowBase.Resources>
+        <SolidColorBrush x:Key="TLKManagerHoverBrush" Color="#FF1F4E79"/>
+        <SolidColorBrush x:Key="TLKManagerHoverBorderBrush" Color="#FF2B6CB0"/>
+        <SolidColorBrush x:Key="TLKManagerPressedBrush" Color="#FF163A5A"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ControlMouseOverBorderKey}" Color="#FF2B6CB0"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ControlSelectedBorderKey}" Color="#FF2B6CB0"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ButtonMouseOverOuterBorderKey}" Color="#FF2B6CB0"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ButtonMouseOverBackgroundKey}" Color="#FF1F4E79"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ButtonPressedOuterBorderKey}" Color="#FF163A5A"/>
+        <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type themes:ResourceKeys}, ResourceId=ButtonPressedBackgroundKey}" Color="#FF163A5A"/>
+        <Style TargetType="{x:Type primitives:SelectorItem}">
+            <Setter Property="HorizontalContentAlignment"
+                    Value="{Binding Path=HorizontalContentAlignment,RelativeSource={RelativeSource AncestorType={x:Type primitives:Selector}}}" />
+            <Setter Property="VerticalContentAlignment"
+                    Value="{Binding Path=VerticalContentAlignment,RelativeSource={RelativeSource AncestorType={x:Type primitives:Selector}}}" />
+            <Setter Property="Padding" Value="4,0,0,0" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type primitives:SelectorItem}">
+                        <Border x:Name="_background"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <CheckBox IsChecked="{Binding IsSelected, RelativeSource={RelativeSource TemplatedParent}}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <CheckBox.Content>
+                                    <ContentControl Content="{TemplateBinding Content}"
+                                                    ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    Foreground="{TemplateBinding Foreground}" />
+                                </CheckBox.Content>
+                            </CheckBox>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="_background" Property="Background" Value="{StaticResource TLKManagerHoverBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="true">
+                                <Setter TargetName="_background" Property="Background" Value="{StaticResource TLKManagerHoverBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </bases:TrackingNotifyPropertyChangedWindowBase.Resources>
 
     <xctk:BusyIndicator IsBusy="{Binding Path=IsBusy}" BusyContent="{Binding BusyText}">
         <TabControl>
