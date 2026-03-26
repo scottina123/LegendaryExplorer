@@ -41,15 +41,22 @@
 						<ColumnDefinition Width="Auto" />
 						<ColumnDefinition Width="*" />
 					</Grid.ColumnDefinitions>
-					<Grid.RowDefinitions>
+                   <Grid.RowDefinitions>
+						<RowDefinition Height="Auto" />
 						<RowDefinition Height="*" />
 						<RowDefinition Height="Auto" />
 					</Grid.RowDefinitions>
 
 					<!-- Grid Content -->
-					<ListBox x:Name="QuestsListBox" Grid.Column="0" Grid.Row="0" Width="200" Style="{DynamicResource ListBoxStyle}"
+                 <xctk:WatermarkTextBox Grid.Column="0" Grid.Row="0"
+									 Width="200"
+									 Margin="0,0,0,5"
+									 Watermark="Search quest IDs, states, names, and descriptions"
+									 Text="{Binding QuestSearchText, UpdateSourceTrigger=PropertyChanged}" />
+
+					<ListBox x:Name="QuestsListBox" Grid.Column="0" Grid.Row="1" Width="200" Style="{DynamicResource ListBoxStyle}"
 					    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-						ItemsSource="{Binding Quests, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuest, Mode=TwoWay}">
+                     ItemsSource="{Binding VisibleQuests, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuest, Mode=TwoWay}">
                         <ListBox.ItemTemplate>
                             <!--<DataTemplate DataType="{x:Type questMap:BioQuest}">-->
                             <DataTemplate>
@@ -68,7 +75,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-					<Grid Grid.Column="0" Grid.Row="1" Margin="0,5,0,0">
+                    <Grid Grid.Column="0" Grid.Row="2" Margin="0,5,0,0">
 						<!-- Grid Definitions -->
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*" />
@@ -86,7 +93,7 @@
 					</Grid>
 
 					<!-- Selected Quest -->
-					<Grid Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Margin="5,0,0,0">
+                   <Grid Grid.Column="1" Grid.Row="0" Grid.RowSpan="3" Margin="5,0,0,0">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*" />
 						</Grid.ColumnDefinitions>
@@ -212,8 +219,9 @@
 										<Label Grid.Column="0" Grid.Row="3" Content="State"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-										<xctk:IntegerUpDown Grid.Column="1" Grid.Row="3"
+                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="3"
 											Text="{Binding Path=SelectedQuestGoal.State, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           ValueChanged="QuestSearchField_ValueChanged"
 											Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
 										<!-- Quest Goal Instance Version -->
@@ -323,8 +331,9 @@
 										<Label Grid.Column="0" Grid.Row="3" Content="State"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-										<xctk:IntegerUpDown Grid.Column="1" Grid.Row="3"
+                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="3"
 											Text="{Binding Path=SelectedQuestPlotItem.State, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           ValueChanged="QuestSearchField_ValueChanged"
 											Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
 										<!-- Quest Plot Items Target Items -->

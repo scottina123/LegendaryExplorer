@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Windows.Input;
 using System.IO;
 using System.Linq;
+using System.Windows.Input;
 using Gammtek.Conduit.MassEffect3.SFXGame.QuestMap;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
@@ -30,10 +31,13 @@ namespace LegendaryExplorer.Tools.PlotEditor
         }
 
         private ObservableCollection<KeyValuePair<int, BioQuest>> _quests;
+        private ObservableCollection<KeyValuePair<int, BioQuest>> _visibleQuests;
+        private string _questSearchText;
         private KeyValuePair<int, BioQuest> _selectedQuest;
         private BioQuestGoal _selectedQuestGoal;
         private BioQuestPlotItem _selectedQuestPlotItem;
         private BioQuestTask _selectedQuestTask;
+        private MEGame _currentGame = MEGame.Unknown;
         
         public ICommand MoveQuestTaskUpCommand { get; set; }
         public ICommand MoveQuestTaskDownCommand { get; set; }
@@ -233,10 +237,27 @@ namespace LegendaryExplorer.Tools.PlotEditor
             set
             {
                 SetProperty(ref _quests, value);
+                ApplyQuestSearchFilter();
                 OnPropertyChanged(nameof(CanAddQuestGoal));
                 OnPropertyChanged(nameof(CanAddQuestPlotItem));
                 OnPropertyChanged(nameof(CanAddQuestTask));
                 OnPropertyChanged(nameof(CanRemoveQuest));
+            }
+        }
+
+        public ObservableCollection<KeyValuePair<int, BioQuest>> VisibleQuests
+        {
+            get => _visibleQuests;
+            set => SetProperty(ref _visibleQuests, value);
+        }
+
+        public string QuestSearchText
+        {
+            get => _questSearchText;
+            set
+            {
+                SetProperty(ref _questSearchText, value);
+                ApplyQuestSearchFilter();
             }
         }
 
@@ -338,6 +359,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             Quests.Add(questPair);
 
+            ApplyQuestSearchFilter();
             SelectedQuest = questPair;
         }
 
@@ -585,6 +607,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             AddQuest(dlg.ObjectId, quest);
             RenameQuestTaskEvalLists(oldQuestId, dlg.ObjectId);
+            ApplyQuestSearchFilter();
         }
 
         public void RemoveQuest()
@@ -607,6 +630,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     ? Quests[index - 1]
                     : Quests.First();
             }
+
+            ApplyQuestSearchFilter();
         }
 
         public void RemoveQuestGoal()
@@ -702,6 +727,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return;
             }
 
+            _currentGame = game;
+
             BoolStateTaskListsControl.SetStateTaskLists(questMap.BoolTaskEvals.OrderBy(pair => pair.Key));
             FloatStateTaskListsControl.SetStateTaskLists(questMap.FloatTaskEvals.OrderBy(pair => pair.Key));
             IntStateTaskListsControl.SetStateTaskLists(questMap.IntTaskEvals.OrderBy(pair => pair.Key));
@@ -731,6 +758,73 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
             RefreshTaskEvalQuestNames();
             UpdateQuestTaskEvalFilters();
+        }
+
+        private void ApplyQuestSearchFilter()
+        {
+            if (Quests == null)
+            {
+                VisibleQuests = InitCollection<KeyValuePair<int, BioQuest>>();
+                return;
+            }
+
+            IEnumerable<KeyValuePair<int, BioQuest>> filteredQuests = Quests;
+            if (!string.IsNullOrWhiteSpace(QuestSearchText))
+            {
+                string searchText = QuestSearchText.Trim();
+                filteredQuests = filteredQuests.Where(quest => QuestMatchesSearch(quest, searchText));
+            }
+
+            VisibleQuests = InitCollection(filteredQuests);
+
+            if (VisibleQuests.Any(quest => quest.Key == SelectedQuest.Key))
+            {
+                return;
+            }
+
+            SelectedQuest = VisibleQuests.FirstOrDefault();
+        }
+
+        private bool QuestMatchesSearch(KeyValuePair<int, BioQuest> questPair, string searchText)
+        {
+            BioQuest quest = questPair.Value;
+            return SearchTextMatches(questPair.Key, searchText)
+                   || SearchTextMatches(quest?.QuestName, searchText)
+                   || quest?.Goals.Any(goal => SearchTextMatches(goal.Name, searchText)
+                                               || SearchTextMatches(goal.Description, searchText)
+                                               || SearchTextMatches(goal.State, searchText)
+                                               || SearchTextMatches(goal.DescriptionText, searchText)
+                                               || SearchTextMatches(ResolveTlk(goal.Name), searchText)
+                                               || SearchTextMatches(ResolveTlk(goal.Description), searchText)) == true
+                   || quest?.Tasks.Any(task => SearchTextMatches(task.Name, searchText)
+                                               || SearchTextMatches(task.Description, searchText)
+                                               || SearchTextMatches(ResolveTlk(task.Name), searchText)
+                                               || SearchTextMatches(ResolveTlk(task.Description), searchText)) == true
+                   || quest?.PlotItems.Any(plotItem => SearchTextMatches(plotItem.Name, searchText)
+                                                      || SearchTextMatches(plotItem.State, searchText)
+                                                      || SearchTextMatches(ResolveTlk(plotItem.Name), searchText)) == true;
+        }
+
+        private string ResolveTlk(int tlkId)
+        {
+            if (tlkId < 0)
+            {
+                return null;
+            }
+
+            return GlobalFindStrRefbyID(tlkId, _currentGame);
+        }
+
+        private static bool SearchTextMatches(string value, string searchText)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                   && value.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                   && !value.Equals("No Data", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SearchTextMatches(int value, string searchText)
+        {
+            return value.ToString().Contains(searchText, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RefreshGoalText()
@@ -874,6 +968,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             if (CodexMapView.package != null)
             {
                 RefreshGoalText();
+                ApplyQuestSearchFilter();
 
                 if (SelectedQuestTask != null)
                 {
@@ -888,6 +983,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 }
                 else txt_PlotitmDesc.Text = "";
             }
+        }
+
+        private void QuestSearchField_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<object> e)
+        {
+            ApplyQuestSearchFilter();
         }
     }
 }
