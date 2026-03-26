@@ -39,6 +39,10 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private BioQuestPlotItem _selectedQuestPlotItem;
         private BioQuestTask _selectedQuestTask;
         private MEGame _currentGame = MEGame.Unknown;
+        private bool _searchQuestIds = true;
+        private bool _searchQuestStates = true;
+        private bool _searchQuestNames = true;
+        private bool _searchQuestDescriptions = true;
         
         public ICommand MoveQuestTaskUpCommand { get; set; }
         public ICommand MoveQuestTaskDownCommand { get; set; }
@@ -258,6 +262,46 @@ namespace LegendaryExplorer.Tools.PlotEditor
             set
             {
                 SetProperty(ref _questSearchText, value);
+                ApplyQuestSearchFilter();
+            }
+        }
+
+        public bool SearchQuestIds
+        {
+            get => _searchQuestIds;
+            set
+            {
+                SetProperty(ref _searchQuestIds, value);
+                ApplyQuestSearchFilter();
+            }
+        }
+
+        public bool SearchQuestStates
+        {
+            get => _searchQuestStates;
+            set
+            {
+                SetProperty(ref _searchQuestStates, value);
+                ApplyQuestSearchFilter();
+            }
+        }
+
+        public bool SearchQuestNames
+        {
+            get => _searchQuestNames;
+            set
+            {
+                SetProperty(ref _searchQuestNames, value);
+                ApplyQuestSearchFilter();
+            }
+        }
+
+        public bool SearchQuestDescriptions
+        {
+            get => _searchQuestDescriptions;
+            set
+            {
+                SetProperty(ref _searchQuestDescriptions, value);
                 ApplyQuestSearchFilter();
             }
         }
@@ -797,21 +841,38 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private bool QuestMatchesSearch(KeyValuePair<int, BioQuest> questPair, string searchText)
         {
             BioQuest quest = questPair.Value;
-            return SearchTextMatches(questPair.Key, searchText)
-                   || SearchTextMatches(quest?.QuestName, searchText)
-                   || quest?.Goals.Any(goal => SearchTextMatches(goal.Name, searchText)
-                                               || SearchTextMatches(goal.Description, searchText)
-                                               || SearchTextMatches(goal.State, searchText)
-                                               || SearchTextMatches(goal.DescriptionText, searchText)
-                                               || SearchTextMatches(ResolveTlk(goal.Name), searchText)
-                                               || SearchTextMatches(ResolveTlk(goal.Description), searchText)) == true
-                   || quest?.Tasks.Any(task => SearchTextMatches(task.Name, searchText)
-                                               || SearchTextMatches(task.Description, searchText)
-                                               || SearchTextMatches(ResolveTlk(task.Name), searchText)
-                                               || SearchTextMatches(ResolveTlk(task.Description), searchText)) == true
-                   || quest?.PlotItems.Any(plotItem => SearchTextMatches(plotItem.Name, searchText)
-                                                      || SearchTextMatches(plotItem.State, searchText)
-                                                      || SearchTextMatches(ResolveTlk(plotItem.Name), searchText)) == true;
+            return (SearchQuestIds && SearchTextMatches(questPair.Key, searchText))
+                   || (SearchQuestNames && SearchTextMatches(quest?.QuestName, searchText))
+                   || quest?.Goals.Any(goal => GoalMatchesSearch(goal, searchText)) == true
+                   || quest?.Tasks.Any(task => TaskMatchesSearch(task, searchText)) == true
+                   || quest?.PlotItems.Any(plotItem => PlotItemMatchesSearch(plotItem, searchText)) == true;
+        }
+
+        private bool GoalMatchesSearch(BioQuestGoal goal, string searchText)
+        {
+            return (SearchQuestNames && (SearchTextMatches(goal.Name, searchText)
+                                         || SearchTextMatches(ResolveTlk(goal.Name), searchText)
+                                         || SearchTextMatches(ResolvePlotBoolLabel(goal.State), searchText)))
+                   || (SearchQuestDescriptions && (SearchTextMatches(goal.Description, searchText)
+                                                  || SearchTextMatches(goal.DescriptionText, searchText)
+                                                  || SearchTextMatches(ResolveTlk(goal.Description), searchText)))
+                   || (SearchQuestStates && SearchTextMatches(goal.State, searchText));
+        }
+
+        private bool TaskMatchesSearch(BioQuestTask task, string searchText)
+        {
+            return (SearchQuestNames && (SearchTextMatches(task.Name, searchText)
+                                         || SearchTextMatches(ResolveTlk(task.Name), searchText)))
+                   || (SearchQuestDescriptions && (SearchTextMatches(task.Description, searchText)
+                                                  || SearchTextMatches(ResolveTlk(task.Description), searchText)));
+        }
+
+        private bool PlotItemMatchesSearch(BioQuestPlotItem plotItem, string searchText)
+        {
+            return (SearchQuestNames && (SearchTextMatches(plotItem.Name, searchText)
+                                         || SearchTextMatches(ResolveTlk(plotItem.Name), searchText)
+                                         || SearchTextMatches(ResolvePlotBoolLabel(plotItem.State), searchText)))
+                   || (SearchQuestStates && SearchTextMatches(plotItem.State, searchText));
         }
 
         private string ResolveTlk(int tlkId)

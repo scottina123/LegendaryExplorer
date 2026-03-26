@@ -47,14 +47,21 @@
 						<RowDefinition Height="Auto" />
 					</Grid.RowDefinitions>
 
-					<!-- Grid Content -->
-                 <xctk:WatermarkTextBox Grid.Column="0" Grid.Row="0"
-									 Width="200"
-									 Margin="0,0,0,5"
-									 Watermark="Search quest IDs, states, names, and descriptions"
-									 Text="{Binding QuestSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                   <!-- Grid Content -->
+					<StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,0,5" HorizontalAlignment="Left">
+						<xctk:WatermarkTextBox Width="200"
+											   HorizontalAlignment="Left"
+											   Watermark="Search quest IDs, states, names, and descriptions"
+											   Text="{Binding QuestSearchText, UpdateSourceTrigger=PropertyChanged}" />
+						<WrapPanel Margin="0,5,0,0">
+							<CheckBox Margin="0,0,10,0" Content="Quest IDs" IsChecked="{Binding SearchQuestIds}" />
+							<CheckBox Margin="0,0,10,0" Content="States" IsChecked="{Binding SearchQuestStates}" />
+							<CheckBox Margin="0,0,10,0" Content="Names" IsChecked="{Binding SearchQuestNames}" />
+							<CheckBox Margin="0,0,10,0" Content="Descriptions" IsChecked="{Binding SearchQuestDescriptions}" />
+						</WrapPanel>
+					</StackPanel>
 
-					<ListBox x:Name="QuestsListBox" Grid.Column="0" Grid.Row="1" Width="200" Style="{DynamicResource ListBoxStyle}"
+                 <ListBox x:Name="QuestsListBox" Grid.Column="0" Grid.Row="1" MinWidth="200" Style="{DynamicResource ListBoxStyle}"
 					    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                      ItemsSource="{Binding VisibleQuests, NotifyOnTargetUpdated=True}" SelectedItem="{Binding SelectedQuest, Mode=TwoWay}">
                         <ListBox.ItemTemplate>

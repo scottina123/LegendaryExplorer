@@ -30,6 +30,13 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private BioStateEventElement _subscribedElement;
         private bool _propagatingChanges;
         private ObservableCollection<KeyValuePair<int, BioStateEvent>> _stateEvents;
+        private ObservableCollection<KeyValuePair<int, BioStateEvent>> _visibleStateEvents;
+        private string _stateEventSearchText;
+        private bool _searchStateEventIds = true;
+        private bool _searchPlotBools = true;
+        private bool _searchPlotInts = true;
+        private bool _searchPlotFloats = true;
+        private bool _searchPlotNames = true;
         
         public bool CanAddStateEventElement => StateEvents != null && SelectedStateEvent.Value != null;
 
@@ -82,7 +89,77 @@ namespace LegendaryExplorer.Tools.PlotEditor
         public ObservableCollection<KeyValuePair<int, BioStateEvent>> StateEvents
         {
             get => _stateEvents;
-            set => SetProperty(ref _stateEvents, value);
+            set
+            {
+                SetProperty(ref _stateEvents, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public bool SearchStateEventIds
+        {
+            get => _searchStateEventIds;
+            set
+            {
+                SetProperty(ref _searchStateEventIds, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public bool SearchPlotBools
+        {
+            get => _searchPlotBools;
+            set
+            {
+                SetProperty(ref _searchPlotBools, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public bool SearchPlotInts
+        {
+            get => _searchPlotInts;
+            set
+            {
+                SetProperty(ref _searchPlotInts, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public bool SearchPlotFloats
+        {
+            get => _searchPlotFloats;
+            set
+            {
+                SetProperty(ref _searchPlotFloats, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public bool SearchPlotNames
+        {
+            get => _searchPlotNames;
+            set
+            {
+                SetProperty(ref _searchPlotNames, value);
+                ApplyStateEventSearchFilter();
+            }
+        }
+
+        public ObservableCollection<KeyValuePair<int, BioStateEvent>> VisibleStateEvents
+        {
+            get => _visibleStateEvents;
+            set => SetProperty(ref _visibleStateEvents, value);
+        }
+
+        public string StateEventSearchText
+        {
+            get => _stateEventSearchText;
+            set
+            {
+                SetProperty(ref _stateEventSearchText, value);
+                ApplyStateEventSearchFilter();
+            }
         }
 
         public void AddStateEvent()
@@ -132,6 +209,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
             var stateEventPair = new KeyValuePair<int, BioStateEvent>(id, stateEvent);
 
             StateEvents.Add(stateEventPair);
+
+            ApplyStateEventSearchFilter();
 
             SelectedStateEvent = stateEventPair;
         }
@@ -458,6 +537,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
             StateEvents.Remove(SelectedStateEvent);
 
             AddStateEvent(dlg.ObjectId, codexSection);
+            ApplyStateEventSearchFilter();
         }
 
         public void RemoveStateEvent()
@@ -474,11 +554,14 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 return;
             }
 
-            if (StateEvents.Any())
+            ApplyStateEventSearchFilter();
+
+            if (VisibleStateEvents.Any())
             {
-                SelectedStateEvent = ((index - 1) >= 0)
-                    ? StateEvents[index - 1]
-                    : StateEvents.First();
+                SelectedStateEvent = VisibleStateEvents.FirstOrDefault(pair => pair.Key == SelectedStateEvent.Key)
+                    is var matchingPair && matchingPair.Value != null
+                        ? matchingPair
+                        : VisibleStateEvents.First();
             }
         }
 
@@ -536,6 +619,8 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     substateStateEventElement.SiblingIndices = InitCollection(substateStateEventElement.SiblingIndices);
                 }
             }
+
+            ApplyStateEventSearchFilter();
         }
 
         
@@ -593,6 +678,113 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private int GetMaxStateEventId()
         {
             return StateEvents.Any() ? StateEvents.Max(pair => pair.Key) : -1;
+        }
+
+        private void ApplyStateEventSearchFilter()
+        {
+            if (StateEvents == null)
+            {
+                VisibleStateEvents = InitCollection<KeyValuePair<int, BioStateEvent>>();
+                return;
+            }
+
+            IEnumerable<KeyValuePair<int, BioStateEvent>> filteredStateEvents = StateEvents;
+            if (!string.IsNullOrWhiteSpace(StateEventSearchText))
+            {
+                string searchText = StateEventSearchText.Trim();
+                filteredStateEvents = filteredStateEvents.Where(stateEvent => StateEventMatchesSearch(stateEvent, searchText));
+            }
+
+            VisibleStateEvents = InitCollection(filteredStateEvents);
+
+            if (VisibleStateEvents.Any(stateEvent => stateEvent.Key == SelectedStateEvent.Key))
+            {
+                return;
+            }
+
+            SelectedStateEvent = VisibleStateEvents.FirstOrDefault();
+        }
+
+        private bool StateEventMatchesSearch(KeyValuePair<int, BioStateEvent> stateEventPair, string searchText)
+        {
+            BioStateEvent stateEvent = stateEventPair.Value;
+            return (SearchStateEventIds && SearchTextMatches(stateEventPair.Key, searchText))
+                   || (SearchPlotNames && SearchTextMatches(stateEvent?.PlotPath, searchText))
+                   || stateEvent?.Elements.Any(element => StateEventElementMatchesSearch(element, searchText)) == true;
+        }
+
+        private bool StateEventElementMatchesSearch(BioStateEventElement element, string searchText)
+        {
+            return element switch
+            {
+                BioStateEventElementBool boolElement => PlotElementMatchesSearch(boolElement.GlobalBool, searchText, "bool"),
+                BioStateEventElementSubstate substateElement => PlotElementMatchesSearch(substateElement.GlobalBool, searchText, "bool"),
+                BioStateEventElementInt intElement => PlotElementMatchesSearch(intElement.GlobalInt, searchText, "int"),
+                BioStateEventElementFloat floatElement => PlotElementMatchesSearch(floatElement.GlobalFloat, searchText, "float"),
+                _ => false
+            };
+        }
+
+        private bool PlotElementMatchesSearch(int id, string searchText, string plotType)
+        {
+            return ((SearchPlotNames && SearchTextMatches(GetPlotElementPath(id, plotType), searchText))
+                    || (SearchPlotNames && SearchTextMatches(GetPlotElementLabel(id, plotType), searchText))
+                    || (IsPlotTypeFilterEnabled(plotType) && SearchTextMatches(id, searchText)));
+        }
+
+        private bool IsPlotTypeFilterEnabled(string plotType)
+        {
+            return plotType switch
+            {
+                "bool" => SearchPlotBools,
+                "int" => SearchPlotInts,
+                "float" => SearchPlotFloats,
+                _ => false
+            };
+        }
+
+        private string GetPlotElementPath(int id, string plotType)
+        {
+            if (package == null)
+            {
+                return null;
+            }
+
+            return plotType switch
+            {
+                "bool" => PlotDatabases.FindPlotBoolByID(id, package.Game)?.Path,
+                "int" => PlotDatabases.FindPlotIntByID(id, package.Game)?.Path,
+                "float" => PlotDatabases.FindPlotFloatByID(id, package.Game)?.Path,
+                _ => null
+            };
+        }
+
+        private string GetPlotElementLabel(int id, string plotType)
+        {
+            if (package == null)
+            {
+                return null;
+            }
+
+            return plotType switch
+            {
+                "bool" => PlotDatabases.FindPlotBoolByID(id, package.Game)?.Label,
+                "int" => PlotDatabases.FindPlotIntByID(id, package.Game)?.Label,
+                "float" => PlotDatabases.FindPlotFloatByID(id, package.Game)?.Label,
+                _ => null
+            };
+        }
+
+        private static bool SearchTextMatches(string value, string searchText)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                   && value.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                   && !value.Equals("No Data", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SearchTextMatches(int value, string searchText)
+        {
+            return value.ToString().Contains(searchText, StringComparison.OrdinalIgnoreCase);
         }
 
         private void SetFromStateEventMap(BioStateEventMap bioStateEventMap)
