@@ -24,6 +24,21 @@
         <converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <converters:GameToVisibilityConverter x:Key="GameToVisibilityConverter"/>
+        <Style x:Key="EmbeddedMenuContentStyle" TargetType="{x:Type MenuItem}">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type MenuItem}">
+                        <Border Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Window.CommandBindings>
         <CommandBinding Command="Save" CanExecute="Save_CanExecute" Executed="Save_Executed"/>
@@ -63,6 +78,7 @@
                 </MenuItem>
                 <MenuItem Name="VanillaPlotFiles_MenuItem" Header="_Vanilla Plot Files" Padding="4" />
                 <MenuItem HorizontalAlignment="Right"
+                          Style="{StaticResource EmbeddedMenuContentStyle}"
                           Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                     <MenuItem.Header>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
