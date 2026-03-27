@@ -4929,64 +4929,31 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            string selectedLink = InputComboBoxDialog.GetValue(this, "Pick the next dialogue node to link to", "Dialogue Editor", links, currentSelection);
-            if (string.IsNullOrEmpty(selectedLink))
+            if (!DialogueLinkEditDialog.TryEditLink(
+                    this,
+                    links,
+                    currentSelection,
+                    !inlineLinkEditorIsReply,
+                    editLink.ReplyStrRef,
+                    id => GlobalFindStrRefbyID(id, Pcc),
+                    GetInlineReplyCategoryValues().Select(v => v.ToString()),
+                    editLink.RCategory.ToString(),
+                    out var dialogResult))
             {
                 return;
             }
 
-            editLink.Index = links.FindIndex(selectedLink.Equals);
-            ParseInlineLink(editLink);
-            ReOrderInlineLinkEditorLinks(editLink);
-            inlineLinkEditorNeedsSave = true;
-            SaveInlineLinkEditorChanges(focusEditedNode: false);
-
+            editLink.Index = links.FindIndex(dialogResult.SelectedTarget.Equals);
             if (!inlineLinkEditorIsReply)
             {
-                int strRef;
-                while (true)
-                {
-                    var response = PromptDialog.Prompt(this, "Enter the TLK String Reference for the dialogue wheel:", "Link Editor", editLink.ReplyStrRef.ToString());
-                    if (response == null || response == "0")
-                    {
-                        return;
-                    }
-
-                    if (int.TryParse(response, out strRef) && strRef > 0)
-                    {
-                        break;
-                    }
-
-                    var warning = MessageBox.Show("The string reference must be a positive whole number.", "Dialogue Editor", MessageBoxButton.OKCancel);
-                    if (warning == MessageBoxResult.Cancel)
-                    {
-                        return;
-                    }
-                }
-
-                editLink.ReplyStrRef = strRef;
-                ParseInlineLink(editLink);
-                ReOrderInlineLinkEditorLinks(editLink);
-                inlineLinkEditorNeedsSave = true;
-                SaveInlineLinkEditorChanges(focusEditedNode: false);
-
-                string selectedCategory = InputComboBoxDialog.GetValue(this,
-                    "Pick the wheel position or interrupt:",
-                    "Dialogue Editor",
-                    GetInlineReplyCategoryValues().Select(v => v.ToString()),
-                    editLink.RCategory.ToString());
-
-                if (string.IsNullOrEmpty(selectedCategory))
-                {
-                    return;
-                }
-
-                editLink.RCategory = Enums.Parse<EReplyCategory>(selectedCategory);
+                editLink.ReplyStrRef = dialogResult.ReplyStrRef;
+                editLink.RCategory = Enums.Parse<EReplyCategory>(dialogResult.SelectedCategory);
             }
 
             ParseInlineLink(editLink);
             ReOrderInlineLinkEditorLinks(editLink);
             inlineLinkEditorNeedsSave = true;
+            SaveInlineLinkEditorChanges(focusEditedNode: false);
         }
 
         private void ReOrderInlineLinkEditorLinks(ReplyChoiceNode selectedLink = null)
