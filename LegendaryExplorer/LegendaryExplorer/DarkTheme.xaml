@@ -1345,7 +1345,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
     </Style>
     
     <!-- ToolBox accent color - used for sequence/dialogue editor toolboxes -->
-    <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#FF3E7B98"/>
+    <SolidColorBrush x:Key="ToolBoxAccentBrush" Color="#303234"/>
 
     <!-- Icon foreground color - used for FontAwesome icons in tool buttons -->
     <SolidColorBrush x:Key="IconForegroundBrush" Color="White"/>
