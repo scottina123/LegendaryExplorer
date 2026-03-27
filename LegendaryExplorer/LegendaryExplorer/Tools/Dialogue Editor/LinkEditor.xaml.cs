@@ -284,7 +284,9 @@ namespace LegendaryExplorer.DialogueEditor
                     Width = 150
                 };
 
-                var categoryValues = GetReplyCategoryValues();
+                var categoryOptions = GetReplyCategoryValues()
+                    .Select(category => new ReplyCategoryOption(category, (Brush)ReplyCategoryBrushConverter.Convert(category, typeof(Brush), null, CultureInfo.CurrentCulture)))
+                    .ToList();
 
                 // CellTemplate: display the current value as text
                 var cellTemplate = new DataTemplate();
@@ -299,8 +301,17 @@ namespace LegendaryExplorer.DialogueEditor
                 // CellEditingTemplate: show a ComboBox when editing
                 var editTemplate = new DataTemplate();
                 var cellComboBox = new FrameworkElementFactory(typeof(ComboBox));
-                cellComboBox.SetValue(ComboBox.ItemsSourceProperty, categoryValues);
-                cellComboBox.SetBinding(ComboBox.SelectedItemProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+                cellComboBox.SetValue(ComboBox.ItemsSourceProperty, categoryOptions);
+                cellComboBox.SetValue(ComboBox.SelectedValuePathProperty, nameof(ReplyCategoryOption.Category));
+                cellComboBox.SetBinding(ComboBox.SelectedValueProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+
+                var comboItemTemplate = new DataTemplate();
+                var comboItemTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+                comboItemTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyCategoryOption.DisplayText)));
+                comboItemTextBlock.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(ReplyCategoryOption.Brush)));
+                comboItemTemplate.VisualTree = comboItemTextBlock;
+                cellComboBox.SetValue(ComboBox.ItemTemplateProperty, comboItemTemplate);
+
                 cellComboBox.SetValue(ComboBox.IsDropDownOpenProperty, true);
                 editTemplate.VisualTree = cellComboBox;
                 clnD.CellEditingTemplate = editTemplate;
@@ -630,6 +641,20 @@ namespace LegendaryExplorer.DialogueEditor
                 };
             }
             return Enums.GetValues<EReplyCategory>();
+        }
+
+        private sealed class ReplyCategoryOption
+        {
+            public ReplyCategoryOption(EReplyCategory category, Brush brush)
+            {
+                Category = category;
+                DisplayText = category.ToString();
+                Brush = brush;
+            }
+
+            public EReplyCategory Category { get; }
+            public string DisplayText { get; }
+            public Brush Brush { get; }
         }
 
         private sealed class ReplyCategoryToBrushConverter : IValueConverter

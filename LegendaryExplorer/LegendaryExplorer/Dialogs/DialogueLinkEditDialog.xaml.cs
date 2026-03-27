@@ -4,8 +4,10 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -126,9 +128,13 @@ namespace LegendaryExplorer.Dialogs
             });
             categoryComboBox = new ComboBox
             {
-                ItemsSource = replyCategories?.ToList() ?? []
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
             };
-            categoryComboBox.SelectedItem = selectedCategory;
+            foreach (string replyCategory in replyCategories?.ToList() ?? [])
+            {
+                categoryComboBox.Items.Add(CreateCategoryItem(replyCategory));
+            }
+            SelectCategoryItem(selectedCategory);
             replyOptionsPanel.Children.Add(categoryComboBox);
             root.Children.Add(replyOptionsPanel);
 
@@ -209,6 +215,51 @@ namespace LegendaryExplorer.Dialogs
                 : resolvedText;
         }
 
+        private ComboBoxItem CreateCategoryItem(string category)
+        {
+            return new ComboBoxItem
+            {
+                Content = new TextBlock
+                {
+                    Text = category,
+                    Foreground = GetReplyCategoryBrush(category)
+                },
+                Tag = category,
+                Foreground = GetReplyCategoryBrush(category)
+            };
+        }
+
+        private void SelectCategoryItem(string category)
+        {
+            categoryComboBox.SelectedItem = categoryComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag as string, category, StringComparison.Ordinal));
+        }
+
+        private static Brush GetReplyCategoryBrush(string category)
+        {
+            if (!Enum.TryParse(category, out EReplyCategory replyCategory))
+            {
+                return ToBrush(DObj.connectionColor);
+            }
+
+            return ToBrush(replyCategory switch
+            {
+                EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => DObj.paraintColor,
+                EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT => DObj.renintColor,
+                EReplyCategory.REPLY_CATEGORY_AGREE => DObj.agreeColor,
+                EReplyCategory.REPLY_CATEGORY_DISAGREE => DObj.disagreeColor,
+                EReplyCategory.REPLY_CATEGORY_FRIENDLY => DObj.friendlyColor,
+                EReplyCategory.REPLY_CATEGORY_HOSTILE => DObj.hostileColor,
+                _ => DObj.connectionColor
+            });
+        }
+
+        private static Brush ToBrush(System.Drawing.Color color)
+        {
+            return new SolidColorBrush(Color.FromArgb(color.A, color.R, color.G, color.B));
+        }
+
         private static string RemoveWrappingQuotes(string text)
         {
             if (string.IsNullOrEmpty(text) || text.Length < 2)
@@ -242,7 +293,7 @@ namespace LegendaryExplorer.Dialogs
                     return;
                 }
 
-                selectedCategory = categoryComboBox.SelectedItem as string;
+                selectedCategory = (categoryComboBox.SelectedItem as ComboBoxItem)?.Tag as string;
                 if (string.IsNullOrWhiteSpace(selectedCategory))
                 {
                     System.Windows.MessageBox.Show(this, "Select a dialogue wheel category.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
