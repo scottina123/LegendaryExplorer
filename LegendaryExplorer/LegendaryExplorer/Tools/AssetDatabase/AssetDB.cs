@@ -50,6 +50,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<ConvoLine> Lines { get; set; } = new();
 
+        public List<SequenceEventRecord> SequenceEvents { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -84,6 +86,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GUIElements.Clear();
             Conversations.Clear();
             Lines.Clear();
+            SequenceEvents.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -99,6 +102,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GUIElements.AddRange(from.GUIElements);
             Conversations.AddRange(from.Conversations);
             Lines.AddRange(from.Lines);
+            SequenceEvents.AddRange(from.SequenceEvents);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -587,6 +591,58 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 _ => text
             };
         }
+    }
+
+    public enum SequenceEventType
+    {
+        ActivateRemoteEvent,
+        ConsoleCommand,
+        RemoteEvent,
+        ConsoleEvent
+    }
+
+    public class SequenceEventRecord : IAssetRecord
+    {
+        public string SequenceEventValue { get; set; }
+
+        public SequenceEventType EventType { get; set; }
+
+        public bool IsDLCOnly { get; set; }
+
+        public bool IsModOnly { get; set; }
+
+        [IgnoredMember] public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        public List<SequenceEventUsage> Usages { get; set; } = new();
+
+        [IgnoredMember]
+        public string TypeDisplay => EventType switch
+        {
+            SequenceEventType.ActivateRemoteEvent => "Activate Remote Event",
+            SequenceEventType.ConsoleCommand => "Console Command",
+            SequenceEventType.RemoteEvent => "Remote Event",
+            SequenceEventType.ConsoleEvent => "Console Event",
+            _ => EventType.ToString()
+        };
+
+        [IgnoredMember]
+        public string DisplayString => $"{SequenceEventValue} ({TypeDisplay})";
+
+        public SequenceEventRecord(string sequenceEventValue, SequenceEventType eventType, bool isDLCOnly, bool isModOnly)
+        {
+            SequenceEventValue = sequenceEventValue;
+            EventType = eventType;
+            IsDLCOnly = isDLCOnly;
+            IsModOnly = isModOnly;
+        }
+
+        public SequenceEventRecord()
+        { }
+    }
+
+    public sealed record SequenceEventUsage(int FileKey, int UIndex, bool IsInDLC, bool IsInMod) : IAssetUsage
+    {
+        public SequenceEventUsage() : this(default, default, default, default) { }
     }
 
     public enum PlotRecordType

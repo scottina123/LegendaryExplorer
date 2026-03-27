@@ -48,6 +48,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, ConvoLine> GeneratedLines = new();
         /// <summary>
+        /// Dictionary that stores generated sequence events and console commands
+        /// </summary>
+        public ConcurrentDictionary<string, SequenceEventRecord> GeneratedSequenceEvents = new();
+        /// <summary>
         /// Dictionary that stores generated plot bool records
         /// </summary>
         public ConcurrentDictionary<int, PlotRecord> GeneratedBoolRecords = new();
@@ -87,6 +91,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedGUI.Clear();
             GeneratedConvo.Clear();
             GeneratedLines.Clear();
+            GeneratedSequenceEvents.Clear();
             GeneratedBoolRecords.Clear();
             GeneratedIntRecords.Clear();
             GeneratedFloatRecords.Clear();
@@ -105,6 +110,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Textures: {GeneratedText.Count}\n" +
                    $"GUI Elements: {GeneratedGUI.Count}\n" +
                    $"Lines: {GeneratedLines.Count}\n" +
+                   $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
 
@@ -166,6 +172,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             pdb.GUIElements.AddRange(guisSorted);
 
             pdb.Lines.AddRange(GeneratedLines.Values.OrderBy(x => x.StrRef).ToList());
+
+            var sequenceEventsSorted = GeneratedSequenceEvents.Values
+                .OrderBy(x => x.EventType)
+                .ThenBy(x => x.SequenceEventValue, System.StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foreach (var sequenceEvent in sequenceEventsSorted)
+            {
+                sequenceEvent.IsModOnly = sequenceEvent.Usages.All(u => u.IsInMod);
+                sequenceEvent.IsDLCOnly = sequenceEvent.Usages.All(u => u.IsInDLC);
+            }
+            pdb.SequenceEvents.AddRange(sequenceEventsSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

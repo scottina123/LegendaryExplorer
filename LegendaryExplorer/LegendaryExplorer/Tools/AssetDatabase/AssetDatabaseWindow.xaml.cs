@@ -158,8 +158,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v9.5: Base material texture expressions now persist referenced texture names for material texture-name filtering.
-        public const string dbCurrentBuild = "9.5"; //If changes are made that invalidate old databases edit this.
+        // v9.6: Added sequence event and console command records for remote-event/console-event database browsing.
+        public const string dbCurrentBuild = "9.6"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -309,6 +309,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ObservableCollectionExtended<MaterialTextureFilterCriterion> MaterialTextureCriteria { get; } = new();
         public ObservableCollectionExtended<string> TextureTypeFilters { get; } = new();
         public ObservableCollectionExtended<string> TextureSizeFilters { get; } = new();
+        public ObservableCollectionExtended<string> SequenceEventTypeFilters { get; } = new()
+        {
+            AllSequenceEventFilterOption,
+            ActivateRemoteEventFilterOption,
+            ConsoleCommandFilterOption,
+            RemoteEventFilterOption,
+            ConsoleEventFilterOption
+        };
         public ObservableCollectionExtended<string> LineSearchColumns { get; } = new()
         {
             AllLineSearchColumnsOption,
@@ -337,6 +345,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string AllMaterialTextureCountFilterOption = "All";
         private const string AllMaterialTextureParameterFilterOption = "All";
         private const string AllTextureFilterOption = "All";
+        private const string AllSequenceEventFilterOption = "All";
+        private const string ActivateRemoteEventFilterOption = "Activate Remote Events";
+        private const string ConsoleCommandFilterOption = "Console Commands";
+        private const string RemoteEventFilterOption = "Remote Events";
+        private const string ConsoleEventFilterOption = "Console Events";
         private const string AllLineSearchColumnsOption = "All Columns";
         private const string SpeakerLineSearchColumn = "Speaker";
         private const string TlkStringRefLineSearchColumn = "TLK String Ref";
@@ -347,6 +360,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public sealed record MaterialSelectionResult(MaterialRecord Material);
 
+        private enum OutdatedDatabaseAction
+        {
+            Cancel,
+            RebuildCurrentGame,
+            RebuildAllGames
+        }
+
         private string _selectedMeshTypeFilter = AllMeshFilterOption;
         public string SelectedMeshTypeFilter
         {
@@ -354,6 +374,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set
             {
                 if (SetProperty(ref _selectedMeshTypeFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _selectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
+        public string SelectedSequenceEventTypeFilter
+        {
+            get => _selectedSequenceEventTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedSequenceEventTypeFilter, value))
                 {
                     Filter();
                 }
@@ -973,9 +1006,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 await Task.Delay(3000);
                 if (!suppressFinalSummary)
                 {
-                    CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count}";
+                    CurrentOverallOperationText = GetDatabaseSummaryText();
                 }
             }
+        }
+
+        private string GetDatabaseSummaryText()
+        {
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count}";
         }
 
         public void ClearDataBase()
@@ -1000,6 +1038,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshMaterialUsageDropdownFilters();
             RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
+            SelectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
             FilterText = string.Empty;
             Filter();
         }
@@ -2050,11 +2089,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 {
                     if (CurrentDataBase.DatabaseVersion == null || CurrentDataBase.DatabaseVersion != dbCurrentBuild)
                     {
-                        var warn = MessageBox.Show($"This database is out of date (v {CurrentDataBase.DatabaseVersion} versus v {dbCurrentBuild})\nA new version is required. Do you wish to rebuild?", "Warning", MessageBoxButton.OKCancel);
-                        if (warn == MessageBoxResult.Cancel)
+                        var warn = PromptOutdatedDatabaseAction(CurrentDataBase.DatabaseVersion, dbCurrentBuild);
+                        if (warn == OutdatedDatabaseAction.Cancel)
                         {
                             ClearDataBase();
                             IsBusy = false;
+                        }
+                        else if (warn == OutdatedDatabaseAction.RebuildAllGames)
+                        {
+                            GenerateAllDatabases();
                         }
                         else
                         {
@@ -2626,7 +2669,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 FilterText = string.Empty;
                 UsageFilterText = string.Empty;
-                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10;
                 Filter();
                 switch (currentView)
                 {
@@ -2642,6 +2685,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         break;
                     case 0:
                         FilterWatermark = "Search (by filename or source directory)";
+                        break;
+                    case 10:
+                        FilterWatermark = "Search (by event name, command text, or type)";
                         break;
                     default:
                         FilterWatermark = "Search";
@@ -3067,6 +3113,67 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             extractMale = genderChoice is "both" or "male";
             extractFemale = genderChoice is "both" or "female";
             return true;
+        }
+
+        private OutdatedDatabaseAction PromptOutdatedDatabaseAction(string currentVersion, string requiredVersion)
+        {
+            var actionDialog = new Window
+            {
+                Title = "Database Out of Date",
+                Width = 440,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+            actionDialog.SetResourceReference(Window.BackgroundProperty, SystemColors.WindowBrushKey);
+            actionDialog.SetResourceReference(Window.ForegroundProperty, SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(actionDialog);
+
+            OutdatedDatabaseAction selectedAction = OutdatedDatabaseAction.Cancel;
+
+            var textBlock = new TextBlock
+            {
+                Text = $"This database is out of date (v {currentVersion} versus v {requiredVersion}).\nA new version is required. Choose what to rebuild:",
+                Margin = new Thickness(10, 15, 10, 10),
+                TextWrapping = TextWrapping.Wrap,
+                Width = 390
+            };
+            textBlock.SetResourceReference(TextBlock.ForegroundProperty, SystemColors.WindowTextBrushKey);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 10, 0, 10)
+            };
+
+            var currentGameBtn = new Button { Content = "Rebuild Current Game", MinWidth = 150, Margin = new Thickness(5) };
+            var allGamesBtn = new Button { Content = "Rebuild All Games", MinWidth = 150, Margin = new Thickness(5) };
+            var cancelBtn = new Button { Content = "Cancel", MinWidth = 90, Margin = new Thickness(5), IsCancel = true };
+
+            currentGameBtn.Click += (_, _) =>
+            {
+                selectedAction = OutdatedDatabaseAction.RebuildCurrentGame;
+                actionDialog.DialogResult = true;
+            };
+            allGamesBtn.Click += (_, _) =>
+            {
+                selectedAction = OutdatedDatabaseAction.RebuildAllGames;
+                actionDialog.DialogResult = true;
+            };
+
+            buttonPanel.Children.Add(currentGameBtn);
+            buttonPanel.Children.Add(allGamesBtn);
+            buttonPanel.Children.Add(cancelBtn);
+
+            var mainPanel = new StackPanel();
+            mainPanel.Children.Add(textBlock);
+            mainPanel.Children.Add(buttonPanel);
+            actionDialog.Content = mainPanel;
+
+            return actionDialog.ShowDialog() == true ? selectedAction : OutdatedDatabaseAction.Cancel;
         }
 
         private (int ConversationsProcessed, int AudioFilesExtracted) ExtractFilteredLinesAudio(List<ConvoLine> visibleLines, string outputFolder, bool includeText, bool extractMale, bool extractFemale)
@@ -4360,6 +4467,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             animationsUsagesPanel?.RefreshFilter();
             vfxUsagesPanel?.RefreshFilter();
             guiUsagesPanel?.RefreshFilter();
+            sequenceEventsUsagesPanel?.RefreshFilter();
 
             RefreshUsageView(lstbx_Usages);
             RefreshUsageView(lstbx_PlotUsages);
@@ -4521,6 +4629,28 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return showthis;
         }
 
+        private bool SequenceEventTabFilter(object obj)
+        {
+            if (obj is not SequenceEventRecord sequenceEventRecord)
+            {
+                return false;
+            }
+
+            if (!AssetFilters.SequenceEventFilter.Filter(sequenceEventRecord))
+            {
+                return false;
+            }
+
+            return SelectedSequenceEventTypeFilter switch
+            {
+                ActivateRemoteEventFilterOption => sequenceEventRecord.EventType == SequenceEventType.ActivateRemoteEvent,
+                ConsoleCommandFilterOption => sequenceEventRecord.EventType == SequenceEventType.ConsoleCommand,
+                RemoteEventFilterOption => sequenceEventRecord.EventType == SequenceEventType.RemoteEvent,
+                ConsoleEventFilterOption => sequenceEventRecord.EventType == SequenceEventType.ConsoleEvent,
+                _ => true
+            };
+        }
+
         private void Filter()
         {
             AssetFilters.SetSearch(FilterText);
@@ -4590,6 +4720,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewPE = CollectionViewSource.GetDefaultView(plotSource);
                     viewPE.Filter = AssetFilters.PlotElementFilter.Filter;
                     lstbx.ItemsSource = viewPE;
+                    break;
+                case 10: // SequenceEvents
+                    ICollectionView viewSE = CollectionViewSource.GetDefaultView(CurrentDataBase.SequenceEvents);
+                    viewSE.Filter = SequenceEventTabFilter;
+                    lstbx_SequenceEvents.ItemsSource = viewSE;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -5221,6 +5356,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 5 => animationsUsagesPanel.SelectedItem as IAssetUsage,
                 6 => vfxUsagesPanel.SelectedItem as IAssetUsage,
                 7 => guiUsagesPanel.SelectedItem as IAssetUsage,
+                10 => sequenceEventsUsagesPanel.SelectedItem as IAssetUsage,
                 _ => null
             };
         }

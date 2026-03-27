@@ -1422,6 +1422,59 @@
                             </Grid>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="Sequence Events" TabIndex="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Sequence Events and Console Commands" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Activate Remote Events, Console Commands, Remote Events, and Console Events." Grid.Row="0" Grid.Column="0"/>
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
+                                <TextBlock Text="Type:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="220"
+                                          HorizontalAlignment="Left"
+                                          ItemsSource="{Binding SequenceEventTypeFilters}"
+                                          SelectedItem="{Binding SelectedSequenceEventTypeFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <controls:ListBoxScroll x:Name="lstbx_SequenceEvents" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.SequenceEvents}" Grid.Row="2" Grid.Column="0">
+                                <controls:ListBoxScroll.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding SequenceEventValue}" />
+                                            <TextBlock FontSize="10" Text=" (" VerticalAlignment="Center"/>
+                                            <TextBlock FontSize="10" Text="{Binding TypeDisplay}" VerticalAlignment="Center"/>
+                                            <TextBlock FontSize="10" Text=")" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </controls:ListBoxScroll.ItemTemplate>
+                                <controls:ListBoxScroll.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource DlcAndModHighlightItemStyle}"/>
+                                </controls:ListBoxScroll.ItemContainerStyle>
+                            </controls:ListBoxScroll>
+                            <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Additional details" Grid.Row="0" Grid.Column="1"/>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
+                                <StackPanel Margin="5">
+                                    <TextBlock Text="Value:" Margin="0,0,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.SequenceEventValue, ElementName=lstbx_SequenceEvents}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Type:" Margin="0,8,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.TypeDisplay, ElementName=lstbx_SequenceEvents}"/>
+                                    <TextBlock Text="Usages:" Margin="0,8,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.Usages.Count, ElementName=lstbx_SequenceEvents}"/>
+                                </StackPanel>
+                            </Border>
+                            <assetDatabase:AssetUsagesPanel x:Name="sequenceEventsUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_SequenceEvents}"
+                                                           HeaderToolTip="Every file that contains this sequence event or console command&#x0a;Right click to open in Package Editor"/>
+                        </Grid>
+                    </TabItem>
                 </TabControl>
             </DockPanel>
         </DockPanel>

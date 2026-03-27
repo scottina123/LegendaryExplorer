@@ -114,6 +114,27 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
         }
 
         [TestMethod]
+        public void TestSequenceEventSearch()
+        {
+            var filters = new AssetFilters(new FileListSpecification());
+            var activateRemote = new SequenceEventRecord("PlotHub", SequenceEventType.ActivateRemoteEvent, false, false);
+            var consoleCommand = new SequenceEventRecord("open BioD_Nor_103Cabin", SequenceEventType.ConsoleCommand, false, false);
+            var remoteEvent = new SequenceEventRecord("NormandyDock", SequenceEventType.RemoteEvent, false, false);
+
+            filters.SetSearch("PlotHub");
+            Assert.IsTrue(filters.SequenceEventFilter.Filter(activateRemote));
+            Assert.IsFalse(filters.SequenceEventFilter.Filter(consoleCommand));
+
+            filters.SetSearch("console");
+            Assert.IsTrue(filters.SequenceEventFilter.Filter(consoleCommand));
+            Assert.IsFalse(filters.SequenceEventFilter.Filter(remoteEvent));
+
+            filters.SetSearch("remote");
+            Assert.IsTrue(filters.SequenceEventFilter.Filter(activateRemote));
+            Assert.IsTrue(filters.SequenceEventFilter.Filter(remoteEvent));
+        }
+
+        [TestMethod]
         public void TestMaterialClassFiltersAreExclusive()
         {
             var filters = new AssetFilters(new FileListSpecification());
