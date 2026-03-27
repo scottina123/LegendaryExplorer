@@ -221,7 +221,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 Content = new TextBlock
                 {
-                    Text = category,
+                    Text = DialogueEditorWindow.GetReplyCategoryDisplayText(category),
                     Foreground = GetReplyCategoryBrush(category)
                 },
                 Tag = category,

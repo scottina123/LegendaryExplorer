@@ -25,6 +25,7 @@ namespace LegendaryExplorer.DialogueEditor
     public partial class LinkEditor : Window
     {
         private static readonly IValueConverter ReplyCategoryBrushConverter = new ReplyCategoryToBrushConverter();
+        private static readonly IValueConverter ReplyCategoryDisplayConverter = new ReplyCategoryToDisplayConverter();
         private readonly DialogueEditorWindow ParentWindow;
         private readonly DiagNode Dnode;
         private readonly bool IsReply;
@@ -291,7 +292,7 @@ namespace LegendaryExplorer.DialogueEditor
                 // CellTemplate: display the current value as text
                 var cellTemplate = new DataTemplate();
                 var cellTextBlock = new FrameworkElementFactory(typeof(TextBlock));
-                cellTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyChoiceNode.RCategory)));
+                cellTextBlock.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryDisplayConverter });
                 cellTextBlock.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryBrushConverter });
                 cellTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
                 cellTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
@@ -648,7 +649,7 @@ namespace LegendaryExplorer.DialogueEditor
             public ReplyCategoryOption(EReplyCategory category, Brush brush)
             {
                 Category = category;
-                DisplayText = category.ToString();
+                DisplayText = DialogueEditorWindow.GetReplyCategoryDisplayText(category);
                 Brush = brush;
             }
 
@@ -674,6 +675,20 @@ namespace LegendaryExplorer.DialogueEditor
                 };
 
                 return new SolidColorBrush(System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B));
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        private sealed class ReplyCategoryToDisplayConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var category = value is EReplyCategory eReplyCategory ? eReplyCategory : EReplyCategory.REPLY_CATEGORY_DEFAULT;
+                return DialogueEditorWindow.GetReplyCategoryDisplayText(category);
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

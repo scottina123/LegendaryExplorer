@@ -78,6 +78,7 @@ namespace LegendaryExplorer.DialogueEditor
     public partial class DialogueEditorWindow : WPFBase, IRecents, IDropTarget
     {
         private static readonly System.Windows.Data.IValueConverter ReplyCategoryBrushConverter = new ReplyCategoryToBrushConverter();
+        private static readonly System.Windows.Data.IValueConverter ReplyCategoryDisplayConverter = new ReplyCategoryToDisplayConverter();
         #region Declarations
         private struct SaveData
         {
@@ -1038,6 +1039,29 @@ namespace LegendaryExplorer.DialogueEditor
             return string.IsNullOrWhiteSpace(friendlyName)
                    || friendlyName == "No data"
                    || friendlyName.Contains("no_owner", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string GetReplyCategoryDisplayText(EReplyCategory category)
+        {
+            return category switch
+            {
+                EReplyCategory.REPLY_CATEGORY_DEFAULT => "Default (Right Middle)",
+                EReplyCategory.REPLY_CATEGORY_AGREE => "Agree (Right Top)",
+                EReplyCategory.REPLY_CATEGORY_DISAGREE => "Disagree (Right Bottom)",
+                EReplyCategory.REPLY_CATEGORY_FRIENDLY => "Friendly (Left Top)",
+                EReplyCategory.REPLY_CATEGORY_HOSTILE => "Hostile (Left Bottom)",
+                EReplyCategory.REPLY_CATEGORY_INVESTIGATE => "Investigate (Left Middle)",
+                EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => "Paragon Interrupt",
+                EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT => "Renegade Interrupt",
+                _ => category.ToString()
+            };
+        }
+
+        public static string GetReplyCategoryDisplayText(string category)
+        {
+            return Enum.TryParse(category, out EReplyCategory replyCategory)
+                ? GetReplyCategoryDisplayText(replyCategory)
+                : category;
         }
 
         private async void QueueOwnerFriendlyNameResolution(ConversationExtended sourceConv)
@@ -4447,7 +4471,7 @@ namespace LegendaryExplorer.DialogueEditor
 
                 var cellTemplate = new DataTemplate();
                 var cellTextBlock = new FrameworkElementFactory(typeof(TextBlock));
-                cellTextBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(ReplyChoiceNode.RCategory)));
+                cellTextBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryDisplayConverter });
                 cellTextBlock.SetBinding(TextBlock.ForegroundProperty, new System.Windows.Data.Binding(nameof(ReplyChoiceNode.RCategory)) { Converter = ReplyCategoryBrushConverter });
                 cellTextBlock.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
                 cellTextBlock.SetValue(TextBlock.MarginProperty, new Thickness(2));
@@ -4461,6 +4485,14 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged
                 });
+
+                var comboItemTemplate = new DataTemplate();
+                var comboItemTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+                comboItemTextBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding { Converter = ReplyCategoryDisplayConverter });
+                comboItemTextBlock.SetBinding(TextBlock.ForegroundProperty, new System.Windows.Data.Binding { Converter = ReplyCategoryBrushConverter });
+                comboItemTemplate.VisualTree = comboItemTextBlock;
+                comboBoxFactory.SetValue(ComboBox.ItemTemplateProperty, comboItemTemplate);
+
                 comboBoxFactory.SetValue(ComboBox.IsDropDownOpenProperty, true);
                 editTemplate.VisualTree = comboBoxFactory;
                 categoryColumn.CellEditingTemplate = editTemplate;
@@ -5064,6 +5096,20 @@ namespace LegendaryExplorer.DialogueEditor
                 };
 
                 return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B));
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        private sealed class ReplyCategoryToDisplayConverter : System.Windows.Data.IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var category = value is EReplyCategory eReplyCategory ? eReplyCategory : EReplyCategory.REPLY_CATEGORY_DEFAULT;
+                return GetReplyCategoryDisplayText(category);
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
