@@ -158,6 +158,20 @@ namespace LegendaryExplorer.DialogueEditor
             outputDragHandler = new OutputDragHandler(ConvGraphEditor, this);
         }
 
+        protected PBasicInputEventHandler CreateOutgoingLinkDoubleClickHandler(int linkIndex)
+        {
+            var handler = new PBasicInputEventHandler();
+            handler.DoubleClick = (_, e) =>
+            {
+                if (this is DiagNode diagNode && e.Button == MouseButtons.Left)
+                {
+                    diagNode.EditOutgoingLink(linkIndex);
+                    e.Handled = true;
+                }
+            };
+            return handler;
+        }
+
         public override void CreateConnections(IList<DObj> objects)
         {
             foreach (OutputLink outLink in Outlinks)
@@ -592,6 +606,11 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded);
             }
+        }
+
+        public void EditOutgoingLink(int linkIndex)
+        {
+            Editor?.EditGraphOutgoingLink(this, linkIndex);
         }
 
         public void SyncIdentityFromNode()
@@ -1408,6 +1427,16 @@ namespace LegendaryExplorer.DialogueEditor
                     ? boxTextColor
                     : getColor(Outlinks[i].RCat);
                 DText t2 = new DText(outLinkText, outLinkTextColor);
+                if (i < Links.Count)
+                {
+                    var doubleClickHandler = CreateOutgoingLinkDoubleClickHandler(i);
+                    t2.AddInputEventListener(doubleClickHandler);
+                    if (Outlinks[i].node.Count() > 0)
+                    {
+                        Outlinks[i].node[0].AddInputEventListener(doubleClickHandler);
+                    }
+                    t2.Pickable = true;
+                }
                 if (!string.IsNullOrWhiteSpace(Outlinks[i].Detail))
                 {
                     t2.ConstrainWidthToTextWidth = false;
@@ -1418,7 +1447,10 @@ namespace LegendaryExplorer.DialogueEditor
                 t2.X = 0 - t2.Width;
                 t2.Y = starty;
                 starty += t2.Height;
-                t2.Pickable = false;
+                if (!t2.Pickable)
+                {
+                    t2.Pickable = false;
+                }
                 Outlinks[i].node.TranslateBy(0, t2.Y + t2.Height / 2);
                 t2.AddChild(Outlinks[i].node);
                 outLinkBox.AddChild(t2);

@@ -4906,9 +4906,51 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!TryEditDialogueLink(editLink, inlineLinkEditorIsReply))
+            {
+                return;
+            }
+
+            ParseInlineLink(editLink);
+            ReOrderInlineLinkEditorLinks(editLink);
+            inlineLinkEditorNeedsSave = true;
+            SaveInlineLinkEditorChanges(focusEditedNode: false);
+        }
+
+        public void EditGraphOutgoingLink(DiagNode node, int linkIndex)
+        {
+            if (node == null || linkIndex < 0 || linkIndex >= node.Links.Count)
+            {
+                return;
+            }
+
+            DialogueNode_Selected(node);
+
+            var editLink = node.Links[linkIndex];
+            if (!TryEditDialogueLink(editLink, node.Node.IsReply))
+            {
+                return;
+            }
+
+            PushLocalGraphChanges(node);
+
+            if (inlineLinkEditorNode?.NodeUID == node.NodeUID)
+            {
+                LoadInlineLinkEditor(node);
+                BottomViewportTabControl.SelectedItem = LinkEditorTab;
+            }
+        }
+
+        private bool TryEditDialogueLink(ReplyChoiceNode editLink, bool sourceNodeIsReply)
+        {
+            if (editLink is not { IsEditableLink: true })
+            {
+                return false;
+            }
+
             var links = new List<string>();
             int currentTarget = editLink.Index;
-            if (inlineLinkEditorIsReply)
+            if (sourceNodeIsReply)
             {
                 foreach (var entry in SelectedConv.EntryList)
                 {
@@ -4926,34 +4968,31 @@ namespace LegendaryExplorer.DialogueEditor
             string currentSelection = currentTarget >= 0 && currentTarget < links.Count ? links[currentTarget] : links.FirstOrDefault();
             if (currentSelection is null)
             {
-                return;
+                return false;
             }
 
             if (!DialogueLinkEditDialog.TryEditLink(
                     this,
                     links,
                     currentSelection,
-                    !inlineLinkEditorIsReply,
+                    !sourceNodeIsReply,
                     editLink.ReplyStrRef,
                     id => GlobalFindStrRefbyID(id, Pcc),
                     GetInlineReplyCategoryValues().Select(v => v.ToString()),
                     editLink.RCategory.ToString(),
                     out var dialogResult))
             {
-                return;
+                return false;
             }
 
             editLink.Index = links.FindIndex(dialogResult.SelectedTarget.Equals);
-            if (!inlineLinkEditorIsReply)
+            if (!sourceNodeIsReply)
             {
                 editLink.ReplyStrRef = dialogResult.ReplyStrRef;
                 editLink.RCategory = Enums.Parse<EReplyCategory>(dialogResult.SelectedCategory);
             }
 
-            ParseInlineLink(editLink);
-            ReOrderInlineLinkEditorLinks(editLink);
-            inlineLinkEditorNeedsSave = true;
-            SaveInlineLinkEditorChanges(focusEditedNode: false);
+            return true;
         }
 
         private void ReOrderInlineLinkEditorLinks(ReplyChoiceNode selectedLink = null)
