@@ -110,6 +110,20 @@ namespace LegendaryExplorer.DialogueEditor
                 _ => connectionColor
             };
 
+        protected static string GetReplyCategoryAcronym(EReplyCategory category) =>
+            category switch
+            {
+                EReplyCategory.REPLY_CATEGORY_DEFAULT => "D",
+                EReplyCategory.REPLY_CATEGORY_AGREE => "A",
+                EReplyCategory.REPLY_CATEGORY_DISAGREE => "DI",
+                EReplyCategory.REPLY_CATEGORY_FRIENDLY => "F",
+                EReplyCategory.REPLY_CATEGORY_HOSTILE => "H",
+                EReplyCategory.REPLY_CATEGORY_INVESTIGATE => "I",
+                EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT => "RI",
+                EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => "PI",
+                _ => "D"
+            };
+
         public virtual void Dispose()
         {
             g = null;
@@ -1417,7 +1431,7 @@ namespace LegendaryExplorer.DialogueEditor
             float outW = 0;
             for (int i = 0; i < Outlinks.Count; i++)
             {
-                string outLinkText = Outlinks[i].Desc;
+                string outLinkText = $"{Outlinks[i].Desc} ({GetReplyCategoryAcronym(Outlinks[i].RCat)})";
                 if (!string.IsNullOrWhiteSpace(Outlinks[i].Detail))
                 {
                     outLinkText = $"{outLinkText} {Outlinks[i].Detail}";
