@@ -21,6 +21,7 @@
         </Button>
         <controls:ListBoxScroll x:Name="internalListBox" MinWidth="200"
                                 ItemsSource="{Binding UsagesSource, ElementName=usagesPanel}"
+                                PreviewMouseRightButtonDown="internalListBox_PreviewMouseRightButtonDown"
                                 Grid.Row="1">
             <controls:ListBoxScroll.ItemTemplate>
                 <DataTemplate>

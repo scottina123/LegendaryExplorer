@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace LegendaryExplorer.Tools.AssetDatabase
 {
@@ -74,6 +76,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 SetDefaultContextMenu();
             }
 
+            SyncContextMenuDataContext();
+
             RefreshFilter();
         }
 
@@ -82,6 +86,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (d is AssetUsagesPanel panel)
             {
                 panel.internalListBox.ContextMenu = e.NewValue as ContextMenu;
+                panel.SyncContextMenuDataContext();
             }
         }
 
@@ -149,6 +154,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             menu.Items.Add(openUsageItem);
             menu.Items.Add(openExplorerItem);
             internalListBox.ContextMenu = menu;
+            SyncContextMenuDataContext();
+        }
+
+        private void SyncContextMenuDataContext()
+        {
+            if (internalListBox?.ContextMenu == null)
+            {
+                return;
+            }
+
+            internalListBox.ContextMenu.DataContext = Window.GetWindow(this)?.DataContext ?? DataContext;
         }
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
@@ -156,6 +172,25 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (Window.GetWindow(this) is AssetDatabaseWindow window)
             {
                 window.CopyUsagesFromPanel(this);
+            }
+        }
+
+        private void internalListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not ListBoxItem && source != null)
+            {
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is ListBoxItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
             }
         }
     }

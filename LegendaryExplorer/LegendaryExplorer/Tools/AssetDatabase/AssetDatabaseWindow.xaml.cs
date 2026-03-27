@@ -674,21 +674,22 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private bool IsClassSelected(object obj)
         {
-            return lstbx_Classes.SelectedIndex >= 0 && currentView == 1;
+            return currentView == 1 && lstbx_Classes?.SelectedIndex >= 0;
         }
 
         private bool IsUsageSelected(object obj)
         {
-            return (lstbx_Usages.SelectedIndex >= 0 && currentView == 1)
-                || (materialsUsagesPanel.SelectedIndex >= 0 && currentView == 2)
-                || (meshesUsagesPanel.SelectedIndex >= 0 && currentView == 3)
-                || (texturesUsagesPanel.SelectedIndex >= 0 && currentView == 4)
-                || (animationsUsagesPanel.SelectedIndex >= 0 && currentView == 5)
-                || (vfxUsagesPanel.SelectedIndex >= 0 && currentView == 6)
-                || (guiUsagesPanel.SelectedIndex >= 0 && currentView == 7)
-                || (lstbx_Lines.SelectedIndex >= 0 && currentView == 8)
-                || (currentView == 9 && lstbx_PlotUsages.SelectedIndex >= 0)
-                || (currentView == 0 && IsNotCND(lstbx_Files.SelectedItem));
+            return (currentView == 1 && lstbx_Usages?.SelectedIndex >= 0)
+                || (currentView == 2 && materialsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 3 && meshesUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 4 && texturesUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 5 && animationsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 6 && vfxUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 7 && guiUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 8 && lstbx_Lines?.SelectedIndex >= 0)
+                || (currentView == 9 && lstbx_PlotUsages?.SelectedIndex >= 0)
+                || (currentView == 10 && sequenceEventsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
         private bool IsNotCND(object obj)
@@ -723,7 +724,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private bool CanUseAnimViewer(object obj)
         {
-            return currentView == 5 && CurrentGame == MEGame.ME3 && lstbx_Anims.SelectedIndex >= 0 && !((lstbx_Anims.SelectedItem as AnimationRecord)?.IsAmbPerf ?? true);
+            return currentView == 5
+                && CurrentGame == MEGame.ME3
+                && lstbx_Anims?.SelectedIndex >= 0
+                && !((lstbx_Anims?.SelectedItem as AnimationRecord)?.IsAmbPerf ?? true);
         }
 
         private bool IsAnimSequenceSelected() => currentView == 5 && lstbx_Anims.SelectedIndex >= 0 && !((lstbx_Anims.SelectedItem as AnimationRecord)?.IsAmbPerf ?? true);
