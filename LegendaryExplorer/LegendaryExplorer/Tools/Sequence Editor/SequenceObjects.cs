@@ -779,7 +779,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                                                                 .Union(Varlinks.SelectMany(l => l.Edges))
                                                                 .Union(EventLinks.SelectMany(l => l.Edges));
 
-        protected static readonly Brush OutputBrush = new SolidBrush(Color.Black);
+        protected static Brush OutputBrush => new SolidBrush(ConnectionColor);
 
         public struct OutputLink
         {
