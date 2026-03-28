@@ -737,6 +737,23 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 properties.AddOrReplaceProp(new BoolProperty(true, "m_bSFXTeleportDataIsValid"));
             }
+
+            if (info.ClassName == "SFXSceneShopNodePlotCheck"
+                && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "VarType", info.ClassName, info) is { Reference: { } enumType })
+            {
+                properties.AddOrReplaceProp(new EnumProperty(new NameReference("PlotVar_State"), new NameReference(enumType), Pcc.Game, "VarType"));
+            }
+
+            if (info.ClassName == "SFXSceneShopNodePlotCheck"
+                && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_nIndex", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new IntProperty(0, "m_nIndex"));
+            }
+
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_nmKismetBoolVarName", info.ClassName, info) != null)
+            {
+                properties.AddOrReplaceProp(new NameProperty("None", "m_nmKismetBoolVarName"));
+            }
         }
 
         private void CreateBlankBioDynamicAnimSet(ExportEntry ambientPerformanceExport)

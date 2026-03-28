@@ -149,6 +149,26 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         {
             string res = "";
             PropertyCollection properties = export.GetProperties();
+
+            void AppendParsedLine(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(res) && !res.EndsWith("\n", StringComparison.Ordinal))
+                {
+                    res += "\n";
+                }
+
+                res += text;
+                if (!res.EndsWith("\n", StringComparison.Ordinal))
+                {
+                    res += "\n";
+                }
+            }
+
             var comments = properties.GetProp<ArrayProperty<StrProperty>>("m_aObjComment");
             if (comments != null)
             {
@@ -348,6 +368,28 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                             }
                         }
                         break;
+                }
+
+                if (export.ClassName == "SFXSceneShopNodePlotCheck"
+                    && properties.GetProp<IntProperty>("m_nIndex") is { } plotIndex)
+                {
+                    ESFXSSPlotVarType type = properties.GetProp<EnumProperty>("VarType")
+                        .GetEnumValOrDefault(ESFXSSPlotVarType.PlotVar_Unset);
+
+                    string plotPath = type switch
+                    {
+                        ESFXSSPlotVarType.PlotVar_Float => PlotDatabases.FindPlotFloatByID(plotIndex.Value, export.Game)?.Path,
+                        ESFXSSPlotVarType.PlotVar_State => PlotDatabases.FindPlotBoolByID(plotIndex.Value, export.Game)?.Path,
+                        ESFXSSPlotVarType.PlotVar_Int => PlotDatabases.FindPlotIntByID(plotIndex.Value, export.Game)?.Path,
+                        _ => null
+                    };
+
+                    AppendParsedLine(plotPath);
+                }
+
+                if (properties.GetProp<NameProperty>("m_nmKismetBoolVarName") is { Value.Name: not "None" } kisVarName)
+                {
+                    AppendParsedLine(kisVarName.Value.Instanced);
                 }
             }
             return res;
