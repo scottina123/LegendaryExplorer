@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Shell;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
@@ -25,6 +26,23 @@ namespace LegendaryExplorer.SharedUI
 
         [DllImport("kernel32.dll", EntryPoint = "GetProcAddress")]
         private static extern nint GetProcAddress(nint hModule, nint procName);
+
+        [DllImport("user32.dll")]
+        private static extern unsafe int GetClientRect(IntPtr hWnd, RECT* lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern unsafe int FillRect(IntPtr hDC, RECT* lprc, IntPtr hbr);
+
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr CreateSolidBrush(int crColor);
+
+        [DllImport("gdi32.dll")]
+        private static extern int DeleteObject(IntPtr hObject);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private const int WM_ERASEBKGND = 0x0014;
 
         // DWMWA_USE_IMMERSIVE_DARK_MODE - Windows 10 20H1+ and Windows 11
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
@@ -115,6 +133,7 @@ namespace LegendaryExplorer.SharedUI
                 if (weakRef.TryGetTarget(out var window))
                 {
                     ApplyThemeToWindowHandle(window, isDarkMode);
+                    SetCompositionBackgroundColor(window, isDarkMode);
                 }
             }
         }
@@ -208,16 +227,90 @@ namespace LegendaryExplorer.SharedUI
             // Register this window for theme updates
             RegisterWindow(window);
 
-            // If the window is already loaded, apply immediately
-            if (window.IsLoaded)
+            var helper = new WindowInteropHelper(window);
+            if (helper.Handle == IntPtr.Zero)
             {
-                ApplyThemeToWindowHandle(window, Settings.Global_DarkMode_Enabled);
+                // Force HWND creation early so we can set DWM attributes and the
+                // composition background color well before Show() calls ShowWindow.
+                // This gives the MIL compositor time to process the dark background
+                // before the window becomes visible, preventing the white flash.
+                helper.EnsureHandle();
             }
-            else
+
+            // HWND now exists — apply dark mode attributes and background color immediately
+            ApplyThemeToWindowHandle(window, Settings.Global_DarkMode_Enabled);
+            SetCompositionBackgroundColor(window, Settings.Global_DarkMode_Enabled);
+
+            // Install a WM_ERASEBKGND hook as a synchronous fallback: if the compositor
+            // hasn't processed the BackgroundColor change by the time the window is first
+            // shown, this paints the GDI surface dark so the user never sees white.
+            if (Settings.Global_DarkMode_Enabled)
             {
-                // Otherwise, wait for the window to load
-                window.Loaded += (s, e) => ApplyThemeToWindowHandle(window, Settings.Global_DarkMode_Enabled);
+                InstallEraseBkgndHook(window);
             }
+        }
+
+        /// <summary>
+        /// Sets the composition target background color to match the theme.
+        /// This controls the DWM compositing surface color shown before WPF renders its first frame.
+        /// </summary>
+        private static void SetCompositionBackgroundColor(Window window, bool isDarkMode)
+        {
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero) return;
+
+            if (HwndSource.FromHwnd(hwnd) is { CompositionTarget: not null } hwndSource)
+            {
+                hwndSource.CompositionTarget.BackgroundColor = isDarkMode
+                    ? Color.FromRgb(0x1E, 0x1E, 0x1E)
+                    : Colors.White;
+            }
+        }
+
+        /// <summary>
+        /// Installs a temporary WM_ERASEBKGND hook that paints the client area dark via GDI.
+        /// This provides a synchronous fallback: the GDI surface is painted dark before the
+        /// first WPF frame is composited, so even if CompositionTarget.BackgroundColor hasn't
+        /// been processed yet the user never sees a white flash. The hook removes itself after
+        /// the window's first ContentRendered event.
+        /// </summary>
+        private static unsafe void InstallEraseBkgndHook(Window window)
+        {
+            var hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero) return;
+
+            var hwndSource = HwndSource.FromHwnd(hwnd);
+            if (hwndSource == null) return;
+
+            HwndSourceHook hook = null;
+            hook = (IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+            {
+                if (msg == WM_ERASEBKGND)
+                {
+                    RECT rc;
+                    if (GetClientRect(h, &rc) != 0)
+                    {
+                        // COLORREF is 0x00BBGGRR — dark background #1E1E1E
+                        IntPtr brush = CreateSolidBrush(0x001E1E1E);
+                        _ = FillRect(wParam, &rc, brush);
+                        _ = DeleteObject(brush);
+                    }
+                    handled = true;
+                    return (IntPtr)1;
+                }
+                return IntPtr.Zero;
+            };
+
+            hwndSource.AddHook(hook);
+
+            // Remove the hook once WPF has rendered its first frame
+            EventHandler rendered = null;
+            rendered = (s, e) =>
+            {
+                window.ContentRendered -= rendered;
+                hwndSource.RemoveHook(hook);
+            };
+            window.ContentRendered += rendered;
         }
 
         private static unsafe void ApplyThemeToWindowHandle(Window window, bool isDarkMode)

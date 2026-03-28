@@ -80,7 +80,6 @@ namespace LegendaryExplorer.MainWindow
         {
             {
                 Opacity = 1;
-                AllowsTransparency = false;
                 Show();
                 DPIAwareSplashScreen.DestroySplashScreen();
                 DependencyCheck.CheckDependencies(this);

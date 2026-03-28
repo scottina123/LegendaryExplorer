@@ -43,6 +43,11 @@ namespace LegendaryExplorer.Misc
     {
         public NotifyPropertyChangedWindowBase()
         {
+            // Bind Background to the themed window brush to prevent white flash
+            // before content loads. If a derived window sets Background in XAML,
+            // InitializeComponent will override this with the XAML value.
+            SetResourceReference(BackgroundProperty, SystemColors.WindowBrushKey);
+
             // Apply custom window chrome for dark mode title bar support
             CustomWindowChrome.ApplyCustomChrome(this);
         }
