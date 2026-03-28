@@ -2226,7 +2226,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case "SFXSceneShopNodePlotCheck":
                     if (name == "m_nIndex" && !export.IsDefaultObject)
                     {
-                        Enum.TryParse(export.GetProperty<EnumProperty>("VarType").Value.Name, out ESFXSSPlotVarType type);
+                        ESFXSSPlotVarType type = export.GetProperty<EnumProperty>("VarType")
+                            .GetEnumValOrDefault(ESFXSSPlotVarType.PlotVar_Unset);
                         switch (type)
                         {
                             case ESFXSSPlotVarType.PlotVar_Float:
