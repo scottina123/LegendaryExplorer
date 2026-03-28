@@ -47,6 +47,8 @@
             <Style TargetType="ProgressBar">
           <Setter Property="IsIndeterminate"
                   Value="True" />
+          <Setter Property="Background"
+                  Value="#FF3A3A3A" />
           <Setter Property="Height"
                   Value="15" />
           <Setter Property="Margin"
