@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shell;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 
@@ -53,6 +54,9 @@ namespace LegendaryExplorer.SharedUI
 
         // DWMWA_BORDER_COLOR - Windows 11 only
         private const int DWMWA_BORDER_COLOR = 34;
+
+        // DWMWA_CLOAK - hides window at compositor level (Windows 8+)
+        private const int DWMWA_CLOAK = 13;
 
         private enum PreferredAppMode
         {
@@ -104,6 +108,8 @@ namespace LegendaryExplorer.SharedUI
 
         // Track registered windows for theme updates using weak references
         private static readonly List<WeakReference<Window>> _registeredWindows = new();
+        private static readonly HashSet<Window> _cloakedWindows = new();
+        private static readonly HashSet<Window> _eraseBkgndHookedWindows = new();
         private static bool _themeChangedSubscribed;
 
         /// <summary>
@@ -132,8 +138,7 @@ namespace LegendaryExplorer.SharedUI
             {
                 if (weakRef.TryGetTarget(out var window))
                 {
-                    ApplyThemeToWindowHandle(window, isDarkMode);
-                    SetCompositionBackgroundColor(window, isDarkMode);
+                    ApplyWindowTheme(window, isDarkMode);
                 }
             }
         }
@@ -219,7 +224,8 @@ namespace LegendaryExplorer.SharedUI
         {
             if (window == null) return;
 
-            ApplyPreferredAppMode(Settings.Global_DarkMode_Enabled);
+            bool isDarkMode = Settings.Global_DarkMode_Enabled;
+            ApplyPreferredAppMode(isDarkMode);
 
             // Ensure we're subscribed to theme changes
             EnsureThemeChangeSubscription();
@@ -230,21 +236,70 @@ namespace LegendaryExplorer.SharedUI
             var helper = new WindowInteropHelper(window);
             if (helper.Handle == IntPtr.Zero)
             {
-                // Force HWND creation early so we can set DWM attributes and the
-                // composition background color well before Show() calls ShowWindow.
-                // This gives the MIL compositor time to process the dark background
-                // before the window becomes visible, preventing the white flash.
                 helper.EnsureHandle();
             }
 
-            // HWND now exists — apply dark mode attributes and background color immediately
-            ApplyThemeToWindowHandle(window, Settings.Global_DarkMode_Enabled);
-            SetCompositionBackgroundColor(window, Settings.Global_DarkMode_Enabled);
+            // Apply theme attributes (dark title bar, composition background, etc.)
+            ApplyWindowTheme(window, isDarkMode);
 
-            // Install a WM_ERASEBKGND hook as a synchronous fallback: if the compositor
-            // hasn't processed the BackgroundColor change by the time the window is first
-            // shown, this paints the GDI surface dark so the user never sees white.
-            if (Settings.Global_DarkMode_Enabled)
+            // In dark mode, cloak the window at the DWM compositor level so it is
+            // completely invisible until WPF has rendered its first frame. This
+            // prevents the white flash because ShowWindow cannot make a cloaked
+            // window visible — only uncloaking reveals it, and we defer that until
+            // ContentRendered fires (i.e. the first dark frame is ready).
+            if (isDarkMode && _cloakedWindows.Add(window))
+            {
+                CloakWindow(helper.Handle);
+
+                EventHandler uncloakOnRender = null;
+                EventHandler uncloakOnClose = null;
+
+                uncloakOnRender = (s, e) =>
+                {
+                    window.ContentRendered -= uncloakOnRender;
+                    window.Closed -= uncloakOnClose;
+                    if (_cloakedWindows.Remove(window))
+                    {
+                        var hwnd = new WindowInteropHelper(window).Handle;
+                        if (hwnd != IntPtr.Zero)
+                            UncloakWindow(hwnd);
+                    }
+                };
+                uncloakOnClose = (s, e) =>
+                {
+                    window.ContentRendered -= uncloakOnRender;
+                    window.Closed -= uncloakOnClose;
+                    if (_cloakedWindows.Remove(window))
+                    {
+                        var hwnd = new WindowInteropHelper(window).Handle;
+                        if (hwnd != IntPtr.Zero)
+                            UncloakWindow(hwnd);
+                    }
+                };
+
+                window.ContentRendered += uncloakOnRender;
+                window.Closed += uncloakOnClose;
+            }
+        }
+
+        private static unsafe void CloakWindow(IntPtr hwnd)
+        {
+            int cloaked = 1;
+            DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloaked, sizeof(int));
+        }
+
+        private static unsafe void UncloakWindow(IntPtr hwnd)
+        {
+            int cloaked = 0;
+            DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloaked, sizeof(int));
+        }
+
+        private static void ApplyWindowTheme(Window window, bool isDarkMode)
+        {
+            ApplyThemeToWindowHandle(window, isDarkMode);
+            SetCompositionBackgroundColor(window, isDarkMode);
+
+            if (isDarkMode)
             {
                 InstallEraseBkgndHook(window);
             }
@@ -276,11 +331,21 @@ namespace LegendaryExplorer.SharedUI
         /// </summary>
         private static unsafe void InstallEraseBkgndHook(Window window)
         {
+            if (!_eraseBkgndHookedWindows.Add(window)) return;
+
             var hwnd = new WindowInteropHelper(window).Handle;
-            if (hwnd == IntPtr.Zero) return;
+            if (hwnd == IntPtr.Zero)
+            {
+                _eraseBkgndHookedWindows.Remove(window);
+                return;
+            }
 
             var hwndSource = HwndSource.FromHwnd(hwnd);
-            if (hwndSource == null) return;
+            if (hwndSource == null)
+            {
+                _eraseBkgndHookedWindows.Remove(window);
+                return;
+            }
 
             HwndSourceHook hook = null;
             hook = (IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
@@ -305,12 +370,24 @@ namespace LegendaryExplorer.SharedUI
 
             // Remove the hook once WPF has rendered its first frame
             EventHandler rendered = null;
+            EventHandler closed = null;
             rendered = (s, e) =>
             {
                 window.ContentRendered -= rendered;
+                window.Closed -= closed;
                 hwndSource.RemoveHook(hook);
+                _eraseBkgndHookedWindows.Remove(window);
             };
+            closed = (s, e) =>
+            {
+                window.ContentRendered -= rendered;
+                window.Closed -= closed;
+                hwndSource.RemoveHook(hook);
+                _eraseBkgndHookedWindows.Remove(window);
+            };
+
             window.ContentRendered += rendered;
+            window.Closed += closed;
         }
 
         private static unsafe void ApplyThemeToWindowHandle(Window window, bool isDarkMode)

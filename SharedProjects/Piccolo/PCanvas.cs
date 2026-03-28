@@ -71,6 +71,7 @@ namespace Piccolo {
 	/// </remarks>
 	public class PCanvas : Control {
 		#region Fields
+		public static Func<Color> InitialBackColorProvider { get; set; }
 
         /// <summary>
 		/// Used to specify what flags should be set for low quality rendering.
@@ -128,7 +129,7 @@ namespace Piccolo {
 			InteractingRenderQuality = RenderQuality.LowQuality;
 			PanEventHandler = new PPanEventHandler();
 			ZoomEventHandler = new PZoomEventHandler();
-			BackColor = Color.White;
+            BackColor = GetInitialBackColor();
 			
 			AllowDrop = true;
 
@@ -140,6 +141,18 @@ namespace Piccolo {
 			SetStyle(ControlStyles.AllPaintingInWmPaint, true);
 		}
 		#endregion
+
+        private static Color GetInitialBackColor() {
+			try {
+				if (InitialBackColorProvider is not null) {
+					return InitialBackColorProvider();
+				}
+			}
+			catch {
+			}
+
+			return Color.White;
+		}
 
 		#region Scene Graph
 		//****************************************************************

@@ -22,6 +22,7 @@ using LegendaryExplorerCore.DebugTools;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using Piccolo;
 using Serilog;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
@@ -54,6 +55,9 @@ namespace LegendaryExplorer.Startup
 
             Settings.LoadSettings();
             SyntaxInfo.LoadFromSettings();
+            PCanvas.InitialBackColorProvider = () => Settings.Global_DarkMode_Enabled
+                ? System.Drawing.Color.FromArgb(30, 30, 30)
+                : System.Drawing.Color.White;
             initCoreLib();
 
             // AppCenter setup
