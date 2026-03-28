@@ -5301,23 +5301,43 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void DialogueNode_DeleteLinks(object obj)
         {
+            if (SelectedDialogueNode == null || SelectedConv == null)
+            {
+                return;
+            }
+
+            bool linksCleared = false;
             if (SelectedDialogueNode.IsReply)
             {
                 var entrylinklist = SelectedDialogueNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
-                if (entrylinklist != null)
+                if (entrylinklist != null && entrylinklist.Count > 0)
                 {
                     entrylinklist.Clear();
-                    RecreateNodesToProperties(SelectedConv);
+                    linksCleared = true;
                 }
             }
             else
             {
                 var replylinklist = SelectedDialogueNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
-                if (replylinklist != null)
+                if (replylinklist != null && replylinklist.Count > 0)
                 {
                     replylinklist.Clear();
-                    RecreateNodesToProperties(SelectedConv);
+                    linksCleared = true;
                 }
+            }
+
+            if (!linksCleared)
+            {
+                return;
+            }
+
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            RefreshNodeInGraph(SelectedDialogueNode, persistConversation: false);
+
+            if (SelectedObjects.FirstOrDefault() is DiagNode selectedNode && inlineLinkEditorNode?.NodeUID == selectedNode.NodeUID)
+            {
+                LoadInlineLinkEditor(selectedNode);
             }
         }
 
