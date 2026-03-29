@@ -26,6 +26,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Xml;
 using System.Xml.Linq;
+using LegendaryExplorer.Tools.ConditionalsEditor;
+using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
 using ICSharpCode.AvalonEdit.Highlighting;
@@ -34,6 +36,7 @@ using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using ICSharpCode.AvalonEdit.Rendering;
 using LegendaryExplorerCore.TLK;
+using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Tools.CoalescedEditor
 {
@@ -232,6 +235,174 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             TextEditor?.Focus();
             TextEditor?.Paste();
+        }
+
+        private void EditorContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu contextMenu)
+                return;
+
+            // Remove previously added dynamic items
+            for (int i = contextMenu.Items.Count - 1; i >= 0; i--)
+            {
+                if (contextMenu.Items[i] is FrameworkElement { Tag: "PlotNav" })
+                    contextMenu.Items.RemoveAt(i);
+            }
+
+            if (TextEditor?.Document == null)
+                return;
+
+            var game = GetSelectedFileGame();
+            if (game == MEGame.Unknown)
+                return;
+
+            var reference = FindPlotReferenceAtCaret();
+            if (reference == null)
+                return;
+
+            var (key, plotId) = reference.Value;
+            var inferredTypes = GetPlotElementTypesForKey(key);
+            var (resolvedType, plotElement) = TryResolvePlotElement(inferredTypes, plotId, game);
+
+            // If nothing was inferred from the key and nothing resolved from the database, nothing to show
+            if (inferredTypes.Count == 0 && resolvedType == null)
+                return;
+
+            bool addedSeparator = false;
+            void EnsureSeparator()
+            {
+                if (!addedSeparator)
+                {
+                    contextMenu.Items.Add(new Separator { Tag = "PlotNav" });
+                    addedSeparator = true;
+                }
+            }
+
+            // Offer CND editor if the key name suggests a conditional OR the database resolved it as one
+            bool isConditional = inferredTypes.Contains(PlotElementType.Conditional) || resolvedType == PlotElementType.Conditional;
+            if (isConditional && game.IsGame3())
+            {
+                EnsureSeparator();
+                int capturedId = plotId;
+                var capturedGame = game;
+                var cndItem = new MenuItem
+                {
+                    Header = $"Open Conditional {plotId} in Conditionals Editor",
+                    Tag = "PlotNav"
+                };
+                cndItem.Click += (_, _) => OpenConditionalInEditor(capturedId, capturedGame);
+                contextMenu.Items.Add(cndItem);
+            }
+
+            if (plotElement != null)
+            {
+                EnsureSeparator();
+                var capturedElement = plotElement;
+                var capturedGame = game;
+                var displayType = resolvedType ?? inferredTypes.FirstOrDefault();
+                var dbItem = new MenuItem
+                {
+                    Header = $"Open {displayType} {plotId} in Plot Database",
+                    Tag = "PlotNav"
+                };
+                dbItem.Click += (_, _) => OpenPlotElementInDatabase(capturedElement, capturedGame);
+                contextMenu.Items.Add(dbItem);
+            }
+        }
+
+        private (string key, int plotId)? FindPlotReferenceAtCaret()
+        {
+            var document = TextEditor?.Document;
+            if (document == null)
+                return null;
+
+            int caretOffset = TextEditor.CaretOffset;
+            var line = document.GetLineByOffset(caretOffset);
+            string lineText = document.GetText(line.Offset, line.Length);
+            int lineRelativeOffset = caretOffset - line.Offset;
+
+            // Try matches where the caret is within the match range
+            foreach (Match match in PlotAssignmentRegex.Matches(lineText))
+            {
+                if (lineRelativeOffset < match.Index || lineRelativeOffset > match.Index + match.Length)
+                    continue;
+
+                if (int.TryParse(match.Groups["id"].Value, out int plotId))
+                    return (match.Groups["key"].Value, plotId);
+            }
+
+            foreach (Match match in PlotXmlPropertyRegex.Matches(lineText))
+            {
+                var idGroup = match.Groups["id"];
+                if (lineRelativeOffset < idGroup.Index || lineRelativeOffset > idGroup.Index + idGroup.Length)
+                    continue;
+
+                if (int.TryParse(idGroup.Value, out int plotId))
+                    return (match.Groups["key"].Value, plotId);
+            }
+
+            return null;
+        }
+
+        private static (PlotElementType? resolvedType, PlotElement plotElement) TryResolvePlotElement(List<PlotElementType> inferredTypes, int plotId, MEGame game)
+        {
+            // First try types inferred from key name
+            foreach (var plotType in inferredTypes)
+            {
+                var element = PlotDatabases.FindPlotElementFromID(plotId, plotType, game);
+                if (element != null)
+                    return (plotType, element);
+            }
+
+            // Fall back to trying common types when key name is unrecognized
+            PlotElementType[] fallbackTypes = [PlotElementType.Conditional, PlotElementType.Integer, PlotElementType.State, PlotElementType.Float, PlotElementType.Transition];
+            foreach (var plotType in fallbackTypes)
+            {
+                var element = PlotDatabases.FindPlotElementFromID(plotId, plotType, game);
+                if (element != null)
+                    return (plotType, element);
+            }
+
+            return (null, null);
+        }
+
+        private void OpenConditionalInEditor(int conditionalId, MEGame game)
+        {
+            var cookedDirs = MELoadedDLC.GetEnabledDLCFolders(game)
+                .OrderByDescending(dir => MELoadedDLC.GetMountPriority(dir, game))
+                .Select(dir => Path.Combine(dir, game.CookedDirName()))
+                .Append(MEDirectories.GetCookedPath(game))
+                .Where(Directory.Exists);
+
+            var cndFiles = cookedDirs.SelectMany(dir => Directory.EnumerateFiles(dir, "*.cnd"));
+
+            string matchedFile = null;
+            foreach (var cndFile in cndFiles)
+            {
+                var cnd = CNDFile.FromFile(cndFile);
+                if (cnd.ConditionalEntries.Any(c => c.ID == conditionalId))
+                {
+                    matchedFile = cndFile;
+                    break;
+                }
+            }
+
+            if (matchedFile != null)
+            {
+                var cndEd = new ConditionalsEditorWindow();
+                cndEd.Show();
+                cndEd.LoadFile(matchedFile, conditionalId);
+            }
+            else
+            {
+                MessageBox.Show(this, $"Could not find conditional {conditionalId} in any mounted .cnd file.");
+            }
+        }
+
+        private static void OpenPlotElementInDatabase(PlotElement element, MEGame game)
+        {
+            var plotDb = new PlotManagerWindow(game, element);
+            plotDb.Show();
         }
 
         public void LoadCoalescedFile(string filePath)

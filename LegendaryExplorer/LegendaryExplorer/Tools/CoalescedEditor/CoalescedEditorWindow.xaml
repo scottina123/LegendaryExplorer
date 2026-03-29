@@ -16,7 +16,7 @@
     <Window.Resources>
         <local:IndentedPathDisplayConverter x:Key="IndentedPathDisplayConverter" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <ContextMenu x:Key="EditorContextMenu">
+        <ContextMenu x:Key="EditorContextMenu" Opened="EditorContextMenu_Opened">
             <MenuItem Header="Cut" Click="EditorContextMenu_Cut_Click" />
             <MenuItem Header="Copy" Click="EditorContextMenu_Copy_Click" />
             <MenuItem Header="Paste" Click="EditorContextMenu_Paste_Click" />
