@@ -54,25 +54,30 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
-            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
-            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" />
-            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" />
-            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" />
-            <MenuItem Header="Unskippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsUnskippable}" />
+            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" StaysOpenOnClick="True" />
+            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" StaysOpenOnClick="True" />
+            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" StaysOpenOnClick="True" />
+            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" StaysOpenOnClick="True" />
+            <MenuItem Header="Unskippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsUnskippable}" StaysOpenOnClick="True" />
             <Separator/>
-            <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
-            <MenuItem Header="Open in Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
-            <MenuItem Header="Open in Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
-            <MenuItem Header="Open Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
-            <MenuItem Header="Open Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
-            <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
-            <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
-            <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
-            <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
-            <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Open In">
+                <MenuItem Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
+                <MenuItem Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
+                <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
+                <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
+                <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+            </MenuItem>
+            <MenuItem Header="Audio">
+                <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
+                <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+                <Separator />
+                <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
+                <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
+                <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            </MenuItem>
             <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
         </ContextMenu>
         <ContextMenu x:Key="entrynodeContextMenu" Closed="ContextMenu_Closed">
@@ -97,25 +102,30 @@
             </MenuItem>
             <MenuItem Header="Remove from Dialogue" Command="{Binding NodeRemoveCommand}"/>
             <Separator/>
-            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" />
-            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" />
-            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" />
-            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" />
-            <MenuItem Header="Skippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsSkippable}" />
+            <MenuItem Header="Hide Subtitle" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.HideSubtitle}" StaysOpenOnClick="True" />
+            <MenuItem Header="Non vocal line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsNonTextLine}" StaysOpenOnClick="True" />
+            <MenuItem Header="Ambient line" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsAmbient}" StaysOpenOnClick="True" />
+            <MenuItem Header="Ignore Body Gestures" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IgnoreBodyGesture}" StaysOpenOnClick="True" />
+            <MenuItem Header="Skippable" IsCheckable="True" IsChecked="{Binding SelectedDialogueNode.IsSkippable}" StaysOpenOnClick="True" />
             <Separator/>
-            <MenuItem Header="Open in Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
-            <MenuItem Header="Open in Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
-            <MenuItem Header="Open in Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
-            <MenuItem Header="Open Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
-            <MenuItem Header="Open Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
-            <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
-            <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
-            <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
-            <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
-            <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
-            <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            <MenuItem Header="Open In">
+                <MenuItem Header="Sequence Editor" Command="{Binding OpenInCommand}" CommandParameter="SeqEdLine"/>
+                <MenuItem Header="Package Editor" Command="{Binding OpenInCommand}" CommandParameter="PackEdLine"/>
+                <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
+                <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
+                <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+            </MenuItem>
+            <MenuItem Header="Audio">
+                <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
+                <MenuItem Header="Open Female Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamF"/>
+                <Separator />
+                <MenuItem Header="Play Male Audio" Click="PlayAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Play Female Audio" Click="PlayAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Export Male Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_M}}"/>
+                <MenuItem Header="Export Female Audio" Command="{Binding ExportAudioCommand, Source={x:Reference SoundpanelWPF_F}}"/>
+                <MenuItem Header="Replace Male Audio" Click="ReplaceAudioM_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Male, Converter={StaticResource NullEnabledConverter}}"/>
+                <MenuItem Header="Replace Female Audio" Click="ReplaceAudioF_Click" IsEnabled="{Binding SelectedDialogueNode.WwiseStream_Female, Converter={StaticResource NullEnabledConverter}}"/>
+            </MenuItem>
             <MenuItem Header="Copy TLK Text to Clipboard (No Quotes)" Command="{Binding CopyToClipboardCommand}" CommandParameter="LineNoQuotes"/>
         </ContextMenu>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">

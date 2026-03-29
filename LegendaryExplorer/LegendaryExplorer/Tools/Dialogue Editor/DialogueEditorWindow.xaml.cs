@@ -2466,6 +2466,27 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        public void RefreshSelectedNodeAfterInterpMutation(int? preferredInterpSelectionUIndex = null)
+        {
+            if (SelectedDialogueNode == null)
+            {
+                return;
+            }
+
+            if (SelectedDialogueNode.InterpData?.GetProperty<FloatProperty>("InterpLength") is FloatProperty lengthprop)
+            {
+                SelectedDialogueNode.InterpLength = lengthprop.Value;
+            }
+
+            if (CurrentLoadedExport != null)
+            {
+                Properties_InterpreterWPF.LoadExport(CurrentLoadedExport);
+            }
+
+            RefreshInterpDataTreePreserveState(preferredInterpSelectionUIndex ?? GetSelectedInterpDataTreeExport()?.UIndex ?? SelectedDialogueNode.InterpData?.UIndex);
+            LoadInlineLinkEditor(SelectedObjects.FirstOrDefault() as DiagNode);
+        }
+
         private void BuildInterpDataTree()
         {
             ClearInterpDataTree();
@@ -6938,11 +6959,12 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            int? selectedInterpUIndex = GetSelectedInterpDataTreeExport()?.UIndex ?? SelectedDialogueNode.InterpData.UIndex;
+            using var _ = SuppressPackageUpdates();
             var dialog = new BulkInterpEditorDialog(this, SelectedDialogueNode, SelectedConv);
             if (dialog.ShowDialog() == true)
             {
-                // Refresh the view after changes
-                ForceRefresh(null);
+                RefreshSelectedNodeAfterInterpMutation(selectedInterpUIndex);
             }
         }
 

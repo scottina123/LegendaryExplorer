@@ -966,10 +966,9 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 return;
             }
 
+            using var _ = dew.SuppressPackageUpdates();
             UpdateVOAndComment(node);
-
-            dew.RecreateNodesToProperties(dew.SelectedConv);
-            dew.ForceRefreshCommand.Execute(null);
+            dew.RefreshSelectedNodeAfterInterpMutation(node.InterpData.UIndex);
 
             MessageBox.Show($"Successfully updated the StrRefID and Interp comment for the selected node.", "Success", MessageBoxButton.OK);
         }
@@ -1131,10 +1130,9 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 "Calculate the InterpLengths by the FXA length? If not, the audio length will be used.",
                 "Calculate by FXA", MessageBoxButton.YesNo);
 
+            using var _ = dew.SuppressPackageUpdates();
             UpdateInterpLength(node, byFXA, dew.FaceFXAnimSetEditorControl_F, dew.FaceFXAnimSetEditorControl_M);
-
-            dew.RecreateNodesToProperties(dew.SelectedConv);
-            dew.ForceRefreshCommand.Execute(null);
+            dew.RefreshSelectedNodeAfterInterpMutation(node.InterpData.UIndex);
 
             MessageBox.Show($"Successfully updated the InterpLength of the selected audio node.", "Success", MessageBoxButton.OK);
         }
