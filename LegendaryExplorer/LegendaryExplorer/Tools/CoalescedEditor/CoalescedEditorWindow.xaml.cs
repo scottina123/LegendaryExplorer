@@ -1632,7 +1632,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             root.Add(assetsElement);
             var document = new XDocument(root);
-            using var writer = new StringWriter();
+            using var writer = new Utf8StringWriter();
             document.Save(writer, SaveOptions.None);
             return writer.ToString();
         }
@@ -1910,6 +1910,11 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 fileName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 return true;
             return false;
+        }
+
+        private sealed class Utf8StringWriter : StringWriter
+        {
+            public override Encoding Encoding => Encoding.UTF8;
         }
     }
 
