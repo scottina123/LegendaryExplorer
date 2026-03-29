@@ -52,6 +52,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, SequenceEventRecord> GeneratedSequenceEvents = new();
         /// <summary>
+        /// Dictionary that stores generated TLK string usage records
+        /// </summary>
+        public ConcurrentDictionary<int, TlkStringRecord> GeneratedTlkStrings = new();
+        /// <summary>
         /// Dictionary that stores generated plot bool records
         /// </summary>
         public ConcurrentDictionary<int, PlotRecord> GeneratedBoolRecords = new();
@@ -92,6 +96,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedConvo.Clear();
             GeneratedLines.Clear();
             GeneratedSequenceEvents.Clear();
+            GeneratedTlkStrings.Clear();
             GeneratedBoolRecords.Clear();
             GeneratedIntRecords.Clear();
             GeneratedFloatRecords.Clear();
@@ -111,6 +116,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"GUI Elements: {GeneratedGUI.Count}\n" +
                    $"Lines: {GeneratedLines.Count}\n" +
                    $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
+                   $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
 
@@ -183,6 +189,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 sequenceEvent.IsDLCOnly = sequenceEvent.Usages.All(u => u.IsInDLC);
             }
             pdb.SequenceEvents.AddRange(sequenceEventsSorted);
+
+            pdb.TlkStrings.AddRange(GeneratedTlkStrings.Values.OrderBy(x => x.StringID));
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

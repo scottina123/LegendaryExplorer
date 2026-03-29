@@ -1475,6 +1475,76 @@
                                                            HeaderToolTip="Every file that contains this sequence event or console command&#x0a;Right click to open in Package Editor"/>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="TLKs" TabIndex="11">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="TLK Strings" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Loaded TLK strings for the selected game and localization." Grid.Row="0" Grid.Column="0"/>
+                            <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
+                                <TextBlock Text="Source:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox Width="260"
+                                          ItemsSource="{Binding TlkSourceFilters}"
+                                          SelectedItem="{Binding SelectedTlkSourceFilter, Mode=TwoWay}"
+                                          IsTextSearchEnabled="True"/>
+                            </DockPanel>
+                            <ListView x:Name="lstbx_TlkStrings"
+                                      MinWidth="300"
+                                      ItemsSource="{Binding DisplayedTlkStrings}"
+                                      SelectedItem="{Binding SelectedTlkString, Mode=TwoWay}"
+                                      Grid.Row="2"
+                                      Grid.Column="0"
+                                      Style="{StaticResource NoFocusBorderListViewStyle}"
+                                      ItemContainerStyle="{DynamicResource {x:Static GridView.GridViewItemContainerStyleKey}}">
+                                <ListView.View>
+                                    <GridView ColumnHeaderContainerStyle="{StaticResource FileLVHeader}">
+                                        <GridViewColumn DisplayMemberBinding="{Binding StringID}" Width="120" Header="TLK String Ref"/>
+                                        <GridViewColumn DisplayMemberBinding="{Binding DisplayValue}" Width="420" Header="Line"/>
+                                        <GridViewColumn DisplayMemberBinding="{Binding SourceName}" Width="220" Header="Source"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                            <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Parsed TLK value details" Grid.Row="0" Grid.Column="1"/>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
+                                <DockPanel Margin="6">
+                                    <StackPanel DockPanel.Dock="Top">
+                                        <TextBlock Text="String ID:" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding SelectedTlkString.StringID, TargetNullValue=''}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Resolved From:" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding SelectedTlkString.SourceName, TargetNullValue=''}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Usages:" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding SelectedTlkString.Usages.Count, TargetNullValue='0'}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Value:" FontWeight="Bold"/>
+                                    </StackPanel>
+                                    <TextBox Text="{Binding SelectedTlkString.DisplayValue, Mode=OneWay, TargetNullValue=''}"
+                                             Margin="0,6,0,0"
+                                             TextWrapping="Wrap"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"/>
+                                </DockPanel>
+                            </Border>
+                            <assetDatabase:AssetUsagesPanel x:Name="tlkUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           UsagesSource="{Binding SelectedTlkString.Usages}"
+                                                           HeaderToolTip="Every file that uses this TLK string&#x0a;Right click to open in the relevant tool.">
+                                <assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Open Usage" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this TLK usage in the relevant tool." />
+                                        <MenuItem Header="Open in Coalesced Editor" Command="{Binding OpenUsagePkgCommand}" CommandParameter="CoalescedEd" ToolTip="Open this TLK usage in Coalesced Editor."/>
+                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Opens this file in Windows Explorer."/>
+                                    </ContextMenu>
+                                </assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                            </assetDatabase:AssetUsagesPanel>
+                        </Grid>
+                    </TabItem>
                 </TabControl>
             </DockPanel>
         </DockPanel>

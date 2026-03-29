@@ -52,6 +52,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<SequenceEventRecord> SequenceEvents { get; set; } = new();
 
+        public List<TlkStringRecord> TlkStrings { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -87,6 +89,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Conversations.Clear();
             Lines.Clear();
             SequenceEvents.Clear();
+            TlkStrings.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -103,6 +106,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Conversations.AddRange(from.Conversations);
             Lines.AddRange(from.Lines);
             SequenceEvents.AddRange(from.SequenceEvents);
+            TlkStrings.AddRange(from.TlkStrings);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -643,6 +647,51 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     public sealed record SequenceEventUsage(int FileKey, int UIndex, bool IsInDLC, bool IsInMod) : IAssetUsage
     {
         public SequenceEventUsage() : this(default, default, default, default) { }
+    }
+
+    public enum TlkUsageContext
+    {
+        Package,
+        Quest,
+        Codex,
+        Coalesced
+    }
+
+    public sealed record TlkUsage(int FileKey, int UIndex, bool IsInDLC, bool IsInMod, TlkUsageContext Context, int? ContainerID = null, string InnerFileName = null, string ReferenceName = null) : IAssetUsage
+    {
+        public TlkUsage() : this(default, default, default, default, default, default, default, default) { }
+
+        [IgnoredMember]
+        public string ContextDisplayString => Context switch
+        {
+            TlkUsageContext.Package => "Package",
+            TlkUsageContext.Quest => "Quest Map",
+            TlkUsageContext.Codex => "Codex Map",
+            TlkUsageContext.Coalesced => "Coalesced",
+            _ => Context.ToString()
+        };
+
+        [IgnoredMember]
+        public string ReferenceDisplay => string.IsNullOrWhiteSpace(ReferenceName)
+            ? ContextDisplayString
+            : $"{ContextDisplayString} - {ReferenceName}";
+    }
+
+    public class TlkStringRecord : IAssetRecord
+    {
+        public int StringID { get; set; }
+
+        [IgnoredMember] public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        public List<TlkUsage> Usages { get; set; } = new();
+
+        public TlkStringRecord(int stringID)
+        {
+            StringID = stringID;
+        }
+
+        public TlkStringRecord()
+        { }
     }
 
     public enum PlotRecordType

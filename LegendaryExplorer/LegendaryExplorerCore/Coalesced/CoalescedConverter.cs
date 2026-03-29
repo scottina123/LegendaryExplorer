@@ -648,12 +648,36 @@ namespace LegendaryExplorerCore.Coalesced
         {
             if (File.Exists(sourceFile))
             {
-                byte[] bytes = new byte[4];
-                using FileStream fs = new FileStream(sourceFile, FileMode.Open);
-                fs.Read(bytes, 0, 4);
-                return (BitConverter.ToInt32(bytes, 0) == CoalescedMagicNumber);
+                using FileStream fs = File.OpenRead(sourceFile);
+                return IsGame3Coalesced(fs);
             }
             return true;
+        }
+
+        /// <summary>
+        /// Returns true if this is a ME3/LE3 coalesced stream, false if LE1/LE2.
+        /// The stream position is restored before returning.
+        /// </summary>
+        /// <param name="inputStream">Stream containing coalesced data</param>
+        /// <returns></returns>
+        public static bool IsGame3Coalesced(Stream inputStream)
+        {
+            long originalPosition = inputStream.Position;
+            try
+            {
+                Span<byte> bytes = stackalloc byte[sizeof(int)];
+                int bytesRead = inputStream.Read(bytes);
+                if (bytesRead < sizeof(int))
+                {
+                    return false;
+                }
+
+                return BitConverter.ToInt32(bytes) == CoalescedMagicNumber;
+            }
+            finally
+            {
+                inputStream.Position = originalPosition;
+            }
         }
 
         /// <summary>

@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using LegendaryExplorer.Tools.AssetDatabase.Scanners;
+using LegendaryExplorerCore.Coalesced;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
@@ -83,6 +84,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             new GUIScanner(),
             new ConversationScanner(),
             new SequenceEventScanner(),
+            new TlkScanner(),
             new PlotUsageScanner()
         ];
 
@@ -144,6 +146,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                             return;
                         }
 
+                        if (_file.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bool isCoalescedBin = Path.GetFileName(_file).StartsWith("Coalesced", StringComparison.OrdinalIgnoreCase)
+                                                  || CoalescedConverter.IsGame3Coalesced(decompStream);
+                            if (isCoalescedBin)
+                            {
+                                new TlkScanner().ScanCoalescedFile(_file, _fileKey, dbScanner, decompStream);
+                            }
+
+                            return;
+                        }
+
                         // Package
                         pcc = MEPackageHandler.OpenMEPackageFromStream(decompStream, _file);
                     }
@@ -159,6 +173,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 if (_file.EndsWith(".cnd", StringComparison.OrdinalIgnoreCase))
                 {
                     new PlotUsageScanner().ScanCndFile(_file, _fileKey, dbScanner, _options);
+                    return;
+                }
+
+                if (_file.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool isCoalescedBin = Path.GetFileName(_file).StartsWith("Coalesced", StringComparison.OrdinalIgnoreCase)
+                                          || CoalescedConverter.IsGame3Coalesced(_file);
+                    if (isCoalescedBin)
+                    {
+                        new TlkScanner().ScanCoalescedFile(_file, _fileKey, dbScanner);
+                    }
+
                     return;
                 }
 

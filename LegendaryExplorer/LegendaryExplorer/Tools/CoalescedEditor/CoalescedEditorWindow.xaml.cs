@@ -471,6 +471,54 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
         }
 
+        public void NavigateToReference(string filePath, string innerFileName, string searchText)
+        {
+            LoadCoalescedFile(filePath);
+
+            var openFile = OpenFiles.FirstOrDefault(f => f.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase));
+            if (openFile == null)
+            {
+                return;
+            }
+
+            SelectedFile = openFile;
+            if (!string.IsNullOrWhiteSpace(innerFileName))
+            {
+                var matchingInnerFile = openFile.FileNames.FirstOrDefault(name => name.Equals(innerFileName, StringComparison.OrdinalIgnoreCase));
+                if (matchingInnerFile != null)
+                {
+                    _suppressEditorEvents = true;
+                    try
+                    {
+                        openFile.SelectedFileName = matchingInnerFile;
+                        FileListBox.SelectedItem = matchingInnerFile;
+                        UpdateEditorContent();
+                    }
+                    finally
+                    {
+                        _suppressEditorEvents = false;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(searchText) || string.IsNullOrWhiteSpace(TextEditor.Text))
+            {
+                return;
+            }
+
+            int matchIndex = TextEditor.Text.IndexOf(searchText, StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0)
+            {
+                return;
+            }
+
+            TextEditor.Select(matchIndex, searchText.Length);
+            TextEditor.CaretOffset = matchIndex + searchText.Length;
+            var location = TextEditor.Document.GetLocation(matchIndex);
+            TextEditor.ScrollToLine(location.Line);
+            TextEditor.Focus();
+        }
+
         private void SaveCurrentFile()
         {
             if (SelectedFile == null) return;

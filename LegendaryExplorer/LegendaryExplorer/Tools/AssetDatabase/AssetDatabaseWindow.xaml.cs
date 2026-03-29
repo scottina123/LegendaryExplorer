@@ -37,6 +37,7 @@ using BinaryPack;
 using LegendaryExplorer.GameInterop;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.DialogueEditor;
+using LegendaryExplorer.Tools.CoalescedEditor;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.LiveLevelEditor;
@@ -75,6 +76,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     resource?.Dispose();
                 }
             }
+        }
+
+        public sealed class TlkDisplayRecord
+        {
+            public int StringID { get; init; }
+
+            public string ParsedValue { get; init; }
+
+            public string SourceName { get; init; }
+
+            public List<TlkUsage> Usages { get; init; } = [];
+
+            public string DisplayValue => string.IsNullOrWhiteSpace(ParsedValue) ? "No Data" : ParsedValue;
         }
 
         public sealed class MaterialTextureFilterCriterion : INotifyPropertyChanged
@@ -158,8 +172,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v9.6: Added sequence event and console command records for remote-event/console-event database browsing.
-        public const string dbCurrentBuild = "9.6"; //If changes are made that invalidate old databases edit this.
+        // v9.7: Added TLK usage records and coalesced TLK scanning for database browsing.
+        public const string dbCurrentBuild = "9.7"; //If changes are made that invalidate old databases edit this.
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -327,6 +341,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             FileLineSearchColumn,
             LocationLineSearchColumn
         };
+        public ObservableCollectionExtended<string> TlkSourceFilters { get; } = new();
+        public ObservableCollectionExtended<TlkDisplayRecord> DisplayedTlkStrings { get; } = new();
 
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
@@ -357,6 +373,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string LineConversationSearchColumn = "Line Conversation";
         private const string FileLineSearchColumn = "File";
         private const string LocationLineSearchColumn = "Location";
+        private const string AllTlkSourceFilterOption = "All TLKs";
 
         public sealed record MaterialSelectionResult(MaterialRecord Material);
 
@@ -379,6 +396,36 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
             }
         }
+
+        private string _selectedTlkSourceFilter = AllTlkSourceFilterOption;
+        public string SelectedTlkSourceFilter
+        {
+            get => _selectedTlkSourceFilter;
+            set
+            {
+                if (SetProperty(ref _selectedTlkSourceFilter, value))
+                {
+                    RefreshTlkDisplayRecords();
+                }
+            }
+        }
+
+        private TlkDisplayRecord _selectedTlkString;
+        public TlkDisplayRecord SelectedTlkString
+        {
+            get => _selectedTlkString;
+            set
+            {
+                if (SetProperty(ref _selectedTlkString, value))
+                {
+                    tlkUsagesPanel?.RefreshFilter();
+                }
+            }
+        }
+
+        private readonly List<(string SourceName, Dictionary<int, string> Values)> _loadedTlkSources = [];
+        private readonly Dictionary<int, string> _mergedTlkValues = [];
+        private readonly Dictionary<int, TlkStringRecord> _tlkUsageLookup = [];
 
         private string _selectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
         public string SelectedSequenceEventTypeFilter
@@ -689,6 +736,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 || (currentView == 8 && lstbx_Lines?.SelectedIndex >= 0)
                 || (currentView == 9 && lstbx_PlotUsages?.SelectedIndex >= 0)
                 || (currentView == 10 && sequenceEventsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 11 && tlkUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
@@ -1017,7 +1065,186 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count}";
+        }
+
+        private void RefreshTlkLookup()
+        {
+            _tlkUsageLookup.Clear();
+            foreach (var tlkRecord in CurrentDataBase.TlkStrings)
+            {
+                _tlkUsageLookup[tlkRecord.StringID] = new TlkStringRecord(tlkRecord.StringID)
+                {
+                    Usages = tlkRecord.Usages.ToList()
+                };
+            }
+
+            foreach (var line in CurrentDataBase.Lines)
+            {
+                if (line.StrRef <= 0 || !TryGetConversation(line.Convo, out var conversation))
+                {
+                    continue;
+                }
+
+                InferTlkUsageFlags(conversation.ConvFile.FileKey, out bool isInDlc, out bool isInMod);
+                AddTlkUsageToLookup(line.StrRef, new TlkUsage(
+                    conversation.ConvFile.FileKey,
+                    conversation.ConvFile.UIndex,
+                    isInDlc,
+                    isInMod,
+                    TlkUsageContext.Package,
+                    null,
+                    null,
+                    $"Conversation: {line.Convo}"));
+            }
+        }
+
+        private void LoadTlkData()
+        {
+            _loadedTlkSources.Clear();
+            _mergedTlkValues.Clear();
+            RefreshTlkLookup();
+
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption]);
+            SelectedTlkSourceFilter = AllTlkSourceFilterOption;
+
+            var gamePath = MEDirectories.GetDefaultGamePath(CurrentGame);
+            if (string.IsNullOrWhiteSpace(gamePath) || !Directory.Exists(gamePath))
+            {
+                RefreshTlkDisplayRecords();
+                return;
+            }
+
+            var talkFiles = CurrentGame.IsGame1()
+                ? TLKSystem.LoadTLKs(CurrentGame, Localization, male: false, gamePath)
+                    .Concat(TLKSystem.LoadTLKs(CurrentGame, Localization, male: true, gamePath))
+                : TLKSystem.LoadTLKs(CurrentGame, Localization, male: true, gamePath);
+
+            foreach (var talkFile in talkFiles)
+            {
+                var values = talkFile.StringRefs
+                    .Where(sr => sr.StringID > 0)
+                    .GroupBy(sr => sr.StringID)
+                    .ToDictionary(group => group.Key, group => NormalizeTlkText(group.Last().Data));
+
+                if (values.Count == 0)
+                {
+                    continue;
+                }
+
+                var sourceName = GetTlkSourceDisplayName(talkFile.Source);
+                _loadedTlkSources.Add((sourceName, values));
+                foreach (var (stringId, parsedValue) in values)
+                {
+                    _mergedTlkValues[stringId] = parsedValue;
+                }
+            }
+
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption, .. _loadedTlkSources.Select(source => source.SourceName).Distinct(StringComparer.OrdinalIgnoreCase)]);
+            RefreshTlkDisplayRecords();
+        }
+
+        private void RefreshTlkDisplayRecords()
+        {
+            Dictionary<int, string> sourceValues = null;
+            if (!string.Equals(SelectedTlkSourceFilter, AllTlkSourceFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                sourceValues = _loadedTlkSources.FirstOrDefault(source => string.Equals(source.SourceName, SelectedTlkSourceFilter, StringComparison.OrdinalIgnoreCase)).Values;
+            }
+
+            var previousSelection = SelectedTlkString?.StringID;
+            var keys = sourceValues is null
+                ? _mergedTlkValues.Keys.Concat(_tlkUsageLookup.Keys).Distinct().OrderBy(key => key)
+                : sourceValues.Keys.OrderBy(key => key);
+            var records = keys
+                .Select(key => new TlkDisplayRecord
+                {
+                    StringID = key,
+                    ParsedValue = (sourceValues ?? _mergedTlkValues).TryGetValue(key, out var parsedValue) ? parsedValue : null,
+                    SourceName = sourceValues == null ? GetMergedTlkSourceName(key) : SelectedTlkSourceFilter,
+                    Usages = _tlkUsageLookup.TryGetValue(key, out var tlkRecord) ? tlkRecord.Usages : []
+                })
+                .ToList();
+
+            DisplayedTlkStrings.ReplaceAll(records);
+            Filter();
+
+            if (previousSelection.HasValue)
+            {
+                SelectedTlkString = DisplayedTlkStrings.FirstOrDefault(record => record.StringID == previousSelection.Value);
+            }
+            else if (DisplayedTlkStrings.Count > 0)
+            {
+                SelectedTlkString = DisplayedTlkStrings[0];
+            }
+            else
+            {
+                SelectedTlkString = null;
+            }
+        }
+
+        private string GetMergedTlkSourceName(int stringId)
+        {
+            for (int i = _loadedTlkSources.Count - 1; i >= 0; i--)
+            {
+                if (_loadedTlkSources[i].Values.ContainsKey(stringId))
+                {
+                    return _loadedTlkSources[i].SourceName;
+                }
+            }
+
+            return AllTlkSourceFilterOption;
+        }
+
+        private static string GetTlkSourceDisplayName(string source)
+        {
+            return string.IsNullOrWhiteSpace(source) ? "Unknown TLK" : Path.GetFileName(source);
+        }
+
+        private static string NormalizeTlkText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "No Data", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (text.Length >= 2 && ((text[0] == '"' && text[^1] == '"') || (text[0] == '“' && text[^1] == '”')))
+            {
+                return text[1..^1];
+            }
+
+            return text;
+        }
+
+        private void AddTlkUsageToLookup(int stringId, TlkUsage usage)
+        {
+            if (!_tlkUsageLookup.TryGetValue(stringId, out var tlkRecord))
+            {
+                tlkRecord = new TlkStringRecord(stringId);
+                _tlkUsageLookup[stringId] = tlkRecord;
+            }
+
+            if (!tlkRecord.Usages.Contains(usage))
+            {
+                tlkRecord.Usages.Add(usage);
+            }
+        }
+
+        private void InferTlkUsageFlags(int fileKey, out bool isInDlc, out bool isInMod)
+        {
+            isInDlc = false;
+            isInMod = false;
+
+            if (fileKey < 0 || fileKey >= FileListExtended.Count)
+            {
+                return;
+            }
+
+            var directory = FileListExtended[fileKey].Directory ?? string.Empty;
+            isInMod = directory.Contains("DLC_MOD", StringComparison.OrdinalIgnoreCase)
+                      || directory.Contains(@"CookedPCConsole\Mods", StringComparison.OrdinalIgnoreCase)
+                      || directory.Contains(@"CookedPC\Mods", StringComparison.OrdinalIgnoreCase);
+            isInDlc = !isInMod && directory.Contains("DLC_", StringComparison.OrdinalIgnoreCase);
         }
 
         public void ClearDataBase()
@@ -1044,6 +1271,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshTextureDropdownFilters();
             SelectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
             FilterText = string.Empty;
+            _loadedTlkSources.Clear();
+            _mergedTlkValues.Clear();
+            _tlkUsageLookup.Clear();
+            TlkSourceFilters.ReplaceAll([AllTlkSourceFilterOption]);
+            DisplayedTlkStrings.ClearEx();
+            SelectedTlkString = null;
             Filter();
         }
 
@@ -2126,11 +2359,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         RefreshMaterialUsageDropdownFilters();
                         RefreshMaterialTextureDropdownFilters();
                         RefreshTextureDropdownFilters();
+                        LoadTlkData();
                         IsBusy = false;
                         CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} " +
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
-                                                      $"Lines: {CurrentDataBase.Lines.Count}";
+                                                      $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
@@ -2350,6 +2584,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 (usagepkg, contentdir, usagemount) = (FileDirPair)lstbx_Files.SelectedItem;
             }
+            else if (tlkUsagesPanel?.SelectedIndex >= 0 && currentView == 11)
+            {
+                var tu = (TlkUsage)tlkUsagesPanel.SelectedItem;
+                (usagepkg, contentdir, usagemount) = FileListExtended[tu.FileKey];
+                usageUID = tu.UIndex;
+            }
 
             return (usagepkg, contentdir, usagemount, usageUID);
         }
@@ -2384,6 +2624,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     strRef = pu.ContainerID.Value;
                 }
             }
+            else if (tlkUsagesPanel?.SelectedIndex >= 0 && currentView == 11)
+            {
+                OpenSelectedTlkUsage(tool);
+                return;
+            }
 
             if (usagepkg == null)
             {
@@ -2392,6 +2637,62 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             OpenInToolkit(tool, GetFilePath(usagepkg, contentdir), usageUID, strRef, realFileName: usagepkg);
+        }
+
+        private void OpenSelectedTlkUsage(string tool = null)
+        {
+            if (tlkUsagesPanel?.SelectedItem is not TlkUsage usage)
+            {
+                return;
+            }
+
+            var (fileName, contentDir, _) = FileListExtended[usage.FileKey];
+            var filePath = GetFilePath(fileName, contentDir);
+            if (filePath == null)
+            {
+                return;
+            }
+
+            if (string.Equals(tool, "CoalescedEd", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenCoalescedUsage(filePath, usage.InnerFileName, SelectedTlkString?.StringID ?? 0);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(usage.ReferenceName)
+                && usage.ReferenceName.StartsWith("Conversation:", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenInToolkit("DlgEd", filePath, usage.UIndex, SelectedTlkString?.StringID ?? 0, realFileName: fileName);
+                return;
+            }
+
+            switch (usage.Context)
+            {
+                case TlkUsageContext.Codex:
+                    OpenInPlotEditor(filePath, new PlotUsage(usage.FileKey, usage.UIndex, usage.IsInMod, PlotUsageContext.Codex, usage.ContainerID));
+                    return;
+                case TlkUsageContext.Quest:
+                    OpenInPlotEditor(filePath, new PlotUsage(usage.FileKey, usage.UIndex, usage.IsInMod, PlotUsageContext.Quest, usage.ContainerID));
+                    return;
+                case TlkUsageContext.Coalesced:
+                    OpenCoalescedUsage(filePath, usage.InnerFileName, SelectedTlkString?.StringID ?? 0);
+                    return;
+                default:
+                    OpenInToolkit("PackageEditor", filePath, usage.UIndex, realFileName: fileName);
+                    return;
+            }
+        }
+
+        private static void OpenCoalescedUsage(string filePath, string innerFileName, int stringId)
+        {
+            var coalescedEditor = Application.Current.Windows.OfType<CoalescedEditorWindow>().FirstOrDefault() ?? new CoalescedEditorWindow();
+            if (!coalescedEditor.IsVisible)
+            {
+                coalescedEditor.Show();
+            }
+
+            coalescedEditor.NavigateToReference(filePath, innerFileName, stringId > 0 ? stringId.ToString() : null);
+            coalescedEditor.Activate();
         }
 
         private void OpenSourcePkg(object obj)
@@ -2483,6 +2784,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (filePath == null)
                 return; // Do nothing.
+
+            if (filePath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenCoalescedUsage(filePath, null, strRef);
+                return;
+            }
 
 
             IMEPackage package = null;
@@ -2673,7 +2980,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 FilterText = string.Empty;
                 UsageFilterText = string.Empty;
-                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11;
                 Filter();
                 switch (currentView)
                 {
@@ -2692,6 +2999,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         break;
                     case 10:
                         FilterWatermark = "Search (by event name, command text, or type)";
+                        break;
+                    case 11:
+                        FilterWatermark = "Search (by TLK string id, parsed value, or source)";
                         break;
                     default:
                         FilterWatermark = "Search";
@@ -4417,8 +4727,31 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return !string.IsNullOrEmpty(source) && source.Contains(searchText, StringComparison.CurrentCultureIgnoreCase);
         }
 
+        private bool TlkTabFilter(object obj)
+        {
+            if (obj is not TlkDisplayRecord tlkRecord)
+            {
+                return false;
+            }
+
+            return string.IsNullOrWhiteSpace(FilterText)
+                   || ContainsText(tlkRecord.StringID.ToString(), FilterText)
+                   || ContainsText(tlkRecord.DisplayValue, FilterText)
+                   || ContainsText(tlkRecord.SourceName, FilterText);
+        }
+
         public string GetUsageDisplayText(object usage)
         {
+            if (usage is TlkUsage tlkUsage)
+            {
+                var baseText = TryGetUsageKeys(tlkUsage, out int tlkFileKey, out int tlkUIndex)
+                    && tlkFileKey >= 0
+                    && tlkFileKey < FileListExtended.Count
+                    ? $"{FileListExtended[tlkFileKey].FileName}  # {tlkUIndex}   {FileListExtended[tlkFileKey].Directory}"
+                    : usage.ToString();
+                return $"{baseText} {tlkUsage.ReferenceDisplay} {tlkUsage.InnerFileName}";
+            }
+
             if (!TryGetUsageKeys(usage, out int fileKey, out int uIndex)
                 || fileKey < 0
                 || fileKey >= FileListExtended.Count)
@@ -4472,6 +4805,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             vfxUsagesPanel?.RefreshFilter();
             guiUsagesPanel?.RefreshFilter();
             sequenceEventsUsagesPanel?.RefreshFilter();
+            tlkUsagesPanel?.RefreshFilter();
 
             RefreshUsageView(lstbx_Usages);
             RefreshUsageView(lstbx_PlotUsages);
@@ -4729,6 +5063,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewSE = CollectionViewSource.GetDefaultView(CurrentDataBase.SequenceEvents);
                     viewSE.Filter = SequenceEventTabFilter;
                     lstbx_SequenceEvents.ItemsSource = viewSE;
+                    break;
+                case 11: // TLK Strings
+                    ICollectionView viewTlk = CollectionViewSource.GetDefaultView(DisplayedTlkStrings);
+                    viewTlk.Filter = TlkTabFilter;
+                    lstbx_TlkStrings.ItemsSource = viewTlk;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -5059,7 +5398,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         #region Scan
 
         // 05/02/2025 - Add .sfar
-        private static List<string> SupportedFileExtensions = new List<string> { ".u", ".upk", ".sfm", ".pcc", ".cnd", ".sfar" };
+        private static List<string> SupportedFileExtensions = new List<string> { ".u", ".upk", ".sfm", ".pcc", ".cnd", ".sfar", ".bin" };
 
         private async void ScanGame()
         {
@@ -5082,7 +5421,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             rootPath = Path.GetFullPath(rootPath);
 
             string ShaderCacheName = game.IsLEGame() ? "RefShaderCache-PC-D3D-SM5.upk" : "RefShaderCache-PC-D3D-SM3.upk";
-            List<string> files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories).Where(s => SupportedFileExtensions.Contains(Path.GetExtension(s.ToLower())) && !s.EndsWith(ShaderCacheName)).ToList();
+            List<string> files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories)
+                .Where(s => SupportedFileExtensions.Contains(Path.GetExtension(s.ToLower()))
+                            && !s.EndsWith(ShaderCacheName))
+                .ToList();
 
             await dumpPackages(files, game, updateUiAfterScan, showCompletionMessage, preserveBusyState, manageWindowState);
         }
@@ -5286,6 +5628,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 RefreshMaterialUsageDropdownFilters();
                 RefreshMaterialTextureDropdownFilters();
                 RefreshTextureDropdownFilters();
+                LoadTlkData();
             }
 
             Settings.AssetDBGame = CurrentDataBase.Game.ToString();
