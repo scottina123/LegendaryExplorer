@@ -394,6 +394,20 @@ public static class ToolSet
         });
         set.Add(new Tool
         {
+            name = "Coalesced Editor",
+            type = typeof(Tools.CoalescedEditor.CoalescedEditorWindow),
+            icon = Application.Current.FindResource("iconCoalescedEditor") as ImageSource,
+            open = () =>
+            {
+                (new Tools.CoalescedEditor.CoalescedEditorWindow()).Show();
+            },
+            tags = ["utility", "coal", "ini", "bin", "editor", "coalesced"],
+            category = "Extractors + Repackers",
+            category2 = "Utilities",
+            description = "Coalesced Editor opens Coalesced.bin files directly for in-editor editing without extracting to XML. Supports ME3, LE1, LE2, and LE3 coalesced formats.",
+        });
+        set.Add(new Tool
+        {
             name = "DLC Unpacker",
             type = typeof(Tools.DLCUnpacker.DLCUnpackerWindow),
             icon = Application.Current.FindResource("iconDLCUnpacker") as ImageSource,
