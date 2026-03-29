@@ -132,5 +132,10 @@ namespace LegendaryExplorer.MainWindow
         {
             FileAssociations.AssociateOthers();
         }
+
+        private void AssociateCoalescedBin_Click(object sender, RoutedEventArgs e)
+        {
+            FileAssociations.AssociateCoalescedBin();
+        }
     }
 }

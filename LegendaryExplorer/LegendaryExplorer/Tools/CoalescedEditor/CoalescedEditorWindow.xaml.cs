@@ -77,7 +77,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             LoadCoalescedFile(dlg.FileName);
         }
 
-        private void LoadCoalescedFile(string filePath)
+        public void LoadCoalescedFile(string filePath)
         {
             try
             {
@@ -497,6 +497,22 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         }
 
         #endregion
+
+        /// <summary>
+        /// Returns true if the given file path looks like a coalesced .bin file based on its name.
+        /// Matches: Coalesced.bin, Default_DLC_MOD_*.bin, Default_DLC_*.bin
+        /// </summary>
+        public static bool IsCoalescedBinFileName(string filePath)
+        {
+            var fileName = Path.GetFileName(filePath);
+            if (fileName == null) return false;
+            if (fileName.Equals("Coalesced.bin", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (fileName.StartsWith("Default_DLC_", StringComparison.OrdinalIgnoreCase) &&
+                fileName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }
     }
 
     /// <summary>

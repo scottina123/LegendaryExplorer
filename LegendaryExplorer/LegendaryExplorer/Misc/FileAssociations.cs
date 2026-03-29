@@ -116,5 +116,10 @@ namespace LegendaryExplorer.Misc
             EnsureAssociationsSet("dlc", "Mass Effect DLC Mount File", 1);
             EnsureAssociationsSet("cnd", "Mass Effect Conditionals File", 4);
         }
+
+        public static void AssociateCoalescedBin()
+        {
+            EnsureAssociationsSet("bin", "Mass Effect Coalesced File", 3);
+        }
     }
 }

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.Tools.CoalescedEditor;
 using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.FaceFXEditor;
 using LegendaryExplorer.Tools.Meshplorer;
@@ -89,6 +90,12 @@ namespace LegendaryExplorer.Startup
                                 var ce = new ConditionalsEditorWindow();
                                 ce.Show();
                                 ce.LoadFile(file.FullName);
+                                break;
+                            case ".bin":
+                                if (CoalescedEditorWindow.IsCoalescedBinFileName(file.FullName))
+                                {
+                                    OpenTool<CoalescedEditorWindow>(w => w.LoadCoalescedFile(file.FullName));
+                                }
                                 break;
 
                         }
