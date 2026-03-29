@@ -254,6 +254,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (coalFile.FileNames.Count > 0)
                     coalFile.SelectedFileName = isGame3 && coalFile.FileNames.Count > 1 ? coalFile.FileNames[1] : coalFile.FileNames[0];
 
+                coalFile.LastSaved = File.GetLastWriteTime(filePath);
                 coalFile.HasUnsavedChanges = false;
 
                 OpenFiles.Add(coalFile);
@@ -320,6 +321,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 ms.CopyTo(outFs);
                 ms.Dispose();
 
+                coalFile.LastSaved = File.GetLastWriteTime(destinationPath);
                 coalFile.HasUnsavedChanges = false;
                 StatusText = $"Saved: {Path.GetFileName(destinationPath)}";
             }
@@ -1415,6 +1417,25 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         }
 
         public string DisplayName => Path.GetFileName(FilePath);
+
+        private DateTime? _lastSaved;
+        public DateTime? LastSaved
+        {
+            get => _lastSaved;
+            set
+            {
+                if (_lastSaved != value)
+                {
+                    _lastSaved = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(LastSavedDisplay));
+                }
+            }
+        }
+
+        public string LastSavedDisplay => LastSaved.HasValue
+            ? $"Last saved: {LastSaved.Value:G}"
+            : string.Empty;
 
         public bool IsGame3 { get; set; }
 

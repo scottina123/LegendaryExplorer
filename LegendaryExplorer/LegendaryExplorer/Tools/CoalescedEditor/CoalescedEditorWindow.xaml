@@ -41,6 +41,16 @@
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText}" />
             </StatusBarItem>
+            <Separator />
+            <StatusBarItem HorizontalAlignment="Stretch">
+                <TextBlock Text="{Binding SelectedFile.FilePath, TargetNullValue=''}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding SelectedFile.FilePath}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock Text="{Binding SelectedFile.LastSavedDisplay, TargetNullValue=''}" />
+            </StatusBarItem>
         </StatusBar>
         <Grid>
             <Grid.RowDefinitions>
