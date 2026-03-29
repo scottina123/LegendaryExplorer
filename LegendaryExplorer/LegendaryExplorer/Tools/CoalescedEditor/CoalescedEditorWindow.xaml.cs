@@ -59,11 +59,89 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             set => SetProperty(ref _statusText, value);
         }
 
+        private bool _isFindReplaceVisible;
+        public bool IsFindReplaceVisible
+        {
+            get => _isFindReplaceVisible;
+            set => SetProperty(ref _isFindReplaceVisible, value);
+        }
+
+        private string _findText;
+        public string FindText
+        {
+            get => _findText;
+            set
+            {
+                if (SetProperty(ref _findText, value))
+                    UpdateSearchStatus();
+            }
+        }
+
+        private string _replaceText = string.Empty;
+        public string ReplaceText
+        {
+            get => _replaceText;
+            set => SetProperty(ref _replaceText, value);
+        }
+
+        private bool _findMatchCase;
+        public bool FindMatchCase
+        {
+            get => _findMatchCase;
+            set
+            {
+                if (SetProperty(ref _findMatchCase, value))
+                    UpdateSearchStatus();
+            }
+        }
+
+        private bool _findWholeWord;
+        public bool FindWholeWord
+        {
+            get => _findWholeWord;
+            set
+            {
+                if (SetProperty(ref _findWholeWord, value))
+                    UpdateSearchStatus();
+            }
+        }
+
+        private bool _findUseRegex;
+        public bool FindUseRegex
+        {
+            get => _findUseRegex;
+            set
+            {
+                if (SetProperty(ref _findUseRegex, value))
+                    UpdateSearchStatus();
+            }
+        }
+
+        private bool _findWrapAround = true;
+        public bool FindWrapAround
+        {
+            get => _findWrapAround;
+            set => SetProperty(ref _findWrapAround, value);
+        }
+
+        private string _searchStatusText = "Enter text to search.";
+        public string SearchStatusText
+        {
+            get => _searchStatusText;
+            set => SetProperty(ref _searchStatusText, value);
+        }
+
         public ICommand OpenFileCommand { get; set; }
         public ICommand SaveCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
         public ICommand ExportToFolderCommand { get; set; }
         public ICommand CloseTabCommand { get; set; }
+        public ICommand ShowFindReplaceCommand { get; set; }
+        public ICommand FindNextCommand { get; set; }
+        public ICommand FindPreviousCommand { get; set; }
+        public ICommand ReplaceCommand { get; set; }
+        public ICommand ReplaceAllCommand { get; set; }
+        public ICommand CloseFindReplaceCommand { get; set; }
 
         private bool _suppressEditorEvents;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
@@ -87,6 +165,12 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             SaveAsCommand = new GenericCommand(SaveCurrentFileAs, () => SelectedFile != null);
             ExportToFolderCommand = new GenericCommand(ExportToFolder, () => SelectedFile != null);
             CloseTabCommand = new GenericCommand(CloseCurrentTab, () => SelectedFile != null);
+            ShowFindReplaceCommand = new GenericCommand(ShowFindReplace, () => SelectedFile != null);
+            FindNextCommand = new GenericCommand(FindNext, () => SelectedFile != null);
+            FindPreviousCommand = new GenericCommand(FindPrevious, () => SelectedFile != null);
+            ReplaceCommand = new GenericCommand(ReplaceCurrent, () => SelectedFile != null);
+            ReplaceAllCommand = new GenericCommand(ReplaceAll, () => SelectedFile != null);
+            CloseFindReplaceCommand = new GenericCommand(CloseFindReplace);
         }
 
         private void OpenFile()
@@ -319,6 +403,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 ContentArea.Visibility = OpenFiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             if (FilesTabControl != null)
                 FilesTabControl.Visibility = OpenFiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            if (OpenFiles.Count == 0)
+                IsFindReplaceVisible = false;
         }
 
         #region Editor Content Management
@@ -383,6 +469,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 }
 
                 UpdateXmlTagMatchHighlight();
+                UpdateSearchStatus();
             }
             finally
             {
@@ -401,6 +488,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
 
             UpdateXmlTagMatchHighlight();
+            UpdateSearchStatus();
         }
 
         private void TextArea_Caret_PositionChanged(object sender, EventArgs e)
@@ -491,6 +579,360 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             return pairs.TryGetValue(containingMatch.Index, out var openingPair)
                 ? (openingPair.openMatch.Index, openingPair.openMatch.Length, openingPair.closeMatch.Index, openingPair.closeMatch.Length)
                 : null;
+        }
+
+        #endregion
+
+        #region Find and Replace
+
+        private readonly record struct TextReplacement(int StartOffset, int Length, string ReplacementText);
+
+        private void ShowFindReplace()
+        {
+            if (SelectedFile == null || TextEditor == null)
+                return;
+
+            IsFindReplaceVisible = true;
+            if (!string.IsNullOrEmpty(TextEditor.SelectedText))
+                FindText = TextEditor.SelectedText;
+            else
+                UpdateSearchStatus();
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                FindTextBox.Focus();
+                FindTextBox.SelectAll();
+            });
+        }
+
+        private void CloseFindReplace()
+        {
+            IsFindReplaceVisible = false;
+            TextEditor?.Focus();
+        }
+
+        private void FindNext()
+        {
+            FindNextInternal(searchBackward: false);
+        }
+
+        private void FindPrevious()
+        {
+            FindNextInternal(searchBackward: true);
+        }
+
+        private bool FindNextInternal(bool searchBackward)
+        {
+            if (TextEditor?.Document == null)
+                return false;
+
+            if (!TryCreateSearchRegex(out var regex))
+                return false;
+
+            var text = TextEditor.Text;
+            if (string.IsNullOrEmpty(text))
+            {
+                SearchStatusText = "Current document is empty.";
+                StatusText = SearchStatusText;
+                return false;
+            }
+
+            Match match = searchBackward
+                ? FindPreviousMatch(regex, text, GetBackwardSearchStart())
+                : FindNextMatch(regex, text, GetForwardSearchStart());
+
+            if (match == null && FindWrapAround)
+            {
+                match = searchBackward
+                    ? FindPreviousMatch(regex, text, text.Length)
+                    : FindNextMatch(regex, text, 0);
+            }
+
+            if (match == null)
+            {
+                SearchStatusText = "Text not found in current document.";
+                StatusText = SearchStatusText;
+                return false;
+            }
+
+            SelectMatch(match);
+            var location = TextEditor.Document.GetLocation(match.Index);
+            StatusText = $"Found at line {location.Line}, column {location.Column}.";
+            SearchStatusText = BuildMatchCountText(regex, text);
+            return true;
+        }
+
+        private void ReplaceCurrent()
+        {
+            if (TextEditor?.Document == null)
+                return;
+
+            if (!TryCreateSearchRegex(out var regex))
+                return;
+
+            if (!TryGetSelectedMatch(regex, out var selectedMatch))
+            {
+                if (!FindNextInternal(searchBackward: false) || !TryGetSelectedMatch(regex, out selectedMatch))
+                    return;
+            }
+
+            if (!TryGetReplacementText(selectedMatch, out var replacementText))
+                return;
+
+            TextEditor.Document.Replace(selectedMatch.Index, selectedMatch.Length, replacementText);
+            TextEditor.Select(selectedMatch.Index, replacementText.Length);
+            TextEditor.CaretOffset = selectedMatch.Index + replacementText.Length;
+            StatusText = "Replaced current match.";
+            UpdateSearchStatus();
+            FindNextInternal(searchBackward: false);
+        }
+
+        private void ReplaceAll()
+        {
+            if (TextEditor?.Document == null)
+                return;
+
+            if (!TryCreateSearchRegex(out var regex))
+                return;
+
+            var text = TextEditor.Text;
+            var replacements = new List<TextReplacement>();
+            int startIndex = 0;
+
+            while (startIndex <= text.Length)
+            {
+                var match = FindNextMatch(regex, text, startIndex);
+                if (match == null)
+                    break;
+
+                if (!TryGetReplacementText(match, out var replacementText))
+                    return;
+
+                replacements.Add(new TextReplacement(match.Index, match.Length, replacementText));
+                startIndex = match.Index + Math.Max(match.Length, 1);
+            }
+
+            if (replacements.Count == 0)
+            {
+                StatusText = "No matches to replace.";
+                SearchStatusText = StatusText;
+                return;
+            }
+
+            TextEditor.Document.BeginUpdate();
+            try
+            {
+                for (int i = replacements.Count - 1; i >= 0; i--)
+                {
+                    var replacement = replacements[i];
+                    TextEditor.Document.Replace(replacement.StartOffset, replacement.Length, replacement.ReplacementText);
+                }
+            }
+            finally
+            {
+                TextEditor.Document.EndUpdate();
+            }
+
+            TextEditor.Select(0, 0);
+            TextEditor.CaretOffset = 0;
+            TextEditor.Focus();
+            StatusText = $"Replaced {replacements.Count} match{(replacements.Count == 1 ? string.Empty : "es")}.";
+            UpdateSearchStatus();
+        }
+
+        private void FindReplaceTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseFindReplace();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key != Key.Enter)
+                return;
+
+            if (sender == ReplaceTextBox)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                    ReplaceAll();
+                else
+                    ReplaceCurrent();
+            }
+            else
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                    FindPrevious();
+                else
+                    FindNext();
+            }
+
+            e.Handled = true;
+        }
+
+        private void UpdateSearchStatus()
+        {
+            if (TextEditor?.Document == null)
+            {
+                SearchStatusText = "No document selected.";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(FindText))
+            {
+                SearchStatusText = "Enter text to search.";
+                return;
+            }
+
+            if (!TryCreateSearchRegex(out var regex, updateStatusOnError: true))
+                return;
+
+            SearchStatusText = BuildMatchCountText(regex, TextEditor.Text);
+        }
+
+        private bool TryCreateSearchRegex(out Regex regex, bool updateStatusOnError = false)
+        {
+            regex = null;
+            if (string.IsNullOrEmpty(FindText))
+            {
+                if (updateStatusOnError)
+                    SearchStatusText = "Enter text to search.";
+                return false;
+            }
+
+            try
+            {
+                var pattern = FindUseRegex ? FindText : Regex.Escape(FindText);
+                if (FindWholeWord)
+                    pattern = $@"\b(?:{pattern})\b";
+
+                var options = RegexOptions.CultureInvariant | RegexOptions.Multiline;
+                if (!FindMatchCase)
+                    options |= RegexOptions.IgnoreCase;
+
+                regex = new Regex(pattern, options);
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                if (updateStatusOnError)
+                    SearchStatusText = $"Invalid regular expression: {ex.Message}";
+                StatusText = "Invalid search pattern.";
+                return false;
+            }
+        }
+
+        private string BuildMatchCountText(Regex regex, string text)
+        {
+            int count = 0;
+            int startIndex = 0;
+            while (startIndex <= text.Length)
+            {
+                var match = FindNextMatch(regex, text, startIndex);
+                if (match == null)
+                    break;
+
+                count++;
+                startIndex = match.Index + Math.Max(match.Length, 1);
+            }
+
+            return count == 0
+                ? "No matches in current document."
+                : $"{count} match{(count == 1 ? string.Empty : "es")} in current document.";
+        }
+
+        private int GetForwardSearchStart()
+        {
+            return TextEditor.SelectionLength > 0
+                ? TextEditor.SelectionStart + TextEditor.SelectionLength
+                : TextEditor.CaretOffset;
+        }
+
+        private int GetBackwardSearchStart()
+        {
+            return TextEditor.SelectionLength > 0
+                ? TextEditor.SelectionStart
+                : TextEditor.CaretOffset;
+        }
+
+        private void SelectMatch(Match match)
+        {
+            TextEditor.Focus();
+            TextEditor.Select(match.Index, match.Length);
+            TextEditor.CaretOffset = match.Index + match.Length;
+            var location = TextEditor.Document.GetLocation(match.Index);
+            TextEditor.ScrollToLine(location.Line);
+        }
+
+        private bool TryGetSelectedMatch(Regex regex, out Match selectedMatch)
+        {
+            selectedMatch = null;
+            if (TextEditor.SelectionLength == 0)
+                return false;
+
+            var match = regex.Match(TextEditor.Text, TextEditor.SelectionStart);
+            if (!match.Success || match.Length == 0)
+                return false;
+
+            if (match.Index != TextEditor.SelectionStart || match.Length != TextEditor.SelectionLength)
+                return false;
+
+            selectedMatch = match;
+            return true;
+        }
+
+        private bool TryGetReplacementText(Match match, out string replacementText)
+        {
+            replacementText = ReplaceText ?? string.Empty;
+            if (!FindUseRegex)
+                return true;
+
+            try
+            {
+                replacementText = match.Result(replacementText);
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                StatusText = $"Invalid replacement pattern: {ex.Message}";
+                SearchStatusText = StatusText;
+                return false;
+            }
+        }
+
+        private static Match FindNextMatch(Regex regex, string text, int startIndex)
+        {
+            startIndex = Math.Clamp(startIndex, 0, text.Length);
+            var match = regex.Match(text, startIndex);
+
+            while (match.Success && match.Length == 0)
+            {
+                if (match.Index >= text.Length)
+                    return null;
+
+                match = regex.Match(text, match.Index + 1);
+            }
+
+            return match.Success ? match : null;
+        }
+
+        private static Match FindPreviousMatch(Regex regex, string text, int startIndex)
+        {
+            startIndex = Math.Clamp(startIndex, 0, text.Length);
+            Match previousMatch = null;
+            int currentIndex = 0;
+
+            while (currentIndex <= text.Length)
+            {
+                var match = FindNextMatch(regex, text, currentIndex);
+                if (match == null || match.Index >= startIndex)
+                    break;
+
+                previousMatch = match;
+                currentIndex = match.Index + Math.Max(match.Length, 1);
+            }
+
+            return previousMatch;
         }
 
         #endregion

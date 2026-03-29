@@ -15,6 +15,7 @@
         Closed="Root_Closed">
     <Window.Resources>
         <local:IndentedPathDisplayConverter x:Key="IndentedPathDisplayConverter" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
@@ -26,6 +27,9 @@
                 <MenuItem Header="Export to _Folder..." Command="{Binding ExportToFolderCommand}" />
                 <Separator />
                 <MenuItem Header="_Close Tab" Command="{Binding CloseTabCommand}" InputGestureText="Ctrl+W" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Find / Replace..." Command="{Binding ShowFindReplaceCommand}" InputGestureText="Ctrl+F" />
             </MenuItem>
         </Menu>
         <StatusBar DockPanel.Dock="Bottom" Height="23">
@@ -94,6 +98,62 @@
                 <DockPanel Grid.Column="2">
                     <TextBlock x:Name="SelectedFileHeader" DockPanel.Dock="Top"
                                Text="(no file selected)" FontWeight="Bold" Margin="4" />
+                    <Border DockPanel.Dock="Top" Margin="4,0,4,4" Padding="8"
+                            BorderBrush="Gray" BorderThickness="1"
+                            Visibility="{Binding IsFindReplaceVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Find:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="FindTextBox" Grid.Column="1" Margin="0,0,8,0"
+                                         Text="{Binding FindText, UpdateSourceTrigger=PropertyChanged}"
+                                         MinWidth="180"
+                                         VerticalAlignment="Center"
+                                         PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown" />
+                                <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2"
+                                        Content="Previous" Command="{Binding FindPreviousCommand}" />
+                                <Button Grid.Column="3" Margin="0,0,8,0" Padding="10,2"
+                                        Content="Find Next" Command="{Binding FindNextCommand}" />
+                                <Button Grid.Column="4" Padding="10,2"
+                                        Content="Close" Command="{Binding CloseFindReplaceCommand}" />
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Replace:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="ReplaceTextBox" Grid.Column="1" Margin="0,0,8,0"
+                                         Text="{Binding ReplaceText, UpdateSourceTrigger=PropertyChanged}"
+                                         MinWidth="180"
+                                         VerticalAlignment="Center"
+                                         PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown" />
+                                <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2"
+                                        Content="Replace" Command="{Binding ReplaceCommand}" />
+                                <Button Grid.Column="3" Padding="10,2"
+                                        Content="Replace All" Command="{Binding ReplaceAllCommand}" />
+                            </Grid>
+                            <WrapPanel Margin="0,8,0,0">
+                                <CheckBox Content="Match case" Margin="0,0,16,0"
+                                          IsChecked="{Binding FindMatchCase}" />
+                                <CheckBox Content="Match whole word" Margin="0,0,16,0"
+                                          IsChecked="{Binding FindWholeWord}" />
+                                <CheckBox Content="Regular expression" Margin="0,0,16,0"
+                                          IsChecked="{Binding FindUseRegex}" />
+                                <CheckBox Content="Wrap around"
+                                          IsChecked="{Binding FindWrapAround}" />
+                            </WrapPanel>
+                            <TextBlock Margin="0,8,0,0" Text="{Binding SearchStatusText}" />
+                        </StackPanel>
+                    </Border>
                     <avalonedit:TextEditor x:Name="TextEditor"
                                             FontFamily="Consolas" FontSize="13"
                                             ShowLineNumbers="True"
@@ -112,5 +172,6 @@
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}" />
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}" />
         <KeyBinding Key="W" Modifiers="Control" Command="{Binding CloseTabCommand}" />
+        <KeyBinding Key="F" Modifiers="Control" Command="{Binding ShowFindReplaceCommand}" />
     </Window.InputBindings>
 </bases:TrackingNotifyPropertyChangedWindowBase>
