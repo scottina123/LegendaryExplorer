@@ -4832,24 +4832,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var editableLinks = GetInlineEditableLinks();
-
-            if (inlineLinkEditorIsReply)
-            {
-                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(editableLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
-            }
-            else
-            {
-                inlineLinkEditorNode.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(editableLinks.Select(link =>
-                    new StructProperty("BioDialogReplyListDetails", new PropertyCollection
-                    {
-                        new IntProperty(link.Index, "nIndex"),
-                        new StringRefProperty(link.ReplyStrRef, "srParaphrase"),
-                        new StrProperty("", "sParaphrase"),
-                        new EnumProperty(link.RCategory.ToString(), "EReplyCategory", Pcc.Game, "Category"),
-                        new NoneProperty()
-                    })
-                ), "ReplyListNew"));
-            }
+            WriteEditableLinksToNodeProperties(inlineLinkEditorNode, editableLinks);
 
             int nodeCount = inlineLinkEditorNode.Node.NodeCount;
             bool isReply = inlineLinkEditorNode.Node.IsReply;
@@ -4959,7 +4942,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            if (!TryEditDialogueLink(editLink, inlineLinkEditorIsReply))
+            var editableLinks = GetInlineEditableLinks();
+            if (!TryEditDialogueLink(editLink, inlineLinkEditorIsReply, editableLinks))
             {
                 return;
             }
@@ -4980,11 +4964,13 @@ namespace LegendaryExplorer.DialogueEditor
             DialogueNode_Selected(node);
 
             var editLink = node.Links[linkIndex];
-            if (!TryEditDialogueLink(editLink, node.Node.IsReply))
+            var editableLinks = node.Links.OrderBy(link => link.Order).ToList();
+            if (!TryEditDialogueLink(editLink, node.Node.IsReply, editableLinks))
             {
                 return;
             }
 
+            WriteEditableLinksToNodeProperties(node, editableLinks);
             PushLocalGraphChanges(node);
 
             if (inlineLinkEditorNode?.NodeUID == node.NodeUID)
@@ -4994,11 +4980,21 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private bool TryEditDialogueLink(ReplyChoiceNode editLink, bool sourceNodeIsReply)
+        private bool TryEditDialogueLink(ReplyChoiceNode editLink, bool sourceNodeIsReply, IList<ReplyChoiceNode> editableLinks)
         {
             if (editLink is not { IsEditableLink: true })
             {
                 return false;
+            }
+
+            if (editableLinks == null || !editableLinks.Contains(editLink))
+            {
+                editableLinks = [editLink];
+            }
+
+            foreach (var link in editableLinks)
+            {
+                ParseInlineLink(link);
             }
 
             var links = new List<string>();
@@ -5028,6 +5024,8 @@ namespace LegendaryExplorer.DialogueEditor
                     this,
                     links,
                     currentSelection,
+                    editableLinks.Select(link => BuildLinkOrderDisplayText(link, sourceNodeIsReply)),
+                    editableLinks.IndexOf(editLink),
                     !sourceNodeIsReply,
                     editLink.ReplyStrRef,
                     id => GlobalFindStrRefbyID(id, Pcc),
@@ -5045,7 +5043,89 @@ namespace LegendaryExplorer.DialogueEditor
                 editLink.RCategory = Enums.Parse<EReplyCategory>(dialogResult.SelectedCategory);
             }
 
+            MoveEditableLinkToOrder(editableLinks, editLink, dialogResult.SelectedOrder);
+
             return true;
+        }
+
+        internal static void MoveEditableLinkToOrder(IList<ReplyChoiceNode> editableLinks, ReplyChoiceNode editedLink, int targetOrder)
+        {
+            if (editableLinks == null || editedLink == null || editableLinks.Count == 0)
+            {
+                return;
+            }
+
+            var orderedLinks = editableLinks.OrderBy(link => link.Order).ToList();
+            int currentIndex = orderedLinks.IndexOf(editedLink);
+            if (currentIndex < 0)
+            {
+                return;
+            }
+
+            targetOrder = Math.Clamp(targetOrder, 0, orderedLinks.Count - 1);
+            if (currentIndex != targetOrder)
+            {
+                orderedLinks.RemoveAt(currentIndex);
+                orderedLinks.Insert(targetOrder, editedLink);
+            }
+
+            for (int i = 0; i < orderedLinks.Count; i++)
+            {
+                orderedLinks[i].Order = i;
+                orderedLinks[i].Ordinal = AddOrdinal(i + 1);
+            }
+        }
+
+        internal static string BuildLinkOrderDisplayText(ReplyChoiceNode link, bool sourceNodeIsReply)
+        {
+            if (link == null)
+            {
+                return string.Empty;
+            }
+
+            string summary = sourceNodeIsReply
+                ? link.TgtLine
+                : $"{link.ReplyStrRef} {link.ReplyLine}";
+
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                summary = link.TgtLine;
+            }
+
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                summary = link.NodeIDLink;
+            }
+
+            summary = Regex.Replace(summary ?? string.Empty, @"\s+", " ").Trim();
+            return $"{AddOrdinal(link.Order + 1)} - {link.NodeIDLink}: {summary}";
+        }
+
+        private void WriteEditableLinksToNodeProperties(DiagNode node, IEnumerable<ReplyChoiceNode> editableLinks)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            var orderedLinks = editableLinks?.OrderBy(link => link.Order).ToList() ?? [];
+            if (node.Node.IsReply)
+            {
+                node.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(orderedLinks.Select(link => new IntProperty(link.Index)), "EntryList"));
+            }
+            else
+            {
+                node.NodeProp.Properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(orderedLinks.Select(link =>
+                    new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                    {
+                        new IntProperty(link.Index, "nIndex"),
+                        new StringRefProperty(link.ReplyStrRef, "srParaphrase"),
+                        new StrProperty("", "sParaphrase"),
+                        new EnumProperty(link.RCategory.ToString(), "EReplyCategory", Pcc.Game, "Category"),
+                        new NoneProperty()
+                    })
+                ), "ReplyListNew"));
+            }
         }
 
         private void ReOrderInlineLinkEditorLinks(ReplyChoiceNode selectedLink = null)

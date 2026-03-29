@@ -445,10 +445,18 @@ namespace LegendaryExplorer.DialogueEditor
             if (currentSelection is null)
                 return;
 
+            var editableLinks = GetEditableLinks();
+            foreach (var link in editableLinks)
+            {
+                ParseLink(link);
+            }
+
             if (!DialogueLinkEditDialog.TryEditLink(
                     this,
                     links,
                     currentSelection,
+                    editableLinks.Select(link => DialogueEditorWindow.BuildLinkOrderDisplayText(link, IsReply)),
+                    editableLinks.IndexOf(editLink),
                     !IsReply,
                     editLink.ReplyStrRef,
                     id => GlobalFindStrRefbyID(id, ParentWindow.Pcc),
@@ -465,6 +473,8 @@ namespace LegendaryExplorer.DialogueEditor
                 editLink.ReplyStrRef = dialogResult.ReplyStrRef;
                 editLink.RCategory = Enums.Parse<EReplyCategory>(dialogResult.SelectedCategory);
             }
+
+            DialogueEditorWindow.MoveEditableLinkToOrder(editableLinks, editLink, dialogResult.SelectedOrder);
 
             ParseLink(editLink);
             ReOrderTable(editLink);

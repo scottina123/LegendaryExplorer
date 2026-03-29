@@ -1764,7 +1764,10 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         foreach (var rc in rcarray)
                         {
-                            var replychoice = new ReplyChoiceNode(-1, "", -1, EReplyCategory.REPLY_CATEGORY_DEFAULT, "No data");
+                            var replychoice = new ReplyChoiceNode(-1, "", -1, EReplyCategory.REPLY_CATEGORY_DEFAULT, "No data")
+                            {
+                                Order = Links.Count
+                            };
                             var nIDprop = rc.GetProp<IntProperty>("nIndex");
                             if (nIDprop != null)
                             {
@@ -1989,7 +1992,10 @@ namespace LegendaryExplorer.DialogueEditor
                             n++;
 
                             //Add to links package
-                            var replychoice = new ReplyChoiceNode(linkedOp, "", -1, EReplyCategory.REPLY_CATEGORY_DEFAULT, "No data");
+                            var replychoice = new ReplyChoiceNode(linkedOp, "", -1, EReplyCategory.REPLY_CATEGORY_DEFAULT, "No data")
+                            {
+                                Order = n
+                            };
                             Links.Add(replychoice);
                         }
                     }
