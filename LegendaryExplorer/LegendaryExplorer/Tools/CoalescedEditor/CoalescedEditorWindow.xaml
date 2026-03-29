@@ -16,6 +16,11 @@
     <Window.Resources>
         <local:IndentedPathDisplayConverter x:Key="IndentedPathDisplayConverter" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <ContextMenu x:Key="EditorContextMenu">
+            <MenuItem Header="Cut" Click="EditorContextMenu_Cut_Click" />
+            <MenuItem Header="Copy" Click="EditorContextMenu_Copy_Click" />
+            <MenuItem Header="Paste" Click="EditorContextMenu_Paste_Click" />
+        </ContextMenu>
     </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
@@ -157,7 +162,8 @@
                     <avalonedit:TextEditor x:Name="TextEditor"
                                             FontFamily="Consolas" FontSize="13"
                                             ShowLineNumbers="True"
-                                            WordWrap="False" />
+                                             WordWrap="False"
+                                             ContextMenu="{StaticResource EditorContextMenu}" />
                 </DockPanel>
             </Grid>
             <!-- Startup text shown when no files are open -->

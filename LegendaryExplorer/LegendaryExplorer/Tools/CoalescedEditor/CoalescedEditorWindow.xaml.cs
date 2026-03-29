@@ -183,6 +183,24 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             LoadCoalescedFile(dlg.FileName);
         }
 
+        private void EditorContextMenu_Cut_Click(object sender, RoutedEventArgs e)
+        {
+            TextEditor?.Focus();
+            TextEditor?.Cut();
+        }
+
+        private void EditorContextMenu_Copy_Click(object sender, RoutedEventArgs e)
+        {
+            TextEditor?.Focus();
+            TextEditor?.Copy();
+        }
+
+        private void EditorContextMenu_Paste_Click(object sender, RoutedEventArgs e)
+        {
+            TextEditor?.Focus();
+            TextEditor?.Paste();
+        }
+
         public void LoadCoalescedFile(string filePath)
         {
             try
