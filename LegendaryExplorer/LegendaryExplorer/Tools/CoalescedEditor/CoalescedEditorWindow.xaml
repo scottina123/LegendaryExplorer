@@ -77,7 +77,14 @@
                 </TabControl.Style>
                 <TabControl.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal"
+                                    Tag="{Binding}"
+                                    AllowDrop="True"
+                                    PreviewMouseLeftButtonDown="TabHeader_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="TabHeader_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="TabHeader_PreviewMouseLeftButtonUp"
+                                    DragOver="TabHeader_DragOver"
+                                    Drop="TabHeader_Drop">
                             <TextBlock Text="{Binding TabHeader}" VerticalAlignment="Center" />
                             <Button Content="✕" Margin="6,0,0,0" Padding="2,0"
                                     FontSize="10" VerticalAlignment="Center"

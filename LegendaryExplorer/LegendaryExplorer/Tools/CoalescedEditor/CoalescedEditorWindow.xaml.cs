@@ -174,6 +174,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
         private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
         private CoalescedSearchMatch? _currentSearchMatch;
+        private Point _tabDragStartPoint;
+        private OpenCoalescedFile _tabDragSource;
 
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
@@ -457,6 +459,85 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             {
                 CloseTab(file);
             }
+        }
+
+        private void TabHeader_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: OpenCoalescedFile file })
+                return;
+
+            if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null)
+            {
+                _tabDragSource = null;
+                return;
+            }
+
+            _tabDragStartPoint = e.GetPosition(this);
+            _tabDragSource = file;
+        }
+
+        private void TabHeader_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _tabDragSource == null || sender is not FrameworkElement fe)
+                return;
+
+            Point currentPosition = e.GetPosition(this);
+            if (Math.Abs(currentPosition.X - _tabDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(currentPosition.Y - _tabDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            DragDrop.DoDragDrop(fe, new DataObject(typeof(OpenCoalescedFile), _tabDragSource), DragDropEffects.Move);
+            _tabDragSource = null;
+        }
+
+        private void TabHeader_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            _tabDragSource = null;
+        }
+
+        private void TabHeader_DragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(typeof(OpenCoalescedFile)) ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void TabHeader_Drop(object sender, DragEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: OpenCoalescedFile targetFile } ||
+                e.Data.GetData(typeof(OpenCoalescedFile)) is not OpenCoalescedFile sourceFile ||
+                ReferenceEquals(sourceFile, targetFile))
+            {
+                return;
+            }
+
+            int sourceIndex = OpenFiles.IndexOf(sourceFile);
+            int targetIndex = OpenFiles.IndexOf(targetFile);
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+                return;
+
+            OpenFiles.Move(sourceIndex, targetIndex);
+            SelectedFile = sourceFile;
+            SaveOpenFilesList();
+            e.Handled = true;
+        }
+
+        private static T FindAncestor<T>(DependencyObject dependencyObject) where T : DependencyObject
+        {
+            while (dependencyObject != null)
+            {
+                if (dependencyObject is T found)
+                    return found;
+
+                dependencyObject = dependencyObject switch
+                {
+                    Visual or System.Windows.Media.Media3D.Visual3D => VisualTreeHelper.GetParent(dependencyObject),
+                    _ => LogicalTreeHelper.GetParent(dependencyObject)
+                };
+            }
+
+            return null;
         }
 
         private void UpdateWelcomeVisibility()
