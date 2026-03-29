@@ -36,6 +36,9 @@
             <MenuItem Header="_Edit">
                 <MenuItem Header="_Find / Replace..." Command="{Binding ShowFindReplaceCommand}" InputGestureText="Ctrl+F" />
             </MenuItem>
+            <MenuItem Header="_TLK Boxes"
+                      IsCheckable="True"
+                      IsChecked="{Binding ShowTlkBoxes, Mode=TwoWay}" />
         </Menu>
         <StatusBar DockPanel.Dock="Bottom" Height="23">
             <StatusBarItem>

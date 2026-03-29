@@ -138,6 +138,22 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             set => SetProperty(ref _searchStatusText, value);
         }
 
+        private bool _showTlkBoxes = true;
+        public bool ShowTlkBoxes
+        {
+            get => _showTlkBoxes;
+            set
+            {
+                if (!SetProperty(ref _showTlkBoxes, value))
+                    return;
+
+                UpdateTlkInlineAnnotations();
+                ResetSearchState();
+                UpdateSearchStatus();
+                SaveOpenFilesList();
+            }
+        }
+
         public ICommand OpenFileCommand { get; set; }
         public ICommand SaveCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
@@ -1122,7 +1138,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private List<ResolvedTlkAnnotation> GetResolvedTlkAnnotations(string text)
         {
             var game = GetSelectedFileGame();
-            if (string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
+            if (!ShowTlkBoxes || string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
                 return [];
 
             var seenOffsets = new HashSet<int>();
@@ -1231,8 +1247,13 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             try
             {
-                var paths = OpenFiles.Select(f => f.FilePath).ToList();
-                var json = JsonSerializer.Serialize(paths);
+                var state = new CoalescedEditorState
+                {
+                    OpenFilePaths = OpenFiles.Select(f => f.FilePath).ToList(),
+                    ShowTlkBoxes = ShowTlkBoxes
+                };
+
+                var json = JsonSerializer.Serialize(state);
                 Directory.CreateDirectory(Path.GetDirectoryName(StateFilePath));
                 File.WriteAllText(StateFilePath, json);
             }
@@ -1249,6 +1270,21 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (!File.Exists(StateFilePath)) return;
 
                 var json = File.ReadAllText(StateFilePath);
+                var state = JsonSerializer.Deserialize<CoalescedEditorState>(json);
+                if (state?.OpenFilePaths != null)
+                {
+                    ShowTlkBoxes = state.ShowTlkBoxes;
+                    foreach (var path in state.OpenFilePaths)
+                    {
+                        if (File.Exists(path))
+                        {
+                            LoadCoalescedFile(path);
+                        }
+                    }
+
+                    return;
+                }
+
                 var paths = JsonSerializer.Deserialize<List<string>>(json);
                 if (paths == null) return;
 
@@ -1937,5 +1973,11 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             expandedTextBox.Focus();
             expandedTextBox.Select(0, 0);
         }
+    }
+
+    internal sealed class CoalescedEditorState
+    {
+        public List<string> OpenFilePaths { get; set; } = [];
+        public bool ShowTlkBoxes { get; set; } = true;
     }
 }
