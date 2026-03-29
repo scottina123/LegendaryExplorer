@@ -121,6 +121,7 @@ namespace LegendaryExplorer.DialogueEditor
     public partial class BulkInterpEditorDialog : Window
     {
         public ObservableCollectionExtended<InterpGroupItem> InterpGroupItems { get; } = new();
+        public ObservableCollectionExtended<string> FindNames { get; } = new();
         public bool ChangesApplied { get; private set; }
 
         private readonly ExportEntry _interpData;
@@ -156,6 +157,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void LoadInterpGroups()
         {
             InterpGroupItems.ClearEx();
+            FindNames.ClearEx();
 
             if (_interpData == null)
             {
@@ -223,6 +225,22 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                 }
             }
+
+            RebuildFindNames();
+        }
+
+        private void RebuildFindNames()
+        {
+            FindNames.ClearEx();
+
+            foreach (string name in InterpGroupItems
+                         .SelectMany(item => new[] { item.GroupName, item.SFXFindActor, item.TrackFindActor })
+                         .Where(name => !string.IsNullOrWhiteSpace(name))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+            {
+                FindNames.Add(name);
+            }
         }
 
         /// <summary>
@@ -247,7 +265,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void Apply_Click(object sender, RoutedEventArgs e)
         {
             // Apply bulk find/replace first if there is text in the find box
-            string findText = FindTextBox.Text;
+            string findText = FindNameComboBox.SelectedItem as string;
             string replaceText = ReplaceTextBox.Text;
 
             if (!string.IsNullOrEmpty(findText))
@@ -353,6 +371,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (changesApplied > 0)
             {
                 ChangesApplied = true;
+                RebuildFindNames();
                 MessageBox.Show($"Applied {changesApplied} change(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }

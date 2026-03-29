@@ -12,6 +12,37 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <Style x:Key="BulkInterpModifiedCheckBoxStyle" TargetType="{x:Type CheckBox}">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type CheckBox}">
+                        <Grid Width="16" Height="16">
+                            <Border x:Name="Box"
+                                    Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                    BorderThickness="1" />
+                            <Path x:Name="CheckMark"
+                                  Data="M 2 8 L 6 12 L 14 3"
+                                  Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Square"
+                                  StrokeEndLineCap="Square"
+                                  StrokeLineJoin="Round"
+                                  Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -47,7 +78,13 @@
                 <DataGridTextColumn Header="Group Name" Binding="{Binding GroupName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
                 <DataGridTextColumn Header="m_nmSFXFindActor" Binding="{Binding SFXFindActor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140"/>
                 <DataGridTextColumn Header="m_nmFindActor" Binding="{Binding TrackFindActor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140"/>
-                <DataGridCheckBoxColumn Header="Modified" Binding="{Binding IsModified, Mode=OneWay}" IsReadOnly="True" Width="70"/>
+                <DataGridTemplateColumn Header="Modified" Width="70">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsModified, Mode=OneWay}" Style="{StaticResource BulkInterpModifiedCheckBoxStyle}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
 
@@ -66,7 +103,7 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Find:" VerticalAlignment="Center" Margin="5"/>
-                <TextBox Grid.Row="0" Grid.Column="1" x:Name="FindTextBox" Margin="5"/>
+                <ComboBox Grid.Row="0" Grid.Column="1" x:Name="FindNameComboBox" ItemsSource="{Binding FindNames}" Margin="5"/>
                 <TextBlock Grid.Row="0" Grid.Column="2" Text="Replace:" VerticalAlignment="Center" Margin="5"/>
                 <TextBox Grid.Row="0" Grid.Column="3" x:Name="ReplaceTextBox" Width="150" Margin="5"/>
 
