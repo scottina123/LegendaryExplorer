@@ -171,6 +171,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         public ICommand CloseFindReplaceCommand { get; set; }
 
         private bool _suppressEditorEvents;
+        private bool _isRestoringState;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
         private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
         private CoalescedSearchMatch? _currentSearchMatch;
@@ -584,6 +585,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             if (_suppressEditorEvents) return;
             if (SelectedFile != null && FileListBox.SelectedItem is string selectedFile)
             {
+                CaptureCurrentEditorViewState();
                 SelectedFile.SelectedFileName = selectedFile;
                 _suppressEditorEvents = true;
                 try { UpdateEditorContent(); }
@@ -615,6 +617,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
                 UpdateXmlTagMatchHighlight();
                 UpdateTlkInlineAnnotations();
+                RestoreCurrentEditorViewState();
                 ResetSearchState();
                 UpdateSearchStatus();
             }
@@ -1434,9 +1437,24 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             try
             {
+                CaptureCurrentEditorViewState();
                 var state = new CoalescedEditorState
                 {
-                    OpenFilePaths = OpenFiles.Select(f => f.FilePath).ToList(),
+                    OpenFiles = OpenFiles.Select(f => new CoalescedEditorFileState
+                    {
+                        FilePath = f.FilePath,
+                        SelectedInnerFileName = f.SelectedFileName,
+                        DocumentViews = f.DocumentViewStates.Values
+                            .Select(view => new CoalescedEditorDocumentViewState
+                            {
+                                FileName = view.FileName,
+                                CaretOffset = view.CaretOffset,
+                                VerticalOffset = view.VerticalOffset,
+                                HorizontalOffset = view.HorizontalOffset
+                            })
+                            .ToList()
+                    }).ToList(),
+                    SelectedOpenFilePath = SelectedFile?.FilePath,
                     ShowTlkBoxes = ShowTlkBoxes
                 };
 
@@ -1456,17 +1474,39 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             {
                 if (!File.Exists(StateFilePath)) return;
 
+                _isRestoringState = true;
                 var json = File.ReadAllText(StateFilePath);
                 var state = JsonSerializer.Deserialize<CoalescedEditorState>(json);
-                if (state?.OpenFilePaths != null)
+                if (state?.OpenFiles != null)
                 {
                     ShowTlkBoxes = state.ShowTlkBoxes;
-                    foreach (var path in state.OpenFilePaths)
+                    foreach (var fileState in state.OpenFiles)
                     {
-                        if (File.Exists(path))
+                        if (File.Exists(fileState.FilePath))
                         {
-                            LoadCoalescedFile(path);
+                            LoadCoalescedFile(fileState.FilePath);
+                            var openFile = OpenFiles.FirstOrDefault(f => f.FilePath.Equals(fileState.FilePath, StringComparison.OrdinalIgnoreCase));
+                            if (openFile == null)
+                                continue;
+
+                            foreach (var viewState in fileState.DocumentViews ?? [])
+                            {
+                                if (string.IsNullOrWhiteSpace(viewState.FileName))
+                                    continue;
+
+                                openFile.DocumentViewStates[viewState.FileName] = viewState;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(fileState.SelectedInnerFileName) && openFile.FileContents.ContainsKey(fileState.SelectedInnerFileName))
+                            {
+                                openFile.SelectedFileName = fileState.SelectedInnerFileName;
+                            }
                         }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(state.SelectedOpenFilePath))
+                    {
+                        SelectedFile = OpenFiles.FirstOrDefault(f => f.FilePath.Equals(state.SelectedOpenFilePath, StringComparison.OrdinalIgnoreCase)) ?? SelectedFile;
                     }
 
                     return;
@@ -1487,6 +1527,43 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             {
                 // Silently fail - not critical
             }
+            finally
+            {
+                _isRestoringState = false;
+            }
+        }
+
+        private void CaptureCurrentEditorViewState()
+        {
+            if (SelectedFile?.SelectedFileName == null || TextEditor?.Document == null)
+                return;
+
+            SelectedFile.DocumentViewStates[SelectedFile.SelectedFileName] = new CoalescedEditorDocumentViewState
+            {
+                FileName = SelectedFile.SelectedFileName,
+                CaretOffset = TextEditor.CaretOffset,
+                VerticalOffset = TextEditor.VerticalOffset,
+                HorizontalOffset = TextEditor.HorizontalOffset
+            };
+        }
+
+        private void RestoreCurrentEditorViewState()
+        {
+            if (SelectedFile?.SelectedFileName == null || TextEditor?.Document == null)
+                return;
+
+            if (!SelectedFile.DocumentViewStates.TryGetValue(SelectedFile.SelectedFileName, out var state))
+                return;
+
+            int caretOffset = Math.Clamp(state.CaretOffset, 0, TextEditor.Document.TextLength);
+            TextEditor.Select(0, 0);
+            TextEditor.CaretOffset = caretOffset;
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                TextEditor.ScrollToVerticalOffset(Math.Max(0, state.VerticalOffset));
+                TextEditor.ScrollToHorizontalOffset(Math.Max(0, state.HorizontalOffset));
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         #endregion
@@ -1864,6 +1941,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         public bool IsGame3 { get; set; }
 
         public Dictionary<string, string> FileContents { get; set; } = new();
+        public Dictionary<string, CoalescedEditorDocumentViewState> DocumentViewStates { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public ObservableCollection<string> FileNames { get; } = new();
 
@@ -2164,7 +2242,23 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
     internal sealed class CoalescedEditorState
     {
-        public List<string> OpenFilePaths { get; set; } = [];
+        public List<CoalescedEditorFileState> OpenFiles { get; set; } = [];
+        public string SelectedOpenFilePath { get; set; }
         public bool ShowTlkBoxes { get; set; } = true;
+    }
+
+    internal sealed class CoalescedEditorFileState
+    {
+        public string FilePath { get; set; }
+        public string SelectedInnerFileName { get; set; }
+        public List<CoalescedEditorDocumentViewState> DocumentViews { get; set; } = [];
+    }
+
+    public sealed class CoalescedEditorDocumentViewState
+    {
+        public string FileName { get; set; }
+        public int CaretOffset { get; set; }
+        public double VerticalOffset { get; set; }
+        public double HorizontalOffset { get; set; }
     }
 }
