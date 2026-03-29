@@ -153,6 +153,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private bool _suppressEditorEvents;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
         private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
+        private CoalescedSearchMatch? _currentSearchMatch;
 
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
@@ -513,6 +514,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
                 UpdateXmlTagMatchHighlight();
                 UpdateTlkInlineAnnotations();
+                ResetSearchState();
                 UpdateSearchStatus();
             }
             finally
@@ -533,6 +535,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             UpdateXmlTagMatchHighlight();
             UpdateTlkInlineAnnotations();
+            ResetSearchState();
             UpdateSearchStatus();
         }
 
@@ -631,6 +634,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         #region Find and Replace
 
         private readonly record struct TextReplacement(int StartOffset, int Length, string ReplacementText);
+        private readonly record struct ResolvedTlkAnnotation(int AnchorOffset, int AnchorLength, string Text);
+        private readonly record struct CoalescedSearchMatch(int AnchorOffset, int AnchorLength, int SortOffset, int SortSubOffset, int MatchLength, bool IsFriendly);
 
         private void ShowFindReplace()
         {
@@ -682,28 +687,31 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 return false;
             }
 
-            Match match = searchBackward
-                ? FindPreviousMatch(regex, text, GetBackwardSearchStart())
-                : FindNextMatch(regex, text, GetForwardSearchStart());
-
-            if (match == null && FindWrapAround)
-            {
-                match = searchBackward
-                    ? FindPreviousMatch(regex, text, text.Length)
-                    : FindNextMatch(regex, text, 0);
-            }
-
-            if (match == null)
+            var matches = GetSearchMatches(regex, text);
+            if (matches.Count == 0)
             {
                 SearchStatusText = "Text not found in current document.";
                 StatusText = SearchStatusText;
                 return false;
             }
 
-            SelectMatch(match);
-            var location = TextEditor.Document.GetLocation(match.Index);
-            StatusText = $"Found at line {location.Line}, column {location.Column}.";
-            SearchStatusText = BuildMatchCountText(regex, text);
+            CoalescedSearchMatch? match = searchBackward
+                ? FindPreviousSearchMatch(matches)
+                : FindNextSearchMatch(matches);
+
+            if (match is null)
+            {
+                SearchStatusText = "Text not found in current document.";
+                StatusText = SearchStatusText;
+                return false;
+            }
+
+            ApplySearchMatch(match.Value);
+            var location = TextEditor.Document.GetLocation(match.Value.AnchorOffset);
+            StatusText = match.Value.IsFriendly
+                ? $"Found in resolved TLK text at line {location.Line}, column {location.Column}."
+                : $"Found at line {location.Line}, column {location.Column}.";
+            SearchStatusText = BuildMatchCountText(matches.Count);
             return true;
         }
 
@@ -714,6 +722,13 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             if (!TryCreateSearchRegex(out var regex))
                 return;
+
+            if (_currentSearchMatch is { IsFriendly: true })
+            {
+                SearchStatusText = "Resolved TLK text is read-only.";
+                StatusText = SearchStatusText;
+                return;
+            }
 
             if (!TryGetSelectedMatch(regex, out var selectedMatch))
             {
@@ -727,6 +742,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             TextEditor.Document.Replace(selectedMatch.Index, selectedMatch.Length, replacementText);
             TextEditor.Select(selectedMatch.Index, replacementText.Length);
             TextEditor.CaretOffset = selectedMatch.Index + replacementText.Length;
+            ResetSearchState();
             StatusText = "Replaced current match.";
             UpdateSearchStatus();
             FindNextInternal(searchBackward: false);
@@ -781,6 +797,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             TextEditor.Select(0, 0);
             TextEditor.CaretOffset = 0;
             TextEditor.Focus();
+            ResetSearchState();
             StatusText = $"Replaced {replacements.Count} match{(replacements.Count == 1 ? string.Empty : "es")}.";
             UpdateSearchStatus();
         }
@@ -845,7 +862,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             if (!TryCreateSearchRegex(out var regex, updateStatusOnError: true))
                 return;
 
-            SearchStatusText = BuildMatchCountText(regex, TextEditor.Text);
+            SearchStatusText = BuildMatchCountText(GetSearchMatches(regex, TextEditor.Text).Count);
         }
 
         private bool TryCreateSearchRegex(out Regex regex, bool updateStatusOnError = false)
@@ -880,9 +897,22 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
         }
 
-        private string BuildMatchCountText(Regex regex, string text)
+        private string BuildMatchCountText(int count)
         {
-            int count = 0;
+            return count == 0
+                ? "No matches in current document."
+                : $"{count} match{(count == 1 ? string.Empty : "es")} in current document.";
+        }
+
+        private void ResetSearchState()
+        {
+            _currentSearchMatch = null;
+        }
+
+        private List<CoalescedSearchMatch> GetSearchMatches(Regex regex, string text)
+        {
+            var matches = new List<CoalescedSearchMatch>();
+
             int startIndex = 0;
             while (startIndex <= text.Length)
             {
@@ -890,13 +920,86 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (match == null)
                     break;
 
-                count++;
+                matches.Add(new CoalescedSearchMatch(match.Index, match.Length, match.Index, match.Index, match.Length, false));
                 startIndex = match.Index + Math.Max(match.Length, 1);
             }
 
-            return count == 0
-                ? "No matches in current document."
-                : $"{count} match{(count == 1 ? string.Empty : "es")} in current document.";
+            foreach (var annotation in GetResolvedTlkAnnotations(text))
+            {
+                startIndex = 0;
+                while (startIndex <= annotation.Text.Length)
+                {
+                    var match = FindNextMatch(regex, annotation.Text, startIndex);
+                    if (match == null)
+                        break;
+
+                    matches.Add(new CoalescedSearchMatch(annotation.AnchorOffset, annotation.AnchorLength, annotation.AnchorOffset, match.Index, match.Length, true));
+                    startIndex = match.Index + Math.Max(match.Length, 1);
+                }
+            }
+
+            return matches.OrderBy(m => m.SortOffset)
+                         .ThenBy(m => m.IsFriendly ? 1 : 0)
+                         .ThenBy(m => m.SortSubOffset)
+                         .ToList();
+        }
+
+        private CoalescedSearchMatch? FindNextSearchMatch(List<CoalescedSearchMatch> matches)
+        {
+            if (_currentSearchMatch is CoalescedSearchMatch currentMatch)
+            {
+                int currentIndex = matches.FindIndex(match => match.Equals(currentMatch));
+                if (currentIndex >= 0)
+                {
+                    if (currentIndex + 1 < matches.Count)
+                        return matches[currentIndex + 1];
+
+                    return FindWrapAround ? matches[0] : null;
+                }
+            }
+
+            int startOffset = GetForwardSearchStart();
+            foreach (var match in matches)
+            {
+                if (match.SortOffset >= startOffset)
+                    return match;
+            }
+
+            return FindWrapAround ? matches[0] : null;
+        }
+
+        private CoalescedSearchMatch? FindPreviousSearchMatch(List<CoalescedSearchMatch> matches)
+        {
+            if (_currentSearchMatch is CoalescedSearchMatch currentMatch)
+            {
+                int currentIndex = matches.FindIndex(match => match.Equals(currentMatch));
+                if (currentIndex >= 0)
+                {
+                    if (currentIndex > 0)
+                        return matches[currentIndex - 1];
+
+                    return FindWrapAround ? matches[^1] : null;
+                }
+            }
+
+            int startOffset = GetBackwardSearchStart();
+            for (int i = matches.Count - 1; i >= 0; i--)
+            {
+                if (matches[i].SortOffset < startOffset)
+                    return matches[i];
+            }
+
+            return FindWrapAround ? matches[^1] : null;
+        }
+
+        private void ApplySearchMatch(CoalescedSearchMatch match)
+        {
+            _currentSearchMatch = match;
+            TextEditor.Focus();
+            TextEditor.Select(match.AnchorOffset, match.AnchorLength);
+            TextEditor.CaretOffset = match.AnchorOffset + match.AnchorLength;
+            var location = TextEditor.Document.GetLocation(match.AnchorOffset);
+            TextEditor.ScrollToLine(location.Line);
         }
 
         private int GetForwardSearchStart()
@@ -1008,8 +1111,22 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 return;
             }
 
+            var annotations = GetResolvedTlkAnnotations(text)
+                .Select(annotation => new KeyValuePair<int, string>(annotation.AnchorOffset + annotation.AnchorLength, annotation.Text))
+                .ToList();
+
+            _tlkInlineAnnotationGenerator.SetAnnotations(annotations);
+            TextEditor.TextArea.TextView.Redraw();
+        }
+
+        private List<ResolvedTlkAnnotation> GetResolvedTlkAnnotations(string text)
+        {
+            var game = GetSelectedFileGame();
+            if (string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
+                return [];
+
             var seenOffsets = new HashSet<int>();
-            var annotations = new List<KeyValuePair<int, string>>();
+            var annotations = new List<ResolvedTlkAnnotation>();
             foreach (Match match in TlkReferenceRegex.Matches(text))
             {
                 if (!int.TryParse(match.Value, out int tlkId) || !seenOffsets.Add(match.Index))
@@ -1019,11 +1136,10 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (string.IsNullOrWhiteSpace(friendly) || friendly == "No Data" || friendly == "UDK String Refs Not Supported")
                     continue;
 
-                annotations.Add(new KeyValuePair<int, string>(match.Index + match.Length, StripWrappingQuotes(friendly)));
+                annotations.Add(new ResolvedTlkAnnotation(match.Index, match.Length, StripWrappingQuotes(friendly)));
             }
 
-            _tlkInlineAnnotationGenerator.SetAnnotations(annotations);
-            TextEditor.TextArea.TextView.Redraw();
+            return annotations;
         }
 
         private static string StripWrappingQuotes(string text)
