@@ -30,6 +30,8 @@ using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using LegendaryExplorerCore.PlotDatabase;
+using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using ICSharpCode.AvalonEdit.Rendering;
 using LegendaryExplorerCore.TLK;
 
@@ -43,6 +45,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private static readonly string StateFilePath = Path.Combine(AppDirectories.AppDataFolder, "CoalescedEditorState.json");
         private const string DefaultGame3ManifestBaseName = "Coalesced";
         private static readonly Regex TlkReferenceRegex = new(@"\b\d{5,10}\b", RegexOptions.Compiled);
+        private static readonly Regex PlotAssignmentRegex = new(@"(?<key>\b[A-Za-z_][A-Za-z0-9_]*\b)\s*=\s*(?<id>\d+)", RegexOptions.Compiled);
+        private static readonly Regex PlotXmlPropertyRegex = new(@"<Property\s+name=\""(?<key>[^\""]+)\""[^>]*>\s*(?<id>\d+)\s*</Property>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public ObservableCollection<OpenCoalescedFile> OpenFiles { get; } = new();
 
@@ -725,7 +729,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             ApplySearchMatch(match.Value);
             var location = TextEditor.Document.GetLocation(match.Value.AnchorOffset);
             StatusText = match.Value.IsFriendly
-                ? $"Found in resolved TLK text at line {location.Line}, column {location.Column}."
+                ? $"Found in resolved reference text at line {location.Line}, column {location.Column}."
                 : $"Found at line {location.Line}, column {location.Column}.";
             SearchStatusText = BuildMatchCountText(matches.Count);
             return true;
@@ -741,7 +745,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             if (_currentSearchMatch is { IsFriendly: true })
             {
-                SearchStatusText = "Resolved TLK text is read-only.";
+                SearchStatusText = "Resolved reference text is read-only.";
                 StatusText = SearchStatusText;
                 return;
             }
@@ -1141,21 +1145,123 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             if (!ShowTlkBoxes || string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
                 return [];
 
+            var annotations = new Dictionary<int, ResolvedTlkAnnotation>();
+
+            foreach (var plotAnnotation in GetResolvedPlotAnnotations(text, game))
+            {
+                annotations[plotAnnotation.AnchorOffset] = plotAnnotation;
+            }
+
             var seenOffsets = new HashSet<int>();
-            var annotations = new List<ResolvedTlkAnnotation>();
             foreach (Match match in TlkReferenceRegex.Matches(text))
             {
                 if (!int.TryParse(match.Value, out int tlkId) || !seenOffsets.Add(match.Index))
+                    continue;
+
+                if (annotations.ContainsKey(match.Index))
                     continue;
 
                 var friendly = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, game);
                 if (string.IsNullOrWhiteSpace(friendly) || friendly == "No Data" || friendly == "UDK String Refs Not Supported")
                     continue;
 
-                annotations.Add(new ResolvedTlkAnnotation(match.Index, match.Length, StripWrappingQuotes(friendly)));
+                annotations[match.Index] = new ResolvedTlkAnnotation(match.Index, match.Length, StripWrappingQuotes(friendly));
             }
 
-            return annotations;
+            return annotations.Values.OrderBy(annotation => annotation.AnchorOffset).ToList();
+        }
+
+        private List<ResolvedTlkAnnotation> GetResolvedPlotAnnotations(string text, MEGame game)
+        {
+            var annotations = new Dictionary<int, ResolvedTlkAnnotation>();
+
+            foreach (Match match in PlotXmlPropertyRegex.Matches(text))
+            {
+                if (TryCreatePlotAnnotation(match.Groups["key"].Value, match.Groups["id"].Value, match.Groups["id"].Index, match.Groups["id"].Length, game, out var annotation))
+                {
+                    annotations[annotation.AnchorOffset] = annotation;
+                }
+            }
+
+            foreach (Match match in PlotAssignmentRegex.Matches(text))
+            {
+                if (TryCreatePlotAnnotation(match.Groups["key"].Value, match.Groups["id"].Value, match.Groups["id"].Index, match.Groups["id"].Length, game, out var annotation))
+                {
+                    annotations.TryAdd(annotation.AnchorOffset, annotation);
+                }
+            }
+
+            return annotations.Values.OrderBy(annotation => annotation.AnchorOffset).ToList();
+        }
+
+        private static bool TryCreatePlotAnnotation(string key, string idText, int anchorOffset, int anchorLength, MEGame game, out ResolvedTlkAnnotation annotation)
+        {
+            annotation = default;
+
+            if (!int.TryParse(idText, out int plotId) || !TryGetPlotElementType(key, out var plotType))
+                return false;
+
+            var plotElement = PlotDatabases.FindPlotElementFromID(plotId, plotType, game);
+            if (plotElement == null || string.IsNullOrWhiteSpace(plotElement.Path))
+                return false;
+
+            annotation = new ResolvedTlkAnnotation(anchorOffset, anchorLength, plotElement.Path);
+            return true;
+        }
+
+        private static bool TryGetPlotElementType(string key, out PlotElementType plotType)
+        {
+            plotType = PlotElementType.None;
+            if (string.IsNullOrWhiteSpace(key))
+                return false;
+
+            var normalizedKey = new string(key.Where(char.IsLetter).ToArray()).ToLowerInvariant();
+            if (string.IsNullOrEmpty(normalizedKey))
+                return false;
+
+            if (normalizedKey.Contains("conditional"))
+            {
+                plotType = PlotElementType.Conditional;
+                return true;
+            }
+
+            if (normalizedKey.Contains("consequence"))
+            {
+                plotType = PlotElementType.Consequence;
+                return true;
+            }
+
+            if (normalizedKey.Contains("transition"))
+            {
+                plotType = PlotElementType.Transition;
+                return true;
+            }
+
+            if (normalizedKey.Contains("substate"))
+            {
+                plotType = PlotElementType.SubState;
+                return true;
+            }
+
+            if (normalizedKey.Contains("state") || normalizedKey.Contains("flag") || normalizedKey.Contains("bool"))
+            {
+                plotType = PlotElementType.State;
+                return true;
+            }
+
+            if (normalizedKey.Contains("integer") || normalizedKey.EndsWith("int", StringComparison.Ordinal))
+            {
+                plotType = PlotElementType.Integer;
+                return true;
+            }
+
+            if (normalizedKey.Contains("float"))
+            {
+                plotType = PlotElementType.Float;
+                return true;
+            }
+
+            return false;
         }
 
         private static string StripWrappingQuotes(string text)
