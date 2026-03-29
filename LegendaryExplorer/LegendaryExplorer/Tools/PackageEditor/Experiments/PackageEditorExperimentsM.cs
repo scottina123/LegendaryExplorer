@@ -2577,14 +2577,139 @@ defaultproperties
                 return;
             }
 
-            var proceed = MessageBox.Show(pe, "This will automatically fix all bad forced export chains in the package. Do you want to proceed?", "Fix Bad Forced Exports", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            const string currentPackageOption = "Current package";
+            const string folderOption = "Folder (all .pcc files recursively)";
+
+            var selectedScope = InputComboBoxDialog.GetValue(pe,
+                "Choose where to run this experiment.",
+                "Fix Bad Forced Exports",
+                new List<string> { currentPackageOption, folderOption },
+                currentPackageOption);
+            if (string.IsNullOrWhiteSpace(selectedScope))
+            {
+                return;
+            }
+
+            if (selectedScope == folderOption)
+            {
+                FixBadForcedExportsInFolder(pe);
+                return;
+            }
+
+            var badLeaves = PackageDiags.GetBadForcedExportLeaves(pe.Pcc);
+            if (badLeaves.Count == 0)
+            {
+                MessageBox.Show("No bad forced export leaves found.");
+                return;
+            }
+
+            var proceed = MessageBox.Show(pe,
+                $"This will automatically fix {badLeaves.Count} bad forced export chain(s) in the current package. Do you want to proceed?",
+                "Fix Bad Forced Exports",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
             if (proceed != MessageBoxResult.Yes)
             {
                 return;
             }
 
             PackageDiags.FixBadForcedExport(pe.Pcc);
-            MessageBox.Show(@"Done.");
+            MessageBox.Show($@"Done. Fixed {badLeaves.Count} inconsistent forced export chain(s) in the current package.");
+        }
+
+        private static void FixBadForcedExportsInFolder(PackageEditorWindow pe)
+        {
+            var dlg = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                Multiselect = true,
+                EnsurePathExists = true,
+                Title = "Select folder(s) containing package files"
+            };
+            if (dlg.ShowDialog(pe) != CommonFileDialogResult.Ok)
+            {
+                return;
+            }
+
+            var selectedFolders = dlg.FileNames.ToList();
+            var packageFiles = selectedFolders
+                .SelectMany(folder => Directory.GetFiles(folder, "*.pcc", SearchOption.AllDirectories))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (packageFiles.Length == 0)
+            {
+                MessageBox.Show(pe, "No .pcc files were found in the selected folder(s).");
+                return;
+            }
+
+            var proceed = MessageBox.Show(pe,
+                "This will scan all .pcc files in the selected folder(s) and subfolders, automatically fix inconsistent forced export chains, and save any changed files. Continue?",
+                "Fix Bad Forced Exports",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+            if (proceed != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            pe.BusyText = "Scanning packages...";
+            pe.IsBusy = true;
+
+            Task.Run(() =>
+            {
+                int filesFixed = 0;
+                int leavesFixed = 0;
+                List<string> failedFiles = new List<string>();
+
+                for (int i = 0; i < packageFiles.Length; i++)
+                {
+                    string filePath = packageFiles[i];
+                    pe.BusyText = $"Fixing bad forced exports [{i + 1}/{packageFiles.Length}]";
+
+                    try
+                    {
+                        using var package = MEPackageHandler.OpenMEPackage(filePath, forceLoadFromDisk: true);
+                        var badLeaves = PackageDiags.GetBadForcedExportLeaves(package);
+                        if (badLeaves.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        PackageDiags.FixBadForcedExport(package);
+                        package.Save();
+
+                        filesFixed++;
+                        leavesFixed += badLeaves.Count;
+                    }
+                    catch (Exception ex)
+                    {
+                        failedFiles.Add($"{filePath} - {ex.Message}");
+                    }
+                }
+
+                return (ScannedFiles: packageFiles.Length, FixedFiles: filesFixed, FixedLeaves: leavesFixed, FailedFiles: failedFiles);
+            }).ContinueWithOnUIThread(task =>
+            {
+                pe.IsBusy = false;
+
+                var result = task.Result;
+                MessageBox.Show(pe,
+                    $"Scan complete. Checked {result.ScannedFiles} package(s), fixed {result.FixedFiles} file(s), and repaired {result.FixedLeaves} inconsistent forced export chain(s).",
+                    "Fix Bad Forced Exports",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                if (result.FailedFiles.Count > 0)
+                {
+                    var failuresDialog = new ListDialog(result.FailedFiles,
+                        "Packages that could not be processed",
+                        "The following package files could not be processed:",
+                        pe);
+                    failuresDialog.Show();
+                }
+            });
         }
 
         public static void FindBadForcedExport(PackageEditorWindow pe)
