@@ -172,8 +172,8 @@
                     <avalonedit:TextEditor x:Name="TextEditor"
                                             FontFamily="Consolas" FontSize="13"
                                             ShowLineNumbers="True"
-                                             WordWrap="False"
-                                             ContextMenu="{StaticResource EditorContextMenu}" />
+                                            WordWrap="False"
+                                            ContextMenu="{StaticResource EditorContextMenu}" />
                 </DockPanel>
             </Grid>
             <!-- Startup text shown when no files are open -->

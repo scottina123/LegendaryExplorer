@@ -25,9 +25,12 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Windows.Controls;
 using System.Xml;
 using System.Xml.Linq;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.GameFilesystem;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using ICSharpCode.AvalonEdit.Rendering;
+using LegendaryExplorerCore.TLK;
 
 namespace LegendaryExplorer.Tools.CoalescedEditor
 {
@@ -38,6 +41,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
     {
         private static readonly string StateFilePath = Path.Combine(AppDirectories.AppDataFolder, "CoalescedEditorState.json");
         private const string DefaultGame3ManifestBaseName = "Coalesced";
+        private static readonly Regex TlkReferenceRegex = new(@"\b\d{5,10}\b", RegexOptions.Compiled);
 
         public ObservableCollection<OpenCoalescedFile> OpenFiles { get; } = new();
 
@@ -147,6 +151,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
         private bool _suppressEditorEvents;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
+        private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
 
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
@@ -154,6 +159,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             InitializeComponent();
             DataContext = this;
             TextEditor.TextArea.TextView.BackgroundRenderers.Add(_xmlTagMatchRenderer);
+            TextEditor.TextArea.TextView.ElementGenerators.Add(_tlkInlineAnnotationGenerator);
             TextEditor.TextChanged += TextEditor_TextChanged;
             TextEditor.TextArea.Caret.PositionChanged += TextArea_Caret_PositionChanged;
             RestoreOpenFiles();
@@ -505,6 +511,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 }
 
                 UpdateXmlTagMatchHighlight();
+                UpdateTlkInlineAnnotations();
                 UpdateSearchStatus();
             }
             finally
@@ -524,6 +531,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
 
             UpdateXmlTagMatchHighlight();
+            UpdateTlkInlineAnnotations();
             UpdateSearchStatus();
         }
 
@@ -982,6 +990,82 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
 
             return previousMatch;
+        }
+
+        #endregion
+
+        #region TLK Reference Resolution
+
+        private void UpdateTlkInlineAnnotations()
+        {
+            var text = TextEditor?.Text;
+            var game = GetSelectedFileGame();
+            if (string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
+            {
+                _tlkInlineAnnotationGenerator.SetAnnotations(Array.Empty<KeyValuePair<int, string>>());
+                TextEditor?.TextArea.TextView.Redraw();
+                return;
+            }
+
+            var seenOffsets = new HashSet<int>();
+            var annotations = new List<KeyValuePair<int, string>>();
+            foreach (Match match in TlkReferenceRegex.Matches(text))
+            {
+                if (!int.TryParse(match.Value, out int tlkId) || !seenOffsets.Add(match.Index))
+                    continue;
+
+                var friendly = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, game);
+                if (string.IsNullOrWhiteSpace(friendly) || friendly == "No Data" || friendly == "UDK String Refs Not Supported")
+                    continue;
+
+                annotations.Add(new KeyValuePair<int, string>(match.Index + match.Length, StripWrappingQuotes(friendly)));
+            }
+
+            _tlkInlineAnnotationGenerator.SetAnnotations(annotations);
+            TextEditor.TextArea.TextView.Redraw();
+        }
+
+        private static string StripWrappingQuotes(string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length < 2)
+                return text ?? string.Empty;
+
+            return (text[0], text[^1]) switch
+            {
+                ('"', '"') => text[1..^1],
+                ('\'', '\'') => text[1..^1],
+                ('“', '”') => text[1..^1],
+                ('‘', '’') => text[1..^1],
+                _ => text
+            };
+        }
+
+        private MEGame GetSelectedFileGame()
+        {
+            var filePath = SelectedFile?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+                return MEGame.Unknown;
+
+            string fullPath = Path.GetFullPath(filePath);
+            if (IsUnderDirectory(fullPath, ME1Directory.BioGamePath)) return MEGame.ME1;
+            if (IsUnderDirectory(fullPath, ME2Directory.BioGamePath)) return MEGame.ME2;
+            if (IsUnderDirectory(fullPath, ME3Directory.BioGamePath)) return MEGame.ME3;
+            if (IsUnderDirectory(fullPath, LE1Directory.BioGamePath)) return MEGame.LE1;
+            if (IsUnderDirectory(fullPath, LE2Directory.BioGamePath)) return MEGame.LE2;
+            if (IsUnderDirectory(fullPath, LE3Directory.BioGamePath)) return MEGame.LE3;
+
+            return MEGame.Unknown;
+        }
+
+        private static bool IsUnderDirectory(string path, string directory)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(directory))
+                return false;
+
+            string normalizedPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string normalizedDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return normalizedPath.StartsWith(normalizedDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalizedPath, normalizedDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         #endregion
@@ -1572,6 +1656,79 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             _segments.Clear();
             _textView?.InvalidateLayer(Layer);
+        }
+    }
+
+    public class TlkInlineAnnotationGenerator : VisualLineElementGenerator
+    {
+        private readonly Dictionary<int, string> _annotations = new();
+        private readonly List<int> _offsets = new();
+
+        public void SetAnnotations(IEnumerable<KeyValuePair<int, string>> annotations)
+        {
+            _annotations.Clear();
+            _offsets.Clear();
+
+            foreach (var annotation in annotations)
+            {
+                if (annotation.Key < 0 || string.IsNullOrWhiteSpace(annotation.Value))
+                    continue;
+
+                _annotations[annotation.Key] = annotation.Value;
+                _offsets.Add(annotation.Key);
+            }
+
+            _offsets.Sort();
+        }
+
+        public override int GetFirstInterestedOffset(int startOffset)
+        {
+            if (_offsets.Count == 0)
+                return -1;
+
+            int endOffset = CurrentContext.VisualLine.LastDocumentLine.EndOffset;
+            int index = _offsets.BinarySearch(startOffset);
+            if (index < 0)
+                index = ~index;
+
+            if (index >= _offsets.Count)
+                return -1;
+
+            int offset = _offsets[index];
+            return offset >= startOffset && offset <= endOffset ? offset : -1;
+        }
+
+        public override VisualLineElement ConstructElement(int offset)
+        {
+            if (!_annotations.TryGetValue(offset, out var annotation))
+                return null;
+
+            var textBox = new TextBox
+            {
+                Text = annotation,
+                IsReadOnly = true,
+                Focusable = false,
+                IsTabStop = false,
+                Margin = new Thickness(6, -1, 0, -1),
+                Padding = new Thickness(6, 1, 6, 1),
+                BorderThickness = new Thickness(1),
+                Background = new SolidColorBrush(Color.FromRgb(45, 45, 48)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(122, 122, 122)),
+                Foreground = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
+                VerticalContentAlignment = VerticalAlignment.Top,
+                Width = 364,
+                Height = 24,
+                MinWidth = 364,
+                MaxWidth = 364,
+                MinHeight = 24,
+                MaxHeight = 24,
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+
+            return new InlineObjectElement(0, textBox);
         }
     }
 }
