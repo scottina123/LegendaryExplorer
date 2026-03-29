@@ -17,6 +17,10 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using System.Windows.Controls;
+using System.Xml;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 
 namespace LegendaryExplorer.Tools.CoalescedEditor
 {
@@ -33,7 +37,13 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         public OpenCoalescedFile SelectedFile
         {
             get => _selectedFile;
-            set => SetProperty(ref _selectedFile, value);
+            set
+            {
+                if (SetProperty(ref _selectedFile, value))
+                {
+                    OnSelectedFileChanged();
+                }
+            }
         }
 
         private string _statusText = "Ready";
@@ -49,11 +59,14 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         public ICommand ExportToFolderCommand { get; set; }
         public ICommand CloseTabCommand { get; set; }
 
+        private bool _suppressEditorEvents;
+
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
             LoadCommands();
             InitializeComponent();
             DataContext = this;
+            TextEditor.TextChanged += TextEditor_TextChanged;
             RestoreOpenFiles();
             UpdateWelcomeVisibility();
         }
@@ -293,7 +306,91 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             if (WelcomeText != null)
                 WelcomeText.Visibility = OpenFiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (ContentArea != null)
+                ContentArea.Visibility = OpenFiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            if (FilesTabControl != null)
+                FilesTabControl.Visibility = OpenFiles.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
+
+        #region Editor Content Management
+
+        private void OnSelectedFileChanged()
+        {
+            if (FileListBox == null || TextEditor == null) return;
+
+            _suppressEditorEvents = true;
+            try
+            {
+                if (_selectedFile != null)
+                {
+                    FileListBox.ItemsSource = _selectedFile.FileNames;
+                    FileListBox.SelectedItem = _selectedFile.SelectedFileName;
+                }
+                else
+                {
+                    FileListBox.ItemsSource = null;
+                    FileListBox.SelectedItem = null;
+                }
+                UpdateEditorContent();
+            }
+            finally
+            {
+                _suppressEditorEvents = false;
+            }
+        }
+
+        private void FileListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressEditorEvents) return;
+            if (SelectedFile != null && FileListBox.SelectedItem is string selectedFile)
+            {
+                SelectedFile.SelectedFileName = selectedFile;
+                _suppressEditorEvents = true;
+                try { UpdateEditorContent(); }
+                finally { _suppressEditorEvents = false; }
+            }
+        }
+
+        private void UpdateEditorContent()
+        {
+            bool wasSuppressed = _suppressEditorEvents;
+            _suppressEditorEvents = true;
+            try
+            {
+                if (SelectedFile?.SelectedFileName != null &&
+                    SelectedFile.FileContents.TryGetValue(SelectedFile.SelectedFileName, out var content))
+                {
+                    TextEditor.Text = content;
+                    TextEditor.SyntaxHighlighting = SelectedFile.IsGame3
+                        ? GetXmlHighlighting()
+                        : GetIniHighlighting();
+                    SelectedFileHeader.Text = SelectedFile.SelectedFileName;
+                }
+                else
+                {
+                    TextEditor.Text = "";
+                    TextEditor.SyntaxHighlighting = null;
+                    SelectedFileHeader.Text = "(no file selected)";
+                }
+            }
+            finally
+            {
+                _suppressEditorEvents = wasSuppressed;
+            }
+        }
+
+        private void TextEditor_TextChanged(object sender, EventArgs e)
+        {
+            if (_suppressEditorEvents) return;
+            if (SelectedFile?.SelectedFileName != null)
+            {
+                SelectedFile.FileContents[SelectedFile.SelectedFileName] = TextEditor.Text;
+                if (!SelectedFile.HasUnsavedChanges)
+                    SelectedFile.HasUnsavedChanges = true;
+            }
+        }
+
+        #endregion
 
         #region Drag and Drop
 
@@ -494,6 +591,98 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             if (!val.Contains('\r') && val.Contains('\n'))
                 return val.Split('\n').ToList();
             return null;
+        }
+
+        #endregion
+
+        #region Syntax Highlighting
+
+        private static IHighlightingDefinition _iniHighlighting;
+        private static IHighlightingDefinition _xmlHighlighting;
+
+        private static IHighlightingDefinition GetXmlHighlighting()
+        {
+            if (_xmlHighlighting != null) return _xmlHighlighting;
+
+            var xshd = @"<?xml version=""1.0""?>
+<SyntaxDefinition name=""CoalescedXml"" xmlns=""http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008"">
+    <Color name=""XmlTag"" foreground=""#C586C0"" />
+    <Color name=""XmlElementName"" foreground=""#4FC1FF"" fontWeight=""bold"" />
+    <Color name=""XmlAttributeName"" foreground=""#9CDCFE"" />
+    <Color name=""XmlAttributeValue"" foreground=""#CE9178"" />
+    <Color name=""XmlComment"" foreground=""#6A9955"" />
+    <Color name=""XmlCData"" foreground=""#DCDCAA"" />
+    <Color name=""XmlText"" foreground=""#D4D4D4"" />
+    <RuleSet>
+        <Span color=""XmlComment"">
+            <Begin>&lt;!--</Begin>
+            <End>--&gt;</End>
+        </Span>
+        <Span color=""XmlCData"">
+            <Begin>&lt;!\[CDATA\[</Begin>
+            <End>\]\]&gt;</End>
+        </Span>
+        <Span color=""XmlTag"">
+            <Begin>&lt;\?</Begin>
+            <End>\?&gt;</End>
+            <RuleSet>
+                <Rule color=""XmlTag"">[&lt;&gt;\?/=]</Rule>
+                <Rule color=""XmlAttributeName"">[A-Za-z_:@][A-Za-z0-9_:\-\.]*</Rule>
+                <Span color=""XmlAttributeValue"">
+                    <Begin>""</Begin>
+                    <End>""</End>
+                </Span>
+                <Span color=""XmlAttributeValue"">
+                    <Begin>'</Begin>
+                    <End>'</End>
+                </Span>
+            </RuleSet>
+        </Span>
+        <Span color=""XmlTag"">
+            <Begin>&lt;</Begin>
+            <End>&gt;</End>
+            <RuleSet>
+                <Rule color=""XmlTag"">[&lt;&gt;/=]</Rule>
+                <Rule color=""XmlElementName"">/?[A-Za-z_][A-Za-z0-9_:\-\.]*</Rule>
+                <Rule color=""XmlAttributeName"">[A-Za-z_:@][A-Za-z0-9_:\-\.]*</Rule>
+                <Span color=""XmlAttributeValue"">
+                    <Begin>""</Begin>
+                    <End>""</End>
+                </Span>
+                <Span color=""XmlAttributeValue"">
+                    <Begin>'</Begin>
+                    <End>'</End>
+                </Span>
+            </RuleSet>
+        </Span>
+        <Rule color=""XmlText"">[^&lt;]+</Rule>
+    </RuleSet>
+</SyntaxDefinition>";
+
+            using var reader = XmlReader.Create(new StringReader(xshd));
+            _xmlHighlighting = HighlightingLoader.Load(reader, HighlightingManager.Instance);
+            return _xmlHighlighting;
+        }
+
+        private static IHighlightingDefinition GetIniHighlighting()
+        {
+            if (_iniHighlighting != null) return _iniHighlighting;
+
+            var xshd = @"<?xml version=""1.0""?>
+<SyntaxDefinition name=""CoalescedIni"" xmlns=""http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008"">
+    <Color name=""Section"" foreground=""Teal"" fontWeight=""bold"" />
+    <Color name=""Comment"" foreground=""Green"" fontStyle=""italic"" />
+    <Color name=""MultilineMarker"" foreground=""DarkOrange"" fontWeight=""bold"" />
+    <RuleSet>
+        <Span color=""Comment""><Begin>;</Begin></Span>
+        <Span color=""Section""><Begin>\[</Begin><End>\]</End></Span>
+        <Rule color=""MultilineMarker"">\|\|=</Rule>
+    </RuleSet>
+</SyntaxDefinition>";
+
+            using var reader = XmlReader.Create(new StringReader(xshd));
+            _iniHighlighting = HighlightingLoader.Load(reader, HighlightingManager.Instance);
+            return _iniHighlighting;
         }
 
         #endregion
