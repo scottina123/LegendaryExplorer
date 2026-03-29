@@ -752,6 +752,10 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             if (e.Key != Key.Enter)
                 return;
 
+            var returnFocusTextBox = sender as TextBox;
+            int selectionStart = returnFocusTextBox?.SelectionStart ?? 0;
+            int selectionLength = returnFocusTextBox?.SelectionLength ?? 0;
+
             if (sender == ReplaceTextBox)
             {
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -765,6 +769,15 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                     FindPrevious();
                 else
                     FindNext();
+            }
+
+            if (returnFocusTextBox != null)
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    returnFocusTextBox.Focus();
+                    returnFocusTextBox.Select(selectionStart, selectionLength);
+                });
             }
 
             e.Handled = true;
