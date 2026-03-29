@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -102,10 +103,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool _restoredPersistedTabs;
         private bool _suppressTabPersistence;
         private bool _suppressInlineEditEvents;
+        private bool _suppressSearchSelectionReset;
+        private TlkSearchMatch? _currentSearchMatch;
+        private string _lastSearchSignature;
         public List<TLKStringRef> LoadedStrings; //Loaded TLK
         public ObservableCollectionExtended<TLKStringRef> CleanedStrings { get; } = new(); // Displayed
         public ObservableCollectionExtended<TLKEditorTab> OpenTabs { get; } = new();
         private bool xmlUp;
+
+        private readonly record struct TlkSearchMatch(int RowIndex, TLKStringRef Item, int ColumnIndex, int StartIndex, int Length);
 
         public TLKEditorTab ActiveTab
         {
@@ -120,6 +126,90 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         public bool HasOpenTabs => OpenTabs.Count > 0;
+
+        private bool _isFindReplaceVisible;
+        public bool IsFindReplaceVisible
+        {
+            get => _isFindReplaceVisible;
+            set => SetProperty(ref _isFindReplaceVisible, value);
+        }
+
+        private string _findText;
+        public string FindText
+        {
+            get => _findText;
+            set
+            {
+                if (SetProperty(ref _findText, value))
+                {
+                    ResetSearchState();
+                    UpdateSearchStatus();
+                }
+            }
+        }
+
+        private string _replaceText = string.Empty;
+        public string ReplaceText
+        {
+            get => _replaceText;
+            set => SetProperty(ref _replaceText, value);
+        }
+
+        private bool _findMatchCase;
+        public bool FindMatchCase
+        {
+            get => _findMatchCase;
+            set
+            {
+                if (SetProperty(ref _findMatchCase, value))
+                {
+                    ResetSearchState();
+                    UpdateSearchStatus();
+                }
+            }
+        }
+
+        private bool _findWholeWord;
+        public bool FindWholeWord
+        {
+            get => _findWholeWord;
+            set
+            {
+                if (SetProperty(ref _findWholeWord, value))
+                {
+                    ResetSearchState();
+                    UpdateSearchStatus();
+                }
+            }
+        }
+
+        private bool _findUseRegex;
+        public bool FindUseRegex
+        {
+            get => _findUseRegex;
+            set
+            {
+                if (SetProperty(ref _findUseRegex, value))
+                {
+                    ResetSearchState();
+                    UpdateSearchStatus();
+                }
+            }
+        }
+
+        private bool _findWrapAround = true;
+        public bool FindWrapAround
+        {
+            get => _findWrapAround;
+            set => SetProperty(ref _findWrapAround, value);
+        }
+
+        private string _searchStatusText = "Enter text to search.";
+        public string SearchStatusText
+        {
+            get => _searchStatusText;
+            set => SetProperty(ref _searchStatusText, value);
+        }
 
         public bool StringSelected
         {
@@ -148,6 +238,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand OpenTabCommand { get; set; }
         public ICommand AddStringCommand { get; set; }
         public ICommand AddStringRangeCommand { get; set; }
+        public ICommand ShowFindReplaceCommand { get; set; }
+        public ICommand FindNextCommand { get; set; }
+        public ICommand FindPreviousCommand { get; set; }
+        public ICommand ReplaceCommand { get; set; }
+        public ICommand ReplaceAllCommand { get; set; }
+        public ICommand CloseFindReplaceCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -159,6 +255,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SearchCommand = new GenericCommand(TextSearch, HasTLKLoaded);
             AddStringCommand = new GenericCommand(AddString, HasTLKLoaded);
             AddStringRangeCommand = new GenericCommand(AddStringRange, HasTLKLoaded);
+            ShowFindReplaceCommand = new GenericCommand(ShowFindReplace, HasTLKLoaded);
+            FindNextCommand = new GenericCommand(FindNext, HasTLKLoaded);
+            FindPreviousCommand = new GenericCommand(FindPrevious, HasTLKLoaded);
+            ReplaceCommand = new GenericCommand(ReplaceCurrent, HasTLKLoaded);
+            ReplaceAllCommand = new GenericCommand(ReplaceAll, HasTLKLoaded);
+            CloseFindReplaceCommand = new GenericCommand(CloseFindReplace);
 
             ExportXmlCommand = new GenericCommand(ExportToXml, HasTLKLoaded);
             ImportXmlCommand = new GenericCommand(ImportFromXml, HasTLKLoaded);
@@ -446,6 +548,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CleanedStrings.ClearEx();
                 _suppressInlineEditEvents = false;
                 SetFileModified(false, false);
+                IsFindReplaceVisible = false;
             }
             else
             {
@@ -459,6 +562,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             OnPropertyChanged(nameof(StringSelected));
+            ResetSearchState();
+            UpdateSearchStatus();
             UpdateWindowTitle();
             PersistOpenTabs();
         }
@@ -657,6 +762,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void DisplayedString_ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (!_suppressSearchSelectionReset)
+            {
+                ResetSearchState();
+            }
+
             OnPropertyChanged(nameof(StringSelected)); //Propogate this change
         }
 
@@ -1160,6 +1270,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 SetFileModified(true);
             }
+
+            UpdateSearchStatus();
         }
 
         private void StringIdTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
@@ -1333,6 +1445,616 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void CloseViewAsXml(object sender, RoutedEventArgs e)
         {
             Evt_CloseXML(sender, e);
+        }
+
+        private void ShowFindReplace()
+        {
+            if (!HasTLKLoaded())
+            {
+                return;
+            }
+
+            IsFindReplaceVisible = true;
+            if (Keyboard.FocusedElement is TextBox { DataContext: TLKStringRef, SelectedText.Length: > 0 } textBox)
+            {
+                FindText = textBox.SelectedText;
+            }
+            else
+            {
+                UpdateSearchStatus();
+            }
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                FindTextBox.Focus();
+                FindTextBox.SelectAll();
+            });
+        }
+
+        private void CloseFindReplace()
+        {
+            IsFindReplaceVisible = false;
+            DisplayedString_ListBox?.Focus();
+        }
+
+        private void FindNext()
+        {
+            FindNextInternal(searchBackward: false);
+        }
+
+        private void FindPrevious()
+        {
+            FindNextInternal(searchBackward: true);
+        }
+
+        private bool FindNextInternal(bool searchBackward)
+        {
+            if (!TryCreateSearchRegex(out var regex))
+            {
+                return false;
+            }
+
+            if (CleanedStrings.Count == 0)
+            {
+                SearchStatusText = "No TLK strings loaded.";
+                return false;
+            }
+
+            TlkSearchMatch? match = searchBackward ? FindPreviousMatch(regex) : FindNextMatch(regex);
+            if (match is null)
+            {
+                SearchStatusText = "Text not found in current TLK.";
+                return false;
+            }
+
+            ApplySearchMatch(match.Value);
+            SearchStatusText = BuildMatchCountText(regex);
+            return true;
+        }
+
+        private TlkSearchMatch? FindNextMatch(Regex regex)
+        {
+            var matches = GetAllSearchMatches(regex);
+            if (matches.Count == 0)
+            {
+                return null;
+            }
+
+            if (HasReusableCurrentMatch())
+            {
+                int currentIndex = matches.FindIndex(m => MatchesSameLocation(m, _currentSearchMatch!.Value));
+                if (currentIndex >= 0)
+                {
+                    if (currentIndex + 1 < matches.Count)
+                    {
+                        return matches[currentIndex + 1];
+                    }
+
+                    return FindWrapAround ? matches[0] : null;
+                }
+            }
+
+            var startLocation = GetSearchStartLocation();
+            foreach (var match in matches)
+            {
+                if (CompareMatchLocation(match, startLocation.RowIndex, startLocation.ColumnIndex, startLocation.StartIndex) >= 0)
+                {
+                    return match;
+                }
+            }
+
+            return FindWrapAround ? matches[0] : null;
+        }
+
+        private TlkSearchMatch? FindPreviousMatch(Regex regex)
+        {
+            var matches = GetAllSearchMatches(regex);
+            if (matches.Count == 0)
+            {
+                return null;
+            }
+
+            if (HasReusableCurrentMatch())
+            {
+                int currentIndex = matches.FindIndex(m => MatchesSameLocation(m, _currentSearchMatch!.Value));
+                if (currentIndex >= 0)
+                {
+                    if (currentIndex > 0)
+                    {
+                        return matches[currentIndex - 1];
+                    }
+
+                    return FindWrapAround ? matches[^1] : null;
+                }
+            }
+
+            var startLocation = GetSearchStartLocation();
+            for (int i = matches.Count - 1; i >= 0; i--)
+            {
+                if (CompareMatchLocation(matches[i], startLocation.RowIndex, startLocation.ColumnIndex, startLocation.StartIndex) <= 0)
+                {
+                    return matches[i];
+                }
+            }
+
+            return FindWrapAround ? matches[^1] : null;
+        }
+
+        private void ReplaceCurrent()
+        {
+            if (!TryCreateSearchRegex(out var regex))
+            {
+                return;
+            }
+
+            if (_currentSearchMatch is null && !FindNextInternal(searchBackward: false))
+            {
+                return;
+            }
+
+            if (!HasReusableCurrentMatch())
+            {
+                if (!FindNextInternal(searchBackward: false) || !HasReusableCurrentMatch())
+                {
+                    return;
+                }
+            }
+
+            var match = _currentSearchMatch!.Value;
+            string currentText = GetMatchSourceText(match);
+            Match regexMatch = regex.Match(currentText, match.StartIndex);
+            if (!regexMatch.Success || regexMatch.Index != match.StartIndex || regexMatch.Length != match.Length)
+            {
+                ResetSearchState();
+                if (!FindNextInternal(searchBackward: false) || !HasReusableCurrentMatch())
+                {
+                    return;
+                }
+
+                match = _currentSearchMatch!.Value;
+                currentText = GetMatchSourceText(match);
+                regexMatch = regex.Match(currentText, match.StartIndex);
+                if (!regexMatch.Success || regexMatch.Index != match.StartIndex || regexMatch.Length != match.Length)
+                {
+                    return;
+                }
+            }
+
+            if (!TryGetReplacementText(regexMatch, out var replacementText))
+            {
+                return;
+            }
+
+            if (!ApplyReplacement(match, currentText, replacementText))
+            {
+                return;
+            }
+
+            SetFileModified(true);
+            _currentSearchMatch = new TlkSearchMatch(match.RowIndex, match.Item, match.ColumnIndex, match.StartIndex, replacementText.Length);
+            FocusSearchMatch(_currentSearchMatch.Value);
+            SearchStatusText = BuildMatchCountText(regex);
+        }
+
+        private void ReplaceAll()
+        {
+            if (!TryCreateSearchRegex(out var regex))
+            {
+                return;
+            }
+
+            int replacementCount = 0;
+            foreach (TLKStringRef item in CleanedStrings)
+            {
+                string text = item.Data ?? string.Empty;
+                if (text.Length == 0)
+                {
+                    continue;
+                }
+
+                var matches = regex.Matches(text);
+                if (matches.Count == 0)
+                {
+                    continue;
+                }
+
+                string replacedText;
+                try
+                {
+                    replacedText = regex.Replace(text, match =>
+                    {
+                        replacementCount++;
+                        return match.Result(ReplaceText ?? string.Empty);
+                    });
+                }
+                catch (ArgumentException ex)
+                {
+                    SearchStatusText = $"Invalid replacement pattern: {ex.Message}";
+                    return;
+                }
+
+                item.Data = replacedText;
+            }
+
+            if (replacementCount == 0)
+            {
+                SearchStatusText = "No matches to replace.";
+                return;
+            }
+
+            SetFileModified(true);
+            ResetSearchState();
+            SearchStatusText = $"Replaced {replacementCount} match{(replacementCount == 1 ? string.Empty : "es")}.";
+        }
+
+        private void FindReplaceTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseFindReplace();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key != Key.Enter)
+            {
+                return;
+            }
+
+            var returnFocusTextBox = sender as TextBox;
+            int selectionStart = returnFocusTextBox?.SelectionStart ?? 0;
+            int selectionLength = returnFocusTextBox?.SelectionLength ?? 0;
+
+            if (sender == ReplaceTextBox)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    ReplaceAll();
+                }
+                else
+                {
+                    ReplaceCurrent();
+                }
+            }
+            else
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    FindPrevious();
+                }
+                else
+                {
+                    FindNext();
+                }
+            }
+
+            if (returnFocusTextBox != null)
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    returnFocusTextBox.Focus();
+                    returnFocusTextBox.Select(selectionStart, selectionLength);
+                });
+            }
+
+            e.Handled = true;
+        }
+
+        private void ResetSearchState()
+        {
+            _currentSearchMatch = null;
+            _lastSearchSignature = GetSearchSignature();
+        }
+
+        private bool HasReusableCurrentMatch()
+        {
+            return _currentSearchMatch is not null && string.Equals(_lastSearchSignature, GetSearchSignature(), StringComparison.Ordinal);
+        }
+
+        private string GetSearchSignature()
+        {
+            return $"{FindText}\n{FindMatchCase}\n{FindWholeWord}\n{FindUseRegex}";
+        }
+
+        private void UpdateSearchStatus()
+        {
+            if (!HasTLKLoaded())
+            {
+                SearchStatusText = "No TLK loaded.";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(FindText))
+            {
+                SearchStatusText = "Enter text to search.";
+                return;
+            }
+
+            if (!TryCreateSearchRegex(out var regex, updateStatusOnError: true))
+            {
+                return;
+            }
+
+            SearchStatusText = BuildMatchCountText(regex);
+        }
+
+        private bool TryCreateSearchRegex(out Regex regex, bool updateStatusOnError = false)
+        {
+            regex = null;
+            if (string.IsNullOrEmpty(FindText))
+            {
+                if (updateStatusOnError)
+                {
+                    SearchStatusText = "Enter text to search.";
+                }
+
+                return false;
+            }
+
+            try
+            {
+                string pattern = FindUseRegex ? FindText : Regex.Escape(FindText);
+                if (FindWholeWord)
+                {
+                    pattern = $@"\b(?:{pattern})\b";
+                }
+
+                var options = RegexOptions.CultureInvariant | RegexOptions.Multiline;
+                if (!FindMatchCase)
+                {
+                    options |= RegexOptions.IgnoreCase;
+                }
+
+                regex = new Regex(pattern, options);
+                _lastSearchSignature = GetSearchSignature();
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                if (updateStatusOnError)
+                {
+                    SearchStatusText = $"Invalid regular expression: {ex.Message}";
+                }
+
+                return false;
+            }
+        }
+
+        private string BuildMatchCountText(Regex regex)
+        {
+            int count = GetAllSearchMatches(regex).Count;
+
+            return count == 0
+                ? "No matches in current TLK."
+                : $"{count} match{(count == 1 ? string.Empty : "es")} in current TLK.";
+        }
+
+        private void ApplySearchMatch(TlkSearchMatch match)
+        {
+            _currentSearchMatch = match;
+            FocusSearchMatch(match);
+        }
+
+        private void FocusSearchMatch(TlkSearchMatch match)
+        {
+            FocusString(match.Item, match.ColumnIndex);
+            if (TryGetMatchTextBox(match, out TextBox textBox))
+            {
+                textBox.Focus();
+                textBox.Select(match.StartIndex, match.Length);
+            }
+        }
+
+        private bool TryGetMatchTextBox(TlkSearchMatch match, out TextBox textBox)
+        {
+            return match.ColumnIndex == 0
+                ? TryGetStringIdTextBox(match.Item, out textBox)
+                : TryGetStringDataTextBox(match.Item, out textBox);
+        }
+
+        private bool TryGetStringIdTextBox(TLKStringRef item, out TextBox textBox)
+        {
+            return TryGetRowTextBox(item, 0, "IdColumnEditor", out textBox);
+        }
+
+        private bool TryGetStringDataTextBox(TLKStringRef item, out TextBox textBox)
+        {
+            return TryGetRowTextBox(item, 1, "TextColumnEditor", out textBox);
+        }
+
+        private bool TryGetRowTextBox(TLKStringRef item, int columnIndex, string tag, out TextBox textBox)
+        {
+            textBox = null;
+            if (DisplayedString_ListBox is null || DisplayedString_ListBox.Columns.Count <= columnIndex)
+            {
+                return false;
+            }
+
+            DisplayedString_ListBox.ScrollIntoView(item, DisplayedString_ListBox.Columns[columnIndex]);
+            DisplayedString_ListBox.UpdateLayout();
+
+            if (DisplayedString_ListBox.ItemContainerGenerator.ContainerFromItem(item) is not DataGridRow row)
+            {
+                return false;
+            }
+
+            textBox = FindVisualChild<TextBox>(row, candidate => candidate.DataContext == item && Equals(candidate.Tag, tag));
+            return textBox is not null;
+        }
+
+        private List<TlkSearchMatch> GetAllSearchMatches(Regex regex)
+        {
+            var matches = new List<TlkSearchMatch>();
+            for (int row = 0; row < CleanedStrings.Count; row++)
+            {
+                TLKStringRef item = CleanedStrings[row];
+                AddMatches(matches, regex, item.StringID.ToString(), row, item, 0);
+                AddMatches(matches, regex, item.Data ?? string.Empty, row, item, 1);
+            }
+
+            return matches;
+        }
+
+        private static void AddMatches(List<TlkSearchMatch> matches, Regex regex, string text, int rowIndex, TLKStringRef item, int columnIndex)
+        {
+            int startIndex = 0;
+            while (startIndex <= text.Length)
+            {
+                Match match = FindNextMatchInText(regex, text, startIndex);
+                if (match == null)
+                {
+                    break;
+                }
+
+                matches.Add(new TlkSearchMatch(rowIndex, item, columnIndex, match.Index, match.Length));
+                startIndex = match.Index + Math.Max(match.Length, 1);
+            }
+        }
+
+        private (int RowIndex, int ColumnIndex, int StartIndex) GetSearchStartLocation()
+        {
+            int rowIndex = GetActiveString() is TLKStringRef active ? Math.Max(0, CleanedStrings.IndexOf(active)) : 0;
+            int columnIndex = Math.Clamp(DisplayedString_ListBox?.CurrentCell.Column?.DisplayIndex ?? 0, 0, 1);
+            return (rowIndex, columnIndex, 0);
+        }
+
+        private static int CompareMatchLocation(TlkSearchMatch match, int rowIndex, int columnIndex, int startIndex)
+        {
+            int rowComparison = match.RowIndex.CompareTo(rowIndex);
+            if (rowComparison != 0)
+            {
+                return rowComparison;
+            }
+
+            int columnComparison = match.ColumnIndex.CompareTo(columnIndex);
+            if (columnComparison != 0)
+            {
+                return columnComparison;
+            }
+
+            return match.StartIndex.CompareTo(startIndex);
+        }
+
+        private static bool MatchesSameLocation(TlkSearchMatch left, TlkSearchMatch right)
+        {
+            return left.RowIndex == right.RowIndex
+                && left.ColumnIndex == right.ColumnIndex
+                && left.StartIndex == right.StartIndex
+                && left.Length == right.Length;
+        }
+
+        private static string GetMatchSourceText(TlkSearchMatch match)
+        {
+            return match.ColumnIndex == 0 ? match.Item.StringID.ToString() : match.Item.Data ?? string.Empty;
+        }
+
+        private bool ApplyReplacement(TlkSearchMatch match, string currentText, string replacementText)
+        {
+            string updatedText = currentText.Remove(match.StartIndex, match.Length).Insert(match.StartIndex, replacementText);
+            if (match.ColumnIndex == 0)
+            {
+                if (!int.TryParse(updatedText, out int newId) || newId <= 0)
+                {
+                    SearchStatusText = "Replacing this TLK ID would produce an invalid ID.";
+                    return false;
+                }
+
+                if (LoadedStrings.Any(x => !ReferenceEquals(x, match.Item) && x.StringID == newId))
+                {
+                    SearchStatusText = $"Replacing this TLK ID would duplicate existing ID {newId}.";
+                    return false;
+                }
+
+                match.Item.StringID = newId;
+                return true;
+            }
+
+            match.Item.Data = updatedText;
+            return true;
+        }
+
+        private static T FindVisualChild<T>(DependencyObject parent, Func<T, bool> predicate = null) where T : DependencyObject
+        {
+            if (parent is null)
+            {
+                return null;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild && (predicate is null || predicate(typedChild)))
+                {
+                    return typedChild;
+                }
+
+                T result = FindVisualChild(child, predicate);
+                if (result is not null)
+                {
+                    return result;
+                }
+            }
+
+            return null;
+        }
+
+        private bool TryGetReplacementText(Match match, out string replacementText)
+        {
+            replacementText = ReplaceText ?? string.Empty;
+            if (!FindUseRegex)
+            {
+                return true;
+            }
+
+            try
+            {
+                replacementText = match.Result(replacementText);
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                SearchStatusText = $"Invalid replacement pattern: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static Match FindNextMatchInText(Regex regex, string text, int startIndex)
+        {
+            startIndex = Math.Clamp(startIndex, 0, text.Length);
+            Match match = regex.Match(text, startIndex);
+            while (match.Success && match.Length == 0)
+            {
+                if (match.Index >= text.Length)
+                {
+                    return null;
+                }
+
+                match = regex.Match(text, match.Index + 1);
+            }
+
+            return match.Success ? match : null;
+        }
+
+        private static Match FindPreviousMatchInText(Regex regex, string text, int startIndex)
+        {
+            startIndex = Math.Clamp(startIndex, 0, text.Length);
+            Match previousMatch = null;
+            int currentIndex = 0;
+
+            while (currentIndex <= text.Length)
+            {
+                Match match = FindNextMatchInText(regex, text, currentIndex);
+                if (match == null || match.Index >= startIndex)
+                {
+                    break;
+                }
+
+                previousMatch = match;
+                currentIndex = match.Index + Math.Max(match.Length, 1);
+            }
+
+            return previousMatch;
         }
     }
 }

@@ -9,6 +9,9 @@
              mc:Ignorable="d" 
              d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
              d:DesignHeight="450" d:DesignWidth="800">
+    <exportLoaderControls:FileExportLoaderControl.InputBindings>
+        <KeyBinding Key="F" Modifiers="Control" Command="{Binding ShowFindReplaceCommand}" />
+    </exportLoaderControls:FileExportLoaderControl.InputBindings>
     <exportLoaderControls:FileExportLoaderControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:NullVisibilityConverter x:Key="NullVisibilityConveter"/>
@@ -194,6 +197,64 @@
             <Button Name="btnImportXML" Command="{Binding ImportXmlCommand}" Content="Import" ToolTip="Import from XML"  Padding="5,0" VerticalAlignment="Stretch"/>
             <Button Name="btnViewXML" Command="{Binding ViewXmlCommand}" Content="View XML" ToolTip="View as XML"  Padding="5,0" VerticalAlignment="Stretch"/>
         </ToolBar>
+        <Border DockPanel.Dock="Top" Margin="4,0,4,4" Padding="8"
+                BorderBrush="Gray" BorderThickness="1"
+                Visibility="{Binding IsFindReplaceVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Find:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="FindTextBox" Grid.Column="1" Margin="0,0,8,0"
+                             Text="{Binding FindText, UpdateSourceTrigger=PropertyChanged}"
+                             MinWidth="180"
+                             VerticalAlignment="Center"
+                             PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown"
+                             ContextMenu="{StaticResource InlineTextEditorContextMenu}" />
+                    <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2"
+                            Content="Previous" Command="{Binding FindPreviousCommand}" />
+                    <Button Grid.Column="3" Margin="0,0,8,0" Padding="10,2"
+                            Content="Find Next" Command="{Binding FindNextCommand}" />
+                    <Button Grid.Column="4" Padding="10,2"
+                            Content="Close" Command="{Binding CloseFindReplaceCommand}" />
+                </Grid>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Replace:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="ReplaceTextBox" Grid.Column="1" Margin="0,0,8,0"
+                             Text="{Binding ReplaceText, UpdateSourceTrigger=PropertyChanged}"
+                             MinWidth="180"
+                             VerticalAlignment="Center"
+                             PreviewKeyDown="FindReplaceTextBox_PreviewKeyDown"
+                             ContextMenu="{StaticResource InlineTextEditorContextMenu}" />
+                    <Button Grid.Column="2" Margin="0,0,8,0" Padding="10,2"
+                            Content="Replace" Command="{Binding ReplaceCommand}" />
+                    <Button Grid.Column="3" Padding="10,2"
+                            Content="Replace All" Command="{Binding ReplaceAllCommand}" />
+                </Grid>
+                <WrapPanel Margin="0,8,0,0">
+                    <CheckBox Content="Match case" Margin="0,0,16,0"
+                              IsChecked="{Binding FindMatchCase}" />
+                    <CheckBox Content="Match whole word" Margin="0,0,16,0"
+                              IsChecked="{Binding FindWholeWord}" />
+                    <CheckBox Content="Regular expression" Margin="0,0,16,0"
+                              IsChecked="{Binding FindUseRegex}" />
+                    <CheckBox Content="Wrap around"
+                              IsChecked="{Binding FindWrapAround}" />
+                </WrapPanel>
+                <TextBlock Margin="0,8,0,0" Text="{Binding SearchStatusText}" />
+            </StackPanel>
+        </Border>
         <Popup Name="popupDlg" Placement="Center" VerticalOffset="15" Width="640" Height="800" Margin="0,12,0,0" Closed="Evt_CloseXML" StaysOpen="false">
             <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="2" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" >
                 <TextBox Name="popoutXmlBox" Text="No xml loaded" Margin="15,0,15,0" VerticalAlignment = "Center" FontFamily = "Courier New" FontSize = "14" Focusable = "True" ScrollViewer.CanContentScroll = "True" ScrollViewer.VerticalScrollBarVisibility = "Visible" IsReadOnly = "True" TextWrapping = "Wrap" LostFocus="CloseViewAsXml"/>
@@ -255,6 +316,8 @@
                                          BorderThickness="0"
                                          Background="Transparent"
                                          Padding="2"
+                                         Tag="IdColumnEditor"
+                                         IsInactiveSelectionHighlightEnabled="True"
                                          HorizontalContentAlignment="Right"
                                          ContextMenu="{StaticResource InlineTlkLineContextMenu}"
                                          PreviewTextInput="StringIdTextBox_PreviewTextInput"
@@ -273,6 +336,8 @@
                                      BorderThickness="0"
                                      Background="Transparent"
                                      Padding="2"
+                                     Tag="TextColumnEditor"
+                                     IsInactiveSelectionHighlightEnabled="True"
                                      ContextMenu="{StaticResource InlineTlkLineContextMenu}"
                                      TextWrapping="Wrap"
                                      AcceptsReturn="True"
