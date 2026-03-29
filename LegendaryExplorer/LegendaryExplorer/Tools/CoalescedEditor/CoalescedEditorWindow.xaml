@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:bases="clr-namespace:LegendaryExplorer.SharedUI.Bases"
+        xmlns:local="clr-namespace:LegendaryExplorer.Tools.CoalescedEditor"
         xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         mc:Ignorable="d"
         Icon="pack://application:,,,/Tools/Icons/16x16/CoalescedCompiler_Icon_16.ico"
@@ -12,6 +13,9 @@
         Drop="Window_Drop"
         AllowDrop="True"
         Closed="Root_Closed">
+    <Window.Resources>
+        <local:IndentedPathDisplayConverter x:Key="IndentedPathDisplayConverter" />
+    </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -74,7 +78,16 @@
                     <ListBox x:Name="FileListBox"
                              SelectionChanged="FileListBox_SelectionChanged"
                              HorizontalContentAlignment="Stretch"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="4,2"
+                                           FontFamily="Consolas"
+                                           xml:space="preserve"
+                                           Text="{Binding Converter={StaticResource IndentedPathDisplayConverter}}" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </DockPanel>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
                 <!-- Right: syntax-highlighted text editor -->

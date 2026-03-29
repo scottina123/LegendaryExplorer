@@ -2,25 +2,31 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore.Coalesced;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using ICSharpCode.AvalonEdit.Document;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Windows.Controls;
 using System.Xml;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace LegendaryExplorer.Tools.CoalescedEditor
 {
@@ -60,13 +66,16 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         public ICommand CloseTabCommand { get; set; }
 
         private bool _suppressEditorEvents;
+        private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
 
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
             LoadCommands();
             InitializeComponent();
             DataContext = this;
+            TextEditor.TextArea.TextView.BackgroundRenderers.Add(_xmlTagMatchRenderer);
             TextEditor.TextChanged += TextEditor_TextChanged;
+            TextEditor.TextArea.Caret.PositionChanged += TextArea_Caret_PositionChanged;
             RestoreOpenFiles();
             UpdateWelcomeVisibility();
         }
@@ -372,6 +381,8 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                     TextEditor.SyntaxHighlighting = null;
                     SelectedFileHeader.Text = "(no file selected)";
                 }
+
+                UpdateXmlTagMatchHighlight();
             }
             finally
             {
@@ -388,6 +399,98 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (!SelectedFile.HasUnsavedChanges)
                     SelectedFile.HasUnsavedChanges = true;
             }
+
+            UpdateXmlTagMatchHighlight();
+        }
+
+        private void TextArea_Caret_PositionChanged(object sender, EventArgs e)
+        {
+            if (_suppressEditorEvents)
+                return;
+
+            UpdateXmlTagMatchHighlight();
+        }
+
+        private void UpdateXmlTagMatchHighlight()
+        {
+            if (TextEditor?.Document is null || SelectedFile?.IsGame3 != true)
+            {
+                _xmlTagMatchRenderer.Clear();
+                return;
+            }
+
+            var text = TextEditor.Text;
+            var caretOffset = TextEditor.CaretOffset;
+            var match = FindMatchingXmlTagPair(text, caretOffset);
+            if (match is null)
+            {
+                _xmlTagMatchRenderer.Clear();
+                return;
+            }
+
+            _xmlTagMatchRenderer.SetMatches(match.Value.openIndex, match.Value.openLength, match.Value.closeIndex, match.Value.closeLength);
+        }
+
+        private static (int openIndex, int openLength, int closeIndex, int closeLength)? FindMatchingXmlTagPair(string text, int caretOffset)
+        {
+            if (string.IsNullOrEmpty(text))
+                return null;
+
+            var tagRegex = new Regex(@"<(?<close>/)?(?<name>[A-Za-z_][A-Za-z0-9_:\-.]*)(?<attributes>[^<>]*?)(?<selfclose>/)?>", RegexOptions.Compiled);
+            var stack = new Stack<(string name, Match match)>();
+            var pairs = new Dictionary<int, (Match openMatch, Match closeMatch)>();
+            Match containingMatch = null;
+
+            foreach (Match tagMatch in tagRegex.Matches(text))
+            {
+                if (caretOffset >= tagMatch.Index && caretOffset <= tagMatch.Index + tagMatch.Length)
+                {
+                    containingMatch = tagMatch;
+                }
+
+                var tagName = tagMatch.Groups["name"].Value;
+                var isClosing = tagMatch.Groups["close"].Success;
+                var isSelfClosing = tagMatch.Groups["selfclose"].Success || tagMatch.Value.EndsWith("/>", StringComparison.Ordinal);
+
+                if (string.IsNullOrEmpty(tagName) || isSelfClosing)
+                    continue;
+
+                if (!isClosing)
+                {
+                    stack.Push((tagName, tagMatch));
+                    continue;
+                }
+
+                while (stack.Count > 0)
+                {
+                    var openTag = stack.Pop();
+                    if (!openTag.name.Equals(tagName, StringComparison.Ordinal))
+                        continue;
+
+                    pairs[openTag.match.Index] = (openTag.match, tagMatch);
+                    break;
+                }
+            }
+
+            if (containingMatch is null)
+                return null;
+
+            if (containingMatch.Groups["close"].Success)
+            {
+                foreach (var pair in pairs.Values)
+                {
+                    if (pair.closeMatch.Index == containingMatch.Index)
+                    {
+                        return (pair.openMatch.Index, pair.openMatch.Length, pair.closeMatch.Index, pair.closeMatch.Length);
+                    }
+                }
+
+                return null;
+            }
+
+            return pairs.TryGetValue(containingMatch.Index, out var openingPair)
+                ? (openingPair.openMatch.Index, openingPair.openMatch.Length, openingPair.closeMatch.Index, openingPair.closeMatch.Length)
+                : null;
         }
 
         #endregion
@@ -775,6 +878,86 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public class IndentedPathDisplayConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is not string path || string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            var parts = path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length <= 1)
+                return path;
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (i > 0)
+                    sb.AppendLine();
+
+                sb.Append(' ', i * 2);
+                sb.Append(parts[i]);
+            }
+
+            return sb.ToString();
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    public class XmlTagMatchRenderer : IBackgroundRenderer
+    {
+        private readonly Brush _backgroundBrush = new SolidColorBrush(Color.FromArgb(70, 51, 153, 255));
+        private readonly Pen _borderPen = new(new SolidColorBrush(Color.FromArgb(140, 110, 190, 255)), 1);
+        private readonly TextSegmentCollection<TextSegment> _segments;
+        private TextView _textView;
+
+        public XmlTagMatchRenderer()
+        {
+            _backgroundBrush.Freeze();
+            _borderPen.Freeze();
+            _segments = new TextSegmentCollection<TextSegment>();
+        }
+
+        public KnownLayer Layer => KnownLayer.Selection;
+
+        public void Draw(TextView textView, DrawingContext drawingContext)
+        {
+            _textView = textView;
+            if (_segments.Count == 0 || !textView.VisualLinesValid)
+                return;
+
+            foreach (var segment in _segments)
+            {
+                foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, segment))
+                {
+                    var geometry = new RectangleGeometry(new Rect(rect.Location, new Size(rect.Width, rect.Height)));
+                    drawingContext.DrawGeometry(_backgroundBrush, _borderPen, geometry);
+                }
+            }
+        }
+
+        public void SetMatches(int firstOffset, int firstLength, int secondOffset, int secondLength)
+        {
+            _segments.Clear();
+            _segments.Add(new TextSegment { StartOffset = firstOffset, Length = firstLength });
+            _segments.Add(new TextSegment { StartOffset = secondOffset, Length = secondLength });
+            _textView?.InvalidateLayer(Layer);
+        }
+
+        public void Clear()
+        {
+            if (_segments.Count == 0)
+                return;
+
+            _segments.Clear();
+            _textView?.InvalidateLayer(Layer);
         }
     }
 }
