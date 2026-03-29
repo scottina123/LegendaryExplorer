@@ -6962,7 +6962,8 @@ namespace LegendaryExplorer.DialogueEditor
             int? selectedInterpUIndex = GetSelectedInterpDataTreeExport()?.UIndex ?? SelectedDialogueNode.InterpData.UIndex;
             using var _ = SuppressPackageUpdates();
             var dialog = new BulkInterpEditorDialog(this, SelectedDialogueNode, SelectedConv);
-            if (dialog.ShowDialog() == true)
+            dialog.ShowDialog();
+            if (dialog.ChangesApplied)
             {
                 RefreshSelectedNodeAfterInterpMutation(selectedInterpUIndex);
             }

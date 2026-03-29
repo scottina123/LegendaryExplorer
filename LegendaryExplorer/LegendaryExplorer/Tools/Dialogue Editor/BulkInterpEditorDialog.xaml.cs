@@ -121,6 +121,7 @@ namespace LegendaryExplorer.DialogueEditor
     public partial class BulkInterpEditorDialog : Window
     {
         public ObservableCollectionExtended<InterpGroupItem> InterpGroupItems { get; } = new();
+        public bool ChangesApplied { get; private set; }
 
         private readonly ExportEntry _interpData;
         private readonly IMEPackage _pcc;
@@ -351,11 +352,9 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (changesApplied > 0)
             {
+                ChangesApplied = true;
                 MessageBox.Show($"Applied {changesApplied} change(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-
-            DialogResult = true;
-            Close();
         }
 
         /// <summary>
