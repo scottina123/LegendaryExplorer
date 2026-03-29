@@ -1712,7 +1712,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             {
                 Text = annotation,
                 IsReadOnly = true,
-                Focusable = false,
+                Focusable = true,
                 IsTabStop = false,
                 Margin = new Thickness(6, -1, 0, -1),
                 Padding = new Thickness(6, 1, 6, 1),
@@ -1734,6 +1734,16 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             };
 
             var contextMenu = new ContextMenu();
+            var copyMenuItem = new MenuItem { Header = "Copy" };
+            copyMenuItem.Click += (_, _) =>
+            {
+                string textToCopy = string.IsNullOrEmpty(textBox.SelectedText) ? textBox.Text : textBox.SelectedText;
+                if (!string.IsNullOrEmpty(textToCopy))
+                {
+                    Clipboard.SetText(textToCopy);
+                }
+            };
+            contextMenu.Items.Add(copyMenuItem);
             var expandMenuItem = new MenuItem { Header = "Expand" };
             expandMenuItem.Click += (_, _) => ShowExpandedPopup(textBox, annotation);
             contextMenu.Items.Add(expandMenuItem);
@@ -1748,6 +1758,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             {
                 Text = annotation,
                 IsReadOnly = true,
+                Focusable = true,
                 Width = ExpandedWidth,
                 Height = ExpandedHeight,
                 MinWidth = ExpandedWidth,
@@ -1764,6 +1775,19 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
+
+            var contextMenu = new ContextMenu();
+            var copyMenuItem = new MenuItem { Header = "Copy" };
+            copyMenuItem.Click += (_, _) =>
+            {
+                string textToCopy = string.IsNullOrEmpty(expandedTextBox.SelectedText) ? expandedTextBox.Text : expandedTextBox.SelectedText;
+                if (!string.IsNullOrEmpty(textToCopy))
+                {
+                    Clipboard.SetText(textToCopy);
+                }
+            };
+            contextMenu.Items.Add(copyMenuItem);
+            expandedTextBox.ContextMenu = contextMenu;
 
             var popupBorder = new Border
             {
