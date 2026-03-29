@@ -24,6 +24,7 @@ using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Windows.Controls;
 using System.Xml;
+using System.Xml.Linq;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -36,6 +37,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
     public partial class CoalescedEditorWindow : TrackingNotifyPropertyChangedWindowBase
     {
         private static readonly string StateFilePath = Path.Combine(AppDirectories.AppDataFolder, "CoalescedEditorState.json");
+        private const string DefaultGame3ManifestBaseName = "Coalesced";
 
         public ObservableCollection<OpenCoalescedFile> OpenFiles { get; } = new();
 
@@ -228,6 +230,10 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (isGame3)
                 {
                     var xmlMap = CoalescedConverter.DecompileGame3ToMemory(fs);
+                    var manifestName = GetGame3ManifestFileName(filePath);
+                    coalFile.FileNames.Add(manifestName);
+                    coalFile.FileContents[manifestName] = BuildGame3ManifestXml(filePath, xmlMap.Keys);
+
                     foreach (var kvp in xmlMap.OrderBy(k => k.Key))
                     {
                         coalFile.FileNames.Add(kvp.Key);
@@ -246,7 +252,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 }
 
                 if (coalFile.FileNames.Count > 0)
-                    coalFile.SelectedFileName = coalFile.FileNames[0];
+                    coalFile.SelectedFileName = isGame3 && coalFile.FileNames.Count > 1 ? coalFile.FileNames[1] : coalFile.FileNames[0];
 
                 coalFile.HasUnsavedChanges = false;
 
@@ -293,8 +299,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 MemoryStream ms;
                 if (coalFile.IsGame3)
                 {
-                    var fileMapping = new Dictionary<string, string>(coalFile.FileContents);
-                    ms = CoalescedConverter.CompileFromMemory(fileMapping);
+                    ms = CompileGame3CoalescedFromMemory(coalFile, destinationPath);
                 }
                 else
                 {
@@ -344,6 +349,17 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (SelectedFile.IsGame3)
                 {
                     Directory.CreateDirectory(destPath);
+                    if (!TryGetGame3ManifestFileName(SelectedFile, out var manifestName))
+                    {
+                        manifestName = GetGame3ManifestFileName(SelectedFile.FilePath);
+                    }
+
+                    if (!SelectedFile.FileContents.ContainsKey(manifestName))
+                    {
+                        var assetNames = SelectedFile.FileContents.Keys.Where(name => !name.Equals(manifestName, StringComparison.OrdinalIgnoreCase));
+                        File.WriteAllText(Path.Combine(destPath, manifestName), BuildGame3ManifestXml(SelectedFile.FilePath, assetNames));
+                    }
+
                     foreach (var kvp in SelectedFile.FileContents)
                     {
                         var outPath = Path.Combine(destPath, kvp.Key);
@@ -1044,6 +1060,110 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             catch
             {
                 // Silently fail - not critical
+            }
+        }
+
+        #endregion
+
+        #region Game3 Manifest Support
+
+        private static string GetGame3ManifestFileName(string filePath)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(filePath);
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = DefaultGame3ManifestBaseName;
+
+            return $"{baseName}.xml";
+        }
+
+        private static bool TryGetGame3ManifestFileName(OpenCoalescedFile coalFile, out string manifestName)
+        {
+            foreach (var fileName in coalFile.FileNames)
+            {
+                if (!coalFile.FileContents.TryGetValue(fileName, out var content) || string.IsNullOrWhiteSpace(content))
+                    continue;
+
+                try
+                {
+                    if (XDocument.Parse(content).Root?.Name.LocalName == "CoalesceFile")
+                    {
+                        manifestName = fileName;
+                        return true;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            manifestName = null;
+            return false;
+        }
+
+        private static string BuildGame3ManifestXml(string filePath, IEnumerable<string> assetFileNames)
+        {
+            var manifestName = Path.GetFileName(filePath) ?? "Coalesced.bin";
+            var manifestId = Path.GetFileNameWithoutExtension(filePath);
+            if (string.IsNullOrWhiteSpace(manifestId))
+                manifestId = DefaultGame3ManifestBaseName;
+
+            var root = new XElement("CoalesceFile");
+            root.SetAttributeValue("id", manifestId);
+            root.SetAttributeValue("name", manifestName);
+
+            var assetsElement = new XElement("Assets");
+            foreach (var assetFileName in assetFileNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+            {
+                assetsElement.Add(new XElement("Asset", new XAttribute("source", assetFileName)));
+            }
+
+            root.Add(assetsElement);
+            var document = new XDocument(root);
+            using var writer = new StringWriter();
+            document.Save(writer, SaveOptions.None);
+            return writer.ToString();
+        }
+
+        private static MemoryStream CompileGame3CoalescedFromMemory(OpenCoalescedFile coalFile, string destinationPath)
+        {
+            var tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "CoalescedEditor", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDirectory);
+
+            try
+            {
+                if (!TryGetGame3ManifestFileName(coalFile, out var manifestName))
+                {
+                    manifestName = GetGame3ManifestFileName(destinationPath);
+                }
+
+                var assetFileNames = coalFile.FileContents.Keys.Where(name => !name.Equals(manifestName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                foreach (var kvp in coalFile.FileContents)
+                {
+                    File.WriteAllText(Path.Combine(tempDirectory, kvp.Key), kvp.Value);
+                }
+
+                var manifestPath = Path.Combine(tempDirectory, manifestName);
+                if (!File.Exists(manifestPath))
+                {
+                    File.WriteAllText(manifestPath, BuildGame3ManifestXml(destinationPath, assetFileNames));
+                }
+
+                var output = new MemoryStream();
+                CoalescedConverter.ConvertToBin(manifestPath, destinationPath, outStream: output);
+                output.Position = 0;
+                return output;
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDirectory))
+                        Directory.Delete(tempDirectory, true);
+                }
+                catch
+                {
+                }
             }
         }
 
