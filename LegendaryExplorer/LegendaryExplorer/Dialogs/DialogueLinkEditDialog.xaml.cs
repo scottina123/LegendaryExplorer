@@ -383,25 +383,20 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            if (outgoingConnectionOrderListBox.SelectedIndex == selectedOrder)
+            if (selectedOrder < 0 || selectedOrder >= outgoingConnectionOrder.Count)
             {
+                selectedOrder = outgoingConnectionOrderListBox.SelectedIndex;
                 UpdateOrderButtons();
                 return;
             }
 
-            string selectedItem = selectedOrder >= 0 && selectedOrder < outgoingConnectionOrder.Count
-                ? outgoingConnectionOrder[selectedOrder]
-                : null;
-            if (selectedItem == null)
+            if (outgoingConnectionOrderListBox.SelectedIndex != selectedOrder)
             {
-                SetSelectedOrder(outgoingConnectionOrderListBox.SelectedIndex);
+                SetSelectedOrder(selectedOrder);
                 return;
             }
 
-            int targetIndex = outgoingConnectionOrderListBox.SelectedIndex;
-            outgoingConnectionOrder.RemoveAt(selectedOrder);
-            outgoingConnectionOrder.Insert(targetIndex, selectedItem);
-            SetSelectedOrder(targetIndex);
+            UpdateOrderButtons();
         }
 
         private void OutgoingConnectionOrderListBox_PreviewKeyDown(object sender, KeyEventArgs e)
