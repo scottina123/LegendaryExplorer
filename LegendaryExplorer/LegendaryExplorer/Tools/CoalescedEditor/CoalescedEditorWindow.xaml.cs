@@ -23,6 +23,7 @@ using ICSharpCode.AvalonEdit.Document;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Xml;
 using System.Xml.Linq;
 using LegendaryExplorer.Tools.TlkManagerNS;
@@ -1661,6 +1662,10 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
     public class TlkInlineAnnotationGenerator : VisualLineElementGenerator
     {
+        private const double CollapsedWidth = 364;
+        private const double CollapsedHeight = 24;
+        private const double ExpandedWidth = 364;
+        private const double ExpandedHeight = 96;
         private readonly Dictionary<int, string> _annotations = new();
         private readonly List<int> _offsets = new();
 
@@ -1716,19 +1721,81 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 BorderBrush = new SolidColorBrush(Color.FromRgb(122, 122, 122)),
                 Foreground = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
                 VerticalContentAlignment = VerticalAlignment.Top,
-                Width = 364,
-                Height = 24,
-                MinWidth = 364,
-                MaxWidth = 364,
-                MinHeight = 24,
-                MaxHeight = 24,
+                Width = CollapsedWidth,
+                Height = CollapsedHeight,
+                MinWidth = CollapsedWidth,
+                MaxWidth = CollapsedWidth,
+                MinHeight = CollapsedHeight,
+                MaxHeight = CollapsedHeight,
                 TextWrapping = TextWrapping.Wrap,
                 AcceptsReturn = true,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
 
+            var contextMenu = new ContextMenu();
+            var expandMenuItem = new MenuItem { Header = "Expand" };
+            expandMenuItem.Click += (_, _) => ShowExpandedPopup(textBox, annotation);
+            contextMenu.Items.Add(expandMenuItem);
+            textBox.ContextMenu = contextMenu;
+
             return new InlineObjectElement(0, textBox);
+        }
+
+        private static void ShowExpandedPopup(TextBox placementTarget, string annotation)
+        {
+            var expandedTextBox = new TextBox
+            {
+                Text = annotation,
+                IsReadOnly = true,
+                Width = ExpandedWidth,
+                Height = ExpandedHeight,
+                MinWidth = ExpandedWidth,
+                MaxWidth = ExpandedWidth,
+                MinHeight = ExpandedHeight,
+                MaxHeight = ExpandedHeight,
+                Padding = new Thickness(6, 4, 6, 4),
+                BorderThickness = new Thickness(1),
+                Background = new SolidColorBrush(Color.FromRgb(45, 45, 48)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(122, 122, 122)),
+                Foreground = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+
+            var popupBorder = new Border
+            {
+                Background = expandedTextBox.Background,
+                BorderBrush = expandedTextBox.BorderBrush,
+                BorderThickness = new Thickness(1),
+                Child = expandedTextBox
+            };
+
+            var popup = new Popup
+            {
+                PlacementTarget = placementTarget,
+                Placement = PlacementMode.Bottom,
+                StaysOpen = false,
+                AllowsTransparency = true,
+                Child = popupBorder,
+                IsOpen = true
+            };
+
+            expandedTextBox.LostKeyboardFocus += (_, _) => popup.IsOpen = false;
+            popup.Closed += (_, _) =>
+            {
+                if (expandedTextBox.IsKeyboardFocusWithin)
+                {
+                    Keyboard.ClearFocus();
+                }
+
+                expandedTextBox.ClearValue(TextBox.TextProperty);
+            };
+
+            expandedTextBox.Focus();
+            expandedTextBox.Select(0, 0);
         }
     }
 }
