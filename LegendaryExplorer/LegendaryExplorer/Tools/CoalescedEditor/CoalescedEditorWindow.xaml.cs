@@ -1282,70 +1282,80 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             annotation = default;
 
-            if (!int.TryParse(idText, out int plotId) || !TryGetPlotElementType(key, out var plotType))
+            if (!int.TryParse(idText, out int plotId))
                 return false;
 
-            var plotElement = PlotDatabases.FindPlotElementFromID(plotId, plotType, game);
-            if (plotElement == null || string.IsNullOrWhiteSpace(plotElement.Path))
-                return false;
-
-            annotation = new ResolvedTlkAnnotation(anchorOffset, anchorLength, plotElement.Path);
-            return true;
-        }
-
-        private static bool TryGetPlotElementType(string key, out PlotElementType plotType)
-        {
-            plotType = PlotElementType.None;
-            if (string.IsNullOrWhiteSpace(key))
-                return false;
-
-            var normalizedKey = new string(key.Where(char.IsLetter).ToArray()).ToLowerInvariant();
-            if (string.IsNullOrEmpty(normalizedKey))
-                return false;
-
-            if (normalizedKey.Contains("conditional"))
+            foreach (var plotType in GetPlotElementTypesForKey(key))
             {
-                plotType = PlotElementType.Conditional;
-                return true;
-            }
+                var plotElement = PlotDatabases.FindPlotElementFromID(plotId, plotType, game);
+                if (plotElement == null || string.IsNullOrWhiteSpace(plotElement.Path))
+                    continue;
 
-            if (normalizedKey.Contains("consequence"))
-            {
-                plotType = PlotElementType.Consequence;
-                return true;
-            }
-
-            if (normalizedKey.Contains("transition"))
-            {
-                plotType = PlotElementType.Transition;
-                return true;
-            }
-
-            if (normalizedKey.Contains("substate"))
-            {
-                plotType = PlotElementType.SubState;
-                return true;
-            }
-
-            if (normalizedKey.Contains("state") || normalizedKey.Contains("flag") || normalizedKey.Contains("bool"))
-            {
-                plotType = PlotElementType.State;
-                return true;
-            }
-
-            if (normalizedKey.Contains("integer") || normalizedKey.EndsWith("int", StringComparison.Ordinal))
-            {
-                plotType = PlotElementType.Integer;
-                return true;
-            }
-
-            if (normalizedKey.Contains("float"))
-            {
-                plotType = PlotElementType.Float;
+                annotation = new ResolvedTlkAnnotation(anchorOffset, anchorLength, plotElement.Path);
                 return true;
             }
 
             return false;
+        }
+
+        private static List<PlotElementType> GetPlotElementTypesForKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return [];
+
+            var normalizedKey = new string(key.Where(char.IsLetter).ToArray()).ToLowerInvariant();
+            if (string.IsNullOrEmpty(normalizedKey))
+                return [];
+
+            var plotTypes = new List<PlotElementType>();
+
+            void AddPlotType(PlotElementType plotType)
+            {
+                if (!plotTypes.Contains(plotType))
+                    plotTypes.Add(plotType);
+            }
+
+            if (normalizedKey.Contains("conditional"))
+            {
+                AddPlotType(PlotElementType.Conditional);
+            }
+
+            if (normalizedKey.Contains("consequence"))
+            {
+                AddPlotType(PlotElementType.Consequence);
+            }
+
+            if (normalizedKey.Contains("transition"))
+            {
+                AddPlotType(PlotElementType.Transition);
+            }
+
+            if (normalizedKey.Contains("substate"))
+            {
+                AddPlotType(PlotElementType.SubState);
+            }
+
+            if (normalizedKey.Contains("integer") || normalizedKey.EndsWith("int", StringComparison.Ordinal))
+            {
+                AddPlotType(PlotElementType.Integer);
+            }
+
+            if (normalizedKey.EndsWith("plot", StringComparison.Ordinal))
+            {
+                AddPlotType(PlotElementType.Integer);
+            }
+
+            if (normalizedKey.Contains("float"))
+            {
+                AddPlotType(PlotElementType.Float);
+            }
+
+            if (normalizedKey.Contains("state") || normalizedKey.Contains("flag") || normalizedKey.Contains("bool"))
+            {
+                AddPlotType(PlotElementType.State);
+            }
+
+            return plotTypes;
         }
 
         private static string StripWrappingQuotes(string text)
