@@ -442,6 +442,10 @@
                           Command="{Binding OpenInCommand}" CommandParameter="SeqEdLvl"
                           IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}"
                           ToolTip="Open the base file in Sequence Editor" />
+                <MenuItem Header="Refresh" Padding="4"
+                          Command="{Binding AutoLayoutCommand}"
+                          IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}"
+                          ToolTip="Re-run auto layout" />
                 <MenuItem HorizontalAlignment="Right" Style="{StaticResource GotoBoxHostMenuItemStyle}">
                     <MenuItem.Header>
                         <ComboBox Name="GotoBox" Text="Go to: (Ctrl+G)" ItemsSource="{Binding CurrentObjects}"
