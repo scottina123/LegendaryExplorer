@@ -455,7 +455,7 @@ namespace LegendaryExplorer.DialogueEditor
                     this,
                     links,
                     currentSelection,
-                    editableLinks.Select(link => DialogueEditorWindow.BuildLinkOrderDisplayText(link, IsReply)),
+                    editableLinks.Select(link => DialogueLinkEditDialog.CreateOrderDisplayItem(link, IsReply)),
                     editableLinks.IndexOf(editLink),
                     !IsReply,
                     editLink.ReplyStrRef,

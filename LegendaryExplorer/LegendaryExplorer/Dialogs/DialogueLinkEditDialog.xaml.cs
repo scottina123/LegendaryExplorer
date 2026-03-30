@@ -9,6 +9,7 @@ using System.Windows.Media;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Unreal;
 
 namespace LegendaryExplorer.Dialogs
@@ -29,12 +30,24 @@ namespace LegendaryExplorer.Dialogs
         public int SelectedOrder { get; }
     }
 
+    public sealed class DialogueLinkOrderDisplayItem
+    {
+        public DialogueLinkOrderDisplayItem(string displayText, Brush foreground)
+        {
+            DisplayText = displayText;
+            Foreground = foreground;
+        }
+
+        public string DisplayText { get; }
+        public Brush Foreground { get; }
+    }
+
     public class DialogueLinkEditDialog : NotifyPropertyChangedWindowBase
     {
         private readonly bool showReplyOptions;
         private readonly Func<int, string> replyTextResolver;
         private readonly ComboBox targetLinkComboBox;
-        private readonly ObservableCollection<string> outgoingConnectionOrder;
+        private readonly ObservableCollection<DialogueLinkOrderDisplayItem> outgoingConnectionOrder;
         private readonly ListBox outgoingConnectionOrderListBox;
         private readonly TextBox replyStrRefTextBox;
         private readonly TextBlock replyStrRefPreviewTextBlock;
@@ -50,7 +63,7 @@ namespace LegendaryExplorer.Dialogs
             Control owner,
             IEnumerable<string> targetOptions,
             string selectedTarget,
-            IEnumerable<string> outgoingConnectionOrder,
+            IEnumerable<DialogueLinkOrderDisplayItem> outgoingConnectionOrder,
             int selectedOrder,
             bool showReplyOptions,
             int replyStrRef,
@@ -66,7 +79,7 @@ namespace LegendaryExplorer.Dialogs
             ResizeMode = ResizeMode.NoResize;
             this.showReplyOptions = showReplyOptions;
             this.replyTextResolver = replyTextResolver;
-            this.outgoingConnectionOrder = new ObservableCollection<string>(outgoingConnectionOrder?.ToList() ?? []);
+            this.outgoingConnectionOrder = new ObservableCollection<DialogueLinkOrderDisplayItem>(outgoingConnectionOrder?.ToList() ?? []);
             this.selectedOrder = this.outgoingConnectionOrder.Count == 0
                 ? -1
                 : Math.Clamp(selectedOrder, 0, this.outgoingConnectionOrder.Count - 1);
@@ -144,6 +157,12 @@ namespace LegendaryExplorer.Dialogs
                 MinHeight = 90,
                 MaxHeight = 180
             };
+            var orderItemTemplate = new DataTemplate();
+            var orderItemTextBlock = new FrameworkElementFactory(typeof(TextBlock));
+            orderItemTextBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(DialogueLinkOrderDisplayItem.DisplayText)));
+            orderItemTextBlock.SetBinding(TextBlock.ForegroundProperty, new System.Windows.Data.Binding(nameof(DialogueLinkOrderDisplayItem.Foreground)));
+            orderItemTemplate.VisualTree = orderItemTextBlock;
+            outgoingConnectionOrderListBox.ItemTemplate = orderItemTemplate;
             outgoingConnectionOrderListBox.SelectionChanged += OutgoingConnectionOrderListBox_SelectionChanged;
             outgoingConnectionOrderListBox.PreviewKeyDown += OutgoingConnectionOrderListBox_PreviewKeyDown;
             SetSelectedOrder(this.selectedOrder);
@@ -287,7 +306,7 @@ namespace LegendaryExplorer.Dialogs
             Control owner,
             IEnumerable<string> targetOptions,
             string selectedTarget,
-            IEnumerable<string> outgoingConnectionOrder,
+            IEnumerable<DialogueLinkOrderDisplayItem> outgoingConnectionOrder,
             int selectedOrder,
             bool showReplyOptions,
             int replyStrRef,
@@ -299,6 +318,15 @@ namespace LegendaryExplorer.Dialogs
             var dialog = new DialogueLinkEditDialog(owner, targetOptions, selectedTarget, outgoingConnectionOrder, selectedOrder, showReplyOptions, replyStrRef, replyTextResolver, replyCategories, selectedCategory);
             result = dialog.ShowDialog() == true ? dialog.Result : null;
             return result != null;
+        }
+
+        public static DialogueLinkOrderDisplayItem CreateOrderDisplayItem(ReplyChoiceNode link, bool sourceNodeIsReply)
+        {
+            return new DialogueLinkOrderDisplayItem(
+                DialogueEditorWindow.BuildLinkOrderDisplayText(link, sourceNodeIsReply),
+                sourceNodeIsReply || link == null
+                    ? ToBrush(DObj.connectionColor)
+                    : GetReplyCategoryBrush(link.RCategory.ToString()));
         }
 
         private void SetSelectedOrder(int order)
@@ -327,7 +355,7 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            string item = outgoingConnectionOrder[selectedOrder];
+            DialogueLinkOrderDisplayItem item = outgoingConnectionOrder[selectedOrder];
             outgoingConnectionOrder.RemoveAt(selectedOrder);
             outgoingConnectionOrder.Insert(targetIndex, item);
             SetSelectedOrder(targetIndex);
@@ -346,7 +374,7 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
-            string item = outgoingConnectionOrder[selectedOrder];
+            DialogueLinkOrderDisplayItem item = outgoingConnectionOrder[selectedOrder];
             outgoingConnectionOrder.RemoveAt(selectedOrder);
             outgoingConnectionOrder.Insert(targetIndex, item);
             SetSelectedOrder(targetIndex);

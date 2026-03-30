@@ -5178,7 +5178,7 @@ namespace LegendaryExplorer.DialogueEditor
                     this,
                     links,
                     currentSelection,
-                    editableLinks.Select(link => BuildLinkOrderDisplayText(link, sourceNodeIsReply)),
+                    editableLinks.Select(link => DialogueLinkEditDialog.CreateOrderDisplayItem(link, sourceNodeIsReply)),
                     editableLinks.IndexOf(editLink),
                     !sourceNodeIsReply,
                     editLink.ReplyStrRef,
@@ -5241,6 +5241,12 @@ namespace LegendaryExplorer.DialogueEditor
                 ? link.TgtLine
                 : $"{link.ReplyStrRef} {link.ReplyLine}";
 
+            string categoryLabel = null;
+            if (!sourceNodeIsReply)
+            {
+                categoryLabel = $"{GetReplyCategoryAcronym(link.RCategory)} - {GetReplyCategoryDisplayText(link.RCategory)}";
+            }
+
             if (string.IsNullOrWhiteSpace(summary))
             {
                 summary = link.TgtLine;
@@ -5252,7 +5258,25 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             summary = Regex.Replace(summary ?? string.Empty, @"\s+", " ").Trim();
-            return $"{AddOrdinal(link.Order + 1)} - {link.NodeIDLink}: {summary}";
+            return string.IsNullOrWhiteSpace(categoryLabel)
+                ? $"{AddOrdinal(link.Order + 1)} - {link.NodeIDLink}: {summary}"
+                : $"{AddOrdinal(link.Order + 1)} - {link.NodeIDLink} [{categoryLabel}]: {summary}";
+        }
+
+        public static string GetReplyCategoryAcronym(EReplyCategory category)
+        {
+            return category switch
+            {
+                EReplyCategory.REPLY_CATEGORY_DEFAULT => "D",
+                EReplyCategory.REPLY_CATEGORY_AGREE => "A",
+                EReplyCategory.REPLY_CATEGORY_DISAGREE => "DI",
+                EReplyCategory.REPLY_CATEGORY_FRIENDLY => "F",
+                EReplyCategory.REPLY_CATEGORY_HOSTILE => "H",
+                EReplyCategory.REPLY_CATEGORY_INVESTIGATE => "I",
+                EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT => "RI",
+                EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => "PI",
+                _ => "D"
+            };
         }
 
         private void WriteEditableLinksToNodeProperties(DiagNode node, IEnumerable<ReplyChoiceNode> editableLinks)
