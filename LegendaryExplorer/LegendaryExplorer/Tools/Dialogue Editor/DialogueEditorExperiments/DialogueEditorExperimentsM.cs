@@ -40,19 +40,13 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 return;
             }
 
-            var newTag = PromptDialog.Prompt(window, "Enter the tag of the speaker you want to add.", "Enter speaker tag");
-            if (newTag == null)
-            {
-                return; // Nothing
-            }
-
-            var fxaSelections = PromptForSharedFxaSelection(window as Window, window.Pcc);
-            if (fxaSelections is null)
+            var speakerSelections = PromptForSharedFxaSelectionAndSpeakerTag(window as Window, window.Pcc);
+            if (speakerSelections is null)
             {
                 return;
             }
 
-            var (fxaM, fxaF) = fxaSelections.Value;
+            var (newTag, fxaM, fxaF) = speakerSelections.Value;
 
             foreach (var convo in conversations)
             {
@@ -88,7 +82,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             MessageBox.Show("Done.");
         }
 
-        private static (ExportEntry male, ExportEntry female)? PromptForSharedFxaSelection(Window owner, IMEPackage package)
+        private static (string speakerTag, ExportEntry male, ExportEntry female)? PromptForSharedFxaSelectionAndSpeakerTag(Window owner, IMEPackage package)
         {
             var faceFxEntries = package.Exports.Where(e => e.ClassName == "FaceFXAnimSet").ToList();
             if (faceFxEntries.Count == 0)
@@ -103,7 +97,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
 
             var dialog = new Window
             {
-                Title = "Select FaceFXAnimSets",
+                Title = "Add Speaker With Shared FaceFXAnimSets",
                 Width = 700,
                 SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -117,7 +111,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
 
             var directions = new System.Windows.Controls.TextBlock
             {
-                Text = "Select the male and female FaceFXAnimSets to assign to the new speaker.",
+                Text = "Enter the speaker tag and select the male and female FaceFXAnimSets to assign to it.",
                 Margin = new Thickness(10, 15, 10, 10),
                 TextWrapping = TextWrapping.Wrap
             };
@@ -131,6 +125,19 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             selectionGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             selectionGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
             selectionGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+            selectionGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+
+            var tagLabel = new System.Windows.Controls.TextBlock
+            {
+                Text = "Tag:",
+                Margin = new Thickness(0, 0, 10, 10),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var tagTextBox = new System.Windows.Controls.TextBox
+            {
+                Margin = new Thickness(0, 0, 0, 10),
+                MinWidth = 500
+            };
 
             var maleLabel = new System.Windows.Controls.TextBlock
             {
@@ -159,15 +166,21 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 SelectedIndex = faceFxOptions.Count > 1 ? 1 : 0
             };
 
-            System.Windows.Controls.Grid.SetRow(maleLabel, 0);
+            System.Windows.Controls.Grid.SetRow(tagLabel, 0);
+            System.Windows.Controls.Grid.SetColumn(tagLabel, 0);
+            System.Windows.Controls.Grid.SetRow(tagTextBox, 0);
+            System.Windows.Controls.Grid.SetColumn(tagTextBox, 1);
+            System.Windows.Controls.Grid.SetRow(maleLabel, 1);
             System.Windows.Controls.Grid.SetColumn(maleLabel, 0);
-            System.Windows.Controls.Grid.SetRow(maleCombo, 0);
+            System.Windows.Controls.Grid.SetRow(maleCombo, 1);
             System.Windows.Controls.Grid.SetColumn(maleCombo, 1);
-            System.Windows.Controls.Grid.SetRow(femaleLabel, 1);
+            System.Windows.Controls.Grid.SetRow(femaleLabel, 2);
             System.Windows.Controls.Grid.SetColumn(femaleLabel, 0);
-            System.Windows.Controls.Grid.SetRow(femaleCombo, 1);
+            System.Windows.Controls.Grid.SetRow(femaleCombo, 2);
             System.Windows.Controls.Grid.SetColumn(femaleCombo, 1);
 
+            selectionGrid.Children.Add(tagLabel);
+            selectionGrid.Children.Add(tagTextBox);
             selectionGrid.Children.Add(maleLabel);
             selectionGrid.Children.Add(maleCombo);
             selectionGrid.Children.Add(femaleLabel);
@@ -195,7 +208,23 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 IsCancel = true
             };
 
-            okButton.Click += (_, _) => dialog.DialogResult = true;
+            okButton.Click += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(tagTextBox.Text))
+                {
+                    MessageBox.Show(dialog, "Enter a speaker tag.", "Missing Speaker Tag", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    tagTextBox.Focus();
+                    return;
+                }
+
+                if (maleCombo.SelectedItem is not EntryStringPair || femaleCombo.SelectedItem is not EntryStringPair)
+                {
+                    MessageBox.Show(dialog, "Select both FaceFXAnimSets.", "Missing FaceFXAnimSet Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                dialog.DialogResult = true;
+            };
 
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(cancelButton);
@@ -211,7 +240,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 return null;
             }
 
-            return (((EntryStringPair)maleCombo.SelectedItem).Entry as ExportEntry, ((EntryStringPair)femaleCombo.SelectedItem).Entry as ExportEntry);
+            return (tagTextBox.Text.Trim(), ((EntryStringPair)maleCombo.SelectedItem).Entry as ExportEntry, ((EntryStringPair)femaleCombo.SelectedItem).Entry as ExportEntry);
         }
 
         /// <summary>
