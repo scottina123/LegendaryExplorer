@@ -95,6 +95,13 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 .Select(e => new EntryStringPair(e, $"{e.UIndex,-9}\t{e.InstancedFullPath}"))
                 .ToList();
 
+            var defaultMaleSelection = faceFxOptions.LastOrDefault(o =>
+                ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_m", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
+                ?? faceFxOptions[faceFxOptions.Count - 1];
+            var defaultFemaleSelection = faceFxOptions.LastOrDefault(o =>
+                ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_f", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
+                ?? faceFxOptions[faceFxOptions.Count - 1];
+
             var dialog = new Window
             {
                 Title = "Add Speaker With Shared FaceFXAnimSets",
@@ -157,13 +164,19 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 ItemsSource = faceFxOptions,
                 Margin = new Thickness(0, 0, 0, 10),
                 MinWidth = 500,
-                SelectedIndex = 0
+                SelectedItem = defaultMaleSelection
             };
             var femaleCombo = new System.Windows.Controls.ComboBox
             {
                 ItemsSource = faceFxOptions,
                 MinWidth = 500,
-                SelectedIndex = faceFxOptions.Count > 1 ? 1 : 0
+                SelectedItem = defaultFemaleSelection
+            };
+
+            dialog.Loaded += (_, _) =>
+            {
+                tagTextBox.Focus();
+                System.Windows.Input.Keyboard.Focus(tagTextBox);
             };
 
             System.Windows.Controls.Grid.SetRow(tagLabel, 0);
