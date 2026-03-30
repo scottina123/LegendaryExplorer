@@ -168,6 +168,8 @@ namespace LegendaryExplorer.DialogueEditor
         private bool inlineLinkEditorIsReply;
         private bool inlineLinkEditorNeedsSave;
         private readonly Dictionary<string, DataGridLength> inlineLinkEditorColumnWidths = new();
+        private readonly Dictionary<int, List<DObj>> conversationGraphCache = new();
+        private readonly Dictionary<int, (float X, float Y, float ViewScale)> conversationGraphViewStates = new();
         private System.Windows.Forms.TextBox inlineLineStrRefEditor;
         private DiagNode inlineLineStrRefNode;
         private bool inlineLineStrRefEditClosing;
@@ -1945,6 +1947,91 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 AutoLayout();
             }
+
+            CacheCurrentConversationGraphState();
+        }
+
+        private void CacheCurrentConversationGraphState()
+        {
+            if (SelectedConv == null || CurrentObjects.Count == 0 || graphEditor == null)
+            {
+                return;
+            }
+
+            conversationGraphCache[SelectedConv.UIndex] = CurrentObjects.ToList();
+            conversationGraphViewStates[SelectedConv.UIndex] = (graphEditor.Camera.X, graphEditor.Camera.Y, graphEditor.Camera.ViewScale);
+        }
+
+        private void ClearConversationGraphCache()
+        {
+            conversationGraphCache.Clear();
+            conversationGraphViewStates.Clear();
+        }
+
+        private void RemoveConversationGraphCache(IEnumerable<int> conversationUIndexes)
+        {
+            foreach (int conversationUIndex in conversationUIndexes.Distinct())
+            {
+                conversationGraphCache.Remove(conversationUIndex);
+                conversationGraphViewStates.Remove(conversationUIndex);
+            }
+        }
+
+        private bool TryRestoreConversationGraphFromCache()
+        {
+            if (SelectedConv == null || !conversationGraphCache.TryGetValue(SelectedConv.UIndex, out var cachedObjects) || cachedObjects.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var selectedObject in SelectedObjects)
+            {
+                selectedObject.IsSelected = false;
+            }
+
+            SelectedObjects.ClearEx();
+            CurrentObjects.ClearEx();
+            graphEditor.nodeLayer.RemoveAllChildren();
+            graphEditor.edgeLayer.RemoveAllChildren();
+
+            foreach (var graphObject in cachedObjects)
+            {
+                graphObject.IsSelected = false;
+                CurrentObjects.Add(graphObject);
+                graphEditor.addNode(graphObject);
+            }
+
+            foreach (var graphObject in CurrentObjects.OfType<DBox>())
+            {
+                graphObject.RemoveConnections();
+            }
+
+            foreach (var diagNode in CurrentObjects.OfType<DiagNode>())
+            {
+                diagNode.InputEdges.Clear();
+            }
+
+            foreach (var graphObject in CurrentObjects.OfType<DBox>())
+            {
+                graphObject.RecreateConnections(CurrentObjects);
+            }
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                ConvGraphEditor.UpdateEdge(edge);
+            }
+
+            if (conversationGraphViewStates.TryGetValue(SelectedConv.UIndex, out var viewState))
+            {
+                graphEditor.Camera.ViewScale = viewState.ViewScale;
+                graphEditor.Camera.X = viewState.X;
+                graphEditor.Camera.Y = viewState.Y;
+            }
+
+            graphEditor.Enabled = true;
+            graphEditor.UseWaitCursor = false;
+            graphEditor.Refresh();
+            return true;
         }
         public bool LoadDialogueObjects()
         {
@@ -3411,6 +3498,10 @@ namespace LegendaryExplorer.DialogueEditor
                 saveView();
             }
 
+            CacheCurrentConversationGraphState();
+
+            bool shouldPanGraph = true;
+
             if (Conversations_ListBox.SelectedIndex < 0)
             {
                 SelectedConv = null;
@@ -3468,11 +3559,23 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 GenerateSpeakerList();
-                RefreshView();
+                if (TryRestoreConversationGraphFromCache())
+                {
+                    Properties_InterpreterWPF.LoadExport(CurrentLoadedExport);
+                    shouldPanGraph = false;
+                }
+                else
+                {
+                    RefreshView();
+                }
+
                 Start_ListBoxUpdate();
 
             }
-            graphEditor_PanTo();
+            if (shouldPanGraph)
+            {
+                graphEditor_PanTo();
+            }
         }
         private void Convo_NSFFX_DropDownClosed(object sender, EventArgs e)
         {
