@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
+using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
@@ -24,6 +25,7 @@ namespace LegendaryExplorer.DialogueEditor
         public string FieldTag;
         public RectangleF Bounds;
         public bool IsConditionalSection;
+        public bool IsFloat;
     }
 
     [DebuggerDisplay("DiagEdEdge | {originator} to {inputIndex}")]
@@ -591,10 +593,11 @@ namespace LegendaryExplorer.DialogueEditor
         protected DialogueEditorWindow Editor;
         private RectangleF lineStrRefEditorBounds;
         private readonly List<PlotFieldEditorInfo> plotFieldEditors = [];
-        private static readonly Dictionary<string, (bool checksExpanded, bool transitionsExpanded)> plotSectionStates = [];
+        private static readonly Dictionary<string, (bool checksExpanded, bool transitionsExpanded, bool matineeExpanded)> plotSectionStates = [];
         private readonly string plotSectionStateKey;
         private PNode plotChecksSection;
         private PNode plotTransitionsSection;
+        private PNode matineeSection;
         private float plotSectionsStartY;
         private float baseBoxHeightWithoutPlotSections;
         private float nodeBoxWidth;
@@ -615,10 +618,11 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 Node.PlotChecksExpanded = savedState.checksExpanded;
                 Node.PlotTransitionsExpanded = savedState.transitionsExpanded;
+                Node.MatineeExpanded = savedState.matineeExpanded;
             }
             else
             {
-                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded);
+                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded, Node.MatineeExpanded);
             }
         }
 
@@ -639,7 +643,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             if (!string.IsNullOrEmpty(plotSectionStateKey))
             {
-                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded);
+                plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded, Node.MatineeExpanded);
             }
         }
 
@@ -929,6 +933,95 @@ namespace LegendaryExplorer.DialogueEditor
             container.AddChild(editorBox);
             container.AddChild(text);
             container.Pickable = true;
+            return container;
+        }
+
+        private PNode CreateMatineeSection(float y, float width, out float sectionHeight)
+        {
+            var container = new PNode();
+            float innerY = y;
+
+            var divider = PPath.CreateLine(4, innerY, width - 4, innerY);
+            divider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
+            divider.Pickable = false;
+            container.AddChild(divider);
+            innerY += 3;
+
+            string arrow = Node.MatineeExpanded ? "\u25BE" : "\u25B8";
+            var arrowText = new DText(arrow, PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = true,
+                X = 6,
+                Y = innerY,
+                Pickable = false
+            };
+            var headerLabel = new DText("Matinee", PlotHeaderColor, false)
+            {
+                TextAlignment = StringAlignment.Near,
+                ConstrainWidthToTextWidth = false,
+                X = arrowText.X + arrowText.Width + 8,
+                Y = innerY,
+                Pickable = false,
+                Width = width - (arrowText.X + arrowText.Width + 14)
+            };
+
+            var headerHitBox = PPath.CreateRectangle(arrowText.X - 2, innerY, arrowText.Width + 6, arrowText.Height);
+            headerHitBox.Brush = mostlyTransparentBrush;
+            headerHitBox.Pen = null;
+            headerHitBox.Pickable = true;
+            headerHitBox.MouseDown += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                e.Handled = true;
+                Node.MatineeExpanded = !Node.MatineeExpanded;
+                SavePlotSectionState();
+                RefreshPlotSectionsInPlace();
+                g?.Refresh();
+            };
+
+            container.AddChild(arrowText);
+            container.AddChild(headerLabel);
+            container.AddChild(headerHitBox);
+            innerY += Math.Max(arrowText.Height, headerLabel.Height);
+
+            Node.ExportID = Node.NodeProp.GetProp<IntProperty>("nExportID")?.Value ?? 0;
+            Node.CameraIntimacy = Node.NodeProp.GetProp<IntProperty>("nCameraIntimacy")?.Value ?? 0;
+            Node.InterpLength = Node.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? 0f;
+
+            if (Node.MatineeExpanded)
+            {
+                container.AddChild(CreatePlotFieldEditor(
+                    "Interp Length:",
+                    Node.InterpData != null ? Node.InterpLength.ToString("0.###", CultureInfo.InvariantCulture) : "No data",
+                    "InterpLength",
+                    ref innerY,
+                    width,
+                    false,
+                    isEditable: Node.InterpData != null,
+                    isFloatField: true));
+
+                container.AddChild(CreatePlotFieldEditor(
+                    "Export ID:",
+                    Node.ExportID.ToString(),
+                    "ExportID",
+                    ref innerY,
+                    width,
+                    false,
+                    isEditable: false));
+
+                container.AddChild(CreatePlotFieldEditor(
+                    "Cam Intimacy:",
+                    Node.CameraIntimacy.ToString(),
+                    "CameraIntimacy",
+                    ref innerY,
+                    width,
+                    false));
+            }
+
+            innerY += 3;
+            sectionHeight = innerY - y;
+            container.Pickable = false;
             return container;
         }
 
@@ -1279,7 +1372,7 @@ namespace LegendaryExplorer.DialogueEditor
         /// Creates an inline editable field box (like the LineStrRef editor) for a plot field.
         /// The box renders in the Piccolo graph; clicking it spawns a WinForms TextBox overlay at the exact position.
         /// </summary>
-        private PNode CreatePlotFieldEditor(string label, string value, string fieldTag, ref float y, float width, bool isConditionalSection)
+        private PNode CreatePlotFieldEditor(string label, string value, string fieldTag, ref float y, float width, bool isConditionalSection, bool isEditable = true, bool isFloatField = false)
         {
             float editorX = 4;
             float editorWidth = MathF.Max(width - 8, 80);
@@ -1302,8 +1395,12 @@ namespace LegendaryExplorer.DialogueEditor
             var bounds = new RectangleF(editorX, y, editorWidth, editorHeight);
 
             // Track this field's bounds for inline editing
-            var fieldInfo = new PlotFieldEditorInfo { FieldTag = fieldTag, Bounds = bounds, IsConditionalSection = isConditionalSection };
-            plotFieldEditors.Add(fieldInfo);
+            PlotFieldEditorInfo fieldInfo = null;
+            if (isEditable)
+            {
+                fieldInfo = new PlotFieldEditorInfo { FieldTag = fieldTag, Bounds = bounds, IsConditionalSection = isConditionalSection, IsFloat = isFloatField };
+                plotFieldEditors.Add(fieldInfo);
+            }
 
             labelText.Y = y + ((editorHeight - labelText.Height) / 2);
             valueText.Y = y + ((editorHeight - valueText.Height) / 2);
@@ -1315,6 +1412,10 @@ namespace LegendaryExplorer.DialogueEditor
             // On click, spawn a TextBox overlay at this exact position (like LineStrRef editor)
             editorBox.MouseDown += (_, e) =>
             {
+                if (!isEditable)
+                {
+                    return;
+                }
                 if (e.Button != MouseButtons.Left) return;
                 e.Handled = true;
                 Editor?.BeginInlinePlotFieldEdit(this, fieldInfo);
@@ -1366,6 +1467,12 @@ namespace LegendaryExplorer.DialogueEditor
                 plotTransitionsSection = null;
             }
 
+            if (matineeSection != null)
+            {
+                box.RemoveChild(matineeSection);
+                matineeSection = null;
+            }
+
             float nextSectionY = plotSectionsStartY;
             plotChecksSection = CreatePlotChecksSection(nextSectionY, nodeBoxWidth, out float checksSectionHeight);
             nextSectionY += checksSectionHeight;
@@ -1373,10 +1480,14 @@ namespace LegendaryExplorer.DialogueEditor
             plotTransitionsSection = CreatePlotTransitionsSection(nextSectionY, nodeBoxWidth, out float transitionsSectionHeight);
             nextSectionY += transitionsSectionHeight;
 
+            matineeSection = CreateMatineeSection(nextSectionY, nodeBoxWidth, out float matineeSectionHeight);
+            nextSectionY += matineeSectionHeight;
+
             box.AddChild(plotChecksSection);
             box.AddChild(plotTransitionsSection);
+            box.AddChild(matineeSection);
 
-            float newBoxHeight = baseBoxHeightWithoutPlotSections + checksSectionHeight + transitionsSectionHeight;
+            float newBoxHeight = baseBoxHeightWithoutPlotSections + checksSectionHeight + transitionsSectionHeight + matineeSectionHeight;
             box.Bounds = new RectangleF(0, titleBox.Height + 2, nodeBoxWidth, newBoxHeight);
             Bounds = new RectangleF(0, 0, nodeBoxWidth, titleBox.Height + 2 + newBoxHeight);
 
@@ -1561,6 +1672,11 @@ namespace LegendaryExplorer.DialogueEditor
             plotTransitionsSection = CreatePlotTransitionsSection(nextSectionY, w, out float transitionsSectionHeight);
             h += transitionsSectionHeight;
             nextSectionY += transitionsSectionHeight;
+
+            // Matinee data section
+            matineeSection = CreateMatineeSection(nextSectionY, w, out float matineeSectionHeight);
+            h += matineeSectionHeight;
+            nextSectionY += matineeSectionHeight;
             nodeBoxWidth = w;
 
             outLinkBox.TranslateBy(w, titleBox.Height + 2);
@@ -1584,6 +1700,7 @@ namespace LegendaryExplorer.DialogueEditor
             box.AddChild(CreateLineStringRefEditor(w, lineStrRefY));
             box.AddChild(plotChecksSection);
             box.AddChild(plotTransitionsSection);
+            box.AddChild(matineeSection);
             Bounds = new RectangleF(0, 0, w, h);
             AddChild(box);
             AddChild(titleBox);

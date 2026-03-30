@@ -1170,6 +1170,7 @@ namespace LegendaryExplorer.DialogueEditor
                 node.ConditionalParam = nodeprop.GetProp<IntProperty>("nConditionalParam");
                 node.TransitionParam = nodeprop.GetProp<IntProperty>("nStateTransitionParam");
                 node.CameraIntimacy = nodeprop.GetProp<IntProperty>("nCameraIntimacy");
+                node.ExportID = nodeprop.GetProp<IntProperty>("nExportID");
                 node.IsAmbient = nodeprop.GetProp<BoolProperty>("bAmbient");
                 node.IsNonTextLine = nodeprop.GetProp<BoolProperty>("bNonTextLine");
                 node.IgnoreBodyGesture = nodeprop.GetProp<BoolProperty>("bIgnoreBodyGestures");
@@ -4343,6 +4344,8 @@ namespace LegendaryExplorer.DialogueEditor
                     "ConditionalParam" => node.Node.ConditionalParam.ToString(),
                     "Transition" => node.Node.Transition.ToString(),
                     "TransitionParam" => node.Node.TransitionParam.ToString(),
+                    "InterpLength" => node.Node.InterpLength.ToString("0.###", CultureInfo.InvariantCulture),
+                    "CameraIntimacy" => node.Node.CameraIntimacy.ToString(),
                     _ => ""
                 };
 
@@ -4476,6 +4479,17 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                 }
             }
+            else if (fieldInfo.FieldTag == "InterpLength")
+            {
+                bool parsedFloat = float.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out float newFloat)
+                                   || float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out newFloat);
+                if (parsedFloat && node.Node.InterpData != null && Math.Abs(node.Node.InterpLength - newFloat) > 0.0001f)
+                {
+                    node.Node.InterpLength = newFloat;
+                    node.Node.InterpData.WriteProperty(new FloatProperty(newFloat, "InterpLength"));
+                    changed = true;
+                }
+            }
             else if (int.TryParse(text, out int newValue))
             {
                 switch (fieldInfo.FieldTag)
@@ -4514,6 +4528,14 @@ namespace LegendaryExplorer.DialogueEditor
                         {
                             node.Node.TransitionParam = newValue;
                             node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nStateTransitionParam"));
+                            changed = true;
+                        }
+                        break;
+                    case "CameraIntimacy":
+                        if (node.Node.CameraIntimacy != newValue)
+                        {
+                            node.Node.CameraIntimacy = newValue;
+                            node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nCameraIntimacy"));
                             changed = true;
                         }
                         break;

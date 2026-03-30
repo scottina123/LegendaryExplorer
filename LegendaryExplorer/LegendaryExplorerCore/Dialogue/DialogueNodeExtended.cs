@@ -88,6 +88,8 @@ namespace LegendaryExplorerCore.Dialogue
         public bool PlotChecksExpanded { get; set; }
         /// <summary>UI-only: whether the Plot Transitions section is expanded in the graph node</summary>
         public bool PlotTransitionsExpanded { get; set; }
+        /// <summary>UI-only: whether the Matinee section is expanded in the graph node</summary>
+        public bool MatineeExpanded { get; set; }
 
         /// <summary>
         /// Basic constructor to create a new DialogueNodeExtended
@@ -157,6 +159,9 @@ namespace LegendaryExplorerCore.Dialogue
             ReplyType = nodeExtended.ReplyType;
             ConditionalPlotPath = nodeExtended.ConditionalPlotPath;
             TransitionPlotPath = nodeExtended.TransitionPlotPath;
+            PlotChecksExpanded = nodeExtended.PlotChecksExpanded;
+            PlotTransitionsExpanded = nodeExtended.PlotTransitionsExpanded;
+            MatineeExpanded = nodeExtended.MatineeExpanded;
         }
 
 #pragma warning disable
