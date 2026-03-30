@@ -315,6 +315,9 @@
                             <Image Source="{StaticResource iconHexConverter16}" Width="64"/>
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem Header="Asset Importer"
+                              ToolTip="Import assets from the Asset Database into this package with memory-safe porting."
+                              Command="{Binding OpenAssetImporterCommand}"/>
 
                 </MenuItem>
                 <MenuItem Header="Create" Padding="4">

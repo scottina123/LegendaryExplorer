@@ -180,6 +180,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private readonly bool _selectMaterialInstancesOnly;
         private readonly string _initialMaterialSearchText;
         private Action<MaterialSelectionResult> _materialSelectionHandler;
+        private readonly bool _isImportMode;
+        private Action<IReadOnlyList<AssetImportQueueItem>> _importCallback;
         private int _currentView;
         public int currentView
         {
@@ -200,6 +202,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             : "Select the donor Material to restore from.";
 
         public MaterialSelectionResult SelectedMaterialDialogResult { get; private set; }
+
+        public bool IsImportMode => _isImportMode;
+        public ObservableCollectionExtended<AssetImportQueueItem> ImportQueue { get; } = new();
+        public bool HasImportQueueItems => ImportQueue.Count > 0;
 
         private bool _isBusy;
         public bool IsBusy
@@ -390,6 +396,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string PointOfInterestFilterOption = "SFXPointOfInterest";
 
         public sealed record MaterialSelectionResult(MaterialRecord Material);
+
+        public sealed class AssetImportQueueItem
+        {
+            public string DisplayName { get; init; }
+            public string AssetType { get; init; }
+            public int FileKey { get; init; }
+            public int UIndex { get; init; }
+            public string ResolvedFilePath { get; init; }
+        }
 
         private enum OutdatedDatabaseAction
         {
@@ -742,8 +757,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ICommand ChangeLocalizationCommand { get; set; }
         public ICommand BrowseAmbPerfMasterPccCommand { get; set; }
         public ICommand ClearAmbPerfMasterPccCommand { get; set; }
+        public ICommand AddToImportQueueCommand { get; set; }
+        public ICommand RemoveFromQueueCommand { get; set; }
+        public ICommand ImportAllCommand { get; set; }
 
-        private bool CanCancelDump(object obj)
+        private bool CanCancelDump()
         {
             return ProcessingQueue != null && ProcessingQueue.Completion.Status == TaskStatus.WaitingForActivation && !DumpCanceled;
         }
@@ -839,6 +857,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 }
             };
 
+            ImportQueue.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasImportQueueItems));
             EnsureMaterialTextureCriteria();
             InitializeComponent();
         }
@@ -849,6 +868,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             _isMaterialSelectionMode = materialSelectionMode;
             _selectMaterialInstancesOnly = selectMaterialInstancesOnly;
             _initialMaterialSearchText = initialMaterialSearchText?.Trim();
+        }
+
+        private AssetDatabaseWindow(MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> importCallback) : this()
+        {
+            CurrentGame = game;
+            _isImportMode = true;
+            _importCallback = importCallback;
+            OnPropertyChanged(nameof(IsImportMode));
         }
 
         public static void ShowMaterialPicker(Window owner, MEGame game, bool selectMaterialInstancesOnly, Action<MaterialSelectionResult> onMaterialSelected, string initialMaterialSearchText = null)
@@ -864,6 +891,17 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             picker.Activate();
         }
 
+        public static void OpenForImport(Window owner, MEGame game, Action<IReadOnlyList<AssetImportQueueItem>> callback)
+        {
+            var importer = new AssetDatabaseWindow(game, callback)
+            {
+                Owner = owner,
+                WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
+            };
+            importer.Show();
+            importer.Activate();
+        }
+
         private void LoadCommands()
         {
             GenerateDBCommand = new GenericCommand(GenerateDatabase);
@@ -871,7 +909,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SaveDBCommand = new GenericCommand(SaveDatabase);
             SetFilterCommand = new RelayCommand(SetFilters, CanSetFilter);
             SwitchMECommand = new RelayCommand(SwitchGame);
-            CancelDumpCommand = new RelayCommand(CancelDump, CanCancelDump);
+            CancelDumpCommand = new RelayCommand(CancelDump, _ => CanCancelDump());
             OpenSourcePkgCommand = new RelayCommand(OpenSourcePkg, IsClassSelected);
             GoToSuperclassCommand = new RelayCommand(GoToSuperClass, IsClassSelected);
             OpenUsagePkgCommand = new RelayCommand(OpenUsagePkg, IsUsageSelected);
@@ -890,6 +928,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             ChangeLocalizationCommand = new RelayCommand((e) => { Localization = (MELocalization)e; });
             BrowseAmbPerfMasterPccCommand = new GenericCommand(BrowseAmbPerfMasterPcc);
             ClearAmbPerfMasterPccCommand = new GenericCommand(ClearAmbPerfMasterPcc, () => AmbPerfMasterPccPath != null);
+            AddToImportQueueCommand = new GenericCommand(AddCurrentSelectionToImportQueue, CanAddToImportQueue);
+            RemoveFromQueueCommand = new RelayCommand(RemoveFromImportQueue);
+            ImportAllCommand = new GenericCommand(ExecuteImportAll, () => HasImportQueueItems);
         }
 
         private void AssetDB_Loaded(object sender, RoutedEventArgs e)
@@ -921,6 +962,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             if (_isMaterialSelectionMode)
             {
                 ConfigureMaterialSelectionMode();
+            }
+
+            if (_isImportMode)
+            {
+                ConfigureImportMode();
             }
 
             Activate();
@@ -3108,6 +3154,99 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 lstbx_Materials.SelectedIndex = 0;
             }
+        }
+
+        private void ConfigureImportMode()
+        {
+            Title = "Asset Importer — Select assets to import";
+            FilterWatermark = "Search assets";
+            var allowedTabs = new HashSet<int> { 2, 3, 4, 6 };
+            if (MainTabControl != null)
+            {
+                for (int i = 0; i < MainTabControl.Items.Count; i++)
+                {
+                    if (MainTabControl.Items[i] is TabItem tab)
+                    {
+                        tab.Visibility = allowedTabs.Contains(i) ? Visibility.Visible : Visibility.Collapsed;
+                    }
+                }
+            }
+            currentView = 2;
+        }
+
+        private bool CanAddToImportQueue() =>
+            _isImportMode && (
+                (currentView == 2 && lstbx_Materials?.SelectedItem is MaterialRecord) ||
+                (currentView == 3 && lstbx_Meshes?.SelectedItem is MeshRecord) ||
+                (currentView == 4 && lstbx_Textures?.SelectedItem is TextureRecord) ||
+                (currentView == 6 && lstbx_Particles?.SelectedItem is ParticleSysRecord));
+
+        private void AddCurrentSelectionToImportQueue()
+        {
+            AssetImportQueueItem item = null;
+            if (currentView == 2 && lstbx_Materials?.SelectedItem is MaterialRecord mat)
+            {
+                var u = mat.Usages.FirstOrDefault();
+                if (u == null) return;
+                var path = GetFilePathSilent(FileListExtended[u.FileKey].FileName, FileListExtended[u.FileKey].Directory);
+                if (path == null) return;
+                item = new AssetImportQueueItem { DisplayName = mat.DisplayString, AssetType = "Material", FileKey = u.FileKey, UIndex = u.UIndex, ResolvedFilePath = path };
+            }
+            else if (currentView == 3 && lstbx_Meshes?.SelectedItem is MeshRecord mesh)
+            {
+                var u = mesh.Usages.FirstOrDefault();
+                if (u == null) return;
+                var path = GetFilePathSilent(FileListExtended[u.FileKey].FileName, FileListExtended[u.FileKey].Directory);
+                if (path == null) return;
+                item = new AssetImportQueueItem { DisplayName = mesh.DisplayString, AssetType = "Mesh", FileKey = u.FileKey, UIndex = u.UIndex, ResolvedFilePath = path };
+            }
+            else if (currentView == 4 && lstbx_Textures?.SelectedItem is TextureRecord tex)
+            {
+                var u = tex.Usages.FirstOrDefault();
+                if (u == null) return;
+                var path = GetFilePathSilent(FileListExtended[u.FileKey].FileName, FileListExtended[u.FileKey].Directory);
+                if (path == null) return;
+                item = new AssetImportQueueItem { DisplayName = tex.TextureName, AssetType = "Texture", FileKey = u.FileKey, UIndex = u.UIndex, ResolvedFilePath = path };
+            }
+            else if (currentView == 6 && lstbx_Particles?.SelectedItem is ParticleSysRecord ps)
+            {
+                var u = ps.Usages.FirstOrDefault();
+                if (u == null) return;
+                var path = GetFilePathSilent(FileListExtended[u.FileKey].FileName, FileListExtended[u.FileKey].Directory);
+                if (path == null) return;
+                item = new AssetImportQueueItem { DisplayName = ps.DisplayString, AssetType = "VFX", FileKey = u.FileKey, UIndex = u.UIndex, ResolvedFilePath = path };
+            }
+            if (item != null && !ImportQueue.Any(q => q.FileKey == item.FileKey && q.UIndex == item.UIndex))
+            {
+                ImportQueue.Add(item);
+            }
+        }
+
+        private void RemoveFromImportQueue(object obj)
+        {
+            if (obj is AssetImportQueueItem item)
+            {
+                ImportQueue.Remove(item);
+            }
+        }
+
+        private void ExecuteImportAll()
+        {
+            if (ImportQueue.Count == 0) return;
+            var items = ImportQueue.ToList();
+            _importCallback?.Invoke(items);
+            Close();
+        }
+
+        private void CancelImportButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        private string GetFilePathSilent(string filename, string contentdir)
+        {
+            string rootPath = MEDirectories.GetDefaultGamePath(CurrentGame);
+            if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
+                return null;
+            return Directory.EnumerateFiles(rootPath, filename, SearchOption.AllDirectories)
+                            .FirstOrDefault(f => f.Contains(contentdir, StringComparison.OrdinalIgnoreCase));
         }
 
         private void lstbx_Meshes_SelectionChanged(object sender, SelectionChangedEventArgs e)

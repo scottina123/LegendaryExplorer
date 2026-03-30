@@ -52,6 +52,7 @@ using LegendaryExplorer.Packages;
 using LegendaryExplorerCore.Localization;
 using LegendaryExplorerCore.Pathing;
 using LegendaryExplorerCore.UnrealScript.Language.Tree;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.GameInterop;
@@ -425,6 +426,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand AddAllAssetsToReferencerCommand { get; set; }
         public ICommand CloneTreeToFolderCommand { get; set; }
         public ICommand MatchMaterialsToSkeletalMeshCommand { get; set; }
+        public ICommand OpenAssetImporterCommand { get; set; }
 
         private void LoadCommands()
         {
@@ -527,6 +529,59 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ExportAllPropsCommand = new GenericCommand(ExportAllProps, PackageIsLoaded);
             ApplyBulkPropEditsCommand = new GenericCommand(ApplyBulkPropEdits, PackageIsLoaded);
             ViewReferenceGraphCommand = new GenericCommand(ViewReferenceGraph, EntryIsSelected);
+            OpenAssetImporterCommand = new GenericCommand(OpenAssetImporter, PackageIsLoaded);
+        }
+
+        private void OpenAssetImporter()
+        {
+            if (Pcc == null) return;
+            var targetPcc = Pcc;
+            AssetDatabaseWindow.OpenForImport(this, targetPcc.Game, importItems =>
+            {
+                IsBusy = true;
+                BusyText = "Importing assets...";
+                Task.Run(() =>
+                {
+                    var allRelinkIssues = new List<EntryStringPair>();
+                    using var cache = new PackageCache();
+                    foreach (var item in importItems)
+                    {
+                        if (item.ResolvedFilePath is null) continue;
+                        try
+                        {
+                            using var sourcePcc = MEPackageHandler.OpenMEPackage(item.ResolvedFilePath);
+                            if (!sourcePcc.IsUExport(item.UIndex)) continue;
+                            var sourceExport = sourcePcc.GetUExport(item.UIndex);
+                            var rop = new RelinkerOptionsPackage(cache)
+                            {
+                                ImportExportDependencies = true,
+                                PortImportsMemorySafe = true,
+                            };
+                            IEntry targetLink = null;
+                            if (!string.IsNullOrEmpty(sourceExport.ParentFullPath))
+                            {
+                                targetLink = EntryImporter.GetOrAddCrossImportOrPackage(
+                                    sourceExport.ParentFullPath, sourcePcc, targetPcc, rop);
+                            }
+                            var results = EntryImporter.ImportAndRelinkEntries(
+                                EntryImporter.PortingOption.CloneAllDependencies,
+                                sourceExport, targetPcc, targetLink, true, rop, out _);
+                            if (results is not null)
+                                allRelinkIssues.AddRange(results);
+                        }
+                        catch (Exception ex)
+                        {
+                            allRelinkIssues.Add(new EntryStringPair(
+                                $"Error importing '{item.DisplayName}': {ex.Message}"));
+                        }
+                    }
+                    return allRelinkIssues;
+                }).ContinueWithOnUIThread(prevTask =>
+                {
+                    IsBusy = false;
+                    EntryImporterExtended.ShowRelinkResultsIfAny(prevTask.Result);
+                });
+            });
         }
 
         private void FindEntryViaBadIndex()

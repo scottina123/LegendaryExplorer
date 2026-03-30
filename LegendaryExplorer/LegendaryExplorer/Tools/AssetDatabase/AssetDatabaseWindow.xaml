@@ -474,6 +474,30 @@
                     <Button Content="Use Selected Material" Margin="8,0,0,0" MinWidth="150" IsDefault="True" IsEnabled="{Binding HasSelectedMaterialRecord}" Click="SelectMaterialButton_Click"/>
                 </StackPanel>
             </DockPanel>
+            <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,4" Visibility="{Binding IsImportMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Top">
+                    <Button Content="Cancel" MinWidth="90" Click="CancelImportButton_Click"/>
+                    <Button Content="Add Selected" Margin="8,0,0,0" MinWidth="110" Command="{Binding AddToImportQueueCommand}" ToolTip="Add the currently selected asset to the import queue."/>
+                    <Button Content="Import All" Margin="8,0,0,0" MinWidth="110" Command="{Binding ImportAllCommand}" ToolTip="Import all queued assets into the open package."/>
+                </StackPanel>
+                <DockPanel>
+                    <TextBlock VerticalAlignment="Top" Text="Import Queue:" Margin="0,4,6,0" FontWeight="SemiBold"/>
+                    <ListBox ItemsSource="{Binding ImportQueue}" MaxHeight="80" BorderThickness="1" Padding="2">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding AssetType}" FontSize="10" Foreground="Gray" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                                    <Button Content="✕" Margin="6,0,0,0" Padding="3,1" FontSize="10" VerticalAlignment="Center"
+                                            Command="{Binding RemoveFromQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Remove from queue"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </DockPanel>
             <DockPanel Name="MidDock">
                 <TabControl x:Name="MainTabControl" SelectedIndex="{Binding currentView, Mode=TwoWay}" SelectionChanged="TabControl_SelectionChanged">
                     <TabControl.Template>
@@ -823,6 +847,12 @@
                                 </ItemsControl>
                             </StackPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Materials" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Materials}" Grid.Row="2" Grid.Column="0" SelectionChanged="SelectedMaterial_Changed" MouseDoubleClick="SelectedMaterial_DoubleClick">
+                                <controls:ListBoxScroll.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Add to Import Queue" Command="{Binding AddToImportQueueCommand}" ToolTip="Add this material to the import queue."
+                                                  Visibility="{Binding IsImportMode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </ContextMenu>
+                                </controls:ListBoxScroll.ContextMenu>
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
@@ -889,6 +919,12 @@
                                           IsTextSearchEnabled="True"/>
                             </DockPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Meshes" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Meshes}" SelectionChanged="lstbx_Meshes_SelectionChanged" Grid.Row="2" Grid.Column="0">
+                                <controls:ListBoxScroll.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Add to Import Queue" Command="{Binding AddToImportQueueCommand}" ToolTip="Add this mesh to the import queue."
+                                                  Visibility="{Binding IsImportMode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </ContextMenu>
+                                </controls:ListBoxScroll.ContextMenu>
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <!--<TextBlock Text="{Binding MeshName}" />
@@ -971,6 +1007,12 @@
                                           IsTextSearchEnabled="True"/>
                             </DockPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Textures" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Textures}" SelectionChanged="lstbx_Textures_SelectionChanged" Grid.Row="2" Grid.Column="0">
+                                <controls:ListBoxScroll.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Add to Import Queue" Command="{Binding AddToImportQueueCommand}" ToolTip="Add this texture to the import queue."
+                                                  Visibility="{Binding IsImportMode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </ContextMenu>
+                                </controls:ListBoxScroll.ContextMenu>
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -1113,6 +1155,12 @@
                                           IsTextSearchEnabled="True"/>
                             </DockPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="2" Grid.Column="0">
+                                <controls:ListBoxScroll.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Add to Import Queue" Command="{Binding AddToImportQueueCommand}" ToolTip="Add this VFX to the import queue."
+                                                  Visibility="{Binding IsImportMode, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </ContextMenu>
+                                </controls:ListBoxScroll.ContextMenu>
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel>
