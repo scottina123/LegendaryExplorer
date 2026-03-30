@@ -1314,6 +1314,142 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private PointF GetNewDialogueNodePosition(bool isReply, DiagNode anchorNode = null)
+        {
+            if (anchorNode != null)
+            {
+                return new PointF(anchorNode.X + anchorNode.OffsetX + 100, anchorNode.Y + anchorNode.OffsetY + 150);
+            }
+
+            var existingNodes = CurrentObjects
+                .OfType<DiagNode>()
+                .Where(node => node.Node.IsReply == isReply)
+                .OrderBy(node => node.Y + node.OffsetY)
+                .ToList();
+
+            if (existingNodes.Count > 0)
+            {
+                var columnNode = existingNodes[0];
+                return new PointF(
+                    columnNode.X + columnNode.OffsetX,
+                    existingNodes.Max(node => node.GlobalFullBounds.Bottom) + 25);
+            }
+
+            return isReply ? new PointF(500, 20) : new PointF(250, 0);
+        }
+
+        private void AddDialogueNodeToGraphInPlace(DiagNode node, PointF position, bool centerView = true)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            CurrentObjects.Add(node);
+            node.Layout(position.X, position.Y);
+            graphEditor.addNode(node);
+            node.SetOffset(position.X, position.Y);
+            node.MouseDown += node_MouseDown;
+            node.Click += node_Click;
+            node.RecreateConnections(CurrentObjects);
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                ConvGraphEditor.UpdateEdge(edge);
+            }
+
+            if (centerView)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
+            }
+
+            graphEditor.Refresh();
+        }
+
+        private void ApplyStartMutationInPlace()
+        {
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            RebuildStartNodesInPlace();
+            Start_ListBoxUpdate();
+
+            if (inlineLinkEditorNode != null)
+            {
+                LoadInlineLinkEditor(inlineLinkEditorNode);
+            }
+
+            graphEditor.Refresh();
+        }
+
+        private void AddDialogueNodeInPlace(bool isReply)
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            var anchorNode = SelectedObjects.OfType<DiagNode>().FirstOrDefault();
+            PointF position = GetNewDialogueNodePosition(isReply, anchorNode);
+            int newIndex;
+            DiagNode graphNode;
+
+            if (isReply)
+            {
+                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, "BioDialogReplyNode", true, Pcc);
+                var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_ReplyList") ??
+                            new ArrayProperty<StructProperty>("m_ReplyList");
+                newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle"));
+                newprop.AddOrReplaceProp(new EnumProperty("REPLY_STANDARD", "EReplyTypes", Pcc.Game, "ReplyType"));
+                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
+                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
+                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
+                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
+                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
+                props.Add(new StructProperty("BioDialogReplyNode", newprop));
+                SelectedConv.BioConvo.AddOrReplaceProp(props);
+
+                newIndex = SelectedConv.ReplyList.Count;
+                var nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, true, TLKLookup);
+                InitializeDialogueNodeDerivedData(nodeExtended);
+                SelectedConv.ReplyList.Add(nodeExtended);
+
+                IsLocalUpdate = true;
+                RecreateNodesToProperties(SelectedConv);
+                graphNode = new DiagNodeReply(this, nodeExtended, position.X, position.Y, graphEditor);
+            }
+            else
+            {
+                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, "BioDialogEntryNode", true, Pcc);
+                var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList") ??
+                            new ArrayProperty<StructProperty>("m_EntryList");
+                newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle"));
+                newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
+                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
+                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
+                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
+                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
+                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
+                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
+                props.Add(new StructProperty("BioDialogEntryNode", newprop));
+                SelectedConv.BioConvo.AddOrReplaceProp(props);
+
+                newIndex = SelectedConv.EntryList.Count;
+                var nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, false, TLKLookup);
+                InitializeDialogueNodeDerivedData(nodeExtended);
+                SelectedConv.EntryList.Add(nodeExtended);
+
+                IsLocalUpdate = true;
+                RecreateNodesToProperties(SelectedConv);
+                graphNode = new DiagNodeEntry(this, nodeExtended, position.X, position.Y, graphEditor);
+            }
+
+            AddDialogueNodeToGraphInPlace(graphNode, position);
+            DialogueNode_SelectByIndex(newIndex, isReply);
+        }
+
         private void RebuildGraphInPlace(bool rebuildStarts = false)
         {
             foreach (var graphObject in CurrentObjects.OfType<DBox>().ToList())
@@ -3622,13 +3758,13 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedConv.StartingList.Add(newKey, newVal);
             }
 
-            RecreateNodesToProperties(SelectedConv);
             forcedSelectStart = newKey;
+            ApplyStartMutationInPlace();
         }
         private void StartDelete()
         {
             SelectedConv.StartingList.Remove(Start_ListBox.SelectedIndex);
-            RecreateNodesToProperties(SelectedConv);
+            ApplyStartMutationInPlace();
         }
         private void StartMoveAction(object obj)
         {
@@ -3652,8 +3788,8 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedConv.StartingList.Add(selectedIndex + n, selectedval);
             SelectedConv.StartingList.Add(selectedIndex, shiftval);
 
-            RecreateNodesToProperties(SelectedConv);
             forcedSelectStart = selectedIndex + n;
+            ApplyStartMutationInPlace();
             StartUpButton.IsEnabled = true;
             StartDownButton.IsEnabled = true;
         }
@@ -3968,6 +4104,24 @@ namespace LegendaryExplorer.DialogueEditor
                 && x.ObjectName.Name.Contains(femaleSearch, StringComparison.OrdinalIgnoreCase));
             node.WwiseStream_Male = Pcc.Exports.FirstOrDefault(x => x.ClassName == "WwiseStream"
                 && x.ObjectName.Name.Contains(maleSearch, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void InitializeDialogueNodeDerivedData(DialogueNodeExtended node)
+        {
+            if (node == null || SelectedConv == null)
+            {
+                return;
+            }
+
+            node.SpeakerTag = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == node.SpeakerIndex);
+            UpdateNodeLineDerivedData(node);
+
+            int scriptIndex = node.NodeProp.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1;
+            int resolvedScriptIndex = scriptIndex + 1;
+            if (resolvedScriptIndex >= 0 && resolvedScriptIndex < SelectedConv.ScriptList.Count)
+            {
+                node.Script = SelectedConv.ScriptList[resolvedScriptIndex];
+            }
         }
 
         private void RefreshNodeInGraph(DialogueNodeExtended node, bool persistConversation = true)
@@ -4816,7 +4970,7 @@ namespace LegendaryExplorer.DialogueEditor
             link.TgtCondition = targetNode.Node.ConditionalOrBool;
             link.TgtLine = targetNode.Node.Line;
             link.Ordinal = AddOrdinal(link.Order + 1);
-            link.TgtSpeaker = targetNode.Node.SpeakerTag.SpeakerName;
+            link.TgtSpeaker = targetNode.Node.SpeakerTag?.SpeakerName ?? "Unknown";
         }
 
         private void InlineLinkEditor_Apply_Click(object sender, RoutedEventArgs e)
@@ -5225,43 +5379,13 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (command == "AddReply")
             {
-                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, "BioDialogReplyNode", true, Pcc);
-                var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_ReplyList") ??
-                            new ArrayProperty<StructProperty>("m_ReplyList");
-                //Set to needed defaults.
-                newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle"));
-                newprop.AddOrReplaceProp(new EnumProperty("REPLY_STANDARD", "EReplyTypes", Pcc.Game, "ReplyType"));
-                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
-                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
-                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
-                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
-                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
-                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
-                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
-                props.Add(new StructProperty("BioDialogReplyNode", newprop));
-                SelectedConv.BioConvo.AddOrReplaceProp(props);
-                PushConvoToFile(SelectedConv);
+                AddDialogueNodeInPlace(isReply: true);
                 return;
             }
 
             if (command == "AddEntry")
             {
-                PropertyCollection newprop = GlobalUnrealObjectInfo.getDefaultStructValue(Pcc.Game, "BioDialogEntryNode", true, Pcc);
-                var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList") ??
-                            new ArrayProperty<StructProperty>("m_EntryList");
-                var EGUIStyles = new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle");
-                newprop.AddOrReplaceProp(EGUIStyles);
-                newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
-                newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
-                newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
-                newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
-                newprop.GetProp<IntProperty>("nConditionalParam").Value = -1;
-                newprop.GetProp<IntProperty>("nStateTransition").Value = -1;
-                newprop.GetProp<IntProperty>("nStateTransitionParam").Value = -1;
-                newprop.GetProp<IntProperty>("nCameraIntimacy").Value = 1;
-                props.Add(new StructProperty("BioDialogEntryNode", newprop));
-                SelectedConv.BioConvo.AddOrReplaceProp(props);
-                PushConvoToFile(SelectedConv);
+                AddDialogueNodeInPlace(isReply: false);
                 return;
             }
 
@@ -5364,22 +5488,11 @@ namespace LegendaryExplorer.DialogueEditor
                 RecreateNodesToProperties(SelectedConv);
                 node = new DiagNodeEntry(this, SelectedConv.EntryList[newIndex], newX, newY, graphEditor);
             }
-            CurrentObjects.Add(node);
-            node.Layout(newX, newY);
-            graphEditor.addNode(node);
-            node.SetOffset(newX, newY);
-            node.MouseDown += node_MouseDown;
-            node.Click += node_Click;
-            node.RecreateConnections(CurrentObjects);
-            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
-            {
-                ConvGraphEditor.UpdateEdge(edge);
-            }
+            AddDialogueNodeToGraphInPlace(node, new PointF(newX, newY), centerView: false);
             DialogueNode_SelectByIndex(newIndex, isReply);
             graphEditor.Enabled = true;
             graphEditor.UseWaitCursor = false;
             graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
-            graphEditor.Refresh();
             if (cloneLinks)
             {
                 using var suppressedPackageUpdates = SuppressPackageUpdates();
@@ -6202,13 +6315,13 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
                 case "FaceFXLineM":
-                    if (SelectedDialogueNode.SpeakerTag.FaceFX_Male != null)
+                    if (SelectedDialogueNode.SpeakerTag?.FaceFX_Male != null)
                     {
                         OpenInToolkit("FaceFXEditor", SelectedDialogueNode.SpeakerTag.FaceFX_Male.UIndex, null, SelectedDialogueNode.FaceFX_Male);
                     }
                     break;
                 case "FaceFXLineF":
-                    if (SelectedDialogueNode.SpeakerTag.FaceFX_Female != null)
+                    if (SelectedDialogueNode.SpeakerTag?.FaceFX_Female != null)
                     {
                         OpenInToolkit("FaceFXEditor", SelectedDialogueNode.SpeakerTag.FaceFX_Female.UIndex, null,
                             SelectedDialogueNode.FaceFX_Female);
@@ -6370,8 +6483,8 @@ namespace LegendaryExplorer.DialogueEditor
                 "FaceFXNS" => SelectedConv?.NonSpkrFFX != null,
                 "FaceFXSpkrM" => SelectedSpeaker?.FaceFX_Male != null,
                 "FaceFXSpkrF" => SelectedSpeaker?.FaceFX_Female != null,
-                "FaceFXLineM" => SelectedDialogueNode?.SpeakerTag.FaceFX_Male != null,
-                "FaceFXLineF" => SelectedDialogueNode?.SpeakerTag.FaceFX_Female != null,
+                "FaceFXLineM" => SelectedDialogueNode?.SpeakerTag?.FaceFX_Male != null,
+                "FaceFXLineF" => SelectedDialogueNode?.SpeakerTag?.FaceFX_Female != null,
                 "SoundP_Bank" => SelectedConv?.WwiseBank != null,
                 "SoundP_StreamM" => SelectedDialogueNode?.WwiseStream_Male != null,
                 "SoundP_StreamF" => SelectedDialogueNode?.WwiseStream_Female != null,
