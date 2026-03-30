@@ -10,6 +10,7 @@ using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
+using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.GameFilesystem;
@@ -149,6 +150,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         "Some FaceFXAssets could not be processed.",
                         pew).Show();
                 });
+        }
+
+        public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
+        {
+            DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
         }
 
         public static void RestoreMaterialFromChosenAssetDatabase(PackageEditorWindow pew, ExportEntry export, Action onCompleted = null)
