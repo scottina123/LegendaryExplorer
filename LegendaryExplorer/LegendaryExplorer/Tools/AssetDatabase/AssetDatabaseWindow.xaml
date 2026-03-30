@@ -1070,7 +1070,7 @@
                                     <ComboBox x:Name="cbx_AnimPreviewMesh" DockPanel.Dock="Top" Margin="0,0,0,3"
                                               DisplayMemberPath="MeshName"
                                               SelectionChanged="AnimPreview_MeshSelectionChanged"/>
-                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,3">
+                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,3" Visibility="Collapsed">
                                         <TextBlock Text="AmbPerf Master PCC: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                                         <Button Content="Clear" DockPanel.Dock="Right" Margin="3,0,0,0" Padding="4,1"
                                                 Command="{Binding ClearAmbPerfMasterPccCommand}"/>

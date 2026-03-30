@@ -171,6 +171,11 @@
 	<ItemGroup>
 		<None Include="..\.editorconfig" Link=".editorconfig" />
 	</ItemGroup>
+ <ItemGroup>
+		<None Include="AmbientLE\AmbientLE3.pcc">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 	<ItemGroup>
 		<Resource Include="Tools\Icons\**\*.ico" />
 		<Resource Include="Resources\Images\**\*.ico" />

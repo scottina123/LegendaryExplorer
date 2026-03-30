@@ -660,6 +660,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage animPcc;
         private IMEPackage _ambPerfMasterPcc;
         private record struct AmbPerfStep(ExportEntry AnimExport, float BlendInTime);
+        private const string AmbientLeFolderName = "AmbientLE";
+        private const string AmbientLePackageName = "AmbientLE3.pcc";
         private List<AmbPerfStep> _ambPerfAnimQueue;
         private int _ambPerfAnimIndex;
         private int _ambPerfVersion;
@@ -3815,57 +3817,98 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             animPcc?.Dispose();
-            animPcc = MEPackageHandler.OpenMEPackage(filePath);
-
-            if (animPcc.IsUExport(animUIndex))
+            ExportEntry animExp;
+            if (anim.IsAmbPerf && TryOpenAmbientLeAnimationPackage(anim, out var ambientLePackage, out var ambientLeExport))
             {
-                var animExp = animPcc.GetUExport(animUIndex);
-                LoadSkeletalMeshForAnimPreview();
-
-                if (anim.IsAmbPerf)
+                animPcc = ambientLePackage;
+                animExp = ambientLeExport;
+            }
+            else
+            {
+                animPcc = MEPackageHandler.OpenMEPackage(filePath);
+                if (!animPcc.IsUExport(animUIndex))
                 {
-                    // Unsubscribe old handlers
-                    AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
-                    AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
-                    _ambPerfVersion++; // invalidate any pending InvokeAsync from previous selection
-
-                    // If a master PCC is set, try to find the matching SFXAmbPerfGameData in it
-                    ExportEntry ambPerfSource = animExp;
-                    if (_ambPerfMasterPcc != null)
-                    {
-                        var masterExp = _ambPerfMasterPcc.Exports.FirstOrDefault(
-                            e => e.ClassName == animExp.ClassName && e.ObjectName == animExp.ObjectName);
-                        if (masterExp != null)
-                        {
-                            ambPerfSource = masterExp;
-                        }
-                    }
-
-                    // Build the pose graph step sequence with blend times
-                    _ambPerfAnimQueue = BuildAmbPerfStepSequence(ambPerfSource);
-                    _ambPerfAnimIndex = 0;
-
-                    if (_ambPerfAnimQueue.Count > 0)
-                    {
-                        var firstStep = _ambPerfAnimQueue[0];
-                        AnimPreviewControl.LoadAnimSequenceNonLooping(firstStep.AnimExport);
-                        AnimPreviewControl.Play();
-                        if (_ambPerfAnimQueue.Count > 1)
-                        {
-                            AnimPreviewControl.AnimationCompleted += OnAmbPerfStepCompleted;
-                        }
-                    }
+                    AnimPreviewControl.Clear();
+                    return;
                 }
-                else
+
+                animExp = animPcc.GetUExport(animUIndex);
+            }
+
+            LoadSkeletalMeshForAnimPreview();
+
+            if (anim.IsAmbPerf)
+            {
+                AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                _ambPerfVersion++;
+
+                _ambPerfAnimQueue = BuildAmbPerfStepSequence(animExp);
+                _ambPerfAnimIndex = 0;
+
+                if (_ambPerfAnimQueue.Count > 0)
                 {
-                    AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
-                    AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
-                    _ambPerfVersion++;
-                    _ambPerfAnimQueue = null;
-                    AnimPreviewControl.LoadAnimSequence(animExp);
+                    var firstStep = _ambPerfAnimQueue[0];
+                    AnimPreviewControl.LoadAnimSequenceNonLooping(firstStep.AnimExport);
                     AnimPreviewControl.Play();
+                    if (_ambPerfAnimQueue.Count > 1)
+                    {
+                        AnimPreviewControl.AnimationCompleted += OnAmbPerfStepCompleted;
+                    }
                 }
             }
+            else
+            {
+                AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
+                AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
+                _ambPerfVersion++;
+                _ambPerfAnimQueue = null;
+                AnimPreviewControl.LoadAnimSequence(animExp);
+                AnimPreviewControl.Play();
+            }
+        }
+
+        private static bool TryOpenAmbientLeAnimationPackage(AnimationRecord anim, out IMEPackage package, out ExportEntry animationExport)
+        {
+            package = null;
+            animationExport = null;
+
+            var ambientLePackagePath = GetAmbientLePackagePath();
+            if (string.IsNullOrWhiteSpace(ambientLePackagePath))
+            {
+                return false;
+            }
+
+            package = MEPackageHandler.OpenMEPackage(ambientLePackagePath);
+            animationExport = package.Exports.FirstOrDefault(export =>
+                export.ClassName == "SFXAmbPerfGameData"
+                && string.Equals(export.ObjectName.Instanced, anim.AnimSequence, StringComparison.OrdinalIgnoreCase));
+
+            if (animationExport != null)
+            {
+                return true;
+            }
+
+            package.Dispose();
+            package = null;
+            return false;
+        }
+
+        private static string GetAmbientLePackagePath()
+        {
+            var currentDirectory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            while (currentDirectory != null)
+            {
+                var candidatePath = Path.Combine(currentDirectory.FullName, AmbientLeFolderName, AmbientLePackageName);
+                if (File.Exists(candidatePath))
+                {
+                    return candidatePath;
+                }
+
+                currentDirectory = currentDirectory.Parent;
+            }
+
+            return null;
         }
 
         private void RestoreAmbPerfMasterPcc()
