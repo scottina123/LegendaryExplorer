@@ -5,6 +5,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.GameFilesystem;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -45,16 +46,13 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 return; // Nothing
             }
 
-            var fxaM = EntrySelector.GetEntry<ExportEntry>(window, window.Pcc, "Select the male FXA to assign to the new speaker.", e => e is ExportEntry && e.ClassName == "FaceFXAnimSet"); ;
-            if (fxaM == null)
+            var fxaSelections = PromptForSharedFxaSelection(window as Window, window.Pcc);
+            if (fxaSelections is null)
             {
                 return;
             }
-            var fxaF = EntrySelector.GetEntry<ExportEntry>(window, window.Pcc, "Select the female FXA to assign to the new speaker.", e => e is ExportEntry && e.ClassName == "FaceFXAnimSet"); ;
-            if (fxaF == null)
-            {
-                return;
-            }
+
+            var (fxaM, fxaF) = fxaSelections.Value;
 
             foreach (var convo in conversations)
             {
@@ -88,6 +86,132 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             }
 
             MessageBox.Show("Done.");
+        }
+
+        private static (ExportEntry male, ExportEntry female)? PromptForSharedFxaSelection(Window owner, IMEPackage package)
+        {
+            var faceFxEntries = package.Exports.Where(e => e.ClassName == "FaceFXAnimSet").ToList();
+            if (faceFxEntries.Count == 0)
+            {
+                MessageBox.Show(owner, "This file doesn't contain any FaceFXAnimSet exports.", "No FaceFXAnimSets", MessageBoxButton.OK, MessageBoxImage.Information);
+                return null;
+            }
+
+            var faceFxOptions = faceFxEntries
+                .Select(e => new EntryStringPair(e, $"{e.UIndex,-9}\t{e.InstancedFullPath}"))
+                .ToList();
+
+            var dialog = new Window
+            {
+                Title = "Select FaceFXAnimSets",
+                Width = 700,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = owner,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var directions = new System.Windows.Controls.TextBlock
+            {
+                Text = "Select the male and female FaceFXAnimSets to assign to the new speaker.",
+                Margin = new Thickness(10, 15, 10, 10),
+                TextWrapping = TextWrapping.Wrap
+            };
+            directions.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, SystemColors.WindowTextBrushKey);
+
+            var selectionGrid = new System.Windows.Controls.Grid
+            {
+                Margin = new Thickness(10, 0, 10, 10)
+            };
+            selectionGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+            selectionGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            selectionGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+            selectionGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+
+            var maleLabel = new System.Windows.Controls.TextBlock
+            {
+                Text = "Male:",
+                Margin = new Thickness(0, 0, 10, 10),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var femaleLabel = new System.Windows.Controls.TextBlock
+            {
+                Text = "Female:",
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var maleCombo = new System.Windows.Controls.ComboBox
+            {
+                ItemsSource = faceFxOptions,
+                Margin = new Thickness(0, 0, 0, 10),
+                MinWidth = 500,
+                SelectedIndex = 0
+            };
+            var femaleCombo = new System.Windows.Controls.ComboBox
+            {
+                ItemsSource = faceFxOptions,
+                MinWidth = 500,
+                SelectedIndex = faceFxOptions.Count > 1 ? 1 : 0
+            };
+
+            System.Windows.Controls.Grid.SetRow(maleLabel, 0);
+            System.Windows.Controls.Grid.SetColumn(maleLabel, 0);
+            System.Windows.Controls.Grid.SetRow(maleCombo, 0);
+            System.Windows.Controls.Grid.SetColumn(maleCombo, 1);
+            System.Windows.Controls.Grid.SetRow(femaleLabel, 1);
+            System.Windows.Controls.Grid.SetColumn(femaleLabel, 0);
+            System.Windows.Controls.Grid.SetRow(femaleCombo, 1);
+            System.Windows.Controls.Grid.SetColumn(femaleCombo, 1);
+
+            selectionGrid.Children.Add(maleLabel);
+            selectionGrid.Children.Add(maleCombo);
+            selectionGrid.Children.Add(femaleLabel);
+            selectionGrid.Children.Add(femaleCombo);
+
+            var buttonPanel = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(10, 0, 10, 10)
+            };
+
+            var okButton = new System.Windows.Controls.Button
+            {
+                Content = "OK",
+                Width = 80,
+                Margin = new Thickness(5, 0, 0, 0),
+                IsDefault = true
+            };
+            var cancelButton = new System.Windows.Controls.Button
+            {
+                Content = "Cancel",
+                Width = 80,
+                Margin = new Thickness(5, 0, 0, 0),
+                IsCancel = true
+            };
+
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+
+            var mainPanel = new System.Windows.Controls.StackPanel();
+            mainPanel.Children.Add(directions);
+            mainPanel.Children.Add(selectionGrid);
+            mainPanel.Children.Add(buttonPanel);
+            dialog.Content = mainPanel;
+
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            return (((EntryStringPair)maleCombo.SelectedItem).Entry as ExportEntry, ((EntryStringPair)femaleCombo.SelectedItem).Entry as ExportEntry);
         }
 
         /// <summary>
