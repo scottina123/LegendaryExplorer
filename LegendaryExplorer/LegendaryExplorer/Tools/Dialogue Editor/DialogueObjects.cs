@@ -358,11 +358,41 @@ namespace LegendaryExplorer.DialogueEditor
         {
             private readonly ConvGraphEditor ConvGraphEditor;
             private readonly DBox DObj;
+
             public OutputDragHandler(ConvGraphEditor graph, DBox obj)
             {
                 ConvGraphEditor = graph;
                 DObj = obj;
             }
+
+            private static PNode ResolveDropTarget(PInputEventArgs e)
+            {
+                if (dragTarget != null)
+                {
+                    return dragTarget;
+                }
+
+                for (PNode node = e.InputManager?.MouseOver?.PickedNode; node is not null; node = node.Parent)
+                {
+                    if (node is not PPath path)
+                    {
+                        continue;
+                    }
+
+                    for (PNode ancestor = path.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                    {
+                        if (ancestor is DiagNode diagNode
+                            && diagNode.InLinks != null
+                            && diagNode.InLinks.Any(link => ReferenceEquals(link.node, path)))
+                        {
+                            return path;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
                 return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave) && !e.Handled;
@@ -418,11 +448,14 @@ namespace LegendaryExplorer.DialogueEditor
                 ((List<DiagEdEdge>)((PNode)sender).Tag).RemoveAt(0);
                 base.OnEndDrag(sender, e);
                 draggingOutlink = false;
-                if (dragTarget != null)
+
+                PNode resolvedDropTarget = ResolveDropTarget(e);
+                if (resolvedDropTarget != null)
                 {
-                    DObj.CreateOutlink(((PPath)sender).Parent, dragTarget);
-                    dragTarget = null;
+                    DObj.CreateOutlink(((PPath)sender).Parent, resolvedDropTarget);
                 }
+
+                dragTarget = null;
             }
         }
 

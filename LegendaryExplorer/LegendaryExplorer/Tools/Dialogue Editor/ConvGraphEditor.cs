@@ -190,7 +190,10 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 base.OnStartDrag(sender, e);
                 e.Handled = true;
-                (GetDraggedNode(e.PickedNode) ?? e.PickedNode).MoveToFront();
+                if (!DObj.draggingOutlink)
+                {
+                    (GetDraggedNode(e.PickedNode) ?? e.PickedNode).MoveToFront();
+                }
             }
 
             protected override void OnDrag(object sender, PInputEventArgs e)
