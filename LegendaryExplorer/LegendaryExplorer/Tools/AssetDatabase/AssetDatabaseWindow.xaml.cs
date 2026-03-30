@@ -172,8 +172,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v9.7: Added TLK usage records and coalesced TLK scanning for database browsing.
-        public const string dbCurrentBuild = "9.7"; //If changes are made that invalidate old databases edit this.
+        // v9.8: Added Actors tab for SFXStuntActor, SFXSkeletalMeshActor, SFXPawn, SFXPointOfInterest scanning.
+        public const string dbCurrentBuild = "9.8";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -343,6 +343,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         };
         public ObservableCollectionExtended<string> TlkSourceFilters { get; } = new();
         public ObservableCollectionExtended<TlkDisplayRecord> DisplayedTlkStrings { get; } = new();
+        public ObservableCollectionExtended<string> ActorTypeFilters { get; } = new()
+        {
+            AllActorTypeFilterOption,
+            StuntActorFilterOption,
+            SkeletalMeshActorFilterOption,
+            PawnFilterOption,
+            PointOfInterestFilterOption
+        };
 
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
@@ -374,6 +382,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private const string FileLineSearchColumn = "File";
         private const string LocationLineSearchColumn = "Location";
         private const string AllTlkSourceFilterOption = "All TLKs";
+
+        private const string AllActorTypeFilterOption = "All";
+        private const string StuntActorFilterOption = "SFXStuntActor";
+        private const string SkeletalMeshActorFilterOption = "SFXSkeletalMeshActor";
+        private const string PawnFilterOption = "SFXPawn";
+        private const string PointOfInterestFilterOption = "SFXPointOfInterest";
 
         public sealed record MaterialSelectionResult(MaterialRecord Material);
 
@@ -419,6 +433,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 if (SetProperty(ref _selectedTlkString, value))
                 {
                     tlkUsagesPanel?.RefreshFilter();
+                }
+            }
+        }
+
+        private string _selectedActorTypeFilter = AllActorTypeFilterOption;
+        public string SelectedActorTypeFilter
+        {
+            get => _selectedActorTypeFilter;
+            set
+            {
+                if (SetProperty(ref _selectedActorTypeFilter, value))
+                {
+                    Filter();
                 }
             }
         }
@@ -739,6 +766,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 || (currentView == 9 && lstbx_PlotUsages?.SelectedIndex >= 0)
                 || (currentView == 10 && sequenceEventsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 11 && tlkUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 12 && actorsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
@@ -1067,7 +1095,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -1272,6 +1300,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RefreshMaterialTextureDropdownFilters();
             RefreshTextureDropdownFilters();
             SelectedSequenceEventTypeFilter = AllSequenceEventFilterOption;
+            SelectedActorTypeFilter = AllActorTypeFilterOption;
             FilterText = string.Empty;
             _loadedTlkSources.Clear();
             _mergedTlkValues.Clear();
@@ -2366,7 +2395,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} " +
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
-                                                      $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count}";
+                                                      $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
@@ -2982,7 +3011,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 FilterText = string.Empty;
                 UsageFilterText = string.Empty;
-                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11 or 12;
                 Filter();
                 switch (currentView)
                 {
@@ -3004,6 +3033,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         break;
                     case 11:
                         FilterWatermark = "Search (by TLK string id, parsed value, or source)";
+                        break;
+                    case 12:
+                        FilterWatermark = "Search (by export name, tag, or game name)";
                         break;
                     default:
                         FilterWatermark = "Search";
@@ -4849,6 +4881,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             guiUsagesPanel?.RefreshFilter();
             sequenceEventsUsagesPanel?.RefreshFilter();
             tlkUsagesPanel?.RefreshFilter();
+            actorsUsagesPanel?.RefreshFilter();
 
             RefreshUsageView(lstbx_Usages);
             RefreshUsageView(lstbx_PlotUsages);
@@ -5032,6 +5065,59 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             };
         }
 
+        private bool ActorTabFilter(object obj)
+        {
+            if (obj is not ActorRecord actorRecord)
+            {
+                return false;
+            }
+
+            if (!string.Equals(SelectedActorTypeFilter, AllActorTypeFilterOption, StringComparison.OrdinalIgnoreCase))
+            {
+                bool typeMatch = SelectedActorTypeFilter switch
+                {
+                    StuntActorFilterOption => actorRecord.ActorType == ActorType.StuntActor,
+                    SkeletalMeshActorFilterOption => actorRecord.ActorType == ActorType.SkeletalMeshActor,
+                    PawnFilterOption => actorRecord.ActorType == ActorType.Pawn,
+                    PointOfInterestFilterOption => actorRecord.ActorType == ActorType.PointOfInterest,
+                    _ => true
+                };
+                if (!typeMatch)
+                {
+                    return false;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(FilterText))
+            {
+                return true;
+            }
+
+            if (ContainsText(actorRecord.ActorName, FilterText))
+            {
+                return true;
+            }
+
+            if (ContainsText(actorRecord.Tag, FilterText))
+            {
+                return true;
+            }
+
+            if (actorRecord.GameNameStrRef > 0 && ContainsText(actorRecord.GameNameStrRef.ToString(), FilterText))
+            {
+                return true;
+            }
+
+            if (actorRecord.GameNameStrRef > 0
+                && _mergedTlkValues.TryGetValue(actorRecord.GameNameStrRef, out var friendlyName)
+                && ContainsText(friendlyName, FilterText))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         private void Filter()
         {
             AssetFilters.SetSearch(FilterText);
@@ -5111,6 +5197,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewTlk = CollectionViewSource.GetDefaultView(DisplayedTlkStrings);
                     viewTlk.Filter = TlkTabFilter;
                     lstbx_TlkStrings.ItemsSource = viewTlk;
+                    break;
+                case 12: // Actors
+                    ICollectionView viewAct = CollectionViewSource.GetDefaultView(CurrentDataBase.Actors);
+                    viewAct.Filter = ActorTabFilter;
+                    lstbx_Actors.ItemsSource = viewAct;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -5747,6 +5838,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 6 => vfxUsagesPanel.SelectedItem as IAssetUsage,
                 7 => guiUsagesPanel.SelectedItem as IAssetUsage,
                 10 => sequenceEventsUsagesPanel.SelectedItem as IAssetUsage,
+                12 => actorsUsagesPanel.SelectedItem as IAssetUsage,
                 _ => null
             };
         }

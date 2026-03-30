@@ -80,6 +80,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, MaterialBoolSpec> GeneratedMaterialSpecifications = new();
         /// <summary>
+        /// Dictionary that stores generated actor records
+        /// </summary>
+        public ConcurrentDictionary<string, ActorRecord> GeneratedActors = new();
+        /// <summary>
         /// Used to do per-class locking during generation
         /// </summary>
         public ConcurrentDictionary<string, Lock> ClassLocks = new();
@@ -103,6 +107,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedConditionalRecords.Clear();
             GeneratedTransitionRecords.Clear();
             GeneratedMaterialSpecifications.Clear();
+            GeneratedActors.Clear();
         }
 
         public string GetProgressString()
@@ -116,6 +121,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"GUI Elements: {GeneratedGUI.Count}\n" +
                    $"Lines: {GeneratedLines.Count}\n" +
                    $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
+                   $"Actors: {GeneratedActors.Count}\n" +
                    $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
@@ -191,6 +197,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             pdb.SequenceEvents.AddRange(sequenceEventsSorted);
 
             pdb.TlkStrings.AddRange(GeneratedTlkStrings.Values.OrderBy(x => x.StringID));
+
+            var actorsSorted = GeneratedActors.Values.OrderBy(x => x.ActorName, System.StringComparer.OrdinalIgnoreCase).ToList();
+            foreach (var actor in actorsSorted)
+            {
+                actor.IsModOnly = actor.Usages.All(u => u.IsInMod);
+            }
+            pdb.Actors.AddRange(actorsSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

@@ -54,6 +54,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<TlkStringRecord> TlkStrings { get; set; } = new();
 
+        public List<ActorRecord> Actors { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -90,6 +92,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Lines.Clear();
             SequenceEvents.Clear();
             TlkStrings.Clear();
+            Actors.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -107,6 +110,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Lines.AddRange(from.Lines);
             SequenceEvents.AddRange(from.SequenceEvents);
             TlkStrings.AddRange(from.TlkStrings);
+            Actors.AddRange(from.Actors);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -804,5 +808,62 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public PlotUsage()
         {
         }
+    }
+
+    public enum ActorType
+    {
+        StuntActor,
+        SkeletalMeshActor,
+        Pawn,
+        PointOfInterest
+    }
+
+    public class ActorRecord : IAssetRecord
+    {
+        public string ActorName { get; set; }
+
+        public string Tag { get; set; }
+
+        public int GameNameStrRef { get; set; }
+
+        public ActorType ActorType { get; set; }
+
+        public bool IsModOnly { get; set; }
+
+        [IgnoredMember] public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        public List<ActorUsage> Usages { get; set; } = new();
+
+        [IgnoredMember]
+        public string TypeDisplay => ActorType switch
+        {
+            ActorType.StuntActor => "SFXStuntActor",
+            ActorType.SkeletalMeshActor => "SFXSkeletalMeshActor",
+            ActorType.Pawn => "SFXPawn",
+            ActorType.PointOfInterest => "SFXPointOfInterest",
+            _ => ActorType.ToString()
+        };
+
+        [IgnoredMember]
+        public string DisplayString => string.IsNullOrWhiteSpace(Tag)
+            ? $"{ActorName} ({TypeDisplay})"
+            : $"{ActorName} [{Tag}] ({TypeDisplay})";
+
+        public ActorRecord(string actorName, string tag, int gameNameStrRef, ActorType actorType, bool isModOnly)
+        {
+            ActorName = actorName;
+            Tag = tag;
+            GameNameStrRef = gameNameStrRef;
+            ActorType = actorType;
+            IsModOnly = isModOnly;
+        }
+
+        public ActorRecord()
+        { }
+    }
+
+    public sealed record ActorUsage(int FileKey, int UIndex, bool IsInMod) : IAssetUsage
+    {
+        public ActorUsage() : this(default, default, default) { }
     }
 }

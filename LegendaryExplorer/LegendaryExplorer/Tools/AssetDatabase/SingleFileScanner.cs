@@ -85,7 +85,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             new ConversationScanner(),
             new SequenceEventScanner(),
             new TlkScanner(),
-            new PlotUsageScanner()
+            new PlotUsageScanner(),
+            new ActorScanner()
         ];
 
         private readonly int _fileKey;
