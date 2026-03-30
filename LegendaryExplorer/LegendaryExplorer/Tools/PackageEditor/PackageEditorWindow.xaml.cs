@@ -6384,6 +6384,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
+        private void CopyFullPath_Click(object sender, RoutedEventArgs e)
+        {
+            IEntry entry = null;
+            if (sender is MenuItem { Parent: ContextMenu contextMenu } && TryGetContextMenuEntry(contextMenu, out var contextEntry))
+            {
+                entry = contextEntry;
+            }
+            else
+            {
+                TryGetSelectedEntry(out entry);
+            }
+
+            if (entry is not null)
+            {
+                Clipboard.SetText(entry.InstancedFullPath);
+            }
+        }
+
         private void EntryContextMenu_Opened(object sender, RoutedEventArgs e)
         {
             if (sender is not ContextMenu contextMenu)
@@ -6406,12 +6424,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var stripShadowmapMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "StripShadowmap"));
-            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null)
+            var copyFullPathMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "CopyFullPath"));
+            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null)
             {
                 return;
             }
 
-            bool hasExport = TryGetContextMenuExport(contextMenu, out var export);
+            bool hasEntry = TryGetContextMenuEntry(contextMenu, out var entry);
+            ExportEntry export = entry as ExportEntry;
+            bool hasExport = export is not null;
+
+            if (copyFullPathMenuItem is not null)
+            {
+                copyFullPathMenuItem.Visibility = hasEntry
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
 
             if (matchMicMenuItem is not null)
             {
@@ -6449,15 +6479,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private static bool TryGetContextMenuExport(ContextMenu contextMenu, out ExportEntry export)
+        private static bool TryGetContextMenuEntry(ContextMenu contextMenu, out IEntry entry)
         {
             object dataContext = (contextMenu.PlacementTarget as FrameworkElement)?.DataContext;
-            export = dataContext switch
+            entry = dataContext switch
             {
-                ExportEntry exportEntry => exportEntry,
-                TreeViewEntry { Entry: ExportEntry exportEntry } => exportEntry,
+                IEntry packageEntry => packageEntry,
+                TreeViewEntry { Entry: IEntry packageEntry } => packageEntry,
                 _ => null
             };
+
+            return entry is not null;
+        }
+
+        private static bool TryGetContextMenuExport(ContextMenu contextMenu, out ExportEntry export)
+        {
+            export = TryGetContextMenuEntry(contextMenu, out var entry)
+                ? entry as ExportEntry
+                : null;
 
             return export is not null;
         }
