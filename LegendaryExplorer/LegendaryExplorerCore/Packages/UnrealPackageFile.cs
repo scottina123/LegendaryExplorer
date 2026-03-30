@@ -981,10 +981,16 @@ namespace LegendaryExplorerCore.Packages
                 switch (e.PropertyName)
                 {
                     case nameof(ExportEntry.DataChanged):
-                        UpdateTools(PackageChange.ExportData, exp.UIndex);
+                        if (exp.DataChanged)
+                        {
+                            UpdateTools(PackageChange.ExportData, exp.UIndex);
+                        }
                         break;
                     case nameof(ExportEntry.HeaderChanged):
-                        UpdateTools(PackageChange.ExportHeader, exp.UIndex);
+                        if (exp.HeaderChanged)
+                        {
+                            UpdateTools(PackageChange.ExportHeader, exp.UIndex);
+                        }
                         break;
                 }
             }
@@ -992,7 +998,10 @@ namespace LegendaryExplorerCore.Packages
 
         protected void importChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (MEPackageHandler.GlobalSharedCacheEnabled && sender is ImportEntry imp && e.PropertyName == nameof(ImportEntry.HeaderChanged))
+            if (MEPackageHandler.GlobalSharedCacheEnabled
+                && sender is ImportEntry imp
+                && e.PropertyName == nameof(ImportEntry.HeaderChanged)
+                && imp.HeaderChanged)
             {
                 UpdateTools(PackageChange.ImportHeader, imp.UIndex);
             }
