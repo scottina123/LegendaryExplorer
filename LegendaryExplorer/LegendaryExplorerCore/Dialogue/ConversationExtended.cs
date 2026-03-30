@@ -538,7 +538,11 @@ namespace LegendaryExplorerCore.Dialogue
                     spkridx = node.GetProp<IntProperty>("nSpeakerIndex");
                 }
 
-                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply, param);
+                int listenerIdx = node.GetProp<IntProperty>("nListenerIndex")?.Value ?? -3;
+                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply, param)
+                {
+                    Listener = listenerIdx
+                };
             }
             catch (Exception e)
             {
