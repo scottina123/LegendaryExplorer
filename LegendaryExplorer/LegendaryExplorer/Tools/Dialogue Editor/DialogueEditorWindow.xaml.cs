@@ -2393,143 +2393,167 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 obj.SetOffset(0, 0); //remove existing positioning
             }
-            int rowAt = 0;
-            int columnAt = 0;
-            int maxrow = 0;
-            Dictionary<int, int> columnlevels = new Dictionary<int, int>(); // records the max row in each column
-            columnlevels.Add(0, -1);
-            float COLUMN_SPACING = float.TryParse(ColumnSpace.ToString(), out float clmSp) ? clmSp : 200;
-            float WATERFALL_SPACING = float.TryParse(WaterfallSpace.ToString(), out float wSp) ? wSp : 40;
-            float ROW_SPACING = float.TryParse(RowSpace.ToString(), out float rowSp) ? rowSp : 200;
+
+            const float COLUMN_GAP = 24f;
+            const float ROW_GAP = 12f;
+
             var visitedNodes = new HashSet<int>();
-            List<DStart> startNodes = CurrentObjects.OfType<DStart>().ToList();
-            List<DiagNode> allNodes = CurrentObjects.OfType<DiagNode>().OrderBy(n => n.NodeUID).ToList();
-            var BranchStack = new Stack<(DiagNode node, int column)>();
-            var thisBranch = new Dictionary<int, DiagNode>(); //list of items in this branch column, diagnode
+            List<DStart> startNodes = CurrentObjects.OfType<DStart>().OrderBy(n => n.Order).ToList();
+            var allNodes = CurrentObjects.OfType<DiagNode>().OrderBy(n => n.NodeUID).ToDictionary(n => n.NodeUID);
 
-            //TAKE First Start - use to get first layer of waterfall.
-            //add to first layer until end. any other branches add to branch stack LIFO to create second etc layer.
-            // If no branches in stack then go back to new start.
+            // Pass 1: Assign logical (column, row) to every node via graph traversal.
+            // Primary outgoing link continues on the same row; secondary links get new rows.
+            var nodeLogicalPos = new Dictionary<int, (int col, int row)>();
+            var startLogicalPos = new Dictionary<int, (int col, int row)>();
+            int maxUsedRow = -1;
+            int nextFreeRow = 0;
 
-            while (allNodes.Count > 0)
+            static int GetTargetUid(DiagNode src, ReplyChoiceNode link) =>
+                src.Node.IsReply ? link.Index : link.Index + 1000;
+
+            foreach (var startNode in startNodes)
             {
-                maxrow = columnlevels.Values.Max(); //Reset rows on new start node
-                for (int i = 0; i < columnlevels.Count; i++)
+                int startRow = Math.Max(nextFreeRow, maxUsedRow + 1);
+                startLogicalPos[startNode.Order] = (0, startRow);
+                maxUsedRow = Math.Max(maxUsedRow, startRow);
+                visitedNodes.Add(startNode.NodeUID);
+
+                if (!allNodes.TryGetValue(startNode.StartNumber, out var nextNode)
+                    || visitedNodes.Contains(nextNode.NodeUID))
                 {
-                    columnlevels[i] = maxrow;
+                    nextFreeRow = maxUsedRow + 1;
+                    continue;
                 }
-                DStart firstNode = startNodes.FirstOrDefault();
-                if (firstNode != null)
+
+                var branchStack = new Stack<(DiagNode node, int col, int row)>();
+                int nextBranchRow = startRow;
+                int colAt = 1;
+                int rowAt = startRow;
+
+                while (nextNode != null || branchStack.Count > 0)
                 {
-                    rowAt = maxrow + 1;
-                    columnAt = 0;
-                    firstNode.SetOffset(columnAt, rowAt * ROW_SPACING);
-                    columnlevels[columnAt] = rowAt;
-                    startNodes.Remove(firstNode);
-                    visitedNodes.Add(firstNode.NodeUID);
-                    DiagNode nextNode = allNodes.FirstOrDefault(x => x.NodeUID == firstNode.StartNumber);
-                    if (nextNode != null && !visitedNodes.Contains(nextNode.NodeUID))
+                    if (nextNode == null)
                     {
-                        while (!(nextNode == null && thisBranch.IsEmpty() && BranchStack.IsEmpty()))
+                        while (branchStack.Count > 0)
                         {
-                            var thisNode = nextNode;
-                            nextNode = null;
-                            if (thisNode != null && !visitedNodes.Contains(thisNode.NodeUID))
+                            var b = branchStack.Pop();
+                            if (!visitedNodes.Contains(b.node.NodeUID))
                             {
-                                columnAt++;
-                                visitedNodes.Add(thisNode.NodeUID);
-                                allNodes.Remove(thisNode);
-                                thisBranch.Add(columnAt, thisNode);
-                                if (columnlevels.TryGetValue(columnAt, out int cmax))
-                                {
-                                    cmax = rowAt;
-                                }
-                                else
-                                {
-                                    columnlevels.Add(columnAt, rowAt);
-                                }
-                                if (thisNode.Links.Count != 0)
-                                {
-                                    int r = 0;
-                                    if (!thisNode.Node.IsReply) //Conversion factor from nIndex to NodeUID
-                                    {
-                                        r = 1000;
-                                    }
-                                    for (int i = thisNode.Links.Count - 1; i >= 0; i--) //DO IN REVERSE SO STACK IS CORRECTLY DONE
-                                    {
-                                        if (i == 0)
-                                        {
-                                            nextNode = allNodes.FirstOrDefault(x => x.NodeUID == (thisNode.Links[0].Index + r));
-                                        }
-                                        else
-                                        {
-                                            var pushstack = allNodes.FirstOrDefault(x => x.NodeUID == thisNode.Links[i].Index + r);
-                                            if (pushstack != null) //means link to visited node.  Don't add to Branchstack.
-                                            {
-                                                BranchStack.Push((pushstack, columnAt));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else if (!thisBranch.IsEmpty()) //REACHED END OF BRANCH Set the positions of the previous branch
-                            {
-                                int tgtRowAt = rowAt;
-                                if (thisBranch.First().Key != 1) //Test if this is inside branch
-                                {
-                                    foreach (var dn in thisBranch)
-                                    {
-                                        var col = dn.Key;
-                                        var priormax = columnlevels[col];
-                                        if (priormax >= tgtRowAt)
-                                        {
-                                            tgtRowAt = priormax + 1;
-                                        }
-                                    }
-                                }
-
-                                foreach (var dn in thisBranch)
-                                {
-                                    dn.Value.SetOffset(dn.Key * COLUMN_SPACING, tgtRowAt * ROW_SPACING + dn.Key * WATERFALL_SPACING);
-                                    columnlevels[dn.Key] = tgtRowAt;
-                                }
-
-                                thisBranch.Clear();
-                            }
-                            else if (!BranchStack.IsEmpty())//PRIOR BRANCH IS DONE PULL nextNode from STACK of sub-branches
-                            {
-                                (nextNode, columnAt) = BranchStack.Pop();
-
-                                if (visitedNodes.Contains(nextNode.NodeUID)) //if nextnode is already up, make sure stack is pulled again without moving down.
-                                {
-                                    nextNode = null;
-                                }
+                                nextNode = b.node;
+                                colAt = b.col;
+                                rowAt = b.row;
+                                break;
                             }
                         }
+                        if (nextNode == null) break;
                     }
-                }
-                else //everything else is orphan.
-                {
-                    int orphanrowEntry = maxrow + 1;
-                    int orphanrowReply = maxrow + 1;
-                    foreach (var obj in allNodes)
+
+                    if (visitedNodes.Contains(nextNode.NodeUID))
                     {
-                        if (obj.Node.IsReply)
-                        {
-                            obj.SetOffset(2 * COLUMN_SPACING, orphanrowReply * ROW_SPACING + WATERFALL_SPACING);
-                            orphanrowReply++;
-                        }
+                        nextNode = null;
+                        continue;
+                    }
+
+                    var current = nextNode;
+                    nodeLogicalPos[current.NodeUID] = (colAt, rowAt);
+                    maxUsedRow = Math.Max(maxUsedRow, rowAt);
+                    visitedNodes.Add(current.NodeUID);
+
+                    int nextCol = colAt + 1;
+                    nextNode = null;
+
+                    for (int i = current.Links.Count - 1; i >= 0; i--)
+                    {
+                        int uid = GetTargetUid(current, current.Links[i]);
+                        if (!allNodes.TryGetValue(uid, out var target) || visitedNodes.Contains(target.NodeUID))
+                            continue;
+                        if (i == 0)
+                            nextNode = target;
                         else
                         {
-                            obj.SetOffset(1 * COLUMN_SPACING, orphanrowEntry * ROW_SPACING);
-                            orphanrowEntry++;
+                            nextBranchRow = Math.Max(nextBranchRow + 1, maxUsedRow + 1);
+                            branchStack.Push((target, nextCol, nextBranchRow));
                         }
                     }
-                    break;
+
+                    colAt = nextCol;
                 }
+
+                nextFreeRow = maxUsedRow + 1;
             }
 
-            EnsureLayoutHasNoOverlaps();
+            // Orphan nodes
+            int orphanRow = Math.Max(nextFreeRow, maxUsedRow + 1);
+            foreach (var node in allNodes.Values
+                         .Where(n => !visitedNodes.Contains(n.NodeUID))
+                         .OrderBy(n => n.NodeUID))
+            {
+                nodeLogicalPos[node.NodeUID] = (node.Node.IsReply ? 2 : 1, orphanRow);
+                maxUsedRow = Math.Max(maxUsedRow, orphanRow);
+                orphanRow++;
+            }
+
+            // Pass 2: Apply compact measured spacing so rows stay horizontal without overlap.
+            var columnWidths = new Dictionary<int, float>();
+            var rowHeights = new Dictionary<int, float>();
+
+            foreach (var startNode in startNodes)
+            {
+                if (!startLogicalPos.TryGetValue(startNode.Order, out var sp))
+                    continue;
+
+                float width = startNode.Bounds.Width;
+                float height = startNode.Bounds.Height;
+                if (!columnWidths.TryGetValue(sp.col, out float currentColumnWidth) || width > currentColumnWidth)
+                    columnWidths[sp.col] = width;
+                if (!rowHeights.TryGetValue(sp.row, out float currentRowHeight) || height > currentRowHeight)
+                    rowHeights[sp.row] = height;
+            }
+
+            foreach (var (uid, (col, row)) in nodeLogicalPos)
+            {
+                if (!allNodes.TryGetValue(uid, out var node))
+                    continue;
+
+                float width = node.Bounds.Width;
+                float height = node.Bounds.Height;
+                if (!columnWidths.TryGetValue(col, out float currentColumnWidth) || width > currentColumnWidth)
+                    columnWidths[col] = width;
+                if (!rowHeights.TryGetValue(row, out float currentRowHeight) || height > currentRowHeight)
+                    rowHeights[row] = height;
+            }
+
+            int maxCol = Math.Max(columnWidths.Keys.DefaultIfEmpty(0).Max(), startLogicalPos.Values.DefaultIfEmpty().Max(p => p.col));
+            int maxRow = Math.Max(rowHeights.Keys.DefaultIfEmpty(0).Max(), Math.Max(startLogicalPos.Values.DefaultIfEmpty().Max(p => p.row), nodeLogicalPos.Values.DefaultIfEmpty().Max(p => p.row)));
+
+            var columnX = new float[maxCol + 1];
+            for (int col = 1; col <= maxCol; col++)
+            {
+                float previousWidth = columnWidths.TryGetValue(col - 1, out float w) ? w : 160f;
+                columnX[col] = columnX[col - 1] + previousWidth + COLUMN_GAP;
+            }
+
+            var rowY = new float[maxRow + 1];
+            for (int row = 1; row <= maxRow; row++)
+            {
+                float previousHeight = rowHeights.TryGetValue(row - 1, out float h) ? h : 100f;
+                rowY[row] = rowY[row - 1] + previousHeight + ROW_GAP;
+            }
+
+            foreach (var startNode in startNodes)
+            {
+                if (startLogicalPos.TryGetValue(startNode.Order, out var sp))
+                    startNode.SetOffset(columnX[sp.col], rowY[sp.row]);
+            }
+
+            foreach (var (uid, (col, row)) in nodeLogicalPos)
+            {
+                if (!allNodes.TryGetValue(uid, out var node)) continue;
+                node.SetOffset(columnX[col], rowY[row]);
+            }
+
+            // Do NOT call EnsureLayoutHasNoOverlaps here: that function only pushes nodes
+            // downward and would collapse the intentional horizontal waterfall rows.
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
