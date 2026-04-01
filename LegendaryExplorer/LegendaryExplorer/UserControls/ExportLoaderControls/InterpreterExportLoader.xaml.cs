@@ -1287,6 +1287,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             OverrideLoadedProperties = null;
             ExpandedNodePaths.Clear();
             SelectedNodePath = null;
+            SelectedItem = null;
+            TreeSelectedItem = null;
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
@@ -1403,7 +1405,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     topLevelTree.ChildrenProperties.Add(errorNode);
                 }
 
-                if (PendingAddedArrayNodePath != null || RescanSelectionOffset != 0)
+                if (PendingAddedArrayNodePath != null || SelectedNodePath != null || RescanSelectionOffset != 0)
                 {
                     UPropertyTreeViewEntry itemToSelect = null;
                     if (PendingAddedArrayNodePath != null)
@@ -1434,17 +1436,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             ArrayElementJustAdded = false;
                             if (itemToSelect.ChildrenProperties.LastOrDefault() is UPropertyTreeViewEntry u)
                             {
-                                u.ExpandParents();
-                                SelectedItem = u;
+                                RestoreSelectedTreeItem(u);
                                 return;
                             }
                         }
                         //todo: select node using parent-first selection (from packageeditor)
                         //due to tree view virtualization
 
-                        cachedSelectedItem.ExpandParents();
-                        cachedSelectedItem.IsExpanded |= ExpandedNodePaths.Contains(GetNodePath(cachedSelectedItem));
-                        SelectedItem = cachedSelectedItem;
+                        RestoreSelectedTreeItem(cachedSelectedItem);
                     }
                     RescanSelectionOffset = 0;
                     SelectedNodePath = null;
@@ -1482,6 +1481,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     node.IsExpanded = true;
                 }
             }
+        }
+
+        private void RestoreSelectedTreeItem(UPropertyTreeViewEntry item)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            item.ExpandParents();
+            item.IsExpanded |= ExpandedNodePaths.Contains(GetNodePath(item));
+            TreeSelectedItem = item;
+            SelectedItem = item;
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, (Action)(() =>
+            {
+                Interpreter_TreeView?.Focus();
+                Keyboard.Focus(Interpreter_TreeView);
+            }));
         }
 
         private static string GetNodePath(UPropertyTreeViewEntry node)
