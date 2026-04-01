@@ -4074,15 +4074,6 @@ namespace LegendaryExplorer.DialogueEditor
             if (ffxMaleNew == ffxMaleOld && ffxFemaleNew == ffxFemaleOld)
                 return;
 
-            System.Media.SystemSounds.Question.Play();
-            var dlg = MessageBox.Show("Are you sure you want to change this speaker's facial animation set? (Not recommended)", "WARNING", MessageBoxButton.OKCancel);
-            if (dlg == MessageBoxResult.Cancel)
-            {
-                SelectedSpeaker.FaceFX_Male = ffxMaleOld;
-                SelectedSpeaker.FaceFX_Female = ffxFemaleOld;
-                return;
-            }
-
             SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Male = ffxMaleNew;
             SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Female = ffxFemaleNew;
 
