@@ -73,6 +73,18 @@
             <MenuItem Header="Extract sequence (EXPERIMENTAL)" Name="extractSequenceMenuItem" Click="ExtractSequence_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
             <MenuItem Header="Trim unused variable links (EXPERIMENTAL)" Name="trimUnusedVariableLinksMenuItem" Click="TrimVariableLinks_Clicked" Visibility="{x:Static global:App.IsDebugVisibility}" />
             <MenuItem Header="Add switch outlink(s)" Name="addSwitchOutlinksMenuItem" Click="AddSwitchOutlinksMenuItem_Clicked"/>
+            <MenuItem Header="Copy Connections" Name="copyConnectionsMenuItem">
+                <MenuItem Header="Copy all connections" Name="copyAllConnectionsMenuItem" Click="CopyAllConnections_Clicked" />
+                <MenuItem Header="Copy input connections" Name="copyInputConnectionsMenuItem" Click="CopyInputConnections_Clicked" />
+                <MenuItem Header="Copy output connections" Name="copyOutputConnectionsMenuItem" Click="CopyOutputConnections_Clicked" />
+                <MenuItem Header="Copy variable connections" Name="copyVariableConnectionsMenuItem" Click="CopyVariableConnections_Clicked" />
+            </MenuItem>
+            <MenuItem Header="Paste Connections" Name="pasteConnectionsMenuItem">
+                <MenuItem Header="Paste all connections" Name="pasteAllConnectionsMenuItem" Click="PasteAllConnections_Clicked" />
+                <MenuItem Header="Paste input connections" Name="pasteInputConnectionsMenuItem" Click="PasteInputConnections_Clicked" />
+                <MenuItem Header="Paste output connections" Name="pasteOutputConnectionsMenuItem" Click="PasteOutputConnections_Clicked" />
+                <MenuItem Header="Paste variable connections" Name="pasteVariableConnectionsMenuItem" Click="PasteVariableConnections_Clicked" />
+            </MenuItem>
             <MenuItem Header="Add Link Entry" Name="addLinkEntryMenuItem">
                 <MenuItem Header="Add input entry" Name="addInputEntryMenuItem" Click="AddInputEntry_Clicked" />
                 <MenuItem Header="Add output entry" Name="addOutputEntryMenuItem" Click="AddOutputEntry_Clicked" />

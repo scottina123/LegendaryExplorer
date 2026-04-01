@@ -116,8 +116,23 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         }
 
         public record SavedViewData(Dictionary<int, PointF> Positions, RectangleF ViewBounds);
+        private record CopiedInputConnection(int SourceUIndex, string OutputDescription, int OutputIndex, int InputIndex);
+        private record CopiedOutputConnection(string OutputDescription, int OutputIndex, int TargetUIndex, int InputIndex);
+        private record CopiedVariableConnection(string VariableDescription, int VariableIndex, int TargetUIndex);
+        private record CopiedConnectionSet(
+            List<CopiedInputConnection> InputConnections,
+            List<CopiedOutputConnection> OutputConnections,
+            List<CopiedVariableConnection> VariableConnections,
+            string SourceFilePath);
 
         private SavedViewData SavedView;
+        private List<CopiedInputConnection> copiedInputConnections;
+        private string copiedInputConnectionsSourceFilePath;
+        private List<CopiedOutputConnection> copiedOutputConnections;
+        private string copiedOutputConnectionsSourceFilePath;
+        private List<CopiedVariableConnection> copiedVariableConnections;
+        private string copiedVariableConnectionsSourceFilePath;
+        private CopiedConnectionSet copiedAllConnections;
 
         public static readonly string SequenceEditorDataFolder =
             Path.Combine(AppDirectories.AppDataFolder, @"SequenceEditor\");
@@ -3031,9 +3046,537 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
+                if (contextMenu.GetChild("copyConnectionsMenuItem") is MenuItem copyConnectionsMenuItem)
+                {
+                    bool canCopyInput = obj is SAction;
+                    bool canCopyOutput = obj is SBox;
+                    bool canCopyVariable = obj is SBox;
+                    bool canCopyAll = canCopyInput || canCopyOutput || canCopyVariable;
+
+                    if (copyConnectionsMenuItem.GetChild("copyAllConnectionsMenuItem") is MenuItem copyAllConnectionsMenuItem)
+                    {
+                        copyAllConnectionsMenuItem.Visibility = canCopyAll ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    if (copyConnectionsMenuItem.GetChild("copyInputConnectionsMenuItem") is MenuItem copyInputConnectionsMenuItem)
+                    {
+                        copyInputConnectionsMenuItem.Visibility = canCopyInput ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    if (copyConnectionsMenuItem.GetChild("copyOutputConnectionsMenuItem") is MenuItem copyOutputConnectionsMenuItem)
+                    {
+                        copyOutputConnectionsMenuItem.Visibility = canCopyOutput ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    if (copyConnectionsMenuItem.GetChild("copyVariableConnectionsMenuItem") is MenuItem copyVariableConnectionsMenuItem)
+                    {
+                        copyVariableConnectionsMenuItem.Visibility = canCopyVariable ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
+                    copyConnectionsMenuItem.Visibility = canCopyAll
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
+
+                if (contextMenu.GetChild("pasteConnectionsMenuItem") is MenuItem pasteConnectionsMenuItem)
+                {
+                    bool canPasteInput = obj is SAction;
+                    bool canPasteOutput = obj is SBox;
+                    bool canPasteVariable = obj is SBox;
+                    bool canPasteAll = obj is SAction || obj is SBox;
+                    bool inputPasteAvailable = canPasteInput && copiedInputConnections != null &&
+                                               IsCopiedConnectionsFromCurrentPackage(copiedInputConnectionsSourceFilePath);
+                    bool outputPasteAvailable = canPasteOutput && copiedOutputConnections != null &&
+                                                IsCopiedConnectionsFromCurrentPackage(copiedOutputConnectionsSourceFilePath);
+                    bool variablePasteAvailable = canPasteVariable && copiedVariableConnections != null &&
+                                                  IsCopiedConnectionsFromCurrentPackage(copiedVariableConnectionsSourceFilePath);
+                    bool allPasteAvailable = canPasteAll && copiedAllConnections != null &&
+                                             IsCopiedConnectionsFromCurrentPackage(copiedAllConnections.SourceFilePath);
+
+                    if (pasteConnectionsMenuItem.GetChild("pasteAllConnectionsMenuItem") is MenuItem pasteAllConnectionsMenuItem)
+                    {
+                        pasteAllConnectionsMenuItem.Visibility = canPasteAll ? Visibility.Visible : Visibility.Collapsed;
+                        pasteAllConnectionsMenuItem.IsEnabled = allPasteAvailable;
+                    }
+
+                    if (pasteConnectionsMenuItem.GetChild("pasteInputConnectionsMenuItem") is MenuItem pasteInputConnectionsMenuItem)
+                    {
+                        pasteInputConnectionsMenuItem.Visibility = canPasteInput ? Visibility.Visible : Visibility.Collapsed;
+                        pasteInputConnectionsMenuItem.IsEnabled = inputPasteAvailable;
+                    }
+
+                    if (pasteConnectionsMenuItem.GetChild("pasteOutputConnectionsMenuItem") is MenuItem pasteOutputConnectionsMenuItem)
+                    {
+                        pasteOutputConnectionsMenuItem.Visibility = canPasteOutput ? Visibility.Visible : Visibility.Collapsed;
+                        pasteOutputConnectionsMenuItem.IsEnabled = outputPasteAvailable;
+                    }
+
+                    if (pasteConnectionsMenuItem.GetChild("pasteVariableConnectionsMenuItem") is MenuItem pasteVariableConnectionsMenuItem)
+                    {
+                        pasteVariableConnectionsMenuItem.Visibility = canPasteVariable ? Visibility.Visible : Visibility.Collapsed;
+                        pasteVariableConnectionsMenuItem.IsEnabled = variablePasteAvailable;
+                    }
+
+                    pasteConnectionsMenuItem.Visibility = canPasteAll
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                    pasteConnectionsMenuItem.IsEnabled = inputPasteAvailable || outputPasteAvailable || variablePasteAvailable || allPasteAvailable;
+                }
+
                 contextMenu.IsOpen = true;
                 graphEditor.DisableDragging();
             }
+        }
+
+        private bool IsCopiedConnectionsFromCurrentPackage(string sourceFilePath)
+        {
+            return string.Equals(sourceFilePath, Pcc?.FilePath, StringComparison.InvariantCultureIgnoreCase);
+        }
+
+        private List<CopiedInputConnection> GetCopiedInputConnections(SAction action)
+        {
+            return action.InputEdges
+                .Select(edge => TryGetOutputLinkInfo(edge.Originator, edge, out int outputIndex, out string outputDescription)
+                    ? new CopiedInputConnection(edge.Originator.Export.UIndex, outputDescription, outputIndex, edge.InputIndex)
+                    : null)
+                .Where(connection => connection != null)
+                .ToList();
+        }
+
+        private static List<CopiedOutputConnection> GetCopiedOutputConnections(SBox box)
+        {
+            return box.Outlinks
+                .SelectMany((link, outputIndex) => link.Links.Select((targetUIndex, linkIndex) =>
+                    new CopiedOutputConnection(link.Desc, outputIndex, targetUIndex,
+                        linkIndex < link.InputIndices.Count ? link.InputIndices[linkIndex] : 0)))
+                .ToList();
+        }
+
+        private static List<CopiedVariableConnection> GetCopiedVariableConnections(SBox box)
+        {
+            return box.Varlinks
+                .SelectMany((link, variableIndex) => link.Links.Select(targetUIndex =>
+                    new CopiedVariableConnection(link.Desc, variableIndex, targetUIndex)))
+                .ToList();
+        }
+
+        private static bool TryGetOutputLinkInfo(SBox sourceBox, ActionEdge edge, out int outputIndex, out string outputDescription)
+        {
+            for (int i = 0; i < sourceBox.Outlinks.Count; i++)
+            {
+                for (int j = 0; j < sourceBox.Outlinks[i].Edges.Count; j++)
+                {
+                    if (ReferenceEquals(sourceBox.Outlinks[i].Edges[j], edge))
+                    {
+                        outputIndex = i;
+                        outputDescription = sourceBox.Outlinks[i].Desc;
+                        return true;
+                    }
+                }
+            }
+
+            outputIndex = -1;
+            outputDescription = null;
+            return false;
+        }
+
+        private static bool TryGetNamedLinkStruct(ArrayProperty<StructProperty> links, int linkIndex, string linkDescription,
+            Func<StructProperty, string> descriptionSelector, out StructProperty linkStruct)
+        {
+            if (links != null && linkIndex >= 0 && linkIndex < links.Count)
+            {
+                var indexedLink = links[linkIndex];
+                if (string.Equals(descriptionSelector(indexedLink), linkDescription, StringComparison.Ordinal))
+                {
+                    linkStruct = indexedLink;
+                    return true;
+                }
+            }
+
+            linkStruct = links?.FirstOrDefault(link =>
+                string.Equals(descriptionSelector(link), linkDescription, StringComparison.Ordinal));
+            return linkStruct != null;
+        }
+
+        private bool TryAddOutputConnection(ExportEntry sourceExport, string outputDescription, int outputIndex, ExportEntry targetExport, int inputIndex)
+        {
+            if (sourceExport.IsA("SFXSceneShopNode"))
+            {
+                var outputPins = sourceExport.GetProperty<ArrayProperty<StructProperty>>("m_aOutputPins");
+                if (!TryGetNamedLinkStruct(outputPins, outputIndex, outputDescription,
+                        pin => pin.GetProp<StrProperty>("sLinkName")?.Value ?? "Pin", out var outputPin))
+                {
+                    return false;
+                }
+
+                var pinLinks = outputPin.GetProp<ArrayProperty<StructProperty>>("aLinks")
+                               ?? new ArrayProperty<StructProperty>("aLinks");
+                pinLinks.Add(new StructProperty("SFXSSNodePinLink", false,
+                    new ObjectProperty(targetExport, "pLinkedNode"),
+                    new IntProperty(inputIndex, "nLinkedIndex")));
+                outputPin.Properties.AddOrReplaceProp(pinLinks);
+                sourceExport.WriteProperty(outputPins);
+                return true;
+            }
+
+            var outputLinks = sourceExport.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
+            if (!TryGetNamedLinkStruct(outputLinks, outputIndex, outputDescription,
+                    link => link.GetProp<StrProperty>("LinkDesc")?.Value, out var outputLink))
+            {
+                return false;
+            }
+
+            var links = outputLink.GetProp<ArrayProperty<StructProperty>>("Links")
+                        ?? new ArrayProperty<StructProperty>("Links");
+            links.Add(new StructProperty("SeqOpOutputInputLink", false,
+                new ObjectProperty(targetExport, "LinkedOp"),
+                new IntProperty(inputIndex, "InputLinkIdx")));
+            outputLink.Properties.AddOrReplaceProp(links);
+            sourceExport.WriteProperty(outputLinks);
+            return true;
+        }
+
+        private bool TryAddVariableConnection(ExportEntry sourceExport, string variableDescription, int variableIndex, ExportEntry targetExport)
+        {
+            if (sourceExport.IsA("SFXSceneShopNode"))
+            {
+                if (variableDescription == "Scene")
+                {
+                    sourceExport.WriteProperty(new ObjectProperty(targetExport, "m_pLinkedScene"));
+                    return true;
+                }
+
+                return false;
+            }
+
+            var variableLinks = sourceExport.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (!TryGetNamedLinkStruct(variableLinks, variableIndex, variableDescription,
+                    link => link.GetProp<StrProperty>("LinkDesc")?.Value, out var variableLink))
+            {
+                return false;
+            }
+
+            var links = variableLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")
+                        ?? new ArrayProperty<ObjectProperty>("LinkedVariables");
+            links.Add(new ObjectProperty(targetExport));
+            variableLink.Properties.AddOrReplaceProp(links);
+            sourceExport.WriteProperty(variableLinks);
+            return true;
+        }
+
+        private void ClearAllOutputConnections(ExportEntry export)
+        {
+            if (export.IsA("SFXSceneShopNode"))
+            {
+                removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
+                return;
+            }
+
+            var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
+            if (outLinksProp == null)
+            {
+                return;
+            }
+
+            foreach (var prop in outLinksProp)
+            {
+                prop.GetProp<ArrayProperty<StructProperty>>("Links")?.Clear();
+            }
+
+            export.WriteProperty(outLinksProp);
+        }
+
+        private void ClearAllVariableConnections(ExportEntry export)
+        {
+            if (export.IsA("SFXSceneShopNode"))
+            {
+                if (export.GetProperty<ObjectProperty>("m_pLinkedScene") != null)
+                {
+                    export.WriteProperty(new ObjectProperty(0, "m_pLinkedScene"));
+                }
+
+                return;
+            }
+
+            var varLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (varLinksProp == null)
+            {
+                return;
+            }
+
+            foreach (var prop in varLinksProp)
+            {
+                prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")?.Clear();
+            }
+
+            export.WriteProperty(varLinksProp);
+        }
+
+        private (int pastedCount, int skippedCount) ApplyCopiedInputConnections(SAction action, List<CopiedInputConnection> inputConnections)
+        {
+            ClearAllIncomingConnections(action);
+
+            int pastedCount = 0;
+            int skippedCount = 0;
+            foreach (var connection in inputConnections)
+            {
+                if (!Pcc.TryGetUExport(connection.SourceUIndex, out var sourceExport)
+                    || !TryAddOutputConnection(sourceExport, connection.OutputDescription, connection.OutputIndex,
+                        action.Export, connection.InputIndex))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                pastedCount++;
+            }
+
+            return (pastedCount, skippedCount);
+        }
+
+        private (int pastedCount, int skippedCount) ApplyCopiedOutputConnections(SBox box, List<CopiedOutputConnection> outputConnections)
+        {
+            ClearAllOutputConnections(box.Export);
+
+            int pastedCount = 0;
+            int skippedCount = 0;
+            foreach (var connection in outputConnections)
+            {
+                if (!Pcc.TryGetUExport(connection.TargetUIndex, out var targetExport)
+                    || !TryAddOutputConnection(box.Export, connection.OutputDescription, connection.OutputIndex,
+                        targetExport, connection.InputIndex))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                pastedCount++;
+            }
+
+            return (pastedCount, skippedCount);
+        }
+
+        private (int pastedCount, int skippedCount) ApplyCopiedVariableConnections(SBox box, List<CopiedVariableConnection> variableConnections)
+        {
+            ClearAllVariableConnections(box.Export);
+
+            int pastedCount = 0;
+            int skippedCount = 0;
+            foreach (var connection in variableConnections)
+            {
+                if (!Pcc.TryGetUExport(connection.TargetUIndex, out var targetExport)
+                    || !TryAddVariableConnection(box.Export, connection.VariableDescription, connection.VariableIndex, targetExport))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                pastedCount++;
+            }
+
+            return (pastedCount, skippedCount);
+        }
+
+        private static void ClearAllIncomingConnections(SAction action)
+        {
+            foreach (var edge in action.InputEdges.ToList())
+            {
+                edge.Originator.RemoveOutlink(edge);
+            }
+        }
+
+        private void CopyInputConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SAction action)
+            {
+                return;
+            }
+
+            copiedInputConnections = GetCopiedInputConnections(action);
+            copiedInputConnectionsSourceFilePath = Pcc?.FilePath;
+            StatusText = $"Copied {copiedInputConnections.Count} input connection(s).";
+        }
+
+        private void CopyOutputConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SBox box)
+            {
+                return;
+            }
+
+            copiedOutputConnections = GetCopiedOutputConnections(box);
+            copiedOutputConnectionsSourceFilePath = Pcc?.FilePath;
+            StatusText = $"Copied {copiedOutputConnections.Count} output connection(s).";
+        }
+
+        private void CopyVariableConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SBox box)
+            {
+                return;
+            }
+
+            copiedVariableConnections = GetCopiedVariableConnections(box);
+            copiedVariableConnectionsSourceFilePath = Pcc?.FilePath;
+            StatusText = $"Copied {copiedVariableConnections.Count} variable connection(s).";
+        }
+
+        private void CopyAllConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SObj obj)
+            {
+                return;
+            }
+
+            var inputConnections = obj is SAction action ? GetCopiedInputConnections(action) : [];
+            var outputConnections = obj is SBox box ? GetCopiedOutputConnections(box) : [];
+            var variableConnections = obj is SBox variableBox ? GetCopiedVariableConnections(variableBox) : [];
+            var sourceFilePath = Pcc?.FilePath;
+
+            copiedInputConnections = inputConnections;
+            copiedInputConnectionsSourceFilePath = sourceFilePath;
+            copiedOutputConnections = outputConnections;
+            copiedOutputConnectionsSourceFilePath = sourceFilePath;
+            copiedVariableConnections = variableConnections;
+            copiedVariableConnectionsSourceFilePath = sourceFilePath;
+            copiedAllConnections = new CopiedConnectionSet(inputConnections, outputConnections, variableConnections, sourceFilePath);
+
+            StatusText = $"Copied {inputConnections.Count + outputConnections.Count + variableConnections.Count} total connection(s).";
+        }
+
+        private void PasteInputConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SAction action)
+            {
+                return;
+            }
+
+            if (copiedInputConnections == null)
+            {
+                MessageBox.Show(this, "No input connections have been copied yet.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!IsCopiedConnectionsFromCurrentPackage(copiedInputConnectionsSourceFilePath))
+            {
+                MessageBox.Show(this, "Input connections can only be pasted into the package they were copied from.",
+                    "Sequence Editor", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var (pastedCount, skippedCount) = ApplyCopiedInputConnections(action, copiedInputConnections);
+
+            RefreshView();
+            StatusText = skippedCount == 0
+                ? $"Pasted {pastedCount} input connection(s)."
+                : $"Pasted {pastedCount} input connection(s). Skipped {skippedCount}.";
+        }
+
+        private void PasteOutputConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SBox box)
+            {
+                return;
+            }
+
+            if (copiedOutputConnections == null)
+            {
+                MessageBox.Show(this, "No output connections have been copied yet.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!IsCopiedConnectionsFromCurrentPackage(copiedOutputConnectionsSourceFilePath))
+            {
+                MessageBox.Show(this, "Output connections can only be pasted into the package they were copied from.",
+                    "Sequence Editor", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var (pastedCount, skippedCount) = ApplyCopiedOutputConnections(box, copiedOutputConnections);
+
+            RefreshView();
+            StatusText = skippedCount == 0
+                ? $"Pasted {pastedCount} output connection(s)."
+                : $"Pasted {pastedCount} output connection(s). Skipped {skippedCount}.";
+        }
+
+        private void PasteVariableConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SBox box)
+            {
+                return;
+            }
+
+            if (copiedVariableConnections == null)
+            {
+                MessageBox.Show(this, "No variable connections have been copied yet.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!IsCopiedConnectionsFromCurrentPackage(copiedVariableConnectionsSourceFilePath))
+            {
+                MessageBox.Show(this, "Variable connections can only be pasted into the package they were copied from.",
+                    "Sequence Editor", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var (pastedCount, skippedCount) = ApplyCopiedVariableConnections(box, copiedVariableConnections);
+
+            RefreshView();
+            StatusText = skippedCount == 0
+                ? $"Pasted {pastedCount} variable connection(s)."
+                : $"Pasted {pastedCount} variable connection(s). Skipped {skippedCount}.";
+        }
+
+        private void PasteAllConnections_Clicked(object sender, RoutedEventArgs e)
+        {
+            if (CurrentObjects_ListBox.SelectedItem is not SObj obj)
+            {
+                return;
+            }
+
+            if (copiedAllConnections == null)
+            {
+                MessageBox.Show(this, "No full connection set has been copied yet.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (!IsCopiedConnectionsFromCurrentPackage(copiedAllConnections.SourceFilePath))
+            {
+                MessageBox.Show(this, "Connections can only be pasted into the package they were copied from.",
+                    "Sequence Editor", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            int pastedCount = 0;
+            int skippedCount = 0;
+
+            if (obj is SAction action)
+            {
+                var (inputPasted, inputSkipped) = ApplyCopiedInputConnections(action, copiedAllConnections.InputConnections);
+                pastedCount += inputPasted;
+                skippedCount += inputSkipped;
+            }
+
+            if (obj is SBox box)
+            {
+                var (outputPasted, outputSkipped) = ApplyCopiedOutputConnections(box, copiedAllConnections.OutputConnections);
+                pastedCount += outputPasted;
+                skippedCount += outputSkipped;
+
+                var (variablePasted, variableSkipped) = ApplyCopiedVariableConnections(box, copiedAllConnections.VariableConnections);
+                pastedCount += variablePasted;
+                skippedCount += variableSkipped;
+            }
+
+            RefreshView();
+            StatusText = skippedCount == 0
+                ? $"Pasted {pastedCount} total connection(s)."
+                : $"Pasted {pastedCount} total connection(s). Skipped {skippedCount}.";
         }
 
         private void removeAllLinks(object sender, RoutedEventArgs args)
@@ -3058,23 +3601,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void removeAllOutputLinks(object sender, RoutedEventArgs args)
         {
             ExportEntry export = (ExportEntry)((MenuItem)sender).Tag;
-            if (export.IsA("SFXSceneShopNode"))
-            {
-                removeAllSFXSceneShopPinLinks(export, "m_aOutputPins");
-            }
-            else
-            {
-                var outLinksProp = export.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
-                if (outLinksProp != null)
-                {
-                    foreach (var prop in outLinksProp)
-                    {
-                        prop.GetProp<ArrayProperty<StructProperty>>("Links").Clear();
-                    }
-                }
-
-                export.WriteProperty(outLinksProp);
-            }
+            ClearAllOutputConnections(export);
         }
 
         private static void removeAllSFXSceneShopPinLinks(ExportEntry export, string pinPropertyName)
@@ -3108,11 +3635,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 foreach (var prop in varLinksProp)
                 {
-                    prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables").Clear();
+                    prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")?.Clear();
                 }
-            }
 
-            export.WriteProperty(varLinksProp);
+                export.WriteProperty(varLinksProp);
+            }
         }
 
         private void removeAllEventLinks(object sender, RoutedEventArgs args)
@@ -3123,11 +3650,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 foreach (var prop in eventLinksProp)
                 {
-                    prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents").Clear();
+                    prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents")?.Clear();
                 }
-            }
 
-            export.WriteProperty(eventLinksProp);
+                export.WriteProperty(eventLinksProp);
+            }
         }
 
         private void RemoveFromSequence_Click(object sender, RoutedEventArgs e)

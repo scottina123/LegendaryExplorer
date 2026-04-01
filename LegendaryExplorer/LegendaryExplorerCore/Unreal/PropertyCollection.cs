@@ -59,6 +59,11 @@ namespace LegendaryExplorerCore.Unreal
         /// <returns>True if a property was replaced</returns>
         public bool TryReplaceProp(Property prop)
         {
+            if (prop == null)
+            {
+                return false;
+            }
+
             for (int i = 0; i < this.Count; i++)
             {
                 if (this[i].Name == prop.Name && this[i].StaticArrayIndex == prop.StaticArrayIndex)
@@ -77,6 +82,11 @@ namespace LegendaryExplorerCore.Unreal
         /// <param name="prop"></param>
         public void AddOrReplaceProp(Property prop)
         {
+            if (prop == null)
+            {
+                return;
+            }
+
             if (!TryReplaceProp(prop))
             {
                 Add(prop);
