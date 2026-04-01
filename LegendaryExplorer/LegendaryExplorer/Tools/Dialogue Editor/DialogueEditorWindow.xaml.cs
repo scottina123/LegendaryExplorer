@@ -3358,8 +3358,11 @@ namespace LegendaryExplorer.DialogueEditor
             switch (actionName)
             {
                 case "ViewReferenceGraph":
-                    new ObjectReferenceViewerWindow(export, null).Show();
+                {
+                    var referenceViewer = new ObjectReferenceViewerWindow(export, null);
+                    ShowWindowAtFront(referenceViewer);
                     break;
+                }
                 case "AddInterpTrack":
                     if (!export.IsA("InterpGroup"))
                     {
@@ -6678,7 +6681,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void OpenInInterpViewer_Clicked(ExportEntry exportEntry)
         {
             var p = new InterpEditorWindow();
-            p.Show();
+            ShowWindowAtFront(p);
             p.LoadFile(exportEntry.FileRef.FilePath);
             if (exportEntry.ObjectName == "InterpData")
             {
@@ -6938,6 +6941,39 @@ namespace LegendaryExplorer.DialogueEditor
                 _ => true
             };
         }
+
+        private static void ShowWindowAtFront(System.Windows.Window targetWindow)
+        {
+            if (targetWindow == null)
+            {
+                return;
+            }
+
+            if (!targetWindow.IsVisible)
+            {
+                targetWindow.Show();
+            }
+
+            targetWindow.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                if (!targetWindow.IsVisible)
+                {
+                    return;
+                }
+
+                if (targetWindow.WindowState == System.Windows.WindowState.Minimized)
+                {
+                    targetWindow.WindowState = System.Windows.WindowState.Normal;
+                }
+
+                bool wasTopmost = targetWindow.Topmost;
+                targetWindow.Topmost = true;
+                targetWindow.Activate();
+                targetWindow.Focus();
+                targetWindow.Topmost = wasTopmost;
+            }));
+        }
+
         private void OpenInToolkit(string tool, int uIndex = 0, string filename = null, string param = null)
         {
             string filePath = null;
@@ -6995,22 +7031,23 @@ namespace LegendaryExplorer.DialogueEditor
                 case "FaceFXEditor":
                     if (Pcc.IsUExport(uIndex) && param != null)
                     {
-                        new FaceFXEditorWindow(Pcc.GetUExport(uIndex), param).Show();
+                        var faceFxEditor = new FaceFXEditorWindow(Pcc.GetUExport(uIndex), param);
+                        ShowWindowAtFront(faceFxEditor);
                     }
                     else if (Pcc.IsUExport(uIndex))
                     {
-                        new FaceFXEditorWindow(Pcc.GetUExport(uIndex)).Show();
+                        var faceFxEditor = new FaceFXEditorWindow(Pcc.GetUExport(uIndex));
+                        ShowWindowAtFront(faceFxEditor);
                     }
                     else
                     {
                         var facefxEditor = new FaceFXEditorWindow();
                         facefxEditor.LoadFile(filePath);
-                        facefxEditor.Show();
+                        ShowWindowAtFront(facefxEditor);
                     }
                     break;
                 case "PackageEditor":
                     var packEditor = new PackageEditorWindow();
-                    packEditor.Show();
                     if (Pcc.IsUExport(uIndex) && filePath == Pcc.FilePath)
                     {
                         packEditor.LoadFile(Pcc.FilePath, uIndex);
@@ -7019,33 +7056,36 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         packEditor.LoadFile(filePath, uIndex);
                     }
+                    ShowWindowAtFront(packEditor);
                     break;
                 case "SoundplorerWPF":
                     if (Pcc.TryGetUExport(uIndex, out ExportEntry soundplorerExp))
                     {
-                        new SoundplorerWPF(soundplorerExp).Show();
+                        var soundplorer = new SoundplorerWPF(soundplorerExp);
+                        ShowWindowAtFront(soundplorer);
                     }
                     else
                     {
                         var soundplorerWPF = new SoundplorerWPF();
                         soundplorerWPF.LoadFile(Pcc.FilePath);
-                        soundplorerWPF.Show();
+                        ShowWindowAtFront(soundplorerWPF);
                     }
                     break;
                 case "SequenceEditor":
                     if (Pcc.IsUExport(uIndex) && filePath == Pcc.FilePath)
                     {
-                        new SequenceEditorWPF(Pcc.GetUExport(uIndex)).Show();
+                        var sequenceEditor = new SequenceEditorWPF(Pcc.GetUExport(uIndex));
+                        ShowWindowAtFront(sequenceEditor);
                     }
                     else
                     {
                         var seqEditor = new SequenceEditorWPF();
-                        seqEditor.Show();
                         if (uIndex != 0)
                         {
                             seqEditor.LoadFileAndGoTo(filePath, uIndex);
                         }
                         else seqEditor.LoadFile(filePath);
+                        ShowWindowAtFront(seqEditor);
                     }
                     break;
             }
@@ -7107,11 +7147,11 @@ namespace LegendaryExplorer.DialogueEditor
             if (!Application.Current.Windows.OfType<TLKManagerWPF>().Any())
             {
                 var m = new TLKManagerWPF();
-                m.Show();
+                ShowWindowAtFront(m);
             }
             else
             {
-                Application.Current.Windows.OfType<TLKManagerWPF>().First().Focus();
+                ShowWindowAtFront(Application.Current.Windows.OfType<TLKManagerWPF>().First());
             }
         }
         private void SaveImage()
