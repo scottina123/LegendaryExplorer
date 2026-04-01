@@ -126,6 +126,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             string SourceFilePath);
 
         private SavedViewData SavedView;
+        private bool forceAutoLayoutOnInitialPackageLoad = true;
+        private bool forceAutoLayoutForCurrentPackage;
+        private readonly HashSet<int> autoLaidOutSequencesForCurrentPackage = [];
         private List<CopiedInputConnection> copiedInputConnections;
         private string copiedInputConnectionsSourceFilePath;
         private List<CopiedOutputConnection> copiedOutputConnections;
@@ -981,6 +984,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             try
             {
+                forceAutoLayoutForCurrentPackage = forceAutoLayoutOnInitialPackageLoad;
+                autoLaidOutSequencesForCurrentPackage.Clear();
+                forceAutoLayoutOnInitialPackageLoad = false;
+
                 LoadSequences();
                 if (TreeViewRootNodes.IsEmpty())
                 {
@@ -1430,10 +1437,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SelectedSequence = seqExport;
             SetupJSON(SelectedSequence);
             var selectedExports = SelectedObjects.Select(o => o.Export).ToList();
+            bool forceAutoLayout = fromFile
+                                   && forceAutoLayoutForCurrentPackage
+                                   && autoLaidOutSequencesForCurrentPackage.Add(seqExport.UIndex);
             if (fromFile)
             {
                 Properties_InterpreterWPF.LoadExport(seqExport);
-                if (UseSavedViews && File.Exists(JSONpath))
+                if (!forceAutoLayout && UseSavedViews && File.Exists(JSONpath))
                 {
                     SavedView = JsonConvert.DeserializeObject<SavedViewData>(File.ReadAllText(JSONpath));
                 }
@@ -1448,7 +1458,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             try
             {
-                GenerateGraph();
+                GenerateGraph(forceAutoLayout);
                 if (selectedExports.Count == 1 &&
                     CurrentObjects.FirstOrDefault(obj => obj.Export == selectedExports[0]) is SObj selectedObj)
                 {
@@ -1458,7 +1468,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
                 if (fromFile)
                 {
-                    if (SavedView.ViewBounds != RectangleF.Empty)
+                    if (!forceAutoLayout && SavedView.ViewBounds != RectangleF.Empty)
                     {
                         graphEditor.Camera.ViewBounds = SavedView.ViewBounds;
                     }
@@ -1588,7 +1598,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        public void GenerateGraph()
+        public void GenerateGraph(bool forceAutoLayout = false)
         {
             graphEditor.nodeLayer.RemoveAllChildren();
             graphEditor.edgeLayer.RemoveAllChildren();
@@ -1603,7 +1613,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 o.Click += node_Click;
             }
 
-            if (SavedView.Positions.IsEmpty() && (Pcc.Game is MEGame.ME2 or MEGame.ME3))
+            if (forceAutoLayout || (SavedView.Positions.IsEmpty() && (Pcc.Game is MEGame.ME2 or MEGame.ME3)))
             {
                 AutoLayout();
             }
