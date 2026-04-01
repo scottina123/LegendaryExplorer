@@ -164,6 +164,16 @@ namespace LegendaryExplorer.DialogueEditor
             return pen;
         }
 
+        protected static Brush CreateTitleBoxBrush()
+        {
+            return titleBoxBrush is not null ? (Brush)titleBoxBrush.Clone() : new SolidBrush(boxColor);
+        }
+
+        protected static Brush CreateNodeBrush()
+        {
+            return _nodeBrush is not null ? (Brush)_nodeBrush.Clone() : new SolidBrush(boxColor);
+        }
+
         public virtual void Dispose()
         {
             g = null;
@@ -317,7 +327,7 @@ namespace LegendaryExplorer.DialogueEditor
             title.Width = w;
             titleBox = PPath.CreateRectangle(0, 0, w, title.Height + 5);
             titleBox.Pen = outlinePen;
-            titleBox.Brush = titleBoxBrush;
+            titleBox.Brush = CreateTitleBoxBrush();
             titleBox.AddChild(title);
             titleBox.Pickable = false;
             return w;
@@ -382,7 +392,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else
             {
-                titleBox.Brush = titleBoxBrush;
+                titleBox.Brush = CreateTitleBoxBrush();
             }
             titleBox.AddChild(nodeID);
             titleBox.AddChild(title);
@@ -590,7 +600,7 @@ namespace LegendaryExplorer.DialogueEditor
             outLinkBox.AddPolygon(new[] { new PointF(0, 0), new PointF(0, starty), new PointF(-0.5f * midW, starty + 30), new PointF(0 - midW, starty), new PointF(0 - midW, 0), new PointF(midW / -2, -30) });
             outLinkBox.Pickable = false;
             outLinkBox.Pen = outlinePen;
-            outLinkBox.Brush = nodeBrush;
+            outLinkBox.Brush = CreateNodeBrush();
             float h = titleBox.Height + 1;
             outLinkBox.TranslateBy(titleBox.Width / 2 + midW / 2, h + 30);
 
@@ -994,7 +1004,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else
             {
-                titleBox.Brush = titleBoxBrush;
+                titleBox.Brush = CreateTitleBoxBrush();
             }
 
             var divider1 = PPath.CreateLine(divider1X, 2, divider1X, titleHeight - 2);
@@ -1033,7 +1043,7 @@ namespace LegendaryExplorer.DialogueEditor
             text.Y = y + ((editorHeight - text.Height) / 2);
 
             var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
-            editorBox.Brush = nodeBrush;
+            editorBox.Brush = CreateNodeBrush();
             editorBox.Pen = new Pen(Color.FromArgb(120, boxTextColor));
 
             editorBox.MouseDown += (_, e) =>
@@ -1528,7 +1538,7 @@ namespace LegendaryExplorer.DialogueEditor
             valueText.Y = y + ((editorHeight - valueText.Height) / 2);
 
             var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
-            editorBox.Brush = nodeBrush;
+            editorBox.Brush = CreateNodeBrush();
             editorBox.Pen = new Pen(Color.FromArgb(80, boxTextColor));
 
             // On click, spawn a TextBox overlay at this exact position (like LineStrRef editor)
@@ -1796,7 +1806,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             outLinkBox.TranslateBy(w, connectionSectionY);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
-            box.Brush = nodeBrush;
+            box.Brush = CreateNodeBrush();
             box.Pen = outlinePen;
             box.Pickable = false;
 

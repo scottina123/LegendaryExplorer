@@ -7712,6 +7712,7 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void UpdateNodeBrush()
         {
+            ClearConversationGraphCache();
             DObj._nodeBrush?.Dispose();
             DObj._nodeBrush = new System.Drawing.SolidBrush(DObj.boxColor);
             DObj._titleBoxBrush = new System.Drawing.SolidBrush(DObj.boxColor);
