@@ -1184,13 +1184,14 @@ namespace LegendaryExplorer.DialogueEditor
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
+                bool isStartConnection = edge.originator is DStart;
                 bool isConnectedToSelection = hasSelection
                     && (selectedGraphObjects.Contains(edge.originator)
                         || selectedGraphObjects.Contains(edge.GetEndOwner()));
 
-                edge.Visible = !hideUnrelatedConnectionsOnSelection || !hasSelection || isConnectedToSelection;
+                edge.Visible = isStartConnection || !hideUnrelatedConnectionsOnSelection || !hasSelection || isConnectedToSelection;
                 edge.Pickable = edge.Visible;
-                edge.ApplyVisualState(isConnectedToSelection, hasSelection && !isConnectedToSelection);
+                edge.ApplyVisualState(isConnectedToSelection, !isStartConnection && hasSelection && !isConnectedToSelection);
             }
         }
 
