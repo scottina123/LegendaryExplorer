@@ -1830,6 +1830,121 @@ namespace LegendaryExplorer.DialogueEditor
             conv.BioConvo.AddOrReplaceProp(aStageDirs);
             PushConvoToFile(conv);
         }
+
+        private void ReindexSelectedSpeakerIds()
+        {
+            for (int i = 0; i < SelectedSpeakerList.Count; i++)
+            {
+                SelectedSpeakerList[i].SpeakerID = i - 2;
+            }
+        }
+
+        private void RebindConversationNodeSpeakers()
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            foreach (var node in SelectedConv.EntryList)
+            {
+                node.SpeakerTag = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == node.SpeakerIndex);
+            }
+
+            foreach (var node in SelectedConv.ReplyList)
+            {
+                node.SpeakerTag = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == node.SpeakerIndex);
+            }
+        }
+
+        private void RefreshSpeakerStateInPlace(bool rebuildGraphInPlace = false, bool refreshSelectedNodeAssets = true)
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            SelectedConv.Speakers = new ObservableCollectionExtended<SpeakerExtended>(SelectedSpeakerList);
+            RebuildListenersList();
+            RebuildSpeakerNodeFilterMenu();
+            RebindConversationNodeSpeakers();
+
+            Speakers_ListBox.Items.Refresh();
+            Node_Combo_Spkr.Items.Refresh();
+            Node_Combo_Lstnr.Items.Refresh();
+
+            if (SelectedDialogueNode != null)
+            {
+                SelectedDialogueNode.SpeakerTag = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == SelectedDialogueNode.SpeakerIndex);
+                if (refreshSelectedNodeAssets)
+                {
+                    RefreshExportLoaders();
+                }
+            }
+
+            if (rebuildGraphInPlace)
+            {
+                RebuildGraphInPlace();
+            }
+
+            ApplySpeakerNodeHighlighting();
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
+        }
+
+        private void SaveSpeakerChangesInPlace(bool rebuildGraphInPlace = false, bool refreshSelectedNodeAssets = true, bool reindexSpeakerIds = false)
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            if (reindexSpeakerIds)
+            {
+                ReindexSelectedSpeakerIds();
+            }
+
+            SelectedConv.Speakers = new ObservableCollectionExtended<SpeakerExtended>(SelectedSpeakerList);
+            IsLocalUpdate = true;
+            SaveSpeakersToProperties(SelectedSpeakerList);
+            RefreshSpeakerStateInPlace(rebuildGraphInPlace, refreshSelectedNodeAssets);
+        }
+
+        public void ApplyLocalizedSpeakerFaceFXInPlace(ExportEntry newMaleFaceFx, ExportEntry newFemaleFaceFx)
+        {
+            if (SelectedConv == null || SelectedSpeaker == null)
+            {
+                return;
+            }
+
+            int speakerIndex = SelectedSpeaker.SpeakerID + 2;
+            if (speakerIndex < 0 || speakerIndex >= SelectedSpeakerList.Count)
+            {
+                return;
+            }
+
+            if (newMaleFaceFx != null)
+            {
+                SelectedSpeaker.FaceFX_Male = newMaleFaceFx;
+                SelectedSpeakerList[speakerIndex].FaceFX_Male = newMaleFaceFx;
+                if (!FFXAnimsets.OfType<IEntry>().Any(x => x.UIndex == newMaleFaceFx.UIndex))
+                {
+                    FFXAnimsets.Add(newMaleFaceFx);
+                }
+            }
+
+            if (newFemaleFaceFx != null)
+            {
+                SelectedSpeaker.FaceFX_Female = newFemaleFaceFx;
+                SelectedSpeakerList[speakerIndex].FaceFX_Female = newFemaleFaceFx;
+                if (!FFXAnimsets.OfType<IEntry>().Any(x => x.UIndex == newFemaleFaceFx.UIndex))
+                {
+                    FFXAnimsets.Add(newFemaleFaceFx);
+                }
+            }
+
+            RefreshSpeakerStateInPlace(refreshSelectedNodeAssets: true);
+        }
         #endregion RecreateToFile
 
         #region Handling-updates
@@ -2328,6 +2443,12 @@ namespace LegendaryExplorer.DialogueEditor
         {
             suppressedPackageUpdateDepth++;
             return new SuppressPackageUpdatesScope(this);
+        }
+
+        public IDisposable SuppressPackageUpdatesAndDeferLocalUpdateReset()
+        {
+            IsLocalUpdate = true;
+            return SuppressPackageUpdates();
         }
 
         private void ReleaseSuppressedPackageUpdates()
@@ -3942,7 +4063,7 @@ namespace LegendaryExplorer.DialogueEditor
             Speakers_ListBox.SelectedIndex = selectedIndex + n;
             SpkrUpButton.IsEnabled = true;
             SpkrDownButton.IsEnabled = true;
-            SaveSpeakersToProperties(SelectedSpeakerList);
+            SaveSpeakerChangesInPlace(rebuildGraphInPlace: true, reindexSpeakerIds: true);
         }
         private void ComboBox_Speaker_FFX_DropDownClosed(object sender, EventArgs e)
         {
@@ -3965,7 +4086,7 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Male = ffxMaleNew;
             SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Female = ffxFemaleNew;
 
-            SaveSpeakersToProperties(SelectedSpeakerList);
+            SaveSpeakerChangesInPlace();
         }
         private void EnterName_Speaker_KeyUp(object sender, KeyEventArgs e)
         {
@@ -3979,7 +4100,7 @@ namespace LegendaryExplorer.DialogueEditor
                     SelectedSpeaker.StrRefID = LookupTagRef(SelectedSpeaker.SpeakerName);
                     SelectedSpeaker.FriendlyName = GlobalFindStrRefbyID(SelectedSpeakerList[Speakers_ListBox.SelectedIndex].StrRefID, Pcc);
 
-                    SaveSpeakersToProperties(SelectedSpeakerList);
+                    SaveSpeakerChangesInPlace(rebuildGraphInPlace: true);
                 }
             }
         }
@@ -3993,7 +4114,8 @@ namespace LegendaryExplorer.DialogueEditor
             var speakerName = NameReference.FromInstancedString(ndlg.ResponseText);
             Pcc.FindNameOrAdd(speakerName.Name);
             SelectedSpeakerList.Add(new SpeakerExtended(maxID + 1, speakerName, null, null, 0, "No Data"));
-            SaveSpeakersToProperties(SelectedSpeakerList);
+            SaveSpeakerChangesInPlace(reindexSpeakerIds: true);
+            Speakers_ListBox.SelectedIndex = SelectedSpeakerList.Count - 1;
         }
         private void SpeakerDelete()
         {
@@ -4022,7 +4144,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             SelectedConv.Speakers.RemoveAt(deleteTarget);
             SelectedSpeakerList.RemoveAt(deleteTarget);
-            SaveSpeakersToProperties(SelectedSpeakerList);
+            SaveSpeakerChangesInPlace(rebuildGraphInPlace: true, reindexSpeakerIds: true);
+            Speakers_ListBox.SelectedIndex = Math.Min(deleteTarget, SelectedSpeakerList.Count - 1);
         }
         private void SpeakerGoToName()
         {

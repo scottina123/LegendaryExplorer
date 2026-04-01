@@ -581,41 +581,46 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             ExportEntry newMaleFxa = null;
             ExportEntry newFemaleFxa = null;
 
-            if (maleOutside && fxaMale != null)
+            using (dew.SuppressPackageUpdatesAndDeferLocalUpdateReset())
             {
-                string newName = $"{topFolderPackageName}_{henchName}_M";
-                newMaleFxa = CloneFaceFXWithAudio(pcc, fxaMale, convParentPackage, newName);
-            }
-
-            if (femaleOutside && fxaFemale != null)
-            {
-                string newName = $"{topFolderPackageName}_{henchName}_F";
-                newFemaleFxa = CloneFaceFXWithAudio(pcc, fxaFemale, convParentPackage, newName);
-            }
-
-            // Update the speaker references in the BioConversation
-            int speakerIdx = speaker.SpeakerID + 2; // offset: -2=player, -1=owner, 0+=speakers
-            var bioConvoProps = bioConvExport.GetProperties();
-
-            if (newMaleFxa != null)
-            {
-                var maleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
-                if (maleFaceSets != null && speakerIdx >= 0 && speakerIdx < maleFaceSets.Count)
+                if (maleOutside && fxaMale != null)
                 {
-                    maleFaceSets[speakerIdx].Value = newMaleFxa.UIndex;
+                    string newName = $"{topFolderPackageName}_{henchName}_M";
+                    newMaleFxa = CloneFaceFXWithAudio(pcc, fxaMale, convParentPackage, newName);
                 }
-            }
 
-            if (newFemaleFxa != null)
-            {
-                var femaleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
-                if (femaleFaceSets != null && speakerIdx >= 0 && speakerIdx < femaleFaceSets.Count)
+                if (femaleOutside && fxaFemale != null)
                 {
-                    femaleFaceSets[speakerIdx].Value = newFemaleFxa.UIndex;
+                    string newName = $"{topFolderPackageName}_{henchName}_F";
+                    newFemaleFxa = CloneFaceFXWithAudio(pcc, fxaFemale, convParentPackage, newName);
                 }
+
+                // Update the speaker references in the BioConversation
+                int speakerIdx = speaker.SpeakerID + 2; // offset: -2=player, -1=owner, 0+=speakers
+                var bioConvoProps = bioConvExport.GetProperties();
+
+                if (newMaleFxa != null)
+                {
+                    var maleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
+                    if (maleFaceSets != null && speakerIdx >= 0 && speakerIdx < maleFaceSets.Count)
+                    {
+                        maleFaceSets[speakerIdx].Value = newMaleFxa.UIndex;
+                    }
+                }
+
+                if (newFemaleFxa != null)
+                {
+                    var femaleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
+                    if (femaleFaceSets != null && speakerIdx >= 0 && speakerIdx < femaleFaceSets.Count)
+                    {
+                        femaleFaceSets[speakerIdx].Value = newFemaleFxa.UIndex;
+                    }
+                }
+
+                bioConvExport.WriteProperties(bioConvoProps);
             }
 
-            bioConvExport.WriteProperties(bioConvoProps);
+            dew.ApplyLocalizedSpeakerFaceFXInPlace(newMaleFxa, newFemaleFxa);
 
             MessageBox.Show(
                 $"Done! Localized FaceFX for speaker '{henchName}'.\n\n" +
