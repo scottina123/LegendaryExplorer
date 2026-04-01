@@ -1019,9 +1019,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 props.Add(new(cProp.Name, cProp.StaticArrayIndex));
             }
 
-            if (AddPropertyDialog.GetProperty(CurrentLoadedExport, props, Pcc.Game, Window.GetWindow(this)) is (NameReference propName, int staticArrayIndex, PropertyInfo propInfo))
+            AddPropertyDialog.ShowAddPropertyDialog(CurrentLoadedExport, props, Pcc.Game, AddSelectedProperty, Window.GetWindow(this));
+
+            bool AddSelectedProperty(NameReference propName, int staticArrayIndex, PropertyInfo propInfo)
             {
                 bool addedAnyProperty = TryAddRootProperty(propName, staticArrayIndex, propInfo);
+                if (addedAnyProperty)
+                {
+                    props.Add(new(propName, staticArrayIndex));
+                }
 
                 if (staticArrayIndex == 0
                     && TryGetLinkedRootPropertyNames(propName, out List<NameReference> linkedPropertyNames))
@@ -1031,7 +1037,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         if (!RootPropertyExists(linkedPropertyName)
                             && GetRootPropertyInfo(linkedPropertyName) is PropertyInfo linkedPropInfo)
                         {
-                            addedAnyProperty |= TryAddRootProperty(linkedPropertyName, 0, linkedPropInfo);
+                            if (TryAddRootProperty(linkedPropertyName, 0, linkedPropInfo))
+                            {
+                                addedAnyProperty = true;
+                                props.Add(new(linkedPropertyName, 0));
+                            }
                         }
                     }
                 }
@@ -1040,6 +1050,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
                 }
+
+                return addedAnyProperty;
             }
         }
 

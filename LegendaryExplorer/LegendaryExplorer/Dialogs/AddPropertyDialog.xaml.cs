@@ -38,10 +38,11 @@ namespace LegendaryExplorer.Dialogs
             public PropertyInfo PropInfo { get; }
         }
 
-        public AddPropertyDialog(List<ClassInfo> classList, List<PropNameStaticArrayIdxPair> _existingProperties) : base ("Add Property Dialog", false)
+        public AddPropertyDialog(List<ClassInfo> classList, List<PropNameStaticArrayIdxPair> _existingProperties, Func<NameReference, int, PropertyInfo, bool> addPropertyHandler = null) : base ("Add Property Dialog", false)
         {
             _classHierarchy.ReplaceAll(classList.Select(x => x.ClassName));
             existingProperties = _existingProperties;
+            this.addPropertyHandler = addPropertyHandler;
             classToClassPropertyMap = new Dictionary<string, List<AddPropertyItem>>(classList.Count);
             foreach (ClassInfo classInfo in classList)
             {
@@ -103,6 +104,7 @@ namespace LegendaryExplorer.Dialogs
         /// Properties already attached to our export (that should not be shown)
         /// </summary>
         private readonly List<PropNameStaticArrayIdxPair> existingProperties;
+        private readonly Func<NameReference, int, PropertyInfo, bool> addPropertyHandler;
         /// <summary>
         /// Mapping of class names to the class properties
         /// </summary>
@@ -227,8 +229,15 @@ namespace LegendaryExplorer.Dialogs
 
         private void AddProperty()
         {
-            DialogResult = true;
-            Close();
+            if (!TryAddSelectedProperty())
+            {
+                return;
+            }
+
+            if (addPropertyHandler is not null)
+            {
+                RefreshAfterPropertyAdded();
+            }
         }
 
         private bool CanAddProperty()
@@ -300,15 +309,118 @@ namespace LegendaryExplorer.Dialogs
             return null;
         }
 
+        public static void ShowAddPropertyDialog(ExportEntry export, List<PropNameStaticArrayIdxPair> existingProperties, MEGame game,
+            Func<NameReference, int, PropertyInfo, bool> addPropertyHandler, Window callingWindow = null)
+        {
+            string temp = export.ClassName;
+            var classes = new List<ClassInfo>();
+            Dictionary<string, ClassInfo> classList = GlobalUnrealObjectInfo.GetClasses(game);
+
+            if (!classList.ContainsKey(temp) && export.Class is ImportEntry)
+            {
+                if (GlobalUnrealObjectInfo.generateClassInfo(export) is ClassInfo info)
+                {
+                    classes.Add(info);
+                    temp = info.baseClass;
+                }
+                else
+                {
+                    temp = export.SuperClassName;
+                }
+            }
+            else if (!classList.ContainsKey(temp) && export.Class is ExportEntry classExport)
+            {
+                export = classExport;
+                using var cache = new PackageCache();
+                ClassInfo currentInfo = GlobalUnrealObjectInfo.generateClassInfo(export, packageCache: cache);
+                classList = classList.ToDictionary(entry => entry.Key, entry => entry.Value);
+                classList[temp] = currentInfo;
+                classExport = classExport.SuperClass as ExportEntry;
+                while (!classList.ContainsKey(currentInfo.baseClass) && classExport != null)
+                {
+                    currentInfo = GlobalUnrealObjectInfo.generateClassInfo(classExport, packageCache: cache);
+                    if (currentInfo == null)
+                    {
+                        break;
+                    }
+                    classList[classExport.ObjectName] = currentInfo;
+                    classExport = classExport.SuperClass as ExportEntry;
+                }
+            }
+
+            while (classList.ContainsKey(temp) && temp != "Object")
+            {
+                classes.Add(classList[temp]);
+                temp = classList[temp].baseClass;
+            }
+
+            classes.Reverse();
+            var prompt = new AddPropertyDialog(classes, existingProperties, addPropertyHandler)
+            {
+                Game = game,
+                Owner = callingWindow
+            };
+            prompt.ShowDialog();
+        }
+
         public MEGame Game { get; set; }
 
         private void PropertiesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (SelectedProperty != null)
+            TryAddSelectedProperty();
+        }
+
+        private bool TryAddSelectedProperty()
+        {
+            if (SelectedProperty == null)
+            {
+                return false;
+            }
+
+            if (addPropertyHandler is null)
             {
                 DialogResult = true;
                 Close();
+                return true;
             }
+
+            if (!addPropertyHandler(SelectedProperty.PropertyName, SelectedProperty.StaticArrayIndex, SelectedProperty.PropInfo))
+            {
+                return false;
+            }
+
+            var addedProperty = new PropNameStaticArrayIdxPair(SelectedProperty.PropertyName, SelectedProperty.StaticArrayIndex);
+            if (!existingProperties.Contains(addedProperty))
+            {
+                existingProperties.Add(addedProperty);
+            }
+
+            SelectedProperty = null;
+            return true;
+        }
+
+        private void RefreshAfterPropertyAdded()
+        {
+            string selectedClassName = SelectedClassName;
+            ClassesView.Refresh();
+
+            if (selectedClassName is not null && ClassesView.Contains(selectedClassName))
+            {
+                UpdateShownProperties();
+                return;
+            }
+
+            SelectedClassName = null;
+            foreach (var item in ClassesView)
+            {
+                if (item is string className)
+                {
+                    SelectedClassName = className;
+                    return;
+                }
+            }
+
+            UpdateShownProperties();
         }
     }
 
