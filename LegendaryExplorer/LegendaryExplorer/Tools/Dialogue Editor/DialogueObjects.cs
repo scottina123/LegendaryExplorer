@@ -174,6 +174,19 @@ namespace LegendaryExplorer.DialogueEditor
             return _nodeBrush is not null ? (Brush)_nodeBrush.Clone() : new SolidBrush(boxColor);
         }
 
+        internal static T FindAncestor<T>(PNode node) where T : class
+        {
+            for (PNode current = node; current is not null; current = current.Parent)
+            {
+                if (current is T match)
+                {
+                    return match;
+                }
+            }
+
+            return null;
+        }
+
         public virtual void Dispose()
         {
             g = null;
@@ -445,19 +458,17 @@ namespace LegendaryExplorer.DialogueEditor
 
                 for (PNode node = e.InputManager?.MouseOver?.PickedNode; node is not null; node = node.Parent)
                 {
-                    if (node is not PPath path)
+                    if (node is PPath path
+                        && global::LegendaryExplorer.DialogueEditor.DObj.FindAncestor<DiagNode>(path) is DiagNode inputOwner
+                        && inputOwner.InLinks != null
+                        && inputOwner.InLinks.Any(link => ReferenceEquals(link.node, path)))
                     {
-                        continue;
+                        return path;
                     }
 
-                    for (PNode ancestor = path.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                    if (node is DiagNode diagNode && diagNode.InLinks?.Count > 0)
                     {
-                        if (ancestor is DiagNode diagNode
-                            && diagNode.InLinks != null
-                            && diagNode.InLinks.Any(link => ReferenceEquals(link.node, path)))
-                        {
-                            return path;
-                        }
+                        return diagNode;
                     }
                 }
 
@@ -658,8 +669,13 @@ namespace LegendaryExplorer.DialogueEditor
 
         public override void CreateOutlink(PNode n1, PNode n2)
         {
-            DStart start = (DStart)n1.Parent.Parent.Parent;
-            DiagNode end = (DiagNode)n2.Parent.Parent.Parent;
+            DStart start = FindAncestor<DStart>(n1);
+            DiagNode end = FindAncestor<DiagNode>(n2);
+            if (start == null || end == null)
+            {
+                return;
+            }
+
             if (end.GetType() != typeof(DiagNodeEntry))
             {
                 MessageBox.Show("You cannot link start nodes to replies.\r\nStarts must link to entries.", "Dialogue Editor");
@@ -2114,8 +2130,13 @@ namespace LegendaryExplorer.DialogueEditor
         }
         public override void CreateOutlink(PNode n1, PNode n2)
         {
-            DiagNode start = (DiagNode)n1.Parent.Parent.Parent;
-            DiagNode end = (DiagNode)n2.Parent.Parent.Parent;
+            DiagNode start = FindAncestor<DiagNode>(n1);
+            DiagNode end = FindAncestor<DiagNode>(n2);
+            if (start == null || end == null)
+            {
+                return;
+            }
+
             CreateLink(start, end);
         }
         public override void RemoveOutlink(int linkconnection, int linkIndex)
@@ -2265,8 +2286,13 @@ namespace LegendaryExplorer.DialogueEditor
         }
         public override void CreateOutlink(PNode n1, PNode n2)
         {
-            DiagNode start = (DiagNode)n1.Parent.Parent.Parent;
-            DiagNode end = (DiagNode)n2.Parent.Parent.Parent;
+            DiagNode start = FindAncestor<DiagNode>(n1);
+            DiagNode end = FindAncestor<DiagNode>(n2);
+            if (start == null || end == null)
+            {
+                return;
+            }
+
             CreateLink(start, end);
         }
         public override void RemoveOutlink(int linkconnection, int linkIndex)
