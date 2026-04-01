@@ -80,6 +80,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public string JSONpath;
 
         private bool _useSavedViews = true; // Should probably be a global setting
+        private int suppressInterpreterUnloadDepth;
 
         public bool UseSavedViews
         {
@@ -1884,7 +1885,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public void RefreshView()
         {
             saveView(false);
-            LoadSequence(SelectedSequence, false);
+            suppressInterpreterUnloadDepth++;
+            try
+            {
+                LoadSequence(SelectedSequence, false);
+            }
+            finally
+            {
+                suppressInterpreterUnloadDepth--;
+            }
         }
 
         private void backMouseDown_Handler(object sender, PInputEventArgs e)
@@ -3556,7 +3565,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
             }
-            else if (!(Properties_InterpreterWPF.CurrentLoadedExport?.IsSequence() ?? false))
+            else if (suppressInterpreterUnloadDepth == 0 && !(Properties_InterpreterWPF.CurrentLoadedExport?.IsSequence() ?? false))
             {
                 Properties_InterpreterWPF.UnloadExport();
             }
