@@ -2717,6 +2717,41 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void ClearGraphSelection()
+        {
+            foreach (var oldselection in SelectedObjects)
+            {
+                oldselection.IsSelected = false;
+            }
+
+            SelectedObjects.ClearEx();
+            Start_ListBox.SelectedIndex = -1;
+
+            if (SelectedDialogueNode != null)
+            {
+                SelectedDialogueNode.PropertyChanged -= NodePropertyChanged;
+            }
+
+            SelectedDialogueNode = null;
+            MirrorDialogueNode = null;
+
+            EndInlineLineStrRefEdit(false);
+            EndInlinePlotFieldEdit(false);
+            ClearInlineLinkEditor();
+            ClearInterpDataTree();
+            InterpData_InterpreterWPF.UnloadExport();
+            SoundpanelWPF_F.UnloadExport();
+            SoundpanelWPF_M.UnloadExport();
+            FaceFXAnimSetEditorControl_F.UnloadExport();
+            FaceFXAnimSetEditorControl_M.UnloadExport();
+            SoundpanelFemaleControl.Visibility = Visibility.Hidden;
+            SoundpanelMaleControl.Visibility = Visibility.Hidden;
+
+            SetUIMode(0, true);
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
+        }
+
         private void RefreshExportLoaders()
         {
             BuildInterpDataTree();
@@ -6188,7 +6223,11 @@ namespace LegendaryExplorer.DialogueEditor
         {
             if (!(e.PickedNode is PCamera) || SelectedConv == null) return;
 
-            if (e.Button == System.Windows.Forms.MouseButtons.Right)
+            if (e.Button == System.Windows.Forms.MouseButtons.Left)
+            {
+                ClearGraphSelection();
+            }
+            else if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
             }
         }
