@@ -346,6 +346,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             InitializeComponent();
             SortBottomViewportTabsAlphabetically();
+            SelectBottomViewportTab("Speaker Details", ConversationDetailsTab);
             InlineLinkEditor_DataGrid.ItemsSource = InlineLinkEditorLinks;
             InlineLinkEditor_DataGrid.MouseDoubleClick += InlineLinkEditor_DataGrid_MouseDoubleClick;
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
@@ -573,6 +574,19 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 BottomViewportTabControl.SelectedItem = selectedTab;
             }
+        }
+
+        private void SelectBottomViewportTab(string header, TabItem fallbackTab = null)
+        {
+            if (BottomViewportTabControl == null)
+            {
+                return;
+            }
+
+            BottomViewportTabControl.SelectedItem = BottomViewportTabControl.Items
+                .OfType<TabItem>()
+                .FirstOrDefault(t => string.Equals(t.Header?.ToString(), header, StringComparison.CurrentCulture))
+                ?? fallbackTab;
         }
 
         public DialogueEditorWindow(ExportEntry export) : this()
@@ -4179,9 +4193,7 @@ namespace LegendaryExplorer.DialogueEditor
             switch (CurrentUIMode)
             {
                 case 1:
-                    BottomViewportTabControl.SelectedItem = BottomViewportTabControl.Items
-                        .OfType<TabItem>()
-                        .FirstOrDefault(t => t.Header?.ToString() == "Speaker Details");
+                    SelectBottomViewportTab("Speaker Details", ConversationDetailsTab);
                     break;
                 case 2:
                     Node_Panel.Visibility = Visibility.Visible;
@@ -4190,10 +4202,7 @@ namespace LegendaryExplorer.DialogueEditor
                     BottomViewportTabControl.SelectedItem = StartingNodesTab;
                     break;
                 default:
-                    if (BottomViewportTabControl.SelectedItem is not TabItem selectedTab || selectedTab.Visibility != Visibility.Visible)
-                    {
-                        BottomViewportTabControl.SelectedItem = ConversationDetailsTab;
-                    }
+                    SelectBottomViewportTab("Speaker Details", ConversationDetailsTab);
                     break;
 
             }
