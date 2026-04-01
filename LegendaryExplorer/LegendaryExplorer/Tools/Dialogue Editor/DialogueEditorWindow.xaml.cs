@@ -1361,6 +1361,16 @@ namespace LegendaryExplorer.DialogueEditor
 
         private PointF GetNewDialogueNodePosition(bool isReply, DiagNode anchorNode = null)
         {
+            if (graphEditor?.Camera != null)
+            {
+                RectangleF viewBounds = graphEditor.Camera.ViewBounds;
+                const float defaultNodeWidth = 220f;
+                const float defaultNodeHeight = 140f;
+                return new PointF(
+                    viewBounds.X + ((viewBounds.Width - defaultNodeWidth) / 2f),
+                    viewBounds.Y + ((viewBounds.Height - defaultNodeHeight) / 2f));
+            }
+
             if (anchorNode != null)
             {
                 return new PointF(anchorNode.X + anchorNode.OffsetX + 100, anchorNode.Y + anchorNode.OffsetY + 150);
@@ -1494,7 +1504,7 @@ namespace LegendaryExplorer.DialogueEditor
                 graphNode = new DiagNodeEntry(this, nodeExtended, position.X, position.Y, graphEditor);
             }
 
-            AddDialogueNodeToGraphInPlace(graphNode, position);
+            AddDialogueNodeToGraphInPlace(graphNode, position, centerView: false);
             DialogueNode_SelectByIndex(newIndex, isReply);
         }
 
