@@ -6229,6 +6229,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
+                if (FindResource("graphBackgroundContextMenu") is ContextMenu contextMenu)
+                {
+                    contextMenu.DataContext = this;
+                    contextMenu.IsOpen = true;
+                    graphEditor.DisableDragging();
+                    e.Handled = true;
+                }
             }
         }
         private void back_MouseUp(object sender, PInputEventArgs e)

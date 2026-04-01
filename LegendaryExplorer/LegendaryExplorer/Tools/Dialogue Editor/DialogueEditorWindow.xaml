@@ -32,6 +32,29 @@
             <MenuItem Header="Edit" Command="{Binding StartEditCommand}" CommandParameter="Edit" ToolTip="Edit which dialogue entry this node connects to."/>
             <MenuItem Header="Remove start node" Command="{Binding StartDeleteCommand}" ToolTip="Delete this start node"/>
         </ContextMenu>
+        <ContextMenu x:Key="graphBackgroundContextMenu" Closed="ContextMenu_Closed">
+            <MenuItem Header="Search" Command="{Binding SearchCommand}" InputGestureText="Ctrl+F"
+                      ToolTip="Search by string or text" />
+            <Separator />
+            <MenuItem Header="Manage TLKs" Command="{Binding LoadTLKManagerCommand}" ToolTip="Load TLK Manager" />
+            <MenuItem Header="Force Refresh" Command="{Binding ForceRefreshCommand}" InputGestureText="F5"
+                      ToolTip="Force full refresh of Dialogue" />
+            <MenuItem Header="Save Image" Command="{Binding SaveImageCommand}"
+                      ToolTip="Save image of full Dialogue" />
+            <MenuItem Header="Test for looping paths" Command="{Binding TestPathsCommand}"
+                      ToolTip="Test the dialogue for looping paths."
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <Separator />
+            <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}" CommandParameter="Add"
+                      ToolTip="Create a new start node"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Add New Entry" Command="{Binding NodeAddCommand}" CommandParameter="AddEntry"
+                      ToolTip="Add new entry to this Dialogue"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Add New Reply" Command="{Binding NodeAddCommand}" CommandParameter="AddReply"
+                      ToolTip="Add new reply to this Dialogue"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+        </ContextMenu>
         <ContextMenu x:Key="replynodeContextMenu" Closed="ContextMenu_Closed">
             <MenuItem Header="Edit Links" Name="replyLinkEditContextMenu" Command="{Binding NodeEditCommand}" CommandParameter="Reply" ToolTip="Edit Links order and details"/>
             <MenuItem Header="Copy outgoing connections" Name="replyCopyOutgoingConnectionsMenuItem" Click="CopyOutgoingConnections_Click" />
