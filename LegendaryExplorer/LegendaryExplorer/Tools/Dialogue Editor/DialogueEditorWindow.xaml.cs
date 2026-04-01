@@ -3276,8 +3276,327 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private static IEntry GetTopLevelEntry(IEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            while (entry.HasParent)
+            {
+                entry = entry.Parent;
+            }
+
+            return entry;
+        }
+
+        private IEntry GetTopLevelConversationEntry(ConversationExtended conversation)
+        {
+            return GetTopLevelEntry(conversation?.Export);
+        }
+
+        private static bool IsEntryDescendantOrSame(IEntry entry, IEntry ancestor)
+        {
+            if (entry == null || ancestor == null)
+            {
+                return false;
+            }
+
+            IEntry current = entry;
+            while (current != null)
+            {
+                if (current == ancestor)
+                {
+                    return true;
+                }
+
+                current = current.Parent;
+            }
+
+            return false;
+        }
+
+        private List<ExportEntry> GetBioConversationsUnderEntry(IEntry rootEntry)
+        {
+            return Pcc?.Exports
+                .Where(exp => exp.ClassName == "BioConversation" && IsEntryDescendantOrSame(exp, rootEntry))
+                .ToList() ?? [];
+        }
+
+        private PortingOptions GetConversationPortingOptions(IEntry sourceEntry, IEntry targetEntry)
+        {
+            var treeMergeDialog = new TreeMergeDialog(sourceEntry, targetEntry, Pcc.Game)
+            {
+                Owner = this
+            };
+
+            treeMergeDialog.ShowDialog();
+            treeMergeDialog.PortingOption.PortUsingDonors = treeMergeDialog.PortUsingDonors;
+            treeMergeDialog.PortingOption.PortGlobalsAsImports = treeMergeDialog.PortGlobalsAsImports;
+            treeMergeDialog.PortingOption.PortExportsAsImportsWhenPossible = treeMergeDialog.PortExportsAsImportsWhenPossible;
+            treeMergeDialog.PortingOption.PortExportsMemorySafe = treeMergeDialog.PortExportsMemorySafe;
+            return treeMergeDialog.PortingOption;
+        }
+
+        private int? GetPreferredConversationSelectionUIndex(IEntry rootEntry, int? fallbackConversationUIndex = null)
+        {
+            var importedConversation = GetBioConversationsUnderEntry(rootEntry).FirstOrDefault();
+            return importedConversation?.UIndex ?? fallbackConversationUIndex;
+        }
+
+        private void RefreshConversationsAfterStructureChange(int? preferredConversationUIndex = null)
+        {
+            int? targetConversationUIndex = preferredConversationUIndex ?? SelectedConv?.UIndex;
+
+            LoadConversations();
+            FirstParse();
+
+            if (targetConversationUIndex.HasValue)
+            {
+                var conversation = Conversations.FirstOrDefault(c => c.UIndex == targetConversationUIndex.Value);
+                if (conversation != null)
+                {
+                    Conversations_ListBox.SelectedItem = conversation;
+                    return;
+                }
+            }
+
+            if (Conversations.Count > 0)
+            {
+                Conversations_ListBox.SelectedIndex = 0;
+            }
+            else
+            {
+                UnloadFile();
+            }
+        }
+
+        private void ImportConversationTopLevelPackage(ConversationExtended sourceConversation, ConversationExtended targetConversation)
+        {
+            if (sourceConversation?.Export?.FileRef == null || Pcc == null)
+            {
+                return;
+            }
+
+            IEntry sourceEntry = GetTopLevelConversationEntry(sourceConversation);
+            IEntry targetEntry = GetTopLevelConversationEntry(targetConversation);
+            if (sourceEntry == null)
+            {
+                return;
+            }
+
+            if (sourceEntry.FileRef == Pcc)
+            {
+                return;
+            }
+
+            if (targetEntry == sourceEntry)
+            {
+                return;
+            }
+
+            if (sourceEntry.Game.IsLEGame() != Pcc.Game.IsLEGame() && !App.IsDebug && sourceEntry.Game != MEGame.UDK)
+            {
+                MessageBox.Show(
+                    "Cannot port assets between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot port asset",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            var portingOption = GetConversationPortingOptions(sourceEntry, targetEntry);
+            if (portingOption.PortingOptionChosen == EntryImporter.PortingOption.Cancel)
+            {
+                return;
+            }
+
+            int originalIndex = -1;
+            bool hadChanges = false;
+            bool hadHeaderChanges = false;
+            if (portingOption.PortingOptionChosen != EntryImporter.PortingOption.ReplaceSingular
+                && portingOption.PortingOptionChosen != EntryImporter.PortingOption.ReplaceSingularWithRelink
+                && Pcc.FindEntry(sourceEntry.InstancedFullPath) != null)
+            {
+                originalIndex = sourceEntry.indexValue;
+                hadChanges = sourceEntry.EntryHasPendingChanges;
+                hadHeaderChanges = sourceEntry.HeaderChanged;
+                sourceEntry.indexValue = Pcc.GetNextIndexedName(sourceEntry.ObjectName).Number;
+            }
+
+            string objectDBPath = AppDirectories.GetObjectDatabasePath(Pcc.Game);
+            bool shouldUseDonors = portingOption.PortUsingDonors && sourceEntry.Game != Pcc.Game && sourceEntry.Game != MEGame.UDK;
+            ObjectInstanceDB objectDB = null;
+            if (shouldUseDonors)
+            {
+                if (File.Exists(objectDBPath))
+                {
+                    using FileStream fs = File.OpenRead(objectDBPath);
+                    objectDB = ObjectInstanceDB.Deserialize(Pcc.Game, fs);
+                }
+                else if (MessageBox.Show(
+                             "Port With Donors checkbox was selected, but no object database was found! Continue operation without donors?",
+                             "No object database",
+                             MessageBoxButton.YesNo,
+                             MessageBoxImage.Warning,
+                             MessageBoxResult.No) is not MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            var rop = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceEntry.Game != Pcc.Game && sourceEntry.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                TargetGameDonorDB = objectDB,
+                ImportExportDependencies = portingOption.PortingOptionChosen is EntryImporter.PortingOption.CloneAllDependencies
+                    or EntryImporter.PortingOption.ReplaceSingularWithRelink,
+                GenerateImportsForGlobalFiles = portingOption.PortGlobalsAsImports,
+                PortImportsMemorySafe = portingOption.PortExportsMemorySafe,
+                PortExportsAsImportsWhenPossible = portingOption.PortExportsAsImportsWhenPossible,
+            };
+
+            var relinkResults = EntryImporter.ImportAndRelinkEntries(portingOption.PortingOptionChosen, sourceEntry, Pcc,
+                targetEntry, true, rop, out IEntry newEntry);
+
+            if (originalIndex >= 0)
+            {
+                sourceEntry.indexValue = originalIndex;
+                sourceEntry.HeaderChanged = hadHeaderChanges;
+                sourceEntry.EntryHasPendingChanges = hadChanges;
+            }
+
+            RefreshConversationsAfterStructureChange(GetPreferredConversationSelectionUIndex(newEntry, targetConversation?.UIndex));
+
+            if ((relinkResults?.Count ?? 0) > 0)
+            {
+                new ListDialog(relinkResults, "Relink report",
+                    "The following items reported relinking issues.", this).Show();
+            }
+        }
+
+        private bool TopLevelEntryHasChildren(IEntry entry)
+        {
+            return entry != null
+                   && (Pcc.Exports.Any(x => x.idxLink == entry.UIndex)
+                       || Pcc.Imports.Any(x => x.idxLink == entry.UIndex));
+        }
+
+        private ExportEntry CloneTopLevelConversationPackage(ConversationExtended conversation)
+        {
+            if (GetTopLevelConversationEntry(conversation) is not ExportEntry export)
+            {
+                return null;
+            }
+
+            return TopLevelEntryHasChildren(export)
+                ? EntryCloner.CloneTree(export)
+                : EntryCloner.CloneEntry(export);
+        }
+
+        private void Conversations_ListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not ListBoxItem && source != null)
+            {
+                source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is ListBoxItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+            }
+        }
+
+        private void Conversations_CloneTopLevelPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)
+            {
+                return;
+            }
+
+            var clonedEntry = CloneTopLevelConversationPackage(conversation);
+            if (clonedEntry != null)
+            {
+                RefreshConversationsAfterStructureChange(GetPreferredConversationSelectionUIndex(clonedEntry));
+            }
+        }
+
+        private void Conversations_MultiCloneTopLevelPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)
+            {
+                return;
+            }
+
+            var result = PromptDialog.Prompt(this, "How many times do you want to clone this top-level package?", "Multiple package cloning", "2", true);
+            if (!int.TryParse(result, out int count) || count <= 0)
+            {
+                return;
+            }
+
+            ExportEntry lastClone = null;
+            for (int i = 0; i < count; i++)
+            {
+                lastClone = CloneTopLevelConversationPackage(conversation);
+            }
+
+            if (lastClone != null)
+            {
+                RefreshConversationsAfterStructureChange(GetPreferredConversationSelectionUIndex(lastClone));
+            }
+        }
+
+        private void Conversations_TrashTopLevelPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)
+            {
+                return;
+            }
+
+            IEntry topLevelEntry = GetTopLevelConversationEntry(conversation);
+            if (topLevelEntry == null)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(
+                    $"Trash top-level package '{topLevelEntry.InstancedFullPath}' and all of its children?",
+                    "Confirm trash",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.No) is not MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var itemsToTrash = Pcc.Exports.Where(exp => IsEntryDescendantOrSame(exp, topLevelEntry)).Cast<IEntry>()
+                .Concat(Pcc.Imports.Where(imp => IsEntryDescendantOrSame(imp, topLevelEntry)))
+                .Distinct()
+                .ToList();
+
+            EntryPruner.TrashEntries(Pcc, itemsToTrash);
+            RefreshConversationsAfterStructureChange();
+        }
+
         void IDropTarget.DragOver(IDropInfo dropInfo)
         {
+            if (dropInfo.Data is ConversationExtended sourceConversation)
+            {
+                dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
+                dropInfo.Effects = sourceConversation.Export?.FileRef != null && sourceConversation.Export.FileRef != Pcc
+                    ? DragDropEffects.Copy
+                    : DragDropEffects.None;
+                return;
+            }
+
             if (dropInfo.TargetItem is TreeViewEntry && dropInfo.Data is TreeViewEntry { Parent: not null } sourceItem)
             {
                 dropInfo.DropTargetAdorner = DropTargetAdorners.Highlight;
@@ -3289,6 +3608,12 @@ namespace LegendaryExplorer.DialogueEditor
 
         void IDropTarget.Drop(IDropInfo dropInfo)
         {
+            if (dropInfo.Data is ConversationExtended sourceConversation)
+            {
+                ImportConversationTopLevelPackage(sourceConversation, dropInfo.TargetItem as ConversationExtended);
+                return;
+            }
+
             if (dropInfo.TargetItem is not TreeViewEntry targetItem || dropInfo.Data is not TreeViewEntry { Parent: not null } sourceItem)
             {
                 return;

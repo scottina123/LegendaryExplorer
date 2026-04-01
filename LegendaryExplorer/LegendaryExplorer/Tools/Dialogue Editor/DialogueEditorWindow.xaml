@@ -666,6 +666,10 @@
                              ItemsSource="{Binding Conversations}"
                              SelectionChanged="ConversationList_SelectedItemChanged"
                              MouseLeftButtonUp="ListBox_MouseLeftButtonUp" HorizontalContentAlignment="Stretch"
+                              PreviewMouseRightButtonDown="Conversations_ListBox_PreviewMouseRightButtonDown"
+                              dd:DragDrop.IsDragSource="True"
+                              dd:DragDrop.IsDropTarget="True"
+                              dd:DragDrop.DropHandler="{Binding}"
                              Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -719,6 +723,10 @@
                                         <Image Source="{StaticResource iconSequenceEditor16}" Width="64"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
+                                <Separator />
+                                <MenuItem Header="Clone top-level package" Click="Conversations_CloneTopLevelPackage_Click" />
+                                <MenuItem Header="Multi-clone top-level package" Click="Conversations_MultiCloneTopLevelPackage_Click" />
+                                <MenuItem Header="Trash top-level package and children" Click="Conversations_TrashTopLevelPackage_Click" />
                             </ContextMenu>
                         </ListBox.ContextMenu>
                     </ListBox>
