@@ -610,6 +610,7 @@ namespace LegendaryExplorer.DialogueEditor
     [DebuggerDisplay("DiagNode | #{NodeUID}")]
     public abstract class DiagNode : DBox
     {
+        private static readonly Color SpeakerHighlightOutlineColor = Color.DarkOrange;
         public override IEnumerable<DiagEdEdge> Edges => InLinks.SelectMany(l => l.Edges).Union(base.Edges);
         public List<DiagEdEdge> InputEdges = new List<DiagEdEdge>();
         public List<InputLink> InLinks;
@@ -634,6 +635,7 @@ namespace LegendaryExplorer.DialogueEditor
         private float plotSectionsStartY;
         private float baseBoxHeightWithoutPlotSections;
         private float nodeBoxWidth;
+        private bool isSpeakerHighlighted;
 
         public DiagNode(DialogueEditorWindow editor, DialogueNodeExtended node, float x, float y, ConvGraphEditor ConvGraphEditor)
             : base(ConvGraphEditor)
@@ -664,6 +666,21 @@ namespace LegendaryExplorer.DialogueEditor
             Editor?.EditGraphOutgoingLink(this, linkIndex);
         }
 
+        public bool IsSpeakerHighlighted
+        {
+            get => isSpeakerHighlighted;
+            set
+            {
+                if (isSpeakerHighlighted == value)
+                {
+                    return;
+                }
+
+                isSpeakerHighlighted = value;
+                ApplyAccentVisualState();
+            }
+        }
+
         public void SyncIdentityFromNode()
         {
             NodeProp = Node.NodeProp;
@@ -678,6 +695,37 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 plotSectionStates[plotSectionStateKey] = (Node.PlotChecksExpanded, Node.PlotTransitionsExpanded, Node.MatineeExpanded);
             }
+        }
+
+        protected void ApplyAccentVisualState()
+        {
+            if (titleBox == null || box == null)
+            {
+                return;
+            }
+
+            if (IsSelected)
+            {
+                titleBox.Pen = selectedPen;
+                box.Pen = selectedPen;
+                MoveToFront();
+                return;
+            }
+
+            var outlineColor = IsSpeakerHighlighted ? SpeakerHighlightOutlineColor : GetDefaultOutlineColor();
+            var outline = new Pen(outlineColor);
+            titleBox.Pen = outline;
+            box.Pen = outline;
+        }
+
+        private Color GetDefaultOutlineColor()
+        {
+            return NodeUID switch
+            {
+                < 1000 => entryPenColor,
+                < 2000 => replyPenColor,
+                _ => Color.Black
+            };
         }
 
         private string GetListenerDisplayName()
@@ -1536,19 +1584,7 @@ namespace LegendaryExplorer.DialogueEditor
             set
             {
                 _isSelected = value;
-                if (value)
-                {
-                    titleBox.Pen = selectedPen;
-                    box.Pen = selectedPen;
-                    ((PPath)this[1]).Pen = selectedPen;
-                    MoveToFront();
-                }
-                else
-                {
-                    titleBox.Pen = outlinePen;
-                    box.Pen = outlinePen;
-                    ((PPath)this[1]).Pen = outlinePen;
-                }
+                ApplyAccentVisualState();
             }
         }
 
@@ -1740,6 +1776,7 @@ namespace LegendaryExplorer.DialogueEditor
             AddChild(outLinkBox);
             AddChild(inputLinkBox);
             SetOffset(x, y);
+            ApplyAccentVisualState();
         }
         public virtual void GetOutputLinks(DialogueNodeExtended node) { }
         public void GetInputLinks(DialogueNodeExtended node = null)
@@ -1885,20 +1922,7 @@ namespace LegendaryExplorer.DialogueEditor
             set
             {
                 _isSelected = value;
-                if (value)
-                {
-                    titleBox.Pen = selectedPen;
-                    box.Pen = selectedPen;
-                    ((PPath)this[1]).Pen = selectedPen;
-                    MoveToFront();
-                }
-                else
-                {
-                    var entryPen = new Pen(entryPenColor);
-                    titleBox.Pen = entryPen;
-                    box.Pen = entryPen;
-                    ((PPath)this[1]).Pen = entryPen;
-                }
+                ApplyAccentVisualState();
             }
         }
         public override void GetOutputLinks(DialogueNodeExtended node)
@@ -2083,20 +2107,7 @@ namespace LegendaryExplorer.DialogueEditor
             set
             {
                 _isSelected = value;
-                if (value)
-                {
-                    titleBox.Pen = selectedPen;
-                    box.Pen = selectedPen;
-                    ((PPath)this[1]).Pen = selectedPen;
-                    MoveToFront();
-                }
-                else
-                {
-                    var replyPen = new Pen(replyPenColor);
-                    titleBox.Pen = replyPen;
-                    box.Pen = replyPen;
-                    ((PPath)this[1]).Pen = replyPen;
-                }
+                ApplyAccentVisualState();
             }
         }
         public override void GetOutputLinks(DialogueNodeExtended node)

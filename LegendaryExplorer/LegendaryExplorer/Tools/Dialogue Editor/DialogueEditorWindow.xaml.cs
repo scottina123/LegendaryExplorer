@@ -1153,6 +1153,19 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void ApplySpeakerNodeHighlighting()
+        {
+            int selectedSpeakerId = SelectedSpeaker?.SpeakerID ?? -3;
+            bool shouldHighlight = SelectedConv != null && selectedSpeakerId >= -2;
+
+            foreach (var diagNode in CurrentObjects.OfType<DiagNode>())
+            {
+                diagNode.IsSpeakerHighlighted = shouldHighlight
+                    && (diagNode.Node?.SpeakerIndex == selectedSpeakerId
+                        || diagNode.Node?.SpeakerTag?.SpeakerID == selectedSpeakerId);
+            }
+        }
+
         private void ParseNodeData(DialogueNodeExtended node)
         {
             try
@@ -1366,6 +1379,7 @@ namespace LegendaryExplorer.DialogueEditor
                 graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
             }
 
+            ApplySpeakerNodeHighlighting();
             graphEditor.Refresh();
         }
 
@@ -1941,6 +1955,8 @@ namespace LegendaryExplorer.DialogueEditor
                 o.Click += node_Click;
             }
 
+            ApplySpeakerNodeHighlighting();
+
             graphEditor.Camera.X = 0;
             graphEditor.Camera.Y = 0;
             if (!regenerate && (SavedPositions.IsEmpty() || SaveViewMode == ESaveViewMode.AutoGenerate))
@@ -2030,6 +2046,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             graphEditor.Enabled = true;
             graphEditor.UseWaitCursor = false;
+            ApplySpeakerNodeHighlighting();
             graphEditor.Refresh();
             return true;
         }
@@ -3662,6 +3679,9 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     SelectedSpeaker = SelectedSpeakerList[0];
                 }
+
+                ApplySpeakerNodeHighlighting();
+                graphEditor?.Refresh();
             }
         }
         private void SpeakerMoveAction(object obj)
@@ -4177,6 +4197,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+            ApplySpeakerNodeHighlighting();
         }
 
         private void RefreshNodePlotSectionsInGraph(DialogueNodeExtended node)
@@ -4197,6 +4218,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+            ApplySpeakerNodeHighlighting();
         }
 
         private void UpdateNodeLineDerivedData(DialogueNodeExtended node)
