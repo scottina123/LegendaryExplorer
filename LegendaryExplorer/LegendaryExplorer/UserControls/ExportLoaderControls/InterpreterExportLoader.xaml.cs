@@ -1321,7 +1321,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Interpreter_Hexbox.UnhighlightAll();
             bool isSameExportReload = CurrentLoadedExport != null && export.FileRef == Pcc && export.UIndex == CurrentLoadedExport.UIndex;
             ExpandedNodePaths = isSameExportReload ? CaptureExpandedNodePaths() : [];
-            SelectedNodePath = isSameExportReload ? CaptureSelectedNodePath() : null;
+            SelectedNodePath ??= isSameExportReload ? CaptureSelectedNodePath() : null;
             //set rescan offset
             //TODO: Make this more reliable because it is recycling virtualization
             if (isSameExportReload)
@@ -3885,8 +3885,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
                 int swapIndex = up ? index - 1 : index + 1;
-                //selection should be changed to the location of the element we are swapping with
-                ForcedRescanOffset = (int)arrayProperty[swapIndex].StartOffset;
+                SelectedNodePath = $"{GetNodePath(tvi.UPParent)}.{swapIndex}";
+                ForcedRescanOffset = 0;
                 if (TryGetSynchronizedStructArrays(tvi, arrayProperty, out var syncedArrays))
                 {
                     foreach (var syncedArray in syncedArrays)
@@ -3919,7 +3919,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
 
-                ForcedRescanOffset = (int)arrayProperty[destinationIndex].StartOffset;
+                SelectedNodePath = $"{GetNodePath(tvi.UPParent)}.{destinationIndex}";
+                ForcedRescanOffset = 0;
 
                 if (destinationIndex < index)
                 {
