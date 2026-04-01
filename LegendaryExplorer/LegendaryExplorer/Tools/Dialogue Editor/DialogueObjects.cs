@@ -304,6 +304,27 @@ namespace LegendaryExplorer.DialogueEditor
                 DiagEdEdge[] edges = outLink.Edges.ToArray();
                 foreach (var e in edges)
                 {
+                    if (e.GetEndOwner() is DiagNode destAction)
+                    {
+                        destAction.InputEdges.Remove(e);
+                        if (destAction.InLinks != null)
+                        {
+                            foreach (var inputLink in destAction.InLinks)
+                            {
+                                inputLink.Edges?.Remove(e);
+                            }
+                        }
+                    }
+
+                    if (outLink.node?.Tag is List<DiagEdEdge> taggedEdges)
+                    {
+                        taggedEdges.Remove(e);
+                        if (taggedEdges.Count == 0)
+                        {
+                            outLink.node.Tag = null;
+                        }
+                    }
+
                     g.edgeLayer.RemoveChild(e);
                 }
                 outLink.Edges.Clear();

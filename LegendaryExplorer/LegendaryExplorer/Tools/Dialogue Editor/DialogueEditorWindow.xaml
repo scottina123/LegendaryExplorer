@@ -1636,6 +1636,8 @@
                                             <ColumnDefinition Width="31"></ColumnDefinition>
                                             <ColumnDefinition Width="31"></ColumnDefinition>
                                             <ColumnDefinition Width="31"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
+                                            <ColumnDefinition Width="31"></ColumnDefinition>
                                         </Grid.ColumnDefinitions>
                                         <Label Grid.Column="0" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Order</Label>
                                         <Label Grid.Column="1" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Entry Link</Label>
@@ -1655,9 +1657,18 @@
                                                                  Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>
+                                        <Button Name="StartTopButton" Command="{Binding StartUpCommand}"
+                                                CommandParameter="Top" Padding="3" DockPanel.Dock="Right"
+                                                IsEnabled="True" Grid.Column="4" Margin="2"
+                                                ToolTip="Move selected start to the top">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_ArrowUp" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
                                         <Button Name="StartUpButton" Command="{Binding StartUpCommand}"
                                                 CommandParameter="Up" Padding="3" DockPanel.Dock="Right"
-                                                IsEnabled="True" Grid.Column="4" Margin="2"
+                                                IsEnabled="True" Grid.Column="5" Margin="2"
                                                 ToolTip="Move selected start up">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_ArrowCircleUp" Width="16" Height="16"
@@ -1666,10 +1677,19 @@
                                         </Button>
                                         <Button Name="StartDownButton" Command="{Binding StartDownCommand}"
                                                 CommandParameter="Down" Padding="3" DockPanel.Dock="Right"
-                                                IsEnabled="True" Grid.Column="5" Margin="2"
+                                                IsEnabled="True" Grid.Column="6" Margin="2"
                                                 ToolTip="Move selected start down">
                                             <Button.Content>
                                                 <fa:ImageAwesome Icon="Solid_ArrowCircleDown" Width="16" Height="16"
+                                                                 Foreground="{DynamicResource IconForegroundBrush}" />
+                                            </Button.Content>
+                                        </Button>
+                                        <Button Name="StartBottomButton" Command="{Binding StartDownCommand}"
+                                                CommandParameter="Bottom" Padding="3" DockPanel.Dock="Right"
+                                                IsEnabled="True" Grid.Column="7" Margin="2"
+                                                ToolTip="Move selected start to the bottom">
+                                            <Button.Content>
+                                                <fa:ImageAwesome Icon="Solid_ArrowDown" Width="16" Height="16"
                                                                  Foreground="{DynamicResource IconForegroundBrush}" />
                                             </Button.Content>
                                         </Button>

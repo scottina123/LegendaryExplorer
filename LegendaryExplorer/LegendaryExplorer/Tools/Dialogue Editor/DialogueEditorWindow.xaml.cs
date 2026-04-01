@@ -1481,6 +1481,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             var existingStarts = CurrentObjects.OfType<DStart>().OrderBy(s => s.Order).ToList();
             var startPositions = existingStarts.ToDictionary(s => s.Order, s => new PointF(s.X + s.OffsetX, s.Y + s.OffsetY));
+            var rebuiltStarts = new List<DStart>();
 
             foreach (var start in existingStarts)
             {
@@ -1498,6 +1499,17 @@ namespace LegendaryExplorer.DialogueEditor
                 graphEditor.addNode(startNode);
                 startNode.MouseDown += node_MouseDown;
                 startNode.Click += node_Click;
+                rebuiltStarts.Add(startNode);
+            }
+
+            foreach (var startNode in rebuiltStarts)
+            {
+                startNode.RecreateConnections(CurrentObjects);
+            }
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                ConvGraphEditor.UpdateEdge(edge);
             }
         }
 
@@ -4582,30 +4594,60 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void StartMoveAction(object obj)
         {
+            StartTopButton.IsEnabled = false;
             StartUpButton.IsEnabled = false;
             StartDownButton.IsEnabled = false;
-            string direction = obj as string;
-            int n = 1; //Movement default is down the list (higher n)
-            if (direction == "Up")
+            StartBottomButton.IsEnabled = false;
+
+            try
             {
-                n = -1;
+                string direction = obj as string;
+                int selectedIndex = Start_ListBox.SelectedIndex;
+                if (SelectedConv == null || selectedIndex < 0)
+                {
+                    return;
+                }
+
+                var orderedStarts = SelectedConv.StartingList
+                    .OrderBy(kvp => kvp.Key)
+                    .Select(kvp => kvp.Value)
+                    .ToList();
+
+                int targetIndex = direction switch
+                {
+                    "Top" => 0,
+                    "Up" => selectedIndex - 1,
+                    "Bottom" => orderedStarts.Count - 1,
+                    _ => selectedIndex + 1
+                };
+
+                if (targetIndex < 0 || targetIndex >= orderedStarts.Count || targetIndex == selectedIndex)
+                {
+                    return;
+                }
+
+                Start_ListBox.SelectedIndex = -1;
+
+                int selectedValue = orderedStarts[selectedIndex];
+                orderedStarts.RemoveAt(selectedIndex);
+                orderedStarts.Insert(targetIndex, selectedValue);
+
+                SelectedConv.StartingList.Clear();
+                for (int i = 0; i < orderedStarts.Count; i++)
+                {
+                    SelectedConv.StartingList.Add(i, orderedStarts[i]);
+                }
+
+                forcedSelectStart = targetIndex;
+                ApplyStartMutationInPlace();
             }
-
-            int selectedIndex = Start_ListBox.SelectedIndex;
-            Start_ListBox.SelectedIndex = -1;
-
-            var selectedval = SelectedConv.StartingList[selectedIndex];
-            var shiftval = SelectedConv.StartingList[selectedIndex + n];
-
-            SelectedConv.StartingList.Remove(selectedIndex);
-            SelectedConv.StartingList.Remove(selectedIndex + n);
-            SelectedConv.StartingList.Add(selectedIndex + n, selectedval);
-            SelectedConv.StartingList.Add(selectedIndex, shiftval);
-
-            forcedSelectStart = selectedIndex + n;
-            ApplyStartMutationInPlace();
-            StartUpButton.IsEnabled = true;
-            StartDownButton.IsEnabled = true;
+            finally
+            {
+                StartTopButton.IsEnabled = true;
+                StartUpButton.IsEnabled = true;
+                StartDownButton.IsEnabled = true;
+                StartBottomButton.IsEnabled = true;
+            }
         }
         private void Start_ListBoxUpdate()
         {
