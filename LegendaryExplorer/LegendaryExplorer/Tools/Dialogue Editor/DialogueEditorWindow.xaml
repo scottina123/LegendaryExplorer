@@ -189,6 +189,7 @@
             <MenuItem Header="Open in Package Editor" Click="InterpDataTree_OpenInPackageEditor_Click" />
             <MenuItem Header="Copy UIndex" Click="InterpDataTree_CopyUIndex_Click" />
         </ContextMenu>
+        <ContextMenu x:Key="addAllToReferencerContextMenu" />
         <Style x:Key="ScrollableLeftTabControlStyle" TargetType="{x:Type TabControl}" BasedOn="{StaticResource {x:Type TabControl}}">
             <Setter Property="Template">
                 <Setter.Value>
@@ -475,6 +476,11 @@
                           Command="{Binding AutoLayoutCommand}"
                           IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}"
                           ToolTip="Re-run auto layout" />
+                <MenuItem Header="Add all to referencer" Padding="4"
+                          IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}"
+                          ToolTip="Add every non-trash export in the current package to an ObjectReferencer"
+                          Click="AddAllToReferencer_MenuItem_Click"
+                          ContextMenu="{StaticResource addAllToReferencerContextMenu}" />
                 <MenuItem HorizontalAlignment="Right" Style="{StaticResource GotoBoxHostMenuItemStyle}">
                     <MenuItem.Header>
                         <ComboBox Name="GotoBox" Text="Go to: (Ctrl+G)" ItemsSource="{Binding CurrentObjects}"

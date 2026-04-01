@@ -7593,6 +7593,143 @@ namespace LegendaryExplorer.DialogueEditor
                 ShowWindowAtFront(Application.Current.Windows.OfType<TLKManagerWPF>().First());
             }
         }
+
+        private void PopulateAddAllToReferencerItems(ItemCollection items)
+        {
+            items.Clear();
+
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (!Pcc.Exports.Any(exp => !exp.IsTrash() && exp.ClassName != "ObjectReferencer"))
+            {
+                items.Add(new MenuItem
+                {
+                    Header = "No eligible exports in package",
+                    IsEnabled = false
+                });
+                return;
+            }
+
+            var defaultReferencerItem = new MenuItem
+            {
+                Header = "Default ObjectReferencer",
+                Tag = "default"
+            };
+            defaultReferencerItem.Click += AddAllToReferencer_Target_Click;
+            items.Add(defaultReferencerItem);
+
+            if (!Pcc.Game.IsGame2())
+            {
+                var startupReferencerItem = new MenuItem
+                {
+                    Header = "CombinedStartupReferencer",
+                    Tag = "startup"
+                };
+                startupReferencerItem.Click += AddAllToReferencer_Target_Click;
+                items.Add(startupReferencerItem);
+            }
+
+            var customReferencerItem = new MenuItem
+            {
+                Header = "Custom named ObjectReferencer...",
+                Tag = "custom"
+            };
+            customReferencerItem.Click += AddAllToReferencer_Target_Click;
+            items.Add(customReferencerItem);
+
+            var existingReferencers = Pcc.Exports
+                .Where(exp => exp.ClassName == "ObjectReferencer" && exp.Parent == null && !exp.IsTrash())
+                .OrderBy(exp => exp.ObjectName.Instanced, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(exp => exp.UIndex)
+                .ToList();
+
+            if (existingReferencers.Count > 0)
+            {
+                items.Add(new Separator());
+                foreach (var referencer in existingReferencers)
+                {
+                    var referencerItem = new MenuItem
+                    {
+                        Header = $"{referencer.ObjectName.Instanced} (#{referencer.UIndex})",
+                        Tag = referencer
+                    };
+                    referencerItem.Click += AddAllToReferencer_Target_Click;
+                    items.Add(referencerItem);
+                }
+            }
+        }
+
+        private void AddAllToReferencer_MenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem menuItem)
+            {
+                return;
+            }
+
+            if (menuItem.ContextMenu is not ContextMenu contextMenu)
+            {
+                return;
+            }
+
+            PopulateAddAllToReferencerItems(contextMenu.Items);
+            contextMenu.PlacementTarget = menuItem;
+            contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            contextMenu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        private void AddAllToReferencer_Target_Click(object sender, RoutedEventArgs e)
+        {
+            if (Pcc == null || sender is not MenuItem menuItem)
+            {
+                return;
+            }
+
+            ExportEntry referencer = menuItem.Tag switch
+            {
+                ExportEntry existingReferencer => existingReferencer,
+                "default" => Pcc.CreateObjectReferencer(),
+                "startup" => Pcc.CreateObjectReferencer(isStartupPackage: true),
+                "custom" => CreateNamedObjectReferencer(),
+                _ => null
+            };
+
+            if (referencer == null)
+            {
+                return;
+            }
+
+            var exportsToReference = Pcc.Exports
+                .Where(exp => !exp.IsTrash() && exp.ClassName != "ObjectReferencer" && exp.UIndex != referencer.UIndex)
+                .ToList();
+            if (exportsToReference.Count == 0)
+            {
+                MessageBox.Show("No eligible exports were found to add to the selected referencer.", "Dialogue Editor");
+                return;
+            }
+
+            var referencedObjects = referencer.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedObjects")
+                                  ?? new ArrayProperty<ObjectProperty>("ReferencedObjects");
+            referencedObjects.AddRange(exportsToReference.Select(x => new ObjectProperty(x)));
+            referencedObjects.Values = referencedObjects.Values.Distinct().ToList();
+            referencer.WriteProperty(referencedObjects);
+            StatusText = $"Added {exportsToReference.Count} exports to {referencer.ObjectName.Instanced}.";
+        }
+
+        private ExportEntry CreateNamedObjectReferencer()
+        {
+            var customName = PromptDialog.Prompt(this, "Enter a custom suffix/name for the ObjectReferencer.", "Create named ObjectReferencer", "", true);
+            if (string.IsNullOrWhiteSpace(customName))
+            {
+                return null;
+            }
+
+            return Pcc.CreateObjectReferencer(objectReferencerName: customName.Trim());
+        }
+
         private void SaveImage()
         {
             if (CurrentObjects.Count == 0)
