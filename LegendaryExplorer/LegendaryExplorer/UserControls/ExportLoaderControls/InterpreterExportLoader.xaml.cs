@@ -156,6 +156,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         private static Property CopiedProperty { get; set; }
 
+        /// <summary>
+        /// The currently copied root property set for an export.
+        /// </summary>
+        private static PropertyCollection CopiedProperties { get; set; }
+
         public InterpreterExportLoader() : base("Properties")
         {
             LoadCommands();
@@ -270,6 +275,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand CopyValueCommand { get; set; }
         public ICommand CopyPropNameCommand { get; set; }
         public ICommand CopyUnrealScriptPropValueCommand { get; set; }
+        public ICommand CopyAllPropertiesCommand { get; set; }
         public ICommand GenerateGUIDCommand { get; set; }
         public ICommand OpenInPackageEditorCommand { get; set; }
         public ICommand OpenInMeshplorerCommand { get; set; }
@@ -315,6 +321,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CopyUnrealScriptPropValueCommand = new GenericCommand(CopyUnrealScriptPropValue, CanCopyUnrealScriptPropValue);
 
             CopyPropertyCommand = new GenericCommand(CopyProperty, CanCopyProperty);
+            CopyAllPropertiesCommand = new GenericCommand(CopyAllProperties, CanCopyAllProperties);
             PastePropertyCommand = new GenericCommand(PasteProperty, CanPasteProperty);
         }
 
@@ -322,29 +329,71 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (Interpreter_TreeView?.SelectedItem is UPropertyTreeViewEntry tvi && tvi.UPParent != null && tvi.UPParent.Property == null && tvi.Property is not NoneProperty)
             {
-                CopiedProperty = tvi.Property;
+                CopiedProperty = tvi.Property.DeepClone();
+                CopiedProperties = null;
                 CopiedPropertyPackage.SetTarget(CurrentLoadedExport.FileRef);
             }
         }
 
-        private void PasteProperty()
+        private void CopyAllProperties()
         {
-            if (!CopiedPropertyPackage.TryGetTarget(out var package)) return;
-            if (CopiedProperty == null) return;
-            if (CurrentLoadedExport == null) return;
-            if (package != CurrentLoadedExport.FileRef) return;
-
-            // Check existing prop name
-            var existingProp = CurrentLoadedExport.GetProperties().FirstOrDefault(x => x.Name.Instanced == CopiedProperty.Name.Instanced);
-
-            if (existingProp != null)
+            if (!CanCopyAllProperties())
             {
-                var overwrite = MessageBox.Show(Window.GetWindow(this), $"This export already has a property named {existingProp.Name}. Do you want to overwrite it?", "Ovewrite warning", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
-                if (!overwrite) return; // Abort
+                return;
             }
 
-            // Write the property.
-            CurrentLoadedExport.WriteProperty(CopiedProperty);
+            CopiedProperties = (CurrentLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
+            CopiedProperty = null;
+            CopiedPropertyPackage.SetTarget(CurrentLoadedExport.FileRef);
+        }
+
+        private void PasteProperty()
+        {
+            if (!CopiedPropertyPackage.TryGetTarget(out var package)
+                || CurrentLoadedExport == null
+                || package != CurrentLoadedExport.FileRef)
+            {
+                return;
+            }
+
+            List<Property> propertiesToPaste = CopiedProperties is not null
+                ? [.. CopiedProperties.Where(prop => prop is not NoneProperty).Select(prop => prop.DeepClone())]
+                : CopiedProperty is not null ? [CopiedProperty.DeepClone()] : [];
+
+            if (propertiesToPaste.Count == 0)
+            {
+                return;
+            }
+
+            var existingProps = CurrentLoadedExport.GetProperties()
+                .Where(existingProp => propertiesToPaste.Any(prop => prop.Name == existingProp.Name && prop.StaticArrayIndex == existingProp.StaticArrayIndex))
+                .ToList();
+
+            if (existingProps.Count > 0)
+            {
+                string overwriteMessage = existingProps.Count == 1
+                    ? $"This export already has a property named {existingProps[0].Name}. Do you want to overwrite it?"
+                    : $"This export already has {existingProps.Count} properties with matching names. Do you want to overwrite them?";
+                var overwrite = MessageBox.Show(Window.GetWindow(this), overwriteMessage, "Overwrite warning", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+                if (!overwrite)
+                {
+                    return;
+                }
+            }
+
+            if (propertiesToPaste.Count == 1)
+            {
+                CurrentLoadedExport.WriteProperty(propertiesToPaste[0]);
+                return;
+            }
+
+            var targetProperties = CurrentLoadedExport.GetProperties(includeNoneProperties: true).DeepClone();
+            foreach (Property property in propertiesToPaste)
+            {
+                targetProperties.AddOrReplaceProp(property);
+            }
+
+            CurrentLoadedExport.WriteProperties(targetProperties);
         }
 
         private bool CanPasteProperty()
@@ -352,6 +401,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return CurrentLoadedExport != null && CopiedPropertyPackage != null
                                                && CopiedPropertyPackage.TryGetTarget(out var package)
                                                && package == CurrentLoadedExport.FileRef
+                                               && (CopiedProperty != null || CopiedProperties is not null)
                                                && CurrentLoadedExport.ClassName != @"Function"
                                                && CurrentLoadedExport.ClassName != @"Class"; // We should probably make it so you can only do it if we know it supports that property, but this is a POC
         }
@@ -364,6 +414,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return tvi.UPParent != null && tvi.UPParent.Property == null; // Parent has no property, which means this is a root node
             }
             return false;
+        }
+
+        private bool CanCopyAllProperties()
+        {
+            return CurrentLoadedExport != null
+                   && CurrentLoadedExport.ClassName != @"Function"
+                   && CurrentLoadedExport.ClassName != @"Class"
+                   && (CurrentLoadedProperties?.Any(prop => prop is not NoneProperty) == true
+                       || CurrentLoadedExport.GetProperties().Any());
         }
 
         private void CopyUnrealScriptPropValue()

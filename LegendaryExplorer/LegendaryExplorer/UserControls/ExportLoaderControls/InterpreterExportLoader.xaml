@@ -372,6 +372,7 @@
                 <controls:StretchingTreeView.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Copy property" ToolTip="Copies the property, which can then be pasted (using the paste button) into another export in the same package" Command="{Binding CopyPropertyCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Header="Copy all properties" ToolTip="Copies all root properties from the current export so they can be pasted into another export in the same package" Command="{Binding CopyAllPropertiesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Paste property" ToolTip="Pastes the currently copied property" Command="{Binding PastePropertyCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Copy parsed value" ToolTip="Copies the parsed value to the clipboard" Command="{Binding CopyValueCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
