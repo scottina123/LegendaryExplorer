@@ -170,6 +170,7 @@ namespace LegendaryExplorer.DialogueEditor
         private readonly Dictionary<string, DataGridLength> inlineLinkEditorColumnWidths = new();
         private readonly Dictionary<int, List<DObj>> conversationGraphCache = new();
         private readonly Dictionary<int, (float X, float Y, float ViewScale)> conversationGraphViewStates = new();
+        private int? speakerNodeFilterSpeakerId;
         private bool hideUnrelatedConnectionsOnSelection = true;
         private System.Windows.Forms.TextBox inlineLineStrRefEditor;
         private DiagNode inlineLineStrRefNode;
@@ -368,6 +369,7 @@ namespace LegendaryExplorer.DialogueEditor
             Node_Combo_GUIStyle.ItemsSource = Enums.GetValues<EConvGUIStyles>();
             Node_Combo_ReplyType.ItemsSource = Enums.GetValues<EReplyTypes>();
             HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked = hideUnrelatedConnectionsOnSelection;
+            RebuildSpeakerNodeFilterMenu();
             // Detect if theme changed while editor was closed so we skip stale saved colors
             bool themeChangedWhileEditorClosed = false;
             if (File.Exists(OptionsPath)) //Handle options
@@ -881,6 +883,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             try
             {
+                speakerNodeFilterSpeakerId = null;
                 Conversations.ClearEx();
                 SelectedSpeakerList.ClearEx();
                 SelectedObjects.ClearEx();
@@ -942,10 +945,12 @@ namespace LegendaryExplorer.DialogueEditor
         private void UnloadFile()
         {
             RightBarColumn.Width = new GridLength(0);
+            speakerNodeFilterSpeakerId = null;
             SelectedConv = null;
             CurrentLoadedExport = null;
             Conversations.ClearEx();
             SelectedSpeakerList.ClearEx();
+            RebuildSpeakerNodeFilterMenu();
             Properties_InterpreterWPF.UnloadExport();
             InterpData_InterpreterWPF.UnloadExport();
             SoundpanelWPF_F.UnloadExport();
@@ -1145,6 +1150,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             RebuildListenersList();
+            RebuildSpeakerNodeFilterMenu();
         }
 
         private void RebuildListenersList()
@@ -1155,6 +1161,122 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 ListenersList.Add(spkr);
             }
+        }
+
+        private bool NodeMatchesSpeakerNodeFilter(DiagNode node)
+        {
+            if (!speakerNodeFilterSpeakerId.HasValue || node?.Node == null)
+            {
+                return false;
+            }
+
+            int speakerId = speakerNodeFilterSpeakerId.Value;
+            return node.Node.SpeakerIndex == speakerId || node.Node.SpeakerTag?.SpeakerID == speakerId;
+        }
+
+        private HashSet<DiagNode> GetSpeakerNodeFilterMatchedNodes()
+        {
+            return speakerNodeFilterSpeakerId.HasValue
+                ? CurrentObjects.OfType<DiagNode>().Where(NodeMatchesSpeakerNodeFilter).ToHashSet()
+                : null;
+        }
+
+        private HashSet<DObj> GetSpeakerNodeFilterVisibleObjects(HashSet<DiagNode> matchedNodes)
+        {
+            if (matchedNodes == null)
+            {
+                return null;
+            }
+
+            HashSet<DObj> visibleObjects = matchedNodes.Cast<DObj>().ToHashSet();
+
+            if (graphEditor?.edgeLayer == null)
+            {
+                return visibleObjects;
+            }
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                var originNode = edge.originator as DiagNode;
+                DObj endOwner = edge.GetEndOwner();
+                var endNode = endOwner as DiagNode;
+
+                if ((originNode != null && matchedNodes.Contains(originNode))
+                    || (endNode != null && matchedNodes.Contains(endNode)))
+                {
+                    if (edge.originator != null)
+                    {
+                        visibleObjects.Add(edge.originator);
+                    }
+
+                    if (endOwner != null)
+                    {
+                        visibleObjects.Add(endOwner);
+                    }
+                }
+            }
+
+            return visibleObjects;
+        }
+
+        private void RebuildSpeakerNodeFilterMenu()
+        {
+            if (FindName("SpeakerNodeFilter_MenuItem") is not MenuItem speakerNodeFilterMenuItem)
+            {
+                return;
+            }
+
+            speakerNodeFilterMenuItem.Items.Clear();
+            speakerNodeFilterMenuItem.IsEnabled = SelectedConv != null && SelectedSpeakerList.Count > 0;
+
+            var offItem = new MenuItem
+            {
+                Header = "Off",
+                IsCheckable = true,
+                IsChecked = !speakerNodeFilterSpeakerId.HasValue
+            };
+            offItem.Click += SpeakerNodeFilterOff_Click;
+            speakerNodeFilterMenuItem.Items.Add(offItem);
+
+            if (SelectedSpeakerList.Count == 0)
+            {
+                return;
+            }
+
+            speakerNodeFilterMenuItem.Items.Add(new Separator());
+            foreach (SpeakerExtended speaker in SelectedSpeakerList)
+            {
+                var item = new MenuItem
+                {
+                    Header = $"{speaker.SpeakerID}: {speaker.DisplayName}",
+                    IsCheckable = true,
+                    IsChecked = speakerNodeFilterSpeakerId == speaker.SpeakerID,
+                    Tag = speaker.SpeakerID
+                };
+                item.Click += SpeakerNodeFilterSpeaker_Click;
+                speakerNodeFilterMenuItem.Items.Add(item);
+            }
+        }
+
+        private void SpeakerNodeFilterOff_Click(object sender, RoutedEventArgs e)
+        {
+            speakerNodeFilterSpeakerId = null;
+            RebuildSpeakerNodeFilterMenu();
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
+        }
+
+        private void SpeakerNodeFilterSpeaker_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem menuItem || menuItem.Tag is not int speakerId)
+            {
+                return;
+            }
+
+            speakerNodeFilterSpeakerId = speakerNodeFilterSpeakerId == speakerId ? null : speakerId;
+            RebuildSpeakerNodeFilterMenu();
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
         }
 
         private void ApplySpeakerNodeHighlighting()
@@ -1179,19 +1301,38 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            HashSet<DiagNode> matchedSpeakerNodes = GetSpeakerNodeFilterMatchedNodes();
+            HashSet<DObj> speakerVisibleObjects = GetSpeakerNodeFilterVisibleObjects(matchedSpeakerNodes);
+            if (speakerVisibleObjects != null && SelectedObjects.Any(obj => !speakerVisibleObjects.Contains(obj)))
+            {
+                ClearGraphSelection();
+                return;
+            }
+
+            foreach (DObj graphObject in CurrentObjects)
+            {
+                bool isVisible = speakerVisibleObjects?.Contains(graphObject) ?? true;
+                graphObject.Visible = isVisible;
+                graphObject.Pickable = isVisible;
+            }
+
             HashSet<DObj> selectedGraphObjects = SelectedObjects.OfType<DObj>().ToHashSet();
             bool hasSelection = selectedGraphObjects.Count > 0;
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
                 bool isStartConnection = edge.originator is DStart;
+                bool matchesSpeakerFilter = speakerVisibleObjects == null
+                    || ((edge.originator is DiagNode originNode && matchedSpeakerNodes.Contains(originNode))
+                        || (edge.GetEndOwner() is DiagNode endNode && matchedSpeakerNodes.Contains(endNode)));
                 bool isConnectedToSelection = hasSelection
                     && (selectedGraphObjects.Contains(edge.originator)
                         || selectedGraphObjects.Contains(edge.GetEndOwner()));
 
-                edge.Visible = isStartConnection || !hideUnrelatedConnectionsOnSelection || !hasSelection || isConnectedToSelection;
+                edge.Visible = matchesSpeakerFilter
+                    && (isStartConnection || !hideUnrelatedConnectionsOnSelection || !hasSelection || isConnectedToSelection);
                 edge.Pickable = edge.Visible;
-                edge.ApplyVisualState(isConnectedToSelection, !isStartConnection && hasSelection && !isConnectedToSelection);
+                edge.ApplyVisualState(isConnectedToSelection, matchesSpeakerFilter && !isStartConnection && hasSelection && !isConnectedToSelection);
             }
         }
 
@@ -3625,9 +3766,11 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (Conversations_ListBox.SelectedIndex < 0)
             {
+                speakerNodeFilterSpeakerId = null;
                 SelectedConv = null;
                 SelectedDialogueNode = null;
                 SelectedSpeakerList.ClearEx();
+                RebuildSpeakerNodeFilterMenu();
                 Properties_InterpreterWPF.UnloadExport();
                 InterpData_InterpreterWPF.UnloadExport();
                 InterpData_MetadataEditor.UnloadExport();
@@ -3640,6 +3783,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else
             {
+                speakerNodeFilterSpeakerId = null;
                 SelectedDialogueNode = null; //Before convos change make sure no properties fire.
                 graphEditor.Enabled = false;
                 graphEditor.UseWaitCursor = true;

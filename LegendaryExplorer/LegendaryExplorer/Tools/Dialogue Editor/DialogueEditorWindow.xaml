@@ -452,6 +452,8 @@
                               Command="{Binding UpdateLayoutDefaultsCommand}" CommandParameter="Auto_Waterfall"
                               IsCheckable="True"
                               ToolTip="Default layout without an existing save will be cascading branches" />
+                    <MenuItem x:Name="SpeakerNodeFilter_MenuItem" x:FieldModifier="private" Header="Show only speaker nodes"
+                              ToolTip="Hide all other nodes except the selected speaker's nodes and their direct input/output connections" />
                     <MenuItem x:Name="HideUnrelatedConnectionsOnSelection_MenuItem" Header="Hide unrelated connections for selected node"
                               Command="{Binding UpdateLayoutDefaultsCommand}" CommandParameter="Toggle_HideUnrelatedConnectionsOnSelection"
                               IsCheckable="True"
