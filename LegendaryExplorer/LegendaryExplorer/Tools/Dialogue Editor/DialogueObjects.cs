@@ -1734,9 +1734,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
             titleBox.X = 0;
             titleBox.Y = 0;
-            float h = titleBox.Height + 2;
-            inputLinkBox.TranslateBy(0, h);
-            h += starty + 8;
+            float bodyTopY = titleBox.Height + 2;
+            float h = bodyTopY;
 
             //Inside Text +  Box
             string type = "";
@@ -1754,7 +1753,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ConstrainWidthToTextWidth = false,
                 ConstrainHeightToTextHeight = true,
                 X = 0,
-                Y = titleBox.Height + starty + 5,
+                Y = bodyTopY + 5,
                 Pickable = false
             };
             insidetext.Width = MathF.Max(w - 12, 140);
@@ -1769,14 +1768,20 @@ namespace LegendaryExplorer.DialogueEditor
             float lineStrRefY = nextSectionY + 3;
             nextSectionY += lineStrRefEditorHeight + 3;
 
+            bool hasTlkSection = !string.IsNullOrWhiteSpace(Node.Line) || Node.LineStrRef >= 0;
+            float connectionSectionY = hasTlkSection ? nextSectionY + 5 : bodyTopY;
+            inputLinkBox.TranslateBy(0, connectionSectionY);
+            float connectionsBottomY = connectionSectionY + starty + 8;
+            h = connectionsBottomY;
+
             // Plot conditional/bool and transition sections
-            plotSectionsStartY = nextSectionY;
-            baseBoxHeightWithoutPlotSections = nextSectionY;
+            plotSectionsStartY = connectionsBottomY;
+            baseBoxHeightWithoutPlotSections = connectionsBottomY;
 
             // Always show plot checks section (matches Plot Control tab)
-            plotChecksSection = CreatePlotChecksSection(nextSectionY, w, out float checksSectionHeight);
+            plotChecksSection = CreatePlotChecksSection(connectionsBottomY, w, out float checksSectionHeight);
             h += checksSectionHeight;
-            nextSectionY += checksSectionHeight;
+            nextSectionY = connectionsBottomY + checksSectionHeight;
 
             // Always show plot transitions section (matches Plot Control tab)
             plotTransitionsSection = CreatePlotTransitionsSection(nextSectionY, w, out float transitionsSectionHeight);
@@ -1789,16 +1794,15 @@ namespace LegendaryExplorer.DialogueEditor
             nextSectionY += matineeSectionHeight;
             nodeBoxWidth = w;
 
-            outLinkBox.TranslateBy(w, titleBox.Height + 2);
+            outLinkBox.TranslateBy(w, connectionSectionY);
             box = PPath.CreateRectangle(0, titleBox.Height + 2, w, h - (titleBox.Height + 2));
             box.Brush = nodeBrush;
             box.Pen = outlinePen;
             box.Pickable = false;
 
-            bool hasTlkSection = !string.IsNullOrWhiteSpace(Node.Line) || Node.LineStrRef >= 0;
             if (hasTlkSection)
             {
-                float dividerY = titleBox.Height + starty + 2;
+                float dividerY = connectionSectionY;
                 PPath tlkDivider = PPath.CreateLine(4, dividerY, w - 4, dividerY);
                 tlkDivider.Pen = new Pen(Color.FromArgb(120, boxTextColor));
                 tlkDivider.Pickable = false;
