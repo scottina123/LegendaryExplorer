@@ -1164,6 +1164,28 @@ namespace LegendaryExplorer.DialogueEditor
                     && (diagNode.Node?.SpeakerIndex == selectedSpeakerId
                         || diagNode.Node?.SpeakerTag?.SpeakerID == selectedSpeakerId);
             }
+
+            UpdateSelectedConnectionHighlighting();
+        }
+
+        private void UpdateSelectedConnectionHighlighting()
+        {
+            if (graphEditor?.edgeLayer == null)
+            {
+                return;
+            }
+
+            HashSet<DObj> selectedGraphObjects = SelectedObjects.OfType<DObj>().ToHashSet();
+            bool hasSelection = selectedGraphObjects.Count > 0;
+
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
+            {
+                bool isConnectedToSelection = hasSelection
+                    && (selectedGraphObjects.Contains(edge.originator)
+                        || selectedGraphObjects.Contains(edge.GetEndOwner()));
+
+                edge.ApplyVisualState(isConnectedToSelection, hasSelection && !isConnectedToSelection);
+            }
         }
 
         private void ParseNodeData(DialogueNodeExtended node)
@@ -1285,6 +1307,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ConvGraphEditor.UpdateEdge(edge);
             }
 
+            UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
         }
 
@@ -1380,6 +1403,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             ApplySpeakerNodeHighlighting();
+            UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
         }
 
@@ -1395,6 +1419,7 @@ namespace LegendaryExplorer.DialogueEditor
                 LoadInlineLinkEditor(inlineLinkEditorNode);
             }
 
+            UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
         }
 
@@ -1509,6 +1534,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ConvGraphEditor.UpdateEdge(edge);
             }
 
+            UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
         }
 
@@ -1964,6 +1990,7 @@ namespace LegendaryExplorer.DialogueEditor
                 AutoLayout();
             }
 
+            UpdateSelectedConnectionHighlighting();
             CacheCurrentConversationGraphState();
         }
 
@@ -2047,6 +2074,7 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Enabled = true;
             graphEditor.UseWaitCursor = false;
             ApplySpeakerNodeHighlighting();
+            UpdateSelectedConnectionHighlighting();
             graphEditor.Refresh();
             return true;
         }
@@ -4134,6 +4162,9 @@ namespace LegendaryExplorer.DialogueEditor
             else
                 Node_Text_Cnd.Text = "Bool: ";
 
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
+
         }
 
         public void UpdateNodeSpeakerFromGraph(DialogueNodeExtended node, int speakerId)
@@ -6007,6 +6038,8 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 dObj.IsSelected = true;
                 SelectedObjects.Add(dObj);
+                UpdateSelectedConnectionHighlighting();
+                graphEditor?.Refresh();
             }
             else if (sender is DiagNode obj)
             {
@@ -6040,6 +6073,8 @@ namespace LegendaryExplorer.DialogueEditor
 
                 Start_ListBox.SelectedIndex = start.Order;
                 SetUIMode(3, false);
+                UpdateSelectedConnectionHighlighting();
+                graphEditor?.Refresh();
             }
         }
         private void graphEditor_Click(object sender, EventArgs e)

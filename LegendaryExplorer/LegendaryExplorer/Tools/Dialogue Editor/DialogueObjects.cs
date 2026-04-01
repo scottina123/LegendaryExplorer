@@ -35,6 +35,25 @@ namespace LegendaryExplorer.DialogueEditor
         public PNode end;
         public DBox originator;
         public int inputIndex;
+        public Color BaseColor;
+
+        public DObj GetEndOwner()
+        {
+            for (PNode node = end; node is not null; node = node.Parent)
+            {
+                if (node is DObj owner)
+                {
+                    return owner;
+                }
+            }
+
+            return null;
+        }
+
+        public void ApplyVisualState(bool isHighlighted, bool isDimmed)
+        {
+            Pen = DObj.CreateConnectionPen(BaseColor, isHighlighted, isDimmed);
+        }
     }
 
     [DebuggerDisplay("DObj | #{" + nameof(NodeUID) + "}")]
@@ -75,6 +94,10 @@ namespace LegendaryExplorer.DialogueEditor
         public static Brush _nodeBrush = new SolidBrush(Color.FromArgb(140, 140, 140));
         protected static Brush nodeBrush => _nodeBrush;
         protected static readonly Pen selectedPen = new Pen(Color.FromArgb(255, 255, 0));
+        private const float DefaultConnectionWidth = 1f;
+        private const float HighlightedConnectionWidth = 2.5f;
+        private const int DefaultConnectionAlpha = 255;
+        private const int DimmedConnectionAlpha = 72;
         public static bool draggingOutlink;
         public static PNode dragTarget;
         public static bool OutputNumbers;
@@ -125,6 +148,21 @@ namespace LegendaryExplorer.DialogueEditor
                 EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT => "PI",
                 _ => "D"
             };
+
+        public static Pen CreateConnectionPen(Color baseColor, bool isHighlighted = false, bool isDimmed = false)
+        {
+            int alpha = isDimmed ? DimmedConnectionAlpha : DefaultConnectionAlpha;
+            float width = isHighlighted ? HighlightedConnectionWidth : DefaultConnectionWidth;
+
+            var pen = new Pen(Color.FromArgb(alpha, baseColor), width)
+            {
+                StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                EndCap = System.Drawing.Drawing2D.LineCap.Round,
+                LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+            };
+
+            return pen;
+        }
 
         public virtual void Dispose()
         {
@@ -204,7 +242,8 @@ namespace LegendaryExplorer.DialogueEditor
                                 p1.Tag = new List<DiagEdEdge>();
                             ((List<DiagEdEdge>)p1.Tag).Add(edge);
                             destAction.InputEdges.Add(edge);
-                            edge.Pen = new Pen(getColor(outLink.RCat));
+                            edge.BaseColor = getColor(outLink.RCat);
+                            edge.ApplyVisualState(isHighlighted: false, isDimmed: false);
                             edge.start = p1;
                             edge.end = destAction;
                             edge.originator = this;
@@ -233,7 +272,8 @@ namespace LegendaryExplorer.DialogueEditor
                                 p1.Tag = new List<DiagEdEdge>();
                             ((List<DiagEdEdge>)p1.Tag).Add(edge);
                             destAction.InputEdges.Add(edge);
-                            edge.Pen = new Pen(getColor(outLink.RCat));
+                            edge.BaseColor = getColor(outLink.RCat);
+                            edge.ApplyVisualState(isHighlighted: false, isDimmed: false);
                             edge.start = p1;
                             edge.end = destAction;
                             edge.originator = this;
@@ -425,7 +465,8 @@ namespace LegendaryExplorer.DialogueEditor
                         dragColor = brush.Color;
                     }
                 }
-                edge.Pen = new Pen(dragColor);
+                edge.BaseColor = dragColor;
+                edge.ApplyVisualState(isHighlighted: false, isDimmed: false);
                 edge.originator = DObj;
                 ConvGraphEditor.addEdge(edge);
                 base.OnStartDrag(sender, e);
