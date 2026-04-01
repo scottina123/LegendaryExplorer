@@ -387,10 +387,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            var targetProperties = CurrentLoadedExport.GetProperties(includeNoneProperties: true).DeepClone();
+            var targetProperties = (CurrentLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
             foreach (Property property in propertiesToPaste)
             {
-                targetProperties.AddOrReplaceProp(property);
+                if (!targetProperties.TryReplaceProp(property))
+                {
+                    int insertIndex = targetProperties.Count > 0 && targetProperties[^1] is NoneProperty
+                        ? targetProperties.Count - 1
+                        : targetProperties.Count;
+                    targetProperties.Insert(insertIndex, property);
+                }
             }
 
             CurrentLoadedExport.WriteProperties(targetProperties);
