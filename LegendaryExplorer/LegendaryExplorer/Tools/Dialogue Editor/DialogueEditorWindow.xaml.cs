@@ -170,6 +170,7 @@ namespace LegendaryExplorer.DialogueEditor
         private readonly Dictionary<string, DataGridLength> inlineLinkEditorColumnWidths = new();
         private readonly Dictionary<int, List<DObj>> conversationGraphCache = new();
         private readonly Dictionary<int, (float X, float Y, float ViewScale)> conversationGraphViewStates = new();
+        private bool hideUnrelatedConnectionsOnSelection = true;
         private System.Windows.Forms.TextBox inlineLineStrRefEditor;
         private DiagNode inlineLineStrRefNode;
         private bool inlineLineStrRefEditClosing;
@@ -366,6 +367,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             Node_Combo_GUIStyle.ItemsSource = Enums.GetValues<EConvGUIStyles>();
             Node_Combo_ReplyType.ItemsSource = Enums.GetValues<EReplyTypes>();
+            HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked = hideUnrelatedConnectionsOnSelection;
             // Detect if theme changed while editor was closed so we skip stale saved colors
             bool themeChangedWhileEditorClosed = false;
             if (File.Exists(OptionsPath)) //Handle options
@@ -511,8 +513,9 @@ namespace LegendaryExplorer.DialogueEditor
                     ShowLinesOnTop_MenuItem.IsChecked = (bool)options["LinesAtTop"];
                 if (options.ContainsKey("OutputNumbers"))
                     HideEntryOutput_MenuItem.IsChecked = (bool)options["OutputNumbers"];
+                if (options.ContainsKey("HideUnrelatedConnectionsOnSelection"))
+                    HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked = (bool)options["HideUnrelatedConnectionsOnSelection"];
             }
-
             // If theme changed while editor was closed, or no options file exists,
             // sync color pickers to the current (correct) static color values.
             // ApplyThemeDefaults() + ThemeManager already set the right static colors.
@@ -784,6 +787,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {"BoxTextColor", ColorTranslator.ToHtml(DObj.boxTextColor)},
                 {"LinesAtTop", DBox.LinesAtTop},
                 {"OutputNumbers", DObj.OutputNumbers},
+                {"HideUnrelatedConnectionsOnSelection", hideUnrelatedConnectionsOnSelection},
                 {"AutoSaveMode", (int)SaveViewMode},
                 {"LayoutMode", (int)LayoutMode},
                 {"RowSpace", RowSpace},
@@ -1184,6 +1188,8 @@ namespace LegendaryExplorer.DialogueEditor
                     && (selectedGraphObjects.Contains(edge.originator)
                         || selectedGraphObjects.Contains(edge.GetEndOwner()));
 
+                edge.Visible = !hideUnrelatedConnectionsOnSelection || !hasSelection || isConnectedToSelection;
+                edge.Pickable = edge.Visible;
                 edge.ApplyVisualState(isConnectedToSelection, hasSelection && !isConnectedToSelection);
             }
         }
@@ -6398,6 +6404,9 @@ namespace LegendaryExplorer.DialogueEditor
                     DBox.LinesAtTop = ShowLinesOnTop_MenuItem.IsChecked;
                     forceRegen = true;
                     break;
+                case "Toggle_HideUnrelatedConnectionsOnSelection":
+                    hideUnrelatedConnectionsOnSelection = HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked;
+                    break;
                 default:
                     break;
             }
@@ -6435,11 +6444,15 @@ namespace LegendaryExplorer.DialogueEditor
             }
             DBox.LinesAtTop = ShowLinesOnTop_MenuItem.IsChecked;
             DObj.OutputNumbers = HideEntryOutput_MenuItem.IsChecked;
+            hideUnrelatedConnectionsOnSelection = HideUnrelatedConnectionsOnSelection_MenuItem.IsChecked;
 
             if (CurrentObjects.Any() && ((needsRegen && SaveViewMode == ESaveViewMode.AutoGenerate) || forceRegen))
             {
                 RefreshView();
             }
+
+            UpdateSelectedConnectionHighlighting();
+            graphEditor?.Refresh();
         }
         private void GenderTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
