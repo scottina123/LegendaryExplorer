@@ -42,6 +42,8 @@ namespace LegendaryExplorerCore.Unreal.BinaryConverters
         {
             var entriesToTrash = itemsToTrash.ToList();
 
+            pcc.RemoveObjectsFromReferencers(entriesToTrash);
+
             foreach (IEntry entry in entriesToTrash)
             {
                 MatineeHelper.RemoveFromParentInterpList(entry);

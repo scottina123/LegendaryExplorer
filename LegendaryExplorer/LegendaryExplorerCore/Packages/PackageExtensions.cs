@@ -1258,5 +1258,41 @@ namespace LegendaryExplorerCore.Packages
             var referencer = package.CreateObjectReferencer();
             AddObjectsToReferencer(referencer, entries);
         }
+
+        /// <summary>
+        /// Removes the specified entries from every ObjectReferencer in the package.
+        /// </summary>
+        public static void RemoveObjectsFromReferencers(this IMEPackage package, IEnumerable<IEntry> entries)
+        {
+            if (package == null || entries == null)
+            {
+                return;
+            }
+
+            var trashedUIndexes = entries
+                .Where(x => x != null)
+                .Select(x => x.UIndex)
+                .ToHashSet();
+            if (trashedUIndexes.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var referencer in package.Exports.Where(x => x.ClassName == @"ObjectReferencer" && !trashedUIndexes.Contains(x.UIndex)))
+            {
+                var referencedObjects = referencer.GetProperty<ArrayProperty<ObjectProperty>>(@"ReferencedObjects");
+                if (referencedObjects == null)
+                {
+                    continue;
+                }
+
+                int originalCount = referencedObjects.Count;
+                referencedObjects.RemoveAll(obj => obj == null || trashedUIndexes.Contains(obj.Value));
+                if (referencedObjects.Count != originalCount)
+                {
+                    referencer.WriteProperty(referencedObjects);
+                }
+            }
+        }
     }
 }
