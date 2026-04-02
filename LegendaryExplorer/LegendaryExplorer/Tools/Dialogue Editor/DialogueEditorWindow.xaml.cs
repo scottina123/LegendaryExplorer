@@ -2614,6 +2614,7 @@ namespace LegendaryExplorer.DialogueEditor
             float WATERFALL_SPACING = float.TryParse(WaterfallSpace.ToString(), out float wSp) ? wSp : 40;
             float ROW_SPACING = float.TryParse(RowSpace.ToString(), out float rowSp) ? rowSp : 200;
             var visitedNodes = new HashSet<int>();
+            var queuedBranchNodeIds = new HashSet<int>();
             List<DStart> startNodes = CurrentObjects.OfType<DStart>().ToList();
             List<DiagNode> allNodes = CurrentObjects.OfType<DiagNode>().OrderBy(n => n.NodeUID).ToList();
             var BranchQueue = new Queue<DiagNode>();
@@ -2677,26 +2678,29 @@ namespace LegendaryExplorer.DialogueEditor
                                 allNodes.Remove(thisNode);
                                 if (thisNode.Links.Count != 0)
                                 {
-                                    for (int i = 0; i < thisNode.Links.Count; i++) //DO IN REVERSE SO STACK IS CORRECTLY DONE
+                                    for (int i = 0; i < thisNode.Links.Count; i++)
                                     {
-                                        if (i == 0)
+                                        var targetNode = allNodes.FirstOrDefault(x => x.NodeUID == thisNode.Links[i].Index + r);
+                                        if (targetNode == null || visitedNodes.Contains(targetNode.NodeUID) || queuedBranchNodeIds.Contains(targetNode.NodeUID))
                                         {
-                                            nextNode = allNodes.FirstOrDefault(x => x.NodeUID == (thisNode.Links[0].Index + r));
+                                            continue;
                                         }
-                                        else
+
+                                        if (nextNode == null)
                                         {
-                                            var pushqueue = allNodes.FirstOrDefault(x => x.NodeUID == thisNode.Links[i].Index + r);
-                                            if (pushqueue != null) //means link to visited node.  Don't add to Branchstack.
-                                            {
-                                                BranchQueue.Enqueue(pushqueue);
-                                            }
+                                            nextNode = targetNode;
+                                            continue;
                                         }
+
+                                        BranchQueue.Enqueue(targetNode);
+                                        queuedBranchNodeIds.Add(targetNode.NodeUID);
                                     }
                                 }
                             }
                             else if (!BranchQueue.IsEmpty())//REACHED END OF BRANCH PULL nextNode from STACK
                             {
                                 nextNode = BranchQueue.Dequeue();
+                                queuedBranchNodeIds.Remove(nextNode.NodeUID);
                                 if (visitedNodes.Contains(nextNode.NodeUID)) //if nextnode is already up, make sure stack is pulled again without moving down.
                                 {
                                     nextNode = null;
@@ -2750,6 +2754,7 @@ namespace LegendaryExplorer.DialogueEditor
             var visitedNodes = new HashSet<int>();
             List<DStart> startNodes = CurrentObjects.OfType<DStart>().OrderBy(n => n.Order).ToList();
             var allNodes = CurrentObjects.OfType<DiagNode>().OrderBy(n => n.NodeUID).ToDictionary(n => n.NodeUID);
+            var queuedBranchNodeIds = new HashSet<int>();
 
             // Pass 1: Assign logical (column, row) to every node via graph traversal.
             // Primary outgoing link continues on the same row; secondary links get new rows.
@@ -2787,6 +2792,7 @@ namespace LegendaryExplorer.DialogueEditor
                         while (branchStack.Count > 0)
                         {
                             var b = branchStack.Pop();
+                            queuedBranchNodeIds.Remove(b.node.NodeUID);
                             if (!visitedNodes.Contains(b.node.NodeUID))
                             {
                                 nextNode = b.node;
@@ -2812,17 +2818,33 @@ namespace LegendaryExplorer.DialogueEditor
                     int nextCol = colAt + 1;
                     nextNode = null;
 
-                    for (int i = current.Links.Count - 1; i >= 0; i--)
+                    var deferredBranches = new List<(DiagNode node, int col, int row)>();
+                    foreach (var link in current.Links)
                     {
-                        int uid = GetTargetUid(current, current.Links[i]);
-                        if (!allNodes.TryGetValue(uid, out var target) || visitedNodes.Contains(target.NodeUID))
-                            continue;
-                        if (i == 0)
-                            nextNode = target;
-                        else
+                        int uid = GetTargetUid(current, link);
+                        if (!allNodes.TryGetValue(uid, out var target)
+                            || visitedNodes.Contains(target.NodeUID)
+                            || queuedBranchNodeIds.Contains(target.NodeUID))
                         {
-                            nextBranchRow = Math.Max(nextBranchRow + 1, maxUsedRow + 1);
-                            branchStack.Push((target, nextCol, nextBranchRow));
+                            continue;
+                        }
+
+                        if (nextNode == null)
+                        {
+                            nextNode = target;
+                            continue;
+                        }
+
+                        nextBranchRow = Math.Max(nextBranchRow + 1, maxUsedRow + 1);
+                        deferredBranches.Add((target, nextCol, nextBranchRow));
+                    }
+
+                    for (int i = deferredBranches.Count - 1; i >= 0; i--)
+                    {
+                        var deferredBranch = deferredBranches[i];
+                        if (queuedBranchNodeIds.Add(deferredBranch.node.NodeUID))
+                        {
+                            branchStack.Push(deferredBranch);
                         }
                     }
 
