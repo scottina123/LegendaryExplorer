@@ -1314,14 +1314,19 @@
                                         <GridViewColumn Width="220" Header="File">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock>
+                                                    <TextBlock TextTrimming="CharacterEllipsis">
                                                         <TextBlock.Text>
                                                             <MultiBinding Converter="{StaticResource ConvoLineFileConverter}">
-                                                                <Binding Path="Convo"/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="CurrentDataBase.Conversations"/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="FileListExtended"/>
+                                                                <Binding/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
                                                             </MultiBinding>
                                                         </TextBlock.Text>
+                                                        <TextBlock.ToolTip>
+                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}">
+                                                                <Binding/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.ToolTip>
                                                     </TextBlock>
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>
@@ -1329,14 +1334,19 @@
                                         <GridViewColumn Width="180" Header="Location">
                                             <GridViewColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <TextBlock>
+                                                    <TextBlock TextTrimming="CharacterEllipsis">
                                                         <TextBlock.Text>
                                                             <MultiBinding Converter="{StaticResource ConvoLineFileConverter}" ConverterParameter="Location">
-                                                                <Binding Path="Convo"/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="CurrentDataBase.Conversations"/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}" Path="FileListExtended"/>
+                                                                <Binding/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
                                                             </MultiBinding>
                                                         </TextBlock.Text>
+                                                        <TextBlock.ToolTip>
+                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}" ConverterParameter="Location">
+                                                                <Binding/>
+                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.ToolTip>
                                                     </TextBlock>
                                                 </DataTemplate>
                                             </GridViewColumn.CellTemplate>

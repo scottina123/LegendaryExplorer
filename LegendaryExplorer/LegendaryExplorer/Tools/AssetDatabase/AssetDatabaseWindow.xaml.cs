@@ -4925,14 +4925,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 TlkStringRefLineSearchColumn => ContainsText(line.StrRef.ToString(), searchText),
                 LineTextSearchColumn => ContainsText(line.DisplayLine, searchText),
                 LineConversationSearchColumn => ContainsText(line.Convo, searchText),
-                FileLineSearchColumn => ContainsText(GetConvoFileValue(line.Convo), searchText),
-                LocationLineSearchColumn => ContainsText(GetConvoLocationValue(line.Convo), searchText),
+                FileLineSearchColumn => ContainsText(GetLineFileDisplay(line), searchText),
+                LocationLineSearchColumn => ContainsText(GetLineLocationDisplay(line), searchText),
                 _ => ContainsText(speakerDisplay, searchText)
                      || ContainsText(line.StrRef.ToString(), searchText)
                      || ContainsText(line.DisplayLine, searchText)
                      || ContainsText(line.Convo, searchText)
-                     || ContainsText(GetConvoFileValue(line.Convo), searchText)
-                     || ContainsText(GetConvoLocationValue(line.Convo), searchText)
+                     || ContainsText(GetLineFileDisplay(line), searchText)
+                     || ContainsText(GetLineLocationDisplay(line), searchText)
             };
         }
 
@@ -5051,6 +5051,69 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             view.Refresh();
         }
 
+        public string GetLineFileDisplay(ConvoLine line)
+        {
+            return GetLineUsageDisplay(line, static file => file.FileName);
+        }
+
+        public string GetLineLocationDisplay(ConvoLine line)
+        {
+            return GetLineUsageDisplay(line, static file => file.Directory);
+        }
+
+        private string GetLineUsageDisplay(ConvoLine line, Func<FileDirPair, string> selector)
+        {
+            if (line == null)
+            {
+                return null;
+            }
+
+            var usageValues = GetLineUsageFiles(line)
+                .Select(selector)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            return usageValues.Count == 0 ? null : string.Join(", ", usageValues);
+        }
+
+        private IEnumerable<FileDirPair> GetLineUsageFiles(ConvoLine line)
+        {
+            if (line == null)
+            {
+                return [];
+            }
+
+            var fileKeys = new HashSet<int>();
+            if (line.StrRef > 0 && _tlkUsageLookup.TryGetValue(line.StrRef, out var tlkRecord))
+            {
+                foreach (var usage in tlkRecord.Usages)
+                {
+                    if (usage.FileKey >= 0 && usage.FileKey < FileListExtended.Count)
+                    {
+                        fileKeys.Add(usage.FileKey);
+                    }
+                }
+            }
+
+            if (fileKeys.Count == 0
+                && !string.IsNullOrWhiteSpace(line.Convo)
+                && TryGetConvoFileInfo(line.Convo, out var fileName, out var location))
+            {
+                var fallbackIndex = FileListExtended.FindIndex(file => string.Equals(file.FileName, fileName, StringComparison.CurrentCultureIgnoreCase)
+                    && string.Equals(file.Directory, location, StringComparison.CurrentCultureIgnoreCase));
+                if (fallbackIndex >= 0)
+                {
+                    fileKeys.Add(fallbackIndex);
+                }
+            }
+
+            return fileKeys
+                .OrderBy(fileKey => FileListExtended[fileKey].FileName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(fileKey => FileListExtended[fileKey].Directory, StringComparer.CurrentCultureIgnoreCase)
+                .Select(fileKey => FileListExtended[fileKey]);
+        }
+
         private string GetConvoFileValue(string convoName)
         {
             if (!TryGetConvoFileInfo(convoName, out var fileName, out _))
@@ -5136,8 +5199,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 TlkStringRefLineSearchColumn => left.StrRef.CompareTo(right.StrRef),
                 LineTextSearchColumn => CompareLineValues(left.DisplayLine, right.DisplayLine),
                 LineConversationSearchColumn => CompareLineValues(left.Convo, right.Convo),
-                FileLineSearchColumn => CompareLineValues(GetConvoFileValue(left.Convo), GetConvoFileValue(right.Convo)),
-                LocationLineSearchColumn => CompareLineValues(GetConvoLocationValue(left.Convo), GetConvoLocationValue(right.Convo)),
+                FileLineSearchColumn => CompareLineValues(GetLineFileDisplay(left), GetLineFileDisplay(right)),
+                LocationLineSearchColumn => CompareLineValues(GetLineLocationDisplay(left), GetLineLocationDisplay(right)),
                 _ => 0
             };
 
@@ -6227,22 +6290,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            if (values[0] is not string convoName ||
-                values[1] is not List<Conversation> conversations ||
-                values[2] is not ObservableCollectionExtended<AssetDatabaseWindow.FileDirPair> fileList)
+            if (values.Length >= 2
+                && values[0] is ConvoLine line
+                && values[1] is AssetDatabaseWindow window)
             {
-                return "";
+                return string.Equals(parameter as string, "Location", StringComparison.OrdinalIgnoreCase)
+                    ? window.GetLineLocationDisplay(line) ?? string.Empty
+                    : window.GetLineFileDisplay(line) ?? string.Empty;
             }
 
-            var convo = conversations.FirstOrDefault(c => c.ConvName == convoName);
-            if (convo == null) return "";
-
-            int fileKey = convo.ConvFile.FileKey;
-            if (fileKey < 0 || fileKey >= fileList.Count) return "";
-
-            return string.Equals(parameter as string, "Location", StringComparison.OrdinalIgnoreCase)
-                ? fileList[fileKey].Directory
-                : fileList[fileKey].FileName;
+            return "";
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
