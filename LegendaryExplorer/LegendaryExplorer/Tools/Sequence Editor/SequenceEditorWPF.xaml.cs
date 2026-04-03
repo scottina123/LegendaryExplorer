@@ -4424,6 +4424,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
+            if (CurrentObjects.FirstOrDefault(obj => obj.Export == expToNavigateTo) is SObj currentObject)
+            {
+                CurrentObjects_ListBox.SelectedItem = currentObject;
+                return;
+            }
+
             if (goIntoSequences && (expToNavigateTo.ClassName is "SequenceReference" or "Sequence"
                                     || SequenceExports.Contains(expToNavigateTo)))
             {
