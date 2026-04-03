@@ -367,7 +367,7 @@ namespace LegendaryExplorer.Dialogs
 
         private void PropertiesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            TryAddSelectedProperty();
+            AddProperty();
         }
 
         private bool TryAddSelectedProperty()
