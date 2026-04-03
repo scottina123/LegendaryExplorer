@@ -1611,7 +1611,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 var covRefIdx = value & 0x0000FFFF;
 
                                 var level = ObjectBinary.From<Level>(export.FileRef.FindExport("TheWorld.PersistentLevel"));
-                                if (level.CoverIndexPairs.Count >= covRefIdx)
+                                if (level.CoverIndexPairs.Count > covRefIdx)
                                 {
                                     var cover = level.CoverIndexPairs[covRefIdx];
                                     var coverRef = level.CoverLinkRefs[(int)cover.CoverIndexIdx];
