@@ -9,6 +9,7 @@ using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.FaceFXEditor;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -1010,6 +1011,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 SelectedConv.ParseStartingList();
                 SelectedConv.ParseSpeakers();
+                ApplyAssetDatabaseOwnerFriendlyName(SelectedConv);
                 GenerateSpeakerList();
                 SelectedConv.ParseEntryList(TLKLookup);
                 SelectedConv.ParseReplyList(TLKLookup);
@@ -1027,6 +1029,7 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 conv.ParseStartingList();
                 conv.ParseSpeakers();
+                ApplyAssetDatabaseOwnerFriendlyName(conv);
                 conv.ParseEntryList(TLKLookup);
                 conv.ParseReplyList(TLKLookup);
                 conv.ParseScripts();
@@ -1091,6 +1094,26 @@ namespace LegendaryExplorer.DialogueEditor
         private string TLKLookup(int id, IMEPackage package)
         {
             return GetDisplayTlkText(id, package);
+        }
+
+        private static void ApplyAssetDatabaseOwnerFriendlyName(ConversationExtended conversation)
+        {
+            if (conversation?.Export?.FileRef == null || conversation.Speakers == null)
+            {
+                return;
+            }
+
+            var ownerSpeaker = conversation.Speakers.FirstOrDefault(speaker => speaker.SpeakerID == -1);
+            if (ownerSpeaker == null)
+            {
+                return;
+            }
+
+            var ownerFriendlyName = ConversationOwnerFriendlyNameResolver.GetConversationOwnerFriendlyName(conversation.Export.FileRef.Game, conversation.ConvName);
+            if (!string.IsNullOrWhiteSpace(ownerFriendlyName))
+            {
+                ownerSpeaker.FriendlyName = ownerFriendlyName;
+            }
         }
 
         private static string GetDisplayTlkText(int id, IMEPackage package)
@@ -4237,6 +4260,7 @@ namespace LegendaryExplorer.DialogueEditor
                 graphEditor.UseWaitCursor = true;
                 var nconv = Conversations[Conversations_ListBox.SelectedIndex];
                 SelectedConv = new ConversationExtended(nconv);
+                ApplyAssetDatabaseOwnerFriendlyName(SelectedConv);
 
                 CurrentLoadedExport = SelectedConv.Export;
                 SetupConvJSON(CurrentLoadedExport);

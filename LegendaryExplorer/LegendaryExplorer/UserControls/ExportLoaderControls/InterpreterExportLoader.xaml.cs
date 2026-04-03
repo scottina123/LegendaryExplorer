@@ -18,6 +18,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Gammtek;
@@ -47,7 +48,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         //This is useful for end user when they want to view things in a list for example, but all of the items are of the 
         //same type and are not distinguishable without changing to another export, wasting a lot of time.
         //values are the class of object value being parsed
-        public static readonly string[] ExportToStringConverters = ["LevelStreamingKismet", "StaticMeshComponent", "ParticleSystemComponent", "DecalComponent", "LensFlareComponent", "AnimNodeSequence", "BioAnimNodeSequence"];
+        public static readonly string[] ExportToStringConverters = ["LevelStreamingKismet", "StaticMeshComponent", "ParticleSystemComponent", "DecalComponent", "LensFlareComponent", "AnimNodeSequence", "BioAnimNodeSequence", "BioConversation"];
         public static readonly string[] IntToStringConverters = [ "WwiseEvent", "WwiseBank", "WwiseStream", "BioSeqAct_PMExecuteTransition", "BioSeqAct_PMExecuteConsequence", "BioSeqAct_PMCheckState", "BioSeqAct_PMCheckConditional", "BioSeqVar_StoryManagerInt",
                                                                 "BioSeqVar_StoryManagerFloat", "BioSeqVar_StoryManagerBool", "BioSeqVar_StoryManagerStateId", "SFXSceneShopNodePlotCheck", "BioWorldInfo", "CoverLink" ];
         public ObservableCollectionExtended<IndexedName> ParentNameList { get; private set; }
@@ -113,6 +114,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool AdvancedView => !ForceSimpleMode && Settings.Interpreter_AdvancedDisplay;
 
         public bool ShowPropOffsets => !HideHexBox && AdvancedView;
+
+        public bool UseAssetDatabaseOwnerFriendlyNames { get; set; } = true;
 
         private bool _hasUnsavedChanges;
         public bool HasUnsavedChanges
@@ -187,6 +190,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 OnPropertyChanged(nameof(AdvancedView));
                 OnPropertyChanged(nameof(ShowPropOffsets));
+            }
+            else if (e.PropertyName == nameof(Settings.Global_UseOwnerFriendlyNames) && CurrentLoadedExport != null)
+            {
+                StartScan();
             }
         }
 
@@ -1421,7 +1428,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     CurrentLoadedProperties = (OverrideLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
                     foreach (Property prop in CurrentLoadedProperties)
                     {
-                        GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                        GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
                     }
                     MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
@@ -1565,9 +1572,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         #region Static tree generating code (shared with BinaryInterpreterExportLoader)
-        public static void GenerateUPropertyTreeForProperty(Property prop, UPropertyTreeViewEntry parent, ExportEntry export, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
+        public static void GenerateUPropertyTreeForProperty(Property prop, UPropertyTreeViewEntry parent, ExportEntry export, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
         {
-            var upropertyEntry = GenerateUPropertyTreeViewEntry(prop, parent, export, displayPrefix, PropertyChangedHandler);
+            var upropertyEntry = GenerateUPropertyTreeViewEntry(prop, parent, export, useAssetDatabaseOwnerFriendlyNames, displayPrefix, PropertyChangedHandler);
             switch (prop)
             {
                 case ArrayPropertyBase arrayProp:
@@ -1589,7 +1596,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             foreach (Property listProp in arrayProp.Properties)
                             {
-                                GenerateUPropertyTreeForProperty(listProp, upropertyEntry, export, $" Item {i++}:", PropertyChangedHandler);
+                                GenerateUPropertyTreeForProperty(listProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, $" Item {i++}:", PropertyChangedHandler);
                             }
                         }
                         break;
@@ -1598,7 +1605,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         foreach (var subProp in sProp.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, upropertyEntry, export, PropertyChangedHandler: PropertyChangedHandler);
+                            GenerateUPropertyTreeForProperty(subProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: PropertyChangedHandler);
                         }
                         break;
                     }
@@ -1610,7 +1617,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ParentNameList = namesList;
         }
 
-        public static UPropertyTreeViewEntry GenerateUPropertyTreeViewEntry(Property prop, UPropertyTreeViewEntry parent, ExportEntry parsingExport, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
+        public static UPropertyTreeViewEntry GenerateUPropertyTreeViewEntry(Property prop, UPropertyTreeViewEntry parent, ExportEntry parsingExport, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
         {
             string displayName;
 
@@ -1675,7 +1682,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         editableValue = index.ToString();
                         if (entry != null)
                         {
-                            parsedValue = entry.InstancedFullPath;
+                            parsedValue = useAssetDatabaseOwnerFriendlyNames
+                                ? ConversationOwnerFriendlyNameResolver.GetEntryDisplayText(entry)
+                                : entry.InstancedFullPath;
                             if (index > 0 && ExportToStringConverters.Contains(entry.ClassName))
                             {
                                 editableValue = $"{index} {ExportToString(parsingExport.FileRef.GetUExport(index))}";
@@ -1730,13 +1739,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case IntProperty ip:
                     {
                         editableValue = ip.Value.ToString();
-                        if (IntToStringConverters.Contains(parsingExport.ClassName))
+                        if (IntToStringConverters.Contains(parsingExport.ClassName)
+                            || useAssetDatabaseOwnerFriendlyNames && parsingExport.ClassName == "BioConversation")
                         {
-                            parsedValue = IntToString(prop.Name.Name ?? parent?.Property.Name.Name, ip.Value, parsingExport);
+                            parsedValue = IntToString(prop.Name.Name ?? parent?.Property.Name.Name, ip.Value, parsingExport, useAssetDatabaseOwnerFriendlyNames);
                         }
                         if (ip.Name == "m_nStrRefID" || ip.Name == "nLineStrRef" || ip.Name == "nStrRefID" || ip.Name == "m_iStringRef" || ip.Name == "m_iDescriptionStringRef" || ip.Name == "m_srStringID")
                         {
-                            parsedValue = IntToString(prop.Name, ip.Value, parsingExport);
+                            parsedValue = IntToString(prop.Name, ip.Value, parsingExport, useAssetDatabaseOwnerFriendlyNames);
                         }
 
                         if (ip.Name == "VisibleConditional" || ip.Name == "UsableConditional" || ip.Name == "ReaperControlCondition" || ip.Name == "PlanetLandCondition" ||
@@ -2182,7 +2192,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         uptvi.ChildrenProperties.ClearEx();
                         foreach (var subProp in colorStruct.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
                         }
                         var a = colorStruct.GetProp<ByteProperty>("A");
                         var r = colorStruct.GetProp<ByteProperty>("R");
@@ -2202,7 +2212,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         uptvi.ChildrenProperties.ClearEx();
                         foreach (var subProp in linColStruct.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
                         }
                         var a = linColStruct.GetProp<FloatProperty>("A");
                         var r = linColStruct.GetProp<FloatProperty>("R");
@@ -2228,8 +2238,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// <param name="value">Value of the property to transform</param>
         /// <param name="export">export the property belongs to</param>
         /// <returns></returns>
-        private static string IntToString(NameReference name, int value, ExportEntry export)
+        private static string IntToString(NameReference name, int value, ExportEntry export, bool useAssetDatabaseOwnerFriendlyNames = false)
         {
+            if (useAssetDatabaseOwnerFriendlyNames
+                && export.ClassName == "BioConversation"
+                && name.Name is "nSpeakerIndex" or "nListenerIndex")
+            {
+                return ConversationOwnerFriendlyNameResolver.GetConversationSpeakerDisplay(export, value) ?? "";
+            }
+
             switch (export.ClassName)
             {
                 case "CoverLink":
@@ -2432,6 +2449,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         NameProperty prop = exportEntry.GetProperty<NameProperty>("AnimSeqName");
                         return $"({prop?.Value.Instanced ?? "No Name"})";
+                    }
+                case "BioConversation":
+                    {
+                        var ownerDisplay = ConversationOwnerFriendlyNameResolver.GetConversationOwnerDisplayName(exportEntry);
+                        return ownerDisplay == "owner" ? string.Empty : $"({ownerDisplay})";
                     }
             }
             return "";

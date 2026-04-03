@@ -4535,6 +4535,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BinaryInterpreterTab_BinaryInterpreter.SetParentNameList(NamesList); //reference to this control for name editor set
             Bio2DATab_Bio2DAEditor.SetParentNameList(NamesList); //reference to this control for name editor set
 
+            InterpreterTab_Interpreter.UseAssetDatabaseOwnerFriendlyNames = true;
             InterpreterTab_Interpreter.HideHexBox = Settings.PackageEditor_HideInterpreterHexBox;
             InterpreterTab_Interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
 
@@ -4952,6 +4953,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             import = null;
             return false;
+        }
+
+        private static string GetEntryPreviewText(IEntry entry)
+        {
+            return ConversationOwnerFriendlyNameResolver.GetEntryDisplayText(entry) ?? string.Empty;
         }
 
         public override void HandleUpdate(List<PackageUpdate> updates)
@@ -5519,7 +5525,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             var entry = Pcc.GetEntry(index);
                             if (entry != null)
                             {
-                                Goto_Preview_TextBox.Text = entry.InstancedFullPath;
+                                Goto_Preview_TextBox.Text = GetEntryPreviewText(entry);
                             }
                             else
                             {

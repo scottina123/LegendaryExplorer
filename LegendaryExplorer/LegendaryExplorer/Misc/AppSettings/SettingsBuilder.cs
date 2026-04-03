@@ -402,6 +402,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_analytics_enabled;
             set => SetProperty(ref _global_analytics_enabled, value);
         }
+        private static bool _global_useownerfriendlynames = false;
+        public static bool Global_UseOwnerFriendlyNames {
+            get => _global_useownerfriendlynames;
+            set => SetProperty(ref _global_useownerfriendlynames, value);
+        }
         private static bool _global_darkmode_enabled = false;
         public static bool Global_DarkMode_Enabled {
             get => _global_darkmode_enabled;
