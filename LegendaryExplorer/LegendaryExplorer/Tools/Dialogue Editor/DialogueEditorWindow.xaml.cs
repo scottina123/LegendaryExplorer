@@ -3553,6 +3553,175 @@ namespace LegendaryExplorer.DialogueEditor
                 : EntryCloner.CloneEntry(export);
         }
 
+        private sealed record ConversationReplacementCandidate(string FilePath, int UIndex, string TopLevelEntryPath)
+        {
+            public override string ToString()
+            {
+                return $"{Path.GetFileName(FilePath)} - #{UIndex} {TopLevelEntryPath}";
+            }
+        }
+
+        private List<ConversationReplacementCandidate> GetReplacementConversationCandidates(ConversationExtended conversation)
+        {
+            if (conversation?.Export == null || Pcc == null)
+            {
+                return [];
+            }
+
+            string currentDirectory = Path.GetDirectoryName(Pcc.FilePath);
+            if (string.IsNullOrWhiteSpace(currentDirectory) || !Directory.Exists(currentDirectory))
+            {
+                return [];
+            }
+
+            string selectedConversationName = conversation.Export.ObjectName.Instanced;
+            var supportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".pcc",
+                ".upk",
+                ".u",
+                ".sfm"
+            };
+
+            var candidates = new List<ConversationReplacementCandidate>();
+            foreach (string filePath in Directory.EnumerateFiles(currentDirectory)
+                         .Where(path => !path.Equals(Pcc.FilePath, StringComparison.OrdinalIgnoreCase)
+                                        && supportedExtensions.Contains(Path.GetExtension(path)))
+                         .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using IMEPackage package = MEPackageHandler.OpenMEPackage(filePath, forceLoadFromDisk: true);
+                    if (package.Game != Pcc.Game)
+                    {
+                        continue;
+                    }
+
+                    foreach (var export in package.Exports.Where(exp => exp.ClassName == "BioConversation"
+                                                                         && string.Equals(exp.ObjectName.Instanced, selectedConversationName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        IEntry topLevelEntry = GetTopLevelEntry(export);
+                        candidates.Add(new ConversationReplacementCandidate(filePath, export.UIndex, topLevelEntry?.InstancedFullPath ?? export.InstancedFullPath));
+                    }
+                }
+                catch (Exception e) when (!App.IsDebug)
+                {
+                    Debug.WriteLine($"Failed to scan package '{filePath}' for replacement conversations: {e.Message}");
+                }
+            }
+
+            return candidates;
+        }
+
+        private bool TrashTopLevelConversationPackage(ConversationExtended conversation, bool confirm = true, bool refreshAfter = true)
+        {
+            IEntry topLevelEntry = GetTopLevelConversationEntry(conversation);
+            if (topLevelEntry == null)
+            {
+                return false;
+            }
+
+            if (confirm && MessageBox.Show(
+                    $"Trash top-level package '{topLevelEntry.InstancedFullPath}' and all of its children?",
+                    "Confirm trash",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.No) is not MessageBoxResult.Yes)
+            {
+                return false;
+            }
+
+            var itemsToTrash = Pcc.Exports.Where(exp => IsEntryDescendantOrSame(exp, topLevelEntry)).Cast<IEntry>()
+                .Concat(Pcc.Imports.Where(imp => IsEntryDescendantOrSame(imp, topLevelEntry)))
+                .Distinct()
+                .ToList();
+
+            EntryPruner.TrashEntries(Pcc, itemsToTrash);
+            if (refreshAfter)
+            {
+                RefreshConversationsAfterStructureChange();
+            }
+
+            return true;
+        }
+
+        private IEntry CloneTopLevelConversationPackageFromSource(IEntry sourceEntry)
+        {
+            if (sourceEntry?.FileRef == null || Pcc == null)
+            {
+                return null;
+            }
+
+            if (sourceEntry.Game.IsLEGame() != Pcc.Game.IsLEGame() && !App.IsDebug && sourceEntry.Game != MEGame.UDK)
+            {
+                MessageBox.Show(
+                    "Cannot port assets between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot port asset",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return null;
+            }
+
+            var rop = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceEntry.Game != Pcc.Game && sourceEntry.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                ImportExportDependencies = true,
+            };
+
+            var relinkResults = EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceEntry, Pcc,
+                null, true, rop, out IEntry newEntry);
+
+            if ((relinkResults?.Count ?? 0) > 0)
+            {
+                new ListDialog(relinkResults, "Relink report",
+                    "The following items reported relinking issues.", this).Show();
+            }
+
+            return newEntry;
+        }
+
+        private void ReplaceTopLevelConversationPackage(ConversationExtended targetConversation, ConversationReplacementCandidate replacementCandidate)
+        {
+            if (targetConversation?.Export == null || replacementCandidate == null || Pcc == null)
+            {
+                return;
+            }
+
+            IEntry newEntry = null;
+            try
+            {
+                using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(replacementCandidate.FilePath, forceLoadFromDisk: true);
+                if (sourcePackage.GetEntry(replacementCandidate.UIndex) is not ExportEntry sourceConversationExport
+                    || sourceConversationExport.ClassName != "BioConversation")
+                {
+                    MessageBox.Show("The selected replacement conversation could not be loaded.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                IEntry sourceTopLevelEntry = GetTopLevelEntry(sourceConversationExport);
+                if (sourceTopLevelEntry == null)
+                {
+                    return;
+                }
+
+                if (!TrashTopLevelConversationPackage(targetConversation, confirm: false, refreshAfter: false))
+                {
+                    return;
+                }
+
+                newEntry = CloneTopLevelConversationPackageFromSource(sourceTopLevelEntry);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Unable to replace conversation:\n{ex.Message}", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                RefreshConversationsAfterStructureChange(GetPreferredConversationSelectionUIndex(newEntry));
+            }
+        }
+
         private void Conversations_ListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.OriginalSource is not DependencyObject source)
@@ -3611,9 +3780,33 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private void Conversations_TrashTopLevelPackage_Click(object sender, RoutedEventArgs e)
+        private void Conversations_ReplaceTopLevelPackage_Click(object sender, RoutedEventArgs e)
         {
             if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)
+            {
+                return;
+            }
+
+            var candidates = GetReplacementConversationCandidates(conversation);
+            if (candidates.Count == 0)
+            {
+                MessageBox.Show($"No same-named BioConversation named '{conversation.Export.ObjectName.Instanced}' was found in another file in this folder.", "Dialogue Editor");
+                return;
+            }
+
+            ConversationReplacementCandidate replacementCandidate = candidates.Count == 1 ? candidates[0] : null;
+            if (replacementCandidate == null)
+            {
+                string selectedCandidate = InputComboBoxDialog.GetValue(
+                    this,
+                    "Choose the same-named conversation to import.",
+                    "Replace top-level package",
+                    candidates,
+                    candidates[0].ToString());
+                replacementCandidate = candidates.FirstOrDefault(candidate => candidate.ToString() == selectedCandidate);
+            }
+
+            if (replacementCandidate == null)
             {
                 return;
             }
@@ -3625,8 +3818,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             if (MessageBox.Show(
-                    $"Trash top-level package '{topLevelEntry.InstancedFullPath}' and all of its children?",
-                    "Confirm trash",
+                    $"Replace top-level package '{topLevelEntry.InstancedFullPath}' with '{replacementCandidate.TopLevelEntryPath}' from '{Path.GetFileName(replacementCandidate.FilePath)}'?",
+                    "Confirm replacement",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning,
                     MessageBoxResult.No) is not MessageBoxResult.Yes)
@@ -3634,13 +3827,17 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var itemsToTrash = Pcc.Exports.Where(exp => IsEntryDescendantOrSame(exp, topLevelEntry)).Cast<IEntry>()
-                .Concat(Pcc.Imports.Where(imp => IsEntryDescendantOrSame(imp, topLevelEntry)))
-                .Distinct()
-                .ToList();
+            ReplaceTopLevelConversationPackage(conversation, replacementCandidate);
+        }
 
-            EntryPruner.TrashEntries(Pcc, itemsToTrash);
-            RefreshConversationsAfterStructureChange();
+        private void Conversations_TrashTopLevelPackage_Click(object sender, RoutedEventArgs e)
+        {
+            if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)
+            {
+                return;
+            }
+
+            TrashTopLevelConversationPackage(conversation);
         }
 
         void IDropTarget.DragOver(IDropInfo dropInfo)

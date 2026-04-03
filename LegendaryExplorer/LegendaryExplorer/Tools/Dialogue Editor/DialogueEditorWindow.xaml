@@ -733,6 +733,7 @@
                                 <Separator />
                                 <MenuItem Header="Clone top-level package" Click="Conversations_CloneTopLevelPackage_Click" />
                                 <MenuItem Header="Multi-clone top-level package" Click="Conversations_MultiCloneTopLevelPackage_Click" />
+                                <MenuItem Header="Replace with same-named conversation from another file" Click="Conversations_ReplaceTopLevelPackage_Click" />
                                 <MenuItem Header="Trash top-level package and children" Click="Conversations_TrashTopLevelPackage_Click" />
                             </ContextMenu>
                         </ListBox.ContextMenu>
