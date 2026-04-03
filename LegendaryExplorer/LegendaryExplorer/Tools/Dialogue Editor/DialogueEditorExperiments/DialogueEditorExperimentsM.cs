@@ -82,7 +82,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             MessageBox.Show("Done.");
         }
 
-        private static (string speakerTag, ExportEntry male, ExportEntry female)? PromptForSharedFxaSelectionAndSpeakerTag(Window owner, IMEPackage package)
+        public static (string speakerTag, ExportEntry male, ExportEntry female)? PromptForSharedFxaSelectionAndSpeakerTag(Window owner, IMEPackage package, ExportEntry preferredMale = null, ExportEntry preferredFemale = null)
         {
             var faceFxEntries = package.Exports.Where(e => e.ClassName == "FaceFXAnimSet").ToList();
             if (faceFxEntries.Count == 0)
@@ -95,10 +95,14 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 .Select(e => new EntryStringPair(e, $"{e.UIndex,-9}\t{e.InstancedFullPath}"))
                 .ToList();
 
-            var defaultMaleSelection = faceFxOptions.LastOrDefault(o =>
+            var defaultMaleSelection = faceFxOptions.FirstOrDefault(o =>
+                (o.Entry as ExportEntry)?.UIndex == preferredMale?.UIndex)
+                ?? faceFxOptions.LastOrDefault(o =>
                 ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_m", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
                 ?? faceFxOptions[faceFxOptions.Count - 1];
-            var defaultFemaleSelection = faceFxOptions.LastOrDefault(o =>
+            var defaultFemaleSelection = faceFxOptions.FirstOrDefault(o =>
+                (o.Entry as ExportEntry)?.UIndex == preferredFemale?.UIndex)
+                ?? faceFxOptions.LastOrDefault(o =>
                 ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_f", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
                 ?? faceFxOptions[faceFxOptions.Count - 1];
 

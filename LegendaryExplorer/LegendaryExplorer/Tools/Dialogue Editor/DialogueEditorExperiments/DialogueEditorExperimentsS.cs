@@ -630,6 +630,128 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
         }
 
         /// <summary>
+        /// Localizes the specified speaker's FaceFX for every BioConversation in the package.
+        /// This is the headless variant used for batch operations.
+        /// </summary>
+        /// <param name="package">The package to modify.</param>
+        /// <param name="speakerTag">The speaker tag to localize.</param>
+        /// <returns>The number of conversations updated.</returns>
+        public static int LocalizeSpeakerFaceFXForAllConversations(IMEPackage package, string speakerTag)
+        {
+            if (package == null || string.IsNullOrWhiteSpace(speakerTag))
+            {
+                return 0;
+            }
+
+            var conversations = package.Exports.Where(e => e.ClassName == "BioConversation").ToList();
+            int localizedCount = 0;
+            foreach (var conversation in conversations)
+            {
+                if (TryLocalizeSpeakerFaceFX(conversation, speakerTag, out _, out _))
+                {
+                    localizedCount++;
+                }
+            }
+
+            return localizedCount;
+        }
+
+        private static bool TryLocalizeSpeakerFaceFX(ExportEntry bioConvExport, string speakerTag, out ExportEntry newMaleFxa, out ExportEntry newFemaleFxa)
+        {
+            newMaleFxa = null;
+            newFemaleFxa = null;
+
+            if (bioConvExport?.FileRef == null)
+            {
+                return false;
+            }
+
+            var bioConvoProps = bioConvExport.GetProperties();
+            int speakerIdx = GetSpeakerIndex(bioConvoProps, speakerTag);
+            if (speakerIdx < 0)
+            {
+                return false;
+            }
+
+            int faceSetIdx = speakerIdx + 2;
+            var maleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
+            var femaleFaceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
+
+            ExportEntry fxaMale = maleFaceSets != null && faceSetIdx >= 0 && faceSetIdx < maleFaceSets.Count && bioConvExport.FileRef.IsUExport(maleFaceSets[faceSetIdx].Value)
+                ? bioConvExport.FileRef.GetUExport(maleFaceSets[faceSetIdx].Value)
+                : null;
+            ExportEntry fxaFemale = femaleFaceSets != null && faceSetIdx >= 0 && faceSetIdx < femaleFaceSets.Count && bioConvExport.FileRef.IsUExport(femaleFaceSets[faceSetIdx].Value)
+                ? bioConvExport.FileRef.GetUExport(femaleFaceSets[faceSetIdx].Value)
+                : null;
+
+            if (fxaMale == null && fxaFemale == null)
+            {
+                return false;
+            }
+
+            IEntry convParentPackage = bioConvExport.Parent;
+            string convParentPath = convParentPackage?.InstancedFullPath;
+            bool maleOutside = fxaMale != null && !IsUnderPackage(fxaMale, convParentPath);
+            bool femaleOutside = fxaFemale != null && !IsUnderPackage(fxaFemale, convParentPath);
+            if (!maleOutside && !femaleOutside)
+            {
+                return false;
+            }
+
+            string topFolderPackageName = GetTopPackageNameForEntry(bioConvExport);
+            if (maleOutside)
+            {
+                newMaleFxa = CloneFaceFXWithAudio(bioConvExport.FileRef, fxaMale, convParentPackage, $"{topFolderPackageName}_{speakerTag}_M");
+                if (maleFaceSets != null && faceSetIdx < maleFaceSets.Count)
+                {
+                    maleFaceSets[faceSetIdx].Value = newMaleFxa.UIndex;
+                }
+            }
+
+            if (femaleOutside)
+            {
+                newFemaleFxa = CloneFaceFXWithAudio(bioConvExport.FileRef, fxaFemale, convParentPackage, $"{topFolderPackageName}_{speakerTag}_F");
+                if (femaleFaceSets != null && faceSetIdx < femaleFaceSets.Count)
+                {
+                    femaleFaceSets[faceSetIdx].Value = newFemaleFxa.UIndex;
+                }
+            }
+
+            bioConvExport.WriteProperties(bioConvoProps);
+            return true;
+        }
+
+        private static int GetSpeakerIndex(PropertyCollection bioConvoProps, string speakerTag)
+        {
+            var aSpeakers = bioConvoProps.GetProp<ArrayProperty<NameProperty>>("m_aSpeakerList");
+            if (aSpeakers != null)
+            {
+                for (int i = 0; i < aSpeakers.Count; i++)
+                {
+                    if (aSpeakers[i].Value.Name.Equals(speakerTag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            var sSpeakers = bioConvoProps.GetProp<ArrayProperty<StructProperty>>("m_SpeakerList");
+            if (sSpeakers != null)
+            {
+                for (int i = 0; i < sSpeakers.Count; i++)
+                {
+                    if (sSpeakers[i].GetProp<NameProperty>("sSpeakerTag") is { Value.Name: var tag }
+                        && tag.Equals(speakerTag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
         /// Clones a FaceFXAnimSet export under the given parent package with a new name.
         /// Also clones all WwiseEvents referenced via the ReferencedSoundCues property
         /// into an audio subfolder under the parent package (keeping original WwiseStream references).

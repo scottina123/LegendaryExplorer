@@ -4065,6 +4065,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             // If FaceFXAnimSets are being cloned to LOC files, offer to add speakers to conversations
             bool addSpeakersToConvos = false;
+            bool? localizeSpeakerFaceFxInConvos = null;
             string speakerTag = null;
             string maleFxaIFP = null;
             string femaleFxaIFP = null;
@@ -4079,40 +4080,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (addSpeakerResult == MessageBoxResult.Yes)
                 {
-                    speakerTag = PromptDialog.Prompt(this, "Enter the tag of the speaker to add.", "Enter speaker tag");
-                    if (string.IsNullOrWhiteSpace(speakerTag))
+                    var defaultMaleFxa = fxaExports.FirstOrDefault(e => e.InstancedFullPath.EndsWith("_m", StringComparison.OrdinalIgnoreCase));
+                    var defaultFemaleFxa = fxaExports.FirstOrDefault(e => e.InstancedFullPath.EndsWith("_f", StringComparison.OrdinalIgnoreCase));
+                    var speakerSelections = DialogueEditorExperimentsM.PromptForSharedFxaSelectionAndSpeakerTag(this, Pcc, defaultMaleFxa, defaultFemaleFxa);
+                    if (speakerSelections is null)
                     {
                         return;
                     }
 
-                    ExportEntry maleFxa;
-                    if (fxaExports.Count == 1)
-                    {
-                        maleFxa = fxaExports[0];
-                    }
-                    else
-                    {
-                        maleFxa = EntrySelector.GetEntry<ExportEntry>(this, Pcc, "Select the male FXA to assign to the new speaker.",
-                            e => fxaExports.Contains(e));
-                    }
+                    var (newTag, maleFxa, femaleFxa) = speakerSelections.Value;
 
-                    if (maleFxa == null)
-                        return;
-
-                    ExportEntry femaleFxa;
-                    if (fxaExports.Count == 1)
-                    {
-                        femaleFxa = fxaExports[0];
-                    }
-                    else
-                    {
-                        femaleFxa = EntrySelector.GetEntry<ExportEntry>(this, Pcc, "Select the female FXA to assign to the new speaker.",
-                            e => fxaExports.Contains(e));
-                    }
-
-                    if (femaleFxa == null)
-                        return;
-
+                    speakerTag = newTag;
                     maleFxaIFP = maleFxa.InstancedFullPath;
                     femaleFxaIFP = femaleFxa.InstancedFullPath;
                     addSpeakersToConvos = true;
@@ -4171,6 +4149,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             if (convosModified < 0)
                             {
                                 errors.Add($"{Path.GetFileName(pccFile)}: Could not find FXA export(s) for speaker assignment");
+                            }
+                            else if (convosModified > 0)
+                            {
+                                if (!localizeSpeakerFaceFxInConvos.HasValue)
+                                {
+                                    localizeSpeakerFaceFxInConvos = Dispatcher.Invoke(() =>
+                                        MessageBox.Show(this,
+                                            "The speaker tag was added to BioConversations. Would you also like to localize that speaker's FaceFX for all BioConversations in each target file?",
+                                            "Localize Speaker FaceFX",
+                                            MessageBoxButton.YesNo,
+                                            MessageBoxImage.Question) == MessageBoxResult.Yes);
+                                }
+
+                                if (localizeSpeakerFaceFxInConvos == true)
+                                {
+                                    DialogueEditorExperimentsS.LocalizeSpeakerFaceFXForAllConversations(destPackage, speakerTag);
+                                }
                             }
                         }
 
