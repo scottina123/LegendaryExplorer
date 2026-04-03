@@ -1387,7 +1387,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     break;
             }
 
-            var d = new SaveFileDialog { Filter = fileFilter };
+            var d = new SaveFileDialog { Filter = fileFilter, CustomPlaces = AppDirectories.GameCustomPlaces };
             if (d.ShowDialog() == true)
             {
                 await Pcc.SaveAsync(d.FileName);
