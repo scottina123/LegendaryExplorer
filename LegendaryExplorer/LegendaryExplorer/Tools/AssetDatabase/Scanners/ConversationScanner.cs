@@ -115,6 +115,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
             var conversationName = convEntry.ObjectName.Instanced;
             var packageName = e.FileName;
             var exportIndex = e.Export.UIndex;
+            var ownerFriendlyName = ResolveFriendlyOwnerName(e.Export.FileRef, ownerObjectRef);
 
             db.GeneratedConvo.AddOrUpdate(GetConversationLookupKey(conversationName),
                                          _ => new Conversation(conversationName,
@@ -122,7 +123,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                                                                ConvFile: new FileKeyExportPair(-1, 0),
                                                                packageName,
                                                                exportIndex,
-                                                               ownerObjectRef),
+                                                                ownerObjectRef,
+                                                                ownerFriendlyName),
                                          (_, existing) =>
                                          {
                                              if (string.IsNullOrWhiteSpace(existing.PackageName))
@@ -140,8 +142,72 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                                                  existing.OwnerObjectRef = ownerObjectRef;
                                              }
 
+                                              if (string.IsNullOrWhiteSpace(existing.OwnerFriendlyName))
+                                              {
+                                                  existing.OwnerFriendlyName = ownerFriendlyName;
+                                              }
+
                                              return existing;
                                          });
+        }
+
+        private static string ResolveFriendlyOwnerName(IMEPackage package, int ownerObjectRef)
+        {
+            if (package == null || ownerObjectRef <= 0 || !package.TryGetUExport(ownerObjectRef, out var ownerVar))
+            {
+                return null;
+            }
+
+            switch (ownerVar.ClassName)
+            {
+                case "SeqVar_Object":
+                {
+                    var objValue = ownerVar.GetProperty<ObjectProperty>("ObjValue");
+                    if (objValue == null || objValue.Value <= 0 || !package.TryGetEntry(objValue.Value, out var actorEntry))
+                    {
+                        return null;
+                    }
+
+                    if (actorEntry is ExportEntry actorExport)
+                    {
+                        var actorTag = actorExport.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                        if (!string.IsNullOrWhiteSpace(actorTag))
+                        {
+                            return actorTag;
+                        }
+
+                        if (actorExport.HasArchetype && actorExport.Archetype is ExportEntry archetype)
+                        {
+                            var archetypeTag = archetype.GetProperty<NameProperty>("Tag")?.Value.Instanced;
+                            if (!string.IsNullOrWhiteSpace(archetypeTag))
+                            {
+                                return archetypeTag;
+                            }
+                        }
+                    }
+
+                    return actorEntry.ObjectName.Instanced;
+                }
+                case "BioSeqVar_ObjectFindByTag":
+                {
+                    var tagProperty = ownerVar.GetProperty<Property>("m_sObjectTagToFind");
+                    var tagName = tagProperty switch
+                    {
+                        NameProperty nameProperty => nameProperty.Value.Instanced,
+                        StrProperty strProperty => strProperty.Value,
+                        _ => null
+                    };
+
+                    if (!string.IsNullOrWhiteSpace(tagName))
+                    {
+                        return tagName;
+                    }
+
+                    return null;
+                }
+                default:
+                    return ownerVar.ObjectName.Instanced;
+            }
         }
 
         private static int GetFirstLinkedVariableIndex(PropertyCollection props, params string[] linkDescriptions)

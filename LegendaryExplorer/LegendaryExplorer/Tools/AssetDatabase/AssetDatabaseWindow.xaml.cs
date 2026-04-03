@@ -172,8 +172,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v9.8: Added Actors tab for SFXStuntActor, SFXSkeletalMeshActor, SFXPawn, SFXPointOfInterest scanning.
-        public const string dbCurrentBuild = "9.8";
+        // v9.9: Persist owner-friendly conversation speaker names during scan to avoid live package resolution.
+        public const string dbCurrentBuild = "9.9";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -290,11 +290,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private readonly Dictionary<string, Conversation> _conversationLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (string FileName, string Location)> _convoFileInfoCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly DispatcherTimer _lineSearchDebounceTimer;
-
-        public static ConcurrentDictionary<ConversationKey, string> OwnerNameCache { get; } = new();
-
-        private static readonly ConcurrentDictionary<ConversationKey, Lazy<string>> OwnerNameResolvers = new();
-        private static readonly ConcurrentDictionary<string, Lazy<IMEPackage>> OwnerPackageCache = new(StringComparer.OrdinalIgnoreCase);
 
         public FileListSpecification FileListFilter { get; } = new();
         public AssetFilters AssetFilters { get; private set; }
@@ -1330,8 +1325,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             CurrentDataBase.Localization = Localization;
             _conversationLookup.Clear();
             _convoFileInfoCache.Clear();
-            ClearOwnerNameResolverCache();
-
             FileListExtended.ClearEx();
             FileListFilter.CustomFileList.Clear();
             FileListFilter.IsSelected = false;
@@ -1377,22 +1370,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return !string.IsNullOrWhiteSpace(convoName) && _conversationLookup.TryGetValue(convoName, out conversation);
         }
 
-        private static void ClearOwnerNameResolverCache()
-        {
-            OwnerNameCache.Clear();
-            OwnerNameResolvers.Clear();
-
-            foreach (var package in OwnerPackageCache.Values)
-            {
-                if (package.IsValueCreated)
-                {
-                    package.Value?.Dispose();
-                }
-            }
-
-            OwnerPackageCache.Clear();
-        }
-
         public string GetSpeakerDisplay(ConvoLine line)
         {
             if (line == null || !string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
@@ -1400,14 +1377,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return line?.Speaker;
             }
 
-            if (!TryGetConversation(line.Convo, out var conversation)
-                || string.IsNullOrWhiteSpace(conversation.PackageName)
-                || conversation.ConversationExportIndex <= 0)
-            {
-                return line.Speaker;
-            }
-
-            var ownerName = TryGetCachedOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex));
+            var ownerName = GetConversationOwnerFriendlyName(line);
             if (string.IsNullOrWhiteSpace(ownerName))
             {
                 return line.Speaker;
@@ -1423,14 +1393,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return line?.Speaker;
             }
 
-            if (!TryGetConversation(line.Convo, out var conversation)
-                || string.IsNullOrWhiteSpace(conversation.PackageName)
-                || conversation.ConversationExportIndex <= 0)
-            {
-                return line.Speaker;
-            }
-
-            return TryGetCachedOwnerDisplay(line, conversation);
+            var ownerName = GetConversationOwnerFriendlyName(line);
+            return string.IsNullOrWhiteSpace(ownerName)
+                ? line.Speaker
+                : $"{line.Speaker} ({ownerName})";
         }
 
         private string GetSpeakerFilterValue(ConvoLine line)
@@ -1440,63 +1406,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return line?.Speaker;
             }
 
-            if (!TryGetConversation(line.Convo, out var conversation)
-                || string.IsNullOrWhiteSpace(conversation.PackageName)
-                || conversation.ConversationExportIndex <= 0)
+            return GetConversationOwnerFriendlyName(line) ?? line.Speaker;
+        }
+
+        private string GetConversationOwnerFriendlyName(ConvoLine line)
+        {
+            if (line == null || !TryGetConversation(line.Convo, out var conversation))
             {
-                return line.Speaker;
+                return null;
             }
 
-            return TryGetCachedOwnerName(new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex)) ?? line.Speaker;
-        }
-
-        private static string TryGetCachedOwnerDisplay(ConvoLine line, Conversation conversation)
-        {
-            var key = new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex);
-            var cachedName = TryGetCachedOwnerName(key);
-            if (string.IsNullOrWhiteSpace(cachedName))
-            {
-                return line.Speaker;
-            }
-
-            return $"{line.Speaker} ({cachedName})";
-        }
-
-        private static string TryGetCachedOwnerName(ConversationKey key)
-        {
-            return OwnerNameCache.TryGetValue(key, out var cachedName) && !string.IsNullOrWhiteSpace(cachedName)
-                ? cachedName
-                : null;
-        }
-
-        private void PreResolveOwnerNames()
-        {
-            var ownerConversationKeys = CurrentDataBase.Lines
-                .Where(line => string.Equals(line.Speaker, "Owner", StringComparison.OrdinalIgnoreCase))
-                .Select(line => line.Convo)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(convoName => TryGetConversation(convoName, out var conversation)
-                    && !string.IsNullOrWhiteSpace(conversation.PackageName)
-                    && conversation.ConversationExportIndex > 0
-                        ? new ConversationKey(conversation.PackageName, conversation.ConversationExportIndex)
-                        : default)
-                .Where(key => !string.IsNullOrWhiteSpace(key.PackageName) && key.ExportIndex > 0)
-                .Distinct()
-                .ToList();
-
-            foreach (var key in ownerConversationKeys)
-            {
-                ResolveOwnerName(key);
-            }
-        }
-
-        private void StartOwnerNamePrewarm()
-        {
-            Task.Run(PreResolveOwnerNames).ContinueWithOnUIThread(_ =>
-            {
-                RefreshSpeakerList();
-                RefreshLinesView();
-            });
+            return string.IsNullOrWhiteSpace(conversation.OwnerFriendlyName)
+                ? null
+                : conversation.OwnerFriendlyName;
         }
 
         private void RefreshSpeakerList()
@@ -1548,134 +1470,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             _lineSearchDebounceTimer.Stop();
             _lineSearchDebounceTimer.Start();
-        }
-
-        public static string ResolveOwnerName(ConversationKey key)
-        {
-            if (string.IsNullOrWhiteSpace(key.PackageName) || key.ExportIndex <= 0)
-            {
-                return null;
-            }
-
-            if (OwnerNameCache.TryGetValue(key, out var cachedName))
-            {
-                return string.IsNullOrEmpty(cachedName) ? null : cachedName;
-            }
-
-            var lazyName = OwnerNameResolvers.GetOrAdd(key,
-                                                       static k => new Lazy<string>(() => ResolveOwnerNameCore(k), LazyThreadSafetyMode.ExecutionAndPublication));
-
-            var resolvedName = lazyName.Value;
-            OwnerNameCache[key] = resolvedName ?? string.Empty;
-            OwnerNameResolvers.TryRemove(key, out _);
-            return resolvedName;
-        }
-
-        private static string ResolveOwnerNameCore(ConversationKey key)
-        {
-            var package = GetOwnerResolverPackage(key.PackageName);
-            if (package == null || !package.TryGetUExport(key.ExportIndex, out var startConversationExport))
-            {
-                return null;
-            }
-
-            var ownerObjectRef = GetOwnerObjectRef(startConversationExport);
-            if (ownerObjectRef <= 0)
-            {
-                return null;
-            }
-
-            return ResolveFriendlyOwnerName(package, ownerObjectRef);
-        }
-
-        private static int GetOwnerObjectRef(ExportEntry startConversationExport)
-        {
-            var links = startConversationExport.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
-            if (links == null)
-            {
-                return 0;
-            }
-
-            foreach (var link in links)
-            {
-                var description = link.GetProp<StrProperty>("LinkDesc")?.Value;
-                if (!string.Equals(description, "Owner", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var linkedVars = link.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
-                if (linkedVars is { Count: > 0 })
-                {
-                    return linkedVars[0].Value;
-                }
-            }
-
-            return 0;
-        }
-
-        private static string ResolveFriendlyOwnerName(IMEPackage package, int ownerObjectRef)
-        {
-            if (!package.TryGetUExport(ownerObjectRef, out var ownerVar))
-            {
-                return null;
-            }
-
-            switch (ownerVar.ClassName)
-            {
-                case "SeqVar_Object":
-                {
-                    var objValue = ownerVar.GetProperty<ObjectProperty>("ObjValue");
-                    if (objValue == null || objValue.Value <= 0 || !package.TryGetEntry(objValue.Value, out var actorEntry))
-                    {
-                        return null;
-                    }
-
-                    if (actorEntry is ExportEntry actorExport)
-                    {
-                        var actorTag = actorExport.GetProperty<NameProperty>("Tag")?.Value.Instanced;
-                        if (!string.IsNullOrWhiteSpace(actorTag))
-                        {
-                            return actorTag;
-                        }
-
-                        if (actorExport.HasArchetype && actorExport.Archetype is ExportEntry archetype)
-                        {
-                            var archetypeTag = archetype.GetProperty<NameProperty>("Tag")?.Value.Instanced;
-                            if (!string.IsNullOrWhiteSpace(archetypeTag))
-                            {
-                                return archetypeTag;
-                            }
-                        }
-                    }
-
-                    return actorEntry.ObjectName.Instanced;
-                }
-                case "BioSeqVar_ObjectFindByTag":
-                {
-                    var tagName = ownerVar.GetProperty<NameProperty>("m_sObjectTagToFind")?.Value.Instanced;
-                    if (!string.IsNullOrWhiteSpace(tagName))
-                    {
-                        return tagName;
-                    }
-
-                    return ownerVar.GetProperty<StrProperty>("m_sObjectTagToFind")?.Value;
-                }
-                default:
-                    return ownerVar.ObjectName.Instanced;
-            }
-        }
-
-        private static IMEPackage GetOwnerResolverPackage(string packageName)
-        {
-            if (string.IsNullOrWhiteSpace(packageName))
-            {
-                return null;
-            }
-
-            var lazyPackage = OwnerPackageCache.GetOrAdd(packageName,
-                                                         static name => new Lazy<IMEPackage>(() => OpenOwnerResolverPackage(name), LazyThreadSafetyMode.ExecutionAndPublication));
-            return lazyPackage.Value;
         }
 
         private static IMEPackage OpenOwnerResolverPackage(string packageName)
@@ -2449,7 +2243,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 #endif
 
                         GetConvoLinesBackground();
-                        StartOwnerNamePrewarm();
 
                         if (_isMaterialSelectionMode)
                         {
@@ -5995,7 +5788,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 // 08/27/2023 - Removed !IsGame1() check on GetConvoLinesBackground()
                 GetConvoLinesBackground();
-                StartOwnerNamePrewarm();
                 CurrentDataBase.PlotUsages.LoadPlotPaths(game);
             }
         }
@@ -6236,35 +6028,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         {
             return null; //not needed
-        }
-    }
-
-    public readonly struct ConversationKey : IEquatable<ConversationKey>
-    {
-        public ConversationKey(string packageName, int exportIndex)
-        {
-            PackageName = packageName;
-            ExportIndex = exportIndex;
-        }
-
-        public string PackageName { get; }
-
-        public int ExportIndex { get; }
-
-        public bool Equals(ConversationKey other)
-        {
-            return ExportIndex == other.ExportIndex
-                && string.Equals(PackageName, other.PackageName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        public override bool Equals(object obj)
-        {
-            return obj is ConversationKey other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(PackageName ?? string.Empty), ExportIndex);
         }
     }
 

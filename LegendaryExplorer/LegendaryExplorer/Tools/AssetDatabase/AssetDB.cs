@@ -544,7 +544,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public int OwnerObjectRef { get; set; }
 
-        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile, string packageName = null, int conversationExportIndex = 0, int ownerObjectRef = 0)
+        public string OwnerFriendlyName { get; set; }
+
+        public Conversation(string ConvName, bool IsAmbient, FileKeyExportPair ConvFile, string packageName = null, int conversationExportIndex = 0, int ownerObjectRef = 0, string ownerFriendlyName = null)
         {
             this.ConvName = ConvName;
             this.IsAmbient = IsAmbient;
@@ -552,6 +554,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             PackageName = packageName;
             ConversationExportIndex = conversationExportIndex;
             OwnerObjectRef = ownerObjectRef;
+            OwnerFriendlyName = ownerFriendlyName;
         }
 
         public Conversation()
