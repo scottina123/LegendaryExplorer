@@ -5435,6 +5435,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (changed)
             {
+                IsLocalUpdate = true;
                 RecreateNodesToProperties(SelectedConv);
                 RefreshNodePlotSectionsInGraph(node.Node);
             }
