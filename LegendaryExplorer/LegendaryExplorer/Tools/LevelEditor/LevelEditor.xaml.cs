@@ -1,3 +1,4 @@
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using MessageBox =
 Xceed.Wpf.Toolkit.MessageBox;
@@ -670,10 +671,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private void FocusOnBounds(BoxSphereBounds fullBounds)
     {
         Vector3 origin = fullBounds.Origin;
-        float hyp = fullBounds.SphereRadius.Clamp(10, float.MaxValue) * 2;
-        (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
-        RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
-        RenderContext.Camera.OrientTowards(origin);
+        if (RenderContext.Camera.IsOrthographic)
+        {
+            RenderContext.Camera.Position = new Vector3(origin.X, origin.Y, RenderContext.Camera.ZFar * 0.4f);
+            RenderContext.Camera.OrthoWidth = fullBounds.SphereRadius.Clamp(10, float.MaxValue) * 3f;
+        }
+        else
+        {
+            float hyp = fullBounds.SphereRadius.Clamp(10, float.MaxValue) * 2;
+            (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
+            RenderContext.Camera.Position = new Vector3(origin.X, origin.Y + sin * hyp, origin.Z + cos * hyp);
+            RenderContext.Camera.OrientTowards(origin);
+        }
         UpdateCameraPositionText();
         UpdateCameraRotationText();
     }
@@ -1197,6 +1206,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 ignoredActorClasses.Add(className);
             }
         }
+        foreach (var actor in actors)
+        {
+            actor.ResolveAttachment(actors);
+        }
         return new(actors, ignoredActorClasses);
     }
 
@@ -1204,6 +1217,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         if (Actors.Remove(actor))
         {
+            actor.Detach();
             actor.OwningFile?.Actors.Remove(actor);
             RenderContext.RemoveActor(actor);
             actor.Dispose();
@@ -1215,6 +1229,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (!Actors.Contains(actor))
         {
             Actors.Add(actor);
+            actor.ResolveAttachment(Actors);
             actor.OwningFile?.Actors.Add(actor);
             RenderContext.AddActor(actor);
             if (sort)
@@ -1252,6 +1267,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public ICommand CloneActorTreeCommand { get; set; }
     public ICommand TrashActorCommand { get; set; }
     public ICommand SnapActorToCameraCommand { get; set; }
+    public ICommand ToggleOrthoViewCommand { get; set; }
     private void LoadCommands()
     {
         OpenFileCommand = new GenericCommand(OpenFile);
@@ -1296,6 +1312,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             () => SelectedActor is not null && !SelectedActor.IsReadOnly);
         SnapActorToCameraCommand = new GenericCommand(SnapActorToCamera,
             () => SelectedActor is not null && !SelectedActor.IsReadOnly);
+        ToggleOrthoViewCommand = new GenericCommand(() => IsOrthographicView = !IsOrthographicView);
     }
 
     private void SnapActorToCamera()
@@ -1370,21 +1387,36 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             && rootFilename.Split('_') is [_, string levelIdent, ..]
             && levelIdent.Split('.') is [string realLevelIdent, ..])
         {
-            List<string> paths = [];
+            List<(string filename, string path)> candidates = [];
             var regex = new Regex($"^Bio[PDA]_{realLevelIdent}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             var openFilePaths = OpenFiles.Select(f => Path.GetFileName(f.FilePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach ((string filename, string path) in MELoadedFiles.GetFilesLoadedInGame(game))
             {
                 if (regex.IsMatch(filename) && !filename.Contains("_LOC_", StringComparison.OrdinalIgnoreCase) && !openFilePaths.Contains(filename))
                 {
-                    paths.Add(path);
+                    candidates.Add((filename, path));
                 }
             }
-            if (paths.Count is 0) return;
+            if (candidates.Count is 0) return;
+
+            var dialogItems = candidates.Select(c => new CheckedListItem
+            {
+                DisplayName = c.filename,
+                IsSelected = true,
+                Tag = c.path
+            }).ToList();
+
+            var dialog = new CheckedListDialog(dialogItems, "Load Related Levels",
+                $"Select levels related to {realLevelIdent} to load:", this);
+
+            if (dialog.ShowDialog() != true) return;
+
+            var selectedPaths = dialog.GetSelectedItems().Select(i => (string)i.Tag).ToList();
+            if (selectedPaths.Count is 0) return;
 
             using var guard = new RenderGuard(this);
 
-            foreach (string path in paths)
+            foreach (string path in selectedPaths)
             {
                 await AddLevelFile(path).ConfigureAwait(true);
             }
@@ -2153,6 +2185,32 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private string _currentModeName = "Translate";
     public string CurrentModeName { get => _currentModeName; set => SetProperty(ref _currentModeName, value); }
+
+    private bool _isOrthographicView;
+    public bool IsOrthographicView
+    {
+        get => _isOrthographicView;
+        set
+        {
+            if (SetProperty(ref _isOrthographicView, value))
+            {
+                if (value)
+                {
+                    RenderContext.Camera.SavePerspectiveState();
+                    RenderContext.Camera.IsOrthographic = true;
+                    var pos = RenderContext.Camera.Position;
+                    RenderContext.Camera.Position = new Vector3(pos.X, pos.Y, RenderContext.Camera.ZFar * 0.4f);
+                    float focusDepth = RenderContext.Camera.FocusDepth;
+                    RenderContext.Camera.OrthoWidth = MathF.Max(focusDepth * 4f, 500f);
+                }
+                else
+                {
+                    RenderContext.Camera.IsOrthographic = false;
+                    RenderContext.Camera.RestorePerspectiveState();
+                }
+            }
+        }
+    }
 
     private void ResetUncommittedChanges_Click(object sender, RoutedEventArgs e)
     {

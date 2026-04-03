@@ -11,6 +11,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using MediaColor = System.Windows.Media.Color;
@@ -26,11 +27,21 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     public List<PrimitiveComponentProxy> Components = [];
 
+    #region UProp mirrors. DO NOT CHANGE NAMES!
+    public ActorProxy Base;
+    public SkeletalMeshComponentProxy BaseSkelComponent;
+    public NameReference BaseBoneName;
+    public List<ActorProxy> Attached = [];
+    public bool bHardAttach;
+    public NameReference Tag;
+    #endregion
+
     protected PropertyCollection Properties;
 
     public ExportEntry Export { get; }
+    protected IMEPackage Pcc => Export.FileRef;
 
-    public string OwningFileName => System.IO.Path.GetFileName(Export.FileRef.FilePath);
+    public string OwningFileName => System.IO.Path.GetFileName(Pcc.FilePath);
 
     public string DisplayText { get; }
 
@@ -63,7 +74,29 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         IsDirty = false;
     }
 
-    public NameReference Tag;
+    private bool _isBeingAnimated;
+    public bool IsBeingAnimated
+    {
+        get => _isBeingAnimated;
+        private set => SetProperty(ref _isBeingAnimated, value);
+    }
+
+    private TransformSnapshot? _prematineeSnapshot;
+
+    public void BeginMatineeControl()
+    {
+        if (!_isBeingAnimated)
+            _prematineeSnapshot = SnapshotTransform();
+        IsBeingAnimated = true;
+    }
+
+    public void EndMatineeControl()
+    {
+        IsBeingAnimated = false;
+        if (_prematineeSnapshot is TransformSnapshot snap)
+            RestoreTransform(snap);
+        _prematineeSnapshot = null;
+    }
 
     protected Rotator rotation;
     protected Vector3 location;
@@ -85,7 +118,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Yaw != oldValue.Yaw) OnPropertyChanged(nameof(YawDegrees));
                 if (value.Roll != oldValue.Roll) OnPropertyChanged(nameof(RollDegrees));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -107,7 +141,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YPos));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZPos));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -130,7 +165,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
                 if (value.Y != oldValue.Y) OnPropertyChanged(nameof(YScale));
                 if (value.Z != oldValue.Z) OnPropertyChanged(nameof(ZScale));
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -146,7 +182,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref drawScale, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -159,7 +196,8 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
             if (SetProperty(ref prePivot, value))
             {
                 UpdateLocalToWorld();
-                IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
+                if (!IsBeingAnimated)
+                    IsDirty = !SnapshotTransform().Equals(_cleanSnapshot);
             }
         }
     }
@@ -219,7 +257,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     {
         PropertyCollection props = Properties;
 
-        Tag = props.GetProp<NameProperty>("Tag")?.Value ?? NameReference.None;
+        props.ReadProp(ref Tag);
 
         var rotationProp = props.GetProp<StructProperty>("Rotation");
         var locationsProp = props.GetProp<StructProperty>("location") ?? props.GetProp<StructProperty>("Location");
@@ -291,6 +329,34 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
         drawScale3D =  Vector3.One;
         prePivot =  Vector3.Zero;
         rotation = new Rotator(0, 0, 0);
+        Properties = [];
+    }
+
+    public void ResolveAttachment(IEnumerable<ActorProxy> actorProxies)
+    {
+        if (Properties.TryResolveObjectProp(Pcc, "Base", out ExportEntry baseExport)
+            && actorProxies.FirstOrDefault(ap => ap.Export == baseExport) is ActorProxy baseActor)
+        {
+            Base = baseActor;
+            baseActor.Attached.Add(this);
+            if (Properties.TryResolveObjectProp(Pcc, nameof(BaseSkelComponent), out ExportEntry baseSkelComponentExport))
+            {
+                BaseSkelComponent = baseActor.Components.OfType<SkeletalMeshComponentProxy>().FirstOrDefault(cmp => cmp.Export == baseSkelComponentExport);
+            }
+            Properties.ReadProp(ref BaseBoneName);
+            Properties.ReadProp(ref bHardAttach);
+        }
+    }
+
+    public void Detach()
+    {
+        Base?.Attached.Remove(this);
+        Base = null;
+        foreach (var attached in Attached)
+        {
+            attached.Base = null;
+        }
+        Attached.Clear();
     }
 
     protected virtual void UpdateLocalToWorld()
@@ -403,7 +469,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
     {
         if (Properties.GetProp<ArrayProperty<ObjectProperty>>(propName) is { } componentArray)
         {
-            foreach (IEntry entry in componentArray.ResolveToEntries(Export.FileRef))
+            foreach (IEntry entry in componentArray.ResolveToEntries(Pcc))
             {
                 if (entry is ExportEntry cmpExport && PrimitiveComponentProxy.Create(context, cmpExport, this) is T cmpProxy)
                 {
@@ -416,7 +482,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     protected void AddComponent<T>(MeshRenderContext context, ref T component, [CallerArgumentExpression(nameof(component))] string propName = null) where T : PrimitiveComponentProxy
     {
-        if (Properties.GetProp<ObjectProperty>(propName)?.ResolveToEntry(Export.FileRef) is ExportEntry componentExport)
+        if (Properties.GetProp<ObjectProperty>(propName)?.ResolveToEntry(Pcc) is ExportEntry componentExport)
         {
             if (PrimitiveComponentProxy.Create(context, componentExport, this) is T cmpProxy)
             {
@@ -548,7 +614,7 @@ public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
 
     protected void ApplyMorphFace(SkeletalMeshComponentProxy skeletalMeshComponent)
     {
-        if (Properties.GetProp<ObjectProperty>("MorphHead")?.ResolveToExport(Export.FileRef, Editor?.PackageCache) is ExportEntry morphHead)
+        if (Properties.GetProp<ObjectProperty>("MorphHead")?.ResolveToExport(Pcc, Editor?.PackageCache) is ExportEntry morphHead)
         {
             (BonePosition[] bonePositions, Vector3[][] vertexOffsets) = LegendaryExplorerCore.Unreal.Classes.BioMorphFace.GetBoneAndVertexPositions(morphHead);
             skeletalMeshComponent.ApplyMorph(bonePositions, vertexOffsets);
@@ -636,6 +702,7 @@ public class DynamicSMActorProxy : ActorProxy
     public DynamicSMActorProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
         AddComponent(context.RenderContext, ref StaticMeshComponent);
+        IsVolumetricMesh = StaticMeshComponent.IsVolumetric;
     }
 }
 
@@ -717,7 +784,7 @@ public class BioPawnProxy : PawnProxy
 
     public BioPawnProxy(IActorEditorContext context, ExportEntry actorExport) : base(context, actorExport)
     {
-        AddComponent(context.RenderContext, ref HeadMesh);
+        AddComponent(context.RenderContext, ref HeadMesh, actorExport.Game.IsGame1() ? "m_oHeadMesh" : nameof(HeadMesh));
         ApplyMorphFace(HeadMesh);
         AddComponent(context.RenderContext, ref m_oHairMesh);
         AddComponent(context.RenderContext, ref m_oHeadGearMesh);
@@ -1380,7 +1447,7 @@ public class PrefabInstanceProxy : ActorProxy
     {
         PackageCache packageCache = context.RenderContext.PackageCache;
         if (Properties.GetProp<ObjectProperty>("TemplatePrefab")?
-            .ResolveToExport(actorExport.FileRef, packageCache) is ExportEntry prefab
+            .ResolveToExport(Pcc, packageCache) is ExportEntry prefab
             && prefab.GetProperty<ArrayProperty<ObjectProperty>>("PrefabArchetypes") is { } prefabActors)
         {
 

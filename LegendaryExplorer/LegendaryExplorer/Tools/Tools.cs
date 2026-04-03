@@ -38,6 +38,7 @@ using LegendaryExplorer.Tools.ScriptDebugger;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.GalaxyMapEditor;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using LegendaryExplorer.Tools.PathfindingNetworkEditor;
 
 namespace LegendaryExplorer;
 
@@ -166,6 +167,20 @@ public static class ToolSet
             tags = ["utility", "toolsetdev", "shader", "compare", "material", "hlsl"],
             category = "Toolset Devs",
             description = "Shader Comparison allows you to compare shaders from two different package files side-by-side, showing decompiled HLSL and parameter bindings from the shader cache."
+        });
+
+        set.Add(new Tool
+        {
+            name = "Pathfinding Network Editor",
+            type = typeof(PathfindingNetworkEditorWindow),
+            icon = Application.Current.FindResource("iconPathfindingEditor") as ImageSource,
+            open = () =>
+            {
+                (new PathfindingNetworkEditorWindow()).Show();
+            },
+            tags = ["user", "developer", "path", "ai", "combat", "spline", "spawn", "map", "path", "node", "cover", "level"],
+            category = "Toolset Devs",
+            description = "Pathfinding Network Editor is an editor for editing pathfinding nodes.",
         });
 #endif
         #endregion

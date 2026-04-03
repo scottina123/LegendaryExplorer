@@ -52,6 +52,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void UnloadExport()
         {
+            ClearPlayhead();
             CurrentLoadedExport = null;
             InterpData = null;
             InterpGroups.ClearEx();
@@ -102,6 +103,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand InsertKeyCmd { get; set; }
         public ICommand AdjustSelectedTimeOffsetsCommand { get; set; }
         public ICommand AdjustInterpDataTimeOffsetsCommand { get; set; }
+        public ICommand SetGroupActorCmd { get; set; }
+
+        public event Action<InterpGroup> SetGroupActorRequested;
+
+        private bool _isLevelEditorConnected;
+        public bool IsLevelEditorConnected
+        {
+            get => _isLevelEditorConnected;
+            set => SetProperty(ref _isLevelEditorConnected, value);
+        }
 
         private void LoadCommands()
         {
@@ -113,6 +124,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InsertKeyCmd = new GenericCommand(InsertKeyAtTime, () => MatineeTree.SelectedItem is InterpTrack);
             AdjustSelectedTimeOffsetsCommand = new GenericCommand(AdjustSelectedTimeOffsets, CanAdjustSelectedTimeOffsets);
             AdjustInterpDataTimeOffsetsCommand = new GenericCommand(AdjustInterpDataTimeOffsets, () => HasData(null));
+            SetGroupActorCmd = new RelayCommand(obj => { if (obj is InterpGroup g) SetGroupActorRequested?.Invoke(g); });
         }
 
         private void AdjustSelectedTimeOffsets()
@@ -520,6 +532,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void Timeline_OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
             DrawGuideLines();
+        }
+
+        private Line FindPlayheadLine() => FindName("PlayheadLine") as Line;
+
+        public void SetPlayheadTime(float time)
+        {
+            if (FindPlayheadLine() is not { } playheadLine)
+            {
+                return;
+            }
+
+            double x = (time + Offset) * Scale;
+            Canvas.SetLeft(playheadLine, x);
+            playheadLine.Visibility = Visibility.Visible;
+        }
+
+        public void ClearPlayhead()
+        {
+            if (FindPlayheadLine() is { } playheadLine)
+            {
+                playheadLine.Visibility = Visibility.Collapsed;
+            }
         }
 
         public override void PopOut()

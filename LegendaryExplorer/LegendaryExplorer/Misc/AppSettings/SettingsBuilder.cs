@@ -257,6 +257,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _leveleditor_unlit;
             set => SetProperty(ref _leveleditor_unlit, value);
         }
+        private static double _pathfindingnetworkeditor_rotationarrowminzoom = 1.0;
+        public static double PathfindingNetworkEditor_RotationArrowMinZoom {
+            get => _pathfindingnetworkeditor_rotationarrowminzoom;
+            set => SetProperty(ref _pathfindingnetworkeditor_rotationarrowminzoom, value);
+        }
         private static string _assetdb_defaultgame = "";
         public static string AssetDB_DefaultGame {
             get => _assetdb_defaultgame;
