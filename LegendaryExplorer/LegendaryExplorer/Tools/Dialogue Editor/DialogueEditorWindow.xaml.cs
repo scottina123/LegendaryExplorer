@@ -7881,21 +7881,20 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var exportsToReference = Pcc.Exports
-                .Where(exp => !exp.IsTrash() && exp.ClassName != "ObjectReferencer" && exp.UIndex != referencer.UIndex)
-                .ToList();
+            var exportsToReference = GetExportsForObjectReferencer(referencer);
             if (exportsToReference.Count == 0)
             {
                 MessageBox.Show("No eligible exports were found to add to the selected referencer.", "Dialogue Editor");
                 return;
             }
 
-            var referencedObjects = referencer.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedObjects")
-                                  ?? new ArrayProperty<ObjectProperty>("ReferencedObjects");
-            referencedObjects.AddRange(exportsToReference.Select(x => new ObjectProperty(x)));
-            referencedObjects.Values = referencedObjects.Values.Distinct().ToList();
-            referencer.WriteProperty(referencedObjects);
-            StatusText = $"Added {exportsToReference.Count} exports to {referencer.ObjectName.Instanced}.";
+            var referencedObjects = referencer.GetProperties()?.GetProp<ArrayProperty<ObjectProperty>>("ReferencedObjects");
+            if (referencedObjects != null)
+            {
+                referencedObjects.Clear();
+                referencedObjects.AddRange(exportsToReference.Select(x => new ObjectProperty(x)));
+                referencer.WriteProperty(referencedObjects);
+            }
         }
 
         private ExportEntry CreateNamedObjectReferencer()
@@ -7907,6 +7906,45 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             return Pcc.CreateObjectReferencer(objectReferencerName: customName.Trim());
+        }
+
+        private List<ExportEntry> GetExportsForObjectReferencer(ExportEntry referencer)
+        {
+            if (Pcc == null)
+            {
+                return [];
+            }
+
+            var seekfreeClasses = new List<string>
+            {
+                "BioConversation",
+                "FaceFXAnimSet",
+                "Material",
+                "MaterialInstanceConstant",
+                "ObjectReferencer",
+                "Sequence",
+                "SkeletalMesh",
+                "SkeletalMeshSocket",
+                "Texture2D",
+                "WwiseBank",
+                "WwiseStream",
+                "WwiseEvent"
+            };
+
+            var exportsToReference = new List<ExportEntry>();
+            foreach (var export in Pcc.Exports)
+            {
+                foreach (var className in seekfreeClasses)
+                {
+                    if (export.ClassName == className)
+                    {
+                        exportsToReference.Add(export);
+                        break;
+                    }
+                }
+            }
+
+            return exportsToReference;
         }
 
         private void SaveImage()
