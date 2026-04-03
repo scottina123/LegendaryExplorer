@@ -4920,6 +4920,24 @@ namespace LegendaryExplorer.DialogueEditor
             ApplyLineStrRefChange(node);
         }
 
+        public void ToggleNodeFiresConditionalFromGraph(DialogueNodeExtended node)
+        {
+            if (node == null || SelectedConv == null)
+            {
+                return;
+            }
+
+            node.FiresConditional = !node.FiresConditional;
+            node.NodeProp.Properties.AddOrReplaceProp(new BoolProperty(node.FiresConditional, "bFireConditional"));
+            node.ConditionalPlotPath = node.FiresConditional
+                ? PlotDatabases.FindPlotConditionalByID(node.ConditionalOrBool, Pcc.Game)?.Path
+                : PlotDatabases.FindPlotBoolByID(node.ConditionalOrBool, Pcc.Game)?.Path;
+
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            RefreshNodePlotSectionsInGraph(node);
+        }
+
         private void ApplyLineStrRefChange(DialogueNodeExtended node)
         {
             UpdateNodeLineDerivedData(node);

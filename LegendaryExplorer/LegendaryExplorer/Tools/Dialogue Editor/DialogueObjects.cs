@@ -1578,17 +1578,33 @@ namespace LegendaryExplorer.DialogueEditor
             editorBox.Brush = CreateNodeBrush();
             editorBox.Pen = new Pen(Color.FromArgb(80, boxTextColor));
 
-            // On click, spawn a TextBox overlay at this exact position (like LineStrRef editor)
-            editorBox.MouseDown += (_, e) =>
+            if (fieldTag == "FiresConditional")
             {
-                if (!isEditable)
+                editorBox.DoubleClick += (_, e) =>
                 {
-                    return;
-                }
-                if (e.Button != MouseButtons.Left) return;
-                e.Handled = true;
-                Editor?.BeginInlinePlotFieldEdit(this, fieldInfo);
-            };
+                    if (!isEditable || e.Button != MouseButtons.Left)
+                    {
+                        return;
+                    }
+
+                    e.Handled = true;
+                    Editor?.ToggleNodeFiresConditionalFromGraph(Node);
+                };
+            }
+            else
+            {
+                // On click, spawn a TextBox overlay at this exact position (like LineStrRef editor)
+                editorBox.MouseDown += (_, e) =>
+                {
+                    if (!isEditable)
+                    {
+                        return;
+                    }
+                    if (e.Button != MouseButtons.Left) return;
+                    e.Handled = true;
+                    Editor?.BeginInlinePlotFieldEdit(this, fieldInfo);
+                };
+            }
 
             var container = new PNode();
             container.AddChild(editorBox);
