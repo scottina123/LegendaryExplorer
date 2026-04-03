@@ -60,6 +60,10 @@
   <setting name="PathfindingEditor_ShowSplinesLayer" type="bool" defaultvalue="false"/>
   <setting name="PathfindingEditor_ShowEverythingElseLayer" type="bool" defaultvalue="false"/>
 
+  <!-- Pathfinding Network Editor specific settings -->
+  <setting name="PathfindingNetworkEditor_RotationArrowMinZoom" type="double" defaultvalue="1.0"
+           category="Pathfinding Network Editor" friendlyName="Rotation Arrow Min Zoom (show rotation arrows above this zoom level)"/>
+
   <!-- AssetDB specific settings-->
   <setting name="AssetDB_DefaultGame" type="string" defaultvalue=""/>
   <setting name="AssetDBGame" type="string" defaultvalue="LE3"/>
