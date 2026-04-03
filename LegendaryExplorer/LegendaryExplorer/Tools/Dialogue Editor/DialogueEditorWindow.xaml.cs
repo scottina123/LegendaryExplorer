@@ -156,7 +156,6 @@ namespace LegendaryExplorer.DialogueEditor
 
         private BlockingCollection<ConversationExtended> BackQueue = new();
         private BackgroundWorker BackParser = new();
-        private readonly ConcurrentDictionary<int, byte> ownerResolutionInProgress = new();
         private int suppressedPackageUpdateDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
         private bool NoUIRefresh; //stops graph refresh on update.
@@ -906,11 +905,6 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedConv = null;
 
                 LoadMEPackage(fileName);
-                var loadedPackage = Pcc;
-                if (loadedPackage != null)
-                {
-                    Task.Run(() => ConversationExtended.WarmOwnerTagCacheForPackage(loadedPackage));
-                }
                 CurrentFile = Path.GetFileName(fileName);
                 LoadConversations();
                 if (Conversations.IsEmpty())
@@ -1049,22 +1043,6 @@ namespace LegendaryExplorer.DialogueEditor
             Debug.WriteLine("FirstParse Done");
 #endif
             BackQueue.CompleteAdding();
-
-            foreach (var conv in Conversations)
-            {
-                QueueOwnerFriendlyNameResolution(conv);
-            }
-        }
-
-        private static bool NeedsOwnerFriendlyName(SpeakerExtended speaker)
-        {
-            if (speaker == null)
-                return false;
-
-            var friendlyName = speaker.FriendlyName;
-            return string.IsNullOrWhiteSpace(friendlyName)
-                   || friendlyName == "No data"
-                   || friendlyName.Contains("no_owner", StringComparison.OrdinalIgnoreCase);
         }
 
         public static string GetReplyCategoryDisplayText(EReplyCategory category)
@@ -1090,41 +1068,6 @@ namespace LegendaryExplorer.DialogueEditor
                 : category;
         }
 
-        private async void QueueOwnerFriendlyNameResolution(ConversationExtended sourceConv)
-        {
-            if (sourceConv == null)
-                return;
-
-            var ownerSpeaker = sourceConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
-            if (!NeedsOwnerFriendlyName(ownerSpeaker))
-                return;
-
-            if (!ownerResolutionInProgress.TryAdd(sourceConv.UIndex, 0))
-                return;
-
-            try
-            {
-                await Task.Run(() => sourceConv.ResolveOwnerTag());
-
-                if (SelectedConv != null && SelectedConv.UIndex == sourceConv.UIndex)
-                {
-                    var sourceOwner = sourceConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
-                    var selectedOwner = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
-                    if (sourceOwner != null && selectedOwner != null && !NeedsOwnerFriendlyName(sourceOwner))
-                    {
-                        selectedOwner.FriendlyName = sourceOwner.FriendlyName;
-                        GenerateSpeakerList();
-                        Speakers_ListBox.Items.Refresh();
-                        Node_Combo_Spkr.Items.Refresh();
-                        Node_Combo_Lstnr.Items.Refresh();
-                    }
-                }
-            }
-            finally
-            {
-                ownerResolutionInProgress.TryRemove(sourceConv.UIndex, out _);
-            }
-        }
 
         private void BackParse(object sender, DoWorkEventArgs e)
         {
@@ -4295,20 +4238,6 @@ namespace LegendaryExplorer.DialogueEditor
                 var nconv = Conversations[Conversations_ListBox.SelectedIndex];
                 SelectedConv = new ConversationExtended(nconv);
 
-                var sourceOwner = nconv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
-                var selectedOwner = SelectedConv.Speakers.FirstOrDefault(s => s.SpeakerID == -1);
-                if (sourceOwner != null && selectedOwner != null)
-                {
-                    if (!NeedsOwnerFriendlyName(sourceOwner))
-                    {
-                        selectedOwner.FriendlyName = sourceOwner.FriendlyName;
-                    }
-                    else
-                    {
-                        QueueOwnerFriendlyNameResolution(nconv);
-                    }
-                }
-
                 CurrentLoadedExport = SelectedConv.Export;
                 SetupConvJSON(CurrentLoadedExport);
                 if (Pcc.Game == MEGame.ME1)
@@ -4387,19 +4316,10 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 if (Speakers_ListBox.SelectedIndex >= 0)
                 {
-                    if (SelectedSpeaker.SpeakerID == -1 && (string.IsNullOrEmpty(SelectedSpeaker.FriendlyName) || SelectedSpeaker.FriendlyName == "No data"))
-                    {
-                        QueueOwnerFriendlyNameResolution(SelectedConv);
-                    }
-
                     if (SelectedSpeaker.StrRefID <= 0)
                     {
                         SelectedSpeaker.StrRefID = LookupTagRef(SelectedSpeaker.SpeakerName);
-                        // Don't overwrite FriendlyName for owner if it was already resolved from the sequence
-                        if (SelectedSpeaker.SpeakerID != -1 || string.IsNullOrEmpty(SelectedSpeaker.FriendlyName) || SelectedSpeaker.FriendlyName == "No data")
-                        {
-                            SelectedSpeaker.FriendlyName = GlobalFindStrRefbyID(SelectedSpeaker.StrRefID, Pcc);
-                        }
+                        SelectedSpeaker.FriendlyName = GlobalFindStrRefbyID(SelectedSpeaker.StrRefID, Pcc);
                     }
 
                     TextBox_Speaker_Name.IsEnabled = SelectedSpeaker.SpeakerID >= 0;
