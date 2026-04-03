@@ -81,6 +81,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private bool _useSavedViews = true; // Should probably be a global setting
         private int suppressInterpreterUnloadDepth;
+        private int suppressInterpDataInterpreterUnloadDepth;
 
         public bool UseSavedViews
         {
@@ -5084,7 +5085,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         /// <summary>
         /// Builds the InterpData tree view for the given InterpData export.
         /// </summary>
-        private void BuildInterpDataTree(ExportEntry interpDataExport)
+        private void BuildInterpDataTree(ExportEntry interpDataExport, bool selectRoot = true)
         {
             ClearInterpDataTree();
 
@@ -5111,9 +5112,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             root.IsExpanded = true;
             InterpDataTreeNodes.Add(root);
-            root.IsSelected = true;
-            InterpData_InterpreterWPF.LoadExport(interpDataExport);
-            InterpData_MetadataEditor.LoadExport(interpDataExport);
+            if (selectRoot)
+            {
+                root.IsSelected = true;
+                InterpData_InterpreterWPF.LoadExport(interpDataExport);
+                InterpData_MetadataEditor.LoadExport(interpDataExport);
+            }
         }
 
         private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes, IReadOnlyDictionary<int, List<ExportEntry>> childrenByParent)
@@ -5167,7 +5171,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 InterpData_InterpreterWPF.LoadExport(export);
                 InterpData_MetadataEditor.LoadExport(export);
             }
-            else
+            else if (suppressInterpDataInterpreterUnloadDepth == 0)
             {
                 InterpData_InterpreterWPF.UnloadExport();
                 InterpData_MetadataEditor.UnloadExport();
@@ -5195,26 +5199,35 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 interpDataRoot = rootExport;
             }
 
-            BuildInterpDataTree(interpDataRoot);
-
-            TreeViewEntry selectedNode = null;
-            foreach (var node in InterpDataTreeNodes.SelectMany(root => root.FlattenTree()))
+            suppressInterpDataInterpreterUnloadDepth++;
+            try
             {
-                if (expanded.Contains(node.UIndex))
+                BuildInterpDataTree(interpDataRoot, selectRoot: false);
+
+                TreeViewEntry selectedNode = null;
+                foreach (var node in InterpDataTreeNodes.SelectMany(root => root.FlattenTree()))
                 {
-                    node.IsExpanded = true;
+                    if (expanded.Contains(node.UIndex))
+                    {
+                        node.IsExpanded = true;
+                    }
+
+                    if (selectedUIndex.HasValue && node.UIndex == selectedUIndex.Value)
+                    {
+                        selectedNode = node;
+                    }
                 }
 
-                if (selectedUIndex.HasValue && node.UIndex == selectedUIndex.Value)
+                selectedNode ??= InterpDataTreeNodes.FirstOrDefault();
+                if (selectedNode != null)
                 {
-                    selectedNode = node;
+                    selectedNode.IsSelected = true;
+                    selectedNode.ExpandParents();
                 }
             }
-
-            if (selectedNode != null)
+            finally
             {
-                selectedNode.IsSelected = true;
-                selectedNode.ExpandParents();
+                suppressInterpDataInterpreterUnloadDepth--;
             }
         }
 

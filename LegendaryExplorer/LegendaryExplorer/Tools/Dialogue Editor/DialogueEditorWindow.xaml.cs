@@ -158,6 +158,7 @@ namespace LegendaryExplorer.DialogueEditor
         private BackgroundWorker BackParser = new();
         private readonly ConcurrentDictionary<int, byte> ownerResolutionInProgress = new();
         private int suppressedPackageUpdateDepth;
+        private int suppressInterpDataInterpreterUnloadDepth;
         private bool NoUIRefresh; //stops graph refresh on update.
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
@@ -3142,7 +3143,7 @@ namespace LegendaryExplorer.DialogueEditor
             LoadInlineLinkEditor(SelectedObjects.FirstOrDefault() as DiagNode);
         }
 
-        private void BuildInterpDataTree()
+        private void BuildInterpDataTree(bool selectRoot = true)
         {
             ClearInterpDataTree();
 
@@ -3169,9 +3170,12 @@ namespace LegendaryExplorer.DialogueEditor
 
             root.IsExpanded = true;
             InterpDataTreeNodes.Add(root);
-            root.IsSelected = true;
-            InterpData_InterpreterWPF.LoadExport(interpDataExport);
-            InterpData_MetadataEditor.LoadExport(interpDataExport);
+            if (selectRoot)
+            {
+                root.IsSelected = true;
+                InterpData_InterpreterWPF.LoadExport(interpDataExport);
+                InterpData_MetadataEditor.LoadExport(interpDataExport);
+            }
         }
 
         private TreeViewEntry BuildInterpDataTreeNode(ExportEntry exportEntry, TreeViewEntry parent, HashSet<int> visitedUIndexes, IReadOnlyDictionary<int, List<ExportEntry>> childrenByParent)
@@ -3225,7 +3229,7 @@ namespace LegendaryExplorer.DialogueEditor
                 InterpData_InterpreterWPF.LoadExport(export);
                 InterpData_MetadataEditor.LoadExport(export);
             }
-            else
+            else if (suppressInterpDataInterpreterUnloadDepth == 0)
             {
                 InterpData_InterpreterWPF.UnloadExport();
                 InterpData_MetadataEditor.UnloadExport();
@@ -3246,26 +3250,35 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedUIndex = selected.UIndex;
             }
 
-            BuildInterpDataTree();
-
-            TreeViewEntry selectedNode = null;
-            foreach (var node in InterpDataTreeNodes.SelectMany(root => root.FlattenTree()))
+            suppressInterpDataInterpreterUnloadDepth++;
+            try
             {
-                if (expanded.Contains(node.UIndex))
+                BuildInterpDataTree(selectRoot: false);
+
+                TreeViewEntry selectedNode = null;
+                foreach (var node in InterpDataTreeNodes.SelectMany(root => root.FlattenTree()))
                 {
-                    node.IsExpanded = true;
+                    if (expanded.Contains(node.UIndex))
+                    {
+                        node.IsExpanded = true;
+                    }
+
+                    if (selectedUIndex.HasValue && node.UIndex == selectedUIndex.Value)
+                    {
+                        selectedNode = node;
+                    }
                 }
 
-                if (selectedUIndex.HasValue && node.UIndex == selectedUIndex.Value)
+                selectedNode ??= InterpDataTreeNodes.FirstOrDefault();
+                if (selectedNode != null)
                 {
-                    selectedNode = node;
+                    selectedNode.IsSelected = true;
+                    selectedNode.ExpandParents();
                 }
             }
-
-            if (selectedNode != null)
+            finally
             {
-                selectedNode.IsSelected = true;
-                selectedNode.ExpandParents();
+                suppressInterpDataInterpreterUnloadDepth--;
             }
         }
 
