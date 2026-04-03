@@ -260,7 +260,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
                         </Trigger>
                         <!-- Highlighting -->
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
                             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
                         </Trigger>
                         <!-- Disabled state -->
