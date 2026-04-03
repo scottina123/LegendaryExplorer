@@ -6446,6 +6446,8 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.UseWaitCursor = true;
             bool cloneLinks = false;
             bool insertClonedLinksAtTop = false;
+            bool cloneStartNode = false;
+            bool insertClonedStartAtTop = false;
             List<DiagEdEdge> inputEdges = [];
             if (command is "CloneReply" or "CloneEntry")
             {
@@ -6458,12 +6460,24 @@ namespace LegendaryExplorer.DialogueEditor
                         {
                             inputEdges.Add(edge);
                         }
+                        else if (command == "CloneEntry" && edge.originator is DStart)
+                        {
+                            cloneStartNode = true;
+                        }
                     }
 
                     if (inputEdges.Count > 0)
                     {
                         insertClonedLinksAtTop = MessageBox.Show(
                             "Should the cloned node be inserted at the top of each previous node's outgoing connections?",
+                            "Dialogue Editor",
+                            MessageBoxButton.YesNo) is MessageBoxResult.Yes;
+                    }
+
+                    if (cloneStartNode)
+                    {
+                        insertClonedStartAtTop = MessageBox.Show(
+                            "The cloned entry is connected to a start node. Should the new start node be moved to the top of the start node list?",
                             "Dialogue Editor",
                             MessageBoxButton.YesNo) is MessageBoxResult.Yes;
                     }
@@ -6550,6 +6564,13 @@ namespace LegendaryExplorer.DialogueEditor
 
                 RecreateNodesToProperties(SelectedConv);
                 PushConvoToFile(SelectedConv);
+
+                if (cloneStartNode)
+                {
+                    AddStartNodeForEntry(newIndex, insertClonedStartAtTop);
+                    DialogueNode_SelectByIndex(newIndex, isReply);
+                    graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
+                }
             }
             else
             {
