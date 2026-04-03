@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -256,6 +256,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool _delaySelectionPreview;
         private DispatcherOperation _pendingPreviewOperation;
         private bool _pendingPreviewIsRefresh;
+        private bool _pendingRefreshViewOnActivation;
+        private bool _pendingPreviewOnActivation;
+        private int _pendingSelectedEntryUIndexOnActivation;
 
         /// <summary>
         /// Caches FaceFXAnimSet export UIndex -> ObjectName so we can detect renames in HandleUpdate.
@@ -4537,6 +4540,38 @@ namespace LegendaryExplorer.Tools.PackageEditor
             InterpreterTab_Interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
+            Activated += PackageEditorWindow_Activated;
+        }
+
+        private void PackageEditorWindow_Activated(object sender, EventArgs e)
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            bool refreshView = _pendingRefreshViewOnActivation;
+            bool refreshPreview = _pendingPreviewOnActivation;
+            int selectedEntryUIndex = _pendingSelectedEntryUIndexOnActivation;
+
+            _pendingRefreshViewOnActivation = false;
+            _pendingPreviewOnActivation = false;
+            _pendingSelectedEntryUIndexOnActivation = 0;
+
+            bool selectionApplied = false;
+            if (refreshView)
+            {
+                RefreshView();
+                if (selectedEntryUIndex != 0)
+                {
+                    selectionApplied = GoToNumber(selectedEntryUIndex);
+                }
+            }
+
+            if (refreshPreview && !selectionApplied)
+            {
+                Preview(true);
+            }
         }
 
         /// <summary>
@@ -5114,7 +5149,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     QueuedGotoNumber = 0;
                 }
-                else if (hasSelection)
+                else if (hasSelection && this.IsForegroundWindow())
                 {
                     GoToNumber(selectedEntryUIndex);
                 }
