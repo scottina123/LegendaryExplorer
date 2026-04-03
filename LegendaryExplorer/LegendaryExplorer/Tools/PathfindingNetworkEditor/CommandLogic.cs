@@ -206,7 +206,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor
             if (d.ShowDialog() == true)
             {
 #if !DEBUG
-                tryPackageHandler = new LevelMultiPackag
+                try
                 {
 #endif
                 LoadFile(d.FileName);
@@ -214,7 +214,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Unable to open file:\n" + ex.Message);
+                    System.Windows.MessageBox.Show("Unable to open file:\n" + ex.Message);
                 }
 #endif
             }
