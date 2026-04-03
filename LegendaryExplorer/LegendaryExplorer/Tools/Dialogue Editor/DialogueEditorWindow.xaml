@@ -108,6 +108,7 @@
             <MenuItem Header="Copy outgoing connections" Name="entryCopyOutgoingConnectionsMenuItem" Click="CopyOutgoingConnections_Click" />
             <MenuItem Header="Paste outgoing connections" Name="entryPasteOutgoingConnectionsMenuItem" Click="PasteOutgoingConnections_Click" />
             <Separator />
+            <MenuItem Header="Create Start Node Here" Click="EntryNode_CreateStart_Click" ToolTip="Create a new start node linked to this entry"/>
             <MenuItem Header="Add Entry" Command="{Binding NodeAddCommand}" CommandParameter="AddEntry" ToolTip="Create a new clean entry"/>
             <MenuItem Header="Clone Entry" Command="{Binding NodeAddCommand}" CommandParameter="CloneEntry" ToolTip="Create a new entry as a duplicate of this one"/>
             <MenuItem Header="Clone Entry and Sequence" Command="{Binding CloneNodeAndSequenceCommand}" ToolTip="Clones a dialogue node along with its linked sequence, and give it a unique ID." 
@@ -1698,7 +1699,9 @@
                                              VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                              ScrollViewer.VerticalScrollBarVisibility="Visible"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             SelectionChanged="Start_ListBox_SelectionChanged" MinHeight="250">
+                                             SelectionChanged="Start_ListBox_SelectionChanged"
+                                             MouseDoubleClick="Start_ListBox_MouseDoubleClick"
+                                             MinHeight="250">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Margin="0,0,5,0" ScrollViewer.CanContentScroll="True"

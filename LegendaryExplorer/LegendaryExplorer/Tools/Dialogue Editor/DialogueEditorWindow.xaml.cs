@@ -1458,11 +1458,19 @@ namespace LegendaryExplorer.DialogueEditor
             obj.Dispose();
         }
 
-        private void RebuildStartNodesInPlace()
+        private void RebuildStartNodesInPlace(IReadOnlyDictionary<int, PointF> preferredPositions = null)
         {
             var existingStarts = CurrentObjects.OfType<DStart>().OrderBy(s => s.Order).ToList();
             var startPositions = existingStarts.ToDictionary(s => s.Order, s => new PointF(s.X + s.OffsetX, s.Y + s.OffsetY));
             var rebuiltStarts = new List<DStart>();
+
+            if (preferredPositions != null)
+            {
+                foreach (var preferredPosition in preferredPositions)
+                {
+                    startPositions[preferredPosition.Key] = preferredPosition.Value;
+                }
+            }
 
             foreach (var start in existingStarts)
             {
@@ -1528,6 +1536,28 @@ namespace LegendaryExplorer.DialogueEditor
             return isReply ? new PointF(500, 20) : new PointF(250, 0);
         }
 
+        private PointF GetNewStartNodePosition(int startOrder, int targetEntryIndex)
+        {
+            var targetNode = CurrentObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(node => !node.Node.IsReply && node.Node.NodeCount == targetEntryIndex);
+
+            if (targetNode != null)
+            {
+                RectangleF targetBounds = targetNode.GlobalFullBounds;
+                const float horizontalPadding = 90f;
+                return new PointF(targetBounds.Left - targetBounds.Width - horizontalPadding, targetBounds.Top);
+            }
+
+            if (graphEditor?.Camera != null)
+            {
+                RectangleF viewBounds = graphEditor.Camera.ViewBounds;
+                return new PointF(viewBounds.X, viewBounds.Y + (viewBounds.Height / 2f));
+            }
+
+            return new PointF(0, startOrder * 127);
+        }
+
         private void AddDialogueNodeToGraphInPlace(DiagNode node, PointF position, bool centerView = true)
         {
             if (node == null)
@@ -1558,11 +1588,11 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Refresh();
         }
 
-        private void ApplyStartMutationInPlace()
+        private void ApplyStartMutationInPlace(IReadOnlyDictionary<int, PointF> preferredPositions = null)
         {
             IsLocalUpdate = true;
             RecreateNodesToProperties(SelectedConv);
-            RebuildStartNodesInPlace();
+            RebuildStartNodesInPlace(preferredPositions);
             Start_ListBoxUpdate();
 
             if (inlineLinkEditorNode != null)
@@ -4540,6 +4570,105 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedObjects.Add(start);
             panToSelection = false;
         }
+
+        private void Start_ListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (Start_ListBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            var start = CurrentObjects.OfType<DStart>().FirstOrDefault(s => s.Order == Start_ListBox.SelectedIndex);
+            if (start == null || graphEditor?.Camera == null)
+            {
+                return;
+            }
+
+            SelectGraphObjectByUid(start.NodeUID);
+            graphEditor.Camera.AnimateViewToCenterBounds(start.GlobalFullBounds, false, 100);
+            graphEditor.Refresh();
+        }
+
+        private void AddStartNodeForEntry(int entryIndex, bool insertAtTop = false)
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            if (insertAtTop)
+            {
+                var existingStartPositions = CurrentObjects
+                    .OfType<DStart>()
+                    .OrderBy(start => start.Order)
+                    .Select(start => new PointF(start.X + start.OffsetX, start.Y + start.OffsetY))
+                    .ToList();
+
+                var orderedStarts = SelectedConv.StartingList
+                    .OrderBy(kvp => kvp.Key)
+                    .Select(kvp => kvp.Value)
+                    .ToList();
+
+                orderedStarts.Insert(0, entryIndex);
+                SelectedConv.StartingList.Clear();
+                for (int i = 0; i < orderedStarts.Count; i++)
+                {
+                    SelectedConv.StartingList.Add(i, orderedStarts[i]);
+                }
+
+                forcedSelectStart = 0;
+
+                var preferredPositions = new Dictionary<int, PointF>
+                {
+                    [0] = GetNewStartNodePosition(0, entryIndex)
+                };
+
+                for (int i = 0; i < existingStartPositions.Count; i++)
+                {
+                    preferredPositions[i + 1] = existingStartPositions[i];
+                }
+
+                ApplyStartMutationInPlace(preferredPositions);
+                return;
+            }
+
+            int newKey = SelectedConv.StartingList.Count;
+            SelectedConv.StartingList.Add(newKey, entryIndex);
+            forcedSelectStart = newKey;
+            ApplyStartMutationInPlace(new Dictionary<int, PointF>
+            {
+                [newKey] = GetNewStartNodePosition(newKey, entryIndex)
+            });
+        }
+
+        private void EntryNode_CreateStart_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedEntryNode = SelectedObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(node => !node.Node.IsReply)
+                ?? CurrentObjects
+                    .OfType<DiagNode>()
+                    .FirstOrDefault(node => node.IsSelected && !node.Node.IsReply);
+
+            if (selectedEntryNode == null)
+            {
+                return;
+            }
+
+            var result = MessageBox.Show(
+                "Move the new start node to the top of the starting node list?",
+                "Create Start Node",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            AddStartNodeForEntry(selectedEntryNode.Node.NodeCount, result == MessageBoxResult.Yes);
+        }
+
         private void StartAddEdit(object param)
         {
             var p = param as string;
@@ -4569,7 +4698,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
             else
             {
-                SelectedConv.StartingList.Add(newKey, newVal);
+                AddStartNodeForEntry(newVal);
+                return;
             }
 
             forcedSelectStart = newKey;
