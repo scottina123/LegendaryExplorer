@@ -177,12 +177,12 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
 
                             <!-- Submenu Popup -->
                             <Popup x:Name="PART_Popup"
-                                   AllowsTransparency="True"
+                                   AllowsTransparency="False"
                                    Focusable="False"
                                    IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
                                    Placement="Right"
                                    HorizontalOffset="-2"
-                                   PopupAnimation="{DynamicResource {x:Static SystemParameters.MenuPopupAnimationKey}}">
+                                   PopupAnimation="None">
                                 <Border x:Name="SubMenuBorder"
                                         Background="#FF2D2D30"
                                         BorderBrush="#FF3F3F46"
@@ -276,7 +276,7 @@ xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls">
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="Grid.IsSharedSizeScope" Value="True"/>
-        <Setter Property="HasDropShadow" Value="True"/>
+        <Setter Property="HasDropShadow" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ContextMenu}">
