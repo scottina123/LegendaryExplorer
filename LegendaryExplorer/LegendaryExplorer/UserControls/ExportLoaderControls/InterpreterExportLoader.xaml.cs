@@ -161,6 +161,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         private static PropertyCollection CopiedProperties { get; set; }
 
+        /// <summary>
+        /// The class name of the export the current root property set was copied from.
+        /// </summary>
+        private static string CopiedPropertiesClassName { get; set; }
+
         public InterpreterExportLoader() : base("Properties")
         {
             LoadCommands();
@@ -331,6 +336,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 CopiedProperty = tvi.Property.DeepClone();
                 CopiedProperties = null;
+                CopiedPropertiesClassName = null;
                 CopiedPropertyPackage.SetTarget(CurrentLoadedExport.FileRef);
             }
         }
@@ -344,6 +350,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             CopiedProperties = (CurrentLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
             CopiedProperty = null;
+            CopiedPropertiesClassName = CurrentLoadedExport.ClassName;
             CopiedPropertyPackage.SetTarget(CurrentLoadedExport.FileRef);
         }
 
@@ -353,6 +360,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 || CurrentLoadedExport == null
                 || package != CurrentLoadedExport.FileRef)
             {
+                return;
+            }
+
+            if (CopiedProperties is not null)
+            {
+                bool targetHasProperties = (CurrentLoadedProperties?.Any(prop => prop is not NoneProperty) == true)
+                                           || CurrentLoadedExport.GetProperties().Any();
+                if (targetHasProperties)
+                {
+                    string overwriteMessage = "This will replace all properties on this export. Properties not in the copied set will be removed.";
+                    if (!string.IsNullOrEmpty(CopiedPropertiesClassName)
+                        && !string.Equals(CopiedPropertiesClassName, CurrentLoadedExport.ClassName, StringComparison.Ordinal))
+                    {
+                        overwriteMessage += $"{Environment.NewLine}{Environment.NewLine}Copied from {CopiedPropertiesClassName}, pasting into {CurrentLoadedExport.ClassName}.";
+                    }
+
+                    var overwrite = MessageBox.Show(Window.GetWindow(this), overwriteMessage, "Overwrite warning", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+                    if (!overwrite)
+                    {
+                        return;
+                    }
+                }
+
+                CurrentLoadedExport.WriteProperties(CopiedProperties.DeepClone());
                 return;
             }
 
