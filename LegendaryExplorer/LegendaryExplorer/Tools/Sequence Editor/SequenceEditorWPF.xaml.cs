@@ -1438,9 +1438,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SelectedSequence = seqExport;
             SetupJSON(SelectedSequence);
             var selectedExports = SelectedObjects.Select(o => o.Export).ToList();
-            bool forceAutoLayout = fromFile
-                                   && forceAutoLayoutForCurrentPackage
-                                   && autoLaidOutSequencesForCurrentPackage.Add(seqExport.UIndex);
+            bool forceAutoLayout = fromFile;
             if (fromFile)
             {
                 Properties_InterpreterWPF.LoadExport(seqExport);
