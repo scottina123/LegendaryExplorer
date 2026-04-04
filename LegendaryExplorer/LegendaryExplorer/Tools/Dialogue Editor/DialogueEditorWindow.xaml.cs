@@ -2109,10 +2109,6 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
             MirrorDialogueNode.GetType().GetProperty(e.PropertyName).SetValue(MirrorDialogueNode, newvalue);
-            if (e.PropertyName == "ExportID")
-            {
-                return;
-            }
             //IF PASS THEN RECREATE NODE
             var node = SelectedDialogueNode;
             var prop = node.NodeProp;
@@ -2137,6 +2133,11 @@ namespace LegendaryExplorer.DialogueEditor
                     var srText = new StringRefProperty(node.LineStrRef, "srText");
                     prop.Properties.AddOrReplaceProp(srText);
                     ApplyLineStrRefChange(node);
+                    return;
+                case "ExportID":
+                    var nExportID = new IntProperty(node.ExportID, "nExportID");
+                    prop.Properties.AddOrReplaceProp(nExportID);
+                    ApplyExportIdChange(node);
                     return;
                 case "ConditionalOrBool":
                     var nConditionalFunc = new IntProperty(node.ConditionalOrBool, "nConditionalFunc");
@@ -4745,6 +4746,15 @@ namespace LegendaryExplorer.DialogueEditor
             editbox.SetResourceReference(TextBox.BackgroundProperty, System.Windows.SystemColors.ControlBrushKey);
             editbox.SetResourceReference(TextBox.ForegroundProperty, System.Windows.SystemColors.ControlTextBrushKey);
         }
+        private void EditBox_CommitAndLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                textBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            }
+
+            EditBox_LostKeyboardFocus(sender, e);
+        }
         private void EditBox_Node_KeyUp(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter || e.Key == Key.Escape)
@@ -5221,6 +5231,19 @@ namespace LegendaryExplorer.DialogueEditor
             ApplyLineStrRefChange(node);
         }
 
+        public void UpdateNodeExportIdFromGraph(DialogueNodeExtended node, int exportId)
+        {
+            if (node == null || SelectedConv == null || node.ExportID == exportId)
+            {
+                return;
+            }
+
+            node.ExportID = exportId;
+            node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(exportId, "nExportID"));
+
+            ApplyExportIdChange(node);
+        }
+
         public void ToggleNodeFiresConditionalFromGraph(DialogueNodeExtended node)
         {
             if (node == null || SelectedConv == null)
@@ -5242,6 +5265,34 @@ namespace LegendaryExplorer.DialogueEditor
         private void ApplyLineStrRefChange(DialogueNodeExtended node)
         {
             UpdateNodeLineDerivedData(node);
+
+            var graphNode = CurrentObjects
+                .OfType<DiagNode>()
+                .FirstOrDefault(o => o.Node.NodeCount == node.NodeCount && o.Node.IsReply == node.IsReply);
+
+            if (graphNode != null)
+            {
+                PushLocalGraphChanges(graphNode);
+            }
+            else
+            {
+                IsLocalUpdate = true;
+                RecreateNodesToProperties(SelectedConv);
+            }
+
+            DialogueNode_SelectByIndex(node.NodeCount, node.IsReply);
+            ApplySpeakerNodeHighlighting();
+        }
+
+        private void ApplyExportIdChange(DialogueNodeExtended node)
+        {
+            if (node == null || SelectedConv == null)
+            {
+                return;
+            }
+
+            node.InterpData = SelectedConv.ParseSingleNodeInterpData(node);
+            node.InterpLength = node.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? 0f;
 
             var graphNode = CurrentObjects
                 .OfType<DiagNode>()
@@ -5555,6 +5606,7 @@ namespace LegendaryExplorer.DialogueEditor
                     "Transition" => node.Node.Transition.ToString(),
                     "TransitionParam" => node.Node.TransitionParam.ToString(),
                     "InterpLength" => node.Node.InterpLength.ToString("0.###", CultureInfo.InvariantCulture),
+                    "ExportID" => node.Node.ExportID.ToString(),
                     "CameraIntimacy" => node.Node.CameraIntimacy.ToString(),
                     _ => ""
                 };
@@ -5564,7 +5616,7 @@ namespace LegendaryExplorer.DialogueEditor
                     Text = currentValue,
                     BorderStyle = System.Windows.Forms.BorderStyle.None,
                     Multiline = false,
-                    ShortcutsEnabled = false
+                    ShortcutsEnabled = true
                 };
 
                 if (Settings.Global_DarkMode_Enabled)
@@ -5747,6 +5799,14 @@ namespace LegendaryExplorer.DialogueEditor
                             node.Node.CameraIntimacy = newValue;
                             node.Node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(newValue, "nCameraIntimacy"));
                             changed = true;
+                        }
+                        break;
+                    case "ExportID":
+                        if (node.Node.ExportID != newValue)
+                        {
+                            UpdateNodeExportIdFromGraph(node.Node, newValue);
+                            inlinePlotFieldEditClosing = false;
+                            return;
                         }
                         break;
                 }

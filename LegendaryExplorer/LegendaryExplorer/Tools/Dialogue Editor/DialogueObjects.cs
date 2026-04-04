@@ -1177,7 +1177,7 @@ namespace LegendaryExplorer.DialogueEditor
                     ref innerY,
                     width,
                     false,
-                    isEditable: false));
+                    isEditable: true));
 
                 container.AddChild(CreatePlotFieldEditor(
                     "Cam Intimacy:",
