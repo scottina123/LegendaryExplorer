@@ -1880,6 +1880,22 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void SyncSelectedConversationSpeakerCache()
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            var cachedConversation = Conversations.FirstOrDefault(c => c.UIndex == SelectedConv.UIndex);
+            if (cachedConversation == null || ReferenceEquals(cachedConversation, SelectedConv))
+            {
+                return;
+            }
+
+            cachedConversation.Speakers = SelectedConv.Speakers;
+        }
+
         private void RefreshSpeakerStateInPlace(bool rebuildGraphInPlace = false, bool refreshSelectedNodeAssets = true)
         {
             if (SelectedConv == null)
@@ -1888,6 +1904,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             SelectedConv.Speakers = new ObservableCollectionExtended<SpeakerExtended>(SelectedSpeakerList);
+            SyncSelectedConversationSpeakerCache();
             RebuildListenersList();
             RebuildSpeakerNodeFilterMenu();
             RebindConversationNodeSpeakers();
