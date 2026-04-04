@@ -1,4 +1,4 @@
-﻿using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Helpers;
@@ -372,6 +372,283 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         #endregion
 
         #region Clone Node And Sequence
+        private static ExportEntry GetNestedSequenceCloneRoot(ExportEntry export, ExportEntry topLevelSequence)
+        {
+            ExportEntry current = KismetHelper.GetParentSequence(export);
+            ExportEntry cloneRoot = null;
+
+            while (current != null && current != topLevelSequence)
+            {
+                if (current.ClassName is "Sequence" or "SequenceReference")
+                {
+                    cloneRoot = current;
+                }
+
+                current = KismetHelper.GetParentSequence(current);
+            }
+
+            return cloneRoot;
+        }
+
+        private static List<ExportEntry> GetOrderedConnectedSequenceObjects(ExportEntry interp, ExportEntry interpData, ExportEntry sequence)
+        {
+            var orderedSequenceObjects = sequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
+                .Select(prop => prop.ResolveToEntry(sequence.FileRef) as ExportEntry)
+                .Where(exp => exp != null)
+                .ToList() ?? [];
+
+            if (orderedSequenceObjects.Count == 0)
+            {
+                return [];
+            }
+
+            var sequenceObjectUIndexes = orderedSequenceObjects.Select(exp => exp.UIndex).ToHashSet();
+            var objectsToClone = new HashSet<int>();
+            var pendingObjects = new Queue<ExportEntry>();
+
+            void QueueIfSequenceObject(ExportEntry candidate)
+            {
+                if (candidate == null || !sequenceObjectUIndexes.Contains(candidate.UIndex))
+                {
+                    return;
+                }
+
+                if (objectsToClone.Add(candidate.UIndex) && candidate != interpData)
+                {
+                    pendingObjects.Enqueue(candidate);
+                }
+            }
+
+            QueueIfSequenceObject(interp);
+            QueueIfSequenceObject(interpData);
+
+            while (pendingObjects.Count > 0)
+            {
+                ExportEntry current = pendingObjects.Dequeue();
+
+                foreach (ExportEntry inputNode in KismetHelper.FindOutputConnectionsToNode(current, orderedSequenceObjects))
+                {
+                    QueueIfSequenceObject(inputNode);
+                }
+
+                foreach (ExportEntry outputNode in KismetHelper.GetOutputLinksOfNode(current)
+                             .SelectMany(linkGroup => linkGroup)
+                             .Select(link => link.LinkedOp as ExportEntry)
+                             .Where(linkedNode => linkedNode != null))
+                {
+                    QueueIfSequenceObject(outputNode);
+                }
+
+                foreach (ExportEntry eventSource in KismetHelper.FindEventConnectionsToNode(current, orderedSequenceObjects))
+                {
+                    QueueIfSequenceObject(eventSource);
+                }
+
+                foreach (ExportEntry eventTarget in KismetHelper.GetEventLinksOfNode(current)
+                             .SelectMany(link => link.LinkedNodes)
+                             .OfType<ExportEntry>())
+                {
+                    QueueIfSequenceObject(eventTarget);
+                }
+            }
+
+            return orderedSequenceObjects.Where(exp => objectsToClone.Contains(exp.UIndex)).ToList();
+        }
+
+        private static void MapClonedTreeExports(ExportEntry originalRoot, ExportEntry clonedRoot, IDictionary<int, ExportEntry> clonedEntries)
+        {
+            var originalTree = originalRoot.FileRef.Exports
+                .Where(exp => exp == originalRoot || exp.IsDescendantOf(originalRoot))
+                .ToList();
+
+            foreach (ExportEntry originalExport in originalTree)
+            {
+                if (FindClonedTreeExport(originalRoot, clonedRoot, originalExport) is ExportEntry clonedExport)
+                {
+                    clonedEntries[originalExport.UIndex] = clonedExport;
+                }
+            }
+        }
+
+        private static List<(string ObjectName, int ObjectIndex, string ClassName)> GetRelativeClonePath(ExportEntry root, ExportEntry export)
+        {
+            var path = new Stack<(string ObjectName, int ObjectIndex, string ClassName)>();
+            ExportEntry current = export;
+
+            while (current != null && current != root)
+            {
+                path.Push((current.ObjectName.Name, current.indexValue, current.ClassName));
+                current = current.Parent as ExportEntry;
+            }
+
+            return current == root ? path.ToList() : null;
+        }
+
+        private static ExportEntry FindClonedTreeExport(ExportEntry originalRoot, ExportEntry clonedRoot, ExportEntry originalExport)
+        {
+            if (originalRoot == null || clonedRoot == null || originalExport == null)
+            {
+                return null;
+            }
+
+            if (originalExport == originalRoot)
+            {
+                return clonedRoot;
+            }
+
+            var relativePath = GetRelativeClonePath(originalRoot, originalExport);
+            if (relativePath == null)
+            {
+                return null;
+            }
+
+            ExportEntry current = clonedRoot;
+            foreach ((string objectName, int objectIndex, string className) in relativePath)
+            {
+                current = current.FileRef.Exports.FirstOrDefault(exp => exp.idxLink == current.UIndex
+                    && exp.ClassName == className
+                    && exp.ObjectName.Name == objectName
+                    && exp.indexValue == objectIndex);
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current;
+        }
+
+        private static IEntry RemapClonedEntry(IEntry entry, IReadOnlyDictionary<int, ExportEntry> clonedEntries)
+        {
+            return entry is ExportEntry export && clonedEntries.TryGetValue(export.UIndex, out ExportEntry clonedEntry)
+                ? clonedEntry
+                : entry;
+        }
+
+        private static void RepointClonedSequenceObjectLinks(ExportEntry originalObject, ExportEntry clonedObject, IReadOnlyDictionary<int, ExportEntry> clonedEntries)
+        {
+            var outputLinks = KismetHelper.GetOutputLinksOfNode(originalObject)
+                .Select(linkGroup => linkGroup.Select(link => new OutputLink
+                {
+                    LinkedOp = RemapClonedEntry(link.LinkedOp, clonedEntries),
+                    InputLinkIdx = link.InputLinkIdx
+                }).ToList())
+                .ToList();
+            KismetHelper.WriteOutputLinksToNode(clonedObject, outputLinks);
+
+            var variableLinks = KismetHelper.GetVariableLinksOfNode(originalObject);
+            foreach (VarLinkInfo variableLink in variableLinks)
+            {
+                variableLink.LinkedNodes = variableLink.LinkedNodes
+                    .Select(linkedNode => RemapClonedEntry(linkedNode, clonedEntries))
+                    .ToList();
+            }
+            KismetHelper.WriteVariableLinksToNode(clonedObject, variableLinks);
+
+            var eventLinks = KismetHelper.GetEventLinksOfNode(originalObject);
+            foreach (EventLinkInfo eventLink in eventLinks)
+            {
+                eventLink.LinkedNodes = eventLink.LinkedNodes
+                    .Select(linkedNode => RemapClonedEntry(linkedNode, clonedEntries))
+                    .ToList();
+            }
+            KismetHelper.WriteEventLinksToNode(clonedObject, eventLinks);
+        }
+
+        private static void EnsureInterpDataLink(ExportEntry interp, ExportEntry interpData)
+        {
+            if (interp == null || interpData == null) return;
+            var varLinksProp = interp.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (varLinksProp == null) return;
+            foreach (var varLink in varLinksProp)
+            {
+                if (varLink.GetProp<StrProperty>("LinkDesc")?.Value == "Data")
+                {
+                    var linkedVars = varLink.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables");
+                    if (linkedVars != null)
+                    {
+                        linkedVars.Clear();
+                        linkedVars.Add(new ObjectProperty(interpData.UIndex));
+                    }
+                    break;
+                }
+            }
+            interp.WriteProperty(varLinksProp);
+        }
+
+        /// <summary>
+        /// Recursively maps SequenceObjects from an original sequence to their cloned counterparts by array position.
+        /// SetupClonedSequence preserves the SequenceObjects order, so index i in original corresponds to index i in clone.
+        /// </summary>
+        private static void MapClonedSequenceExports(ExportEntry originalSeq, ExportEntry clonedSeq, IDictionary<int, ExportEntry> clonedEntries)
+        {
+            var pcc = originalSeq.FileRef;
+            var originalSeqObjs = originalSeq.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+            var clonedSeqObjs = clonedSeq.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+            if (originalSeqObjs == null || clonedSeqObjs == null) return;
+
+            int count = Math.Min(originalSeqObjs.Count, clonedSeqObjs.Count);
+            for (int i = 0; i < count; i++)
+            {
+                int origUIdx = originalSeqObjs[i].Value;
+                int clonedUIdx = clonedSeqObjs[i].Value;
+                if (origUIdx == 0 || clonedUIdx == 0 || !pcc.IsUExport(origUIdx) || !pcc.IsUExport(clonedUIdx)) continue;
+
+                ExportEntry origEntry = pcc.GetUExport(origUIdx);
+                ExportEntry clonedEntry = pcc.GetUExport(clonedUIdx);
+                clonedEntries[origUIdx] = clonedEntry;
+
+                if (origEntry.ClassName is "Sequence" or "SequenceReference")
+                {
+                    MapClonedSequenceExports(origEntry, clonedEntry, clonedEntries);
+                }
+            }
+        }
+
+        private static ExportEntry GetInterpDataLinkedToInterp(ExportEntry interp)
+        {
+            return KismetHelper.GetVariableLinksOfNode(interp)
+                .FirstOrDefault(link => link.LinkDesc == "Data")?
+                .LinkedNodes
+                .OfType<ExportEntry>()
+                .FirstOrDefault(entry => entry.ClassName == "InterpData");
+        }
+
+        private static ExportEntry GetConvNodeLinkedToInterp(ConversationExtended conversation, ExportEntry interp, int preferredNodeId = 0)
+        {
+            if (conversation == null || interp == null)
+            {
+                return null;
+            }
+
+            var topLevelSequence = conversation.Sequence as ExportEntry;
+            var sequenceElements = topLevelSequence != null
+                ? KismetHelper.GetAllSequenceElements(topLevelSequence)?.OfType<ExportEntry>().ToList() ?? []
+                : [];
+            if (sequenceElements.Count == 0)
+            {
+                return null;
+            }
+
+            bool ReachesInterp(ExportEntry convNode) => conversation.recursiveFindSeqActInterp([convNode], [], 20) == interp;
+
+            if (preferredNodeId > 0)
+            {
+                ExportEntry preferredMatch = sequenceElements
+                    .Where(entry => entry.ClassName == "BioSeqEvt_ConvNode"
+                        && entry.GetProperty<IntProperty>("m_nNodeID")?.Value == preferredNodeId)
+                    .FirstOrDefault(ReachesInterp);
+                if (preferredMatch != null)
+                {
+                    return preferredMatch;
+                }
+            }
+
+            return sequenceElements
+                .Where(entry => entry.ClassName == "BioSeqEvt_ConvNode")
+                .FirstOrDefault(ReachesInterp);
+        }
+
         /// <summary>
         /// Clones a Dialogue Node and its related Sequence, while giving it a unique id.
         /// </summary>
@@ -403,42 +680,79 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                     return;
                 }
 
-                // Get the/a EndCurrentConvNode that the Interp outputs to
-
-                ExportEntry sequence = KismetHelper.GetParentSequence(oldInterpData);
-
-                // Clone the Interp and Interpdata objects
-                ExportEntry newInterp = CloneObject(oldInterp, sequence);
-                ExportEntry newInterpData = EntryCloner.CloneTree(oldInterpData);
-                KismetHelper.AddObjectToSequence(newInterpData, sequence, true);
-
-                // Clone and link the Conv and End objects, if they exist
-                // Get the/a ConvNode linked to the Interp
-                ExportEntry oldConvNode = KismetHelper.FindOutputConnectionsToNode(oldInterp, KismetHelper.GetAllSequenceElements(oldInterp).OfType<ExportEntry>())
-                    .FirstOrDefault(entry => entry.ClassName == "BioSeqEvt_ConvNode");
-                ExportEntry newConvNode = null;
-                if (oldConvNode != null)
+                Dictionary<int, ExportEntry> clonedEntries = [];
+                ExportEntry topLevelSequence = dew.SelectedConv.Sequence is ExportEntry selectedConversationSequence
+                    ? selectedConversationSequence
+                    : null;
+                ExportEntry sequenceCloneRoot = GetNestedSequenceCloneRoot(oldInterpData, topLevelSequence);
+                if (sequenceCloneRoot != null)
                 {
-                    newConvNode = CloneObject(oldConvNode, sequence);
-                    KismetHelper.CreateOutputLink(newConvNode, "Started", newInterp, 0);
+                    ExportEntry clonedSequenceRoot = KismetHelper.CloneObject(sequenceCloneRoot, KismetHelper.GetParentSequence(sequenceCloneRoot), topLevel: false);
+                    clonedEntries[sequenceCloneRoot.UIndex] = clonedSequenceRoot;
+                    MapClonedSequenceExports(sequenceCloneRoot, clonedSequenceRoot, clonedEntries);
+                }
+                else
+                {
+                    ExportEntry sequence = KismetHelper.GetParentSequence(oldInterpData);
+                    List<ExportEntry> orderedObjectsToClone = GetOrderedConnectedSequenceObjects(oldInterp, oldInterpData, sequence);
+                    if (orderedObjectsToClone.Count == 0)
+                    {
+                        MessageBox.Show("Unable to determine which sequence objects should be cloned for the selected node.", "Warning", MessageBoxButton.OK);
+                        return;
+                    }
+
+                    foreach (ExportEntry originalObject in orderedObjectsToClone)
+                    {
+                        ExportEntry clonedObject;
+                        if (originalObject == oldInterpData)
+                        {
+                            clonedObject = EntryCloner.CloneTree(originalObject);
+                            KismetHelper.AddObjectToSequence(clonedObject, sequence, true);
+                            clonedEntries[originalObject.UIndex] = clonedObject;
+                            MapClonedTreeExports(originalObject, clonedObject, clonedEntries);
+                        }
+                        else
+                        {
+                            clonedObject = CloneObject(originalObject, sequence);
+                            clonedEntries[originalObject.UIndex] = clonedObject;
+                        }
+                    }
+
+                    foreach (ExportEntry originalObject in orderedObjectsToClone.Where(entry => entry != oldInterpData))
+                    {
+                        RepointClonedSequenceObjectLinks(originalObject, clonedEntries[originalObject.UIndex], clonedEntries);
+                    }
                 }
 
-                if (KismetHelper.GetOutputLinksOfNode(oldInterp).Flatten()
-                    .FirstOrDefault(link => link.LinkedOp.ClassName == "BioSeqAct_EndCurrentConvNode")?.LinkedOp is ExportEntry oldEndNode)
+                ExportEntry oldConvNode = GetConvNodeLinkedToInterp(dew.SelectedConv, oldInterp, selectedDialogueNode.ExportID);
+
+
+                if (!clonedEntries.TryGetValue(oldInterp.UIndex, out ExportEntry newInterp) || newInterp == null)
                 {
-                    ExportEntry newEndNode = CloneObject(oldEndNode, sequence);
-                    KismetHelper.CreateOutputLink(newInterp, "Completed", newEndNode, 0);
-                    KismetHelper.CreateOutputLink(newInterp, "Reversed", newEndNode, 0);
+                    MessageBox.Show("Unable to locate the cloned Interp in the cloned sequence.", "Warning", MessageBoxButton.OK);
+                    return;
                 }
 
-                // Save existing varLinks, minus the Data one
-                List<VarLinkInfo> varLinks = KismetHelper.GetVariableLinksOfNode(oldInterp);
-                foreach (VarLinkInfo link in varLinks)
+                ExportEntry newInterpData = GetInterpDataLinkedToInterp(newInterp);
+                if ((newInterpData == null || newInterpData == oldInterpData || newInterpData.IsDescendantOf(oldInterpData))
+                    && clonedEntries.TryGetValue(oldInterpData.UIndex, out ExportEntry mappedInterpData)
+                    && mappedInterpData != null)
                 {
-                    if (link.LinkDesc == "Data") { link.LinkedNodes = []; }
+                    newInterpData = mappedInterpData;
                 }
-                KismetHelper.WriteVariableLinksToNode(newInterp, varLinks);
-                KismetHelper.CreateVariableLink(newInterp, "Data", newInterpData);
+
+                if (newInterpData == null || newInterpData == oldInterpData)
+                {
+                    MessageBox.Show("Unable to locate the cloned InterpData in the cloned sequence.", "Warning", MessageBoxButton.OK);
+                    return;
+                }
+
+                EnsureInterpDataLink(newInterp, newInterpData);
+
+                ExportEntry newConvNode = GetConvNodeLinkedToInterp(dew.SelectedConv, newInterp, selectedDialogueNode.ExportID)
+                    ?? (oldConvNode != null && clonedEntries.TryGetValue(oldConvNode.UIndex, out ExportEntry clonedConvNode)
+                        ? clonedConvNode
+                        : null);
 
                 // Write the new nodeID
                 if (newConvNode != null)
@@ -1379,7 +1693,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         }
 
         /// <summary>
-        /// Link audio, passed by id, to a new line and add it to the FaceFX set editor control.
+        /// Link audio, passed by id, to a new line and add it to the FaceFX set editor.
         /// </summary>
         /// <param name="faceFXAnimSet">FaceFX anim set to link to.</param>
         /// <param name="soundCue">SoundCue to link.</param>

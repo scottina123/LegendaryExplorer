@@ -200,6 +200,12 @@ namespace LegendaryExplorerCore.Kismet
         public static void WriteOutputLinksToProperties(List<List<OutputLink>> linkSet, PropertyCollection props)
         {
             var outlinksProp = props.GetProp<ArrayProperty<StructProperty>>("OutputLinks");
+            if (outlinksProp == null)
+            {
+                Debug.WriteLine("WriteOutputLinksToProperties() called for properties with no OutputLinks array.");
+                return;
+            }
+
             if (linkSet.Count != outlinksProp.Count)
             {
                 Debug.WriteLine("Sets are out of sync for WriteOutboundLinksToProperties()! You can't add a new outbound named link using this method.");
