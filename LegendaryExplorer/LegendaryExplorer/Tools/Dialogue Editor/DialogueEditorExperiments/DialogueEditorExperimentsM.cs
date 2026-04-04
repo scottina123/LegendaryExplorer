@@ -48,38 +48,14 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
 
             var (newTag, fxaM, fxaF) = speakerSelections.Value;
 
-            foreach (var convo in conversations)
+            int modifiedCount = AddSpeakerWithSharedFXAToAllConvos(window.Pcc, newTag, fxaM.InstancedFullPath, fxaF.InstancedFullPath);
+            if (modifiedCount < 0)
             {
-                var bioconvo = convo.GetProperties();
-                var speakerList = bioconvo.GetProp<ArrayProperty<NameProperty>>("m_aSpeakerList");
-                var fxaMs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
-                var fxaFs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
-
-                if (speakerList == null)
-                {
-                    speakerList = new ArrayProperty<NameProperty>("m_aSpeakerList");
-                    bioconvo.AddOrReplaceProp(speakerList);
-                }
-
-                if (fxaMs == null)
-                {
-                    fxaMs = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets");
-                    bioconvo.AddOrReplaceProp(fxaMs);
-                }
-
-                if (fxaFs == null)
-                {
-                    fxaFs = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets");
-                    bioconvo.AddOrReplaceProp(fxaFs);
-                }
-
-                speakerList.Add(new NameProperty(newTag));
-                fxaMs.Add(new ObjectProperty(fxaM));
-                fxaFs.Add(new ObjectProperty(fxaF));
-                convo.WriteProperties(bioconvo);
+                MessageBox.Show("Could not locate the selected FaceFXAnimSets in this package.");
+                return;
             }
 
-            MessageBox.Show("Done.");
+            MessageBox.Show($"Done. Updated {modifiedCount} conversation(s).");
         }
 
         public static (string speakerTag, ExportEntry male, ExportEntry female)? PromptForSharedFxaSelectionAndSpeakerTag(Window owner, IMEPackage package, ExportEntry preferredMale = null, ExportEntry preferredFemale = null)
@@ -287,35 +263,91 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             foreach (var convo in conversations)
             {
                 var bioconvo = convo.GetProperties();
-                var speakerList = bioconvo.GetProp<ArrayProperty<NameProperty>>("m_aSpeakerList");
+                int speakerIndex = EnsureSpeakerExists(package, convo, bioconvo, speakerTag);
+
                 var fxaMs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aMaleFaceSets");
-                var fxaFs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
-
-                if (speakerList == null)
-                {
-                    speakerList = new ArrayProperty<NameProperty>("m_aSpeakerList");
-                    bioconvo.AddOrReplaceProp(speakerList);
-                }
-
                 if (fxaMs == null)
                 {
                     fxaMs = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets");
                     bioconvo.AddOrReplaceProp(fxaMs);
                 }
 
+                var fxaFs = bioconvo.GetProp<ArrayProperty<ObjectProperty>>("m_aFemaleFaceSets");
                 if (fxaFs == null)
                 {
                     fxaFs = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets");
                     bioconvo.AddOrReplaceProp(fxaFs);
                 }
 
-                speakerList.Add(new NameProperty(speakerTag));
-                fxaMs.Add(new ObjectProperty(fxaM));
-                fxaFs.Add(new ObjectProperty(fxaF));
+                int faceSetIndex = speakerIndex + 2;
+                EnsureFaceSetArraySize(fxaMs, faceSetIndex + 1);
+                EnsureFaceSetArraySize(fxaFs, faceSetIndex + 1);
+
+                fxaMs[faceSetIndex].Value = fxaM.UIndex;
+                fxaFs[faceSetIndex].Value = fxaF.UIndex;
                 convo.WriteProperties(bioconvo);
             }
 
             return conversations.Count;
+        }
+
+        private static int EnsureSpeakerExists(IMEPackage package, ExportEntry conversation, PropertyCollection bioconvo, string speakerTag)
+        {
+            var speakerName = NameReference.FromInstancedString(speakerTag);
+            package.FindNameOrAdd(speakerName.Name);
+
+            if (conversation.FileRef.Game.IsGame3())
+            {
+                var speakerList = bioconvo.GetProp<ArrayProperty<NameProperty>>("m_aSpeakerList");
+                if (speakerList == null)
+                {
+                    speakerList = new ArrayProperty<NameProperty>("m_aSpeakerList");
+                    bioconvo.AddOrReplaceProp(speakerList);
+                }
+
+                for (int i = 0; i < speakerList.Count; i++)
+                {
+                    if (speakerList[i].Value.Name.Equals(speakerTag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+
+                speakerList.Add(new NameProperty(speakerName, "m_aSpeakerList"));
+                return speakerList.Count - 1;
+            }
+
+            var legacySpeakerList = bioconvo.GetProp<ArrayProperty<StructProperty>>("m_SpeakerList");
+            if (legacySpeakerList == null)
+            {
+                legacySpeakerList = new ArrayProperty<StructProperty>("m_SpeakerList");
+                bioconvo.AddOrReplaceProp(legacySpeakerList);
+            }
+
+            for (int i = 0; i < legacySpeakerList.Count; i++)
+            {
+                if (legacySpeakerList[i].GetProp<NameProperty>("sSpeakerTag") is { Value.Name: var existingTag }
+                    && existingTag.Equals(speakerTag, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            legacySpeakerList.Add(new StructProperty("BioDialogSpeaker", new PropertyCollection
+            {
+                new NameProperty(speakerName, "sSpeakerTag"),
+                new NoneProperty()
+            }));
+
+            return legacySpeakerList.Count - 1;
+        }
+
+        private static void EnsureFaceSetArraySize(ArrayProperty<ObjectProperty> faceSets, int requiredCount)
+        {
+            while (faceSets.Count < requiredCount)
+            {
+                faceSets.Add(new ObjectProperty(0));
+            }
         }
 
         public static void ExtractAllAudioFromSpeakerByTag(WPFBase window)
