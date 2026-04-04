@@ -892,6 +892,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.AddSpeakerWithSharedFXAToAllDialogues(GetPEWindow());
         }
 
+        private void FixBrokenPlayerFaceFxReferencesInFolder_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.FixBrokenPlayerFaceFxReferencesInFolder(GetPEWindow());
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))

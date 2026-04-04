@@ -23,6 +23,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Collections;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
+using Microsoft.WindowsAPICodePack.Dialogs;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -73,6 +74,15 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int ModifiedAssetCount,
             int ModifiedLineCount,
             List<string> Failures);
+
+        private sealed record PlayerFaceFxFolderRepairSummary(
+            int FilesScanned,
+            int EligibleFiles,
+            int ModifiedFiles,
+            int ModifiedConversations,
+            int ModifiedReferences,
+            List<string> Failures,
+            List<string> Warnings);
 
         public static void DeleteSectionOfLineForAllFaceFxAssets(PackageEditorWindow pew)
         {
@@ -155,6 +165,84 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
         {
             DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
+        }
+
+        public static void FixBrokenPlayerFaceFxReferencesInFolder(PackageEditorWindow pew)
+        {
+            if (pew == null)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(pew,
+                    "This will scan every package file in a selected folder and its subfolders, then fix BioConversation player FaceFX references that point to non-player FaceFXAnimSets by reconnecting them to local player FaceFXAnimSets under the conversation package.\n\nMake sure you have a backup and that these files are not open elsewhere in Legendary Explorer.\n\nContinue?",
+                    "Fix player FaceFX references in folder",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var dialog = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                EnsurePathExists = true,
+                Title = "Select folder containing package files"
+            };
+            if (dialog.ShowDialog(pew) != CommonFileDialogResult.Ok)
+            {
+                return;
+            }
+
+            pew.BusyText = "Fixing broken player FaceFX references in folder";
+            pew.IsBusy = true;
+
+            Task.Run(() => FixBrokenPlayerFaceFxReferencesInFolder(dialog.FileName))
+                .ContinueWithOnUIThread(task =>
+                {
+                    pew.IsBusy = false;
+
+                    if (task.Exception != null)
+                    {
+                        MessageBox.Show(pew, task.Exception.FlattenException(), "Fix player FaceFX references in folder", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    PlayerFaceFxFolderRepairSummary summary = task.Result;
+                    if (summary.Failures.Count == 0 && summary.Warnings.Count == 0)
+                    {
+                        MessageBox.Show(pew,
+                            $"Scanned {summary.FilesScanned} package file(s), checked {summary.EligibleFiles} Mass Effect package file(s), and fixed {summary.ModifiedReferences} player FaceFX reference(s) across {summary.ModifiedConversations} conversation(s) in {summary.ModifiedFiles} file(s).",
+                            "Fix player FaceFX references in folder",
+                            MessageBoxButton.OK,
+                            summary.ModifiedReferences > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    var lines = new List<string>
+                    {
+                        $"Scanned {summary.FilesScanned} package file(s).",
+                        $"Checked {summary.EligibleFiles} Mass Effect package file(s).",
+                        $"Fixed {summary.ModifiedReferences} player FaceFX reference(s) across {summary.ModifiedConversations} conversation(s) in {summary.ModifiedFiles} file(s)."
+                    };
+
+                    if (summary.Warnings.Count > 0)
+                    {
+                        lines.Add(string.Empty);
+                        lines.AddRange(summary.Warnings);
+                    }
+
+                    if (summary.Failures.Count > 0)
+                    {
+                        lines.Add(string.Empty);
+                        lines.AddRange(summary.Failures);
+                    }
+
+                    new ListDialog(lines,
+                        "Fix player FaceFX references in folder",
+                        "The batch repair completed with warnings or failures.",
+                        pew).Show();
+                });
         }
 
         public static void RestoreMaterialFromChosenAssetDatabase(PackageEditorWindow pew, ExportEntry export, Action onCompleted = null)
@@ -435,6 +523,226 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             return new FaceFxLineSectionDeleteSummary(modifiedAssetCount, modifiedLineCount, failures);
+        }
+
+        private static PlayerFaceFxFolderRepairSummary FixBrokenPlayerFaceFxReferencesInFolder(string folderPath)
+        {
+            List<string> packageFiles = Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories)
+                .Where(path => path.RepresentsPackageFilePath())
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            int eligibleFiles = 0;
+            int modifiedFiles = 0;
+            int modifiedConversations = 0;
+            int modifiedReferences = 0;
+            var failures = new List<string>();
+            var warnings = new List<string>();
+
+            foreach (string packageFile in packageFiles)
+            {
+                try
+                {
+                    using var package = MEPackageHandler.OpenMEPackage(packageFile, forceLoadFromDisk: true);
+                    if (!package.Game.IsMEGame() || package.Game.IsGame1())
+                    {
+                        continue;
+                    }
+
+                    eligibleFiles++;
+                    int fileConversationFixes = 0;
+                    int fileReferenceFixes = 0;
+
+                    foreach (ExportEntry bioConversation in package.Exports.Where(exp => exp.ClassName == "BioConversation"))
+                    {
+                        if (TryFixBrokenPlayerFaceFxReference(bioConversation, out int referenceFixes, out List<string> conversationWarnings))
+                        {
+                            fileConversationFixes++;
+                            fileReferenceFixes += referenceFixes;
+                        }
+
+                        foreach (string warning in conversationWarnings)
+                        {
+                            warnings.Add($"WARNING {Path.GetFileName(packageFile)}: {warning}");
+                        }
+                    }
+
+                    if (!package.IsModified)
+                    {
+                        continue;
+                    }
+
+                    package.Save();
+                    modifiedFiles++;
+                    modifiedConversations += fileConversationFixes;
+                    modifiedReferences += fileReferenceFixes;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"FAILED {Path.GetFileName(packageFile)}: {ex.Message}");
+                }
+            }
+
+            return new PlayerFaceFxFolderRepairSummary(packageFiles.Count, eligibleFiles, modifiedFiles, modifiedConversations, modifiedReferences, failures, warnings);
+        }
+
+        private static bool TryFixBrokenPlayerFaceFxReference(ExportEntry bioConversation, out int referenceFixes, out List<string> warnings)
+        {
+            referenceFixes = 0;
+            warnings = [];
+
+            if (bioConversation?.FileRef == null)
+            {
+                return false;
+            }
+
+            PropertyCollection bioConvoProps = bioConversation.GetProperties();
+            bool modified = false;
+
+            if (TryFixBrokenPlayerFaceFxReference(bioConversation, bioConvoProps, isMale: true, out string maleWarning))
+            {
+                referenceFixes++;
+                modified = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(maleWarning))
+            {
+                warnings.Add(maleWarning);
+            }
+
+            if (TryFixBrokenPlayerFaceFxReference(bioConversation, bioConvoProps, isMale: false, out string femaleWarning))
+            {
+                referenceFixes++;
+                modified = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(femaleWarning))
+            {
+                warnings.Add(femaleWarning);
+            }
+
+            if (modified)
+            {
+                bioConversation.WriteProperties(bioConvoProps);
+            }
+
+            return modified;
+        }
+
+        private static bool TryFixBrokenPlayerFaceFxReference(ExportEntry bioConversation, PropertyCollection bioConvoProps, bool isMale, out string warning)
+        {
+            warning = null;
+
+            string arrayName = isMale ? "m_aMaleFaceSets" : "m_aFemaleFaceSets";
+            ArrayProperty<ObjectProperty> faceSets = bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>(arrayName);
+            ExportEntry currentFaceFx = faceSets != null && faceSets.Count > 0 && bioConversation.FileRef.IsUExport(faceSets[0].Value)
+                ? bioConversation.FileRef.GetUExport(faceSets[0].Value)
+                : null;
+
+            if (currentFaceFx != null && IsPlayerFaceFx(currentFaceFx))
+            {
+                return false;
+            }
+
+            ExportEntry replacementFaceFx = FindLocalPlayerFaceFxForConversation(bioConversation, isMale);
+            if (replacementFaceFx == null)
+            {
+                if (currentFaceFx != null)
+                {
+                    warning = $"#{bioConversation.UIndex} {bioConversation.InstancedFullPath}: player {(isMale ? "male" : "female")} FaceFX points to '{currentFaceFx.InstancedFullPath}', but no local player FaceFXAnimSet was found under '{bioConversation.Parent?.InstancedFullPath ?? "<root>"}'.";
+                }
+
+                return false;
+            }
+
+            if (currentFaceFx?.UIndex == replacementFaceFx.UIndex)
+            {
+                return false;
+            }
+
+            faceSets ??= new ArrayProperty<ObjectProperty>(arrayName);
+            if (bioConvoProps.GetProp<ArrayProperty<ObjectProperty>>(arrayName) == null)
+            {
+                bioConvoProps.AddOrReplaceProp(faceSets);
+            }
+
+            while (faceSets.Count < 1)
+            {
+                faceSets.Add(new ObjectProperty(0));
+            }
+
+            faceSets[0].Value = replacementFaceFx.UIndex;
+            return true;
+        }
+
+        private static ExportEntry FindLocalPlayerFaceFxForConversation(ExportEntry bioConversation, bool isMale)
+        {
+            string conversationParentPath = bioConversation.Parent?.InstancedFullPath;
+            if (string.IsNullOrWhiteSpace(conversationParentPath))
+            {
+                return null;
+            }
+
+            string genderSuffix = isMale ? "_M" : "_F";
+            string topPackageName = GetTopPackageName(bioConversation);
+            string[] preferredNames =
+            [
+                $"{topPackageName}_player{genderSuffix}",
+                $"FXA_{topPackageName}_player{genderSuffix}"
+            ];
+
+            List<ExportEntry> candidates = bioConversation.FileRef.Exports
+                .Where(exp => !exp.IsDefaultObject
+                              && exp.ClassName == "FaceFXAnimSet"
+                              && IsUnderPackage(exp, conversationParentPath)
+                              && exp.ObjectNameString.Contains("player", StringComparison.OrdinalIgnoreCase)
+                              && exp.ObjectNameString.EndsWith(genderSuffix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (string preferredName in preferredNames)
+            {
+                ExportEntry exactMatch = candidates.FirstOrDefault(exp => exp.ObjectNameString.Equals(preferredName, StringComparison.OrdinalIgnoreCase));
+                if (exactMatch != null)
+                {
+                    return exactMatch;
+                }
+            }
+
+            return candidates
+                .OrderByDescending(exp => string.Equals(exp.Parent?.InstancedFullPath, conversationParentPath, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(exp => exp.InstancedFullPath.Count(ch => ch == '.'))
+                .ThenBy(exp => exp.ObjectNameString, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+        }
+
+        private static bool IsPlayerFaceFx(ExportEntry faceFxExport)
+        {
+            return faceFxExport != null
+                && faceFxExport.ClassName == "FaceFXAnimSet"
+                && faceFxExport.ObjectNameString.Contains("player", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsUnderPackage(IEntry entry, string packagePath)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(packagePath))
+            {
+                return false;
+            }
+
+            string entryPath = entry.InstancedFullPath;
+            return entryPath.Equals(packagePath, StringComparison.OrdinalIgnoreCase)
+                   || entryPath.StartsWith(packagePath + ".", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetTopPackageName(IEntry entry)
+        {
+            IEntry current = entry;
+            while (current?.Parent != null)
+            {
+                current = current.Parent;
+            }
+
+            return current?.ObjectName.Instanced ?? string.Empty;
         }
 
         private static bool DeleteFaceFxLineSection(FaceFXLine line, float start, float end, float span)
