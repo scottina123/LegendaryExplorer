@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -91,6 +92,20 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int FailedCount,
             List<string> Messages,
             List<string> Failures);
+
+        private sealed record BulkPropertyClassTarget(
+            string ClassName,
+            List<ExportEntry> Exports)
+        {
+            public string DisplayName => $"{ClassName} ({Exports.Count} export{(Exports.Count == 1 ? string.Empty : "s")})";
+        }
+
+        private enum BulkPropertyValueEditResult
+        {
+            Applied,
+            Cancelled,
+            Unsupported
+        }
 
         public static void DeleteSectionOfLineForAllFaceFxAssets(PackageEditorWindow pew)
         {
@@ -301,6 +316,100 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
         {
             DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
+        }
+
+        public static void BulkAddPropertiesToClass(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            List<BulkPropertyClassTarget> classTargets = GetBulkPropertyClassTargets(pew.Pcc);
+            if (classTargets.Count == 0)
+            {
+                MessageBox.Show(pew,
+                    "No exports were found that can receive bulk-added properties.",
+                    "Bulk add properties to class",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string defaultClassName = pew.TryGetSelectedExport(out var selectedExport)
+                ? selectedExport.ClassName
+                : classTargets[0].ClassName;
+            string defaultSelection = classTargets.FirstOrDefault(target => string.Equals(target.ClassName, defaultClassName, StringComparison.OrdinalIgnoreCase))?.DisplayName
+                                      ?? classTargets[0].DisplayName;
+            string selectedClass = InputComboBoxDialog.GetValue(pew,
+                "Select the class whose exports should receive added properties.",
+                "Bulk add properties to class",
+                classTargets.Select(target => target.DisplayName).ToList(),
+                defaultSelection);
+            if (string.IsNullOrWhiteSpace(selectedClass))
+            {
+                return;
+            }
+
+            BulkPropertyClassTarget targetClass = classTargets.FirstOrDefault(target => string.Equals(target.DisplayName, selectedClass, StringComparison.Ordinal));
+            if (targetClass == null)
+            {
+                return;
+            }
+
+            List<PropNameStaticArrayIdxPair> existingProperties = GetCommonRootProperties(targetClass.Exports);
+            AddPropertyDialog.ShowAddPropertyDialog(targetClass.Exports[0], existingProperties, pew.Pcc.Game, AddSelectedProperty, pew);
+
+            bool AddSelectedProperty(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
+            {
+                using var packageCache = new PackageCache();
+
+                int addedCount = 0;
+                var failures = new List<string>();
+                foreach (ExportEntry export in targetClass.Exports)
+                {
+                    try
+                    {
+                        PropertyCollection props = export.GetProperties();
+                        if (RootPropertyExists(props, propertyName, staticArrayIndex))
+                        {
+                            continue;
+                        }
+
+                        Property newProperty = CreateDefaultRootProperty(export, propertyName, propertyInfo, packageCache);
+                        if (newProperty == null)
+                        {
+                            failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: property '{GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)}' could not be created.");
+                            continue;
+                        }
+
+                        newProperty.StaticArrayIndex = staticArrayIndex;
+                        SetRootProperty(props, newProperty);
+                        export.WriteProperties(props);
+                        addedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: {ex.Message}");
+                    }
+                }
+
+                if (failures.Count > 0)
+                {
+                    new ListDialog(failures,
+                        $"Bulk add properties to class ({GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)})",
+                        "Some exports could not be updated.",
+                        pew).Show();
+                }
+
+                if (addedCount == 0)
+                {
+                    return false;
+                }
+
+                ApplyBulkPropertyValueEdit(pew, targetClass, propertyName, staticArrayIndex, propertyInfo);
+                return true;
+            }
         }
 
         public static void FixBrokenPlayerFaceFxReferencesInFolder(PackageEditorWindow pew)
@@ -720,6 +829,357 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             return new PlayerFaceFxFolderRepairSummary(packageFiles.Count, eligibleFiles, modifiedFiles, modifiedConversations, modifiedReferences, failures, warnings);
+        }
+
+        private static List<BulkPropertyClassTarget> GetBulkPropertyClassTargets(IMEPackage package)
+        {
+            return package.Exports
+                .Where(export => export.ClassName != "Class")
+                .GroupBy(export => export.ClassName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new BulkPropertyClassTarget(group.Key, group.OrderBy(export => export.UIndex).ToList()))
+                .ToList();
+        }
+
+        private static List<PropNameStaticArrayIdxPair> GetCommonRootProperties(List<ExportEntry> exports)
+        {
+            if (exports.Count == 0)
+            {
+                return [];
+            }
+
+            var commonProperties = exports[0].GetProperties()
+                .Where(property => property is not NoneProperty)
+                .Select(property => new PropNameStaticArrayIdxPair(property.Name, property.StaticArrayIndex))
+                .ToHashSet();
+
+            foreach (ExportEntry export in exports.Skip(1))
+            {
+                commonProperties.IntersectWith(export.GetProperties()
+                    .Where(property => property is not NoneProperty)
+                    .Select(property => new PropNameStaticArrayIdxPair(property.Name, property.StaticArrayIndex)));
+            }
+
+            return commonProperties.OrderBy(property => property).ToList();
+        }
+
+        private static bool RootPropertyExists(PropertyCollection properties, NameReference propertyName, int staticArrayIndex)
+        {
+            return properties.Any(property => property.Name == propertyName && property.StaticArrayIndex == staticArrayIndex);
+        }
+
+        private static Property CreateDefaultRootProperty(ExportEntry export, NameReference propertyName, PropertyInfo propertyInfo, PackageCache packageCache)
+        {
+            return GlobalUnrealObjectInfo.GetDefaultProperty(export.Game, propertyName, propertyInfo, packageCache, export.FileRef);
+        }
+
+        private static void SetRootProperty(PropertyCollection properties, Property property)
+        {
+            if (properties.TryReplaceProp(property))
+            {
+                return;
+            }
+
+            int insertIndex = properties.Count > 0 && properties[^1] is NoneProperty
+                ? properties.Count - 1
+                : properties.Count;
+            properties.Insert(insertIndex, property);
+        }
+
+        private static void ApplyBulkPropertyValueEdit(Window owner, BulkPropertyClassTarget targetClass, NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
+        {
+            Property representativeProperty = targetClass.Exports
+                .Select(export => export.GetProperties().GetProp<Property>(propertyName, staticArrayIndex))
+                .FirstOrDefault(property => property != null);
+            if (representativeProperty == null)
+            {
+                return;
+            }
+
+            BulkPropertyValueEditResult result = TryConfigureBulkPropertyValue(owner, targetClass, representativeProperty, propertyInfo, out Property updatedProperty);
+            if (result != BulkPropertyValueEditResult.Applied || updatedProperty == null)
+            {
+                return;
+            }
+
+            var failures = new List<string>();
+            foreach (ExportEntry export in targetClass.Exports)
+            {
+                try
+                {
+                    PropertyCollection props = export.GetProperties();
+                    Property propertyClone = updatedProperty.DeepClone();
+                    propertyClone.StaticArrayIndex = staticArrayIndex;
+                    SetRootProperty(props, propertyClone);
+                    export.WriteProperties(props);
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"FAILED #{export.UIndex} {export.InstancedFullPath}: {ex.Message}");
+                }
+            }
+
+            if (failures.Count > 0)
+            {
+                new ListDialog(failures,
+                    $"Bulk edit property value ({GetPropertyDisplayName(propertyName, staticArrayIndex, propertyInfo)})",
+                    "Some exports could not be updated.",
+                    owner).Show();
+            }
+        }
+
+        private static BulkPropertyValueEditResult TryConfigureBulkPropertyValue(Window owner, BulkPropertyClassTarget targetClass, Property property, PropertyInfo propertyInfo, out Property updatedProperty)
+        {
+            updatedProperty = null;
+
+            string propertyDisplayName = GetPropertyDisplayName(property.Name, property.StaticArrayIndex, propertyInfo);
+            string title = "Bulk edit added property";
+            string promptPrefix = $"Set '{propertyDisplayName}' on all {targetClass.Exports.Count} '{targetClass.ClassName}' export{(targetClass.Exports.Count == 1 ? string.Empty : "s")}.";
+
+            switch (property)
+            {
+                case IntProperty intProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter an integer value:",
+                        title,
+                        intProperty.Value.ToString(CultureInfo.InvariantCulture),
+                        validator: value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                            ? (true, null)
+                            : (false, "Enter a valid integer."));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    IntProperty newProperty = intProperty.DeepClone();
+                    newProperty.Value = int.Parse(response, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case FloatProperty floatProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a floating-point value:",
+                        title,
+                        floatProperty.Value.ToString(CultureInfo.InvariantCulture),
+                        validator: value => float.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out _)
+                            ? (true, null)
+                            : (false, "Enter a valid floating-point value."));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    FloatProperty newProperty = floatProperty.DeepClone();
+                    newProperty.Value = float.Parse(response, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case BoolProperty boolProperty:
+                {
+                    MessageBoxResult response = MessageBox.Show(owner,
+                        $"{promptPrefix}\n\nChoose Yes to set it to True, No to set it to False, or Cancel to keep the current/default values.",
+                        title,
+                        MessageBoxButton.YesNoCancel,
+                        MessageBoxImage.Question);
+                    if (response == MessageBoxResult.Cancel)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    BoolProperty newProperty = boolProperty.DeepClone();
+                    newProperty.Value = response == MessageBoxResult.Yes;
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case StrProperty strProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a string value:",
+                        title,
+                        strProperty.Value ?? string.Empty);
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    StrProperty newProperty = strProperty.DeepClone();
+                    newProperty.Value = response;
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case NameProperty nameProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a name value:",
+                        title,
+                        nameProperty.Value.Instanced);
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    NameProperty newProperty = nameProperty.DeepClone();
+                    newProperty.Value = new NameReference(string.IsNullOrWhiteSpace(response) ? "None" : response);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case StringRefProperty stringRefProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a TLK string reference:",
+                        title,
+                        stringRefProperty.Value.ToString(CultureInfo.InvariantCulture),
+                        validator: value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                            ? (true, null)
+                            : (false, "Enter a valid integer string reference."));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    StringRefProperty newProperty = stringRefProperty.DeepClone();
+                    newProperty.Value = int.Parse(response, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case ByteProperty byteProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a byte value:",
+                        title,
+                        byteProperty.Value.ToString(CultureInfo.InvariantCulture),
+                        validator: value => byte.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                            ? (true, null)
+                            : (false, "Enter a value from 0 to 255."));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    ByteProperty newProperty = byteProperty.DeepClone();
+                    newProperty.Value = byte.Parse(response, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case BioMask4Property bioMaskProperty:
+                {
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter a byte value:",
+                        title,
+                        bioMaskProperty.Value.ToString(CultureInfo.InvariantCulture),
+                        validator: value => byte.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                            ? (true, null)
+                            : (false, "Enter a value from 0 to 255."));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    BioMask4Property newProperty = bioMaskProperty.DeepClone();
+                    newProperty.Value = byte.Parse(response, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case EnumProperty enumProperty:
+                {
+                    List<NameReference> enumValues = GlobalUnrealObjectInfo.GetEnumValues(targetClass.Exports[0].Game, enumProperty.EnumType, includeNone: true);
+                    if (enumValues == null || enumValues.Count == 0)
+                    {
+                        MessageBox.Show(owner,
+                            $"'{propertyDisplayName}' was added, but bulk value editing could not load values for enum '{enumProperty.EnumType.Instanced}'. The default value was kept.",
+                            title,
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                        return BulkPropertyValueEditResult.Unsupported;
+                    }
+
+                    string response = InputComboBoxDialog.GetValue(owner,
+                        $"{promptPrefix}\n\nChoose an enum value:",
+                        title,
+                        enumValues.Select(value => value.Instanced).ToList(),
+                        enumProperty.Value.Instanced);
+                    if (string.IsNullOrWhiteSpace(response))
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    EnumProperty newProperty = enumProperty.DeepClone();
+                    newProperty.Value = new NameReference(response);
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                case ObjectProperty objectProperty:
+                {
+                    string defaultValue = objectProperty.Value == 0
+                        ? "None"
+                        : targetClass.Exports[0].FileRef.GetEntry(objectProperty.Value)?.InstancedFullPath ?? objectProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    string response = PromptDialog.Prompt(owner,
+                        $"{promptPrefix}\n\nEnter None, 0, a UIndex, or an exact instanced full path:",
+                        title,
+                        defaultValue,
+                        validator: value => TryParseObjectReferenceInput(targetClass.Exports[0].FileRef, value, out _, out string error)
+                            ? (true, null)
+                            : (false, error));
+                    if (response == null)
+                    {
+                        return BulkPropertyValueEditResult.Cancelled;
+                    }
+
+                    TryParseObjectReferenceInput(targetClass.Exports[0].FileRef, response, out int objectUIndex, out _);
+                    ObjectProperty newProperty = objectProperty.DeepClone();
+                    newProperty.Value = objectUIndex;
+                    updatedProperty = newProperty;
+                    return BulkPropertyValueEditResult.Applied;
+                }
+                default:
+                    MessageBox.Show(owner,
+                        $"'{propertyDisplayName}' was added, but bulk value editing is not supported for {property.PropType} yet. The default value was kept.",
+                        title,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return BulkPropertyValueEditResult.Unsupported;
+            }
+        }
+
+        private static bool TryParseObjectReferenceInput(IMEPackage package, string input, out int uIndex, out string error)
+        {
+            uIndex = 0;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(input) || string.Equals(input, "None", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (int.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out uIndex))
+            {
+                if (uIndex == 0 || package.TryGetEntry(uIndex, out _))
+                {
+                    return true;
+                }
+
+                error = $"No entry with UIndex {uIndex} exists in this package.";
+                return false;
+            }
+
+            IEntry entry = package.FindEntry(input);
+            if (entry != null)
+            {
+                uIndex = entry.UIndex;
+                return true;
+            }
+
+            error = "Enter None, 0, a valid UIndex, or an exact instanced full path.";
+            return false;
+        }
+
+        private static string GetPropertyDisplayName(NameReference propertyName, int staticArrayIndex, PropertyInfo propertyInfo)
+        {
+            return propertyInfo.IsStaticArray()
+                ? $"{propertyName.Instanced}[{staticArrayIndex}]"
+                : propertyName.Instanced;
         }
 
         private static bool IsLargePackageStoredTexture(ExportEntry export)

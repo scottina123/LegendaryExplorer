@@ -242,6 +242,7 @@ DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <MenuItem Header="Scottina's Funzone">
         <MenuItem Header="Shift current selected InterpTrackMove" Click="ShiftInterpTrackMove"/>
         <MenuItem Header="Shift all InterpTrackMove in package" Click="ShiftInterpTrackMovePackageWide"/>
+        <MenuItem Header="Bulk add properties to class" Click="BulkAddPropertiesToClass_Click" ToolTip="Pick a class used in the open package, use the normal Add Property dialog against all exports of that class, and optionally set each added property's value across the whole class before returning to the dialog."/>
         <MenuItem Header="Add speaker with shared FXAs to all dialogues" Click="AddSpeakerWithSharedFxaToAllDialogues_Click" ToolTip="Adds a speaker tag plus shared male and female FaceFXAnimSets to every BioConversation export in the open package."/>
         <MenuItem Header="Fix broken player FaceFX refs in selected folder" Click="FixBrokenPlayerFaceFxReferencesInFolder_Click" ToolTip="Scans every package file in a selected folder and reconnects BioConversation player FaceFX slots to local player FaceFXAnimSets under the conversation package when they currently point at non-player FaceFXAnimSets."/>
         <MenuItem Header="Extract FaceFXAsset Combine_Node names" Click="ExtractFaceFXCombineNodeNames_Click" ToolTip="Extracts the names of all Combine_Nodes from the selected FaceFXAsset export."/>
