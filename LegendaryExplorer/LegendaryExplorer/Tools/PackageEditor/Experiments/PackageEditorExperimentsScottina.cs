@@ -1505,6 +1505,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         continue;
                     }
 
+                    if (!IsAllowedAssetDbDonorLocation(game, contentDir))
+                    {
+                        continue;
+                    }
+
                     string filePath = FindUsageFilePath(game, gamePath, fileName, contentDir, filePathCache);
                     if (string.IsNullOrWhiteSpace(filePath))
                     {
@@ -1573,12 +1578,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             string filePath = Directory.EnumerateFiles(gamePath, fileName, SearchOption.AllDirectories)
-                .FirstOrDefault(path => string.IsNullOrWhiteSpace(contentDir) || path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(path => IsAllowedAssetDbDonorLocation(game, path)
+                    && (string.IsNullOrWhiteSpace(contentDir) || path.Contains(contentDir, StringComparison.OrdinalIgnoreCase)));
 
             if (filePath == null && game == MEGame.ME3)
             {
                 string sfarPath = Directory.EnumerateFiles(gamePath, "Default.sfar", SearchOption.AllDirectories)
-                    .FirstOrDefault(path => string.IsNullOrWhiteSpace(contentDir) || path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(path => IsAllowedAssetDbDonorLocation(game, path)
+                        && (string.IsNullOrWhiteSpace(contentDir) || path.Contains(contentDir, StringComparison.OrdinalIgnoreCase)));
                 if (sfarPath != null)
                 {
                     DLCPackage dlcPackage = new DLCPackage(sfarPath);
@@ -1591,6 +1598,26 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
             filePathCache[cacheKey] = filePath;
             return filePath;
+        }
+
+        private static bool IsAllowedAssetDbDonorLocation(MEGame game, string pathOrDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrDirectory))
+            {
+                return true;
+            }
+
+            string[] pathParts = pathOrDirectory
+                .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (pathParts.Any(part => part.Equals("Mods", StringComparison.OrdinalIgnoreCase)
+                                      || part.StartsWith("DLC_MOD", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            string dlcFolderName = pathParts.FirstOrDefault(part => part.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase));
+            return string.IsNullOrWhiteSpace(dlcFolderName) || MEDirectories.OfficialDLC(game).Contains(dlcFolderName);
         }
 
         private static IMEPackage TryOpenUsagePackage(string filePath, string realFileName)
