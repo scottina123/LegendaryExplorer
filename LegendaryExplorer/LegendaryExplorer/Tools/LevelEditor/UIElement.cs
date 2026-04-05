@@ -49,21 +49,32 @@ public sealed class LightIconOverlay : UIElement
 
     private static void DrawLightIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
-        Vector4 screenPoint = context.WorldToScreen(actor.LocalToWorld.Translation);
-        if (screenPoint.W <= 0f)
-        {
-            return;
-        }
+        // Compute a stable world-space offset so the icon stays a fixed
+        // number of screen pixels above the light even as the camera moves.
+        // We do a single refinement: estimate scale at the actor position,
+        // compute a candidate center using that scale, then re-evaluate
+        // the scale using the center's depth. This avoids drift caused by
+        // using the actor depth when the offset changes the projected depth.
 
-        float scale = screenPoint.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 basePos = actor.LocalToWorld.Translation;
+        Vector4 sp = context.WorldToScreen(basePos);
+        if (sp.W <= 0f) return;
+
+        // initial scale estimate
+        float scale = sp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
         Vector3 right = context.Camera.CameraRight * scale;
         Vector3 up = context.Camera.CameraUp * scale;
-        Vector3 center = actor.LocalToWorld.Translation + (up * IconOffset);
+        Vector3 center = basePos + (up * IconOffset);
 
-        if (!context.WorldToPixel(center, out _))
-        {
-            return;
-        }
+        // refine using center depth
+        Vector4 centerSp = context.WorldToScreen(center);
+        if (centerSp.W <= 0f) return;
+        scale = centerSp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        right = context.Camera.CameraRight * scale;
+        up = context.Camera.CameraUp * scale;
+        center = basePos + (up * IconOffset);
+
+        if (!context.WorldToPixel(center, out _)) return;
 
         int hitId = actor.HitID;
         Vector4 fillColor = actor == context.TransformWidget.Attach ? SelectedLightColor : LightColor;
