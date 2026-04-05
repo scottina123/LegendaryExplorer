@@ -264,6 +264,15 @@
                     </xctk:DropDownButton>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                     <ToggleButton Content="Top Down" ToolTip="Toggle top-down orthographic view (Numpad 5)" IsChecked="{Binding IsOrthographicView}"/>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                    <CheckBox Content="Z Cutoff" VerticalAlignment="Center" Margin="2,0,4,0"
+                              IsChecked="{Binding ZCutoffEnabled}"
+                              ToolTip="Hide all actors at or above the specified Z value"/>
+                    <xctk:SingleUpDown Width="90" Value="{Binding ZCutoff}" Increment="100"
+                                       ButtonSpinnerLocation="Left" FormatString="F0"
+                                       VerticalContentAlignment="Center"
+                                       IsEnabled="{Binding ZCutoffEnabled}"
+                                       ToolTip="Z position cutoff — actors at or above this height are hidden"/>
                 </ToolBar>
             </WrapPanel>
 

@@ -249,6 +249,32 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    private bool _zCutoffEnabled;
+    public bool ZCutoffEnabled
+    {
+        get => _zCutoffEnabled;
+        set
+        {
+            if (SetProperty(ref _zCutoffEnabled, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    private float _zCutoff;
+    public float ZCutoff
+    {
+        get => _zCutoff;
+        set
+        {
+            if (SetProperty(ref _zCutoff, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
     private bool _unlit = Settings.LevelEditor_Unlit;
     public bool Unlit
     {
@@ -542,6 +568,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             ActorProxy actor = RenderContext.DrawList_3D[i];
             if (actor.IsVolume && !ShowVolumes) continue;
             if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
+            if (_zCutoffEnabled && actor.Location.Z >= _zCutoff) continue;
             int hitID = actor.HitID;
             RenderContext.CurrentHitTestId = new Vector3((hitID & 0xFF) / 255f, ((hitID >> 8) & 0xFF) / 255f, ((hitID >> 16) & 0xFF) / 255f);
             if (actor == selectedActor)
