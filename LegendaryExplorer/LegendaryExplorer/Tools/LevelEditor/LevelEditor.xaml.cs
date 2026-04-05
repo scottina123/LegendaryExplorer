@@ -207,6 +207,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         }
     }
 
+    public float LightIconRadius
+    {
+        get => RenderContext.LightIconRadius;
+        set => SetProperty(ref RenderContext.LightIconRadius, value);
+    }
+
+    public int MaxLightIcons
+    {
+        get => RenderContext.MaxLightIcons;
+        set => SetProperty(ref RenderContext.MaxLightIcons, value);
+    }
+
     private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
     public bool ShowVolumes
     {
