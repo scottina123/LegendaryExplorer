@@ -357,23 +357,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 if (selectedTFCName == CREATE_NEW_TFC_STRING || selectedTFCName == STORE_EXTERNALLY_STRING)
                 {
-                    string defaultTfcName = "Textures_DLC_MOD_YourModFolderNameHere";
-                    //attempt to lookup name.
-                    var containingFolderInfo = Directory.GetParent(CurrentLoadedExport.FileRef.FilePath);
-                    if (Path.GetFileName(containingFolderInfo.FullName).StartsWith("CookedPC"))
-                    {
-                        //Check next level up.
-                        containingFolderInfo = containingFolderInfo.Parent;
-                        if (containingFolderInfo != null &&
-                            Path.GetFileName(containingFolderInfo.FullName).StartsWith("DLC_"))
-                        {
-                            var possibleDLCName = Path.GetFileName(containingFolderInfo.FullName);
-                            if (!MEDirectories.OfficialDLC(CurrentLoadedExport.Game).Contains(possibleDLCName))
-                            {
-                                defaultTfcName = $"Textures_{possibleDLCName}";
-                            }
-                        }
-                    }
+                    string defaultTfcName = GetPreferredDlcTfcName() ?? "Textures_DLC_MOD_YourModFolderNameHere";
                     PromptDialog p = new PromptDialog("Enter name for a new TFC. It must start with Textures_DLC_MOD_, and will be created in the local directory of this package file.", "Enter new name for TFC", defaultTfcName, true, "Textures_DLC_MOD_".Length) { Owner = Window.GetWindow(this) };
                     var hasResult = p.ShowDialog();
                     if (hasResult.HasValue && hasResult.Value)
@@ -455,6 +439,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private string GetPreferredDlcTfcName()
+        {
+            string filePath = CurrentLoadedExport?.FileRef?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath)
+                || CurrentLoadedExport.Game <= MEGame.ME1
+                || MEDirectories.IsInOfficialDLC(filePath, CurrentLoadedExport.Game))
+            {
+                return null;
+            }
+
+            string dlcName = filePath.DetermineDLCNameFromPath();
+            return dlcName is not null && dlcName.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase)
+                ? $"Textures_{dlcName}"
+                : null;
+        }
+
         private string GetDestinationTFCName()
         {
             var tex = ObjectBinary.From<UTexture2D>(CurrentLoadedExport);
@@ -462,17 +462,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return PACKAGE_STORED_STRING; // If there is only 1 mip it will always be package stored.
 
             // This might need updated if we need to stuff textures into UDK for some reason
+            string preferredDlcTfcName = GetPreferredDlcTfcName();
             var options = new List<string>();
             if (CurrentLoadedExport.Game > MEGame.ME1)
             {
                 // TFCs
                 options.AddRange(CurrentLoadedExport.FileRef.Names.Where(x => x.StartsWith("Textures_DLC_MOD_")));
+                int preferredIndex = options.FindIndex(option => option.Equals(preferredDlcTfcName, StringComparison.OrdinalIgnoreCase));
+                if (preferredIndex > 0)
+                {
+                    options.Insert(0, options[preferredIndex]);
+                    options.RemoveAt(preferredIndex + 1);
+                }
                 options.Add(CREATE_NEW_TFC_STRING);
             }
 
             options.Add(PACKAGE_STORED_STRING);
 
-            string defaultOption = options.LastOrDefault(option => option != CREATE_NEW_TFC_STRING && option != PACKAGE_STORED_STRING)
+            string defaultOption = options.FirstOrDefault(option => option.Equals(preferredDlcTfcName, StringComparison.OrdinalIgnoreCase))
+                ?? options.LastOrDefault(option => option != CREATE_NEW_TFC_STRING && option != PACKAGE_STORED_STRING)
                 ?? options.Last();
 
             return InputComboBoxWPF.GetValue(Window.GetWindow(this),
