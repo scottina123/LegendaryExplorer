@@ -18,6 +18,7 @@ namespace LegendaryExplorer.Dialogs
         public Action<EntryStringPair> DoubleClickEntryHandler { get; set; }
         public Action SecondaryActionHandler { get; set; }
         public Action TertiaryActionHandler { get; set; }
+        public Action QuaternaryActionHandler { get; set; }
         // General-purpose handler for arbitrary list items (strings, etc.)
         public Action<object> DoubleClickItemHandler { get; set; }
         private string topText;
@@ -25,6 +26,8 @@ namespace LegendaryExplorer.Dialogs
         private Visibility secondaryActionVisibility = Visibility.Collapsed;
         private string tertiaryActionText;
         private Visibility tertiaryActionVisibility = Visibility.Collapsed;
+        private string quaternaryActionText;
+        private Visibility quaternaryActionVisibility = Visibility.Collapsed;
 
         public string TopText
         {
@@ -66,6 +69,24 @@ namespace LegendaryExplorer.Dialogs
         {
             get => tertiaryActionVisibility;
             set => SetProperty(ref tertiaryActionVisibility, value);
+        }
+
+        public string QuaternaryActionText
+        {
+            get => quaternaryActionText;
+            set
+            {
+                if (SetProperty(ref quaternaryActionText, value))
+                {
+                    QuaternaryActionVisibility = string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+                }
+            }
+        }
+
+        public Visibility QuaternaryActionVisibility
+        {
+            get => quaternaryActionVisibility;
+            set => SetProperty(ref quaternaryActionVisibility, value);
         }
 
         private ListDialog(string title, string message, Window owner, int width = 0, int height = 0) : base("List Dialog", false)
@@ -145,6 +166,11 @@ namespace LegendaryExplorer.Dialogs
         private void TertiaryAction_Click(object sender, RoutedEventArgs e)
         {
             TertiaryActionHandler?.Invoke();
+        }
+
+        private void QuaternaryAction_Click(object sender, RoutedEventArgs e)
+        {
+            QuaternaryActionHandler?.Invoke();
         }
     }
 }

@@ -66,6 +66,8 @@ using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
 using LegendaryExplorerCore.Matinee;
 using System.Windows.Media;
+using TextureImage = LegendaryExplorerCore.Textures.Image;
+using Texture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
 
 namespace LegendaryExplorer.Tools.PackageEditor
 {
@@ -79,6 +81,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private readonly record struct NameUsagePropertyPathSegment(string PropertyName, int? ArrayIndex);
 
         private readonly record struct TreeViewScrollState(double HorizontalOffset, double VerticalOffset);
+
+        private readonly record struct TextureTfcMoveResult(int MovedCount, int FailedCount, List<EntryStringPair> Messages);
 
         private static readonly HashSet<string> CommonStringRefPropertyNames =
         [
@@ -3087,7 +3091,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 string name = iName.Name;
                 BusyText = $"Finding usages of '{name}'...";
                 IsBusy = true;
-                Task.Run(() => (Usages: Pcc.FindUsagesOfName(name), AddableUsages: FindAddableNameUsages(name))).ContinueWithOnUIThread(prevTask =>
+                Task.Run(() =>
+                {
+                    var usages = Pcc.FindUsagesOfName(name);
+                    var addableUsages = FindAddableNameUsages(name);
+                    var movableTextureUsages = FindTextureCacheUsages(name);
+                    return (Usages: usages, AddableUsages: addableUsages, MovableTextureUsages: movableTextureUsages);
+                }).ContinueWithOnUIThread(prevTask =>
                 {
                     IsBusy = false;
                     var dlg = new ListDialog(
@@ -3104,9 +3114,259 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         dlg.TertiaryActionText = $"Remove this name from {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
                         dlg.TertiaryActionHandler = () => RemoveNameFromMatchingUsages(name, prevTask.Result.AddableUsages);
                     }
+                    if (prevTask.Result.MovableTextureUsages.Count > 0)
+                    {
+                        dlg.QuaternaryActionText = $"Move {prevTask.Result.MovableTextureUsages.Count} texture{(prevTask.Result.MovableTextureUsages.Count == 1 ? string.Empty : "s")} to another TFC";
+                        dlg.QuaternaryActionHandler = () => MoveTexturesToAnotherTfc(name, prevTask.Result.MovableTextureUsages);
+                    }
                     dlg.Show();
                 });
             }
+        }
+
+        private List<ExportEntry> FindTextureCacheUsages(string textureCacheName)
+        {
+            if (Pcc == null || Pcc.Game <= MEGame.ME1 || string.IsNullOrWhiteSpace(textureCacheName))
+            {
+                return [];
+            }
+
+            var matches = new List<ExportEntry>();
+            foreach (ExportEntry export in Pcc.Exports.Where(exp => exp.IsTexture()))
+            {
+                try
+                {
+                    if (export.GetProperty<NameProperty>("TextureFileCacheName") is { } tfcProp
+                        && tfcProp.Value.Name == textureCacheName)
+                    {
+                        matches.Add(export);
+                    }
+                }
+                catch
+                {
+                    // Ignore textures that fail to parse so the rest of the package can still be processed.
+                }
+            }
+
+            return matches;
+        }
+
+        private void MoveTexturesToAnotherTfc(string sourceTfcName, List<ExportEntry> textureUsages)
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (Pcc.Game <= MEGame.ME1)
+            {
+                MessageBox.Show(this, "Moving textures between TFCs is only supported for ME2/ME3/LE textures.", "Move textures to another TFC");
+                return;
+            }
+
+            if (textureUsages.Count == 0)
+            {
+                MessageBox.Show(this, $"No textures referencing '{sourceTfcName}' were found.", "Move textures to another TFC");
+                return;
+            }
+
+            string preferredTfcName = GetPreferredTextureTfcName() ?? sourceTfcName;
+            if (!SelectOrAddNamePromptDialog.Prompt(this,
+                    "Select or add the destination TFC name. A new .tfc file will be created automatically if needed.",
+                    "Move textures to another TFC",
+                    Pcc,
+                    out NameReference targetTfcName,
+                    new NameReference(preferredTfcName)))
+            {
+                return;
+            }
+
+            string targetTfc = targetTfcName.Name;
+            if (!targetTfc.StartsWith("Textures_", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this,
+                    "TFC names must start with 'Textures_'.",
+                    "Move textures to another TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (string.Equals(targetTfc, sourceTfcName, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this,
+                    "The selected destination TFC matches the current TFC.",
+                    "Move textures to another TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (MEDirectories.BasegameTFCs(Pcc.Game).Contains(targetTfc, StringComparer.InvariantCultureIgnoreCase)
+                || MEDirectories.OfficialDLC(Pcc.Game).Any(dlc => $"Textures_{dlc}".Equals(targetTfc, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                MessageBox.Show(this,
+                    "Cannot move textures into a BioWare-provided TFC. Choose a different destination TFC.",
+                    "Move textures to another TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            BusyText = $"Moving textures from '{sourceTfcName}' to '{targetTfc}'...";
+            IsBusy = true;
+            var texturesToMove = textureUsages
+                .Where(export => export?.FileRef == Pcc)
+                .Distinct()
+                .OrderBy(export => export.UIndex)
+                .ToList();
+
+            Task.Run(() => MoveTexturesToAnotherTfcInternal(sourceTfcName, targetTfc, texturesToMove)).ContinueWithOnUIThread(task =>
+            {
+                IsBusy = false;
+
+                if (task.Exception != null)
+                {
+                    MessageBox.Show(this,
+                        "Error moving textures between TFCs:\n" + task.Exception.FlattenException(),
+                        "Move textures to another TFC",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return;
+                }
+
+                RefreshNames();
+                RefreshView();
+                if (texturesToMove.Any(export => export == SelectedItem?.Entry))
+                {
+                    Preview(true);
+                }
+
+                var result = task.Result;
+                string summary = $"Moved {result.MovedCount} texture{(result.MovedCount == 1 ? string.Empty : "s")} from '{sourceTfcName}' to '{targetTfc}'.";
+                if (result.FailedCount > 0)
+                {
+                    summary += $" Failed to move {result.FailedCount}.";
+                }
+
+                if (result.Messages.Count > 0)
+                {
+                    new ListDialog(result.Messages,
+                        "Move textures to another TFC",
+                        summary,
+                        this)
+                    {
+                        DoubleClickEntryHandler = entryDoubleClick
+                    }.Show();
+                }
+                else
+                {
+                    MessageBox.Show(this,
+                        summary,
+                        "Move textures to another TFC",
+                        MessageBoxButton.OK,
+                        result.MovedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                }
+            });
+        }
+
+        private TextureTfcMoveResult MoveTexturesToAnotherTfcInternal(string sourceTfcName, string targetTfcName, List<ExportEntry> texturesToMove)
+        {
+            string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveTexturesBetweenTfcs", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDirectory);
+
+            int movedCount = 0;
+            int failedCount = 0;
+            var messages = new List<EntryStringPair>();
+
+            try
+            {
+                foreach (ExportEntry textureExport in texturesToMove)
+                {
+                    try
+                    {
+                        var texture = new Texture2D(textureExport);
+                        string tempTexturePath = Path.Combine(tempDirectory, $"{textureExport.UIndex:D8}_{SanitizeFileName(textureExport.InstancedFullPath)}.tga");
+
+                        texture.ExportToFile(tempTexturePath);
+
+                        var props = textureExport.GetProperties();
+                        TextureImage image = TextureImage.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
+                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName);
+
+                        movedCount++;
+                        messages.Add(new EntryStringPair(textureExport,
+                            $"#{textureExport.UIndex} {textureExport.ObjectName.Instanced}: moved from '{sourceTfcName}' to '{targetTfcName}'"));
+
+                        if (replaceMessages.Count > 0)
+                        {
+                            messages.AddRange(replaceMessages.Select(message =>
+                                new EntryStringPair(textureExport,
+                                    $"#{textureExport.UIndex} {textureExport.ObjectName.Instanced}: {message}")));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        messages.Add(new EntryStringPair(textureExport,
+                            $"#{textureExport.UIndex} {textureExport.ObjectName.Instanced}: failed to move from '{sourceTfcName}' to '{targetTfcName}' - {ex.Message}"));
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, true);
+                    }
+                }
+                catch
+                {
+                    // Temporary files are best-effort cleanup only.
+                }
+            }
+
+            return new TextureTfcMoveResult(movedCount, failedCount, messages);
+        }
+
+        private string GetPreferredTextureTfcName()
+        {
+            string filePath = Pcc?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath) || Pcc.Game <= MEGame.ME1)
+            {
+                return null;
+            }
+
+            string topLevelFolderName = filePath.DetermineDLCNameFromPath();
+            if (string.IsNullOrWhiteSpace(topLevelFolderName))
+            {
+                for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
+                {
+                    if (directory.Name.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        topLevelFolderName = directory.Name;
+                        break;
+                    }
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(topLevelFolderName)
+                ? null
+                : $"Textures_{topLevelFolderName}";
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder(value.Length);
+            foreach (char c in value)
+            {
+                builder.Append(invalidChars.Contains(c) ? '_' : c);
+            }
+
+            return builder.ToString();
         }
 
         private List<NameArrayUsageMatch> FindAddableNameUsages(string sourceName)

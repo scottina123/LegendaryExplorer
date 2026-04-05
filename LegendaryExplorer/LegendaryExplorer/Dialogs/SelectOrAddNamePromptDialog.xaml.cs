@@ -40,7 +40,15 @@ namespace LegendaryExplorer.Dialogs
 
         public SelectOrAddNamePromptDialog(string question, string title, IMEPackage pcc, NameReference defaultValue) : this(question, title, pcc)
         {
-            answerChoicesCombobox.SelectedIndex = NameList.FirstOrDefault(name => name.Name == defaultValue.Name)?.Index ?? 0;
+            int selectedIndex = NameList.FirstOrDefault(name => name.Name == defaultValue.Name)?.Index ?? -1;
+            if (selectedIndex >= 0)
+            {
+                answerChoicesCombobox.SelectedIndex = selectedIndex;
+            }
+            else if (!string.IsNullOrWhiteSpace(defaultValue.Name))
+            {
+                answerChoicesCombobox.Text = defaultValue.Name;
+            }
             Number = defaultValue.Number;
         }
 
