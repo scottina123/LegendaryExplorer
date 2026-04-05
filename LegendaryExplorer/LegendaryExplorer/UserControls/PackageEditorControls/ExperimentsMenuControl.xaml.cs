@@ -897,6 +897,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.FixBrokenPlayerFaceFxReferencesInFolder(GetPEWindow());
         }
 
+        private void MoveLargePackageStoredTexturesToTfc_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.MoveLargePackageStoredTexturesToTfc(GetPEWindow());
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))

@@ -28,6 +28,8 @@ using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
+using Texture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
+using TextureImage = LegendaryExplorerCore.Textures.Image;
 
 namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 {
@@ -83,6 +85,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int ModifiedReferences,
             List<string> Failures,
             List<string> Warnings);
+
+        private sealed record TextureMoveSummary(
+            int MovedCount,
+            int FailedCount,
+            List<string> Messages,
+            List<string> Failures);
 
         public static void DeleteSectionOfLineForAllFaceFxAssets(PackageEditorWindow pew)
         {
@@ -158,6 +166,134 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     new ListDialog(summary.Failures,
                         $"FaceFX line section delete results ({summary.ModifiedLineCount} lines modified)",
                         "Some FaceFXAssets could not be processed.",
+                        pew).Show();
+                });
+        }
+
+        public static void MoveLargePackageStoredTexturesToTfc(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            if (pew.Pcc.Game <= MEGame.ME1)
+            {
+                MessageBox.Show(pew,
+                    "This experiment is only supported for ME2/ME3/LE textures.",
+                    "Move large package stored textures to TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            List<ExportEntry> candidateTextures = pew.Pcc.Exports
+                .Where(exp => exp.IsTexture())
+                .Where(IsLargePackageStoredTexture)
+                .ToList();
+            if (candidateTextures.Count == 0)
+            {
+                MessageBox.Show(pew,
+                    "No package stored textures that are 1024x1024 or larger were found in the current package.",
+                    "Move large package stored textures to TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string preferredTfcName = GetPreferredTextureTfcName(pew.Pcc) ?? "Textures_DLC_MOD_YourModFolderNameHere";
+            if (!SelectOrAddNamePromptDialog.Prompt(pew,
+                    "Select or add the destination TFC name. A new .tfc file will be created automatically if needed.",
+                    "Move large package stored textures to TFC",
+                    pew.Pcc,
+                    out NameReference targetTfcName,
+                    new NameReference(preferredTfcName)))
+            {
+                return;
+            }
+
+            string selectedTfcName = targetTfcName.Name;
+            if (string.IsNullOrWhiteSpace(selectedTfcName)
+                || !selectedTfcName.StartsWith("Textures_", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(pew,
+                    "TFC names must start with 'Textures_'.",
+                    "Move large package stored textures to TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (MEDirectories.BasegameTFCs(pew.Pcc.Game).Contains(selectedTfcName, StringComparer.InvariantCultureIgnoreCase)
+                || MEDirectories.OfficialDLC(pew.Pcc.Game).Any(x => $"Textures_{x}".Equals(selectedTfcName, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                MessageBox.Show(pew,
+                    "Cannot move textures into a TFC provided by BioWare. Choose a different target TFC from the list.",
+                    "Move large package stored textures to TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (MessageBox.Show(pew,
+                    $"This will move {candidateTextures.Count} package stored texture{(candidateTextures.Count == 1 ? string.Empty : "s")} that are 1024x1024 or larger into '{selectedTfcName}'.\n\nContinue?",
+                    "Move large package stored textures to TFC",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            pew.BusyText = "Moving large package stored textures to TFC";
+            pew.IsBusy = true;
+
+            Task.Run(() => MoveTexturesToTfc(candidateTextures, selectedTfcName))
+                .ContinueWithOnUIThread(task =>
+                {
+                    pew.IsBusy = false;
+
+                    if (task.Exception != null)
+                    {
+                        MessageBox.Show(pew,
+                            task.Exception.FlattenException(),
+                            "Move large package stored textures to TFC",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
+
+                    TextureMoveSummary summary = task.Result;
+                    if (summary.Failures.Count == 0)
+                    {
+                        MessageBox.Show(pew,
+                            $"Moved {summary.MovedCount} texture{(summary.MovedCount == 1 ? string.Empty : "s")} to '{selectedTfcName}'.",
+                            "Move large package stored textures to TFC",
+                            MessageBoxButton.OK,
+                            summary.MovedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    var lines = new List<string>
+                    {
+                        $"Moved {summary.MovedCount} texture{(summary.MovedCount == 1 ? string.Empty : "s")}.",
+                        $"Failed to move {summary.FailedCount} texture{(summary.FailedCount == 1 ? string.Empty : "s")}."
+                    };
+
+                    if (summary.Messages.Count > 0)
+                    {
+                        lines.Add(string.Empty);
+                        lines.AddRange(summary.Messages);
+                    }
+
+                    if (summary.Failures.Count > 0)
+                    {
+                        lines.Add(string.Empty);
+                        lines.AddRange(summary.Failures);
+                    }
+
+                    new ListDialog(lines,
+                        "Move large package stored textures to TFC",
+                        "The bulk texture move completed with warnings or failures.",
                         pew).Show();
                 });
         }
@@ -584,6 +720,107 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             return new PlayerFaceFxFolderRepairSummary(packageFiles.Count, eligibleFiles, modifiedFiles, modifiedConversations, modifiedReferences, failures, warnings);
+        }
+
+        private static bool IsLargePackageStoredTexture(ExportEntry export)
+        {
+            try
+            {
+                var texture = new Texture2D(export);
+                var topMip = texture.GetTopMip();
+                return topMip != null
+                       && topMip.IsPackageStored
+                       && topMip.width >= 1024
+                       && topMip.height >= 1024;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static TextureMoveSummary MoveTexturesToTfc(List<ExportEntry> textures, string targetTfcName)
+        {
+            string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveLargePackageStoredTexturesToTfc", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDirectory);
+
+            int movedCount = 0;
+            int failedCount = 0;
+            var messages = new List<string>();
+            var failures = new List<string>();
+
+            try
+            {
+                foreach (ExportEntry textureExport in textures)
+                {
+                    try
+                    {
+                        var texture = new Texture2D(textureExport);
+                        string tempTexturePath = Path.Combine(tempDirectory, $"{textureExport.UIndex:D8}_{SanitizeFileName(textureExport.InstancedFullPath)}.tga");
+                        texture.ExportToFile(tempTexturePath);
+
+                        var props = textureExport.GetProperties();
+                        var image = TextureImage.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
+                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName);
+
+                        movedCount++;
+                        messages.Add($"Moved #{textureExport.UIndex} {textureExport.InstancedFullPath} to '{targetTfcName}'.");
+                        messages.AddRange(replaceMessages.Select(message => $"#{textureExport.UIndex} {textureExport.ObjectName.Instanced}: {message}"));
+                    }
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        failures.Add($"FAILED #{textureExport.UIndex} {textureExport.InstancedFullPath}: {ex.Message}");
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempDirectory))
+                    {
+                        Directory.Delete(tempDirectory, true);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return new TextureMoveSummary(movedCount, failedCount, messages, failures);
+        }
+
+        private static string GetPreferredTextureTfcName(IMEPackage package)
+        {
+            string filePath = package?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath) || package.Game <= MEGame.ME1)
+            {
+                return null;
+            }
+
+            string topLevelFolderName = filePath.DetermineDLCNameFromPath();
+            if (string.IsNullOrWhiteSpace(topLevelFolderName))
+            {
+                for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
+                {
+                    if (directory.Name.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        topLevelFolderName = directory.Name;
+                        break;
+                    }
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(topLevelFolderName)
+                ? null
+                : $"Textures_{topLevelFolderName}";
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            var invalidChars = Path.GetInvalidFileNameChars();
+            return new string((value ?? string.Empty).Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
         }
 
         private static bool TryFixBrokenPlayerFaceFxReference(ExportEntry bioConversation, out int referenceFixes, out List<string> warnings)
