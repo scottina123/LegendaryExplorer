@@ -110,7 +110,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     [
         ("CollideActors", "Collide Actors"),
         ("BlockActors", "Block Actors"),
-        ("BlockRigidBody", "Block Rigid Body")
+        ("BlockRigidBody", "Block Rigid Body"),
+        ("BlockNonZeroExtent", "Block Non Zero Extent"),
+        ("BlockZeroExtent", "Block Zero Extent")
     ];
 
     private static readonly (string PropertyName, string DisplayName)[] LightingMenuItems =
@@ -2730,8 +2732,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             IsEnabled = !actor.IsReadOnly
         };
 
+        bool addedAnyItems = false;
+
         foreach ((string propertyName, string displayName) in CollisionMenuItems)
         {
+            if (!ComponentSupportsBoolProperty(componentExport, propertyName))
+            {
+                continue;
+            }
+
             var collisionItem = new System.Windows.Controls.MenuItem
             {
                 Header = displayName,
@@ -2742,9 +2751,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             };
             collisionItem.Click += (_, _) => SetBoolPropertyValue(componentExport, propertyName, collisionItem.IsChecked);
             collisionMenu.Items.Add(collisionItem);
+            addedAnyItems = true;
         }
 
-        return collisionMenu;
+        return addedAnyItems ? collisionMenu : null;
     }
 
     private System.Windows.Controls.MenuItem BuildShadowMenu(ActorProxy actor, ExportEntry componentExport)
@@ -2810,6 +2820,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private static bool GetBoolPropertyValue(ExportEntry export, string propertyName)
     {
         return export.GetProperty<BoolProperty>(propertyName)?.Value ?? false;
+    }
+
+    private static bool ComponentSupportsBoolProperty(ExportEntry export, string propertyName)
+    {
+        return GlobalUnrealObjectInfo.GetPropertyInfo(export.Game, NameReference.FromInstancedString(propertyName), export.ClassName, containingExport: export)?.Type == PropertyType.BoolProperty;
     }
 
     private static void SetBoolPropertyValue(ExportEntry export, string propertyName, bool value)
