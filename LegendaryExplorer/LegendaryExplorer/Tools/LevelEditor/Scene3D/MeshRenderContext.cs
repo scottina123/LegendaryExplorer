@@ -12,6 +12,7 @@ using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -882,6 +883,8 @@ public class MeshRenderContext : RenderContext
     {
         if (textureCubeExport.ClassName != "TextureCube") throw new ArgumentException("Expected a TextureCube export.", nameof(textureCubeExport));
 
+        packageCache ??= this.PackageCache;
+
         var props = textureCubeExport.GetProperties();
         var faceTextures = new Fixed6<LECTexture2D>();
         Span<string> facePropNames = ["FacePosX", "FaceNegX", "FacePosY", "FaceNegY", "FacePosZ", "FaceNegZ"];
@@ -892,7 +895,16 @@ public class MeshRenderContext : RenderContext
             {
                 return WhiteTextureCube;
             }
-            faceTextures[i] = new(faceProp.ResolveToExport(textureCubeExport.FileRef, packageCache));
+
+            var faceExport = faceProp.ResolveToExport(textureCubeExport.FileRef, packageCache);
+            if (faceExport is null)
+            {
+                var unresolvedEntry = textureCubeExport.FileRef.GetEntry(faceProp.Value);
+                Debug.WriteLine($"Unable to resolve texture cube face '{unresolvedEntry?.InstancedFullPath ?? faceProp.Value.ToString()}' for cube '{textureCubeExport.InstancedFullPath}'. Falling back to white texture cube.");
+                return WhiteTextureCube;
+            }
+
+            faceTextures[i] = new(faceExport);
         }
         var pixelData = new Fixed6<byte[]>();
 
