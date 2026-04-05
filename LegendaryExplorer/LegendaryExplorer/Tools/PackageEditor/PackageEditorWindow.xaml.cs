@@ -17,6 +17,7 @@ using System.Windows.Interop;
 using Key = System.Windows.Input.Key;
 using GongSolutions.Wpf.DragDrop;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Libraries;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
@@ -255,10 +256,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool _delaySelectionPreview;
         private DispatcherOperation _pendingPreviewOperation;
         private bool _pendingPreviewIsRefresh;
-        private bool _pendingRefreshViewOnActivation;
-        private bool _pendingPreviewOnActivation;
-        private int _pendingSelectedEntryUIndexOnActivation;
-
         /// <summary>
         /// Caches FaceFXAnimSet export UIndex -> ObjectName so we can detect renames in HandleUpdate.
         /// </summary>
@@ -4535,38 +4532,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             InterpreterTab_Interpreter.ToggleHexbox_Button.Visibility = Visibility.Visible;
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, fileName => LoadFile(fileName));
-            Activated += PackageEditorWindow_Activated;
-        }
-
-        private void PackageEditorWindow_Activated(object sender, EventArgs e)
-        {
-            if (Pcc == null)
-            {
-                return;
-            }
-
-            bool refreshView = _pendingRefreshViewOnActivation;
-            bool refreshPreview = _pendingPreviewOnActivation;
-            int selectedEntryUIndex = _pendingSelectedEntryUIndexOnActivation;
-
-            _pendingRefreshViewOnActivation = false;
-            _pendingPreviewOnActivation = false;
-            _pendingSelectedEntryUIndexOnActivation = 0;
-
-            bool selectionApplied = false;
-            if (refreshView)
-            {
-                RefreshView();
-                if (selectedEntryUIndex != 0)
-                {
-                    selectionApplied = GoToNumber(selectedEntryUIndex);
-                }
-            }
-
-            if (refreshPreview && !selectionApplied)
-            {
-                Preview(true);
-            }
         }
 
         /// <summary>
@@ -4957,202 +4922,217 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
-            List<PackageChange> changes = updates.ConvertAll(x => x.Change);
-            if (changes.Any(x => x.HasFlag(PackageChange.Name)))
+            var originalForegroundWindow = WindowsAPI.GetForegroundWindow();
+            var windowHandle = new WindowInteropHelper(this).Handle;
+
+            try
             {
-                foreach (ExportLoaderControl elc in ExportLoaders.Keys)
+                List<PackageChange> changes = updates.ConvertAll(x => x.Change);
+                if (changes.Any(x => x.HasFlag(PackageChange.Name)))
                 {
-                    elc.SignalNamelistAboutToUpdate();
-                }
-
-                RefreshNames(updates.Where(x => x.Change.HasFlag(PackageChange.Name)).ToList());
-                foreach (ExportLoaderControl elc in ExportLoaders.Keys)
-                {
-                    elc.SignalNamelistChanged();
-                }
-            }
-
-            if (updates.Any(x => x.Change is PackageChange.ExportRemove or PackageChange.ImportRemove))
-            {
-                InitializeTreeView();
-                InitClassDropDown();
-                MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
-                Preview();
-                return;
-            }
-
-            bool hasImportChanges = changes.Any(x => x.HasFlag(PackageChange.Import));
-            bool hasExportNonDataChanges =
-                changes.Any(x => x != PackageChange.ExportData && x.HasFlag(PackageChange.Export));
-            bool hasSelection = GetSelected(out int selectedEntryUIndex);
-
-            List<PackageUpdate> addedChanges = [.. updates.Where(x => x.Change.HasFlag(PackageChange.EntryAdd)).OrderBy(x => x.Index)];
-            HashSet<int> headerChanges = updates.Where(x => x.Change.HasFlag(PackageChange.EntryHeader)).Select(x => x.Index).ToHashSet();
-
-            // Reduces tree enumeration
-            List<TreeViewEntry> treeViewItems = AllTreeViewNodesX[0].FlattenTree();
-            var uindexMap = new Dictionary<int, TreeViewEntry>();
-            if (addedChanges.Count != 0 || headerChanges.Count != 0)
-            {
-                foreach (TreeViewEntry tv in treeViewItems)
-                {
-                    uindexMap[tv.UIndex] = tv;
-                }
-            }
-
-            if (addedChanges.Count > 0)
-            {
-                InitClassDropDown();
-                MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
-
-                // Track newly added FaceFXAnimSet exports in the name cache
-                if (Pcc.Game is not MEGame.ME1)
-                {
-                    foreach (var change in addedChanges)
+                    foreach (ExportLoaderControl elc in ExportLoaders.Keys)
                     {
-                        if (change.Index > 0 && change.Index <= Pcc.ExportCount)
+                        elc.SignalNamelistAboutToUpdate();
+                    }
+
+                    RefreshNames(updates.Where(x => x.Change.HasFlag(PackageChange.Name)).ToList());
+                    foreach (ExportLoaderControl elc in ExportLoaders.Keys)
+                    {
+                        elc.SignalNamelistChanged();
+                    }
+                }
+
+                if (updates.Any(x => x.Change is PackageChange.ExportRemove or PackageChange.ImportRemove))
+                {
+                    InitializeTreeView();
+                    InitClassDropDown();
+                    MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
+                    Preview();
+                    return;
+                }
+
+                bool hasImportChanges = changes.Any(x => x.HasFlag(PackageChange.Import));
+                bool hasExportNonDataChanges =
+                    changes.Any(x => x != PackageChange.ExportData && x.HasFlag(PackageChange.Export));
+                bool hasSelection = GetSelected(out int selectedEntryUIndex);
+
+                List<PackageUpdate> addedChanges = [.. updates.Where(x => x.Change.HasFlag(PackageChange.EntryAdd)).OrderBy(x => x.Index)];
+                HashSet<int> headerChanges = updates.Where(x => x.Change.HasFlag(PackageChange.EntryHeader)).Select(x => x.Index).ToHashSet();
+
+                // Reduces tree enumeration
+                List<TreeViewEntry> treeViewItems = AllTreeViewNodesX[0].FlattenTree();
+                var uindexMap = new Dictionary<int, TreeViewEntry>();
+                if (addedChanges.Count != 0 || headerChanges.Count != 0)
+                {
+                    foreach (TreeViewEntry tv in treeViewItems)
+                    {
+                        uindexMap[tv.UIndex] = tv;
+                    }
+                }
+
+                if (addedChanges.Count > 0)
+                {
+                    InitClassDropDown();
+                    MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
+
+                    // Track newly added FaceFXAnimSet exports in the name cache
+                    if (Pcc.Game is not MEGame.ME1)
+                    {
+                        foreach (var change in addedChanges)
                         {
-                            var exp = Pcc.GetUExport(change.Index);
-                            if (exp.ClassName == "FaceFXAnimSet")
+                            if (change.Index > 0 && change.Index <= Pcc.ExportCount)
                             {
-                                _faceFXAnimSetNameCache[exp.UIndex] = exp.ObjectName.Name;
+                                var exp = Pcc.GetUExport(change.Index);
+                                if (exp.ClassName == "FaceFXAnimSet")
+                                {
+                                    _faceFXAnimSetNameCache[exp.UIndex] = exp.ObjectName.Name;
+                                }
+                            }
+                        }
+                    }
+
+                    //Find nodes that haven't been generated and added yet
+
+                    List<IEntry> entriesToAdd = addedChanges.ConvertAll(change => Pcc.GetEntry(change.Index));
+
+                    //Generate new nodes
+                    var nodesToSortChildrenFor = new HashSet<TreeViewEntry>();
+                    //might have to loop a few times if it contains children before parents
+
+                    while (entriesToAdd.Count != 0)
+                    {
+                        var orphans = new List<IEntry>();
+                        foreach (IEntry entry in entriesToAdd)
+                        {
+                            if (uindexMap.TryGetValue(entry.idxLink, out TreeViewEntry parent))
+                            {
+                                var newEntry = new TreeViewEntry(entry) { Parent = parent };
+                                parent.Sublinks.Add(newEntry);
+                                treeViewItems.Add(newEntry); //used to find parents
+                                nodesToSortChildrenFor.Add(parent);
+                                uindexMap[entry.UIndex] = newEntry;
+                            }
+                            else
+                            {
+                                orphans.Add(entry);
+                            }
+                        }
+
+                        if (orphans.Count == entriesToAdd.Count)
+                        {
+                            //actual orphans
+                            Debug.WriteLine("Unable to attach new items to parents.");
+                            break;
+                        }
+
+                        entriesToAdd = orphans;
+                    }
+
+                    SuppressSelectionEvent = true;
+                    nodesToSortChildrenFor.ToList().ForEach(x => x.SortChildren());
+                    SuppressSelectionEvent = false;
+
+                    if (CurrentView == CurrentViewMode.Imports)
+                    {
+                        foreach (PackageUpdate update in addedChanges)
+                        {
+                            if (update.Index < 0)
+                            {
+                                LeftSideList_ItemsSource.Add(Pcc.GetEntry(update.Index));
+                            }
+                        }
+                    }
+
+                    if (CurrentView == CurrentViewMode.Exports)
+                    {
+                        foreach (PackageUpdate update in addedChanges)
+                        {
+                            if (update.Index > 0)
+                            {
+                                LeftSideList_ItemsSource.Add(Pcc.GetEntry(update.Index));
                             }
                         }
                     }
                 }
 
-                //Find nodes that haven't been generated and added yet
-
-                List<IEntry> entriesToAdd = addedChanges.ConvertAll(change => Pcc.GetEntry(change.Index));
-
-                //Generate new nodes
-                var nodesToSortChildrenFor = new HashSet<TreeViewEntry>();
-                //might have to loop a few times if it contains children before parents
-
-                while (entriesToAdd.Count != 0)
+                if (headerChanges.Count > 0)
                 {
-                    var orphans = new List<IEntry>();
-                    foreach (IEntry entry in entriesToAdd)
+                    // Update FaceFXAnimSet binary names when ObjectName changes via metadata editor
+                    if (Pcc.Game is not MEGame.ME1)
                     {
-                        if (uindexMap.TryGetValue(entry.idxLink, out TreeViewEntry parent))
+                        foreach (int uIdx in headerChanges)
                         {
-                            var newEntry = new TreeViewEntry(entry) { Parent = parent };
-                            parent.Sublinks.Add(newEntry);
-                            treeViewItems.Add(newEntry); //used to find parents
-                            nodesToSortChildrenFor.Add(parent);
-                            uindexMap[entry.UIndex] = newEntry;
-                        }
-                        else
-                        {
-                            orphans.Add(entry);
-                        }
-                    }
-
-                    if (orphans.Count == entriesToAdd.Count)
-                    {
-                        //actual orphans
-                        Debug.WriteLine("Unable to attach new items to parents.");
-                        break;
-                    }
-
-                    entriesToAdd = orphans;
-                }
-
-                SuppressSelectionEvent = true;
-                nodesToSortChildrenFor.ToList().ForEach(x => x.SortChildren());
-                SuppressSelectionEvent = false;
-
-                if (CurrentView == CurrentViewMode.Imports)
-                {
-                    foreach (PackageUpdate update in addedChanges)
-                    {
-                        if (update.Index < 0)
-                        {
-                            LeftSideList_ItemsSource.Add(Pcc.GetEntry(update.Index));
-                        }
-                    }
-                }
-
-                if (CurrentView == CurrentViewMode.Exports)
-                {
-                    foreach (PackageUpdate update in addedChanges)
-                    {
-                        if (update.Index > 0)
-                        {
-                            LeftSideList_ItemsSource.Add(Pcc.GetEntry(update.Index));
-                        }
-                    }
-                }
-            }
-
-            if (headerChanges.Count > 0)
-            {
-                // Update FaceFXAnimSet binary names when ObjectName changes via metadata editor
-                if (Pcc.Game is not MEGame.ME1)
-                {
-                    foreach (int uIdx in headerChanges)
-                    {
-                        if (uIdx > 0 && uIdx <= Pcc.ExportCount)
-                        {
-                            var exp = Pcc.GetUExport(uIdx);
-                            if (exp.ClassName == "FaceFXAnimSet" &&
-                                _faceFXAnimSetNameCache.TryGetValue(uIdx, out string oldName) &&
-                                oldName != exp.ObjectName.Name)
+                            if (uIdx > 0 && uIdx <= Pcc.ExportCount)
                             {
-                                UpdateFaceFXAnimSetBinaryNames([exp], oldName, exp.ObjectName.Name);
-                                _faceFXAnimSetNameCache[uIdx] = exp.ObjectName.Name;
+                                var exp = Pcc.GetUExport(uIdx);
+                                if (exp.ClassName == "FaceFXAnimSet" &&
+                                    _faceFXAnimSetNameCache.TryGetValue(uIdx, out string oldName) &&
+                                    oldName != exp.ObjectName.Name)
+                                {
+                                    UpdateFaceFXAnimSetBinaryNames([exp], oldName, exp.ObjectName.Name);
+                                    _faceFXAnimSetNameCache[uIdx] = exp.ObjectName.Name;
+                                }
                             }
                         }
                     }
+
+                    //List<TreeViewEntry> tree = AllTreeViewNodesX[0].FlattenTree();
+                    var nodesNeedingResort = new List<TreeViewEntry>();
+                    List<TreeViewEntry> tviWithChangedHeaders = uindexMap.Values.Where(x => x.UIndex != 0 && headerChanges.Contains(x.Entry.UIndex)).ToList();
+                    foreach (TreeViewEntry tvi in tviWithChangedHeaders)
+                    {
+                        if (tvi.Parent.UIndex != tvi.Entry.idxLink)
+                        {
+                            //Debug.WriteLine("Reorder req for " + tvi.UIndex);
+                            if (!uindexMap.TryGetValue(tvi.Entry.idxLink, out var newParent))
+                            {
+                                Debugger.Break();
+                            }
+                            else
+                            {
+                                tvi.Parent.Sublinks.Remove(tvi);
+                                tvi.Parent = newParent;
+                                newParent.Sublinks.Add(tvi);
+                                nodesNeedingResort.Add(newParent);
+                            }
+                        }
+                    }
+
+                    nodesNeedingResort = nodesNeedingResort.Distinct().ToList();
+                    SuppressSelectionEvent = true;
+                    nodesNeedingResort.ForEach(x => x.SortChildren());
+                    SuppressSelectionEvent = false;
                 }
 
-                //List<TreeViewEntry> tree = AllTreeViewNodesX[0].FlattenTree();
-                var nodesNeedingResort = new List<TreeViewEntry>();
-                List<TreeViewEntry> tviWithChangedHeaders = uindexMap.Values.Where(x => x.UIndex != 0 && headerChanges.Contains(x.Entry.UIndex)).ToList();
-                foreach (TreeViewEntry tvi in tviWithChangedHeaders)
+                if (CurrentView == CurrentViewMode.Imports && hasImportChanges ||
+                    CurrentView == CurrentViewMode.Exports && hasExportNonDataChanges ||
+                    CurrentView == CurrentViewMode.Tree && (hasImportChanges || hasExportNonDataChanges))
                 {
-                    if (tvi.Parent.UIndex != tvi.Entry.idxLink)
+                    RefreshView();
+                    if (QueuedGotoNumber != 0 && GoToNumber(QueuedGotoNumber))
                     {
-                        //Debug.WriteLine("Reorder req for " + tvi.UIndex);
-                        if (!uindexMap.TryGetValue(tvi.Entry.idxLink, out var newParent))
-                        {
-                            Debugger.Break();
-                        }
-                        else
-                        {
-                            tvi.Parent.Sublinks.Remove(tvi);
-                            tvi.Parent = newParent;
-                            newParent.Sublinks.Add(tvi);
-                            nodesNeedingResort.Add(newParent);
-                        }
+                        QueuedGotoNumber = 0;
+                    }
+                    else if (hasSelection && this.IsForegroundWindow())
+                    {
+                        GoToNumber(selectedEntryUIndex);
                     }
                 }
 
-                nodesNeedingResort = nodesNeedingResort.Distinct().ToList();
-                SuppressSelectionEvent = true;
-                nodesNeedingResort.ForEach(x => x.SortChildren());
-                SuppressSelectionEvent = false;
-            }
-
-            if (CurrentView == CurrentViewMode.Imports && hasImportChanges ||
-                CurrentView == CurrentViewMode.Exports && hasExportNonDataChanges ||
-                CurrentView == CurrentViewMode.Tree && (hasImportChanges || hasExportNonDataChanges))
-            {
-                RefreshView();
-                if (QueuedGotoNumber != 0 && GoToNumber(QueuedGotoNumber))
+                if (CurrentView is CurrentViewMode.Exports or CurrentViewMode.Tree && hasSelection &&
+                    updates.Contains(new PackageUpdate(PackageChange.ExportData, selectedEntryUIndex)))
                 {
-                    QueuedGotoNumber = 0;
-                }
-                else if (hasSelection && this.IsForegroundWindow())
-                {
-                    GoToNumber(selectedEntryUIndex);
+                    Preview(true);
                 }
             }
-
-            if (CurrentView is CurrentViewMode.Exports or CurrentViewMode.Tree && hasSelection &&
-                updates.Contains(new PackageUpdate(PackageChange.ExportData, selectedEntryUIndex)))
+            finally
             {
-                Preview(true);
+                if (originalForegroundWindow != IntPtr.Zero
+                    && originalForegroundWindow != windowHandle
+                    && WindowsAPI.GetForegroundWindow() == windowHandle)
+                {
+                    WindowsAPI.SetForegroundWindow(originalForegroundWindow);
+                }
             }
         }
 

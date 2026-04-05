@@ -54,6 +54,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.DialogueEditor;
+using LegendaryExplorer.Libraries;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Matinee;
 using Xceed.Wpf.Toolkit;
@@ -2133,64 +2134,78 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 return; //nothing is loaded
             }
+            var originalForegroundWindow = WindowsAPI.GetForegroundWindow();
+            var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
 
-            InterpData_MetadataEditor.LoadPccData(Pcc);
-
-            IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
-            List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
-
-            if (InterpDataTreeNodes.Count > 0)
+            try
             {
-                var interpTreeIndexes = InterpDataTreeNodes
-                    .SelectMany(root => root.FlattenTree())
-                    .Select(node => node.UIndex)
-                    .ToHashSet();
+                InterpData_MetadataEditor.LoadPccData(Pcc);
 
-                if (updatedExports.Any(interpTreeIndexes.Contains))
-                {
-                    RefreshInterpDataTreePreserveState();
-                }
-            }
+                IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
+                List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
 
-            if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
-            {
-                //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
-                if (!SelectedSequence.IsSequence() && !SelectedSequence.IsA("SFXSceneShopGameData"))
+                if (InterpDataTreeNodes.Count > 0)
                 {
-                    SelectedSequence = null;
-                    graphEditor.nodeLayer.RemoveAllChildren();
-                    graphEditor.edgeLayer.RemoveAllChildren();
-                    CurrentObjects.ClearEx();
-                    SequenceExports.ClearEx();
-                    SelectedObjects.ClearEx();
-                    Properties_InterpreterWPF.UnloadExport();
-                    InterpData_MetadataEditor.UnloadExport();
-                }
+                    var interpTreeIndexes = InterpDataTreeNodes
+                        .SelectMany(root => root.FlattenTree())
+                        .Select(node => node.UIndex)
+                        .ToHashSet();
 
-                RefreshView();
-                LoadSequences();
-            }
-            else
-            {
-                if (updatedExports.Intersect(CurrentObjects.Select(obj => obj.UIndex)).Any())
-                {
-                    RefreshView();
-                }
-
-                foreach (var updatedExportUIndex in updatedExports)
-                {
-                    if (Pcc.TryGetUExport(updatedExportUIndex, out ExportEntry updatedExport) &&
-                        (updatedExport.IsSequence() || updatedExport.IsA("SFXSceneShopGameData")) && updatedExport != SelectedSequence)
+                    if (updatedExports.Any(interpTreeIndexes.Contains))
                     {
-                        LoadSequences();
-                        break;
+                        RefreshInterpDataTreePreserveState();
                     }
                 }
-            }
 
-            if (updatedExports.Any(uIdx => Pcc.GetEntry(uIdx) is ExportEntry { IsClass: true }))
+                if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
+                {
+                    //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
+                    if (!SelectedSequence.IsSequence() && !SelectedSequence.IsA("SFXSceneShopGameData"))
+                    {
+                        SelectedSequence = null;
+                        graphEditor.nodeLayer.RemoveAllChildren();
+                        graphEditor.edgeLayer.RemoveAllChildren();
+                        CurrentObjects.ClearEx();
+                        SequenceExports.ClearEx();
+                        SelectedObjects.ClearEx();
+                        Properties_InterpreterWPF.UnloadExport();
+                        InterpData_MetadataEditor.UnloadExport();
+                    }
+
+                    RefreshView();
+                    LoadSequences();
+                }
+                else
+                {
+                    if (updatedExports.Intersect(CurrentObjects.Select(obj => obj.UIndex)).Any())
+                    {
+                        RefreshView();
+                    }
+
+                    foreach (var updatedExportUIndex in updatedExports)
+                    {
+                        if (Pcc.TryGetUExport(updatedExportUIndex, out ExportEntry updatedExport) &&
+                            (updatedExport.IsSequence() || updatedExport.IsA("SFXSceneShopGameData")) && updatedExport != SelectedSequence)
+                        {
+                            LoadSequences();
+                            break;
+                        }
+                    }
+                }
+
+                if (updatedExports.Any(uIdx => Pcc.GetEntry(uIdx) is ExportEntry { IsClass: true }))
+                {
+                    RefreshToolboxItems();
+                }
+            }
+            finally
             {
-                RefreshToolboxItems();
+                if (originalForegroundWindow != IntPtr.Zero
+                    && originalForegroundWindow != windowHandle
+                    && WindowsAPI.GetForegroundWindow() == windowHandle)
+                {
+                    WindowsAPI.SetForegroundWindow(originalForegroundWindow);
+                }
             }
         }
 
@@ -3830,7 +3845,6 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             // Unsubscribe from theme changes to prevent memory leaks
             ThemeManager.ThemeChanged -= OnThemeChanged;
-
             //Code here remove these objects from leaking the window memory
             graphEditor.Camera.MouseDown -= backMouseDown_Handler;
             graphEditor.Camera.MouseUp -= back_MouseUp;
