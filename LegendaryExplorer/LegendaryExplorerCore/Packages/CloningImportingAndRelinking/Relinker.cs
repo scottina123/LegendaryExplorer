@@ -710,8 +710,10 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         bool continueConvertingToExport = true; // Should we just leave this as an import?
                         bool isForcedExport = false; // If we should append the package name to the path - but only if continueConvertingToExport = false
 
-                        // Map the relative paths onto the game directory
-                        candidates = candidates.ConvertAll(x => Path.Combine(MEDirectories.GetDefaultGamePath(relinkingExport.Game), x));
+                        string donorGamePath = rop.GamePathOverride ?? MEDirectories.GetDefaultGamePath(relinkingExport.Game);
+
+                        // Map relative paths onto the game directory while preserving already rooted paths.
+                        candidates = candidates.ConvertAll(x => !string.IsNullOrEmpty(donorGamePath) && !Path.IsPathRooted(x) ? Path.Combine(donorGamePath, x) : x);
 
                         if (candidates.Any(x => EntryImporter.IsSafeToImportFrom(Path.GetFileName(x), relinkingExport.FileRef))) // Some things are in multiple files, like things in startup files.
                         {
@@ -721,7 +723,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         }
 
                         // See if cache has any of the packages open
-                        IMEPackage newSourcePackage;
+                        IMEPackage newSourcePackage = null;
                         bool closePackageOnCompletion = true;
                         if (rop.Cache != null)
                         {
@@ -738,38 +740,61 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                         else
                         {
                             // Just pick the first file
-                            newSourcePackage = MEPackageHandler.OpenMEPackage(candidates[0]);
+                            if (candidates.Count > 0 && File.Exists(candidates[0]))
+                            {
+                                newSourcePackage = MEPackageHandler.OpenMEPackage(candidates[0]);
+                            }
                         }
 
-                        // See if target export is ForcedExport
-                        var targetTest = newSourcePackage.FindExport(originalInstancedFullPath);
-                        //if (targetTest == null && originalInstancedFullPath.StartsWith($"{Path.GetFileNameWithoutExtension(canddiates[0])}."))
-                        //{
-                        //    // Import starts with 'SFXGame.' or the like, which almost guarantees this is not a forced export...
-                        //    originalInstancedFullPath = originalInstancedFullPath
-                        //}
-                        if (targetTest != null)
+                        if (newSourcePackage == null)
                         {
-                            isForcedExport = true;
+                            continueConvertingToExport = false;
+                            Debug.WriteLine($@"Unable to open donor package for unsafe import substitution: {originalInstancedFullPath}");
                         }
-
-                        if (continueConvertingToExport)
+                        else
                         {
-                            //if (originalInstancedFullPath.Contains("EngineMaterials"))
-                            //    Debugger.Break();
-                            // Debug.WriteLine($@"Redirecting relink of import {originalInstancedFullPath} to pull export from {newSourcePackage.FilePath} instead");
+                            // See if target export is ForcedExport
+                            var targetTest = newSourcePackage.FindExport(originalInstancedFullPath);
+                            //if (targetTest == null && originalInstancedFullPath.StartsWith($"{Path.GetFileNameWithoutExtension(canddiates[0])}."))
+                            //{
+                            //    // Import starts with 'SFXGame.' or the like, which almost guarantees this is not a forced export...
+                            //    originalInstancedFullPath = originalInstancedFullPath
+                            //}
+                            if (targetTest != null)
+                            {
+                                isForcedExport = true;
+                            }
 
-                            // Have to kind of hack it to work
-                            var newSourceUIndex = newSourcePackage.FindExport(importingPCC.GetEntry(uIndex).InstancedFullPath).UIndex;
+                            if (continueConvertingToExport)
+                            {
+                                //if (originalInstancedFullPath.Contains("EngineMaterials"))
+                                //    Debugger.Break();
+                                // Debug.WriteLine($@"Redirecting relink of import {originalInstancedFullPath} to pull export from {newSourcePackage.FilePath} instead");
 
-                            var result = relinkExportUIndex(newSourcePackage, relinkingExport, ref newSourceUIndex, propertyName, prefix, rop);
+                                // Have to kind of hack it to work
+                                var replacementExport = newSourcePackage.FindExport(importingPCC.GetEntry(uIndex).InstancedFullPath);
+                                if (replacementExport == null)
+                                {
+                                    continueConvertingToExport = false;
+                                    Debug.WriteLine($@"Unable to find donor export for unsafe import substitution: {originalInstancedFullPath} in {newSourcePackage.FilePath}");
+                                }
+                                else
+                                {
+                                    var newSourceUIndex = replacementExport.UIndex;
 
-                            uIndex = newSourceUIndex; // Assign the ported value from the new package source onto the original one we're going to write back to the dest package
+                                    var result = relinkExportUIndex(newSourcePackage, relinkingExport, ref newSourceUIndex, propertyName, prefix, rop);
+
+                                    uIndex = newSourceUIndex; // Assign the ported value from the new package source onto the original one we're going to write back to the dest package
+
+                                    if (closePackageOnCompletion)
+                                        newSourcePackage.Dispose();
+
+                                    return result;
+                                }
+                            }
 
                             if (closePackageOnCompletion)
                                 newSourcePackage.Dispose();
-
-                            return result;
                         }
                     }
                 }
