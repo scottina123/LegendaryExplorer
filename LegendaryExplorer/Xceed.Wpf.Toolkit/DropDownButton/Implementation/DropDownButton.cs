@@ -242,6 +242,24 @@ namespace Xceed.Wpf.Toolkit
 
     #endregion
 
+    #region CloseOnFocusLoss
+
+    public static readonly DependencyProperty CloseOnFocusLossProperty = DependencyProperty.Register( "CloseOnFocusLoss", typeof( bool )
+      , typeof( DropDownButton ), new UIPropertyMetadata( true ) );
+    public bool CloseOnFocusLoss
+    {
+      get
+      {
+        return ( bool )GetValue( CloseOnFocusLossProperty );
+      }
+      set
+      {
+        SetValue( CloseOnFocusLossProperty, value );
+      }
+    }
+
+    #endregion
+
     #endregion //Properties
 
     #region Base Class Overrides
@@ -265,7 +283,7 @@ namespace Xceed.Wpf.Toolkit
     protected override void OnIsKeyboardFocusWithinChanged( DependencyPropertyChangedEventArgs e )
     {
       base.OnIsKeyboardFocusWithinChanged( e );
-      if( !( bool )e.NewValue )
+      if( this.CloseOnFocusLoss && !( bool )e.NewValue )
       {
         this.CloseDropDown( false );
       }

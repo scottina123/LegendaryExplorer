@@ -121,7 +121,7 @@
               </Popup.Resources>
               <Border BorderThickness="1"
                       Background="{TemplateBinding DropDownContentBackground}"
-                      BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
                       MaxHeight="{TemplateBinding MaxDropDownHeight}">
                 <ScrollViewer x:Name="DropDownScrollViewer"
                               VerticalScrollBarVisibility="Auto">

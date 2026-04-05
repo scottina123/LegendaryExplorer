@@ -8,25 +8,54 @@
                               xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
                               mc:Ignorable="d"
                               d:DesignHeight="450" d:DesignWidth="800">
-<Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+<Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" MinWidth="270">
         <!-- This should be added as a usercontrol to a control that implements ISceneControlConfigurable, which is what the bindings bind to -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="20"/>
-            <RowDefinition Height="20"/>
-            <RowDefinition Height="20"/>
-            <RowDefinition Height="25"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="125"/>
-            <ColumnDefinition Width="125"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <CheckBox Content="Red channel" IsChecked="{Binding ShowRedChannel}" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
-        <CheckBox Content="Green channel" IsChecked="{Binding ShowGreenChannel}" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"/>
-        <CheckBox Content="Blue channel" IsChecked="{Binding ShowBlueChannel}" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
-        <CheckBox Content="Alpha channel" IsChecked="{Binding ShowAlphaChannel}" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center"/>
-        <CheckBox Content="Alpha as black" IsChecked="{Binding SetAlphaToBlack}" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
-        <TextBlock Text="Background color:" Grid.Column="0" Grid.Row="3" VerticalAlignment="Center"/>
-        <xctk:ColorPicker Name="Background_ColorPicker" UsingAlphaChannel="False" SelectedColor="{Binding BackgroundColor}" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="1"/>
+        <RadioButton GroupName="WidgetMode" Content="Translate" Command="{Binding ToggleTranslateCommand}" IsChecked="True" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                     ToolTip="Translate"/>
+        <RadioButton GroupName="WidgetMode" Content="Rotate" Command="{Binding ToggleRotateCommand}" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                     ToolTip="Rotate"/>
+        <RadioButton GroupName="WidgetMode" Content="Scale" Command="{Binding ToggleScaleCommand}" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                     ToolTip="Scale"/>
+        <RadioButton GroupName="WidgetMode" Content="Uniform Scale" Command="{Binding ToggleUniformScaleCommand}" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                     ToolTip="Uniform Scale"/>
+        <Separator Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,0,6"/>
+        <CheckBox Content="Local coords" IsChecked="{Binding UseLocalCoordsForWidget}" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                  ToolTip="Use local coordinates for the transform widget"/>
+        <CheckBox Content="Show collision" IsChecked="{Binding ShowCollision}" Grid.Row="3" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                  ToolTip="Show collision meshes"/>
+        <CheckBox Content="Show light icons" IsChecked="{Binding ShowLightIcons}" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                  ToolTip="Show selection icons for light actors"/>
+        <CheckBox Content="Show volumes" IsChecked="{Binding ShowVolumes}" Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                  ToolTip="Show volume wireframes"/>
+        <CheckBox Content="Show volumetric meshes" IsChecked="{Binding ShowVolumetrics}" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"
+                  ToolTip="Volumetrics are large spheroids used for fog, dust, etc. Since LEX can't display those effects, they just get in the way."/>
+        <CheckBox Content="Unlit" IsChecked="{Binding Unlit}" Grid.Row="5" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"
+                  ToolTip="Display the scene without lighting"/>
+        <Separator Grid.Row="6" Grid.ColumnSpan="2" Margin="0,4,0,6"/>
+        <CheckBox Content="Red channel" IsChecked="{Binding ShowRedChannel}" Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+        <CheckBox Content="Green channel" IsChecked="{Binding ShowGreenChannel}" Grid.Row="7" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"/>
+        <CheckBox Content="Blue channel" IsChecked="{Binding ShowBlueChannel}" Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+        <CheckBox Content="Alpha channel" IsChecked="{Binding ShowAlphaChannel}" Grid.Row="8" Grid.Column="1" VerticalAlignment="Center" Margin="0,1,0,1"/>
+        <CheckBox Content="Alpha as black" IsChecked="{Binding SetAlphaToBlack}" Grid.Row="9" Grid.Column="0" VerticalAlignment="Center" Margin="0,1,12,1"/>
+        <TextBlock Text="Background color:" Grid.Column="0" Grid.Row="10" VerticalAlignment="Center" Margin="0,2,12,0"/>
+        <xctk:ColorPicker Name="Background_ColorPicker" UsingAlphaChannel="False" SelectedColor="{Binding BackgroundColor}" Grid.Row="10" Grid.Column="1" Grid.ColumnSpan="1" Margin="0,2,0,0"/>
 
     </Grid>
 </misc:NotifyPropertyChangedControlBase>
