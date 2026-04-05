@@ -330,6 +330,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void ReplaceFromFile()
         {
             var selectedTFCName = GetDestinationTFCName();
+            if (string.IsNullOrEmpty(selectedTFCName))
+            {
+                return;
+            }
+
             if (MEDirectories.BasegameTFCs(CurrentLoadedExport.Game).Contains(selectedTFCName, StringComparer.InvariantCultureIgnoreCase) || MEDirectories.OfficialDLC(CurrentLoadedExport.Game).Any(x => $"Textures_{x}".Equals(selectedTFCName, StringComparison.InvariantCultureIgnoreCase)))
             {
                 MessageBox.Show("Cannot replace textures into a TFC provided by BioWare. Choose a different target TFC from the list.");
