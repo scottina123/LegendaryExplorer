@@ -173,17 +173,10 @@ namespace LegendaryExplorer.Tools.Sequence_Editor.Experiments
         public static void LoadCustomClassesFromFile(SequenceEditorWPF seqEd)
         {
             OpenFileDialog ofd = AppDirectories.GetOpenPackageDialog();
-            bool reload = false;
             var result = ofd.ShowDialog();
             if (result.HasValue && result.Value)
             {
-                using var p = MEPackageHandler.OpenMEPackage(ofd.FileName, forceLoadFromDisk: true);
-                reload = LoadCustomClassesFromPackage(p);
-            }
-
-            if (reload)
-            {
-                seqEd.RefreshToolboxItems();
+                seqEd.LoadAndRememberCustomSequenceObjectSource(ofd.FileName);
             }
         }
 

@@ -77,6 +77,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ObservableCollectionExtended<ExportEntry> SequenceExports { get; } = new();
         public ObservableCollectionExtended<TreeViewEntry> TreeViewRootNodes { get; } = new();
         public ObservableCollectionExtended<TreeViewEntry> InterpDataTreeNodes { get; } = new();
+        public ObservableCollectionExtended<string> CustomSequenceObjectSourceFiles { get; } = new();
         public string CurrentFile;
         public string JSONpath;
 
@@ -149,6 +150,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public static readonly string
             OptionsPath = Path.Combine(SequenceEditorDataFolder, "SequenceEditorOptions.JSON");
 
+        public static readonly string CustomSequenceObjectSourcesPath =
+            Path.Combine(SequenceEditorDataFolder, "CustomSequenceObjectSources.json");
+
         public static readonly string ME3ViewsPath = Path.Combine(SequenceEditorDataFolder, @"ME3SequenceViews\");
         public static readonly string ME2ViewsPath = Path.Combine(SequenceEditorDataFolder, @"ME2SequenceViews\");
         public static readonly string ME1ViewsPath = Path.Combine(SequenceEditorDataFolder, @"ME1SequenceViews\");
@@ -207,6 +211,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_BoxText.SelectedColor = BoxTextColor.ToWPFColor();
             ClrPcker_Connection.SelectedColor = ConnectionColor.ToWPFColor();
             ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
+
+            LoadRememberedCustomSequenceObjectSources();
         }
         
         /// <summary>
@@ -357,6 +363,102 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     ModManagerIntegration.RequestASIInstallation(Pcc.Game, modId);
                 }
+            }
+        }
+
+        private void LoadRememberedCustomSequenceObjectSources()
+        {
+            CustomSequenceObjectSourceFiles.ClearEx();
+
+            if (!File.Exists(CustomSequenceObjectSourcesPath))
+            {
+                return;
+            }
+
+            List<string> sourceFiles;
+            try
+            {
+                sourceFiles = JsonConvert.DeserializeObject<List<string>>(File.ReadAllText(CustomSequenceObjectSourcesPath)) ?? [];
+            }
+            catch when (!App.IsDebug)
+            {
+                return;
+            }
+
+            bool saveList = false;
+            foreach (string filePath in sourceFiles
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.InvariantCultureIgnoreCase))
+            {
+                if (!File.Exists(filePath))
+                {
+                    saveList = true;
+                    continue;
+                }
+
+                CustomSequenceObjectSourceFiles.Add(filePath);
+
+                try
+                {
+                    LoadCustomSequenceObjectSource(filePath);
+                }
+                catch when (!App.IsDebug)
+                {
+                    // Keep the entry in the list so the user can see which source failed to load.
+                }
+            }
+
+            if (saveList)
+            {
+                SaveRememberedCustomSequenceObjectSources();
+            }
+        }
+
+        private void SaveRememberedCustomSequenceObjectSources()
+        {
+            Directory.CreateDirectory(SequenceEditorDataFolder);
+            File.WriteAllText(CustomSequenceObjectSourcesPath,
+                JsonConvert.SerializeObject(CustomSequenceObjectSourceFiles.ToList(), Formatting.Indented));
+        }
+
+        private bool LoadCustomSequenceObjectSource(string filePath)
+        {
+            using var package = MEPackageHandler.OpenMEPackage(filePath, forceLoadFromDisk: true);
+            return SequenceEditorExperimentsM.LoadCustomClassesFromPackage(package);
+        }
+
+        public void LoadAndRememberCustomSequenceObjectSource(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return;
+            }
+
+            try
+            {
+                bool reload = LoadCustomSequenceObjectSource(filePath);
+                bool isNewSource = CustomSequenceObjectSourceFiles.All(existingPath =>
+                    !string.Equals(existingPath, filePath, StringComparison.InvariantCultureIgnoreCase));
+
+                if (isNewSource)
+                {
+                    CustomSequenceObjectSourceFiles.Add(filePath);
+                    SaveRememberedCustomSequenceObjectSources();
+                }
+
+                if (reload && Pcc != null)
+                {
+                    RefreshToolboxItems();
+                }
+
+                StatusText = isNewSource
+                    ? $"Loaded custom sequence objects from {Path.GetFileName(filePath)} and saved it for future sessions."
+                    : $"Loaded custom sequence objects from {Path.GetFileName(filePath)}.";
+            }
+            catch (Exception ex) when (!App.IsDebug)
+            {
+                MessageBox.Show(this, $"Unable to load custom sequence objects from file:\n{ex.Message}",
+                    "Sequence Editor", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -5019,12 +5121,111 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void LoadCustomClasses_Clicked(object sender, RoutedEventArgs e)
         {
-            SequenceEditorExperimentsM.LoadCustomClassesFromFile(this);
+            ShowRememberedCustomSequenceObjectSourcesDialog();
         }
 
         private void LoadCustomClassesFromCurentPackage_Clicked(object sender, RoutedEventArgs e)
         {
             SequenceEditorExperimentsM.LoadCustomClassesFromCurrentPackage(this);
+        }
+
+        private void ShowRememberedCustomSequenceObjectSourcesDialog()
+        {
+            var sourcesListBox = new ListBox
+            {
+                MinWidth = 520,
+                MinHeight = 220,
+                ItemsSource = CustomSequenceObjectSourceFiles
+            };
+            sourcesListBox.ItemTemplate = new DataTemplate
+            {
+                VisualTree = new FrameworkElementFactory(typeof(TextBlock))
+            };
+            sourcesListBox.ItemTemplate.VisualTree.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
+            sourcesListBox.ItemTemplate.VisualTree.SetBinding(ToolTipProperty, new System.Windows.Data.Binding());
+            sourcesListBox.ItemTemplate.VisualTree.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+
+            var loadButton = new Button
+            {
+                Content = "Load package...",
+                MinWidth = 100,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var forgetButton = new Button
+            {
+                Content = "Forget selected",
+                MinWidth = 100,
+                Margin = new Thickness(0, 0, 8, 0),
+                IsEnabled = false
+            };
+            var closeButton = new Button
+            {
+                Content = "Close",
+                MinWidth = 100,
+                IsCancel = true
+            };
+
+            var dialog = new System.Windows.Window
+            {
+                Title = "Custom sequence object sources",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(12),
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Remembered package files",
+                            FontWeight = FontWeights.Bold,
+                            Margin = new Thickness(0, 0, 0, 8)
+                        },
+                        sourcesListBox,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Margin = new Thickness(0, 12, 0, 0),
+                            Children =
+                            {
+                                loadButton,
+                                forgetButton,
+                                closeButton
+                            }
+                        }
+                    }
+                }
+            };
+
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            void UpdateForgetState()
+            {
+                forgetButton.IsEnabled = sourcesListBox.SelectedItem is string;
+            }
+
+            sourcesListBox.SelectionChanged += (_, _) => UpdateForgetState();
+            loadButton.Click += (_, _) => SequenceEditorExperimentsM.LoadCustomClassesFromFile(this);
+            forgetButton.Click += (_, _) =>
+            {
+                if (sourcesListBox.SelectedItem is not string filePath)
+                {
+                    return;
+                }
+
+                CustomSequenceObjectSourceFiles.Remove(filePath);
+                SaveRememberedCustomSequenceObjectSources();
+                StatusText = $"Removed {Path.GetFileName(filePath)} from remembered custom sequence object sources. Restart Sequence Editor to stop auto-loading it.";
+                UpdateForgetState();
+            };
+            closeButton.Click += (_, _) => dialog.Close();
+
+            dialog.Loaded += (_, _) => UpdateForgetState();
+            dialog.ShowDialog();
         }
 
         private void CommitObjectPositions_Clicked(object sender, RoutedEventArgs e)
