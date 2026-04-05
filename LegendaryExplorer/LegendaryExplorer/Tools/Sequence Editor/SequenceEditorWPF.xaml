@@ -31,6 +31,21 @@
         <converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
         <converters:InverseVisibilityConverter x:Key="InverseVisibilityConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
+        <Style x:Key="EmbeddedMenuContentStyle" TargetType="{x:Type MenuItem}">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type MenuItem}">
+                        <Border Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <ContextMenu x:Key="interpDataTreeContextMenu" Opened="InterpDataTreeContextMenu_Opened">
             <MenuItem Header="View reference graph (EXPERIMENTAL)" Tag="ViewReferenceGraph" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Open in Interp Editor" Click="InterpDataTree_OpenInInterpEditor_Click" />
@@ -167,6 +182,19 @@
                     <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}" />
                     <Separator />
                     <MenuItem Name="Recents_MenuItem" Header="Recent" IsEnabled="false" />
+                </MenuItem>
+                <MenuItem Style="{StaticResource EmbeddedMenuContentStyle}"
+                          Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <MenuItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="&lt;" Width="28" Height="22" Margin="0,0,4,0"
+                                    Command="{Binding NavigateSelectionBackCommand}"
+                                    ToolTip="Go to the previously selected sequence object" />
+                            <Button Content="&gt;" Width="28" Height="22"
+                                    Command="{Binding NavigateSelectionForwardCommand}"
+                                    ToolTip="Go to the next selected sequence object" />
+                        </StackPanel>
+                    </MenuItem.Header>
                 </MenuItem>
 
                 <MenuItem Header="Tools" Padding="4">
@@ -638,52 +666,52 @@
                                 IsEnabled="{Binding SelectedSequence, Converter={StaticResource NullEnabledConverter}}"
                                 ExpandDirection="Right" IsExpanded="False" Background="Transparent"
                                 sharedUi:Bindings.VisibilityToEnabled="True">
-                        <Expander.Template>
-                            <ControlTemplate TargetType="{x:Type Expander}">
-                                <Grid VerticalAlignment="Top" HorizontalAlignment="Left">
-                                    <ContentPresenter x:Name="ExpandSite"
-                                                      Margin="4,0,0,0"
-                                                      Visibility="Collapsed"
-                                                      ContentSource="Content" />
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsExpanded" Value="True">
-                                        <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Expander.Template>
-                        <Expander.Header>
-                            <Grid Width="0" Height="0" />
-                        </Expander.Header>
-                        <TabControl>
-                            <TabItem>
-                                <TabItem.Header>
-                                    <TextBlock Text="Favorites" ToolTip="Shift-click on a sequence class to add or remove from favorites."/>
-                                </TabItem.Header>
-                                <controls:ClassToolBox x:Name="favoritesToolBox" />
-                            </TabItem>
-                            <TabItem Header="Events">
-                                <controls:ClassToolBox x:Name="eventsToolBox" />
-                            </TabItem>
-                            <TabItem Header="Actions">
-                                <controls:ClassToolBox x:Name="actionsToolBox" />
-                            </TabItem>
-                            <TabItem Header="Conditions">
-                                <controls:ClassToolBox x:Name="conditionsToolBox" />
-                            </TabItem>
-                            <TabItem Header="Variables">
-                                <controls:ClassToolBox x:Name="variablesToolBox" />
-                            </TabItem>
-                            <TabItem Header="Scene Shop"
-                                     Visibility="{Binding IsSceneShopSequenceSelected, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <controls:ClassToolBox x:Name="sceneShopToolBox" />
-                            </TabItem>
-                            <TabItem Header="Custom sequences" Visibility="{x:Static global:App.IsDebugVisibility}">
-                                <controls:GenericToolBox x:Name="customSequencesToolBox" />
-                            </TabItem>
-                        </TabControl>
-                    </Expander>
+                            <Expander.Template>
+                                <ControlTemplate TargetType="{x:Type Expander}">
+                                    <Grid VerticalAlignment="Top" HorizontalAlignment="Left">
+                                        <ContentPresenter x:Name="ExpandSite"
+                                                          Margin="4,0,0,0"
+                                                          Visibility="Collapsed"
+                                                          ContentSource="Content" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsExpanded" Value="True">
+                                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Expander.Template>
+                            <Expander.Header>
+                                <Grid Width="0" Height="0" />
+                            </Expander.Header>
+                            <TabControl>
+                                <TabItem>
+                                    <TabItem.Header>
+                                        <TextBlock Text="Favorites" ToolTip="Shift-click on a sequence class to add or remove from favorites."/>
+                                    </TabItem.Header>
+                                    <controls:ClassToolBox x:Name="favoritesToolBox" />
+                                </TabItem>
+                                <TabItem Header="Events">
+                                    <controls:ClassToolBox x:Name="eventsToolBox" />
+                                </TabItem>
+                                <TabItem Header="Actions">
+                                    <controls:ClassToolBox x:Name="actionsToolBox" />
+                                </TabItem>
+                                <TabItem Header="Conditions">
+                                    <controls:ClassToolBox x:Name="conditionsToolBox" />
+                                </TabItem>
+                                <TabItem Header="Variables">
+                                    <controls:ClassToolBox x:Name="variablesToolBox" />
+                                </TabItem>
+                                <TabItem Header="Scene Shop"
+                                         Visibility="{Binding IsSceneShopSequenceSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <controls:ClassToolBox x:Name="sceneShopToolBox" />
+                                </TabItem>
+                                <TabItem Header="Custom sequences" Visibility="{x:Static global:App.IsDebugVisibility}">
+                                    <controls:GenericToolBox x:Name="customSequencesToolBox" />
+                                </TabItem>
+                            </TabControl>
+                        </Expander>
                     <Image Grid.Column="1" Visibility="Hidden" Name="graphImageSub" Stretch="None" />
                     <Image Grid.Column="0" Visibility="Hidden" Name="expanderImageSub" Stretch="None" />
                 </Grid>

@@ -126,6 +126,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             List<CopiedOutputConnection> OutputConnections,
             List<CopiedVariableConnection> VariableConnections,
             string SourceFilePath);
+        private record SelectionHistoryEntry(string FilePath, int ObjectUIndex);
 
         private SavedViewData SavedView;
         private bool forceAutoLayoutOnInitialPackageLoad = true;
@@ -138,6 +139,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private List<CopiedVariableConnection> copiedVariableConnections;
         private string copiedVariableConnectionsSourceFilePath;
         private CopiedConnectionSet copiedAllConnections;
+        private readonly List<SelectionHistoryEntry> selectionHistory = [];
+        private int selectionHistoryIndex = -1;
+        private bool suppressSelectionHistory;
 
         public static readonly string SequenceEditorDataFolder =
             Path.Combine(AppDirectories.AppDataFolder, @"SequenceEditor\");
@@ -270,6 +274,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public ICommand SaveAsCommand { get; set; }
         public ICommand SaveImageCommand { get; set; }
         public ICommand SaveViewCommand { get; set; }
+        public ICommand NavigateSelectionBackCommand { get; set; }
+        public ICommand NavigateSelectionForwardCommand { get; set; }
         public ICommand AutoLayoutCommand { get; set; }
         public ICommand UseSavedViewsCommand { get; set; }
         public ICommand ScanFolderForLoopsCommand { get; set; }
@@ -299,6 +305,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             SaveAsCommand = new GenericCommand(SavePackageAs, PackageIsLoaded);
             SaveImageCommand = new GenericCommand(SaveImage, () => CurrentObjects.Any);
             SaveViewCommand = new GenericCommand(() => saveView(), () => CurrentObjects.Any);
+            NavigateSelectionBackCommand = new GenericCommand(NavigateSelectionBack, CanNavigateSelectionBack);
+            NavigateSelectionForwardCommand = new GenericCommand(NavigateSelectionForward, CanNavigateSelectionForward);
             AutoLayoutCommand = new GenericCommand(() => AutoLayout(), () => CurrentObjects.Any);
             GotoCommand = new GenericCommand(GoTo, PackageIsLoaded);
             InstallKismetLoggerCommand = new GenericCommand(InstallKismetLogger, CanInstallKismetLogger);
@@ -553,6 +561,86 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void ToggleSavedViews()
         {
             UseSavedViews = !UseSavedViews;
+        }
+
+        private bool CanNavigateSelectionBack() => Pcc != null && selectionHistoryIndex > 0;
+
+        private bool CanNavigateSelectionForward() =>
+            Pcc != null && selectionHistoryIndex >= 0 && selectionHistoryIndex < selectionHistory.Count - 1;
+
+        private void NavigateSelectionBack()
+        {
+            NavigateSelectionHistory(-1);
+        }
+
+        private void NavigateSelectionForward()
+        {
+            NavigateSelectionHistory(1);
+        }
+
+        private void NavigateSelectionHistory(int step)
+        {
+            int targetIndex = selectionHistoryIndex + step;
+            if (targetIndex < 0 || targetIndex >= selectionHistory.Count)
+            {
+                return;
+            }
+
+            var historyEntry = selectionHistory[targetIndex];
+            if (Pcc == null
+                || !string.Equals(historyEntry.FilePath, Pcc.FilePath, StringComparison.InvariantCultureIgnoreCase)
+                || !Pcc.TryGetUExport(historyEntry.ObjectUIndex, out var export))
+            {
+                return;
+            }
+
+            selectionHistoryIndex = targetIndex;
+            UpdateSelectionHistoryNavigationState();
+
+            suppressSelectionHistory = true;
+            try
+            {
+                GoToExport(export);
+            }
+            finally
+            {
+                suppressSelectionHistory = false;
+            }
+        }
+
+        private void RecordSelectedObjectHistory(SObj selectedObject)
+        {
+            if (suppressSelectionHistory || selectedObject?.Export == null || Pcc == null)
+            {
+                return;
+            }
+
+            var historyEntry = new SelectionHistoryEntry(Pcc.FilePath, selectedObject.Export.UIndex);
+            if (selectionHistoryIndex >= 0 && selectionHistory[selectionHistoryIndex] == historyEntry)
+            {
+                return;
+            }
+
+            if (selectionHistoryIndex < selectionHistory.Count - 1)
+            {
+                selectionHistory.RemoveRange(selectionHistoryIndex + 1, selectionHistory.Count - selectionHistoryIndex - 1);
+            }
+
+            selectionHistory.Add(historyEntry);
+            selectionHistoryIndex = selectionHistory.Count - 1;
+            UpdateSelectionHistoryNavigationState();
+        }
+
+        private void ClearSelectionHistory()
+        {
+            selectionHistory.Clear();
+            selectionHistoryIndex = -1;
+            UpdateSelectionHistoryNavigationState();
+        }
+
+        private void UpdateSelectionHistoryNavigationState()
+        {
+            CommandManager.InvalidateRequerySuggested();
         }
 
         private bool CanForceReload() => App.IsDebug && PackageIsLoaded();
@@ -968,6 +1056,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             try
             {
+                ClearSelectionHistory();
                 SelectedSequence = null;
                 CurrentObjects.ClearEx();
                 SequenceExports.ClearEx();
@@ -4113,6 +4202,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             if (SelectedObjects.Count == 1)
             {
+                RecordSelectedObjectHistory(SelectedObjects[0]);
                 Properties_InterpreterWPF.LoadExport(SelectedObjects[0].Export);
 
                 var interpData = GetInterpDataForSelectedObject(SelectedObjects[0]);
