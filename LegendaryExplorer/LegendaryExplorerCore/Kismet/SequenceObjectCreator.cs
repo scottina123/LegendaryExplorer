@@ -423,7 +423,8 @@ namespace LegendaryExplorerCore.Kismet
                         AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aInputPins", "In");
                         break;
                     case "SFXSceneShopNodePlotCheck":
-                        AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aOutputPins", "Out");
+                        AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aOutputPins", "True");
+                        AddDefaultSFXSceneShopPinIfMissing(pcc, info, defaults, "m_aOutputPins", "False");
                         break;
                 }
             }

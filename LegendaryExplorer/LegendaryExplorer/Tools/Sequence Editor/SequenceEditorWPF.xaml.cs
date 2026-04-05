@@ -3937,6 +3937,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     {
                         // SFXSceneGroup is a sibling of SFXSceneShopGameData, not a child node
                         var clonedExport = EntryCloner.CloneTree(obj.Export);
+                        TryAddSceneShopGroupToParentInterpData(clonedExport);
                         customSaveData[clonedExport.UIndex] =
                             new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
                     }
@@ -3972,6 +3973,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     {
                         // SFXSceneGroup is a sibling of SFXSceneShopGameData, not a child node
                         var clonedExport = EntryCloner.CloneTree(obj.Export);
+                        TryAddSceneShopGroupToParentInterpData(clonedExport);
                         customSaveData[clonedExport.UIndex] =
                             new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
                     }
@@ -4027,6 +4029,22 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 nodes.Add(new ObjectProperty(newObject));
                 container.WriteProperty(nodes);
             }
+        }
+
+        private bool TryAddSceneShopGroupToParentInterpData(ExportEntry export)
+        {
+            if (export == null
+                || !export.IsA("SFXSceneGroup")
+                || SelectedSequence?.IsA("SFXSceneShopGameData") != true
+                || SelectedSequence.Parent is not ExportEntry parentExport
+                || parentExport.ClassName != "InterpData")
+            {
+                return false;
+            }
+
+            export.Parent = parentExport;
+            MatineeHelper.AddToParentInterpList(export, parentExport);
+            return true;
         }
 
         private static void ClearSFXSceneShopNodePinLinks(ExportEntry export)
@@ -4173,8 +4191,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
             if (SelectedSequence.IsA("SFXSceneShopGameData"))
             {
-                exportToAdd.Parent = SelectedSequence;
-                AddObjectToSFXSceneShopGameData(exportToAdd, SelectedSequence);
+                if (!TryAddSceneShopGroupToParentInterpData(exportToAdd))
+                {
+                    exportToAdd.Parent = SelectedSequence;
+                    AddObjectToSFXSceneShopGameData(exportToAdd, SelectedSequence);
+                }
             }
             else
             {
