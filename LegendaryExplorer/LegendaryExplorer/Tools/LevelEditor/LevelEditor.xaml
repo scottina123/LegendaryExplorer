@@ -197,6 +197,14 @@
                                            ButtonSpinnerLocation="Left" FormatString="F2"
                                            VerticalContentAlignment="Center" ToolTip="Camera position adjustment step"/>
                     </StackPanel>
+                    <!-- Light icon controls: radius (distance) and max count -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock Text="Light Icons:" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Radius:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                        <xctk:SingleUpDown Width="90" Value="{Binding LightIconRadius}" Minimum="0" Increment="100" FormatString="F0" ButtonSpinnerLocation="Left" VerticalContentAlignment="Center" ToolTip="Max distance to show light icons (world units)"/>
+                        <TextBlock Text="Max:" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                        <xctk:IntegerUpDown Width="60" Value="{Binding MaxLightIcons}" Minimum="0" Maximum="2000" ButtonSpinnerLocation="Left" VerticalContentAlignment="Center" ToolTip="Maximum number of light icons to display"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                         <TextBlock Text="Rot" Margin="0,0,6,0" VerticalAlignment="Center"/>
                         <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" TextDecorations="{StaticResource XTextDeco}"/>

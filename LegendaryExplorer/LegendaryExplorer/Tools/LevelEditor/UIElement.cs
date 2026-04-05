@@ -3,6 +3,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Collections;
 using System;
 using System.Numerics;
+using System.Collections.Generic;
 using Rotator = LegendaryExplorerCore.Unreal.BinaryConverters.Rotator;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
@@ -36,34 +37,79 @@ public sealed class LightIconOverlay : UIElement
             return;
         }
 
+        // Build candidate list within radius and on-screen, then limit to nearest N.
+        var camPos = context.Camera.Position;
+        float radius = context.LightIconRadius;
+        float radiusSq = radius <= 0f ? float.MaxValue : radius * radius;
+
+        var candidates = new List<(ActorProxy actor, float distSq)>();
+
         foreach (ActorProxy actor in context.DrawList_3D)
         {
-            if (!actor.HasLightSettings)
-            {
-                continue;
-            }
+            if (!actor.HasLightSettings) continue;
+            var pos = actor.LocalToWorld.Translation;
+            float d2 = Vector3.DistanceSquared(pos, camPos);
+            if (d2 > radiusSq) continue;
+            // quick on-screen test using the offset point
+            var screenTestPos = pos + context.Camera.CameraUp * IconOffset;
+            if (!context.WorldToPixel(screenTestPos, out _)) continue;
+            candidates.Add((actor, d2));
+        }
 
+        if (candidates.Count == 0) return;
+
+        // sort by distance (ascending)
+        candidates.Sort((a, b) => a.distSq.CompareTo(b.distSq));
+
+        int maxIcons = Math.Max(1, context.MaxLightIcons);
+
+        // ensure selected/attached light is always included
+        ActorProxy attached = context.TransformWidget.Attach;
+        bool attachedIncluded = false;
+
+        int take = Math.Min(maxIcons, candidates.Count);
+        for (int i = 0; i < take; i++)
+        {
+            var actor = candidates[i].actor;
             DrawLightIcon(context, actor);
+            if (actor == attached) attachedIncluded = true;
+        }
+
+        if (!attachedIncluded && attached is not null && attached.HasLightSettings)
+        {
+            // draw the attached actor even if it's outside the top-N
+            DrawLightIcon(context, attached);
         }
     }
 
     private static void DrawLightIcon(LevelEditorRenderContext context, ActorProxy actor)
     {
-        Vector4 screenPoint = context.WorldToScreen(actor.LocalToWorld.Translation);
-        if (screenPoint.W <= 0f)
-        {
-            return;
-        }
+        // Compute a stable world-space offset so the icon stays a fixed
+        // number of screen pixels above the light even as the camera moves.
+        // We do a single refinement: estimate scale at the actor position,
+        // compute a candidate center using that scale, then re-evaluate
+        // the scale using the center's depth. This avoids drift caused by
+        // using the actor depth when the offset changes the projected depth.
 
-        float scale = screenPoint.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        Vector3 basePos = actor.LocalToWorld.Translation;
+        Vector4 sp = context.WorldToScreen(basePos);
+        if (sp.W <= 0f) return;
+
+        // initial scale estimate
+        float scale = sp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
         Vector3 right = context.Camera.CameraRight * scale;
         Vector3 up = context.Camera.CameraUp * scale;
-        Vector3 center = actor.LocalToWorld.Translation + (up * IconOffset);
+        Vector3 center = basePos + (up * IconOffset);
 
-        if (!context.WorldToPixel(center, out _))
-        {
-            return;
-        }
+        // refine using center depth
+        Vector4 centerSp = context.WorldToScreen(center);
+        if (centerSp.W <= 0f) return;
+        scale = centerSp.W * (4f / context.Width / context.Camera.ProjectionMatrix[0, 0]);
+        right = context.Camera.CameraRight * scale;
+        up = context.Camera.CameraUp * scale;
+        center = basePos + (up * IconOffset);
+
+        if (!context.WorldToPixel(center, out _)) return;
 
         int hitId = actor.HitID;
         Vector4 fillColor = actor == context.TransformWidget.Attach ? SelectedLightColor : LightColor;

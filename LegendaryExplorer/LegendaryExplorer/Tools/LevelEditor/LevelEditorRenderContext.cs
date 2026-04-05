@@ -40,6 +40,12 @@ public class LevelEditorRenderContext : MeshRenderContext
     public bool ShowVolumes;
     public bool ShowVolumetrics;
 
+    // Maximum distance to show light icons (world units). <=0 = unlimited.
+    public float LightIconRadius = 20000f;
+
+    // Maximum number of light icons to display (nearest first)
+    public int MaxLightIcons = 200;
+
     private bool IsReadOnly;
 
     public void RefreshSceneLights()
