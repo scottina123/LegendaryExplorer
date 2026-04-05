@@ -10,6 +10,13 @@ namespace LegendaryExplorer.Libraries
 {
     internal static unsafe partial class WindowsAPI
     {
+        public enum GetAncestorFlags : uint
+        {
+            GetParent = 1,
+            GetRoot = 2,
+            GetRootOwner = 3
+        }
+
         [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
         public static partial long SendMessage(IntPtr hWnd, uint msg, nint wParam, long lParam);
 
@@ -21,8 +28,21 @@ namespace LegendaryExplorer.Libraries
         public static partial IntPtr GetForegroundWindow();
 
         [LibraryImport("user32.dll")]
+        public static partial IntPtr GetAncestor(IntPtr hWnd, GetAncestorFlags gaFlags);
+
+        [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static partial bool SetForegroundWindow(IntPtr hWnd);
+
+        public static IntPtr GetRootOwnerWindow(IntPtr hWnd)
+        {
+            return hWnd == IntPtr.Zero ? IntPtr.Zero : GetAncestor(hWnd, GetAncestorFlags.GetRootOwner);
+        }
+
+        public static IntPtr GetForegroundRootOwnerWindow()
+        {
+            return GetRootOwnerWindow(GetForegroundWindow());
+        }
 
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]

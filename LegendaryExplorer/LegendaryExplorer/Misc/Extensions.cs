@@ -163,13 +163,13 @@ namespace LegendaryExplorer.Misc
 
         public static bool IsForegroundWindow(this System.Windows.Forms.Form form)
         {
-            return WindowsAPI.GetForegroundWindow() == form.Handle;
+            return WindowsAPI.GetForegroundRootOwnerWindow() == WindowsAPI.GetRootOwnerWindow(form.Handle);
         }
 
         public static bool IsForegroundWindow(this Window window)
         {
             WindowInteropHelper helper = new WindowInteropHelper(window);
-            return WindowsAPI.GetForegroundWindow() == helper.Handle;
+            return WindowsAPI.GetForegroundRootOwnerWindow() == WindowsAPI.GetRootOwnerWindow(helper.Handle);
         }
 
         //modified from https://social.msdn.microsoft.com/Forums/vstudio/en-US/df4db537-a201-4ab4-bb7e-db38a5c2b6e0/wpf-equivalent-of-winforms-controldrawtobitmap

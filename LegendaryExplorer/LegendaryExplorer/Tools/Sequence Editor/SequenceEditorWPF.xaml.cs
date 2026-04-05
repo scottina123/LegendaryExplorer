@@ -2223,7 +2223,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 return; //nothing is loaded
             }
-            var originalForegroundWindow = WindowsAPI.GetForegroundWindow();
+            var originalForegroundWindow = WindowsAPI.GetForegroundRootOwnerWindow();
             var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
 
             try
@@ -2291,7 +2291,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 if (originalForegroundWindow != IntPtr.Zero
                     && originalForegroundWindow != windowHandle
-                    && WindowsAPI.GetForegroundWindow() == windowHandle)
+                    && WindowsAPI.GetForegroundRootOwnerWindow() == windowHandle)
                 {
                     WindowsAPI.SetForegroundWindow(originalForegroundWindow);
                 }

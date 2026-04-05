@@ -5182,7 +5182,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
-            var originalForegroundWindow = WindowsAPI.GetForegroundWindow();
+            var originalForegroundWindow = WindowsAPI.GetForegroundRootOwnerWindow();
             var windowHandle = new WindowInteropHelper(this).Handle;
 
             try
@@ -5389,7 +5389,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 if (originalForegroundWindow != IntPtr.Zero
                     && originalForegroundWindow != windowHandle
-                    && WindowsAPI.GetForegroundWindow() == windowHandle)
+                    && WindowsAPI.GetForegroundRootOwnerWindow() == windowHandle)
                 {
                     WindowsAPI.SetForegroundWindow(originalForegroundWindow);
                 }
