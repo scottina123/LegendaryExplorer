@@ -834,7 +834,8 @@ namespace LegendaryExplorerCore.Kismet
                 //clone all children
                 foreach (var obj in oldObjectUindices)
                 {
-                    CloneObject(pcc.GetUExport(obj), sequence, topLevel: false, incrementIndex: false, keepPositioning: keepPositioning);
+                    CloneObject(pcc.GetUExport(obj), sequence, topLevel: false, incrementIndex: false,
+                        cloneChildren: true, keepPositioning: keepPositioning);
                 }
 
                 //re-point children's links to new objects
