@@ -91,6 +91,24 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             public string DisplayValue => string.IsNullOrWhiteSpace(ParsedValue) ? "No Data" : ParsedValue;
         }
 
+        public sealed class ConvoLineUsageDisplayItem
+        {
+            public string FileName { get; init; }
+
+            public string Location { get; init; }
+        }
+
+        public sealed class ConvoLineUsageDisplayGroup
+        {
+            public ConvoLineUsageDisplayItem FirstItem { get; init; }
+
+            public IReadOnlyList<ConvoLineUsageDisplayItem> RemainingItems { get; init; } = Array.Empty<ConvoLineUsageDisplayItem>();
+
+            public bool HasAdditionalItems => RemainingItems.Count > 0;
+
+            public string ExpandLabel => HasAdditionalItems ? $"Show {RemainingItems.Count} more" : string.Empty;
+        }
+
         public sealed class MaterialTextureFilterCriterion : INotifyPropertyChanged
         {
             private string _typeLabel = "Texture Type:";
@@ -2797,16 +2815,133 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private void OpenFileInWindowsExplorer(object obj)
         {
             var (filename, contentDir, _, _) = GetSelectedUsageInfo();
-            if (filename is null || contentDir is null) return;
+            OpenFileInWindowsExplorer(filename, contentDir);
+        }
+
+        private void OpenFileInWindowsExplorer(string filename, string contentDir)
+        {
+            if (filename is null || contentDir is null)
+            {
+                return;
+            }
 
             string filePath = GetFilePath(filename, contentDir);
-
             if (File.Exists(filePath))
             {
                 string cmd = "explorer.exe";
                 string arg = "/select, " + filePath;
                 System.Diagnostics.Process.Start(cmd, arg);
             }
+        }
+
+        private void CopyLineUsageFileName_Click(object sender, RoutedEventArgs e)
+        {
+            if (TryGetLineUsageContext(sender, out var usage, out _)
+                && !string.IsNullOrWhiteSpace(usage.FileName))
+            {
+                Clipboard.SetText(usage.FileName);
+            }
+        }
+
+        private void CopyLineUsageLocation_Click(object sender, RoutedEventArgs e)
+        {
+            if (TryGetLineUsageContext(sender, out var usage, out _)
+                && !string.IsNullOrWhiteSpace(usage.Location))
+            {
+                Clipboard.SetText(usage.Location);
+            }
+        }
+
+        private void OpenLineUsageInPackageEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetLineUsageContext(sender, out var usage, out _))
+            {
+                return;
+            }
+
+            OpenInToolkit("PackageEditor", GetFilePath(usage.FileName, usage.Location), realFileName: usage.FileName);
+        }
+
+        private void OpenLineUsageInDialogueEditor_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetLineUsageContext(sender, out _, out var line)
+                || !TryGetLineConversationTarget(line, out var fileName, out var contentDir, out var uIndex))
+            {
+                return;
+            }
+
+            OpenInToolkit("DlgEd", GetFilePath(fileName, contentDir), uIndex, line.StrRef, realFileName: fileName);
+        }
+
+        private void OpenLineUsageInWindowsExplorer_Click(object sender, RoutedEventArgs e)
+        {
+            if (TryGetLineUsageContext(sender, out var usage, out _))
+            {
+                OpenFileInWindowsExplorer(usage.FileName, usage.Location);
+            }
+        }
+
+        private bool TryGetLineUsageContext(object sender, out ConvoLineUsageDisplayItem usage, out ConvoLine line)
+        {
+            usage = null;
+            line = null;
+
+            if (sender is not FrameworkElement element
+                || element.Parent is not ContextMenu contextMenu
+                || contextMenu.PlacementTarget is not FrameworkElement placementTarget)
+            {
+                return false;
+            }
+
+            usage = placementTarget.Tag as ConvoLineUsageDisplayItem
+                ?? placementTarget.DataContext as ConvoLineUsageDisplayItem
+                ?? (placementTarget.DataContext as ConvoLineUsageDisplayGroup)?.FirstItem;
+            line = FindVisualAncestor<ListViewItem>(placementTarget)?.DataContext as ConvoLine
+                ?? lstbx_Lines?.SelectedItem as ConvoLine;
+            return usage != null;
+        }
+
+        private bool TryGetLineConversationTarget(ConvoLine line, out string fileName, out string contentDir, out int uIndex)
+        {
+            fileName = null;
+            contentDir = null;
+            uIndex = 0;
+
+            if (line == null || !TryGetConversation(line.Convo, out var conversation))
+            {
+                return false;
+            }
+
+            int fileKey = conversation.ConvFile.FileKey;
+            if (fileKey < 0 || fileKey >= CurrentDataBase.FileList.Count)
+            {
+                return false;
+            }
+
+            (fileName, int directoryKey) = CurrentDataBase.FileList[fileKey];
+            if (directoryKey < 0 || directoryKey >= CurrentDataBase.ContentDir.Count)
+            {
+                return false;
+            }
+
+            contentDir = CurrentDataBase.ContentDir[directoryKey];
+            uIndex = conversation.ConvFile.UIndex;
+            return !string.IsNullOrWhiteSpace(fileName) && !string.IsNullOrWhiteSpace(contentDir) && uIndex > 0;
+        }
+
+        private static T FindVisualAncestor<T>(DependencyObject source) where T : DependencyObject
+        {
+            while (source != null)
+            {
+                if (source is T target)
+                {
+                    return target;
+                }
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return null;
         }
 
         private void OpenInPlotDB()
@@ -3520,7 +3655,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (line == null)
             {
-                return [];
+                return Array.Empty<DialogueNodeExtended>();
             }
 
             if (string.Equals(line.Speaker, "Shepard", StringComparison.OrdinalIgnoreCase))
@@ -4854,6 +4989,23 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return GetLineUsageDisplay(line, static file => file.Directory);
         }
 
+        public ConvoLineUsageDisplayGroup GetLineUsageEntries(ConvoLine line)
+        {
+            var entries = GetLineUsageFiles(line)
+                .Select(file => new ConvoLineUsageDisplayItem
+                {
+                    FileName = file.FileName,
+                    Location = file.Directory
+                })
+                .ToList();
+
+            return new ConvoLineUsageDisplayGroup
+            {
+                FirstItem = entries.FirstOrDefault(),
+                RemainingItems = entries.Count > 1 ? entries.Skip(1).ToList() : Array.Empty<ConvoLineUsageDisplayItem>()
+            };
+        }
+
         private string GetLineUsageDisplay(ConvoLine line, Func<FileDirPair, string> selector)
         {
             if (line == null)
@@ -4874,7 +5026,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (line == null)
             {
-                return [];
+                return Array.Empty<FileDirPair>();
             }
 
             var fileKeys = new HashSet<int>();
@@ -6063,6 +6215,26 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             return "";
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+
+    public class ConvoLineUsageEntriesConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length >= 2
+                && values[0] is ConvoLine line
+                && values[1] is AssetDatabaseWindow window)
+            {
+                return window.GetLineUsageEntries(line);
+            }
+
+            return new AssetDatabaseWindow.ConvoLineUsageDisplayGroup();
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

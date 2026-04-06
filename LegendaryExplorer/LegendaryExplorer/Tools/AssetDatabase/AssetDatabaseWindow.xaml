@@ -24,6 +24,7 @@
         <assetDatabase:FileIndexToNameConverter x:Key="FileIndexToNameConverter"/>
         <assetDatabase:ConvoLineSpeakerConverter x:Key="ConvoLineSpeakerConverter"/>
         <assetDatabase:ConvoLineFileConverter x:Key="ConvoLineFileConverter"/>
+        <assetDatabase:ConvoLineUsageEntriesConverter x:Key="ConvoLineUsageEntriesConverter"/>
         <converters:GameTypeConverter x:Key="GameTypeConverter"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
@@ -246,6 +247,113 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="LineUsageSelectableTextBoxStyle" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4,3"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <DataTemplate x:Key="LineUsageFileEntriesTemplate">
+            <ContentControl>
+                <ContentControl.Content>
+                    <MultiBinding Converter="{StaticResource ConvoLineUsageEntriesConverter}">
+                        <Binding/>
+                        <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
+                    </MultiBinding>
+                </ContentControl.Content>
+                <ContentControl.ContentTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
+                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.FileName, TargetNullValue=''}" Tag="{Binding FirstItem}">
+                                    <TextBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
+                                            <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                            <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
+                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                        </ContextMenu>
+                                    </TextBox.ContextMenu>
+                                </TextBox>
+                            </Border>
+                            <Expander Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Expander.Header>
+                                    <TextBlock Text="{Binding ExpandLabel}" Foreground="Gray" FontSize="10" Margin="4,2"/>
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{Binding RemainingItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
+                                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FileName}" Tag="{Binding}">
+                                                    <TextBox.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Copy File Name" Click="CopyLineUsageFileName_Click"/>
+                                                            <MenuItem Header="Open in Package Editor" Click="OpenLineUsageInPackageEditor_Click"/>
+                                                            <MenuItem Header="Open in Dialogue Editor" Click="OpenLineUsageInDialogueEditor_Click"/>
+                                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                        </ContextMenu>
+                                                    </TextBox.ContextMenu>
+                                                </TextBox>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </StackPanel>
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </DataTemplate>
+        <DataTemplate x:Key="LineUsageLocationEntriesTemplate">
+            <ContentControl>
+                <ContentControl.Content>
+                    <MultiBinding Converter="{StaticResource ConvoLineUsageEntriesConverter}">
+                        <Binding/>
+                        <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
+                    </MultiBinding>
+                </ContentControl.Content>
+                <ContentControl.ContentTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
+                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding FirstItem.Location, TargetNullValue=''}" Tag="{Binding FirstItem}">
+                                    <TextBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
+                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                        </ContextMenu>
+                                    </TextBox.ContextMenu>
+                                </TextBox>
+                            </Border>
+                            <Expander Visibility="{Binding HasAdditionalItems, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Expander.Header>
+                                    <TextBlock Text="{Binding ExpandLabel}" Foreground="Gray" FontSize="10" Margin="4,2"/>
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{Binding RemainingItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0,0,0,1">
+                                                <TextBox Style="{StaticResource LineUsageSelectableTextBoxStyle}" Text="{Binding Location}" Tag="{Binding}">
+                                                    <TextBox.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Copy Name" Click="CopyLineUsageLocation_Click"/>
+                                                            <MenuItem Header="Open in Windows Explorer" Click="OpenLineUsageInWindowsExplorer_Click"/>
+                                                        </ContextMenu>
+                                                    </TextBox.ContextMenu>
+                                                </TextBox>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </StackPanel>
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </DataTemplate>
         <Style x:Key="{x:Static GridView.GridViewScrollViewerStyleKey}" TargetType="{x:Type ScrollViewer}">
             <Setter Property="Template">
                 <Setter.Value>
@@ -1311,46 +1419,8 @@
                                         <GridViewColumn DisplayMemberBinding="{Binding StrRef}" Width="110" Header="TLK String Ref" />
                                         <GridViewColumn DisplayMemberBinding="{Binding DisplayLine}" Width="420" Header="Line" />
                                         <GridViewColumn DisplayMemberBinding="{Binding Convo}" Width="220" Header="Line Conversation" />
-                                        <GridViewColumn Width="220" Header="File">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock TextTrimming="CharacterEllipsis">
-                                                        <TextBlock.Text>
-                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}">
-                                                                <Binding/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
-                                                            </MultiBinding>
-                                                        </TextBlock.Text>
-                                                        <TextBlock.ToolTip>
-                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}">
-                                                                <Binding/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
-                                                            </MultiBinding>
-                                                        </TextBlock.ToolTip>
-                                                    </TextBlock>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
-                                        <GridViewColumn Width="180" Header="Location">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock TextTrimming="CharacterEllipsis">
-                                                        <TextBlock.Text>
-                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}" ConverterParameter="Location">
-                                                                <Binding/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
-                                                            </MultiBinding>
-                                                        </TextBlock.Text>
-                                                        <TextBlock.ToolTip>
-                                                            <MultiBinding Converter="{StaticResource ConvoLineFileConverter}" ConverterParameter="Location">
-                                                                <Binding/>
-                                                                <Binding RelativeSource="{RelativeSource Mode=FindAncestor, AncestorType={x:Type Window}}"/>
-                                                            </MultiBinding>
-                                                        </TextBlock.ToolTip>
-                                                    </TextBlock>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
+                                        <GridViewColumn Width="220" Header="File" CellTemplate="{StaticResource LineUsageFileEntriesTemplate}"/>
+                                        <GridViewColumn Width="180" Header="Location" CellTemplate="{StaticResource LineUsageLocationEntriesTemplate}"/>
                                     </GridView>
                                 </ListView.View>
                                 <ListView.ContextMenu>
