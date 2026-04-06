@@ -3372,12 +3372,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             var index = Pcc.findName(input);
                             if (index == -1)
                             {
-                                //couldn't find name
-                                if (MessageBoxResult.No == MessageBox.Show($"{Path.GetFileName(Pcc.FilePath)} does not contain the Name: {input}\nWould you like to add it to the Name list?", "Name not found", MessageBoxButton.YesNo))
-                                {
-                                    break;
-                                }
-
                                 index = Pcc.FindNameOrAdd(input);
                                 //Wait for namelist to update. we may need to set a timer here.
                                 Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
@@ -3400,12 +3394,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             var index = Pcc.findName(input);
                             if (index == -1)
                             {
-                                //couldn't find name
-                                if (MessageBoxResult.No == MessageBox.Show($"{Path.GetFileName(Pcc.FilePath)} does not contain the Name: {input}\nWould you like to add it to the Name list?", "Name not found", MessageBoxButton.YesNo))
-                                {
-                                    break;
-                                }
-
                                 index = Pcc.FindNameOrAdd(input);
                                 //Wait for namelist to update. we may need to set a timer here.
                                 Dispatcher.Invoke(new Action(() => { }), DispatcherPriority.ContextIdle, null);
