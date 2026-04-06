@@ -43,6 +43,13 @@ namespace LegendaryExplorer.SharedUI
             set => SetProperty(ref isSelected, value);
         }
 
+        private bool _isMultiSelected;
+        public bool IsMultiSelected
+        {
+            get => _isMultiSelected;
+            set => SetProperty(ref _isMultiSelected, value);
+        }
+
         /// <summary>
         /// Returns the game that this entry node is tied to
         /// </summary>

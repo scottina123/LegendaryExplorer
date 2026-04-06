@@ -142,6 +142,7 @@
             <MenuItem Header="{Binding Path=(packageEditor:PackageEditorWindow.FindReferencesMenuText), Mode=OneTime}"
                       ToolTip="Finds objects that reference this one" Command="{Binding FindReferencesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Replace all references to this" ToolTip="Replaces all references to this entry with a reference to another entry you select" Command="{Binding ReplaceReferenceLinksCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Change links of selected objects..." ToolTip="Changes the parent link for all selected imports or exports to the entry you choose" Click="ChangeLinksForSelectedEntries_Click" Tag="ChangeLinksForSelectedEntries" Visibility="Collapsed"/>
             <MenuItem Header="Match MaterialInstanceConstants to SkeletalMesh" ToolTip="Makes supported SkeletalMeshComponent exports match their SkeletalMesh material slots by updating or creating MaterialInstanceConstants." Click="MatchMaterialsToSkeletalMesh_Click" Tag="MatchMaterialsToSkeletalMesh" Visibility="Collapsed"/>
             <MenuItem Header="Restore from Asset Database material..." ToolTip="Replace this Material or MaterialInstanceConstant using a donor you choose from the Asset Database materials tab." Click="RestoreMaterialFromAssetDatabase_Click" Tag="RestoreMaterialFromAssetDatabase" Visibility="Collapsed"/>
             <MenuItem Header="Reindex objects with this name" ToolTip="Reindexes all objects with this name, ensuring there are no duplicate indexes" Command="{Binding ReindexCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
@@ -453,7 +454,7 @@
                     <!--This is outside so that it doesn't hide the whole box if it is too long to show -->
                     <TextBlock Name="Goto_Preview_TextBox" VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" Margin="5,0,0,0"/>
                 </ToolBar>
-                <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                <controls:ListBoxScroll x:Name="LeftSide_ListView" Grid.Column="0" Grid.Row="1" IsTextSearchEnabled="True" SelectionChanged="LeftSide_SelectedItemChanged" PreviewMouseRightButtonDown="LeftSide_ListView_PreviewMouseRightButtonDown" SelectionMode="Extended" ItemsSource="{Binding LeftSideList_ItemsSource}" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" AlternationCount="2" HorizontalContentAlignment="Stretch" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <controls:ListBoxScroll.Resources>
                         <DataTemplate DataType="{x:Type SharedUI:IndexedName}">
                             <StackPanel Orientation="Horizontal" ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent">
@@ -501,7 +502,21 @@
                 <TreeView x:Name="LeftSide_TreeView" Grid.Column="0" Grid.Row="1" FontFamily="Consolas" Visibility="Collapsed" dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.DropHandler="{Binding}" ItemsSource="{Binding AllTreeViewNodesX}" FocusManager.IsFocusScope="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type SharedUI:TreeViewEntry}" ItemsSource="{Binding Sublinks}">
-                            <controls:TreeViewEntryContainer ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent"  Padding="{Binding Path=(SharedUI:TouchComfySettings.TreeViewMargin)}">
+                            <controls:TreeViewEntryContainer ContextMenu="{StaticResource EntryContextMenu}" Background="Transparent" Padding="{Binding Path=(SharedUI:TouchComfySettings.TreeViewMargin)}" PreviewMouseLeftButtonDown="TreeEntryContainer_PreviewMouseLeftButtonDown" PreviewMouseRightButtonDown="TreeEntryContainer_PreviewMouseRightButtonDown">
+                                <controls:TreeViewEntryContainer.Style>
+                                    <Style TargetType="{x:Type controls:TreeViewEntryContainer}">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsMultiSelected}" Value="True"/>
+                                                    <Condition Binding="{Binding IsSelected}" Value="False"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="#505050"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </controls:TreeViewEntryContainer.Style>
                                 <controls:TreeViewEntryContainer.ToolTip>TestTrigger</controls:TreeViewEntryContainer.ToolTip>
                                 <DockPanel>
 
@@ -509,6 +524,14 @@
                                         <TextBlock.Style>
                                             <Style TargetType="{x:Type TextBlock}">
                                                 <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsMultiSelected}" Value="True"/>
+                                                            <Condition Binding="{Binding IsSelected}" Value="False"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                        <Setter Property="Background" Value="#505050"/>
+                                                    </MultiDataTrigger>
                                                     <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="true">
                                                         <Setter Property="Background" Value="#50D4A020"/>
                                                     </DataTrigger>
@@ -529,17 +552,20 @@
                                                         <DataTrigger Binding="{Binding Path=Entry.EntryHasPendingChanges}" Value="true">
                                                             <Setter Property="Background" Value="#50D4A020"/>
                                                         </DataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsMultiSelected}" Value="True"/>
+                                                            <Condition Binding="{Binding IsSelected}" Value="False"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                            <Setter Property="Background" Value="#505050"/>
+                                                    </MultiDataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </StackPanel>
                                 </DockPanel>
-                                <b:Interaction.Triggers>
-                                    <b:EventTrigger EventName="PreviewMouseRightButtonDown">
-                                        <b:ChangePropertyAction PropertyName="IsSelected" Value="true" TargetObject="{Binding}"/>
-                                    </b:EventTrigger>
-                                </b:Interaction.Triggers>
                             </controls:TreeViewEntryContainer>
                         </HierarchicalDataTemplate>
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"

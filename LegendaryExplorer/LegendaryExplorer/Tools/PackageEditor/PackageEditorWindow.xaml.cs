@@ -222,6 +222,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ObservableCollectionExtended<TreeViewEntry> AllTreeViewNodesX { get; } = [];
         public ObservableCollectionExtended<IEntry> BackwardsEntries { get; } = new();
         public ObservableCollectionExtended<IEntry> ForwardsEntries { get; } = new();
+        private readonly HashSet<TreeViewEntry> _selectedTreeItems = [];
+        private TreeViewEntry _treeSelectionAnchor;
+        private bool _updatingTreeMultiSelection;
 
         private TreeViewEntry _selectedItem;
         public TreeViewEntry SelectedItem
@@ -240,6 +243,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (allowSelection && SetProperty(ref _selectedItem, value) && !SuppressSelectionEvent)
                 {
+                    SyncTreeMultiSelectionWithPrimary(value);
                     OnPropertyChanged(nameof(CanRebuildBioWorldStreamingLevels));
                     //_lastSelectionEvent = now;
                     if (oldIndex.HasValue && oldIndex.Value != 0 && !IsBackForwardsNavigationEvent)
@@ -253,6 +257,92 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     ApplySelectionPreview();
                 }
             }
+        }
+
+        private void SyncTreeMultiSelectionWithPrimary(TreeViewEntry primaryNode)
+        {
+            if (_updatingTreeMultiSelection || CurrentView != CurrentViewMode.Tree)
+            {
+                return;
+            }
+
+            if (primaryNode is null)
+            {
+                ClearTreeMultiSelection();
+                return;
+            }
+
+            SetTreeMultiSelection([primaryNode], primaryNode, updatePrimarySelection: false, updateAnchor: false);
+        }
+
+        private void ClearTreeMultiSelection()
+        {
+            foreach (TreeViewEntry node in _selectedTreeItems)
+            {
+                node.IsMultiSelected = false;
+            }
+
+            _selectedTreeItems.Clear();
+        }
+
+        private void SetTreeMultiSelection(IEnumerable<TreeViewEntry> nodes, TreeViewEntry primaryNode, bool updatePrimarySelection, bool updateAnchor = true)
+        {
+            _updatingTreeMultiSelection = true;
+            try
+            {
+                ClearTreeMultiSelection();
+
+                foreach (TreeViewEntry node in nodes.Where(node => node is not null).Distinct())
+                {
+                    node.IsMultiSelected = true;
+                    _selectedTreeItems.Add(node);
+                }
+
+                if (updateAnchor)
+                {
+                    _treeSelectionAnchor = primaryNode;
+                }
+
+                if (updatePrimarySelection && primaryNode is not null)
+                {
+                    primaryNode.IsProgramaticallySelecting = true;
+                    SelectedItem = primaryNode;
+                }
+            }
+            finally
+            {
+                _updatingTreeMultiSelection = false;
+            }
+        }
+
+        private static bool IsTreeNodeVisibleForSelection(TreeViewEntry node)
+        {
+            if (node is null || !node.IsVisibleInTree)
+            {
+                return false;
+            }
+
+            for (TreeViewEntry current = node.Parent; current is not null; current = current.Parent)
+            {
+                if (!current.IsVisibleInTree)
+                {
+                    return false;
+                }
+
+                if (current.Parent is not null && !current.IsExpanded)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private List<TreeViewEntry> GetVisibleTreeNodes()
+        {
+            return AllTreeViewNodesX.Count == 0
+                ? []
+                : AllTreeViewNodesX[0].FlattenTree().Where(IsTreeNodeVisibleForSelection).ToList();
         }
 
         private int QueuedGotoNumber;
@@ -4742,6 +4832,229 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool ExportIsSelected() => TryGetSelectedExport(out _);
 
+        private List<IEntry> GetSelectedLinkableEntries()
+        {
+            if (CurrentView == CurrentViewMode.Tree)
+            {
+                var treeEntries = _selectedTreeItems
+                    .Select(node => node.Entry)
+                    .Where(entry => entry?.FileRef == Pcc)
+                    .Distinct()
+                    .ToList();
+                if (treeEntries.Count > 0)
+                {
+                    return treeEntries;
+                }
+
+                return SelectedItem?.Entry is { FileRef: not null } selectedEntry && selectedEntry.FileRef == Pcc
+                    ? [selectedEntry]
+                    : [];
+            }
+
+            if (CurrentView is not (CurrentViewMode.Imports or CurrentViewMode.Exports))
+            {
+                return [];
+            }
+
+            return LeftSide_ListView.SelectedItems
+                .OfType<IEntry>()
+                .Where(entry => entry.FileRef == Pcc)
+                .Distinct()
+                .ToList();
+        }
+
+        private void ChangeEntryLink(IEntry entry, int newLink)
+        {
+            if (entry is not ExportEntry exportEntry)
+            {
+                entry.idxLink = newLink;
+                return;
+            }
+
+            ExportEntry oldParent = exportEntry.Parent as ExportEntry;
+            exportEntry.idxLink = newLink;
+            if (!ReferenceEquals(oldParent, exportEntry.Parent))
+            {
+                MatineeHelper.RemoveFromParentInterpList(exportEntry, oldParent);
+                MatineeHelper.AddToParentInterpList(exportEntry);
+            }
+        }
+
+        private void RestoreSelectionAfterLinkChange(List<IEntry> movedEntries)
+        {
+            if (movedEntries.Count == 0)
+            {
+                return;
+            }
+
+            RunWithDeferredPreview(() =>
+            {
+                switch (CurrentView)
+                {
+                    case CurrentViewMode.Tree:
+                        if (AllTreeViewNodesX.Count == 0)
+                        {
+                            return;
+                        }
+
+                        int primaryUIndex = movedEntries[0].UIndex;
+                        GoToNumber(primaryUIndex);
+                        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+                        {
+                            var movedNodes = AllTreeViewNodesX[0]
+                                .FlattenTree()
+                                .Where(node => node.Entry is not null && movedEntries.Any(entry => ReferenceEquals(entry, node.Entry)))
+                                .ToList();
+                            if (movedNodes.Count == 0)
+                            {
+                                return;
+                            }
+
+                            SetTreeMultiSelection(movedNodes, movedNodes[0], updatePrimarySelection: true);
+                            EnsureTreeNodeVisible(movedNodes[0]);
+                            LeftSide_TreeView.Focus();
+                            Keyboard.Focus(LeftSide_TreeView);
+                        }));
+                        break;
+                    case CurrentViewMode.Imports:
+                    case CurrentViewMode.Exports:
+                        LeftSide_ListView.SelectedItems.Clear();
+                        foreach (IEntry entry in movedEntries)
+                        {
+                            LeftSide_ListView.SelectedItems.Add(entry);
+                        }
+
+                        LeftSide_ListView.SelectedItem = movedEntries[0];
+                        LeftSide_ListView.Focus();
+                        Keyboard.Focus(LeftSide_ListView);
+                        LeftSide_ListView.ScrollIntoView(movedEntries[0]);
+                        break;
+                }
+            });
+        }
+
+        private void EnsureTreeNodeVisible(TreeViewEntry node)
+        {
+            if (node is null)
+            {
+                return;
+            }
+
+            node.ExpandParents();
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (!TryGetTreeViewItem(node, out TreeViewItem item))
+                {
+                    return;
+                }
+
+                Rect targetRect = new(-1000, 0, item.ActualWidth + 1000, item.ActualHeight);
+                item.BringIntoView(targetRect);
+                item.Focus();
+                LeftSide_TreeView.Focus();
+                Keyboard.Focus(LeftSide_TreeView);
+            }));
+        }
+
+        private bool TryGetTreeViewItem(TreeViewEntry node, out TreeViewItem treeViewItem)
+        {
+            treeViewItem = null;
+            if (node is null)
+            {
+                return false;
+            }
+
+            var nodeDynasty = new List<TreeViewEntry> { node };
+            for (TreeViewEntry parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                nodeDynasty.Insert(0, parent);
+            }
+
+            ItemsControl currentParent = LeftSide_TreeView;
+            foreach (TreeViewEntry currentNode in nodeDynasty)
+            {
+                currentParent.UpdateLayout();
+                treeViewItem = currentParent.ItemContainerGenerator.ContainerFromItem(currentNode) as TreeViewItem;
+                if (treeViewItem is null)
+                {
+                    return false;
+                }
+
+                currentParent = treeViewItem;
+            }
+
+            return treeViewItem is not null;
+        }
+
+        private void ChangeLinksForSelectedEntries_Click(object sender, RoutedEventArgs e)
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            var selectedEntries = GetSelectedLinkableEntries();
+            if (selectedEntries.Count == 0)
+            {
+                return;
+            }
+
+            var selectedUIndexes = selectedEntries.Select(entry => entry.UIndex).ToHashSet();
+            var (selectedPackageRoot, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
+                this,
+                Pcc,
+                $"Select the new link for {selectedEntries.Count} selected entr{(selectedEntries.Count == 1 ? "y" : "ies")}.",
+                entry => !selectedUIndexes.Contains(entry.UIndex));
+            if (!selectedPackageRoot && selectedEntry is null)
+            {
+                return;
+            }
+
+            int newLink = selectedPackageRoot ? 0 : selectedEntry.UIndex;
+            int updatedCount = 0;
+            var failedEntries = new List<EntryStringPair>();
+
+            foreach (IEntry entry in selectedEntries.OrderBy(entry => entry.UIndex))
+            {
+                try
+                {
+                    ChangeEntryLink(entry, newLink);
+                    updatedCount++;
+                }
+                catch (Exception ex)
+                {
+                    failedEntries.Add(new EntryStringPair(entry,
+                        $"#{entry.UIndex} {entry.InstancedFullPath}: {ex.Message}"));
+                }
+            }
+
+            RefreshView();
+            LeftSide_ListView.UpdateLayout();
+            RestoreSelectionAfterLinkChange(selectedEntries);
+            ApplySelectionPreview();
+
+            string targetText = selectedPackageRoot ? "the package root" : $"#{selectedEntry.UIndex} {selectedEntry.InstancedFullPath}";
+            string summary = $"Changed the link for {updatedCount} entr{(updatedCount == 1 ? "y" : "ies")} to {targetText}.";
+            if (failedEntries.Count > 0)
+            {
+                summary += $" Failed to update {failedEntries.Count}.";
+                new ListDialog(failedEntries,
+                    "Change links of selected objects",
+                    summary,
+                    this)
+                {
+                    DoubleClickEntryHandler = entryDoubleClick
+                }.Show();
+                return;
+            }
+
+            MessageBox.Show(this,
+                summary,
+                "Change links of selected objects",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
         private bool PackageExportIsSelected()
         {
             TryGetSelectedEntry(out IEntry entry);
@@ -4916,6 +5229,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void preloadPackage(string loadingName, long loadingSize)
         {
             CancelPendingPreview();
+            ClearTreeMultiSelection();
+            _treeSelectionAnchor = null;
             BusyText = $"Loading {loadingName}";
             IsBusy = true;
             IsLoadingFile = true;
@@ -5481,6 +5796,106 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             ApplySelectionPreview();
+        }
+
+        private void LeftSide_ListView_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject source)
+            {
+                return;
+            }
+
+            while (source is not ListBoxItem && source != null)
+            {
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is not ListBoxItem item)
+            {
+                return;
+            }
+
+            if (!item.IsSelected)
+            {
+                LeftSide_ListView.SelectedItems.Clear();
+                item.IsSelected = true;
+            }
+
+            item.Focus();
+        }
+
+        private void TreeEntryContainer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: TreeViewEntry clickedNode })
+            {
+                return;
+            }
+
+            var visibleNodes = GetVisibleTreeNodes();
+            if (visibleNodes.Count == 0)
+            {
+                return;
+            }
+
+            bool ctrlPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            bool shiftPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+            if (shiftPressed && _treeSelectionAnchor is not null)
+            {
+                int anchorIndex = visibleNodes.IndexOf(_treeSelectionAnchor);
+                int clickedIndex = visibleNodes.IndexOf(clickedNode);
+                if (anchorIndex >= 0 && clickedIndex >= 0)
+                {
+                    int start = Math.Min(anchorIndex, clickedIndex);
+                    int end = Math.Max(anchorIndex, clickedIndex);
+                    SetTreeMultiSelection(visibleNodes.Skip(start).Take(end - start + 1), clickedNode, updatePrimarySelection: true);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            if (ctrlPressed)
+            {
+                var newSelection = _selectedTreeItems.ToList();
+                bool removedClickedNode = newSelection.Remove(clickedNode);
+                if (!removedClickedNode)
+                {
+                    newSelection.Add(clickedNode);
+                }
+
+                TreeViewEntry primaryNode = clickedNode;
+                if (newSelection.Count == 0)
+                {
+                    newSelection.Add(clickedNode);
+                }
+                else if (removedClickedNode)
+                {
+                    primaryNode = newSelection[0];
+                }
+
+                SetTreeMultiSelection(newSelection, primaryNode, updatePrimarySelection: true);
+                e.Handled = true;
+                return;
+            }
+
+            SetTreeMultiSelection([clickedNode], clickedNode, updatePrimarySelection: true);
+        }
+
+        private void TreeEntryContainer_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: TreeViewEntry clickedNode })
+            {
+                return;
+            }
+
+            if (_selectedTreeItems.Contains(clickedNode))
+            {
+                clickedNode.IsProgramaticallySelecting = true;
+                SelectedItem = clickedNode;
+                return;
+            }
+
+            SetTreeMultiSelection([clickedNode], clickedNode, updatePrimarySelection: true);
         }
 
         private void ApplySelectionPreview()
@@ -6076,17 +6491,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (isSamePackageDrop && isShiftHeld)
                 {
-                    var oldParent = sourceItem.Entry.Parent as ExportEntry;
-                    // Change the link instead
-                    sourceItem.Entry.idxLink = targetItem?.Entry?.UIndex ?? 0;
-                    if (oldParent != sourceItem.Entry.Parent)
-                    {
-                        MatineeHelper.RemoveFromParentInterpList(sourceItem.Entry, oldParent);
-                        if (ShouldAddToInterpList(sourceItem.Entry))
-                        {
-                            AddToInterpList(sourceItem.Entry);
-                        }
-                    }
+                    ChangeEntryLink(sourceItem.Entry, targetItem?.Entry?.UIndex ?? 0);
                     return;
                 }
 
@@ -6556,6 +6961,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ResetTreeView()
         {
+            ClearTreeMultiSelection();
+            _treeSelectionAnchor = null;
             if (AllTreeViewNodesX.Count > 0)
             {
                 foreach (TreeViewEntry tv in AllTreeViewNodesX[0].FlattenTree())
@@ -6842,6 +7249,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            var changeLinksMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "ChangeLinksForSelectedEntries"));
+
             var matchMicMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "MatchMaterialsToSkeletalMesh"));
@@ -6860,7 +7271,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var copyFullPathMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "CopyFullPath"));
-            if (matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null)
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null)
             {
                 return;
             }
@@ -6868,6 +7279,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             bool hasEntry = TryGetContextMenuEntry(contextMenu, out var entry);
             ExportEntry export = entry as ExportEntry;
             bool hasExport = export is not null;
+
+            if (changeLinksMenuItem is not null)
+            {
+                changeLinksMenuItem.Visibility = GetSelectedLinkableEntries().Count > 0
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
 
             if (copyFullPathMenuItem is not null)
             {
