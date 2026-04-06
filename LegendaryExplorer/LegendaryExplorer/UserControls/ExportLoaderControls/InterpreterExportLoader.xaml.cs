@@ -147,6 +147,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool ArrayElementJustAdded;
         private string PendingAddedArrayNodePath;
         private int PendingAddedArrayElementIndex = -1;
+        private bool SyncingObjectPropertyEditor;
+        private TextBox ObjectValueIndexTextBox => (TextBox)FindName("Value_ObjectIndex_TextBox");
 
         /// <summary>
         /// Reference to the package that the property we copied from is from
@@ -175,6 +177,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
             EditorSetElements.Add(Value_ObjectComboBox); // Object selector
+            EditorSetElements.Add(ObjectValueIndexTextBox); // Object UIndex selector
             EditorSetElements.Add(Value_ComboBox); //bool, name
             EditorSetElements.Add(NameIndexPrefix_TextBlock); //nameindex
             EditorSetElements.Add(NameIndex_TextBox); //nameindex
@@ -2572,8 +2575,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case ObjectProperty op:
                         UpdateObjectComboBoxOptions(op, newSelectedItem);
-                        Value_ObjectComboBox.SelectedItem = op.Value == 0 ? ZeroUIndexClassEntry.Instance : op.ResolveToEntry(CurrentLoadedExport.FileRef);
+                        SetObjectPropertyEditorSelection(op.Value);
                         SupportedEditorSetElements.Add(Value_ObjectComboBox);
+                        SupportedEditorSetElements.Add(ObjectValueIndexTextBox);
+                        SupportedEditorSetElements.Add(ParsedValue_TextBlock);
 
                         // This is old implementation: Switched over in nightly 07/23/2023
                         /*
@@ -2717,6 +2722,85 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Value_ObjectComboBox.ItemsSource = MakeAllEntriesList(expectedType);
         }
 
+        private void SetObjectPropertyEditorSelection(int uIndex)
+        {
+            SyncingObjectPropertyEditor = true;
+            try
+            {
+                ObjectValueIndexTextBox.Text = uIndex.ToString();
+                Value_ObjectComboBox.SelectedItem = TryFindObjectComboBoxItem(uIndex, out var matchedItem) ? matchedItem : null;
+            }
+            finally
+            {
+                SyncingObjectPropertyEditor = false;
+            }
+
+            UpdateParsedEditorValue();
+        }
+
+        private bool TryFindObjectComboBoxItem(int uIndex, out object matchedItem)
+        {
+            matchedItem = null;
+            if (Value_ObjectComboBox.ItemsSource is not IEnumerable items)
+            {
+                return false;
+            }
+
+            foreach (object item in items)
+            {
+                switch (item)
+                {
+                    case IEntry entry when entry.UIndex == uIndex:
+                        matchedItem = item;
+                        return true;
+                    case ZeroUIndexClassEntry when uIndex == 0:
+                        matchedItem = item;
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryGetObjectPropertyEditorSelection(out int uIndex, out IEntry entry, out object matchedItem, out string errorMessage)
+        {
+            entry = null;
+            matchedItem = null;
+            if (!int.TryParse(ObjectValueIndexTextBox.Text, out uIndex))
+            {
+                errorMessage = "Invalid value";
+                return false;
+            }
+
+            if (uIndex == 0)
+            {
+                if (!TryFindObjectComboBoxItem(0, out matchedItem))
+                {
+                    errorMessage = "Null is not valid for this object property";
+                    return false;
+                }
+
+                errorMessage = null;
+                return true;
+            }
+
+            entry = Pcc.GetEntry(uIndex);
+            if (entry == null)
+            {
+                errorMessage = "Index out of bounds of entry list";
+                return false;
+            }
+
+            if (!TryFindObjectComboBoxItem(uIndex, out matchedItem))
+            {
+                errorMessage = $"{entry.InstancedFullPath} is not valid for this object property";
+                return false;
+            }
+
+            errorMessage = null;
+            return true;
+        }
+
         private List<object> MakeAllEntriesList(string onlyOfType = null)
         {
             var allEntriesNew = new List<object>();
@@ -2802,7 +2886,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         }
                         break;
                     case DelegateProperty _:
-                    case ObjectProperty _:
                         {
                             if (int.TryParse(Value_TextBox.Text, out int index))
                             {
@@ -2826,6 +2909,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             else
                             {
                                 ParsedValue_TextBlock.Text = "Invalid value";
+                            }
+                        }
+                        break;
+                    case ObjectProperty _:
+                        {
+                            if (TryGetObjectPropertyEditorSelection(out int index, out var entry, out _, out string errorMessage))
+                            {
+                                ParsedValue_TextBlock.Text = index == 0 ? "Null" : entry.InstancedFullPath;
+                            }
+                            else
+                            {
+                                ParsedValue_TextBlock.Text = errorMessage;
                             }
                         }
                         break;
@@ -3223,18 +3318,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case ObjectProperty op:
                         {
-                            if (Value_ObjectComboBox.SelectedItem is IEntry ie)
+                            if (!TryGetObjectPropertyEditorSelection(out int objectIndex, out var entry, out var matchedItem, out string errorMessage))
                             {
-                                op.Value = ie.UIndex;
-                                SyncLinkedOpAndLinkAction(tvi, ie);
+                                MessageBox.Show(errorMessage, "Invalid object reference", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                break;
+                            }
+
+                            SetObjectPropertyEditorSelection(objectIndex);
+                            if (op.Value != objectIndex)
+                            {
+                                op.Value = objectIndex;
+                                SyncLinkedOpAndLinkAction(tvi, entry);
                                 updated = true;
                             }
-                            else if (Value_ObjectComboBox.SelectedItem is ZeroUIndexClassEntry)
-                            {
-                                op.Value = 0;
-                                SyncLinkedOpAndLinkAction(tvi, null);
-                                updated = true;
-                            }
+
+                            Value_ObjectComboBox.SelectedItem = matchedItem;
                             // This is old implementation; switched over 07/23/2023
                             /*
                                                         if (int.TryParse(Value_TextBox.Text, out int o) && o != op.Value && (Pcc.IsEntry(o) || o == 0))
@@ -3356,6 +3454,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             linkAction.Value = linkedEntry?.ObjectName ?? new NameReference("None");
+        }
+
+        private void Value_ObjectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SyncingObjectPropertyEditor || SelectedItem?.Property is not ObjectProperty)
+            {
+                return;
+            }
+
+            SyncingObjectPropertyEditor = true;
+            try
+            {
+                ObjectValueIndexTextBox.Text = Value_ObjectComboBox.SelectedItem switch
+                {
+                    IEntry entry => entry.UIndex.ToString(),
+                    ZeroUIndexClassEntry => "0",
+                    _ => ObjectValueIndexTextBox.Text
+                };
+            }
+            finally
+            {
+                SyncingObjectPropertyEditor = false;
+            }
+
+            UpdateParsedEditorValue();
+        }
+
+        private void Value_ObjectIndex_TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (SyncingObjectPropertyEditor || SelectedItem?.Property is not ObjectProperty)
+            {
+                return;
+            }
+
+            SyncingObjectPropertyEditor = true;
+            try
+            {
+                Value_ObjectComboBox.SelectedItem = int.TryParse(ObjectValueIndexTextBox.Text, out int uIndex) && TryFindObjectComboBoxItem(uIndex, out var matchedItem)
+                    ? matchedItem
+                    : null;
+            }
+            finally
+            {
+                SyncingObjectPropertyEditor = false;
+            }
+
+            UpdateParsedEditorValue();
         }
 
         private void ValueTextBox_KeyDown(object sender, KeyEventArgs e)
