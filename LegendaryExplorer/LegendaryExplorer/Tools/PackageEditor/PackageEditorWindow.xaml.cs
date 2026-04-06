@@ -7237,7 +7237,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (TryGetSelectedEntry(out IEntry selectedEntry))
             {
-                var replacement = EntrySelector.GetEntry<IEntry>(this, Pcc, "Select replacement reference");
+                var replacement = EntrySelector.GetEntry<IEntry>(this, Pcc, "Select replacement reference (search by UIndex, name, class, or full path)");
                 if (replacement == null || replacement.UIndex == 0)
                     return;
 

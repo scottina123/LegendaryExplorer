@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
@@ -38,6 +41,28 @@ namespace LegendaryExplorer.Dialogs
         /// Gets the collection of all entries available for selection, filtered by the provided predicate.
         /// </summary>
         public ObservableCollectionExtended<object> AllEntriesList { get; } = new();
+
+        public ObservableCollectionExtended<object> FilteredEntriesList { get; } = new();
+
+        private string searchText;
+        public string SearchText
+        {
+            get => searchText;
+            set
+            {
+                if (SetProperty(ref searchText, value))
+                {
+                    UpdateFilteredEntries();
+                }
+            }
+        }
+
+        private object selectedEntryItem;
+        public object SelectedEntryItem
+        {
+            get => selectedEntryItem;
+            set => SetProperty(ref selectedEntryItem, value);
+        }
 
         /// <summary>
         /// Instantiates a EntrySelectorDialog WPF dialog
@@ -85,7 +110,8 @@ namespace LegendaryExplorer.Dialogs
             DataContext = this;
             LoadCommands();
             InitializeComponent();
-            EntrySelectorComboBox.Focus();
+            UpdateFilteredEntries();
+            EntrySearchTextBox.Focus();
         }
 
         /// <summary>
@@ -115,6 +141,7 @@ namespace LegendaryExplorer.Dialogs
                 entryPredicate = entry => predicate((T)entry);
             }
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true);
+            dlg.SetInitialSelection(null);
             if (dlg.ShowDialog() == true)
             {
                 return (dlg.ChoseRoot, dlg.ChosenEntry as T);
@@ -151,14 +178,7 @@ namespace LegendaryExplorer.Dialogs
                 entryPredicate = entry => predicate((T)entry);
             }
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate);
-            if (defaultItem is not null)
-            {
-                dlg.EntrySelectorComboBox.SelectedItem = defaultItem;
-            }
-            else if (dlg.EntrySelectorComboBox.HasItems)
-            {
-                dlg.EntrySelectorComboBox.SelectedIndex = 0;
-            }
+            dlg.SetInitialSelection(defaultItem);
             if (dlg.ShowDialog() == true)
             {
                 return dlg.ChosenEntry as T;
@@ -183,7 +203,7 @@ namespace LegendaryExplorer.Dialogs
         /// <returns>True if an item is selected; otherwise, false</returns>
         private bool CanAcceptSelection()
         {
-            return EntrySelectorComboBox.SelectedItem != null;
+            return SelectedEntryItem != null;
         }
 
         /// <summary>
@@ -192,9 +212,68 @@ namespace LegendaryExplorer.Dialogs
         private void AcceptSelection()
         {
             DialogResult = true;
-            ChosenEntry = EntrySelectorComboBox.SelectedItem as IEntry;
-            ChoseRoot = EntrySelectorComboBox.SelectedItem is string;
+            ChosenEntry = SelectedEntryItem as IEntry;
+            ChoseRoot = SelectedEntryItem is string;
             Dispose();
+        }
+
+        private void SetInitialSelection(IEntry defaultItem)
+        {
+            SelectedEntryItem = defaultItem;
+            if (SelectedEntryItem is null && FilteredEntriesList.Count > 0)
+            {
+                SelectedEntryItem = FilteredEntriesList[0];
+            }
+
+            if (SelectedEntryItem is not null)
+            {
+                EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+            }
+        }
+
+        private void UpdateFilteredEntries()
+        {
+            IEnumerable<object> filteredEntries = AllEntriesList;
+            string search = SearchText?.Trim();
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                filteredEntries = filteredEntries.Where(entry => EntryMatchesSearch(entry, search));
+            }
+
+            FilteredEntriesList.ReplaceAll(filteredEntries);
+
+            if (SelectedEntryItem is not null && FilteredEntriesList.Contains(SelectedEntryItem))
+            {
+                return;
+            }
+
+            SelectedEntryItem = FilteredEntriesList.FirstOrDefault();
+        }
+
+        private static bool EntryMatchesSearch(object item, string search)
+        {
+            if (item is string rootLabel)
+            {
+                return rootLabel.Contains(search, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (item is not IEntry entry)
+            {
+                return false;
+            }
+
+            string normalizedSearch = search.TrimStart('#');
+            if (int.TryParse(normalizedSearch, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedUIndex)
+                && entry.UIndex == parsedUIndex)
+            {
+                return true;
+            }
+
+            string uIndexText = entry.UIndex.ToString(CultureInfo.InvariantCulture);
+            return uIndexText.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+                   || entry.ObjectName.Instanced.Contains(search, StringComparison.OrdinalIgnoreCase)
+                   || entry.ClassName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                   || entry.InstancedFullPath.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -290,9 +369,44 @@ namespace LegendaryExplorer.Dialogs
         /// <summary>
         /// Handles key down events in the entry selector combo box, allowing Enter key to accept selection.
         /// </summary>
-        private void EntrySelector_ComboBox_KeyDown(object sender, KeyEventArgs e)
+        private void EntrySearchTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Down && FilteredEntriesList.Count > 0)
+            {
+                EntrySelectorListView.Focus();
+                if (SelectedEntryItem is null)
+                {
+                    SelectedEntryItem = FilteredEntriesList[0];
+                }
+
+                if (SelectedEntryItem is not null)
+                {
+                    EntrySelectorListView.ScrollIntoView(SelectedEntryItem);
+                }
+
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter && OKCommand.CanExecute(null))
+            {
+                OKCommand.Execute(null);
+            }
+        }
+
+        private void EntrySelectorListView_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && OKCommand.CanExecute(null))
+            {
+                OKCommand.Execute(null);
+            }
+        }
+
+        private void EntrySelectorListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is DependencyObject source
+                && ItemsControl.ContainerFromElement(EntrySelectorListView, source) is ListViewItem
+                && OKCommand.CanExecute(null))
             {
                 OKCommand.Execute(null);
             }

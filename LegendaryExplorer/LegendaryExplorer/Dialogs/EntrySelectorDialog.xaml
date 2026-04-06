@@ -4,13 +4,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
     xmlns:packages="clr-namespace:LegendaryExplorerCore.Packages;assembly=LegendaryExplorerCore"
     xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d"
     d:DataContext="{Binding RelativeSource={RelativeSource Self}}"
-        ResizeMode="NoResize"
-        Title="Entry Selector" SizeToContent="Height" Width="500">
+        ResizeMode="CanResizeWithGrip"
+        Title="Entry Selector" Width="780" Height="520" MinWidth="520" MinHeight="360">
     <misc:NotifyPropertyChangedWindowBase.Resources>
         <DataTemplate DataType="{x:Type packages:ImportEntry}">
             <StackPanel Orientation="Horizontal">
@@ -25,25 +26,61 @@
             </StackPanel>
         </DataTemplate>
     </misc:NotifyPropertyChangedWindowBase.Resources>
-    <StackPanel Margin="5" HorizontalAlignment="Stretch">
-        <StackPanel.Resources>
+    <DockPanel Margin="5" LastChildFill="True">
+        <DockPanel.Resources>
+            <Style x:Key="CustomListViewItemStyle" TargetType="{x:Type ListViewItem}">
+                <Style.Triggers>
+                    <Trigger Property="ItemsControl.AlternationIndex" Value="0">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"/>
+                    </Trigger>
+                    <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                    </Trigger>
+                </Style.Triggers>
+                <Setter Property="Padding" Value="2"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+            </Style>
             <ItemsPanelTemplate x:Key="Vsp">
                 <VirtualizingStackPanel/>
             </ItemsPanelTemplate>
-        </StackPanel.Resources>
+        </DockPanel.Resources>
 
-        <TextBlock Text="{Binding DirectionsText, FallbackValue=Select an export or import}" FontSize="14" FontWeight="Bold" TextWrapping="Wrap"/>
-        <ComboBox Name="EntrySelectorComboBox" VerticalAlignment="Center"
-                  ItemsSource="{Binding AllEntriesList}" 
-                  ItemsPanel="{StaticResource Vsp}"
-                  IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  ToolTip="Type a UIndex value to automatically select it" KeyDown="EntrySelector_ComboBox_KeyDown"/>
-
-        <TextBlock Foreground="Gray" FontSize="14" Text="Select the dropdown then type a UIndex to locate in the list"/>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <!-- Not command based as this is the only thing we need in the window-->
-            <Button Content="OK"  Width="40" Command="{Binding OKCommand}"/>
-            <Button Content="Cancel" Padding="5,3" Margin="5,0" Click="CancelButton_Click"/>
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="{Binding DirectionsText, FallbackValue=Select an export or import}" FontSize="14" FontWeight="Bold" TextWrapping="Wrap"/>
+            <TextBox x:Name="EntrySearchTextBox"
+                     Margin="0,8,0,0"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     KeyDown="EntrySearchTextBox_KeyDown"
+                     ToolTip="Search by UIndex, name, class, or full path"/>
+            <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="Search by export/import number, object name, class, or full path"/>
         </StackPanel>
-    </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button Content="OK" Width="60" Command="{Binding OKCommand}"/>
+            <Button Content="Cancel" Padding="8,3" Margin="5,0,0,0" Click="CancelButton_Click"/>
+        </StackPanel>
+
+        <ListView x:Name="EntrySelectorListView"
+                  AlternationCount="2"
+                  ItemsSource="{Binding FilteredEntriesList}"
+                  SelectedItem="{Binding SelectedEntryItem, Mode=TwoWay}"
+                  ItemsPanel="{StaticResource Vsp}"
+                  ItemContainerStyle="{StaticResource CustomListViewItemStyle}"
+                  MouseDoubleClick="EntrySelectorListView_MouseDoubleClick"
+                  KeyDown="EntrySelectorListView_KeyDown"
+                  ScrollViewer.CanContentScroll="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling">
+            <ListView.Resources>
+                <DataTemplate DataType="{x:Type sys:String}">
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                </DataTemplate>
+            </ListView.Resources>
+        </ListView>
+    </DockPanel>
 </misc:NotifyPropertyChangedWindowBase>
