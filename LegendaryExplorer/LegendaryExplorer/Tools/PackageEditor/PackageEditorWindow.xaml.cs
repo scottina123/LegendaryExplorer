@@ -2305,6 +2305,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            string usagePath = ExtractUsagePath(usageDetail, "StringRef: ", "Property: ");
+            if (TrySelectExportHeaderNameUsage(usagePath))
+            {
+                return;
+            }
+
             TrySelectPropertyUsage(usageDetail, "StringRef: ", "Property: ");
         }
 
@@ -2372,26 +2378,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool TrySelectPropertyUsage(string usageDetail, params string[] propertyPrefixes)
         {
-            string propertyPath = null;
-            foreach (string propertyPrefix in propertyPrefixes)
-            {
-                if (usageDetail.StartsWith(propertyPrefix, StringComparison.Ordinal))
-                {
-                    propertyPath = usageDetail[propertyPrefix.Length..];
-                    break;
-                }
-            }
-
-            if (propertyPath != null)
-            {
-                int detailSeparatorIndex = propertyPath.IndexOf(" | ", StringComparison.Ordinal);
-                if (detailSeparatorIndex >= 0)
-                {
-                    propertyPath = propertyPath[..detailSeparatorIndex];
-                }
-
-                propertyPath = propertyPath.Trim();
-            }
+            string propertyPath = ExtractUsagePath(usageDetail, propertyPrefixes);
 
             if (propertyPath is null
                 || InterpreterTab_Interpreter.PropertyNodes.Count == 0
@@ -2433,6 +2420,33 @@ namespace LegendaryExplorer.Tools.PackageEditor
             current.IsSelected = true;
             InterpreterTab_Interpreter.SelectedItem = current;
             return true;
+        }
+
+        private static string ExtractUsagePath(string usageDetail, params string[] usagePrefixes)
+        {
+            if (string.IsNullOrWhiteSpace(usageDetail))
+            {
+                return null;
+            }
+
+            foreach (string usagePrefix in usagePrefixes)
+            {
+                if (!usageDetail.StartsWith(usagePrefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string usagePath = usageDetail[usagePrefix.Length..];
+                int detailSeparatorIndex = usagePath.IndexOf(" | ", StringComparison.Ordinal);
+                if (detailSeparatorIndex >= 0)
+                {
+                    usagePath = usagePath[..detailSeparatorIndex];
+                }
+
+                return usagePath.Trim();
+            }
+
+            return null;
         }
 
         private static bool TryParseTemplateOwnerClassUsageOffset(string usageDetail, out int offset)
@@ -5823,6 +5837,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 try
                 {
+                    CollectDerivedStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache);
+                }
+                catch
+                {
+                    // Ignore exports that fail to parse so search can continue through the package.
+                }
+
+                try
+                {
                     CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache);
                 }
                 catch
@@ -5871,6 +5894,61 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     case IntProperty intProperty when IsStringRefIntProperty(intProperty):
                         AddStringRefUsage(results, export, $"{pathPrefix}{intProperty.Name} value", intProperty.Value, searchTerm, exactStringRef, resolvedTextCache);
                         break;
+                }
+            }
+        }
+
+        private void CollectDerivedStringRefUsages(
+            ExportEntry export,
+            List<EntryStringPair> results,
+            string searchTerm,
+            int? exactStringRef,
+            Dictionary<int, string> resolvedTextCache)
+        {
+            IEnumerable<int> stringRefs = export.ClassName switch
+            {
+                "WwiseEvent" => TryParseWwiseEventSubtitleStringRef(export.ObjectName.Name, out int stringRef) ? [stringRef] : [],
+                "WwiseStream" => EnumerateEncodedSubtitleStringRefs(export.ObjectName.Name),
+                "SoundNodeWave" or "SoundCue" => EnumerateEncodedSubtitleStringRefs(export.ObjectName.Instanced),
+                _ => []
+            };
+
+            foreach (int stringRef in stringRefs.Distinct())
+            {
+                AddStringRefUsage(results, export, "Header: Object Name", stringRef, searchTerm, exactStringRef, resolvedTextCache);
+            }
+        }
+
+        private static bool TryParseWwiseEventSubtitleStringRef(string objectName, out int stringRef)
+        {
+            stringRef = 0;
+            if (string.IsNullOrWhiteSpace(objectName) || !objectName.StartsWith("VO_", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string parsed = objectName[3..];
+            int nextUnderscore = parsed.IndexOf('_');
+            if (nextUnderscore > 0)
+            {
+                parsed = parsed[..nextUnderscore];
+            }
+
+            return int.TryParse(parsed, out stringRef) && stringRef > 0;
+        }
+
+        private static IEnumerable<int> EnumerateEncodedSubtitleStringRefs(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                yield break;
+            }
+
+            foreach (string segment in objectName.Split('_', ','))
+            {
+                if (int.TryParse(segment, out int stringRef) && stringRef > 0)
+                {
+                    yield return stringRef;
                 }
             }
         }
