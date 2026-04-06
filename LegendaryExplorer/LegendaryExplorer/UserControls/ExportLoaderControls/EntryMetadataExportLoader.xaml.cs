@@ -8,7 +8,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Be.Windows.Forms;
-using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -943,20 +942,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return false;
                 }
 
-                Keyboard.ClearFocus();
-                string input = $"The name \"{text}\" does not exist in the current loaded package.\nIf you'd like to add this name, press enter below, or change the name to what you would like it to be.";
-                string result = PromptDialog.Prompt(this, input, "Enter new name", text);
-                if (string.IsNullOrEmpty(result))
-                {
-                    return false;
-                }
-
-                text = result;
-                selectedNameIndex = CurrentLoadedEntry.FileRef.FindNameOrAdd(result);
-                if (selectedNameIndex != CurrentLoadedEntry.FileRef.Names.Count - 1)
-                {
-                    MessageBox.Show($"{result} already exists in this package file.\nName index: {selectedNameIndex} (0x{selectedNameIndex:X8})", "Name already exists");
-                }
+                selectedNameIndex = CurrentLoadedEntry.FileRef.FindNameOrAdd(text);
             }
 
             if (saveImmediately)
