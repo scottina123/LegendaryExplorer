@@ -4397,12 +4397,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void AddObject_Clicked(object sender, RoutedEventArgs e)
         {
-            if (EntrySelector.GetEntry<ExportEntry>(this, Pcc) is ExportEntry exportToAdd)
+            if (EntrySelector.GetEntry<ExportEntry>(this, Pcc,
+                    "Select an existing sequence or sequence object",
+                    exp => exp.IsA("Sequence") || exp.IsA("SequenceObject")) is ExportEntry exportToAdd)
             {
-                if (!exportToAdd.IsA("SequenceObject"))
+                if (!exportToAdd.IsA("Sequence") && !exportToAdd.IsA("SequenceObject"))
                 {
                     MessageBox.Show(this,
-                        $"#{exportToAdd.UIndex}: {exportToAdd.ObjectName.Instanced} is not a sequence object.");
+                        $"#{exportToAdd.UIndex}: {exportToAdd.ObjectName.Instanced} is not a sequence or sequence object.");
                     return;
                 }
 
