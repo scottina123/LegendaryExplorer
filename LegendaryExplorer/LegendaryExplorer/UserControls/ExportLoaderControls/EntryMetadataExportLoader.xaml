@@ -217,14 +217,39 @@
                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
 
-        <ComboBox Name="InfoTab_PackageLink_ComboBox" VerticalAlignment="Center" Grid.Row="7" Grid.Column="1" 
-                  ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_PackageLink_ComboBox_GotFocus" 
-                  SelectionChanged="Info_PackageLinkClassComboBox_SelectionChanged"
-                  IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  ToolTip="Parent for this entry&#10;Set to 0 to make this item a top level entry&#10;Type a UIndex value to automatically select it"
-                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
-                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                  ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+        <Grid Grid.Row="7" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox Name="InfoTab_PackageLink_ComboBox" VerticalAlignment="Center" Grid.Column="0"
+                      ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_PackageLink_ComboBox_GotFocus"
+                      SelectionChanged="Info_PackageLinkClassComboBox_SelectionChanged"
+                      IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
+                      ToolTip="Parent for this entry&#10;Set to 0 to make this item a top level entry&#10;Type a UIndex value to automatically select it"
+                      ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+            <TextBox Name="InfoTab_PackageLinkUIndex_TextBox"
+                     Grid.Column="2"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     KeyUp="InfoTab_PackageLinkUIndex_TextBox_KeyUp"
+                     LostFocus="InfoTab_PackageLinkUIndex_TextBox_LostFocus"
+                     GotFocus="InfoTab_PackageLinkUIndex_TextBox_GotFocus"
+                     ToolTip="Enter an export/import number for the parent link. Use 0 for a top level entry."/>
+            <Button Name="InfoTab_PackageLinkUIndexCommit_Button"
+                    Grid.Column="4"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_PackageLinkUIndexCommit_Button_Click"
+                    ToolTip="Save the typed link number immediately">
+                Save
+            </Button>
+        </Grid>
         
         <ComboBox Name="InfoTab_PackageFile_ComboBox" VerticalAlignment="Center" Grid.Row="8" Grid.Column="1" 
                   ItemsSource="{Binding NamesList, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=Window}, Mode=OneTime}" 
@@ -235,14 +260,39 @@
                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ToolTip="Filename (without extension) that contains the class for this import&#10;Type a name value to automatically select it"/>
 
-        <ComboBox Name="InfoTab_Archetype_ComboBox" VerticalAlignment="Center" Grid.Row="9" 
-                  Grid.Column="1" ItemsPanel="{StaticResource VSP}"  GotFocus="InfoTab_Archetype_ComboBox_GotFocus" 
-                  SelectionChanged="Info_ArchetypeComboBox_SelectionChanged"
-                  IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  ToolTip="Archetype for this entry&#10;Set to 0 to indicate no archetype&#10;Type a UIndex value to automatically select it"
-                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
-                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                  ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+        <Grid Grid.Row="9" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox Name="InfoTab_Archetype_ComboBox" VerticalAlignment="Center" Grid.Column="0"
+                      ItemsPanel="{StaticResource VSP}"  GotFocus="InfoTab_Archetype_ComboBox_GotFocus"
+                      SelectionChanged="Info_ArchetypeComboBox_SelectionChanged"
+                      IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
+                      ToolTip="Archetype for this entry&#10;Set to 0 to indicate no archetype&#10;Type a UIndex value to automatically select it"
+                      ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+            <TextBox Name="InfoTab_ArchetypeUIndex_TextBox"
+                     Grid.Column="2"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     KeyUp="InfoTab_ArchetypeUIndex_TextBox_KeyUp"
+                     LostFocus="InfoTab_ArchetypeUIndex_TextBox_LostFocus"
+                     GotFocus="InfoTab_ArchetypeUIndex_TextBox_GotFocus"
+                     ToolTip="Enter an export/import number for the archetype. Use 0 for no archetype."/>
+            <Button Name="InfoTab_ArchetypeUIndexCommit_Button"
+                    Grid.Column="4"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_ArchetypeUIndexCommit_Button_Click"
+                    ToolTip="Save the typed archetype number immediately">
+                Save
+            </Button>
+        </Grid>
 
         <controls:FlagsComboBox x:Name="InfoTab_Flags_ComboBox" IsEditable="False" Delimiter=" " VerticalAlignment="Center" Grid.Row="10" Grid.Column="1"
                             GotFocus="InfoTab_Flags_ComboBox_GotFocus" ItemSelectionChanged="InfoTab_Flags_ComboBox_ItemSelectionChanged"

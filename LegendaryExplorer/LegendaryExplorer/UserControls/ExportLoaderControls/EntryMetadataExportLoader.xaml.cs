@@ -5,6 +5,8 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Be.Windows.Forms;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
@@ -161,6 +163,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SaveHexChanges()
         {
+            TabControl activeTabControl = FindAncestor<TabControl>(this);
+            int? selectedTabIndex = activeTabControl?.SelectedIndex;
+
             var bytes = GetHeaderBytes();
             ExportEntry oldParent = null;
             if (CurrentLoadedEntry is ExportEntry currentExport)
@@ -183,6 +188,40 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case ImportEntry importEntry:
                     LoadImport(importEntry);
                     break;
+            }
+
+            if (activeTabControl != null && selectedTabIndex is int selectedIndex)
+            {
+                activeTabControl.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    if (activeTabControl.Items.Count > selectedIndex)
+                    {
+                        activeTabControl.SelectedIndex = selectedIndex;
+                    }
+                }));
+            }
+        }
+
+        private static T FindAncestor<T>(DependencyObject dependencyObject) where T : DependencyObject
+        {
+            while (dependencyObject != null)
+            {
+                if (dependencyObject is T typedParent)
+                {
+                    return typedParent;
+                }
+
+                dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+            }
+
+            return null;
+        }
+
+        private void SaveHeaderChangesImmediatelyIfNeeded()
+        {
+            if (HexChanged)
+            {
+                SaveHexChanges();
             }
         }
 
@@ -389,6 +428,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedEntry = exportEntry;
             OriginalHeader = header;
             headerByteProvider.ReplaceBytes(header);
+            RestorePendingLinkText();
+            RestorePendingArchetypeText();
             HexChanged = false;
             Header_Hexbox?.Refresh();
             OnPropertyChanged(nameof(ObjectIndexOffsetText));
@@ -483,6 +524,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedEntry = importEntry;
             OriginalHeader = CurrentLoadedEntry.GenerateHeader();
             headerByteProvider.ReplaceBytes(OriginalHeader);
+            RestorePendingLinkText();
+            InfoTab_ArchetypeUIndex_TextBox.Text = null;
             Header_Hexbox?.Refresh();
             HexChanged = false;
             OnPropertyChanged(nameof(ObjectIndexOffsetText));
@@ -554,6 +597,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ObjectNameSuggestions.ClearEx();
             InfoTab_Objectname_TextBox.Text = null;
             InfoTab_CurrentObjectname_TextBox.Text = null;
+            InfoTab_PackageLinkUIndex_TextBox.Text = null;
+            InfoTab_ArchetypeUIndex_TextBox.Text = null;
             InfoTab_Class_ComboBox.SelectedItem = null;
             InfoTab_Superclass_ComboBox.SelectedItem = null;
             InfoTab_PackageLink_ComboBox.SelectedItem = null;
@@ -638,6 +683,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     return;
                 }
                 headerByteProvider.WriteBytes(CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXLINK : HEADER_OFFSET_IMP_IDXLINK, BitConverter.GetBytes(unrealIndex));
+                InfoTab_PackageLinkUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
             }
         }
@@ -672,6 +718,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private int GetObjectNameHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME;
 
+        private int GetLinkHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXLINK : HEADER_OFFSET_IMP_IDXLINK;
+
+        private static int GetEntrySelectionIndex(IMEPackage package, int uIndex) => uIndex + package.ImportCount;
+
         private int GetPendingObjectNameIndex()
         {
             if (CurrentLoadedEntry == null || headerByteProvider.Length < GetObjectNameHeaderOffset() + 4)
@@ -702,6 +752,126 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             SetDisplayedObjectNames(GetPendingObjectNameIndex());
+        }
+
+        private int GetPendingLinkUIndex()
+        {
+            if (CurrentLoadedEntry == null || headerByteProvider.Length < GetLinkHeaderOffset() + 4)
+            {
+                return 0;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, GetLinkHeaderOffset(), CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private int GetPendingArchetypeUIndex()
+        {
+            if (CurrentLoadedEntry is not ExportEntry || headerByteProvider.Length < HEADER_OFFSET_EXP_IDXARCHETYPE + 4)
+            {
+                return 0;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, HEADER_OFFSET_EXP_IDXARCHETYPE, CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private void RestorePendingLinkText()
+        {
+            InfoTab_PackageLinkUIndex_TextBox.Text = GetPendingLinkUIndex().ToString();
+        }
+
+        private void RestorePendingArchetypeText()
+        {
+            InfoTab_ArchetypeUIndex_TextBox.Text = GetPendingArchetypeUIndex().ToString();
+        }
+
+        private bool TryCommitPackageLinkText(bool showError, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry == null)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(InfoTab_PackageLinkUIndex_TextBox.Text?.Trim(), out int uIndex)
+                || (uIndex != 0 && !CurrentLoadedEntry.FileRef.IsEntry(uIndex)))
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Enter a valid export/import number for Link.");
+                }
+
+                RestorePendingLinkText();
+                return false;
+            }
+
+            if (uIndex == CurrentLoadedEntry.UIndex)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Cannot link to self, this will cause infinite recursion.");
+                }
+
+                RestorePendingLinkText();
+                return false;
+            }
+
+            headerByteProvider.WriteBytes(GetLinkHeaderOffset(), BitConverter.GetBytes(uIndex));
+            loadingNewData = true;
+            InfoTab_PackageLink_ComboBox.SelectedIndex = GetEntrySelectionIndex(CurrentLoadedEntry.FileRef, uIndex);
+            loadingNewData = false;
+            InfoTab_PackageLinkUIndex_TextBox.Text = uIndex.ToString();
+            Header_Hexbox?.Refresh();
+
+            if (saveImmediately)
+            {
+                SaveHeaderChangesImmediatelyIfNeeded();
+            }
+
+            return true;
+        }
+
+        private bool TryCommitArchetypeText(bool showError, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry is not ExportEntry exportEntry)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(InfoTab_ArchetypeUIndex_TextBox.Text?.Trim(), out int uIndex)
+                || (uIndex != 0 && !CurrentLoadedEntry.FileRef.IsEntry(uIndex)))
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Enter a valid export/import number for Archetype.");
+                }
+
+                RestorePendingArchetypeText();
+                return false;
+            }
+
+            if (uIndex == exportEntry.UIndex)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Cannot set archetype to self, this will cause infinite recursion in game.");
+                }
+
+                RestorePendingArchetypeText();
+                return false;
+            }
+
+            headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXARCHETYPE, BitConverter.GetBytes(uIndex));
+            loadingNewData = true;
+            InfoTab_Archetype_ComboBox.SelectedIndex = GetEntrySelectionIndex(CurrentLoadedEntry.FileRef, uIndex);
+            loadingNewData = false;
+            InfoTab_ArchetypeUIndex_TextBox.Text = uIndex.ToString();
+            Header_Hexbox?.Refresh();
+
+            if (saveImmediately)
+            {
+                SaveHeaderChangesImmediatelyIfNeeded();
+            }
+
+            return true;
         }
 
         private void RefreshObjectNameSuggestions(string text)
@@ -749,28 +919,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void SaveObjectNameImmediately(int selectedNameIndex)
-        {
-            if (CurrentLoadedEntry == null)
-            {
-                return;
-            }
-
-            byte[] header = CurrentLoadedEntry.GenerateHeader();
-            BitConverter.GetBytes(selectedNameIndex).CopyTo(header, GetObjectNameHeaderOffset());
-            CurrentLoadedEntry.SetHeaderValuesFromByteArray(header);
-
-            switch (CurrentLoadedEntry)
-            {
-                case ExportEntry exportEntry:
-                    LoadExport(exportEntry);
-                    break;
-                case ImportEntry importEntry:
-                    LoadImport(importEntry);
-                    break;
-            }
-        }
-
         private bool TryCommitObjectNameText(bool allowPromptForNewName, bool saveImmediately = false)
         {
             if (loadingNewData || CurrentLoadedEntry == null)
@@ -811,7 +959,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (saveImmediately)
             {
                 IsObjectNameSuggestionsOpen = false;
-                SaveObjectNameImmediately(selectedNameIndex);
+                headerByteProvider.WriteBytes(GetObjectNameHeaderOffset(), BitConverter.GetBytes(selectedNameIndex));
+                Header_Hexbox?.Refresh();
+                SetDisplayedObjectNames(selectedNameIndex);
+                InfoTab_Objectname_TextBox.Text = text;
+                SaveHeaderChangesImmediatelyIfNeeded();
                 return true;
             }
 
@@ -866,6 +1018,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
 
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXARCHETYPE, BitConverter.GetBytes(unrealIndex));
+                InfoTab_ArchetypeUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
             }
         }
@@ -927,6 +1080,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Header_Hexbox.SelectionLength = 4;
         }
 
+        private void InfoTab_PackageLinkUIndex_TextBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            Header_Hexbox.SelectionStart = GetLinkHeaderOffset();
+            Header_Hexbox.SelectionLength = 4;
+        }
+
         private void InfoTab_PackageFile_ComboBox_GotFocus(object sender, RoutedEventArgs e)
         {
             Header_Hexbox.SelectionStart = HEADER_OFFSET_IMP_IDXPACKAGEFILE;
@@ -934,6 +1093,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private void InfoTab_Archetype_ComboBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            Header_Hexbox.SelectionStart = HEADER_OFFSET_EXP_IDXARCHETYPE;
+            Header_Hexbox.SelectionLength = 4;
+        }
+
+        private void InfoTab_ArchetypeUIndex_TextBox_GotFocus(object sender, RoutedEventArgs e)
         {
             Header_Hexbox.SelectionStart = HEADER_OFFSET_EXP_IDXARCHETYPE;
             Header_Hexbox.SelectionLength = 4;
@@ -1037,6 +1202,44 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 TryCommitObjectNameText(true, true);
                 e.Handled = true;
             }
+        }
+
+        private void InfoTab_PackageLinkUIndex_TextBox_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitPackageLinkText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_PackageLinkUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            TryCommitPackageLinkText(false);
+        }
+
+        private void InfoTab_PackageLinkUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            TryCommitPackageLinkText(true, true);
+        }
+
+        private void InfoTab_ArchetypeUIndex_TextBox_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitArchetypeText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_ArchetypeUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            TryCommitArchetypeText(false);
+        }
+
+        private void InfoTab_ArchetypeUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            TryCommitArchetypeText(true, true);
         }
 
         private void InfoTab_Objectname_TextBox_LostFocus(object sender, RoutedEventArgs e)
