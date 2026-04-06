@@ -128,20 +128,41 @@
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox Name="InfoTab_Objectname_TextBox"
-                     Grid.Column="2"
-                     VerticalAlignment="Center"
-                     Style="{StaticResource MetadataTextboxStyle}"
-                     KeyUp="InfoTab_Objectname_TextBox_KeyUp"
-                     LostFocus="InfoTab_Objectname_TextBox_LostFocus"
-                     GotFocus="InfoTab_Objectname_TextBox_GotFocus"
-                     ToolTip="Name for this entry&#10;Type an existing name and press Enter to use it&#10;Type a new name and press Enter to add it to the package"/>
             <TextBox Name="InfoTab_CurrentObjectname_TextBox"
                      Grid.Column="0"
                      VerticalAlignment="Center"
                      IsReadOnly="True"
                      Style="{StaticResource MetadataTextboxStyle}"
                      ToolTip="Current saved object name for this entry"/>
+            <Grid Grid.Column="2">
+                <TextBox Name="InfoTab_Objectname_TextBox"
+                         VerticalAlignment="Center"
+                         Style="{StaticResource MetadataTextboxStyle}"
+                         TextChanged="InfoTab_Objectname_TextBox_TextChanged"
+                         KeyUp="InfoTab_Objectname_TextBox_KeyUp"
+                         PreviewKeyDown="InfoTab_Objectname_TextBox_PreviewKeyDown"
+                         LostFocus="InfoTab_Objectname_TextBox_LostFocus"
+                         GotFocus="InfoTab_Objectname_TextBox_GotFocus"
+                         ToolTip="Name for this entry&#10;Type an existing name and press Enter to use it&#10;Type a new name and press Enter to add it to the package"/>
+                <Popup Name="InfoTab_ObjectnameSuggestions_Popup"
+                       PlacementTarget="{Binding ElementName=InfoTab_Objectname_TextBox}"
+                       Placement="Bottom"
+                       StaysOpen="True"
+                       IsOpen="{Binding IsObjectNameSuggestionsOpen, Mode=TwoWay}">
+                    <Border Width="{Binding ElementName=InfoTab_Objectname_TextBox, Path=ActualWidth}"
+                            MaxHeight="240"
+                            Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                            BorderThickness="1">
+                        <ListBox Name="InfoTab_ObjectnameSuggestions_ListBox"
+                                 ItemsSource="{Binding ObjectNameSuggestions}"
+                                 PreviewMouseLeftButtonDown="InfoTab_ObjectnameSuggestions_ListBox_PreviewMouseLeftButtonDown"
+                                 SelectionChanged="InfoTab_ObjectnameSuggestions_ListBox_SelectionChanged"
+                                 ScrollViewer.CanContentScroll="True"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                    </Border>
+                </Popup>
+            </Grid>
             <Button Name="InfoTab_ObjectnameCommit_Button"
                     Grid.Column="4"
                     Padding="8,2"

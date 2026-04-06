@@ -83,12 +83,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Functions can list other functions as superclass so you cannot only display a list of classes
         /// </summary>
         public ObservableCollectionExtended<object> AllSuperClassesList { get; } = new();
+        public ObservableCollectionExtended<IndexedName> ObjectNameSuggestions { get; } = new();
         public int CurrentObjectNameIndex { get; private set; }
+
+        private bool _isObjectNameSuggestionsOpen;
+        public bool IsObjectNameSuggestionsOpen
+        {
+            get => _isObjectNameSuggestionsOpen;
+            set => SetProperty(ref _isObjectNameSuggestionsOpen, value);
+        }
 
         private HexBox Header_Hexbox;
         private ReadOptimizedByteProvider headerByteProvider;
         private bool loadingNewData;
         private bool _objectNameSaveButtonClickInProgress;
+        private bool _objectNameSuggestionClickInProgress;
 
         public bool SubstituteImageForHexBox
         {
@@ -541,6 +550,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             loadingNewData = true;
             CurrentObjectNameIndex = -1;
+            IsObjectNameSuggestionsOpen = false;
+            ObjectNameSuggestions.ClearEx();
             InfoTab_Objectname_TextBox.Text = null;
             InfoTab_CurrentObjectname_TextBox.Text = null;
             InfoTab_Class_ComboBox.SelectedItem = null;
@@ -684,11 +695,58 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (CurrentLoadedEntry == null)
             {
+                IsObjectNameSuggestionsOpen = false;
+                ObjectNameSuggestions.ClearEx();
                 InfoTab_Objectname_TextBox.Text = null;
                 return;
             }
 
             SetDisplayedObjectNames(GetPendingObjectNameIndex());
+        }
+
+        private void RefreshObjectNameSuggestions(string text)
+        {
+            if (loadingNewData || CurrentLoadedEntry?.FileRef == null)
+            {
+                IsObjectNameSuggestionsOpen = false;
+                ObjectNameSuggestions.ClearEx();
+                return;
+            }
+
+            string filter = text?.Trim();
+            if (string.IsNullOrEmpty(filter))
+            {
+                IsObjectNameSuggestionsOpen = false;
+                ObjectNameSuggestions.ClearEx();
+                return;
+            }
+
+            var startsWithMatches = new List<IndexedName>();
+            var containsMatches = new List<IndexedName>();
+            for (int i = 0; i < CurrentLoadedEntry.FileRef.Names.Count; i++)
+            {
+                string name = CurrentLoadedEntry.FileRef.Names[i];
+                if (name.StartsWith(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    startsWithMatches.Add(new IndexedName(i, name));
+                }
+                else if (name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    containsMatches.Add(new IndexedName(i, name));
+                }
+
+                if (startsWithMatches.Count + containsMatches.Count >= 50)
+                {
+                    break;
+                }
+            }
+
+            ObjectNameSuggestions.ReplaceAll(startsWithMatches.Concat(containsMatches));
+            IsObjectNameSuggestionsOpen = ObjectNameSuggestions.Count > 0;
+            if (!IsObjectNameSuggestionsOpen)
+            {
+                InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex = -1;
+            }
         }
 
         private void SaveObjectNameImmediately(int selectedNameIndex)
@@ -752,6 +810,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (saveImmediately)
             {
+                IsObjectNameSuggestionsOpen = false;
                 SaveObjectNameImmediately(selectedNameIndex);
                 return true;
             }
@@ -760,6 +819,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Header_Hexbox?.Refresh();
             SetDisplayedObjectNames(selectedNameIndex);
             InfoTab_Objectname_TextBox.Text = text;
+            IsObjectNameSuggestionsOpen = false;
             return true;
         }
 
@@ -981,7 +1041,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void InfoTab_Objectname_TextBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            if (_objectNameSaveButtonClickInProgress)
+            if (_objectNameSaveButtonClickInProgress || _objectNameSuggestionClickInProgress)
             {
                 return;
             }
@@ -989,9 +1049,79 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Info_ObjectNameTextBox_LostOrCancelled();
         }
 
+        private void InfoTab_Objectname_TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            RefreshObjectNameSuggestions(InfoTab_Objectname_TextBox.Text);
+        }
+
+        private void InfoTab_Objectname_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!IsObjectNameSuggestionsOpen || ObjectNameSuggestions.Count == 0)
+            {
+                return;
+            }
+
+            switch (e.Key)
+            {
+                case Key.Down:
+                    if (InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex < ObjectNameSuggestions.Count - 1)
+                    {
+                        InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex++;
+                    }
+                    else if (InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex < 0)
+                    {
+                        InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex = 0;
+                    }
+                    InfoTab_ObjectnameSuggestions_ListBox.ScrollIntoView(InfoTab_ObjectnameSuggestions_ListBox.SelectedItem);
+                    e.Handled = true;
+                    break;
+                case Key.Up:
+                    if (InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex > 0)
+                    {
+                        InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex--;
+                    }
+                    else
+                    {
+                        InfoTab_ObjectnameSuggestions_ListBox.SelectedIndex = -1;
+                    }
+                    if (InfoTab_ObjectnameSuggestions_ListBox.SelectedItem is not null)
+                    {
+                        InfoTab_ObjectnameSuggestions_ListBox.ScrollIntoView(InfoTab_ObjectnameSuggestions_ListBox.SelectedItem);
+                    }
+                    e.Handled = true;
+                    break;
+                case Key.Escape:
+                    IsObjectNameSuggestionsOpen = false;
+                    e.Handled = true;
+                    break;
+            }
+        }
+
         private void InfoTab_ObjectnameSave_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _objectNameSaveButtonClickInProgress = true;
+        }
+
+        private void InfoTab_ObjectnameSuggestions_ListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _objectNameSuggestionClickInProgress = true;
+        }
+
+        private void InfoTab_ObjectnameSuggestions_ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_objectNameSuggestionClickInProgress || InfoTab_ObjectnameSuggestions_ListBox.SelectedItem is not IndexedName selectedName)
+            {
+                return;
+            }
+
+            loadingNewData = true;
+            InfoTab_Objectname_TextBox.Text = selectedName.Name;
+            InfoTab_Objectname_TextBox.CaretIndex = InfoTab_Objectname_TextBox.Text.Length;
+            loadingNewData = false;
+            IsObjectNameSuggestionsOpen = false;
+            _objectNameSuggestionClickInProgress = false;
+
+            InfoTab_Objectname_TextBox.Focus();
         }
 
         private void InfoTab_ObjectnameCommit_Button_Click(object sender, RoutedEventArgs e)
