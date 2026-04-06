@@ -88,6 +88,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private HexBox Header_Hexbox;
         private ReadOptimizedByteProvider headerByteProvider;
         private bool loadingNewData;
+        private bool _objectNameSaveButtonClickInProgress;
 
         public bool SubstituteImageForHexBox
         {
@@ -304,7 +305,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 InfoTab_Link_TextBlock.Text = "0x08 Link:";
                 InfoTab_ObjectName_TextBlock.Text = "0x0C Object name:";
 
-                InfoTab_Objectname_ComboBox.SelectedIndex = exportEntry.FileRef.findName(exportEntry.ObjectName.Name);
+                SetDisplayedObjectNames(exportEntry.FileRef.findName(exportEntry.ObjectName.Name), exportEntry.ObjectName.Name);
 
                 LoadAllEntriesBindedItems(exportEntry);
 
@@ -464,7 +465,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InfoTab_ObjectName_TextBlock.Text = "0x14 Object name:";
             Header_Hexbox_ComponentsLabel.Text = "";
 
-            InfoTab_Objectname_ComboBox.SelectedIndex = importEntry.FileRef.findName(importEntry.ObjectName.Name);
+            SetDisplayedObjectNames(importEntry.FileRef.findName(importEntry.ObjectName.Name), importEntry.ObjectName.Name);
             InfoTab_ImpClass_ComboBox.SelectedIndex = importEntry.FileRef.findName(importEntry.ClassName);
             LoadAllEntriesBindedItems(importEntry);
 
@@ -539,7 +540,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         internal void ClearMetadataPane()
         {
             loadingNewData = true;
-            InfoTab_Objectname_ComboBox.SelectedItem = null;
+            CurrentObjectNameIndex = -1;
+            InfoTab_Objectname_TextBox.Text = null;
+            InfoTab_CurrentObjectname_TextBox.Text = null;
             InfoTab_Class_ComboBox.SelectedItem = null;
             InfoTab_Superclass_ComboBox.SelectedItem = null;
             InfoTab_PackageLink_ComboBox.SelectedItem = null;
@@ -656,16 +659,115 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void Info_ObjectNameComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private int GetObjectNameHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME;
+
+        private int GetPendingObjectNameIndex()
         {
-            if (!loadingNewData && InfoTab_Objectname_ComboBox.SelectedIndex >= 0 && CurrentLoadedEntry != null)
+            if (CurrentLoadedEntry == null || headerByteProvider.Length < GetObjectNameHeaderOffset() + 4)
             {
-                var selectedNameIndex = InfoTab_Objectname_ComboBox.SelectedIndex;
-                if (selectedNameIndex >= 0)
+                return -1;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, GetObjectNameHeaderOffset(), CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private void SetDisplayedObjectNames(int objectNameIndex, string currentObjectName = null)
+        {
+            CurrentObjectNameIndex = objectNameIndex;
+            InfoTab_Objectname_TextBox.Text = objectNameIndex >= 0 && CurrentLoadedEntry?.FileRef?.IsName(objectNameIndex) == true
+                ? CurrentLoadedEntry.FileRef.GetNameEntry(objectNameIndex)
+                : null;
+            InfoTab_CurrentObjectname_TextBox.Text = currentObjectName ?? CurrentLoadedEntry?.ObjectName.Name;
+        }
+
+        private void RestorePendingObjectNameText()
+        {
+            if (CurrentLoadedEntry == null)
+            {
+                InfoTab_Objectname_TextBox.Text = null;
+                return;
+            }
+
+            SetDisplayedObjectNames(GetPendingObjectNameIndex());
+        }
+
+        private void SaveObjectNameImmediately(int selectedNameIndex)
+        {
+            if (CurrentLoadedEntry == null)
+            {
+                return;
+            }
+
+            byte[] header = CurrentLoadedEntry.GenerateHeader();
+            BitConverter.GetBytes(selectedNameIndex).CopyTo(header, GetObjectNameHeaderOffset());
+            CurrentLoadedEntry.SetHeaderValuesFromByteArray(header);
+
+            switch (CurrentLoadedEntry)
+            {
+                case ExportEntry exportEntry:
+                    LoadExport(exportEntry);
+                    break;
+                case ImportEntry importEntry:
+                    LoadImport(importEntry);
+                    break;
+            }
+        }
+
+        private bool TryCommitObjectNameText(bool allowPromptForNewName, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry == null)
+            {
+                return false;
+            }
+
+            string text = InfoTab_Objectname_TextBox.Text?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            int selectedNameIndex = CurrentLoadedEntry.FileRef.findName(text);
+            if (selectedNameIndex < 0)
+            {
+                if (!allowPromptForNewName)
                 {
-                    headerByteProvider.WriteBytes(CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME, BitConverter.GetBytes(selectedNameIndex));
-                    Header_Hexbox?.Refresh();
+                    return false;
                 }
+
+                Keyboard.ClearFocus();
+                string input = $"The name \"{text}\" does not exist in the current loaded package.\nIf you'd like to add this name, press enter below, or change the name to what you would like it to be.";
+                string result = PromptDialog.Prompt(this, input, "Enter new name", text);
+                if (string.IsNullOrEmpty(result))
+                {
+                    return false;
+                }
+
+                text = result;
+                selectedNameIndex = CurrentLoadedEntry.FileRef.FindNameOrAdd(result);
+                if (selectedNameIndex != CurrentLoadedEntry.FileRef.Names.Count - 1)
+                {
+                    MessageBox.Show($"{result} already exists in this package file.\nName index: {selectedNameIndex} (0x{selectedNameIndex:X8})", "Name already exists");
+                }
+            }
+
+            if (saveImmediately)
+            {
+                SaveObjectNameImmediately(selectedNameIndex);
+                return true;
+            }
+
+            headerByteProvider.WriteBytes(GetObjectNameHeaderOffset(), BitConverter.GetBytes(selectedNameIndex));
+            Header_Hexbox?.Refresh();
+            SetDisplayedObjectNames(selectedNameIndex);
+            InfoTab_Objectname_TextBox.Text = text;
+            return true;
+        }
+
+        private void Info_ObjectNameTextBox_LostOrCancelled()
+        {
+            if (!TryCommitObjectNameText(false))
+            {
+                RestorePendingObjectNameText();
             }
         }
 
@@ -735,9 +837,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private void InfoTab_Objectname_ComboBox_GotFocus(object sender, RoutedEventArgs e)
+        private void InfoTab_Objectname_TextBox_GotFocus(object sender, RoutedEventArgs e)
         {
-            Header_Hexbox.SelectionStart = CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME;
+            Header_Hexbox.SelectionStart = GetObjectNameHeaderOffset();
             Header_Hexbox.SelectionLength = 4;
         }
 
@@ -868,49 +970,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void InfoTab_Objectname_ComboBox_KeyUp(object sender, KeyEventArgs e)
+        private void InfoTab_Objectname_TextBox_KeyUp(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Return)
             {
-                //Check name
-                var text = InfoTab_Objectname_ComboBox.Text;
-                int index = CurrentLoadedEntry.FileRef.findName(text);
-                if (index < 0 && !string.IsNullOrEmpty(text))
-                {
-                    Keyboard.ClearFocus();
-                    string input = $"The name \"{text}\" does not exist in the current loaded package.\nIf you'd like to add this name, press enter below, or change the name to what you would like it to be.";
-                    string result = PromptDialog.Prompt(this, input, "Enter new name", text);
-                    if (!string.IsNullOrEmpty(result))
-                    {
-                        int idx = CurrentLoadedEntry.FileRef.FindNameOrAdd(result);
-                        if (idx != CurrentLoadedEntry.FileRef.Names.Count - 1)
-                        {
-                            //not the last
-                            MessageBox.Show($"{result} already exists in this package file.\nName index: {idx} (0x{idx:X8})", "Name already exists");
-                        }
-                        else
-                        {
-                            CurrentObjectNameIndex = idx;
-                        }
-                        //refresh should be triggered by hosting window
-                    }
-                }
-                else
-                {
-                    e.Handled = true;
-                }
+                TryCommitObjectNameText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_Objectname_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_objectNameSaveButtonClickInProgress)
+            {
+                return;
+            }
+
+            Info_ObjectNameTextBox_LostOrCancelled();
+        }
+
+        private void InfoTab_ObjectnameSave_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _objectNameSaveButtonClickInProgress = true;
+        }
+
+        private void InfoTab_ObjectnameCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                TryCommitObjectNameText(true, true);
+            }
+            finally
+            {
+                _objectNameSaveButtonClickInProgress = false;
             }
         }
 
         public override void SignalNamelistAboutToUpdate()
         {
-            CurrentObjectNameIndex = CurrentObjectNameIndex >= 0 ? CurrentObjectNameIndex : InfoTab_Objectname_ComboBox.SelectedIndex;
+            CurrentObjectNameIndex = GetPendingObjectNameIndex();
         }
 
         public override void SignalNamelistChanged()
         {
-            InfoTab_Objectname_ComboBox.SelectedIndex = CurrentObjectNameIndex;
-            CurrentObjectNameIndex = -1;
+            if (CurrentObjectNameIndex >= 0)
+            {
+                SetDisplayedObjectNames(CurrentObjectNameIndex);
+            }
         }
 
         public override void Dispose()

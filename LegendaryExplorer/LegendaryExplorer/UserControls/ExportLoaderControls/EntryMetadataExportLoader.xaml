@@ -120,14 +120,38 @@
         <TextBlock Name="InfoTab_PackageFlags_TextBlock" VerticalAlignment="Center" Text="0x?? PackageFlags:" Grid.Row="19" Grid.Column="0"/>
 
         <!--rightside-->
-        <ComboBox Name="InfoTab_Objectname_ComboBox" VerticalAlignment="Center" Grid.Row="0" Grid.Column="1" 
-                  ItemsSource="{Binding NamesList, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=Window}, Mode=OneTime}" 
-                  ItemsPanel="{StaticResource VSP}" KeyUp="InfoTab_Objectname_ComboBox_KeyUp" 
-                  GotFocus="InfoTab_Objectname_ComboBox_GotFocus" SelectionChanged="Info_ObjectNameComboBox_SelectionChanged" 
-                  IsTextSearchEnabled="True" TextSearch.TextPath="Name" IsEditable="True"
-                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
-                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                  ToolTip="Name for this entry&#10;Type a name value to automatically select it&#10;Type in a new name and press enter to add a new name"/>
+        <Grid Grid.Row="0" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Name="InfoTab_Objectname_TextBox"
+                     Grid.Column="2"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     KeyUp="InfoTab_Objectname_TextBox_KeyUp"
+                     LostFocus="InfoTab_Objectname_TextBox_LostFocus"
+                     GotFocus="InfoTab_Objectname_TextBox_GotFocus"
+                     ToolTip="Name for this entry&#10;Type an existing name and press Enter to use it&#10;Type a new name and press Enter to add it to the package"/>
+            <TextBox Name="InfoTab_CurrentObjectname_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     IsReadOnly="True"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     ToolTip="Current saved object name for this entry"/>
+            <Button Name="InfoTab_ObjectnameCommit_Button"
+                    Grid.Column="4"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_ObjectnameSave_Button_PreviewMouseLeftButtonDown"
+                    Click="InfoTab_ObjectnameCommit_Button_Click"
+                    ToolTip="Save the typed object name immediately">
+                Save
+            </Button>
+        </Grid>
         
         <TextBox Name="InfoTab_ObjectnameIndex_TextBox"  VerticalAlignment="Center" Grid.Row="1" 
                  Grid.Column="1" Grid.ColumnSpan="2" TextChanged="Info_IndexTextBox_TextChanged" 
