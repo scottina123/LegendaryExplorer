@@ -5198,6 +5198,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             var originalForegroundWindow = WindowsAPI.GetForegroundRootOwnerWindow();
             var windowHandle = new WindowInteropHelper(this).Handle;
+            int selectedEditorTabIndex = EditorTabs?.SelectedIndex ?? -1;
 
             try
             {
@@ -5397,6 +5398,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     updates.Contains(new PackageUpdate(PackageChange.ExportData, selectedEntryUIndex)))
                 {
                     Preview(true);
+                }
+
+                if (selectedEditorTabIndex >= 0)
+                {
+                    Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+                    {
+                        if (selectedEditorTabIndex < EditorTabs.Items.Count
+                            && EditorTabs.Items[selectedEditorTabIndex] is TabItem tab
+                            && tab.IsEnabled
+                            && tab.IsVisible)
+                        {
+                            EditorTabs.SelectedIndex = selectedEditorTabIndex;
+                        }
+                    }));
                 }
             }
             finally

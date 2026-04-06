@@ -100,6 +100,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool loadingNewData;
         private bool _objectNameSaveButtonClickInProgress;
         private bool _objectNameSuggestionClickInProgress;
+        private bool _packageLinkSaveButtonClickInProgress;
+        private bool _archetypeSaveButtonClickInProgress;
 
         public bool SubstituteImageForHexBox
         {
@@ -163,7 +165,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SaveHexChanges()
         {
-            TabControl activeTabControl = FindAncestor<TabControl>(this);
+            var packageEditorWindow = FindAncestor<PackageEditorWindow>(this);
+            TabControl activeTabControl = packageEditorWindow?.FindName("EditorTabs") as TabControl ?? FindAncestor<TabControl>(this);
             int? selectedTabIndex = activeTabControl?.SelectedIndex;
 
             var bytes = GetHeaderBytes();
@@ -192,7 +195,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (activeTabControl != null && selectedTabIndex is int selectedIndex)
             {
-                activeTabControl.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                activeTabControl.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
                 {
                     if (activeTabControl.Items.Count > selectedIndex)
                     {
@@ -1215,15 +1218,41 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void InfoTab_PackageLinkUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
         {
+            if (_packageLinkSaveButtonClickInProgress)
+            {
+                return;
+            }
+
             TryCommitPackageLinkText(false);
+        }
+
+        private void InfoTab_PackageLinkUIndex_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitPackageLinkText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_PackageLinkUIndexCommit_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _packageLinkSaveButtonClickInProgress = true;
         }
 
         private void InfoTab_PackageLinkUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
         {
-            TryCommitPackageLinkText(true, true);
+            try
+            {
+                TryCommitPackageLinkText(true, true);
+            }
+            finally
+            {
+                _packageLinkSaveButtonClickInProgress = false;
+            }
         }
 
-        private void InfoTab_ArchetypeUIndex_TextBox_KeyUp(object sender, KeyEventArgs e)
+        private void InfoTab_ArchetypeUIndex_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Return)
             {
@@ -1234,12 +1263,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void InfoTab_ArchetypeUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
         {
+            if (_archetypeSaveButtonClickInProgress)
+            {
+                return;
+            }
+
             TryCommitArchetypeText(false);
+        }
+
+        private void InfoTab_ArchetypeUIndexCommit_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _archetypeSaveButtonClickInProgress = true;
         }
 
         private void InfoTab_ArchetypeUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
         {
-            TryCommitArchetypeText(true, true);
+            try
+            {
+                TryCommitArchetypeText(true, true);
+            }
+            finally
+            {
+                _archetypeSaveButtonClickInProgress = false;
+            }
         }
 
         private void InfoTab_Objectname_TextBox_LostFocus(object sender, RoutedEventArgs e)

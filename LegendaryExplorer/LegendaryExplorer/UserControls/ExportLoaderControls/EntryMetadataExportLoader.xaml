@@ -237,7 +237,7 @@
                      Grid.Column="2"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
-                     KeyUp="InfoTab_PackageLinkUIndex_TextBox_KeyUp"
+                     PreviewKeyDown="InfoTab_PackageLinkUIndex_TextBox_PreviewKeyDown"
                      LostFocus="InfoTab_PackageLinkUIndex_TextBox_LostFocus"
                      GotFocus="InfoTab_PackageLinkUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the parent link. Use 0 for a top level entry."/>
@@ -245,6 +245,7 @@
                     Grid.Column="4"
                     Padding="8,2"
                     VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_PackageLinkUIndexCommit_Button_PreviewMouseLeftButtonDown"
                     Click="InfoTab_PackageLinkUIndexCommit_Button_Click"
                     ToolTip="Save the typed link number immediately">
                 Save
@@ -280,7 +281,7 @@
                      Grid.Column="2"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
-                     KeyUp="InfoTab_ArchetypeUIndex_TextBox_KeyUp"
+                     PreviewKeyDown="InfoTab_ArchetypeUIndex_TextBox_PreviewKeyDown"
                      LostFocus="InfoTab_ArchetypeUIndex_TextBox_LostFocus"
                      GotFocus="InfoTab_ArchetypeUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the archetype. Use 0 for no archetype."/>
@@ -288,6 +289,7 @@
                     Grid.Column="4"
                     Padding="8,2"
                     VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_ArchetypeUIndexCommit_Button_PreviewMouseLeftButtonDown"
                     Click="InfoTab_ArchetypeUIndexCommit_Button_Click"
                     ToolTip="Save the typed archetype number immediately">
                 Save
