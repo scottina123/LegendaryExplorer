@@ -67,20 +67,12 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 return null;
             }
 
-            var faceFxOptions = faceFxEntries
-                .Select(e => new EntryStringPair(e, $"{e.UIndex,-9}\t{e.InstancedFullPath}"))
-                .ToList();
-
-            var defaultMaleSelection = faceFxOptions.FirstOrDefault(o =>
-                (o.Entry as ExportEntry)?.UIndex == preferredMale?.UIndex)
-                ?? faceFxOptions.LastOrDefault(o =>
-                ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_m", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
-                ?? faceFxOptions[faceFxOptions.Count - 1];
-            var defaultFemaleSelection = faceFxOptions.FirstOrDefault(o =>
-                (o.Entry as ExportEntry)?.UIndex == preferredFemale?.UIndex)
-                ?? faceFxOptions.LastOrDefault(o =>
-                ((o.Entry as ExportEntry)?.InstancedFullPath?.EndsWith("_f", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
-                ?? faceFxOptions[faceFxOptions.Count - 1];
+            var defaultMaleSelection = preferredMale
+                ?? faceFxEntries.LastOrDefault(e => e.InstancedFullPath.EndsWith("_m", StringComparison.OrdinalIgnoreCase))
+                ?? faceFxEntries[^1];
+            var defaultFemaleSelection = preferredFemale
+                ?? faceFxEntries.LastOrDefault(e => e.InstancedFullPath.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+                ?? faceFxEntries[^1];
 
             var dialog = new Window
             {
@@ -139,19 +131,103 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            var maleCombo = new System.Windows.Controls.ComboBox
+            var maleValueGrid = new System.Windows.Controls.Grid
             {
-                ItemsSource = faceFxOptions,
                 Margin = new Thickness(0, 0, 0, 10),
-                MinWidth = 500,
-                SelectedItem = defaultMaleSelection
+                MinWidth = 500
             };
-            var femaleCombo = new System.Windows.Controls.ComboBox
+            maleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            maleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(8) });
+            maleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+
+            var femaleValueGrid = new System.Windows.Controls.Grid
             {
-                ItemsSource = faceFxOptions,
-                MinWidth = 500,
-                SelectedItem = defaultFemaleSelection
+                MinWidth = 500
             };
+            femaleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            femaleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(8) });
+            femaleValueGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+
+            ExportEntry selectedMale = defaultMaleSelection;
+            ExportEntry selectedFemale = defaultFemaleSelection;
+
+            var maleTextBox = new System.Windows.Controls.TextBox
+            {
+                IsReadOnly = true,
+                VerticalAlignment = VerticalAlignment.Center,
+                Text = GetFaceFxSelectionDisplayText(selectedMale)
+            };
+            maleTextBox.SetResourceReference(System.Windows.Controls.TextBox.BackgroundProperty, SystemColors.ControlBrushKey);
+            maleTextBox.SetResourceReference(System.Windows.Controls.TextBox.ForegroundProperty, SystemColors.ControlTextBrushKey);
+
+            var femaleTextBox = new System.Windows.Controls.TextBox
+            {
+                IsReadOnly = true,
+                VerticalAlignment = VerticalAlignment.Center,
+                Text = GetFaceFxSelectionDisplayText(selectedFemale)
+            };
+            femaleTextBox.SetResourceReference(System.Windows.Controls.TextBox.BackgroundProperty, SystemColors.ControlBrushKey);
+            femaleTextBox.SetResourceReference(System.Windows.Controls.TextBox.ForegroundProperty, SystemColors.ControlTextBrushKey);
+
+            void refreshDisplayedSelections()
+            {
+                maleTextBox.Text = GetFaceFxSelectionDisplayText(selectedMale);
+                femaleTextBox.Text = GetFaceFxSelectionDisplayText(selectedFemale);
+            }
+
+            void pickSelection(bool isMale)
+            {
+                var selectedEntry = EntrySelector.GetEntry<ExportEntry>(
+                    dialog,
+                    package,
+                    $"Select the {(isMale ? "male" : "female")} FaceFXAnimSet to assign to the new speaker.",
+                    exp => exp.ClassName == "FaceFXAnimSet",
+                    isMale ? selectedMale : selectedFemale,
+                    selectLastItemByDefault: true);
+
+                if (selectedEntry == null)
+                {
+                    return;
+                }
+
+                if (isMale)
+                {
+                    selectedMale = selectedEntry;
+                }
+                else
+                {
+                    selectedFemale = selectedEntry;
+                }
+
+                refreshDisplayedSelections();
+            }
+
+            maleTextBox.MouseDoubleClick += (_, _) => pickSelection(true);
+            femaleTextBox.MouseDoubleClick += (_, _) => pickSelection(false);
+
+            var malePickButton = new System.Windows.Controls.Button
+            {
+                Content = "Pick...",
+                Padding = new Thickness(8, 2, 8, 2)
+            };
+            malePickButton.Click += (_, _) => pickSelection(true);
+
+            var femalePickButton = new System.Windows.Controls.Button
+            {
+                Content = "Pick...",
+                Padding = new Thickness(8, 2, 8, 2)
+            };
+            femalePickButton.Click += (_, _) => pickSelection(false);
+
+            System.Windows.Controls.Grid.SetColumn(maleTextBox, 0);
+            System.Windows.Controls.Grid.SetColumn(malePickButton, 2);
+            maleValueGrid.Children.Add(maleTextBox);
+            maleValueGrid.Children.Add(malePickButton);
+
+            System.Windows.Controls.Grid.SetColumn(femaleTextBox, 0);
+            System.Windows.Controls.Grid.SetColumn(femalePickButton, 2);
+            femaleValueGrid.Children.Add(femaleTextBox);
+            femaleValueGrid.Children.Add(femalePickButton);
 
             dialog.Loaded += (_, _) =>
             {
@@ -165,19 +241,19 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             System.Windows.Controls.Grid.SetColumn(tagTextBox, 1);
             System.Windows.Controls.Grid.SetRow(maleLabel, 1);
             System.Windows.Controls.Grid.SetColumn(maleLabel, 0);
-            System.Windows.Controls.Grid.SetRow(maleCombo, 1);
-            System.Windows.Controls.Grid.SetColumn(maleCombo, 1);
+            System.Windows.Controls.Grid.SetRow(maleValueGrid, 1);
+            System.Windows.Controls.Grid.SetColumn(maleValueGrid, 1);
             System.Windows.Controls.Grid.SetRow(femaleLabel, 2);
             System.Windows.Controls.Grid.SetColumn(femaleLabel, 0);
-            System.Windows.Controls.Grid.SetRow(femaleCombo, 2);
-            System.Windows.Controls.Grid.SetColumn(femaleCombo, 1);
+            System.Windows.Controls.Grid.SetRow(femaleValueGrid, 2);
+            System.Windows.Controls.Grid.SetColumn(femaleValueGrid, 1);
 
             selectionGrid.Children.Add(tagLabel);
             selectionGrid.Children.Add(tagTextBox);
             selectionGrid.Children.Add(maleLabel);
-            selectionGrid.Children.Add(maleCombo);
+            selectionGrid.Children.Add(maleValueGrid);
             selectionGrid.Children.Add(femaleLabel);
-            selectionGrid.Children.Add(femaleCombo);
+            selectionGrid.Children.Add(femaleValueGrid);
 
             var buttonPanel = new System.Windows.Controls.StackPanel
             {
@@ -210,7 +286,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                     return;
                 }
 
-                if (maleCombo.SelectedItem is not EntryStringPair || femaleCombo.SelectedItem is not EntryStringPair)
+                if (selectedMale == null || selectedFemale == null)
                 {
                     MessageBox.Show(dialog, "Select both FaceFXAnimSets.", "Missing FaceFXAnimSet Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
@@ -233,7 +309,12 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 return null;
             }
 
-            return (tagTextBox.Text.Trim(), ((EntryStringPair)maleCombo.SelectedItem).Entry as ExportEntry, ((EntryStringPair)femaleCombo.SelectedItem).Entry as ExportEntry);
+            return (tagTextBox.Text.Trim(), selectedMale, selectedFemale);
+        }
+
+        private static string GetFaceFxSelectionDisplayText(ExportEntry faceFx)
+        {
+            return faceFx == null ? "None" : $"#{faceFx.UIndex} {faceFx.InstancedFullPath}";
         }
 
         /// <summary>
