@@ -1493,7 +1493,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void FindAllInstancesofClass()
         {
             var classes = Pcc.Exports.Select(x => x.ClassName).NonNull().Distinct().ToList().OrderBy(p => p).ToList();
-            var chosenClass = InputComboBoxDialog.GetValue(this, "Select a class to list all instances of.", "Class selector", classes, classes.FirstOrDefault());
+            var chosenClass = StringSelectorDialog.GetValue(this, "Select a class to list all instances of.", "Class selector", classes, classes.FirstOrDefault());
             if (!string.IsNullOrWhiteSpace(chosenClass))
             {
                 var foundExports = Pcc.Exports.Where(x => x.ClassName == chosenClass).ToList();
