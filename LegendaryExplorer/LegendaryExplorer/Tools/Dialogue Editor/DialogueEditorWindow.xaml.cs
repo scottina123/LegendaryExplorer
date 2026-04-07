@@ -133,10 +133,13 @@ namespace LegendaryExplorer.DialogueEditor
                 if (SetProperty(ref _SelectedSpeaker, value))
                 {
                     OnPropertyChanged(nameof(CanEditSelectedSpeakerFaceFX));
+                    NotifySelectedSpeakerFaceFXChanged();
                 }
             }
         }
         public bool CanEditSelectedSpeakerFaceFX => SelectedSpeaker?.SpeakerID >= -2;
+        public string SelectedSpeakerMaleFaceFXDisplay => GetSpeakerFaceFXDisplayText(SelectedSpeaker?.FaceFX_Male);
+        public string SelectedSpeakerFemaleFaceFXDisplay => GetSpeakerFaceFXDisplayText(SelectedSpeaker?.FaceFX_Female);
         private readonly Dictionary<string, int> SelectedStarts = new();
 
         private int forcedSelectStart = -1;
@@ -1934,6 +1937,7 @@ namespace LegendaryExplorer.DialogueEditor
                 RebuildGraphInPlace();
             }
 
+            NotifySelectedSpeakerFaceFXChanged();
             ApplySpeakerNodeHighlighting();
             UpdateSelectedConnectionHighlighting();
             graphEditor?.Refresh();
@@ -1991,6 +1995,17 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             RefreshSpeakerStateInPlace(refreshSelectedNodeAssets: true);
+        }
+
+        private void NotifySelectedSpeakerFaceFXChanged()
+        {
+            OnPropertyChanged(nameof(SelectedSpeakerMaleFaceFXDisplay));
+            OnPropertyChanged(nameof(SelectedSpeakerFemaleFaceFXDisplay));
+        }
+
+        private static string GetSpeakerFaceFXDisplayText(IEntry faceFx)
+        {
+            return faceFx == null ? "None" : $"#{faceFx.UIndex} {faceFx.ObjectName.Instanced}";
         }
         #endregion RecreateToFile
 
@@ -4642,24 +4657,54 @@ namespace LegendaryExplorer.DialogueEditor
             SpkrDownButton.IsEnabled = true;
             SaveSpeakerChangesInPlace(rebuildGraphInPlace: true, reindexSpeakerIds: true);
         }
-        private void ComboBox_Speaker_FFX_DropDownClosed(object sender, EventArgs e)
+        private void PickSpeakerFaceFX(bool isMale)
         {
-            if (SelectedSpeaker?.SpeakerID < -2 || SelectedConv == null)
+            if (!CanEditSelectedSpeakerFaceFX || SelectedConv == null || Pcc == null || SelectedSpeaker == null)
             {
                 return;
             }
 
-            var ffxMaleNew = SelectedSpeaker.FaceFX_Male;
-            var ffxMaleOld = SelectedConv.GetFaceFX(SelectedSpeaker.SpeakerID, true);
-            var ffxFemaleNew = SelectedSpeaker.FaceFX_Female;
-            var ffxFemaleOld = SelectedConv.GetFaceFX(SelectedSpeaker.SpeakerID, false);
-            if (ffxMaleNew == ffxMaleOld && ffxFemaleNew == ffxFemaleOld)
-                return;
+            var currentFaceFx = isMale ? SelectedSpeaker.FaceFX_Male : SelectedSpeaker.FaceFX_Female;
+            var selectedFaceFx = EntrySelector.GetEntry<ExportEntry>(
+                this,
+                Pcc,
+                $"Select the {(isMale ? "male" : "female")} FaceFX animation set for speaker '{SelectedSpeaker.SpeakerName}'.",
+                exp => exp.ClassName == "FaceFXAnimSet",
+                currentFaceFx);
 
-            SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Male = ffxMaleNew;
-            SelectedSpeakerList[SelectedSpeaker.SpeakerID + 2].FaceFX_Female = ffxFemaleNew;
+            if (selectedFaceFx == null || selectedFaceFx == currentFaceFx)
+            {
+                return;
+            }
+
+            int speakerIndex = SelectedSpeaker.SpeakerID + 2;
+            if (speakerIndex < 0 || speakerIndex >= SelectedSpeakerList.Count)
+            {
+                return;
+            }
+
+            if (isMale)
+            {
+                SelectedSpeaker.FaceFX_Male = selectedFaceFx;
+                SelectedSpeakerList[speakerIndex].FaceFX_Male = selectedFaceFx;
+            }
+            else
+            {
+                SelectedSpeaker.FaceFX_Female = selectedFaceFx;
+                SelectedSpeakerList[speakerIndex].FaceFX_Female = selectedFaceFx;
+            }
 
             SaveSpeakerChangesInPlace();
+        }
+
+        private void PickSpeakerFaceFXMale_Click(object sender, RoutedEventArgs e)
+        {
+            PickSpeakerFaceFX(true);
+        }
+
+        private void PickSpeakerFaceFXFemale_Click(object sender, RoutedEventArgs e)
+        {
+            PickSpeakerFaceFX(false);
         }
         private void EnterName_Speaker_KeyUp(object sender, KeyEventArgs e)
         {
