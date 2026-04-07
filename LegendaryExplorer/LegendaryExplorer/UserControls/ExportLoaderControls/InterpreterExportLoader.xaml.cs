@@ -2727,6 +2727,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     e.Handled = true;
                     break;
                 case FloatProperty:
+                case IntProperty:
                     node.IsInlineEditing = true;
                     e.Handled = true;
                     break;
@@ -4647,7 +4648,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsInlineEditing
         {
             get => _isInlineEditing;
-            set => SetProperty(ref _isInlineEditing, value);
+            set
+            {
+                if (SetProperty(ref _isInlineEditing, value) && IsRotatorIntProperty)
+                {
+                    OnPropertyChanged(nameof(EditableValue));
+                }
+            }
         }
 
         // Interface implementation
@@ -4663,7 +4670,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        public bool IsInlineEditable => Property is FloatProperty;
+        private bool IsRotatorIntProperty => Property is IntProperty && UPParent?.Property is StructProperty { StructType: "Rotator" };
+
+        public bool IsInlineEditable => Property is FloatProperty or IntProperty;
 
         /// <summary>
         /// Used for inline editing. Return true to allow inline editing for property type
@@ -4741,16 +4750,38 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private string _editableValue;
         public string EditableValue
         {
-            get => _editableValue ?? "";
+            get
+            {
+                if (Property is IntProperty intProp && IsRotatorIntProperty && IsInlineEditing)
+                {
+                    return $"{intProp.Value.UnrealRotationUnitsToDegrees():0.0######}";
+                }
+
+                return _editableValue ?? "";
+            }
             set
             {
                 //Todo: Write property value here
-                if (_editableValue != null && _editableValue != value)
+                string currentValue = EditableValue;
+                if (_editableValue != null && currentValue != value)
                 {
                     switch (Property)
                     {
                         case IntProperty intProp:
-                            if (int.TryParse(value, out int parsedIntVal))
+                            if (IsRotatorIntProperty)
+                            {
+                                if (float.TryParse(value, out float parsedDegreesVal))
+                                {
+                                    intProp.Value = parsedDegreesVal.DegreesToUnrealRotationUnits();
+                                    PropertyUpdated?.Invoke(this, EventArgs.Empty);
+                                    HasChanges = true;
+                                }
+                                else
+                                {
+                                    return;
+                                }
+                            }
+                            else if (int.TryParse(value, out int parsedIntVal))
                             {
                                 intProp.Value = parsedIntVal;
                                 PropertyUpdated?.Invoke(this, EventArgs.Empty);
@@ -4775,7 +4806,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             break;
                     }
                 }
-                _editableValue = value;
+                _editableValue = Property switch
+                {
+                    IntProperty intProp => intProp.Value.ToString(),
+                    _ => value
+                };
             }
         }
 
