@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Be.Windows.Forms;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -97,6 +98,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private HexBox Header_Hexbox;
         private ReadOptimizedByteProvider headerByteProvider;
         private bool loadingNewData;
+        private TextBox ClassDisplayTextBox => (TextBox)FindName("InfoTab_ClassDisplay_TextBox");
+        private TextBox SuperclassDisplayTextBox => (TextBox)FindName("InfoTab_SuperclassDisplay_TextBox");
+        private TextBox PackageLinkDisplayTextBox => (TextBox)FindName("InfoTab_PackageLinkDisplay_TextBox");
+        private TextBox ArchetypeDisplayTextBox => (TextBox)FindName("InfoTab_ArchetypeDisplay_TextBox");
         private bool _objectNameSaveButtonClickInProgress;
         private bool _objectNameSuggestionClickInProgress;
         private bool _classSaveButtonClickInProgress;
@@ -486,6 +491,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     InfoTab_Archetype_ComboBox.SelectedItem = ZeroUIndexClassEntry.Instance; //Class, 0
                 }
+
+                UpdateClassDisplayText();
+                UpdateSuperclassDisplayText();
+                UpdatePackageLinkDisplayText();
+                UpdateArchetypeDisplayText();
             }
             else if (entry is ImportEntry importEntry)
             {
@@ -497,6 +507,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 {
                     InfoTab_PackageLink_ComboBox.SelectedItem = ZeroUIndexClassEntry.Instance; //Class, 0
                 }
+
+                UpdatePackageLinkDisplayText();
             }
         }
 
@@ -610,11 +622,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InfoTab_Class_ComboBox.SelectedItem = null;
             InfoTab_Superclass_ComboBox.SelectedItem = null;
             InfoTab_PackageLink_ComboBox.SelectedItem = null;
+            ClassDisplayTextBox.Text = null;
+            SuperclassDisplayTextBox.Text = null;
+            PackageLinkDisplayTextBox.Text = null;
             InfoTab_Headersize_TextBox.Text = null;
             InfoTab_ObjectnameIndex_TextBox.Text = null;
             //InfoTab_Archetype_ComboBox.ItemsSource = null;
             //InfoTab_Archetype_ComboBox.Items.Clear();
             InfoTab_Archetype_ComboBox.SelectedItem = null;
+            ArchetypeDisplayTextBox.Text = null;
             InfoTab_Flags_ComboBox.ItemsSource = null;
             InfoTab_Flags_ComboBox.SelectedValue = null;
             InfoTab_ExportFlags_ComboBox.ItemsSource = null;
@@ -669,6 +685,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXCLASS, BitConverter.GetBytes(unrealIndex));
                 InfoTab_ClassUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
+                UpdateClassDisplayText();
             }
         }
 
@@ -695,6 +712,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 headerByteProvider.WriteBytes(CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXLINK : HEADER_OFFSET_IMP_IDXLINK, BitConverter.GetBytes(unrealIndex));
                 InfoTab_PackageLinkUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
+                UpdatePackageLinkDisplayText();
             }
         }
 
@@ -726,6 +744,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXSUPERCLASS, BitConverter.GetBytes(unrealIndex));
                 InfoTab_SuperclassUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
+                UpdateSuperclassDisplayText();
             }
         }
 
@@ -763,6 +782,69 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return EndianReader.ToInt32(headerByteProvider.Span, GetObjectNameHeaderOffset(), CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private static object FindSelectionItem(IList<object> entries, int uIndex)
+        {
+            int index = FindSelectionIndex(entries, uIndex);
+            return index >= 0 ? entries[index] : null;
+        }
+
+        private static string FormatEntrySelectionDisplay(object selectedItem, string zeroDisplay)
+        {
+            return selectedItem switch
+            {
+                IEntry entry => $"{entry.UIndex} {entry.InstancedFullPath}",
+                ZeroUIndexClassEntry => zeroDisplay,
+                _ => string.Empty
+            };
+        }
+
+        private void UpdateClassDisplayText()
+        {
+            ClassDisplayTextBox.Text = FormatEntrySelectionDisplay(FindSelectionItem(AllClassesList, GetPendingClassUIndex()), ZeroUIndexClassEntry.Instance.ToString());
+        }
+
+        private void UpdateSuperclassDisplayText()
+        {
+            SuperclassDisplayTextBox.Text = FormatEntrySelectionDisplay(FindSelectionItem(AllSuperClassesList, GetPendingSuperclassUIndex()), ZeroUIndexClassEntry.Instance.ToString());
+        }
+
+        private void UpdatePackageLinkDisplayText()
+        {
+            PackageLinkDisplayTextBox.Text = FormatEntrySelectionDisplay(FindSelectionItem(AllEntriesList, GetPendingLinkUIndex()), "0: Top Level");
+        }
+
+        private void UpdateArchetypeDisplayText()
+        {
+            ArchetypeDisplayTextBox.Text = FormatEntrySelectionDisplay(FindSelectionItem(AllEntriesList, GetPendingArchetypeUIndex()), "0: None");
+        }
+
+        private void PickMetadataEntry(IList<object> sourceList, int currentUIndex, string directionsText, string noOptionLabel, Func<int, bool> commitAction)
+        {
+            if (CurrentLoadedEntry?.FileRef == null)
+            {
+                return;
+            }
+
+            HashSet<int> allowedUIndexes = [.. sourceList.OfType<IEntry>().Select(entry => entry.UIndex)];
+            object defaultItem = FindSelectionItem(sourceList, currentUIndex) ?? ZeroUIndexClassEntry.Instance;
+
+            var (selectedNoOption, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
+                Window.GetWindow(this),
+                CurrentLoadedEntry.FileRef,
+                directionsText,
+                predicate: entry => allowedUIndexes.Contains(entry.UIndex),
+                defaultItem: defaultItem,
+                selectLastItemByDefault: true,
+                noOptionLabel: noOptionLabel);
+
+            if (!selectedNoOption && selectedEntry == null)
+            {
+                return;
+            }
+
+            commitAction(selectedNoOption ? 0 : selectedEntry.UIndex);
         }
 
         private void SetDisplayedObjectNames(int objectNameIndex, string currentObjectName = null)
@@ -810,21 +892,25 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void RestorePendingLinkText()
         {
             InfoTab_PackageLinkUIndex_TextBox.Text = GetPendingLinkUIndex().ToString();
+            UpdatePackageLinkDisplayText();
         }
 
         private void RestorePendingClassText()
         {
             InfoTab_ClassUIndex_TextBox.Text = GetPendingClassUIndex().ToString();
+            UpdateClassDisplayText();
         }
 
         private void RestorePendingSuperclassText()
         {
             InfoTab_SuperclassUIndex_TextBox.Text = GetPendingSuperclassUIndex().ToString();
+            UpdateSuperclassDisplayText();
         }
 
         private void RestorePendingArchetypeText()
         {
             InfoTab_ArchetypeUIndex_TextBox.Text = GetPendingArchetypeUIndex().ToString();
+            UpdateArchetypeDisplayText();
         }
 
         private static int FindSelectionIndex(IList<object> entries, int uIndex)
@@ -893,6 +979,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             loadingNewData = false;
             InfoTab_ClassUIndex_TextBox.Text = uIndex.ToString();
             Header_Hexbox?.Refresh();
+            UpdateClassDisplayText();
 
             if (saveImmediately)
             {
@@ -950,6 +1037,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             loadingNewData = false;
             InfoTab_SuperclassUIndex_TextBox.Text = uIndex.ToString();
             Header_Hexbox?.Refresh();
+            UpdateSuperclassDisplayText();
 
             if (saveImmediately)
             {
@@ -995,6 +1083,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             loadingNewData = false;
             InfoTab_PackageLinkUIndex_TextBox.Text = uIndex.ToString();
             Header_Hexbox?.Refresh();
+            UpdatePackageLinkDisplayText();
 
             if (saveImmediately)
             {
@@ -1040,6 +1129,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             loadingNewData = false;
             InfoTab_ArchetypeUIndex_TextBox.Text = uIndex.ToString();
             Header_Hexbox?.Refresh();
+            UpdateArchetypeDisplayText();
 
             if (saveImmediately)
             {
@@ -1182,7 +1272,92 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXARCHETYPE, BitConverter.GetBytes(unrealIndex));
                 InfoTab_ArchetypeUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
+                UpdateArchetypeDisplayText();
             }
+        }
+
+        private void InfoTab_ClassPick_Button_Click(object sender, RoutedEventArgs e)
+        {
+            PickMetadataEntry(
+                AllClassesList,
+                GetPendingClassUIndex(),
+                "Select a class for this entry.",
+                ZeroUIndexClassEntry.Instance.ToString(),
+                uIndex => TryCommitClassTextFromPicker(uIndex));
+        }
+
+        private void InfoTab_ClassDisplay_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            InfoTab_ClassPick_Button_Click(sender, e);
+        }
+
+        private void InfoTab_SuperclassPick_Button_Click(object sender, RoutedEventArgs e)
+        {
+            PickMetadataEntry(
+                AllSuperClassesList,
+                GetPendingSuperclassUIndex(),
+                "Select a superclass for this entry.",
+                ZeroUIndexClassEntry.Instance.ToString(),
+                uIndex => TryCommitSuperclassTextFromPicker(uIndex));
+        }
+
+        private void InfoTab_SuperclassDisplay_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            InfoTab_SuperclassPick_Button_Click(sender, e);
+        }
+
+        private void InfoTab_PackageLinkPick_Button_Click(object sender, RoutedEventArgs e)
+        {
+            PickMetadataEntry(
+                AllEntriesList,
+                GetPendingLinkUIndex(),
+                "Select a parent link for this entry.",
+                "0: Top Level",
+                uIndex => TryCommitPackageLinkTextFromPicker(uIndex));
+        }
+
+        private void InfoTab_PackageLinkDisplay_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            InfoTab_PackageLinkPick_Button_Click(sender, e);
+        }
+
+        private void InfoTab_ArchetypePick_Button_Click(object sender, RoutedEventArgs e)
+        {
+            PickMetadataEntry(
+                AllEntriesList,
+                GetPendingArchetypeUIndex(),
+                "Select an archetype for this entry.",
+                "0: None",
+                uIndex => TryCommitArchetypeTextFromPicker(uIndex));
+        }
+
+        private void InfoTab_ArchetypeDisplay_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            InfoTab_ArchetypePick_Button_Click(sender, e);
+        }
+
+        private bool TryCommitClassTextFromPicker(int uIndex)
+        {
+            InfoTab_ClassUIndex_TextBox.Text = uIndex.ToString();
+            return TryCommitClassText(true, true);
+        }
+
+        private bool TryCommitSuperclassTextFromPicker(int uIndex)
+        {
+            InfoTab_SuperclassUIndex_TextBox.Text = uIndex.ToString();
+            return TryCommitSuperclassText(true, true);
+        }
+
+        private bool TryCommitPackageLinkTextFromPicker(int uIndex)
+        {
+            InfoTab_PackageLinkUIndex_TextBox.Text = uIndex.ToString();
+            return TryCommitPackageLinkText(true, true);
+        }
+
+        private bool TryCommitArchetypeTextFromPicker(int uIndex)
+        {
+            InfoTab_ArchetypeUIndex_TextBox.Text = uIndex.ToString();
+            return TryCommitArchetypeText(true, true);
         }
 
         private void Info_PackageFileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

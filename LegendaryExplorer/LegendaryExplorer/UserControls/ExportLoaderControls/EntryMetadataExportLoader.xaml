@@ -195,6 +195,8 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="90"/>
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
@@ -205,9 +207,25 @@
                       ToolTip="Class for this entry&#10;Type a UIndex value to automatically select it"
                       ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                      ItemsSource="{Binding AllClassesList, Mode=OneTime}"/>
+                       ItemsSource="{Binding AllClassesList, Mode=OneTime}" Visibility="Collapsed"/>
+            <TextBox Name="InfoTab_ClassDisplay_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     IsReadOnly="True"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     GotFocus="InfoTab_Class_ComboBox_GotFocus"
+                     MouseDoubleClick="InfoTab_ClassDisplay_TextBox_MouseDoubleClick"
+                     ToolTip="Current class for this entry. Double-click to pick a new one."/>
+            <Button Name="InfoTab_ClassPick_Button"
+                    Grid.Column="2"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_ClassPick_Button_Click"
+                    ToolTip="Pick a class by export/import number or name">
+                Pick...
+            </Button>
             <TextBox Name="InfoTab_ClassUIndex_TextBox"
-                     Grid.Column="2"
+                     Grid.Column="4"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
                      PreviewKeyDown="InfoTab_ClassUIndex_TextBox_PreviewKeyDown"
@@ -215,7 +233,7 @@
                      GotFocus="InfoTab_ClassUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the class. Use 0 for Class entries."/>
             <Button Name="InfoTab_ClassUIndexCommit_Button"
-                    Grid.Column="4"
+                    Grid.Column="6"
                     Padding="8,2"
                     VerticalAlignment="Center"
                     PreviewMouseLeftButtonDown="InfoTab_ClassUIndexCommit_Button_PreviewMouseLeftButtonDown"
@@ -238,6 +256,8 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="90"/>
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
@@ -249,9 +269,25 @@
                       ToolTip="Superclass for this entry&#10;Type a UIndex value to automatically select it"
                       ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                      ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
+                       ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}" Visibility="Collapsed"/>
+            <TextBox Name="InfoTab_SuperclassDisplay_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     IsReadOnly="True"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     GotFocus="InfoTab_Superclass_ComboBox_GotFocus"
+                     MouseDoubleClick="InfoTab_SuperclassDisplay_TextBox_MouseDoubleClick"
+                     ToolTip="Current superclass for this entry. Double-click to pick a new one."/>
+            <Button Name="InfoTab_SuperclassPick_Button"
+                    Grid.Column="2"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_SuperclassPick_Button_Click"
+                    ToolTip="Pick a superclass by export/import number or name">
+                Pick...
+            </Button>
             <TextBox Name="InfoTab_SuperclassUIndex_TextBox"
-                     Grid.Column="2"
+                     Grid.Column="4"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
                      PreviewKeyDown="InfoTab_SuperclassUIndex_TextBox_PreviewKeyDown"
@@ -259,7 +295,7 @@
                      GotFocus="InfoTab_SuperclassUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the superclass. Use 0 for no superclass."/>
             <Button Name="InfoTab_SuperclassUIndexCommit_Button"
-                    Grid.Column="4"
+                    Grid.Column="6"
                     Padding="8,2"
                     VerticalAlignment="Center"
                     PreviewMouseLeftButtonDown="InfoTab_SuperclassUIndexCommit_Button_PreviewMouseLeftButtonDown"
@@ -273,6 +309,8 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="90"/>
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
@@ -284,9 +322,25 @@
                       ToolTip="Parent for this entry&#10;Set to 0 to make this item a top level entry&#10;Type a UIndex value to automatically select it"
                       ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                      ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+                       ItemsSource="{Binding AllEntriesList, Mode=OneTime}" Visibility="Collapsed"/>
+            <TextBox Name="InfoTab_PackageLinkDisplay_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     IsReadOnly="True"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     GotFocus="InfoTab_PackageLink_ComboBox_GotFocus"
+                     MouseDoubleClick="InfoTab_PackageLinkDisplay_TextBox_MouseDoubleClick"
+                     ToolTip="Current parent link for this entry. Double-click to pick a new one."/>
+            <Button Name="InfoTab_PackageLinkPick_Button"
+                    Grid.Column="2"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_PackageLinkPick_Button_Click"
+                    ToolTip="Pick a parent link by export/import number or name">
+                Pick...
+            </Button>
             <TextBox Name="InfoTab_PackageLinkUIndex_TextBox"
-                     Grid.Column="2"
+                     Grid.Column="4"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
                      PreviewKeyDown="InfoTab_PackageLinkUIndex_TextBox_PreviewKeyDown"
@@ -294,7 +348,7 @@
                      GotFocus="InfoTab_PackageLinkUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the parent link. Use 0 for a top level entry."/>
             <Button Name="InfoTab_PackageLinkUIndexCommit_Button"
-                    Grid.Column="4"
+                    Grid.Column="6"
                     Padding="8,2"
                     VerticalAlignment="Center"
                     PreviewMouseLeftButtonDown="InfoTab_PackageLinkUIndexCommit_Button_PreviewMouseLeftButtonDown"
@@ -317,6 +371,8 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="90"/>
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
@@ -328,9 +384,25 @@
                       ToolTip="Archetype for this entry&#10;Set to 0 to indicate no archetype&#10;Type a UIndex value to automatically select it"
                       ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                      ItemsSource="{Binding AllEntriesList, Mode=OneTime}"/>
+                       ItemsSource="{Binding AllEntriesList, Mode=OneTime}" Visibility="Collapsed"/>
+            <TextBox Name="InfoTab_ArchetypeDisplay_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     IsReadOnly="True"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     GotFocus="InfoTab_Archetype_ComboBox_GotFocus"
+                     MouseDoubleClick="InfoTab_ArchetypeDisplay_TextBox_MouseDoubleClick"
+                     ToolTip="Current archetype for this entry. Double-click to pick a new one."/>
+            <Button Name="InfoTab_ArchetypePick_Button"
+                    Grid.Column="2"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    Click="InfoTab_ArchetypePick_Button_Click"
+                    ToolTip="Pick an archetype by export/import number or name">
+                Pick...
+            </Button>
             <TextBox Name="InfoTab_ArchetypeUIndex_TextBox"
-                     Grid.Column="2"
+                     Grid.Column="4"
                      VerticalAlignment="Center"
                      Style="{StaticResource MetadataTextboxStyle}"
                      PreviewKeyDown="InfoTab_ArchetypeUIndex_TextBox_PreviewKeyDown"
@@ -338,7 +410,7 @@
                      GotFocus="InfoTab_ArchetypeUIndex_TextBox_GotFocus"
                      ToolTip="Enter an export/import number for the archetype. Use 0 for no archetype."/>
             <Button Name="InfoTab_ArchetypeUIndexCommit_Button"
-                    Grid.Column="4"
+                    Grid.Column="6"
                     Padding="8,2"
                     VerticalAlignment="Center"
                     PreviewMouseLeftButtonDown="InfoTab_ArchetypeUIndexCommit_Button_PreviewMouseLeftButtonDown"
