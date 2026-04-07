@@ -191,13 +191,39 @@
                  Style="{StaticResource MetadataTextboxStyle}"
                  ToolTip="The path this object uses when in-memory in the game."/>
 
-        <ComboBox Name="InfoTab_Class_ComboBox" VerticalAlignment="Center" Grid.Row="4" Grid.Column="1" 
-                  ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Class_ComboBox_GotFocus" 
-                  SelectionChanged="Info_ClassComboBox_SelectionChanged" IsTextSearchEnabled="True" TextSearch.TextPath="UIndex" 
-                  ToolTip="Class for this entry&#10;Type a UIndex value to automatically select it"
-                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
-                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                  ItemsSource="{Binding AllClassesList, Mode=OneTime}"/>
+        <Grid Grid.Row="4" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox Name="InfoTab_Class_ComboBox" VerticalAlignment="Center" Grid.Column="0"
+                      ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Class_ComboBox_GotFocus"
+                      SelectionChanged="Info_ClassComboBox_SelectionChanged" IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
+                      ToolTip="Class for this entry&#10;Type a UIndex value to automatically select it"
+                      ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ItemsSource="{Binding AllClassesList, Mode=OneTime}"/>
+            <TextBox Name="InfoTab_ClassUIndex_TextBox"
+                     Grid.Column="2"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     PreviewKeyDown="InfoTab_ClassUIndex_TextBox_PreviewKeyDown"
+                     LostFocus="InfoTab_ClassUIndex_TextBox_LostFocus"
+                     GotFocus="InfoTab_ClassUIndex_TextBox_GotFocus"
+                     ToolTip="Enter an export/import number for the class. Use 0 for Class entries."/>
+            <Button Name="InfoTab_ClassUIndexCommit_Button"
+                    Grid.Column="4"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_ClassUIndexCommit_Button_PreviewMouseLeftButtonDown"
+                    Click="InfoTab_ClassUIndexCommit_Button_Click"
+                    ToolTip="Save the typed class number immediately">
+                Save
+            </Button>
+        </Grid>
         
         <ComboBox Name="InfoTab_ImpClass_ComboBox" VerticalAlignment="Center" Grid.Row="5" Grid.Column="1" 
                   ItemsSource="{Binding NamesList, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=Window}, Mode=OneTime}" 
@@ -208,14 +234,40 @@
                   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                   ToolTip="Class for this entry&#10;Type a name value to automatically select it"/>
 
-        <ComboBox Name="InfoTab_Superclass_ComboBox" VerticalAlignment="Center" Grid.Row="6" Grid.Column="1" 
-                  ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Superclass_ComboBox_GotFocus" 
-                  SelectionChanged="Info_SuperClassComboBox_SelectionChanged"
-                  IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
-                  ToolTip="Superclass for this entry&#10;Type a UIndex value to automatically select it"
-                  ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
-                  VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                  ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
+        <Grid Grid.Row="6" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox Name="InfoTab_Superclass_ComboBox" VerticalAlignment="Center" Grid.Column="0"
+                      ItemsPanel="{StaticResource VSP}" GotFocus="InfoTab_Superclass_ComboBox_GotFocus"
+                      SelectionChanged="Info_SuperClassComboBox_SelectionChanged"
+                      IsTextSearchEnabled="True" TextSearch.TextPath="UIndex"
+                      ToolTip="Superclass for this entry&#10;Type a UIndex value to automatically select it"
+                      ScrollViewer.CanContentScroll="True" ScrollViewer.IsDeferredScrollingEnabled="True"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      ItemsSource="{Binding AllSuperClassesList, Mode=OneTime}"/>
+            <TextBox Name="InfoTab_SuperclassUIndex_TextBox"
+                     Grid.Column="2"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     PreviewKeyDown="InfoTab_SuperclassUIndex_TextBox_PreviewKeyDown"
+                     LostFocus="InfoTab_SuperclassUIndex_TextBox_LostFocus"
+                     GotFocus="InfoTab_SuperclassUIndex_TextBox_GotFocus"
+                     ToolTip="Enter an export/import number for the superclass. Use 0 for no superclass."/>
+            <Button Name="InfoTab_SuperclassUIndexCommit_Button"
+                    Grid.Column="4"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_SuperclassUIndexCommit_Button_PreviewMouseLeftButtonDown"
+                    Click="InfoTab_SuperclassUIndexCommit_Button_Click"
+                    ToolTip="Save the typed superclass number immediately">
+                Save
+            </Button>
+        </Grid>
 
         <Grid Grid.Row="7" Grid.Column="1">
             <Grid.ColumnDefinitions>

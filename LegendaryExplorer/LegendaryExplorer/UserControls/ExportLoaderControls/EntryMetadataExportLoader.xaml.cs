@@ -99,6 +99,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool loadingNewData;
         private bool _objectNameSaveButtonClickInProgress;
         private bool _objectNameSuggestionClickInProgress;
+        private bool _classSaveButtonClickInProgress;
+        private bool _superclassSaveButtonClickInProgress;
         private bool _packageLinkSaveButtonClickInProgress;
         private bool _archetypeSaveButtonClickInProgress;
 
@@ -430,6 +432,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLoadedEntry = exportEntry;
             OriginalHeader = header;
             headerByteProvider.ReplaceBytes(header);
+            RestorePendingClassText();
+            RestorePendingSuperclassText();
             RestorePendingLinkText();
             RestorePendingArchetypeText();
             HexChanged = false;
@@ -601,6 +605,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InfoTab_CurrentObjectname_TextBox.Text = null;
             InfoTab_PackageLinkUIndex_TextBox.Text = null;
             InfoTab_ArchetypeUIndex_TextBox.Text = null;
+            InfoTab_ClassUIndex_TextBox.Text = null;
+            InfoTab_SuperclassUIndex_TextBox.Text = null;
             InfoTab_Class_ComboBox.SelectedItem = null;
             InfoTab_Superclass_ComboBox.SelectedItem = null;
             InfoTab_PackageLink_ComboBox.SelectedItem = null;
@@ -655,11 +661,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         ? AllClassesList.FindIndex(x => x is IEntry ie && ie.UIndex == expClassUIndex)
                         : AllClassesList.IndexOf(ZeroUIndexClassEntry.Instance); // Set to 0
                     loadingNewData = false;
+                    RestorePendingClassText();
                     MessageBox.Show("Cannot set class to self, this will cause infinite recursion in game.");
                     return;
                 }
 
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXCLASS, BitConverter.GetBytes(unrealIndex));
+                InfoTab_ClassUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
             }
         }
@@ -695,7 +703,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (!loadingNewData && InfoTab_Superclass_ComboBox.SelectedIndex >= 0)
             {
                 var selectedClassIndex = InfoTab_Superclass_ComboBox.SelectedIndex;
-                var unrealIndex = (AllClassesList[selectedClassIndex] as IEntry)?.UIndex ?? 0;
+                var unrealIndex = (AllSuperClassesList[selectedClassIndex] as IEntry)?.UIndex ?? 0;
                 if (unrealIndex == CurrentLoadedEntry?.UIndex)
                 {
                     MessageBox.Show("Cannot set superclass to self, this will cause infinite recursion in game.");
@@ -708,14 +716,37 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                     else
                     {
-                        InfoTab_Superclass_ComboBox.SelectedIndex = AllClassesList.IndexOf(ZeroUIndexClassEntry.Instance);
+                        InfoTab_Superclass_ComboBox.SelectedIndex = AllSuperClassesList.IndexOf(ZeroUIndexClassEntry.Instance);
                     }
+
+                    RestorePendingSuperclassText();
                     return;
                 }
 
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXSUPERCLASS, BitConverter.GetBytes(unrealIndex));
+                InfoTab_SuperclassUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
             }
+        }
+
+        private int GetPendingClassUIndex()
+        {
+            if (CurrentLoadedEntry is not ExportEntry || headerByteProvider.Length < HEADER_OFFSET_EXP_IDXCLASS + 4)
+            {
+                return 0;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, HEADER_OFFSET_EXP_IDXCLASS, CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private int GetPendingSuperclassUIndex()
+        {
+            if (CurrentLoadedEntry is not ExportEntry || headerByteProvider.Length < HEADER_OFFSET_EXP_IDXSUPERCLASS + 4)
+            {
+                return 0;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, HEADER_OFFSET_EXP_IDXSUPERCLASS, CurrentLoadedEntry.FileRef.Endian);
         }
 
         private int GetObjectNameHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME;
@@ -781,9 +812,151 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InfoTab_PackageLinkUIndex_TextBox.Text = GetPendingLinkUIndex().ToString();
         }
 
+        private void RestorePendingClassText()
+        {
+            InfoTab_ClassUIndex_TextBox.Text = GetPendingClassUIndex().ToString();
+        }
+
+        private void RestorePendingSuperclassText()
+        {
+            InfoTab_SuperclassUIndex_TextBox.Text = GetPendingSuperclassUIndex().ToString();
+        }
+
         private void RestorePendingArchetypeText()
         {
             InfoTab_ArchetypeUIndex_TextBox.Text = GetPendingArchetypeUIndex().ToString();
+        }
+
+        private static int FindSelectionIndex(IList<object> entries, int uIndex)
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i] is IEntry entry && entry.UIndex == uIndex)
+                {
+                    return i;
+                }
+
+                if (uIndex == 0 && entries[i] is ZeroUIndexClassEntry)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private bool TryCommitClassText(bool showError, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry is not ExportEntry exportEntry)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(InfoTab_ClassUIndex_TextBox.Text?.Trim(), out int uIndex)
+                || (uIndex != 0 && !CurrentLoadedEntry.FileRef.IsEntry(uIndex)))
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Enter a valid export/import number for Class.");
+                }
+
+                RestorePendingClassText();
+                return false;
+            }
+
+            int selectionIndex = FindSelectionIndex(AllClassesList, uIndex);
+            if (selectionIndex < 0)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Class must be one of the valid class entries in the dropdown.");
+                }
+
+                RestorePendingClassText();
+                return false;
+            }
+
+            if (uIndex == exportEntry.UIndex)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Cannot set class to self, this will cause infinite recursion in game.");
+                }
+
+                RestorePendingClassText();
+                return false;
+            }
+
+            headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXCLASS, BitConverter.GetBytes(uIndex));
+            loadingNewData = true;
+            InfoTab_Class_ComboBox.SelectedIndex = selectionIndex;
+            loadingNewData = false;
+            InfoTab_ClassUIndex_TextBox.Text = uIndex.ToString();
+            Header_Hexbox?.Refresh();
+
+            if (saveImmediately)
+            {
+                SaveHeaderChangesImmediatelyIfNeeded();
+            }
+
+            return true;
+        }
+
+        private bool TryCommitSuperclassText(bool showError, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry is not ExportEntry exportEntry)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(InfoTab_SuperclassUIndex_TextBox.Text?.Trim(), out int uIndex)
+                || (uIndex != 0 && !CurrentLoadedEntry.FileRef.IsEntry(uIndex)))
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Enter a valid export/import number for Superclass.");
+                }
+
+                RestorePendingSuperclassText();
+                return false;
+            }
+
+            int selectionIndex = FindSelectionIndex(AllSuperClassesList, uIndex);
+            if (selectionIndex < 0)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Superclass must be one of the valid superclass entries in the dropdown.");
+                }
+
+                RestorePendingSuperclassText();
+                return false;
+            }
+
+            if (uIndex == exportEntry.UIndex)
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Cannot set superclass to self, this will cause infinite recursion in game.");
+                }
+
+                RestorePendingSuperclassText();
+                return false;
+            }
+
+            headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_IDXSUPERCLASS, BitConverter.GetBytes(uIndex));
+            loadingNewData = true;
+            InfoTab_Superclass_ComboBox.SelectedIndex = selectionIndex;
+            loadingNewData = false;
+            InfoTab_SuperclassUIndex_TextBox.Text = uIndex.ToString();
+            Header_Hexbox?.Refresh();
+
+            if (saveImmediately)
+            {
+                SaveHeaderChangesImmediatelyIfNeeded();
+            }
+
+            return true;
         }
 
         private bool TryCommitPackageLinkText(bool showError, bool saveImmediately = false)
@@ -1051,6 +1224,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Header_Hexbox.SelectionLength = 4;
         }
 
+        private void InfoTab_ClassUIndex_TextBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            Header_Hexbox.SelectionStart = HEADER_OFFSET_EXP_IDXCLASS;
+            Header_Hexbox.SelectionLength = 4;
+        }
+
         private void InfoTab_ImpClass_ComboBox_GotFocus(object sender, RoutedEventArgs e)
         {
             Header_Hexbox.SelectionStart = HEADER_OFFSET_IMP_IDXCLASSNAME;
@@ -1058,6 +1237,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private void InfoTab_Superclass_ComboBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            Header_Hexbox.SelectionStart = HEADER_OFFSET_EXP_IDXSUPERCLASS;
+            Header_Hexbox.SelectionLength = 4;
+        }
+
+        private void InfoTab_SuperclassUIndex_TextBox_GotFocus(object sender, RoutedEventArgs e)
         {
             Header_Hexbox.SelectionStart = HEADER_OFFSET_EXP_IDXSUPERCLASS;
             Header_Hexbox.SelectionLength = 4;
@@ -1128,9 +1313,82 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         newFlags |= (EObjectFlags)flag;
                     }
                 }
+
                 //Debug.WriteLine(newFlags);
                 headerByteProvider.WriteBytes(HEADER_OFFSET_EXP_OBJECTFLAGS, BitConverter.GetBytes((ulong)newFlags));
                 Header_Hexbox?.Refresh();
+            }
+        }
+
+        private void InfoTab_ClassUIndex_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitClassText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_ClassUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_classSaveButtonClickInProgress)
+            {
+                return;
+            }
+
+            TryCommitClassText(false);
+        }
+
+        private void InfoTab_ClassUIndexCommit_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _classSaveButtonClickInProgress = true;
+        }
+
+        private void InfoTab_ClassUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                TryCommitClassText(true, true);
+            }
+            finally
+            {
+                _classSaveButtonClickInProgress = false;
+            }
+        }
+
+        private void InfoTab_SuperclassUIndex_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitSuperclassText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_SuperclassUIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_superclassSaveButtonClickInProgress)
+            {
+                return;
+            }
+
+            TryCommitSuperclassText(false);
+        }
+
+        private void InfoTab_SuperclassUIndexCommit_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _superclassSaveButtonClickInProgress = true;
+        }
+
+        private void InfoTab_SuperclassUIndexCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                TryCommitSuperclassText(true, true);
+            }
+            finally
+            {
+                _superclassSaveButtonClickInProgress = false;
             }
         }
 
