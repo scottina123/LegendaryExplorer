@@ -217,8 +217,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
         //referenced by EntryMetaDataExportLoader's xaml, do not make private
         public ObservableCollectionExtended<IndexedName> NamesList { get; } = [];
 
-        public ObservableCollectionExtended<string> ClassDropdownList { get; } = [];
-
         public ObservableCollectionExtended<TreeViewEntry> AllTreeViewNodesX { get; } = [];
         public ObservableCollectionExtended<IEntry> BackwardsEntries { get; } = new();
         public ObservableCollectionExtended<IEntry> ForwardsEntries { get; } = new();
@@ -369,6 +367,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool _showOnlyEditedTreeViewItems;
         private readonly HashSet<int> _comparedChangedEntryIndices = [];
+        private string _selectedClassSearch;
+        public string SelectedClassSearch
+        {
+            get => _selectedClassSearch;
+            set => SetProperty(ref _selectedClassSearch, value);
+        }
+
         public bool ShowOnlyEditedTreeViewItems
         {
             get => _showOnlyEditedTreeViewItems;
@@ -5245,7 +5250,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             ResetTreeView();
             NamesList.ClearEx();
-            ClassDropdownList.ClearEx();
+            SelectedClassSearch = null;
             BackwardsEntries.ClearEx();
             ForwardsEntries.ClearEx();
             StatusBar_LeftMostText.Text = $"Loading {loadingName} ({FileSize.FormatSize(loadingSize)})";
@@ -5394,11 +5399,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (Pcc == null)
                 return;
 
-            //Get a list of all classes for objects
-            //Filter out duplicates
-            //Get their objectnames from the name list
-            //Order it ascending
-            InitClassDropDown();
             MetadataTab_MetadataEditor.LoadPccData(Pcc);
             RefreshNames();
             if (CurrentView != CurrentViewMode.Tree)
@@ -5406,10 +5406,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 RefreshView(); //Tree will initialize itself in thread
             }
         }
-
-        private void InitClassDropDown() =>
-            ClassDropdownList.ReplaceAll(Pcc.Exports.Select(x => x.ClassName).NonNull().Distinct().ToList()
-                .OrderBy(p => p));
 
         private void TreeView_Click(object sender, RoutedEventArgs e)
         {
@@ -5535,7 +5531,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 if (updates.Any(x => x.Change is PackageChange.ExportRemove or PackageChange.ImportRemove))
                 {
                     InitializeTreeView();
-                    InitClassDropDown();
                     MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
                     Preview();
                     return;
@@ -5562,7 +5557,6 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (addedChanges.Count > 0)
                 {
-                    InitClassDropDown();
                     MetadataTab_MetadataEditor.RefreshAllEntriesList(Pcc);
 
                     // Track newly added FaceFXAnimSet exports in the name cache
@@ -6626,30 +6620,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        /// <summary>
-        /// Handles pressing the enter key when the class dropdown is active. Automatically will attempt to find the next object by class.
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ClassDropdown_Combobox_OnKeyUpHandler(object sender, KeyEventArgs e)
+        private void FindNextObjectByClass(string searchClass, bool reverse)
         {
-            if (e.Key == Key.Return)
+            if (Pcc == null || string.IsNullOrWhiteSpace(searchClass))
             {
-                FindNextObjectByClass(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+                return;
             }
-        }
-
-        /// <summary>
-        /// Finds the next entry that has the selected class from the dropdown.
-        /// </summary>
-        private void FindNextObjectByClass(bool reverse)
-        {
-            if (Pcc == null)
-                return;
-            if (ClassDropdown_Combobox.SelectedItem == null)
-                return;
-
-            string searchClass = ClassDropdown_Combobox.SelectedItem.ToString();
 
             void LoopFunc(ref int integer, int count)
             {
@@ -6679,13 +6655,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
                     List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
                     int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                    LoopFunc(ref pos,
-                        items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
+                    LoopFunc(ref pos, items.Count);
                     for (int i = pos, numSearched = 0;
                         numSearched < items.Count;
                         LoopFunc(ref i, items.Count), numSearched++)
                     {
-                        //int curIndex = (i + pos) % items.Count;
                         TreeViewEntry node = items[i];
                         if (node.Entry == null)
                         {
@@ -6702,13 +6676,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
                 else
                 {
-                    //Todo: Loopfunc
                     int n = LeftSide_ListView.SelectedIndex;
-                    int start;
-                    if (n == -1)
-                        start = 0;
-                    else
-                        start = n + 1;
+                    int start = n == -1 ? 0 : n + 1;
                     if (CurrentView == CurrentViewMode.Exports)
                     {
                         for (int i = start; i < Pcc.Exports.Count; i++)
@@ -6735,14 +6704,64 @@ namespace LegendaryExplorer.Tools.PackageEditor
             });
         }
 
-        /// <summary>
-        /// Find object by class button click handler
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void FindObjectByClass_Click(object sender, RoutedEventArgs e)
         {
-            FindNextObjectByClass(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(SelectedClassSearch))
+            {
+                SelectClassSearch(runSearchAfterSelection: true);
+                return;
+            }
+
+            FindNextObjectByClass(SelectedClassSearch, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+        }
+
+        private void SelectedClass_TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            SelectClassSearch(runSearchAfterSelection: false);
+        }
+
+        private bool SelectClassSearch(bool runSearchAfterSelection)
+        {
+            if (Pcc == null)
+            {
+                return false;
+            }
+
+            var classes = Pcc.Exports
+                .Select(x => x.ClassName)
+                .NonNull()
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
+            if (classes.Count == 0)
+            {
+                return false;
+            }
+
+            string chosenClass = StringSelectorDialog.GetValue(
+                this,
+                "Select a class to find.",
+                "Class selector",
+                classes,
+                string.IsNullOrWhiteSpace(SelectedClassSearch) ? classes.FirstOrDefault() : SelectedClassSearch);
+            if (string.IsNullOrWhiteSpace(chosenClass))
+            {
+                return false;
+            }
+
+            SelectedClassSearch = chosenClass;
+            if (runSearchAfterSelection)
+            {
+                FindNextObjectByClass(chosenClass, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+            }
+
+            return true;
         }
 
         /// <summary>
