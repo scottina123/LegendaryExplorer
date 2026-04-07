@@ -6966,12 +6966,6 @@ namespace LegendaryExplorer.DialogueEditor
 
             var deleteNode = SelectedDialogueNode;
             var deleteGraphNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(n => n.Node.NodeCount == deleteNode.NodeCount && n.Node.IsReply == deleteNode.IsReply);
-            var affectedGraphNodes = CurrentObjects.OfType<DiagNode>()
-                .Where(n => n != deleteGraphNode &&
-                            (deleteNode.IsReply
-                                ? !n.Node.IsReply || n.Node.IsReply && n.Node.NodeCount > deleteNode.NodeCount
-                                : n.Node.IsReply || !n.Node.IsReply && n.Node.NodeCount > deleteNode.NodeCount))
-                .ToList();
             SelectedDialogueNode = null;
             SelectedObjects.ClearEx();
             int deleteID = deleteNode.NodeCount;
@@ -7056,17 +7050,7 @@ namespace LegendaryExplorer.DialogueEditor
                 RemoveGraphObject(deleteGraphNode);
             }
 
-            foreach (var graphNode in affectedGraphNodes)
-            {
-                PushLocalGraphChanges(graphNode, persistConversation: false);
-            }
-
-            if (!deleteNode.IsReply)
-            {
-                RebuildStartNodesInPlace();
-            }
-
-            graphEditor.Refresh();
+            RebuildGraphInPlace(rebuildStarts: !deleteNode.IsReply);
             Start_ListBoxUpdate();
         }
 
