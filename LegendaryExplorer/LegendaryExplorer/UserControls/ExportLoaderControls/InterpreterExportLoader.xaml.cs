@@ -2683,8 +2683,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(ownerNode.LinkedNode);
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.LinkedNode)));
+                ToggleBoolProperty(ownerNode.LinkedNode, e);
                 e.Handled = true;
             }
+        }
+
+        private void PropertyItem_PrimarySelectionBorder_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: UPropertyTreeViewEntry node })
+            {
+                ToggleBoolProperty(node, e);
+            }
+        }
+
+        private void ToggleBoolProperty(UPropertyTreeViewEntry node, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2 || node?.Property is not BoolProperty boolProperty)
+            {
+                return;
+            }
+
+            ApplySelectedTreeItem(node);
+            boolProperty.Value = !boolProperty.Value;
+            CurrentLoadedExport?.WriteProperties(CurrentLoadedProperties);
+            e.Handled = true;
         }
 
         private void SecondLinkedNodePanel_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2693,6 +2715,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(ownerNode.SecondLinkedNode);
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.SecondLinkedNode)));
+                ToggleBoolProperty(ownerNode.SecondLinkedNode, e);
                 e.Handled = true;
             }
         }
