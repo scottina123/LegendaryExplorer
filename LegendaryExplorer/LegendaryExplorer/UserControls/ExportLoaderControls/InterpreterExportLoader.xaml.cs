@@ -149,6 +149,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private int PendingAddedArrayElementIndex = -1;
         private bool SyncingObjectPropertyEditor;
         private TextBox ObjectValueIndexTextBox => (TextBox)FindName("Value_ObjectIndex_TextBox");
+        private TextBox ObjectValueDisplayTextBox => (TextBox)FindName("Value_ObjectDisplay_TextBox");
+        private Button ObjectValuePickButton => (Button)FindName("Value_ObjectPick_Button");
+        private List<object> CurrentObjectPropertyChoices { get; set; } = [];
 
         /// <summary>
         /// Reference to the package that the property we copied from is from
@@ -176,7 +179,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             InitializeComponent();
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
-            EditorSetElements.Add(Value_ObjectComboBox); // Object selector
+            EditorSetElements.Add(ObjectValueDisplayTextBox); // Object selector display
+            EditorSetElements.Add(ObjectValuePickButton); // Object selector button
             EditorSetElements.Add(ObjectValueIndexTextBox); // Object UIndex selector
             EditorSetElements.Add(Value_ComboBox); //bool, name
             EditorSetElements.Add(NameIndexPrefix_TextBlock); //nameindex
@@ -2576,7 +2580,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case ObjectProperty op:
                         UpdateObjectComboBoxOptions(op, newSelectedItem);
                         SetObjectPropertyEditorSelection(op.Value);
-                        SupportedEditorSetElements.Add(Value_ObjectComboBox);
+                        SupportedEditorSetElements.Add(ObjectValueDisplayTextBox);
+                        SupportedEditorSetElements.Add(ObjectValuePickButton);
                         SupportedEditorSetElements.Add(ObjectValueIndexTextBox);
                         SupportedEditorSetElements.Add(ParsedValue_TextBlock);
 
@@ -2693,7 +2698,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         /// <summary>
-        /// Updates the object combobox based on the property
+        /// Updates the available object picker choices based on the property
         /// </summary>
         /// <param name="op"></param>
         /// <param name="uPropertyTreeViewEntry"></param>
@@ -2719,7 +2724,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             var expectedType = GlobalUnrealObjectInfo.GetExpectedClassTypeForObjectProperty(CurrentLoadedExport, op, containingClassOrStructName, uPropertyTreeViewEntry.UPParent?.Property);
-            Value_ObjectComboBox.ItemsSource = MakeAllEntriesList(expectedType);
+            CurrentObjectPropertyChoices = MakeAllEntriesList(expectedType);
         }
 
         private void SetObjectPropertyEditorSelection(int uIndex)
@@ -2728,20 +2733,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             try
             {
                 ObjectValueIndexTextBox.Text = uIndex.ToString();
-                Value_ObjectComboBox.SelectedItem = TryFindObjectComboBoxItem(uIndex, out var matchedItem) ? matchedItem : null;
             }
             finally
             {
                 SyncingObjectPropertyEditor = false;
             }
 
+            UpdateObjectPropertyDisplayText();
             UpdateParsedEditorValue();
         }
 
         private bool TryFindObjectComboBoxItem(int uIndex, out object matchedItem)
         {
             matchedItem = null;
-            if (Value_ObjectComboBox.ItemsSource is not IEnumerable items)
+            if (CurrentObjectPropertyChoices is not IEnumerable items)
             {
                 return false;
             }
@@ -2799,6 +2804,55 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             errorMessage = null;
             return true;
+        }
+
+        private void UpdateObjectPropertyDisplayText()
+        {
+            if (ObjectValueDisplayTextBox == null)
+            {
+                return;
+            }
+
+            if (!int.TryParse(ObjectValueIndexTextBox?.Text, out int uIndex))
+            {
+                ObjectValueDisplayTextBox.Text = "Invalid value";
+                return;
+            }
+
+            if (uIndex == 0)
+            {
+                ObjectValueDisplayTextBox.Text = "0 Null";
+                return;
+            }
+
+            IEntry entry = Pcc?.GetEntry(uIndex);
+            ObjectValueDisplayTextBox.Text = entry == null
+                ? "Index out of bounds of entry list"
+                : $"{uIndex} {entry.InstancedFullPath}";
+        }
+
+        private void PickObjectPropertyValue()
+        {
+            if (SelectedItem?.Property is not ObjectProperty || CurrentLoadedExport == null || Pcc == null)
+            {
+                return;
+            }
+
+            HashSet<int> allowedEntryUIndexes = [.. CurrentObjectPropertyChoices.OfType<IEntry>().Select(entry => entry.UIndex)];
+            var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
+                Window.GetWindow(this),
+                Pcc,
+                $"Select an object reference for {SelectedItem.DisplayName}.",
+                predicate: entry => allowedEntryUIndexes.Contains(entry.UIndex),
+                selectLastItemByDefault: true,
+                noOptionLabel: "0 Null");
+
+            if (!selectedNull && selectedEntry == null)
+            {
+                return;
+            }
+
+            SetObjectPropertyEditorSelection(selectedNull ? 0 : selectedEntry.UIndex);
         }
 
         private List<object> MakeAllEntriesList(string onlyOfType = null)
@@ -3332,7 +3386,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 updated = true;
                             }
 
-                            Value_ObjectComboBox.SelectedItem = matchedItem;
                             // This is old implementation; switched over 07/23/2023
                             /*
                                                         if (int.TryParse(Value_TextBox.Text, out int o) && o != op.Value && (Pcc.IsEntry(o) || o == 0))
@@ -3444,29 +3497,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             linkAction.Value = linkedEntry?.ObjectName ?? new NameReference("None");
         }
 
-        private void Value_ObjectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void Value_ObjectPick_Button_Click(object sender, RoutedEventArgs e)
         {
-            if (SyncingObjectPropertyEditor || SelectedItem?.Property is not ObjectProperty)
+            PickObjectPropertyValue();
+        }
+
+        private void Value_ObjectDisplay_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (SelectedItem?.Property is not ObjectProperty)
             {
                 return;
             }
 
-            SyncingObjectPropertyEditor = true;
-            try
-            {
-                ObjectValueIndexTextBox.Text = Value_ObjectComboBox.SelectedItem switch
-                {
-                    IEntry entry => entry.UIndex.ToString(),
-                    ZeroUIndexClassEntry => "0",
-                    _ => ObjectValueIndexTextBox.Text
-                };
-            }
-            finally
-            {
-                SyncingObjectPropertyEditor = false;
-            }
-
-            UpdateParsedEditorValue();
+            PickObjectPropertyValue();
         }
 
         private void Value_ObjectIndex_TextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -3476,18 +3519,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            SyncingObjectPropertyEditor = true;
-            try
-            {
-                Value_ObjectComboBox.SelectedItem = int.TryParse(ObjectValueIndexTextBox.Text, out int uIndex) && TryFindObjectComboBoxItem(uIndex, out var matchedItem)
-                    ? matchedItem
-                    : null;
-            }
-            finally
-            {
-                SyncingObjectPropertyEditor = false;
-            }
-
+            UpdateObjectPropertyDisplayText();
             UpdateParsedEditorValue();
         }
 

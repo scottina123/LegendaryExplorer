@@ -72,8 +72,9 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="supportedInputTypes">Supported selection types</param>
         /// <param name="directionsText">Optional custom text to display as directions to the user</param>
         /// <param name="entryPredicate">A predicate to narrow the displayed entries</param>
-        /// <param name="supportRootSelection">Whether to include a "[Package root]" option in the selection list</param>
-        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null, Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false)
+        /// <param name="supportRootSelection">Whether to include a special option in the selection list</param>
+        /// <param name="rootSelectionLabel">Label for the special option when <paramref name="supportRootSelection"/> is true</param>
+        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null, Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false, string rootSelectionLabel = "[Package root]")
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
@@ -103,7 +104,7 @@ namespace LegendaryExplorer.Dialogs
 
             if (supportRootSelection)
             {
-                allEntriesBuilding.Insert(0, "[Package root]");
+                allEntriesBuilding.Insert(0, rootSelectionLabel);
             }
             AllEntriesList.ReplaceAll(allEntriesBuilding);
             Owner = owner;
@@ -123,7 +124,7 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="directionsText">Optional custom text to display as directions to the user</param>
         /// <param name="predicate">Optional predicate to filter the displayed entries</param>
         /// <returns>A tuple indicating whether the package root was selected and the selected entry (null if root was selected or dialog was cancelled)</returns>
-        public static (bool selectedPackageRoot, T selectedEntry) GetEntryWithNoOption<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null) where T : class, IEntry
+        public static (bool selectedPackageRoot, T selectedEntry) GetEntryWithNoOption<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, object defaultItem = null, bool selectLastItemByDefault = false, string noOptionLabel = "[Package root]") where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -140,8 +141,8 @@ namespace LegendaryExplorer.Dialogs
             {
                 entryPredicate = entry => predicate((T)entry);
             }
-            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true);
-            dlg.SetInitialSelection(null);
+            using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate, true, noOptionLabel);
+            dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
                 return (dlg.ChoseRoot, dlg.ChosenEntry as T);
@@ -217,7 +218,7 @@ namespace LegendaryExplorer.Dialogs
             Dispose();
         }
 
-        private void SetInitialSelection(IEntry defaultItem, bool selectLastItemByDefault = false)
+        private void SetInitialSelection(object defaultItem, bool selectLastItemByDefault = false)
         {
             SelectedEntryItem = defaultItem;
             if (SelectedEntryItem is null && FilteredEntriesList.Count > 0)

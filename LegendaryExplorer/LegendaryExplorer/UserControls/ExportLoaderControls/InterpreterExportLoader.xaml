@@ -92,17 +92,13 @@
                 <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged" 
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
-                <ComboBox Name="Value_ObjectComboBox"
-                      MinWidth="80" VerticalAlignment="Center" ToolTip="Value for this property" 
-                      IsTextSearchEnabled="True" TextSearch.TextPath="UIndex" 
-                       KeyDown="ValueTextBox_KeyDown" SelectionChanged="Value_ObjectComboBox_SelectionChanged" ToolBar.OverflowMode="Never"
-                      Style="{DynamicResource {x:Static ToolBar.ComboBoxStyleKey}}">
-                    <ComboBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VirtualizingStackPanel />
-                        </ItemsPanelTemplate>
-                    </ComboBox.ItemsPanel>
-                </ComboBox>
+                <TextBox Name="Value_ObjectDisplay_TextBox"
+                     MinWidth="320" VerticalAlignment="Center" ToolTip="Currently selected object reference. Double-click to pick a new one." 
+                     MouseDoubleClick="Value_ObjectDisplay_TextBox_MouseDoubleClick"
+                     IsReadOnly="True" ToolBar.OverflowMode="Never"
+                     Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
+                <Button Name="Value_ObjectPick_Button" Content="Pick..." ToolTip="Pick an object reference by export/import number or name"
+                        Click="Value_ObjectPick_Button_Click" VerticalAlignment="Stretch" Padding="10,0,10,0" Style="{StaticResource {x:Type Button}}" ToolBar.OverflowMode="Never" Margin="5,0,0,0"/>
                 <TextBox Width="60" x:Name="Value_ObjectIndex_TextBox" VerticalAlignment="Center" ToolTip="Entry UIndex for this object property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_ObjectIndex_TextBox_TextChanged"
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="5,0,0,0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
