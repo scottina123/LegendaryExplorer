@@ -4664,14 +4664,14 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var currentFaceFx = isMale ? SelectedSpeaker.FaceFX_Male : SelectedSpeaker.FaceFX_Female;
             var selectedFaceFx = EntrySelector.GetEntry<ExportEntry>(
                 this,
                 Pcc,
                 $"Select the {(isMale ? "male" : "female")} FaceFX animation set for speaker '{SelectedSpeaker.SpeakerName}'.",
                 exp => exp.ClassName == "FaceFXAnimSet",
-                currentFaceFx);
+                selectLastItemByDefault: true);
 
+            var currentFaceFx = isMale ? SelectedSpeaker.FaceFX_Male : SelectedSpeaker.FaceFX_Female;
             if (selectedFaceFx == null || selectedFaceFx == currentFaceFx)
             {
                 return;
@@ -4705,6 +4705,22 @@ namespace LegendaryExplorer.DialogueEditor
         private void PickSpeakerFaceFXFemale_Click(object sender, RoutedEventArgs e)
         {
             PickSpeakerFaceFX(false);
+        }
+
+        private void SelectedSpeakerMaleFaceFXDisplay_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (CanEditSelectedSpeakerFaceFX)
+            {
+                PickSpeakerFaceFX(true);
+            }
+        }
+
+        private void SelectedSpeakerFemaleFaceFXDisplay_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (CanEditSelectedSpeakerFaceFX)
+            {
+                PickSpeakerFaceFX(false);
+            }
         }
         private void EnterName_Speaker_KeyUp(object sender, KeyEventArgs e)
         {

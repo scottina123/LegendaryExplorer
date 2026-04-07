@@ -160,7 +160,7 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="predicate">Optional predicate to filter the displayed entries</param>
         /// <param name="defaultItem">Optional entry to pre-select in the dialog</param>
         /// <returns>The selected entry, or null if the dialog was cancelled</returns>
-        public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, IEntry defaultItem = null) where T : class, IEntry
+        public static T GetEntry<T>(Window owner, IMEPackage pcc, string directionsText = null, Predicate<T> predicate = null, IEntry defaultItem = null, bool selectLastItemByDefault = false) where T : class, IEntry
         {
             SupportedTypes supportedInputTypes = SupportedTypes.ExportsAndImports;
             if (typeof(T) == typeof(ExportEntry))
@@ -178,7 +178,7 @@ namespace LegendaryExplorer.Dialogs
                 entryPredicate = entry => predicate((T)entry);
             }
             using var dlg = new EntrySelector(owner, pcc, supportedInputTypes, directionsText, entryPredicate);
-            dlg.SetInitialSelection(defaultItem);
+            dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
             if (dlg.ShowDialog() == true)
             {
                 return dlg.ChosenEntry as T;
@@ -217,12 +217,12 @@ namespace LegendaryExplorer.Dialogs
             Dispose();
         }
 
-        private void SetInitialSelection(IEntry defaultItem)
+        private void SetInitialSelection(IEntry defaultItem, bool selectLastItemByDefault = false)
         {
             SelectedEntryItem = defaultItem;
             if (SelectedEntryItem is null && FilteredEntriesList.Count > 0)
             {
-                SelectedEntryItem = FilteredEntriesList[0];
+                SelectedEntryItem = selectLastItemByDefault ? FilteredEntriesList[^1] : FilteredEntriesList[0];
             }
 
             if (SelectedEntryItem is not null)

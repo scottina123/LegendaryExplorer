@@ -1861,9 +1861,10 @@
                                                      Text="{Binding SelectedSpeakerMaleFaceFXDisplay, Mode=OneWay}"
                                                      IsReadOnly="True"
                                                      VerticalAlignment="Center"
+                                                     MouseDoubleClick="SelectedSpeakerMaleFaceFXDisplay_MouseDoubleClick"
                                                      Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                                                      Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                                                     ToolTip="Currently assigned male FaceFX animation set" />
+                                                     ToolTip="Currently assigned male FaceFX animation set. Double-click to pick a new one." />
                                             <Button Grid.Column="2"
                                                     Padding="8,2"
                                                     Click="PickSpeakerFaceFXMale_Click"
@@ -1892,9 +1893,10 @@
                                                      Text="{Binding SelectedSpeakerFemaleFaceFXDisplay, Mode=OneWay}"
                                                      IsReadOnly="True"
                                                      VerticalAlignment="Center"
+                                                     MouseDoubleClick="SelectedSpeakerFemaleFaceFXDisplay_MouseDoubleClick"
                                                      Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                                                      Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                                                     ToolTip="Currently assigned female FaceFX animation set" />
+                                                     ToolTip="Currently assigned female FaceFX animation set. Double-click to pick a new one." />
                                             <Button Grid.Column="2"
                                                     Padding="8,2"
                                                     Click="PickSpeakerFaceFXFemale_Click"
