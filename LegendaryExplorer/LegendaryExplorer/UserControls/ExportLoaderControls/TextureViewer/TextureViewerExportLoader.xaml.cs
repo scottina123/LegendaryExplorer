@@ -631,7 +631,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ?? options.LastOrDefault(option => option != CREATE_NEW_TFC_STRING && option != PACKAGE_STORED_STRING)
                 ?? options.Last();
 
-            return InputComboBoxWPF.GetValue(Window.GetWindow(this),
+            return StringSelectorDialog.GetValue(this,
                 "Select where the new texture should be stored. TFCs are better for game performance.",
                 "Select storage location", options, defaultOption);
         }
