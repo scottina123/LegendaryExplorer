@@ -181,11 +181,6 @@ namespace LegendaryExplorer.SharedUI.Controls
 
         protected override void OnRender(DrawingContext drawingContext)
         {
-            drawingContext.DrawRectangle(null, new Pen
-            {
-                Brush = Brushes.Gold,
-                Thickness = 2
-            }, new Rect(0, 0, _textBlock.DesiredSize.Width + 50, _textBlock.DesiredSize.Height * 1.5));
         }
 
         public event RoutedEventHandler TextBoxLostFocus

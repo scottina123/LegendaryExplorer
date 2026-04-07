@@ -1435,7 +1435,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     CurrentLoadedProperties = (OverrideLoadedProperties ?? CurrentLoadedExport.GetProperties(includeNoneProperties: true)).DeepClone();
                     foreach (Property prop in CurrentLoadedProperties)
                     {
-                        GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                        GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                     }
                     MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
@@ -1579,9 +1579,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         #region Static tree generating code (shared with BinaryInterpreterExportLoader)
-        public static void GenerateUPropertyTreeForProperty(Property prop, UPropertyTreeViewEntry parent, ExportEntry export, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
+        public static void GenerateUPropertyTreeForProperty(Property prop, UPropertyTreeViewEntry parent, ExportEntry export, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null, EventHandler PropertyUpdatedHandler = null)
         {
-            var upropertyEntry = GenerateUPropertyTreeViewEntry(prop, parent, export, useAssetDatabaseOwnerFriendlyNames, displayPrefix, PropertyChangedHandler);
+            var upropertyEntry = GenerateUPropertyTreeViewEntry(prop, parent, export, useAssetDatabaseOwnerFriendlyNames, displayPrefix, PropertyChangedHandler, PropertyUpdatedHandler);
             switch (prop)
             {
                 case ArrayPropertyBase arrayProp:
@@ -1603,7 +1603,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             foreach (Property listProp in arrayProp.Properties)
                             {
-                                GenerateUPropertyTreeForProperty(listProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, $" Item {i++}:", PropertyChangedHandler);
+                                GenerateUPropertyTreeForProperty(listProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, $" Item {i++}:", PropertyChangedHandler, PropertyUpdatedHandler);
                             }
                         }
                         break;
@@ -1612,7 +1612,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         foreach (var subProp in sProp.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: PropertyChangedHandler);
+                            GenerateUPropertyTreeForProperty(subProp, upropertyEntry, export, useAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: PropertyChangedHandler, PropertyUpdatedHandler: PropertyUpdatedHandler);
                         }
                         break;
                     }
@@ -1624,7 +1624,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ParentNameList = namesList;
         }
 
-        public static UPropertyTreeViewEntry GenerateUPropertyTreeViewEntry(Property prop, UPropertyTreeViewEntry parent, ExportEntry parsingExport, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null)
+        public static UPropertyTreeViewEntry GenerateUPropertyTreeViewEntry(Property prop, UPropertyTreeViewEntry parent, ExportEntry parsingExport, bool useAssetDatabaseOwnerFriendlyNames = false, string displayPrefix = "", PropertyChangedEventHandler PropertyChangedHandler = null, EventHandler PropertyUpdatedHandler = null)
         {
             string displayName;
 
@@ -2184,6 +2184,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 item.PropertyChanged += PropertyChangedHandler;
             }
+            if (PropertyUpdatedHandler != null)
+            {
+                item.PropertyUpdated += PropertyUpdatedHandler;
+            }
             parent.ChildrenProperties.Add(item);
 
             return item;
@@ -2199,7 +2203,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         uptvi.ChildrenProperties.ClearEx();
                         foreach (var subProp in colorStruct.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                         }
                         var a = colorStruct.GetProp<ByteProperty>("A");
                         var r = colorStruct.GetProp<ByteProperty>("R");
@@ -2219,7 +2223,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         uptvi.ChildrenProperties.ClearEx();
                         foreach (var subProp in linColStruct.Properties)
                         {
-                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged);
+                            GenerateUPropertyTreeForProperty(subProp, uptvi, uptvi.AttachedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                         }
                         var a = linColStruct.GetProp<FloatProperty>("A");
                         var r = linColStruct.GetProp<FloatProperty>("R");
@@ -2235,6 +2239,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     }
             }
+        }
+
+        private void OnUPropertyTreeViewEntry_PropertyUpdated(object sender, EventArgs e)
+        {
+            if (sender is not UPropertyTreeViewEntry entry || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            entry.IsInlineEditing = false;
+            CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
         }
 
         /// <summary>
@@ -2683,7 +2698,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(ownerNode.LinkedNode);
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.LinkedNode)));
-                ToggleBoolProperty(ownerNode.LinkedNode, e);
+                BeginInlineEditOrToggleBool(ownerNode.LinkedNode, e);
                 e.Handled = true;
             }
         }
@@ -2692,21 +2707,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (sender is FrameworkElement { DataContext: UPropertyTreeViewEntry node })
             {
-                ToggleBoolProperty(node, e);
+                BeginInlineEditOrToggleBool(node, e);
             }
         }
 
-        private void ToggleBoolProperty(UPropertyTreeViewEntry node, MouseButtonEventArgs e)
+        private void BeginInlineEditOrToggleBool(UPropertyTreeViewEntry node, MouseButtonEventArgs e)
         {
-            if (e.ClickCount != 2 || node?.Property is not BoolProperty boolProperty)
+            if (e.ClickCount != 2 || node?.Property is null)
             {
                 return;
             }
 
             ApplySelectedTreeItem(node);
-            boolProperty.Value = !boolProperty.Value;
-            CurrentLoadedExport?.WriteProperties(CurrentLoadedProperties);
-            e.Handled = true;
+            switch (node.Property)
+            {
+                case BoolProperty boolProperty:
+                    boolProperty.Value = !boolProperty.Value;
+                    CurrentLoadedExport?.WriteProperties(CurrentLoadedProperties);
+                    e.Handled = true;
+                    break;
+                case FloatProperty:
+                    node.IsInlineEditing = true;
+                    e.Handled = true;
+                    break;
+            }
         }
 
         private void SecondLinkedNodePanel_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2715,7 +2739,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 ApplySelectedTreeItem(ownerNode.SecondLinkedNode);
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() => UpdateHexboxPosition(ownerNode.SecondLinkedNode)));
-                ToggleBoolProperty(ownerNode.SecondLinkedNode, e);
+                BeginInlineEditOrToggleBool(ownerNode.SecondLinkedNode, e);
                 e.Handled = true;
             }
         }
@@ -4472,7 +4496,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected))
+            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing))
             {
                 switch (e.PropertyName)
                 {
@@ -4491,16 +4515,41 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(IsEditorSelected):
                         OnPropertyChanged(nameof(IsLinkedEditorSelected));
                         break;
+                    case nameof(IsInlineEditing):
+                        OnPropertyChanged(nameof(IsLinkedInlineEditing));
+                        break;
                 }
             }
         }
 
         public bool HasLinkedNode => LinkedNode is not null;
         public string LinkedDisplayName => LinkedNode?.DisplayName ?? "";
-        public string LinkedEditableValue => LinkedNode?.EditableValue ?? "";
+        public string LinkedEditableValue
+        {
+            get => LinkedNode?.EditableValue ?? "";
+            set
+            {
+                if (LinkedNode != null)
+                {
+                    LinkedNode.EditableValue = value;
+                }
+            }
+        }
         public string LinkedParsedValue => LinkedNode?.ParsedValue ?? "";
         public string LinkedPropertyType => LinkedNode?.PropertyType ?? "";
         public bool IsLinkedEditorSelected => LinkedNode?.IsEditorSelected == true;
+        public bool IsLinkedInlineEditable => LinkedNode?.IsInlineEditable == true;
+        public bool IsLinkedInlineEditing
+        {
+            get => LinkedNode?.IsInlineEditing == true;
+            set
+            {
+                if (LinkedNode != null)
+                {
+                    LinkedNode.IsInlineEditing = value;
+                }
+            }
+        }
 
         private UPropertyTreeViewEntry _secondLinkedNode;
         public UPropertyTreeViewEntry SecondLinkedNode
@@ -4532,7 +4581,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SecondLinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected))
+            if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing))
             {
                 switch (e.PropertyName)
                 {
@@ -4551,22 +4600,54 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(IsEditorSelected):
                         OnPropertyChanged(nameof(IsSecondLinkedEditorSelected));
                         break;
+                    case nameof(IsInlineEditing):
+                        OnPropertyChanged(nameof(IsSecondLinkedInlineEditing));
+                        break;
                 }
             }
         }
 
         public bool HasSecondLinkedNode => SecondLinkedNode is not null;
         public string SecondLinkedDisplayName => SecondLinkedNode?.DisplayName ?? "";
-        public string SecondLinkedEditableValue => SecondLinkedNode?.EditableValue ?? "";
+        public string SecondLinkedEditableValue
+        {
+            get => SecondLinkedNode?.EditableValue ?? "";
+            set
+            {
+                if (SecondLinkedNode != null)
+                {
+                    SecondLinkedNode.EditableValue = value;
+                }
+            }
+        }
         public string SecondLinkedParsedValue => SecondLinkedNode?.ParsedValue ?? "";
         public string SecondLinkedPropertyType => SecondLinkedNode?.PropertyType ?? "";
         public bool IsSecondLinkedEditorSelected => SecondLinkedNode?.IsEditorSelected == true;
+        public bool IsSecondLinkedInlineEditable => SecondLinkedNode?.IsInlineEditable == true;
+        public bool IsSecondLinkedInlineEditing
+        {
+            get => SecondLinkedNode?.IsInlineEditing == true;
+            set
+            {
+                if (SecondLinkedNode != null)
+                {
+                    SecondLinkedNode.IsInlineEditing = value;
+                }
+            }
+        }
 
         private bool _isEditorSelected;
         public bool IsEditorSelected
         {
             get => _isEditorSelected;
             set => SetProperty(ref _isEditorSelected, value);
+        }
+
+        private bool _isInlineEditing;
+        public bool IsInlineEditing
+        {
+            get => _isInlineEditing;
+            set => SetProperty(ref _isInlineEditing, value);
         }
 
         // Interface implementation
@@ -4581,6 +4662,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
             }
         }
+
+        public bool IsInlineEditable => Property is FloatProperty;
 
         /// <summary>
         /// Used for inline editing. Return true to allow inline editing for property type

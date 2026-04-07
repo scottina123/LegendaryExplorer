@@ -191,8 +191,9 @@
                                         <TextBlock x:Name="PropertyItem_Offset" Text="{Binding Property.StartOffset, StringFormat='{}{0:X5}:', Mode=OneTime}" VerticalAlignment="Top" Padding="0,0,4,0"
                                                    Visibility="{Binding ShowPropOffsets, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}" />
                                         <TextBlock x:Name="PropertyItem_DisplayName" Text="{Binding DisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
-                                        <TextBlock x:Name="PropertyItem_EditableValue" Margin="5,0,0,0" Text="{Binding EditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold" 
-                                                   Visibility="{Binding EditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <controls:EditableTextBlock x:Name="PropertyItem_EditableValue" Margin="5,0,0,0" Text="{Binding EditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
+                                                                    IsEditable="{Binding IsInlineEditable}" IsInEditMode="{Binding IsInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding EditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
                                         <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                         <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
@@ -205,8 +206,9 @@
                                 <Border x:Name="PropertyItem_LinkedSelectionBorder" Grid.Column="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_LinkedDisplayName" Text="{Binding LinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
-                                        <TextBlock x:Name="PropertyItem_LinkedEditableValue" Margin="5,0,0,0" Text="{Binding LinkedEditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold"
-                                                   Visibility="{Binding LinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <controls:EditableTextBlock x:Name="PropertyItem_LinkedEditableValue" Margin="5,0,0,0" Text="{Binding LinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
+                                                                    IsEditable="{Binding IsLinkedInlineEditable}" IsInEditMode="{Binding IsLinkedInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding LinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
                                         <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
                                 </Border>
@@ -217,8 +219,9 @@
                                 <Border x:Name="PropertyItem_SecondLinkedSelectionBorder" Grid.Column="4" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_SecondLinkedDisplayName" Text="{Binding SecondLinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
-                                        <TextBlock x:Name="PropertyItem_SecondLinkedEditableValue" Margin="5,0,0,0" Text="{Binding SecondLinkedEditableValue, Mode=OneTime}" VerticalAlignment="Top" FontWeight="Bold"
-                                                   Visibility="{Binding SecondLinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                        <controls:EditableTextBlock x:Name="PropertyItem_SecondLinkedEditableValue" Margin="5,0,0,0" Text="{Binding SecondLinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
+                                                                    IsEditable="{Binding IsSecondLinkedInlineEditable}" IsInEditMode="{Binding IsSecondLinkedInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding SecondLinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
                                         <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
                                 </Border>
