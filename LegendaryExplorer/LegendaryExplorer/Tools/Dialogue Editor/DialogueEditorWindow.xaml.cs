@@ -128,8 +128,15 @@ namespace LegendaryExplorer.DialogueEditor
         public SpeakerExtended SelectedSpeaker
         {
             get => _SelectedSpeaker;
-            set => SetProperty(ref _SelectedSpeaker, value);
+            set
+            {
+                if (SetProperty(ref _SelectedSpeaker, value))
+                {
+                    OnPropertyChanged(nameof(CanEditSelectedSpeakerFaceFX));
+                }
+            }
         }
+        public bool CanEditSelectedSpeakerFaceFX => SelectedSpeaker?.SpeakerID >= -2;
         private readonly Dictionary<string, int> SelectedStarts = new();
 
         private int forcedSelectStart = -1;
@@ -4637,6 +4644,11 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void ComboBox_Speaker_FFX_DropDownClosed(object sender, EventArgs e)
         {
+            if (SelectedSpeaker?.SpeakerID < -2 || SelectedConv == null)
+            {
+                return;
+            }
+
             var ffxMaleNew = SelectedSpeaker.FaceFX_Male;
             var ffxMaleOld = SelectedConv.GetFaceFX(SelectedSpeaker.SpeakerID, true);
             var ffxFemaleNew = SelectedSpeaker.FaceFX_Female;

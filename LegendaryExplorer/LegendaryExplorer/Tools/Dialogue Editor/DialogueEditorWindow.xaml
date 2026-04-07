@@ -1844,14 +1844,14 @@
                                         <TextBlock Text="" FontSize="10" />
                                         <DockPanel HorizontalAlignment="Stretch">
                                             <TextBlock Text="Male FaceFX Animation Set:" VerticalAlignment="Bottom" HorizontalAlignment="Left" ToolTip="Facial Animations for when the Player is Male" DockPanel.Dock="Left" />
-                                            <Button Name="Button_Spkr_OpenFFXM" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrM" ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
+                                        <Button Name="Button_Spkr_OpenFFXM" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrM" IsEnabled="{Binding CanEditSelectedSpeakerFaceFX}" ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
                                                 <Button.Content>
                                                     <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                 </Button.Content>
                                             </Button>
                                             <TextBlock Text="" FontSize="10" />
                                         </DockPanel>
-                                        <ComboBox Name="ComboBox_Speaker_FFXM" ItemsSource="{Binding Path=FFXAnimsets}" SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Male}" HorizontalAlignment="Stretch" ToolTip="Facial Animations for when the Player is Male" Margin="3" DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
+                                        <ComboBox Name="ComboBox_Speaker_FFXM" ItemsSource="{Binding Path=FFXAnimsets}" SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Male}" IsEnabled="{Binding CanEditSelectedSpeakerFaceFX}" HorizontalAlignment="Stretch" ToolTip="Facial Animations for when the Player is Male" Margin="3" DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal">
@@ -1863,14 +1863,14 @@
                                         <TextBlock Text="" FontSize="10" />
                                         <DockPanel HorizontalAlignment="Stretch">
                                             <TextBlock Text="Female FaceFX Animation Set:" VerticalAlignment="Bottom" HorizontalAlignment="Left" ToolTip="Facial Animations for when the Player is Female" DockPanel.Dock="Left" />
-                                            <Button Name="Button_Spkr_OpenFFXF" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrF" ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
+                                        <Button Name="Button_Spkr_OpenFFXF" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrF" IsEnabled="{Binding CanEditSelectedSpeakerFaceFX}" ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
                                                 <Button.Content>
                                                     <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
                                                 </Button.Content>
                                             </Button>
                                             <TextBlock Text="" />
                                         </DockPanel>
-                                        <ComboBox Name="ComboBox_Speaker_FFXF" ItemsSource="{Binding Path=FFXAnimsets}" SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Female}" HorizontalAlignment="Stretch" ToolTip="Facial Animations for when the Player is Female" Margin="3" DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
+                                        <ComboBox Name="ComboBox_Speaker_FFXF" ItemsSource="{Binding Path=FFXAnimsets}" SelectedItem="{Binding Path=SelectedSpeaker.FaceFX_Female}" IsEnabled="{Binding CanEditSelectedSpeakerFaceFX}" HorizontalAlignment="Stretch" ToolTip="Facial Animations for when the Player is Female" Margin="3" DropDownClosed="ComboBox_Speaker_FFX_DropDownClosed">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal">
