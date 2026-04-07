@@ -949,6 +949,29 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 properties.AddOrReplaceProp(new BoolProperty(true, "m_bSFXTeleportDataIsValid"));
             }
 
+            if (info.ClassName == "SeqAct_SetLocation")
+            {
+                if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "bSetLocation", info.ClassName, info) != null)
+                {
+                    properties.AddOrReplaceProp(new BoolProperty(true, "bSetLocation"));
+                }
+
+                if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "bSetRotation", info.ClassName, info) != null)
+                {
+                    properties.AddOrReplaceProp(new BoolProperty(true, "bSetRotation"));
+                }
+
+                if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "LocationValue", info.ClassName, info) != null)
+                {
+                    properties.AddOrReplaceProp(CommonStructs.Vector3Prop(0, 0, 0, "LocationValue"));
+                }
+
+                if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "RotationValue", info.ClassName, info) != null)
+                {
+                    properties.AddOrReplaceProp(CommonStructs.RotatorProp(0, 0, 0, "RotationValue"));
+                }
+            }
+
             if (info.ClassName == "SFXSceneShopNodePlotCheck"
                 && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "VarType", info.ClassName, info) is { Reference: { } enumType })
             {
