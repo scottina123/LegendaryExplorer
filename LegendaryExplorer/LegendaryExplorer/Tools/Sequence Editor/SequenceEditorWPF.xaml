@@ -147,6 +147,8 @@
         <ContextMenu x:Key="backContextMenu">
             <MenuItem Header="Add Existing Object" Click="AddObject_Clicked" ToolTip="Add existing Sequence Object to this Sequence"/>
             <MenuItem Header="Create Empty Subsequence" Click="CreateEmptySubsequence_Clicked" ToolTip="Create a new empty child sequence under the current sequence"/>
+            <Separator />
+            <MenuItem Header="Open floating toolbox" Click="OpenFloatingToolbox_Click" ToolTip="Open the sequence toolbox in a separate floating window at the clicked viewport location"/>
         </ContextMenu>
         <ContextMenu x:Key="currentObjectsContextMenu">
             <MenuItem Header="Open in Package Editor" Click="CurrentObjects_OpenInPackageEditor_Click" />

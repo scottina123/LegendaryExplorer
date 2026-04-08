@@ -8,6 +8,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
+using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.CustomFilesManager;
 using LegendaryExplorer.Tools.PlotEditor;
@@ -73,6 +74,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
     public partial class SequenceEditorWPF : WPFBase, IRecents, IDropTarget
     {
         private readonly SequenceGraphEditor graphEditor;
+        private Window floatingToolboxWindow;
+        private System.Windows.Point floatingToolboxScreenLocation;
+        private ClassToolBox floatingFavoritesToolBox;
+        private ClassToolBox floatingEventsToolBox;
+        private ClassToolBox floatingActionsToolBox;
+        private ClassToolBox floatingConditionsToolBox;
+        private ClassToolBox floatingVariablesToolBox;
+        private ClassToolBox floatingSceneShopToolBox;
+        private GenericToolBox floatingCustomSequencesToolBox;
+        private TabItem floatingSceneShopTab;
+        private TabItem floatingCustomSequencesTab;
         public ObservableCollectionExtended<SObj> CurrentObjects { get; } = new();
         public ObservableCollectionExtended<SObj> SelectedObjects { get; } = new();
         public ObservableCollectionExtended<ExportEntry> SequenceExports { get; } = new();
@@ -1362,6 +1374,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     customSequencesToolBox.Items.ClearEx();
                     customSequencesToolBox.Items.AddRange(CustomAssets.CustomSequences[Pcc.Game]);
                 }
+
+                SyncFloatingToolboxItems(includeCustomSequences);
             }
         }
 
@@ -1401,6 +1415,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 favoritesToolBox.Classes.Add(classInfo);
                 favoritesToolBox.Classes.Sort(cl => cl.ClassName);
                 SaveFavorites();
+                SyncFloatingToolboxItems();
             }
         }
 
@@ -1408,6 +1423,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             favoritesToolBox.Classes.Remove(classInfo);
             SaveFavorites();
+            SyncFloatingToolboxItems();
         }
 
         private void ResetFavorites()
@@ -1416,6 +1432,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             favoritesToolBox.Classes.AddRange(SequenceObjectCreator.GetCommonObjects(Pcc.Game)
                 .OrderBy(info => info.ClassName));
             SaveFavorites();
+            SyncFloatingToolboxItems();
         }
 
         public void LoadFileFromStream(Stream stream, string associatedFilePath, int goToIndex = 0)
@@ -2217,8 +2234,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
+                var clickPoint = System.Windows.Forms.Control.MousePosition;
+                floatingToolboxScreenLocation = new System.Windows.Point(clickPoint.X, clickPoint.Y);
                 if (FindResource("backContextMenu") is ContextMenu contextMenu)
                 {
+                    contextMenu.Placement = PlacementMode.MousePoint;
                     contextMenu.IsOpen = true;
                 }
             }
@@ -2246,6 +2266,168 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void graphEditor_Click(object sender, EventArgs e)
         {
             graphEditor.Focus();
+        }
+
+        private void OpenFloatingToolbox_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFloatingToolbox();
+        }
+
+        private void OpenFloatingToolbox()
+        {
+            if (floatingToolboxWindow == null)
+            {
+                CreateFloatingToolboxWindow();
+            }
+
+            SyncFloatingToolboxItems(includeCustomSequences: true);
+            floatingToolboxWindow.Left = floatingToolboxScreenLocation.X;
+            floatingToolboxWindow.Top = floatingToolboxScreenLocation.Y;
+
+            if (!floatingToolboxWindow.IsVisible)
+            {
+                floatingToolboxWindow.Show();
+            }
+
+            PositionFloatingToolboxWindow();
+
+            floatingToolboxWindow.Activate();
+        }
+
+        private System.Windows.Point GetFloatingToolboxScreenLocation()
+        {
+            var viewportCenter = new System.Drawing.Point(graphEditor.ClientSize.Width / 2, graphEditor.ClientSize.Height / 2);
+            var screenPoint = graphEditor.PointToScreen(viewportCenter);
+            return new System.Windows.Point(screenPoint.X, screenPoint.Y);
+        }
+
+        private void PositionFloatingToolboxWindow()
+        {
+            if (floatingToolboxWindow == null)
+            {
+                return;
+            }
+
+            floatingToolboxWindow.Left = floatingToolboxScreenLocation.X;
+            floatingToolboxWindow.Top = floatingToolboxScreenLocation.Y;
+        }
+
+        private void CreateFloatingToolboxWindow()
+        {
+            floatingFavoritesToolBox = CreateFloatingClassToolBox(CreateNewObject, RemoveFavorite);
+            floatingEventsToolBox = CreateFloatingClassToolBox(CreateNewObject, SetFavorite);
+            floatingActionsToolBox = CreateFloatingClassToolBox(CreateNewObject, SetFavorite);
+            floatingConditionsToolBox = CreateFloatingClassToolBox(CreateNewObject, SetFavorite);
+            floatingVariablesToolBox = CreateFloatingClassToolBox(CreateNewObject, SetFavorite);
+            floatingSceneShopToolBox = CreateFloatingClassToolBox(CreateNewObject, null);
+            floatingCustomSequencesToolBox = CreateFloatingGenericToolBox(CreateCustomSequence, null);
+
+            floatingSceneShopTab = new TabItem
+            {
+                Header = "Scene Shop",
+                Content = floatingSceneShopToolBox
+            };
+            floatingCustomSequencesTab = new TabItem
+            {
+                Header = "Custom sequences",
+                Content = floatingCustomSequencesToolBox,
+                Visibility = App.IsDebug ? Visibility.Visible : Visibility.Collapsed
+            };
+
+            var tabControl = new TabControl
+            {
+                Items =
+                {
+                    new TabItem
+                    {
+                        Header = new TextBlock
+                        {
+                            Text = "Favorites",
+                            ToolTip = "Shift-click on a sequence class to add or remove from favorites."
+                        },
+                        Content = floatingFavoritesToolBox
+                    },
+                    new TabItem { Header = "Events", Content = floatingEventsToolBox },
+                    new TabItem { Header = "Actions", Content = floatingActionsToolBox },
+                    new TabItem { Header = "Conditions", Content = floatingConditionsToolBox },
+                    new TabItem { Header = "Variables", Content = floatingVariablesToolBox },
+                    floatingSceneShopTab,
+                    floatingCustomSequencesTab
+                }
+            };
+
+            floatingToolboxWindow = new Window
+            {
+                Title = "Sequence Toolbox",
+                Owner = this,
+                Width = 560,
+                Height = 520,
+                MinWidth = 480,
+                MinHeight = 260,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Content = tabControl
+            };
+            CustomWindowChrome.ApplyCustomChrome(floatingToolboxWindow);
+            floatingToolboxWindow.Loaded += (_, _) => PositionFloatingToolboxWindow();
+            floatingToolboxWindow.Closed += (_, _) =>
+            {
+                floatingToolboxWindow = null;
+                floatingFavoritesToolBox = null;
+                floatingEventsToolBox = null;
+                floatingActionsToolBox = null;
+                floatingConditionsToolBox = null;
+                floatingVariablesToolBox = null;
+                floatingSceneShopToolBox = null;
+                floatingCustomSequencesToolBox = null;
+                floatingSceneShopTab = null;
+                floatingCustomSequencesTab = null;
+            };
+        }
+
+        private static ClassToolBox CreateFloatingClassToolBox(Action<ClassInfo> doubleClickCallback,
+            Action<ClassInfo> shiftClickCallback)
+        {
+            return new ClassToolBox
+            {
+                DoubleClickCallback = doubleClickCallback,
+                ShiftClickCallback = shiftClickCallback
+            };
+        }
+
+        private static GenericToolBox CreateFloatingGenericToolBox(Action<object> doubleClickCallback,
+            Action<object> shiftClickCallback)
+        {
+            return new GenericToolBox
+            {
+                DoubleClickCallback = doubleClickCallback,
+                ShiftClickCallback = shiftClickCallback
+            };
+        }
+
+        private void SyncFloatingToolboxItems(bool includeCustomSequences = false)
+        {
+            if (floatingToolboxWindow == null || Pcc == null)
+            {
+                return;
+            }
+
+            floatingFavoritesToolBox?.Classes.ReplaceAll(favoritesToolBox.Classes);
+            floatingEventsToolBox?.Classes.ReplaceAll(eventsToolBox.Classes);
+            floatingActionsToolBox?.Classes.ReplaceAll(actionsToolBox.Classes);
+            floatingConditionsToolBox?.Classes.ReplaceAll(conditionsToolBox.Classes);
+            floatingVariablesToolBox?.Classes.ReplaceAll(variablesToolBox.Classes);
+            floatingSceneShopToolBox?.Classes.ReplaceAll(sceneShopToolBox.Classes);
+
+            if (includeCustomSequences)
+            {
+                floatingCustomSequencesToolBox?.Items.ReplaceAll(customSequencesToolBox.Items);
+            }
+
+            if (floatingSceneShopTab != null)
+            {
+                floatingSceneShopTab.Visibility = IsSceneShopSequenceSelected ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
 
         private void SequenceEditor_DragEnter(object sender, System.Windows.Forms.DragEventArgs e)
