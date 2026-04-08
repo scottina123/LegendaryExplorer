@@ -858,6 +858,19 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
+            int? randomSwitchLinkCount = null;
+            if (info.ClassName == "SeqAct_RandomSwitch")
+            {
+                randomSwitchLinkCount = PromptForPositiveCount(
+                    "How many links would you like to create?",
+                    "Create random switch",
+                    "2");
+                if (!randomSwitchLinkCount.HasValue)
+                {
+                    return;
+                }
+            }
+
             IEntry classEntry;
             if (Pcc.Exports.Any(exp => exp.ObjectName == info.ClassName) ||
                 Pcc.Imports.Any(imp => imp.ObjectName == info.ClassName) ||
@@ -890,6 +903,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             using var packageCache = new PackageCache { AlwaysOpenFromDisk = false };
             packageCache.InsertIntoCache(Pcc);
+
+            if (randomSwitchLinkCount.HasValue)
+            {
+                var randomSwitch = SequenceObjectCreator.CreateRandSwitch(SelectedSequence, randomSwitchLinkCount.Value,
+                    packageCache);
+                packageCache.RemoveFromCache(Pcc); // This prevents ref decrementing when cache is disposed
+                customSaveData[randomSwitch.UIndex] =
+                    new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                EndBusy();
+                return;
+            }
+
             var defaultProperties = SequenceObjectCreator.GetSequenceObjectDefaults(Pcc, info, packageCache);
             ApplyEditorCreationDefaults(info, defaultProperties);
             var newSeqObj = new ExportEntry(Pcc, SelectedSequence, Pcc.GetNextIndexedName(info.ClassName),
@@ -2788,6 +2813,27 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             return dialog.ShowDialog() == true
                 ? new VariableLinkEntryDialogResult(nameTextBox.Text.Trim(), selectedType?.ClassName)
                 : null;
+        }
+
+        private int? PromptForPositiveCount(string prompt, string title, string defaultValue)
+        {
+            while (true)
+            {
+                var result = PromptDialog.Prompt(this, prompt, title, defaultValue, true);
+                if (result == null)
+                {
+                    return null;
+                }
+
+                if (int.TryParse(result, out int count) && count > 0)
+                {
+                    return count;
+                }
+
+                MessageBox.Show(this, "Please enter a whole number greater than 0.", title,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                defaultValue = result;
+            }
         }
 
         private void PromptAndAddNamedLinkEntry(ExportEntry export, string propertyName, string entryType, string defaultName)
@@ -5481,9 +5527,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             if (CurrentObjects_ListBox.SelectedItem is SObj sAction && sAction.Export != null)
             {
-                var result = PromptDialog.Prompt(this, "How many outlinks would you like to add?",
-                    "Add switch outlinks", "1", true);
-                if (int.TryParse(result, out var howManyToAdd) && howManyToAdd > 0)
+                if (PromptForPositiveCount("How many outlinks would you like to add?",
+                        "Add switch outlinks", "1") is int howManyToAdd)
                 {
 
                     var sw = sAction.Export;
