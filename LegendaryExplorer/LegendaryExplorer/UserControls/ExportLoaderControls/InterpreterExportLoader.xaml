@@ -29,6 +29,54 @@
         <Converters:NullOrEmptyStringVisibilityConverter x:Key="NullOrEmptyStringVisibilityConverter"/>
         <Converters:ColorCodeConverter x:Key="ColorCodeConverter"/>
         <Converters:UnsavedChangesForegroundConverter x:Key="UnsavedChangesForegroundConverter"/>
+        <Style x:Key="InlineEditorContextMenuStyle" TargetType="{x:Type ContextMenu}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ContextMenu}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="2"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Resources>
+                <Style TargetType="{x:Type Separator}">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type Separator}">
+                                <Border Height="1"
+                                        Margin="2,3"
+                                        Background="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Style.Resources>
+        </Style>
+        <Style x:Key="InlineEditorTextBoxStyle" TargetType="{x:Type TextBox}">
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu Style="{StaticResource InlineEditorContextMenuStyle}">
+                        <MenuItem Header="Cut" Command="ApplicationCommands.Cut" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                        <MenuItem Header="Copy" Command="ApplicationCommands.Copy" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                        <MenuItem Header="Paste" Command="ApplicationCommands.Paste" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                        <Separator/>
+                        <MenuItem Header="Select All" Command="ApplicationCommands.SelectAll" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!-- Should these be shared at a higher level? (also used by metadata editor) -->
         <DataTemplate DataType="{x:Type packages:ImportEntry}">
@@ -192,8 +240,20 @@
                                                    Visibility="{Binding ShowPropOffsets, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}" />
                                         <TextBlock x:Name="PropertyItem_DisplayName" Text="{Binding DisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
                                         <controls:EditableTextBlock x:Name="PropertyItem_EditableValue" Margin="5,0,0,0" Text="{Binding EditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
-                                                                    IsEditable="{Binding IsInlineEditable}" IsInEditMode="{Binding IsInlineEditing, Mode=TwoWay}"
-                                                                    Visibility="{Binding EditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                                                    IsEditable="False" IsInEditMode="{Binding IsInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding ShowEditableTextBlock, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        <StackPanel x:Name="PropertyItem_NumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding InlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                                            <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
                                         <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                         <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
@@ -207,8 +267,20 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_LinkedDisplayName" Text="{Binding LinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
                                         <controls:EditableTextBlock x:Name="PropertyItem_LinkedEditableValue" Margin="5,0,0,0" Text="{Binding LinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
-                                                                    IsEditable="{Binding IsLinkedInlineEditable}" IsInEditMode="{Binding IsLinkedInlineEditing, Mode=TwoWay}"
-                                                                    Visibility="{Binding LinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                                                    IsEditable="False" IsInEditMode="{Binding IsLinkedInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding ShowLinkedEditableTextBlock, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        <StackPanel x:Name="PropertyItem_LinkedNumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowLinkedNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding LinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_LinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowLinkedNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding LinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                                            <TextBox Width="40" Text="{Binding LinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
                                         <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
                                 </Border>
@@ -220,16 +292,28 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="PropertyItem_SecondLinkedDisplayName" Text="{Binding SecondLinkedDisplayName, Mode=OneTime}" VerticalAlignment="Top" Padding="2,0,0,0"/>
                                         <controls:EditableTextBlock x:Name="PropertyItem_SecondLinkedEditableValue" Margin="5,0,0,0" Text="{Binding SecondLinkedEditableValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" FontWeight="Bold"
-                                                                    IsEditable="{Binding IsSecondLinkedInlineEditable}" IsInEditMode="{Binding IsSecondLinkedInlineEditing, Mode=TwoWay}"
-                                                                    Visibility="{Binding SecondLinkedEditableValue, Converter={StaticResource NullOrEmptyStringVisibilityConverter}, Mode=OneTime}"/>
+                                                                    IsEditable="False" IsInEditMode="{Binding IsSecondLinkedInlineEditing, Mode=TwoWay}"
+                                                                    Visibility="{Binding ShowSecondLinkedEditableTextBlock, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        <StackPanel x:Name="PropertyItem_SecondLinkedNumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowSecondLinkedNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding SecondLinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_SecondLinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowSecondLinkedNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="80" Text="{Binding SecondLinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                                            <TextBox Width="40" Text="{Binding SecondLinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
                                         <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Grid.Column="4" Grid.Row="1" x:Name="PropertyItem_SecondLinkedDisplayType" FontSize="10" Text="{Binding SecondLinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
                                            Visibility="{Binding AdvancedView, RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=global:InterpreterExportLoader}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                <Border Grid.RowSpan="2" Background="Transparent" MouseLeftButtonDown="PropertyItem_PrimarySelectionBorder_MouseDoubleClick"/>
-                                <Border Grid.Column="2" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown"/>
-                                <Border Grid.Column="4" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown"/>
+                                <Border x:Name="PropertyItem_PrimaryOverlay" Grid.RowSpan="2" Background="Transparent" MouseLeftButtonDown="PropertyItem_PrimarySelectionBorder_MouseDoubleClick"/>
+                                <Border x:Name="PropertyItem_LinkedOverlay" Grid.Column="2" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="LinkedNodePanel_PreviewMouseLeftButtonDown"/>
+                                <Border x:Name="PropertyItem_SecondLinkedOverlay" Grid.Column="4" Grid.RowSpan="2" Background="Transparent" Visibility="{Binding HasSecondLinkedNode, Converter={StaticResource BoolToVisibilityConverter}}" MouseLeftButtonDown="SecondLinkedNodePanel_PreviewMouseLeftButtonDown"/>
                             </Grid>
                             <b:Interaction.Triggers>
                                 <b:EventTrigger EventName="PreviewMouseRightButtonDown">
@@ -355,6 +439,24 @@
                             <DataTrigger Binding="{Binding IsSecondLinkedEditorSelected}" Value="True">
                                 <Setter TargetName="PropertyItem_SecondLinkedSelectionBorder" Property="Background" Value="#004080"/>
                                 <Setter TargetName="PropertyItem_SecondLinkedDisplayType" Property="Background" Value="#004080"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowNumericInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowNameInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowLinkedNumericInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowLinkedNameInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowSecondLinkedNumericInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowSecondLinkedNameInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>
                     </HierarchicalDataTemplate>
