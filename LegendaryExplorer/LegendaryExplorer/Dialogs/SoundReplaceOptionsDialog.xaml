@@ -26,6 +26,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="20"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -52,7 +54,19 @@
         <TextBlock Text="Audio is appended to the specified AFC file if it exists. Use AFC compactor to trim unused audio and merge modified audio samples into a single AFC file." 
                    Grid.Row="6" Grid.ColumnSpan="3" TextWrapping="Wrap"
                    Visibility="{Binding ShowDestAFCFile, Converter={StaticResource BoolToVisibilityConverter}}"  />
-        <Button Content="Replace Audio" Command="{Binding ConvertAudioCommand}" Grid.Row="9" Grid.Column="2" IsDefault="True"/>
-        <Button Content="Cancel" Click="Cancel_Click"  Grid.Row="9" Grid.Column="1" Margin="8,0"/>
+        <CheckBox Grid.Row="7" Grid.ColumnSpan="3" Margin="0 5 0 0"
+                  Content="Bulk replace same export name in selected folder"
+                  IsChecked="{Binding BulkReplaceSameExportName}"
+                  Visibility="{Binding ShowBulkReplaceOption, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <TextBlock Text="Package Folder" Grid.Row="8" VerticalAlignment="Center" Margin="0 5 0 0"
+                   Visibility="{Binding ShowBulkReplaceFolderPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <TextBox Grid.Row="8" Grid.Column="1" Margin="0 5 5 0" IsReadOnly="True"
+                 Text="{Binding BulkReplaceFolder, UpdateSourceTrigger=PropertyChanged}"
+                 Visibility="{Binding ShowBulkReplaceFolderPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <Button Content="Browse..." Grid.Row="8" Grid.Column="2" Margin="0 5 0 0"
+                Command="{Binding BrowseBulkReplaceFolderCommand}"
+                Visibility="{Binding ShowBulkReplaceFolderPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        <Button Content="Replace Audio" Command="{Binding ConvertAudioCommand}" Grid.Row="11" Grid.Column="2" IsDefault="True"/>
+        <Button Content="Cancel" Click="Cancel_Click"  Grid.Row="11" Grid.Column="1" Margin="8,0"/>
     </Grid>
 </misc:NotifyPropertyChangedWindowBase>

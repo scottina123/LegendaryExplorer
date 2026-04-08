@@ -5,6 +5,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Misc;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -20,6 +21,44 @@ namespace LegendaryExplorer.Dialogs
         {
             MEGame.ME3, MEGame.LE2, MEGame.LE3
         };
+
+        private bool _showBulkReplaceOption;
+
+        public bool ShowBulkReplaceOption
+        {
+            get => _showBulkReplaceOption;
+            set
+            {
+                if (SetProperty(ref _showBulkReplaceOption, value))
+                {
+                    OnPropertyChanged(nameof(ShowBulkReplaceFolderPicker));
+                }
+            }
+        }
+
+        private bool _bulkReplaceSameExportName;
+
+        public bool BulkReplaceSameExportName
+        {
+            get => _bulkReplaceSameExportName;
+            set
+            {
+                if (SetProperty(ref _bulkReplaceSameExportName, value))
+                {
+                    OnPropertyChanged(nameof(ShowBulkReplaceFolderPicker));
+                }
+            }
+        }
+
+        private string _bulkReplaceFolder;
+
+        public string BulkReplaceFolder
+        {
+            get => _bulkReplaceFolder;
+            set => SetProperty(ref _bulkReplaceFolder, value);
+        }
+
+        public bool ShowBulkReplaceFolderPicker => ShowBulkReplaceOption && BulkReplaceSameExportName;
 
         private bool _showUpdateEventsCheckbox;
 
@@ -53,7 +92,7 @@ namespace LegendaryExplorer.Dialogs
 
         public WwiseConversionSettingsPackage ChosenSettings;
 
-        public SoundReplaceOptionsDialog(bool showUpdateEvents = true, MEGame game = MEGame.LE3, string destAFCFile = null)
+        public SoundReplaceOptionsDialog(bool showUpdateEvents = true, MEGame game = MEGame.LE3, string destAFCFile = null, bool showBulkReplaceOption = false)
         {
             DataContext = this;
             SampleRates.AddRange(AcceptedSampleRates);
@@ -64,18 +103,21 @@ namespace LegendaryExplorer.Dialogs
             SampleRate_Combobox.SelectedIndex = 0;
             AfcFileDest_TextBox.Text = destAFCFile;
             ShowDestAFCFile = !string.IsNullOrWhiteSpace(destAFCFile);
+            ShowBulkReplaceOption = showBulkReplaceOption;
         }
 
-        public SoundReplaceOptionsDialog(Window w, bool showUpdateEvents = true, MEGame game = MEGame.LE3, string destAFCFile = null) : this(showUpdateEvents, game, destAFCFile)
+        public SoundReplaceOptionsDialog(Window w, bool showUpdateEvents = true, MEGame game = MEGame.LE3, string destAFCFile = null, bool showBulkReplaceOption = false) : this(showUpdateEvents, game, destAFCFile, showBulkReplaceOption)
         {
             Owner = w;
         }
 
         public ICommand ConvertAudioCommand { get; private set; }
+        public ICommand BrowseBulkReplaceFolderCommand { get; private set; }
 
         void LoadCommands()
         {
             ConvertAudioCommand = new GenericCommand(ReturnSettings, CanReturnSettings);
+            BrowseBulkReplaceFolderCommand = new GenericCommand(BrowseBulkReplaceFolder);
         }
 
         private void ReturnSettings()
@@ -85,13 +127,51 @@ namespace LegendaryExplorer.Dialogs
                 TargetSamplerate = (int)SampleRate_Combobox.SelectedItem,
                 UpdateReferencedEvents = UpdateEvents_CheckBox.IsChecked.GetValueOrDefault(false),
                 TargetGame = SelectedGame,
-                DestinationAFCFile = Path.GetFileNameWithoutExtension(AfcFileDest_TextBox.Text) // Just remove it so we don't have to deal with it
+                DestinationAFCFile = Path.GetFileNameWithoutExtension(AfcFileDest_TextBox.Text), // Just remove it so we don't have to deal with it
+                BulkReplaceSameExportName = BulkReplaceSameExportName,
+                BulkReplaceFolder = BulkReplaceSameExportName ? Path.GetFullPath(BulkReplaceFolder) : null
             };
             DialogResult = true;
             Close();
         }
 
-        private bool CanReturnSettings() => SampleRate_Combobox.SelectedIndex >= 0 && !ShowDestAFCFile || !string.IsNullOrWhiteSpace(AfcFileDest_TextBox.Text);
+        private bool CanReturnSettings()
+        {
+            if (SampleRate_Combobox.SelectedIndex < 0)
+            {
+                return false;
+            }
+
+            if (ShowDestAFCFile && string.IsNullOrWhiteSpace(AfcFileDest_TextBox.Text))
+            {
+                return false;
+            }
+
+            if (BulkReplaceSameExportName && (string.IsNullOrWhiteSpace(BulkReplaceFolder) || !Directory.Exists(BulkReplaceFolder)))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private void BrowseBulkReplaceFolder()
+        {
+            var dlg = new CommonOpenFileDialog("Select folder containing package files")
+            {
+                IsFolderPicker = true
+            };
+
+            if (Directory.Exists(BulkReplaceFolder))
+            {
+                dlg.InitialDirectory = BulkReplaceFolder;
+            }
+
+            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            {
+                BulkReplaceFolder = dlg.FileName;
+            }
+        }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
@@ -105,5 +185,7 @@ namespace LegendaryExplorer.Dialogs
         public bool UpdateReferencedEvents = true;
         public MEGame TargetGame = MEGame.LE3;
         public string DestinationAFCFile; // No default to ensure it must be set.
+        public bool BulkReplaceSameExportName;
+        public string BulkReplaceFolder;
     }
 }

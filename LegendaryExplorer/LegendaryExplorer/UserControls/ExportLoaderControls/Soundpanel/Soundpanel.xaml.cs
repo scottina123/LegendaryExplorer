@@ -98,6 +98,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private SoundpanelAudioPlayer _audioPlayer;
 
+        private sealed class BulkSoundReplaceResult
+        {
+            public int UpdatedPackageCount { get; set; }
+            public int UpdatedExportCount { get; set; }
+            public List<string> FailedPackages { get; } = new();
+        }
+
         #region Dependency Properties
 
         /// <summary>
@@ -1601,6 +1608,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public async Task ReplaceAudioFromWave(string sourceFile = null, ExportEntry forcedExport = null, WwiseConversionSettingsPackage conversionSettings = null)
         {
+            ExportEntry exportToReplace = forcedExport ?? CurrentLoadedExport;
+            if (exportToReplace == null)
+            {
+                return;
+            }
+
             if (sourceFile == null)
             {
                 var correctPaths = WwiseCliHandler.CheckWwisePathForGame(Pcc.Game);
@@ -1621,7 +1634,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (conversionSettings == null)
             {
-                SoundReplaceOptionsDialog srod = new SoundReplaceOptionsDialog(Window.GetWindow(this), Pcc.Game.IsGame3(), Pcc.Game, (forcedExport ?? CurrentLoadedExport).GetProperty<NameProperty>("Filename").Value);
+                SoundReplaceOptionsDialog srod = new SoundReplaceOptionsDialog(Window.GetWindow(this), Pcc.Game.IsGame3(), Pcc.Game, exportToReplace.GetProperty<NameProperty>("Filename").Value, showBulkReplaceOption: true);
                 if (srod.ShowDialog() == true)
                 {
                     conversionSettings = srod.ChosenSettings;
@@ -1635,22 +1648,39 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             //Convert and replace
             if (HostingControl != null)
             {
-                HostingControl.BusyText = "Converting and replacing audio";
+                HostingControl.BusyText = conversionSettings.BulkReplaceSameExportName ? "Converting and bulk replacing audio" : "Converting and replacing audio";
                 HostingControl.IsBusy = true;
             }
 
-            await Task.Run(async () =>
+            BulkSoundReplaceResult bulkReplaceResult = await Task.Run(async () =>
             {
                 var conversion = await WwiseCliHandler.RunWwiseConversion(Pcc.Game, sourceFile, conversionSettings);
-                ReplaceAudioFromWwiseEncodedFile(conversion, forcedExport, conversionSettings?.UpdateReferencedEvents ?? false, conversionSettings?.DestinationAFCFile);
-            }).ContinueWithOnUIThread((a) =>
-            {
-                UpdateAudioStream();
-                if (HostingControl != null)
+                if (conversionSettings.BulkReplaceSameExportName)
                 {
-                    HostingControl.IsBusy = false;
+                    return BulkReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile, conversionSettings.BulkReplaceFolder);
                 }
+
+                ReplaceAudioFromWwiseEncodedFile(conversion, exportToReplace, conversionSettings.UpdateReferencedEvents, conversionSettings.DestinationAFCFile);
+                return null;
             });
+
+            UpdateAudioStream();
+            if (HostingControl != null)
+            {
+                HostingControl.IsBusy = false;
+            }
+
+            if (bulkReplaceResult != null)
+            {
+                string summary = $"Replaced audio in {bulkReplaceResult.UpdatedExportCount} export(s) across {bulkReplaceResult.UpdatedPackageCount} package(s).";
+                if (bulkReplaceResult.FailedPackages.Count > 0)
+                {
+                    summary += "\n\nFailed packages:\n" + string.Join("\n", bulkReplaceResult.FailedPackages);
+                }
+
+                MessageBox.Show(summary, "Bulk replace complete", MessageBoxButton.OK,
+                    bulkReplaceResult.FailedPackages.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
         }
 
         /// <summary>
@@ -1683,15 +1713,93 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
-                w.ImportFromFile(filePath, w.GetPathToAFC(destAFCBasename), destAFCBasename);
-                exportToWorkOn.WriteBinary(w);
+                ReplaceWwiseStreamAudio(exportToWorkOn, filePath, updateReferencedEvents, destAFCBasename);
+            }
+        }
 
-                if (updateReferencedEvents)
+        private static bool ReplaceWwiseStreamAudio(ExportEntry exportToWorkOn, string filePath, bool updateReferencedEvents, string destAFCBasename)
+        {
+            if (exportToWorkOn?.ClassName != "WwiseStream")
+            {
+                return false;
+            }
+
+            WwiseStream w = exportToWorkOn.GetBinaryData<WwiseStream>();
+            w.ImportFromFile(filePath, w.GetPathToAFC(destAFCBasename), destAFCBasename);
+            exportToWorkOn.WriteBinary(w);
+
+            if (updateReferencedEvents)
+            {
+                var ms = (float)w.GetAudioInfo().GetLength().TotalMilliseconds;
+                WwiseHelper.UpdateReferencedWwiseEventLengths(exportToWorkOn, ms);
+            }
+
+            return true;
+        }
+
+        private BulkSoundReplaceResult BulkReplaceAudioFromWwiseEncodedFile(string filePath, ExportEntry sourceExport, bool updateReferencedEvents, string destAFCBasename, string folderPath)
+        {
+            BulkSoundReplaceResult result = new BulkSoundReplaceResult();
+            string targetName = sourceExport.ObjectName.Instanced;
+            string targetClass = sourceExport.ClassName;
+            string currentPackagePath = Path.GetFullPath(sourceExport.FileRef.FilePath);
+
+            int currentPackageUpdates = ReplaceMatchingAudioExports(sourceExport.FileRef, targetName, targetClass, filePath, updateReferencedEvents, destAFCBasename);
+            if (currentPackageUpdates > 0)
+            {
+                sourceExport.FileRef.Save();
+                result.UpdatedPackageCount++;
+                result.UpdatedExportCount += currentPackageUpdates;
+            }
+
+            foreach (string packagePath in Directory.EnumerateFiles(folderPath, "*", SearchOption.TopDirectoryOnly)
+                                                 .Where(x => x.RepresentsPackageFilePath())
+                                                 .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (Path.GetFullPath(packagePath).Equals(currentPackagePath, StringComparison.OrdinalIgnoreCase))
                 {
-                    var ms = (float)w.GetAudioInfo().GetLength().TotalMilliseconds;
-                    WwiseHelper.UpdateReferencedWwiseEventLengths(exportToWorkOn, ms);
+                    continue;
+                }
+
+                try
+                {
+                    using IMEPackage package = MEPackageHandler.OpenMEPackage(packagePath, forceLoadFromDisk: true);
+                    if (package.Game != sourceExport.Game)
+                    {
+                        continue;
+                    }
+
+                    int updatedExports = ReplaceMatchingAudioExports(package, targetName, targetClass, filePath, updateReferencedEvents, destAFCBasename);
+                    if (updatedExports <= 0)
+                    {
+                        continue;
+                    }
+
+                    package.Save();
+                    result.UpdatedPackageCount++;
+                    result.UpdatedExportCount += updatedExports;
+                }
+                catch (Exception ex)
+                {
+                    result.FailedPackages.Add($"{Path.GetFileName(packagePath)}: {ex.Message}");
                 }
             }
+
+            return result;
+        }
+
+        private static int ReplaceMatchingAudioExports(IMEPackage package, string targetName, string targetClass, string filePath, bool updateReferencedEvents, string destAFCBasename)
+        {
+            int updatedExports = 0;
+            foreach (ExportEntry export in package.Exports.Where(x => x.ClassName == targetClass && x.ObjectName.Instanced.Equals(targetName, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (ReplaceWwiseStreamAudio(export, filePath, updateReferencedEvents, destAFCBasename))
+                {
+                    updatedExports++;
+                }
+            }
+
+            return updatedExports;
         }
 
         #endregion
