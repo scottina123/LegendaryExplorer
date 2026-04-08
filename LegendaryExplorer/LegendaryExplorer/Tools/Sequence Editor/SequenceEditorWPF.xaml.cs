@@ -4414,7 +4414,57 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
             else
             {
+                DetachObjectFromCurrentSequence(exportToAdd, SelectedSequence);
                 KismetHelper.AddObjectToSequence(exportToAdd, SelectedSequence, removeLinks);
+            }
+        }
+
+        private static void DetachObjectFromCurrentSequence(ExportEntry exportToMove, ExportEntry destinationSequence)
+        {
+            if (exportToMove == null || destinationSequence == null)
+            {
+                return;
+            }
+
+            var existingSequences = new List<ExportEntry>();
+
+            if (exportToMove.Parent is ExportEntry parentExport && parentExport.IsSequence())
+            {
+                existingSequences.Add(parentExport);
+            }
+
+            if (exportToMove.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(exportToMove.FileRef) is ExportEntry parentSequence
+                && parentSequence.IsSequence()
+                && !existingSequences.Contains(parentSequence))
+            {
+                existingSequences.Add(parentSequence);
+            }
+
+            foreach (var existingSequence in existingSequences)
+            {
+                if (existingSequence == destinationSequence)
+                {
+                    continue;
+                }
+
+                var sequenceObjects = existingSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects");
+                if (sequenceObjects == null)
+                {
+                    continue;
+                }
+
+                var existingRefs = sequenceObjects.Where(objRef => objRef.Value == exportToMove.UIndex).ToList();
+                if (existingRefs.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var existingRef in existingRefs)
+                {
+                    sequenceObjects.Remove(existingRef);
+                }
+
+                existingSequence.WriteProperty(sequenceObjects);
             }
         }
 
