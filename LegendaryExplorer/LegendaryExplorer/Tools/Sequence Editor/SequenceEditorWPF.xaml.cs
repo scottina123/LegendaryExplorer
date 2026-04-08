@@ -2674,8 +2674,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             var classOptions = GlobalUnrealObjectInfo.GetClasses(Pcc.Game).Values
                 .Where(x => x.IsA("SequenceVariable", Pcc.Game))
-                .Select(x => x.ClassName)
-                .OrderBy(x => x)
+                .OrderBy(x => x.ClassName)
                 .ToList();
 
             var nameTextBox = new TextBox
@@ -2683,12 +2682,19 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 MinWidth = 260,
                 Text = "Variable"
             };
-            var typeComboBox = new ComboBox
+            ClassInfo selectedType = classOptions.FirstOrDefault(x => x.ClassName == "SeqVar_Object")
+                                     ?? classOptions.FirstOrDefault();
+            var typeTextBox = new TextBox
             {
-                MinWidth = 260,
-                ItemsSource = classOptions,
-                SelectedItem = "SeqVar_Object",
-                IsEditable = false
+                MinWidth = 180,
+                Text = selectedType?.ClassName ?? string.Empty,
+                IsReadOnly = true
+            };
+            var pickTypeButton = new Button
+            {
+                Content = "Pick...",
+                MinWidth = 72,
+                Margin = new Thickness(8, 0, 0, 0)
             };
             var okButton = new Button
             {
@@ -2697,7 +2703,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 MinWidth = 80,
                 Margin = new Thickness(0, 0, 8, 0)
             };
-            var dialog = new System.Windows.Window
+            System.Windows.Window dialog = null;
+            dialog = new System.Windows.Window
             {
                 Title = "Add variable entry",
                 Owner = this,
@@ -2720,7 +2727,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                             Margin = new Thickness(0, 10, 0, 0),
                             Text = "Expected type"
                         },
-                        typeComboBox,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Children =
+                            {
+                                typeTextBox,
+                                pickTypeButton
+                            }
+                        },
                         new StackPanel
                         {
                             Orientation = Orientation.Horizontal,
@@ -2745,11 +2760,22 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             void UpdateOkState()
             {
-                okButton.IsEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text) && typeComboBox.SelectedItem != null;
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text) && selectedType != null;
             }
 
             nameTextBox.TextChanged += (_, _) => UpdateOkState();
-            typeComboBox.SelectionChanged += (_, _) => UpdateOkState();
+            pickTypeButton.Click += (_, _) =>
+            {
+                if (ClassPickerDlg.GetClass(dialog, classOptions, "Select datatype", "Select") is not { } chosenClass)
+                {
+                    return;
+                }
+
+                selectedType = chosenClass;
+                typeTextBox.Text = chosenClass.ClassName;
+                UpdateOkState();
+            };
+            typeTextBox.MouseDoubleClick += (_, _) => pickTypeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             dialog.Loaded += (_, _) =>
             {
                 nameTextBox.Focus();
@@ -2759,7 +2785,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             okButton.Click += (_, _) => dialog.DialogResult = true;
 
             return dialog.ShowDialog() == true
-                ? new VariableLinkEntryDialogResult(nameTextBox.Text.Trim(), typeComboBox.SelectedItem as string)
+                ? new VariableLinkEntryDialogResult(nameTextBox.Text.Trim(), selectedType?.ClassName)
                 : null;
         }
 
