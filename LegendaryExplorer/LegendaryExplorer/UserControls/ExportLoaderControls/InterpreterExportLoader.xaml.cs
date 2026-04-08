@@ -4570,6 +4570,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(LinkedPropertyType));
                     OnPropertyChanged(nameof(IsLinkedEditorSelected));
                     OnPropertyChanged(nameof(LinkedInlineEditorValue));
+                    OnPropertyChanged(nameof(LinkedInlineNameChoices));
                     OnPropertyChanged(nameof(LinkedInlineNameValue));
                     OnPropertyChanged(nameof(LinkedInlineNameIndexValue));
                     OnPropertyChanged(nameof(ShowLinkedNumericInlineEditor));
@@ -4646,6 +4647,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowLinkedNumericInlineEditor => LinkedNode?.ShowNumericInlineEditor == true;
         public bool ShowLinkedEditableTextBlock => LinkedNode?.ShowEditableTextBlock == true;
         public bool ShowLinkedNameInlineEditor => LinkedNode?.ShowNameInlineEditor == true;
+        public IReadOnlyList<IndexedName> LinkedInlineNameChoices => LinkedNode?.InlineNameChoices;
         public string LinkedInlineEditorValue
         {
             get => LinkedNode?.InlineEditorValue ?? "";
@@ -4716,6 +4718,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(SecondLinkedPropertyType));
                     OnPropertyChanged(nameof(IsSecondLinkedEditorSelected));
                     OnPropertyChanged(nameof(SecondLinkedInlineEditorValue));
+                    OnPropertyChanged(nameof(SecondLinkedInlineNameChoices));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameValue));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameIndexValue));
                     OnPropertyChanged(nameof(ShowSecondLinkedNumericInlineEditor));
@@ -4792,6 +4795,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowSecondLinkedNumericInlineEditor => SecondLinkedNode?.ShowNumericInlineEditor == true;
         public bool ShowSecondLinkedEditableTextBlock => SecondLinkedNode?.ShowEditableTextBlock == true;
         public bool ShowSecondLinkedNameInlineEditor => SecondLinkedNode?.ShowNameInlineEditor == true;
+        public IReadOnlyList<IndexedName> SecondLinkedInlineNameChoices => SecondLinkedNode?.InlineNameChoices;
         public string SecondLinkedInlineEditorValue
         {
             get => SecondLinkedNode?.InlineEditorValue ?? "";
@@ -4964,6 +4968,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public UPropertyTreeViewEntry()
         {
         }
+
+        private IReadOnlyList<IndexedName> _inlineNameChoices;
+        public IReadOnlyList<IndexedName> InlineNameChoices => _inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList();
 
         private string _inlineEditorValue;
         public string InlineEditorValue

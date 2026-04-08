@@ -91,6 +91,12 @@
                 <TextBlock Margin="5,0,0,0" Text="{Binding InstancedFullPath}"/>
             </StackPanel>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type SharedUI:IndexedName}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Path=Index, Mode=OneTime}" Foreground="Gray"/>
+                <TextBlock Text="{Binding Path=Name, Mode=OneTime}" Margin="5,0,0,0"/>
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
     <DockPanel Name="InterpreterWPF_DockPanel">
         <WrapPanel DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
@@ -249,7 +255,24 @@
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBox MinWidth="80" Text="{Binding InlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <ComboBox MinWidth="140"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      StaysOpenOnEdit="True"
+                                                      TextSearch.TextPath="Name"
+                                                      ScrollViewer.CanContentScroll="True"
+                                                      VirtualizingPanel.IsVirtualizing="True"
+                                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                                      ItemsSource="{Binding InlineNameChoices}"
+                                                      Text="{Binding InlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Tag="{Binding}"
+                                                      KeyDown="InlineEditor_KeyDown">
+                                                <ComboBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <VirtualizingStackPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ComboBox.ItemsPanel>
+                                            </ComboBox>
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
@@ -276,7 +299,24 @@
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_LinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowLinkedNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBox MinWidth="80" Text="{Binding LinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <ComboBox MinWidth="140"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      StaysOpenOnEdit="True"
+                                                      TextSearch.TextPath="Name"
+                                                      ScrollViewer.CanContentScroll="True"
+                                                      VirtualizingPanel.IsVirtualizing="True"
+                                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                                      ItemsSource="{Binding LinkedInlineNameChoices}"
+                                                      Text="{Binding LinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Tag="{Binding LinkedNode}"
+                                                      KeyDown="InlineEditor_KeyDown">
+                                                <ComboBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <VirtualizingStackPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ComboBox.ItemsPanel>
+                                            </ComboBox>
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
                                             <TextBox Width="40" Text="{Binding LinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
@@ -301,7 +341,24 @@
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_SecondLinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowSecondLinkedNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBox MinWidth="80" Text="{Binding SecondLinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <ComboBox MinWidth="140"
+                                                      IsEditable="True"
+                                                      IsTextSearchEnabled="True"
+                                                      StaysOpenOnEdit="True"
+                                                      TextSearch.TextPath="Name"
+                                                      ScrollViewer.CanContentScroll="True"
+                                                      VirtualizingPanel.IsVirtualizing="True"
+                                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                                      ItemsSource="{Binding SecondLinkedInlineNameChoices}"
+                                                      Text="{Binding SecondLinkedInlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Tag="{Binding SecondLinkedNode}"
+                                                      KeyDown="InlineEditor_KeyDown">
+                                                <ComboBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <VirtualizingStackPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ComboBox.ItemsPanel>
+                                            </ComboBox>
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
                                             <TextBox Width="40" Text="{Binding SecondLinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
