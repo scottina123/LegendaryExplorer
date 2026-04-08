@@ -1853,23 +1853,31 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 }
             }
 
+            SObj obj;
             if (export.IsA("SequenceEvent"))
             {
-                return new SEvent(export, graphEditor);
+                obj = new SEvent(export, graphEditor);
             }
             else if (export.IsA("SequenceVariable"))
             {
-                return new SVar(export, graphEditor);
+                obj = new SVar(export, graphEditor);
             }
             else if (export.ClassName == "SequenceFrame" &&
                      (Pcc.Game == MEGame.ME1 || Pcc.Game == MEGame.UDK || Pcc.Game.IsLEGame()))
             {
-                return new SFrame(export, graphEditor);
+                obj = new SFrame(export, graphEditor);
             }
             else //if (s.StartsWith("BioSeqAct_") || s.StartsWith("SeqAct_") || s.StartsWith("SFXSeqAct_") || s.StartsWith("SeqCond_") || pcc.getExport(index).ClassName == "Sequence" || pcc.getExport(index).ClassName == "SequenceReference")
             {
-                return new SAction(export, graphEditor);
+                obj = new SAction(export, graphEditor);
             }
+
+            if (obj is SBox box)
+            {
+                box.AddLinkEntryRequested = PromptAndAddNamedLinkEntryFromGraph;
+            }
+
+            return obj;
         }
 
         private static bool warnedOfReload = false;
@@ -2639,33 +2647,26 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void AddInputEntry_Clicked(object sender, RoutedEventArgs e)
         {
-            PromptAndAddNamedLinkEntry("InputLinks", "input", "In");
+            if (CurrentObjects_ListBox.SelectedItem is SObj { Export: { } export })
+            {
+                PromptAndAddNamedLinkEntry(export, "InputLinks", "input", "In");
+            }
         }
 
         private void AddOutputEntry_Clicked(object sender, RoutedEventArgs e)
         {
-            PromptAndAddNamedLinkEntry("OutputLinks", "output", "Out");
+            if (CurrentObjects_ListBox.SelectedItem is SObj { Export: { } export })
+            {
+                PromptAndAddNamedLinkEntry(export, "OutputLinks", "output", "Out");
+            }
         }
 
         private void AddVariableEntry_Clicked(object sender, RoutedEventArgs e)
         {
-            if (CurrentObjects_ListBox.SelectedItem is not SObj { Export: { } export })
+            if (CurrentObjects_ListBox.SelectedItem is SObj { Export: { } export })
             {
-                return;
+                PromptAndAddVariableLinkEntry(export);
             }
-
-            if (!CanAddNamedLinkEntry(export, "VariableLinks"))
-            {
-                return;
-            }
-
-            if (PromptForVariableLinkEntry() is not { } variableEntry)
-            {
-                return;
-            }
-
-            AddNamedLinkEntry(export, "VariableLinks", variableEntry.EntryName, variableEntry.ExpectedTypeName);
-            RefreshView();
         }
 
         private record VariableLinkEntryDialogResult(string EntryName, string ExpectedTypeName);
@@ -2789,9 +2790,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 : null;
         }
 
-        private void PromptAndAddNamedLinkEntry(string propertyName, string entryType, string defaultName)
+        private void PromptAndAddNamedLinkEntry(ExportEntry export, string propertyName, string entryType, string defaultName)
         {
-            if (CurrentObjects_ListBox.SelectedItem is not SObj { Export: { } export })
+            if (export == null)
             {
                 return;
             }
@@ -2813,6 +2814,50 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             AddNamedLinkEntry(export, propertyName, entryName.Trim());
             RefreshView();
+        }
+
+        private void PromptAndAddVariableLinkEntry(ExportEntry export)
+        {
+            if (export == null || !CanAddNamedLinkEntry(export, "VariableLinks"))
+            {
+                return;
+            }
+
+            if (PromptForVariableLinkEntry() is not { } variableEntry)
+            {
+                return;
+            }
+
+            AddNamedLinkEntry(export, "VariableLinks", variableEntry.EntryName, variableEntry.ExpectedTypeName);
+            RefreshView();
+        }
+
+        private void PromptAndAddNamedLinkEntryFromGraph(ExportEntry export, string propertyName)
+        {
+            if (export == null)
+            {
+                return;
+            }
+
+            if (CurrentObjects.FirstOrDefault(obj => obj.Export == export) is SObj graphObject)
+            {
+                panToSelection = false;
+                CurrentObjects_ListBox.SelectedItems.Clear();
+                CurrentObjects_ListBox.SelectedItem = graphObject;
+            }
+
+            switch (propertyName)
+            {
+                case "InputLinks":
+                    PromptAndAddNamedLinkEntry(export, propertyName, "input", "In");
+                    break;
+                case "OutputLinks":
+                    PromptAndAddNamedLinkEntry(export, propertyName, "output", "Out");
+                    break;
+                case "VariableLinks":
+                    PromptAndAddVariableLinkEntry(export);
+                    break;
+            }
         }
 
         private bool CanAddNamedLinkEntry(ExportEntry export, string propertyName)

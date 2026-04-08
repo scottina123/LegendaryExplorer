@@ -861,12 +861,15 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         protected PPath TitleBox;
         protected PPath VarLinkBox;
         protected PPath OutLinkBox;
+        public Action<ExportEntry, string> AddLinkEntryRequested;
         public readonly List<OutputLink> Outlinks = new();
         public readonly List<VarLink> Varlinks = new();
         public readonly List<EventLink> EventLinks = new();
         private readonly VarDragHandler varDragHandler;
         private readonly OutputDragHandler outputDragHandler;
         private readonly EventDragHandler eventDragHandler;
+        public const float AddLinkButtonSize = 12;
+        public const float AddLinkButtonSpacing = 4;
         private static readonly PointF[] DownwardTrianglePoly = { new(-4, 0), new(4, 0), new(0, 10) };
         protected static PPath CreateActionLinkBox() => PPath.CreateRectangle(0, -4, 10, 8);
         private static PPath CreateVarLinkBox(Pen pen) => PPath.CreateRectangle(-4, 0, 8, 10, pen);
@@ -981,6 +984,28 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             TitleBox.AddChild(title);
             TitleBox.Pickable = false;
             return w;
+        }
+
+        protected bool SupportsNamedLinkEntry(string propertyName)
+        {
+            return !export.IsA("SFXSceneShopNode")
+                   && GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, propertyName, export.ClassName) != null;
+        }
+
+        protected PPath CreateAddLinkButton(string propertyName, float x, float y)
+        {
+            var button = PPath.CreateRectangle(0, 0, AddLinkButtonSize, AddLinkButtonSize, OutlinePen);
+            button.Brush = TitleBoxBrush;
+            button.SetOffset(x, y);
+
+            var label = new SText("+", BoxTextColor, shadows: false)
+            {
+                Pickable = false
+            };
+            label.SetOffset((AddLinkButtonSize - label.Width) / 2, (AddLinkButtonSize - label.Height) / 2 - 1);
+            button.AddChild(label);
+            button.AddInputEventListener(new AddLinkButtonHandler(this, propertyName));
+            return button;
         }
 
         protected void GetVarLinks(PropertyCollection properties)
@@ -1365,6 +1390,32 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 {
                     CreateEventlink(((PPath)sender).Parent, (SEvent)DragTarget);
                     DragTarget = null;
+                }
+            }
+        }
+
+        private sealed class AddLinkButtonHandler : PBasicInputEventHandler
+        {
+            private readonly SBox owner;
+            private readonly string propertyName;
+
+            public AddLinkButtonHandler(SBox owner, string propertyName)
+            {
+                this.owner = owner;
+                this.propertyName = propertyName;
+            }
+
+            public override void OnMouseDown(object sender, PInputEventArgs e)
+            {
+                e.Handled = true;
+            }
+
+            public override void OnClick(object sender, PInputEventArgs e)
+            {
+                e.Handled = true;
+                if (e.Button == MouseButtons.Left)
+                {
+                    owner.AddLinkEntryRequested?.Invoke(owner.export, propertyName);
                 }
             }
         }
@@ -1842,6 +1893,12 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                  t2.AddChild(Varlinks[i].Node);
                  VarLinkBox.AddChild(t2);
              }
+             if (SupportsNamedLinkEntry("VariableLinks"))
+             {
+                 var addVariableButton = CreateAddLinkButton("VariableLinks", w, 0);
+                 VarLinkBox.AddChild(addVariableButton);
+                 w += addVariableButton.Width + 20;
+             }
              for (int i = 0; i < EventLinks.Count; i++)
              {
                  string d = string.Join(",", EventLinks[i].Links.Select(l => $"#{l}"));
@@ -1876,6 +1933,16 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                  t2.AddChild(Outlinks[i].Node);
                  OutLinkBox.AddChild(t2);
              }
+             if (SupportsNamedLinkEntry("OutputLinks"))
+             {
+                 var addOutputButton = CreateAddLinkButton("OutputLinks", -AddLinkButtonSize, starty + AddLinkButtonSpacing);
+                 OutLinkBox.AddChild(addOutputButton);
+                 starty += addOutputButton.Height + AddLinkButtonSpacing;
+                 if (addOutputButton.Width + 10 > outW)
+                 {
+                     outW = addOutputButton.Width + 10;
+                 }
+             }
              OutLinkBox.Pickable = false;
              inputLinkBox = new PNode();
              GetInputLinks(properties);
@@ -1891,6 +1958,13 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                  inLinkNode.SetBounds(-10, t2.Y + t2.Height / 2 - 5, inLinkNode.Width, inLinkNode.Height);
                  t2.AddChild(inLinkNode);
                  inputLinkBox.AddChild(t2);
+             }
+             if (SupportsNamedLinkEntry("InputLinks"))
+             {
+                 var addInputButton = CreateAddLinkButton("InputLinks", 3, inY + AddLinkButtonSpacing);
+                 inputLinkBox.AddChild(addInputButton);
+                 inY += addInputButton.Height + AddLinkButtonSpacing;
+                 inW = Math.Max(inW, addInputButton.X + addInputButton.Width);
              }
             inputLinkBox.Pickable = false;
             if (inY > starty) starty = inY;
