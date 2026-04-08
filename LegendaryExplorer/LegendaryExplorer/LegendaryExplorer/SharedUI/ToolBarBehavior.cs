@@ -1,8 +1,11 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace LegendaryExplorer.SharedUI
 {
@@ -23,6 +26,7 @@ namespace LegendaryExplorer.SharedUI
                 if (enable)
                 {
                     toolBar.Loaded += OnToolBarLoaded;
+                    toolBar.SizeChanged += OnToolBarSizeChanged;
                     // If already loaded, apply immediately
                     if (toolBar.IsLoaded)
                     {
@@ -32,6 +36,7 @@ namespace LegendaryExplorer.SharedUI
                 else
                 {
                     toolBar.Loaded -= OnToolBarLoaded;
+                    toolBar.SizeChanged -= OnToolBarSizeChanged;
                 }
             }
         }
@@ -39,6 +44,15 @@ namespace LegendaryExplorer.SharedUI
         private static void OnToolBarLoaded(object sender, RoutedEventArgs e)
         {
             if (sender is ToolBar toolBar)
+            {
+                ApplyOverflowButtonStyle(toolBar);
+                toolBar.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => ApplyOverflowButtonStyle(toolBar)));
+            }
+        }
+
+        private static void OnToolBarSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (sender is ToolBar toolBar && toolBar.IsLoaded)
             {
                 ApplyOverflowButtonStyle(toolBar);
             }
@@ -59,11 +73,24 @@ namespace LegendaryExplorer.SharedUI
                 // Find the ToggleButton inside and style its template elements
                 if (FindChild<ToggleButton>(overflowGrid) is ToggleButton overflowButton)
                 {
-                    // Set the button's background to transparent so the grid's background shows through
-                    overflowButton.Background = Brushes.Transparent;
+                    overflowButton.SetBinding(Control.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                    {
+                        Source = toolBar,
+                        Mode = BindingMode.OneWay
+                    });
+                    overflowButton.SetBinding(Control.BorderBrushProperty, new Binding(nameof(ToolBar.BorderBrush))
+                    {
+                        Source = toolBar,
+                        Mode = BindingMode.OneWay
+                    });
+                    overflowButton.SetBinding(Control.ForegroundProperty, new Binding(nameof(ToolBar.Foreground))
+                    {
+                        Source = toolBar,
+                        Mode = BindingMode.OneWay
+                    });
 
-                    // Find any Border elements inside the button's visual tree and make them transparent
-                    StyleOverflowButtonVisuals(overflowButton);
+                    // Find any template visuals inside the button and bind them to the toolbar theme.
+                    StyleOverflowButtonVisuals(overflowButton, toolBar);
                 }
             }
 
@@ -157,38 +184,82 @@ namespace LegendaryExplorer.SharedUI
         /// <summary>
         /// Makes the overflow button's internal borders transparent so the parent background shows through.
         /// </summary>
-        private static void StyleOverflowButtonVisuals(ToggleButton button)
+        private static void StyleOverflowButtonVisuals(ToggleButton button, ToolBar toolBar)
         {
             // We need to wait for the button's template to be applied
             button.ApplyTemplate();
 
-            // Walk the visual tree and make backgrounds transparent
+            // Walk the visual tree and apply toolbar theme bindings to the template visuals
             int childCount = VisualTreeHelper.GetChildrenCount(button);
             for (int i = 0; i < childCount; i++)
             {
                 var child = VisualTreeHelper.GetChild(button, i);
-                SetTransparentBackgrounds(child);
+                ApplyToolbarTheme(child, toolBar);
             }
         }
 
         /// <summary>
-        /// Recursively sets backgrounds to transparent for Border and Panel elements.
+        /// Recursively applies toolbar background and foreground to the overflow button visuals.
         /// </summary>
-        private static void SetTransparentBackgrounds(DependencyObject element)
+        private static void ApplyToolbarTheme(DependencyObject element, ToolBar toolBar)
         {
             if (element is Border border)
             {
-                border.Background = Brushes.Transparent;
+                border.SetBinding(Border.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+                border.SetBinding(Border.BorderBrushProperty, new Binding(nameof(ToolBar.BorderBrush))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
             }
             else if (element is Panel panel && panel is not ToolBarPanel && panel is not ToolBarOverflowPanel)
             {
-                panel.Background = Brushes.Transparent;
+                panel.SetBinding(Panel.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+            }
+            else if (element is Control control)
+            {
+                control.SetBinding(Control.BackgroundProperty, new Binding(nameof(ToolBar.Background))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+                control.SetBinding(Control.BorderBrushProperty, new Binding(nameof(ToolBar.BorderBrush))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+                control.SetBinding(Control.ForegroundProperty, new Binding(nameof(ToolBar.Foreground))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+            }
+            else if (element is Shape shape)
+            {
+                shape.SetBinding(Shape.FillProperty, new Binding(nameof(ToolBar.Foreground))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
+                shape.SetBinding(Shape.StrokeProperty, new Binding(nameof(ToolBar.Foreground))
+                {
+                    Source = toolBar,
+                    Mode = BindingMode.OneWay
+                });
             }
 
             int childCount = VisualTreeHelper.GetChildrenCount(element);
             for (int i = 0; i < childCount; i++)
             {
-                SetTransparentBackgrounds(VisualTreeHelper.GetChild(element, i));
+                ApplyToolbarTheme(VisualTreeHelper.GetChild(element, i), toolBar);
             }
         }
 
