@@ -1851,6 +1851,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 o.MouseDown += node_MouseDown;
                 o.Click += node_Click;
+                o.DoubleClick += node_DoubleClick;
             }
 
             if (forceAutoLayout || (SavedView.Positions.IsEmpty() && (Pcc.Game is MEGame.ME2 or MEGame.ME3)))
@@ -4703,6 +4704,36 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private void node_DoubleClick(object sender, PInputEventArgs e)
+        {
+            if (e.Button != System.Windows.Forms.MouseButtons.Left || sender is not SObj obj
+                || obj.GlobalFullBounds != obj.PosAtDragStart)
+            {
+                return;
+            }
+
+            if (obj is SVar { Export.ClassName: "SeqVar_Bool" } sVar)
+            {
+                ToggleSeqVarBool(sVar.Export);
+                e.Handled = true;
+            }
+        }
+
+        private void ToggleSeqVarBool(ExportEntry export)
+        {
+            if (export == null)
+            {
+                return;
+            }
+
+            var props = export.GetProperties();
+            var boolProp = props.GetProp<IntProperty>("bValue");
+            int newValue = boolProp?.Value == 1 ? 0 : 1;
+            props.AddOrReplaceProp(new IntProperty(newValue, "bValue"));
+            export.WriteProperties(props);
+            RefreshView();
+        }
+
         private void SequenceEditorWPF_Closing(object sender, CancelEventArgs e)
         {
             if (e.Cancel)
@@ -4726,6 +4757,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 x.MouseDown -= node_MouseDown;
                 x.Click -= node_Click;
+                x.DoubleClick -= node_DoubleClick;
                 x.Dispose();
             });
             CurrentObjects.Clear();
