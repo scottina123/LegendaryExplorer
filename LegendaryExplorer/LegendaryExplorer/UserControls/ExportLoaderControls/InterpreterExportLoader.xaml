@@ -253,6 +253,12 @@
                                             <TextBox MinWidth="80" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_ObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" MouseDoubleClick="InlineObjectDisplay_MouseDoubleClick" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBox Width="60" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
                                         <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <ComboBox MinWidth="140"
@@ -297,6 +303,12 @@
                                             <TextBox MinWidth="80" Text="{Binding LinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_LinkedObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowLinkedObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding LinkedInlineObjectDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" MouseDoubleClick="InlineObjectDisplay_MouseDoubleClick" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBox Width="60" Margin="5,0,0,0" Text="{Binding LinkedInlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
                                         <StackPanel x:Name="PropertyItem_LinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowLinkedNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <ComboBox MinWidth="140"
@@ -337,6 +349,12 @@
                                         <StackPanel x:Name="PropertyItem_SecondLinkedNumericInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowSecondLinkedNumericInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <TextBox MinWidth="80" Text="{Binding SecondLinkedInlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                        </StackPanel>
+                                        <StackPanel x:Name="PropertyItem_SecondLinkedObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                    Visibility="{Binding ShowSecondLinkedObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding SecondLinkedInlineObjectDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" MouseDoubleClick="InlineObjectDisplay_MouseDoubleClick" Style="{StaticResource InlineEditorTextBoxStyle}"/>
+                                            <TextBox Width="60" Margin="5,0,0,0" Text="{Binding SecondLinkedInlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_SecondLinkedNameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
@@ -500,16 +518,25 @@
                             <DataTrigger Binding="{Binding ShowNumericInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowObjectInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding ShowNameInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ShowLinkedNumericInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowLinkedObjectInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding ShowLinkedNameInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ShowSecondLinkedNumericInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowSecondLinkedObjectInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ShowSecondLinkedNameInlineEditor}" Value="True">

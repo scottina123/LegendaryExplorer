@@ -2811,10 +2811,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private bool TryGetObjectPropertyEditorSelection(out int uIndex, out IEntry entry, out object matchedItem, out string errorMessage)
+            => TryGetObjectPropertyEditorSelection(ObjectValueIndexTextBox.Text, out uIndex, out entry, out matchedItem, out errorMessage);
+
+        private bool TryGetObjectPropertyEditorSelection(string objectIndexText, out int uIndex, out IEntry entry, out object matchedItem, out string errorMessage)
         {
             entry = null;
             matchedItem = null;
-            if (!int.TryParse(ObjectValueIndexTextBox.Text, out uIndex))
+            if (!int.TryParse(objectIndexText, out uIndex))
             {
                 errorMessage = "Invalid value";
                 return false;
@@ -2856,36 +2859,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            if (!int.TryParse(ObjectValueIndexTextBox?.Text, out int uIndex))
+            ObjectValueDisplayTextBox.Text = GetObjectPropertyDisplayText(ObjectValueIndexTextBox?.Text);
+        }
+
+        private static void UpdateInlineObjectPropertyDisplayText(UPropertyTreeViewEntry node, string displayText)
+        {
+            if (node != null)
             {
-                ObjectValueDisplayTextBox.Text = "Invalid value";
-                return;
+                node.InlineObjectDisplayValue = displayText;
+            }
+        }
+
+        private string GetObjectPropertyDisplayText(string objectIndexText)
+        {
+            if (!int.TryParse(objectIndexText, out int uIndex))
+            {
+                return "Invalid value";
             }
 
             if (uIndex == 0)
             {
-                ObjectValueDisplayTextBox.Text = "0 Null";
-                return;
+                return "0 Null";
             }
 
             IEntry entry = Pcc?.GetEntry(uIndex);
-            ObjectValueDisplayTextBox.Text = entry == null
+            return entry == null
                 ? "Index out of bounds of entry list"
                 : $"{uIndex} {entry.InstancedFullPath}";
         }
 
         private void PickObjectPropertyValue()
+            => PickObjectPropertyValue(SelectedItem);
+
+        private void PickObjectPropertyValue(UPropertyTreeViewEntry targetNode)
         {
-            if (SelectedItem?.Property is not ObjectProperty || CurrentLoadedExport == null || Pcc == null)
+            if (targetNode?.Property is not ObjectProperty objectProperty || CurrentLoadedExport == null || Pcc == null)
             {
                 return;
             }
+
+            ApplySelectedTreeItem(targetNode);
+            UpdateObjectComboBoxOptions(objectProperty, targetNode);
 
             HashSet<int> allowedEntryUIndexes = [.. CurrentObjectPropertyChoices.OfType<IEntry>().Select(entry => entry.UIndex)];
             var (selectedNull, selectedEntry) = EntrySelector.GetEntryWithNoOption<IEntry>(
                 Window.GetWindow(this),
                 Pcc,
-                $"Select an object reference for {SelectedItem.DisplayName}.",
+                $"Select an object reference for {targetNode.DisplayName}.",
                 predicate: entry => allowedEntryUIndexes.Contains(entry.UIndex),
                 selectLastItemByDefault: true,
                 noOptionLabel: "0 Null");
@@ -2895,7 +2915,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            SetObjectPropertyEditorSelection(selectedNull ? 0 : selectedEntry.UIndex);
+            int selectedIndex = selectedNull ? 0 : selectedEntry.UIndex;
+            if (ReferenceEquals(targetNode, SelectedItem))
+            {
+                SetObjectPropertyEditorSelection(selectedIndex);
+            }
+
+            targetNode.InlineObjectIndexValue = selectedIndex.ToString();
+            UpdateInlineObjectPropertyDisplayText(targetNode, GetObjectPropertyDisplayText(targetNode.InlineObjectIndexValue));
         }
 
         private List<object> MakeAllEntriesList(string onlyOfType = null)
@@ -3601,6 +3628,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(sender as FrameworkElement);
         }
 
+        private void InlineObjectDisplay_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                PickObjectPropertyValue(node);
+                e.Handled = true;
+            }
+        }
+
+        private void InlineObjectIndex_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                UpdateInlineObjectPropertyDisplayText(node, GetObjectPropertyDisplayText(node.InlineObjectIndexValue));
+            }
+        }
+
         private bool TryCommitInlineEditor(FrameworkElement element)
         {
             UPropertyTreeViewEntry node = element?.Tag as UPropertyTreeViewEntry ?? element?.DataContext as UPropertyTreeViewEntry;
@@ -3631,6 +3676,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         fp.Value = floatValue;
                         SyncInterpTrackMovePointTimesForEditedProperty(node, floatValue);
+                        updated = true;
+                    }
+                    break;
+                case ObjectProperty op:
+                    UpdateObjectComboBoxOptions(op, node);
+                    if (!TryGetObjectPropertyEditorSelection(node.InlineObjectIndexValue, out int objectIndex, out var entry, out _, out string errorMessage))
+                    {
+                        MessageBox.Show(errorMessage, "Invalid object reference", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        node.ResetInlineEditorValues();
+                        return false;
+                    }
+
+                    UpdateInlineObjectPropertyDisplayText(node, GetObjectPropertyDisplayText(node.InlineObjectIndexValue));
+                    if (op.Value != objectIndex)
+                    {
+                        op.Value = objectIndex;
+                        SyncLinkedOpAndLinkAction(node, entry);
                         updated = true;
                     }
                     break;
@@ -4570,10 +4632,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(LinkedPropertyType));
                     OnPropertyChanged(nameof(IsLinkedEditorSelected));
                     OnPropertyChanged(nameof(LinkedInlineEditorValue));
+                    OnPropertyChanged(nameof(LinkedInlineObjectDisplayValue));
+                    OnPropertyChanged(nameof(LinkedInlineObjectIndexValue));
                     OnPropertyChanged(nameof(LinkedInlineNameChoices));
                     OnPropertyChanged(nameof(LinkedInlineNameValue));
                     OnPropertyChanged(nameof(LinkedInlineNameIndexValue));
                     OnPropertyChanged(nameof(ShowLinkedNumericInlineEditor));
+                    OnPropertyChanged(nameof(ShowLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedNameInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedEditableTextBlock));
                 }
@@ -4583,7 +4648,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void LinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing)
-                or nameof(InlineEditorValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue) or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor))
+                or nameof(InlineEditorValue) or nameof(InlineObjectDisplayValue) or nameof(InlineObjectIndexValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue)
+                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor))
             {
                 switch (e.PropertyName)
                 {
@@ -4608,6 +4674,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(InlineEditorValue):
                         OnPropertyChanged(nameof(LinkedInlineEditorValue));
                         break;
+                    case nameof(InlineObjectDisplayValue):
+                        OnPropertyChanged(nameof(LinkedInlineObjectDisplayValue));
+                        break;
+                    case nameof(InlineObjectIndexValue):
+                        OnPropertyChanged(nameof(LinkedInlineObjectIndexValue));
+                        break;
                     case nameof(InlineNameValue):
                         OnPropertyChanged(nameof(LinkedInlineNameValue));
                         break;
@@ -4619,6 +4691,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ShowNumericInlineEditor):
                         OnPropertyChanged(nameof(ShowLinkedNumericInlineEditor));
+                        break;
+                    case nameof(ShowObjectInlineEditor):
+                        OnPropertyChanged(nameof(ShowLinkedObjectInlineEditor));
                         break;
                     case nameof(ShowEditableTextBlock):
                         OnPropertyChanged(nameof(ShowLinkedEditableTextBlock));
@@ -4645,6 +4720,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsLinkedEditorSelected => LinkedNode?.IsEditorSelected == true;
         public bool IsLinkedInlineEditable => LinkedNode?.IsInlineEditable == true;
         public bool ShowLinkedNumericInlineEditor => LinkedNode?.ShowNumericInlineEditor == true;
+        public bool ShowLinkedObjectInlineEditor => LinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowLinkedEditableTextBlock => LinkedNode?.ShowEditableTextBlock == true;
         public bool ShowLinkedNameInlineEditor => LinkedNode?.ShowNameInlineEditor == true;
         public IReadOnlyList<IndexedName> LinkedInlineNameChoices => LinkedNode?.InlineNameChoices;
@@ -4656,6 +4732,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (LinkedNode != null)
                 {
                     LinkedNode.InlineEditorValue = value;
+                }
+            }
+        }
+        public string LinkedInlineObjectDisplayValue
+        {
+            get => LinkedNode?.InlineObjectDisplayValue ?? "";
+            set
+            {
+                if (LinkedNode != null)
+                {
+                    LinkedNode.InlineObjectDisplayValue = value;
+                }
+            }
+        }
+        public string LinkedInlineObjectIndexValue
+        {
+            get => LinkedNode?.InlineObjectIndexValue ?? "";
+            set
+            {
+                if (LinkedNode != null)
+                {
+                    LinkedNode.InlineObjectIndexValue = value;
                 }
             }
         }
@@ -4718,10 +4816,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(SecondLinkedPropertyType));
                     OnPropertyChanged(nameof(IsSecondLinkedEditorSelected));
                     OnPropertyChanged(nameof(SecondLinkedInlineEditorValue));
+                    OnPropertyChanged(nameof(SecondLinkedInlineObjectDisplayValue));
+                    OnPropertyChanged(nameof(SecondLinkedInlineObjectIndexValue));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameChoices));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameValue));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameIndexValue));
                     OnPropertyChanged(nameof(ShowSecondLinkedNumericInlineEditor));
+                    OnPropertyChanged(nameof(ShowSecondLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedNameInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedEditableTextBlock));
                 }
@@ -4731,7 +4832,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void SecondLinkedNodeOnPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing)
-                or nameof(InlineEditorValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue) or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor))
+                or nameof(InlineEditorValue) or nameof(InlineObjectDisplayValue) or nameof(InlineObjectIndexValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue)
+                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor))
             {
                 switch (e.PropertyName)
                 {
@@ -4756,6 +4858,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(InlineEditorValue):
                         OnPropertyChanged(nameof(SecondLinkedInlineEditorValue));
                         break;
+                    case nameof(InlineObjectDisplayValue):
+                        OnPropertyChanged(nameof(SecondLinkedInlineObjectDisplayValue));
+                        break;
+                    case nameof(InlineObjectIndexValue):
+                        OnPropertyChanged(nameof(SecondLinkedInlineObjectIndexValue));
+                        break;
                     case nameof(InlineNameValue):
                         OnPropertyChanged(nameof(SecondLinkedInlineNameValue));
                         break;
@@ -4767,6 +4875,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ShowNumericInlineEditor):
                         OnPropertyChanged(nameof(ShowSecondLinkedNumericInlineEditor));
+                        break;
+                    case nameof(ShowObjectInlineEditor):
+                        OnPropertyChanged(nameof(ShowSecondLinkedObjectInlineEditor));
                         break;
                     case nameof(ShowEditableTextBlock):
                         OnPropertyChanged(nameof(ShowSecondLinkedEditableTextBlock));
@@ -4793,6 +4904,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsSecondLinkedEditorSelected => SecondLinkedNode?.IsEditorSelected == true;
         public bool IsSecondLinkedInlineEditable => SecondLinkedNode?.IsInlineEditable == true;
         public bool ShowSecondLinkedNumericInlineEditor => SecondLinkedNode?.ShowNumericInlineEditor == true;
+        public bool ShowSecondLinkedObjectInlineEditor => SecondLinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowSecondLinkedEditableTextBlock => SecondLinkedNode?.ShowEditableTextBlock == true;
         public bool ShowSecondLinkedNameInlineEditor => SecondLinkedNode?.ShowNameInlineEditor == true;
         public IReadOnlyList<IndexedName> SecondLinkedInlineNameChoices => SecondLinkedNode?.InlineNameChoices;
@@ -4804,6 +4916,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (SecondLinkedNode != null)
                 {
                     SecondLinkedNode.InlineEditorValue = value;
+                }
+            }
+        }
+        public string SecondLinkedInlineObjectDisplayValue
+        {
+            get => SecondLinkedNode?.InlineObjectDisplayValue ?? "";
+            set
+            {
+                if (SecondLinkedNode != null)
+                {
+                    SecondLinkedNode.InlineObjectDisplayValue = value;
+                }
+            }
+        }
+        public string SecondLinkedInlineObjectIndexValue
+        {
+            get => SecondLinkedNode?.InlineObjectIndexValue ?? "";
+            set
+            {
+                if (SecondLinkedNode != null)
+                {
+                    SecondLinkedNode.InlineObjectIndexValue = value;
                 }
             }
         }
@@ -4890,10 +5024,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool IsRotatorIntProperty => Property is IntProperty && UPParent?.Property is StructProperty { StructType: "Rotator" };
         private bool IsNameProperty => Property is NameProperty;
+        private bool IsObjectProperty => Property is ObjectProperty;
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or NameProperty;
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty;
-        public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor);
+        public bool ShowObjectInlineEditor => IsObjectProperty;
+        public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
 
         /// <summary>
@@ -4985,6 +5121,40 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _inlineEditorValue, value);
         }
 
+        private string _inlineObjectDisplayValue;
+        public string InlineObjectDisplayValue
+        {
+            get
+            {
+                if (_inlineObjectDisplayValue != null)
+                {
+                    return _inlineObjectDisplayValue;
+                }
+
+                if (Property is not ObjectProperty objectProperty || AttachedExport?.FileRef is not IMEPackage package)
+                {
+                    return "";
+                }
+
+                if (objectProperty.Value == 0)
+                {
+                    return "0 Null";
+                }
+
+                return package.GetEntry(objectProperty.Value) is IEntry entry
+                    ? $"{objectProperty.Value} {entry.InstancedFullPath}"
+                    : "Index out of bounds of entry list";
+            }
+            set => SetProperty(ref _inlineObjectDisplayValue, value);
+        }
+
+        private string _inlineObjectIndexValue;
+        public string InlineObjectIndexValue
+        {
+            get => _inlineObjectIndexValue ?? ((Property as ObjectProperty)?.Value.ToString() ?? "0");
+            set => SetProperty(ref _inlineObjectIndexValue, value);
+        }
+
         private string _inlineNameValue;
         public string InlineNameValue
         {
@@ -5009,6 +5179,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 _ => _inlineEditorValue
             };
             OnPropertyChanged(nameof(InlineEditorValue));
+
+            if (Property is ObjectProperty objectProperty)
+            {
+                _inlineObjectIndexValue = objectProperty.Value.ToString();
+                _inlineObjectDisplayValue = null;
+                OnPropertyChanged(nameof(InlineObjectIndexValue));
+                OnPropertyChanged(nameof(InlineObjectDisplayValue));
+            }
 
             if (Property is not NameProperty nameProperty)
             {
