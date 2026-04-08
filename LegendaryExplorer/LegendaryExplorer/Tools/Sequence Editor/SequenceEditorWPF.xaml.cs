@@ -45,6 +45,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using Color = System.Drawing.Color;
 using Image = System.Drawing.Image;
@@ -1900,6 +1901,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (obj is SBox box)
             {
                 box.AddLinkEntryRequested = PromptAndAddNamedLinkEntryFromGraph;
+                box.EditLinkEntryRequested = PromptAndEditNamedLinkEntryFromGraph;
+                box.RemoveLinkEntryRequested = PromptAndRemoveNamedLinkEntryFromGraph;
             }
 
             return obj;
@@ -1939,6 +1942,45 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 LoadFileFromStream(fStream, fileOnDisk, selectedIndex);
                 Title += " (NOT SHARED WITH OTHER WINDOWS)";
             }
+        }
+
+        private void PromptAndRemoveNamedLinkEntryFromGraph(ExportEntry export, string propertyName, int linkIndex)
+        {
+            if (export == null)
+            {
+                return;
+            }
+
+            if (CurrentObjects.FirstOrDefault(obj => obj.Export == export) is SObj graphObject)
+            {
+                panToSelection = false;
+                CurrentObjects_ListBox.SelectedItems.Clear();
+                CurrentObjects_ListBox.SelectedItem = graphObject;
+            }
+
+            string linkKind = propertyName switch
+            {
+                "VariableLinks" => "variable",
+                "InputLinks" => "input",
+                "OutputLinks" => "output",
+                _ => "link"
+            };
+
+            var contextMenu = new ContextMenu
+            {
+                Placement = PlacementMode.MousePoint,
+                PlacementTarget = this
+            };
+            var removeMenuItem = new MenuItem
+            {
+                Header = $"Remove {linkKind} entry"
+            };
+            removeMenuItem.Click += (_, _) =>
+            {
+                RemoveNamedLinkEntry(export, propertyName, linkIndex);
+            };
+            contextMenu.Items.Add(removeMenuItem);
+            contextMenu.IsOpen = true;
         }
 
         public void Layout()
@@ -2834,6 +2876,504 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 defaultValue = result;
             }
+        }
+
+        private record VariableLinkEditDialogResult(string EntryName, string ExpectedTypeName);
+        private record ActionLinkEditDialogResult(string EntryName, ExportEntry LinkedOp, string LinkActionName, int LinkActionNumber);
+
+        private void PromptAndEditNamedLinkEntryFromGraph(ExportEntry export, string propertyName, int linkIndex)
+        {
+            if (export == null)
+            {
+                return;
+            }
+
+            if (CurrentObjects.FirstOrDefault(obj => obj.Export == export) is SObj graphObject)
+            {
+                panToSelection = false;
+                CurrentObjects_ListBox.SelectedItems.Clear();
+                CurrentObjects_ListBox.SelectedItem = graphObject;
+            }
+
+            switch (propertyName)
+            {
+                case "VariableLinks":
+                    EditVariableLinkEntry(export, linkIndex);
+                    break;
+                case "InputLinks":
+                case "OutputLinks":
+                    EditInputOrOutputLinkEntry(export, propertyName, linkIndex);
+                    break;
+            }
+        }
+
+        private void EditVariableLinkEntry(ExportEntry export, int linkIndex)
+        {
+            if (!TryGetEditableNamedLinkStruct(export, "VariableLinks", linkIndex, out var variableLinks, out var variableLink))
+            {
+                MessageBox.Show(this, "This variable link cannot be edited.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string currentName = variableLink.GetProp<StrProperty>("LinkDesc")?.Value ?? "Variable";
+            string currentTypeName = variableLink.GetProp<ObjectProperty>("ExpectedType")?.ResolveToEntry(Pcc)?.ObjectName.Name
+                                     ?? "SeqVar_Object";
+
+            if (ShowVariableLinkEditDialog(currentName, currentTypeName) is { } result)
+            {
+                variableLink.Properties.AddOrReplaceProp(new StrProperty(result.EntryName, "LinkDesc"));
+
+                var rop = new RelinkerOptionsPackage();
+                if (EntryImporter.EnsureClassIsInFile(Pcc, result.ExpectedTypeName, rop) is IEntry expectedType)
+                {
+                    variableLink.Properties.AddOrReplaceProp(new ObjectProperty(expectedType, "ExpectedType"));
+                }
+
+                export.WriteProperty(variableLinks);
+                RefreshView();
+                EntryImporterExtended.ShowRelinkResultsIfAny(rop);
+            }
+        }
+
+        private void EditInputOrOutputLinkEntry(ExportEntry export, string propertyName, int linkIndex)
+        {
+            if (!TryGetEditableNamedLinkStruct(export, propertyName, linkIndex, out var linkArray, out var linkStruct))
+            {
+                MessageBox.Show(this, "This link cannot be edited.", "Sequence Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string linkKind = propertyName == "InputLinks" ? "input" : "output";
+            string currentName = linkStruct.GetProp<StrProperty>("LinkDesc")?.Value
+                                 ?? (propertyName == "InputLinks" ? "In" : "Out");
+            var currentLinkedOp = linkStruct.GetProp<ObjectProperty>("LinkedOp")?.ResolveToEntry(Pcc) as ExportEntry;
+            NameReference currentAction = linkStruct.GetProp<NameProperty>("LinkAction")?.Value ?? new NameReference("None");
+
+            if (ShowActionLinkEditDialog(linkKind, currentName, currentLinkedOp, currentAction) is { } result)
+            {
+                linkStruct.Properties.AddOrReplaceProp(new StrProperty(result.EntryName, "LinkDesc"));
+                linkStruct.Properties.AddOrReplaceProp(new ObjectProperty(result.LinkedOp, "LinkedOp"));
+                linkStruct.Properties.AddOrReplaceProp(new NameProperty(
+                    new NameReference(result.LinkActionName, result.LinkActionNumber), "LinkAction"));
+                export.WriteProperty(linkArray);
+                RefreshView();
+            }
+        }
+
+        private VariableLinkEditDialogResult ShowVariableLinkEditDialog(string currentName, string currentTypeName)
+        {
+            var classOptions = GlobalUnrealObjectInfo.GetClasses(Pcc.Game).Values
+                .Where(x => x.IsA("SequenceVariable", Pcc.Game))
+                .OrderBy(x => x.ClassName)
+                .ToList();
+
+            ClassInfo selectedType = classOptions.FirstOrDefault(x => x.ClassName == currentTypeName)
+                                     ?? classOptions.FirstOrDefault(x => x.ClassName == "SeqVar_Object")
+                                     ?? classOptions.FirstOrDefault();
+
+            var nameTextBox = new TextBox
+            {
+                MinWidth = 260,
+                Text = currentName
+            };
+            var typeTextBox = new TextBox
+            {
+                MinWidth = 180,
+                Text = selectedType?.ClassName ?? string.Empty,
+                IsReadOnly = true
+            };
+            var pickTypeButton = new Button
+            {
+                Content = "Pick...",
+                MinWidth = 72,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 80,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            System.Windows.Window dialog = null;
+            dialog = new System.Windows.Window
+            {
+                Title = "Edit variable link",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(12),
+                    Children =
+                    {
+                        new TextBlock { Text = "Label" },
+                        nameTextBox,
+                        new TextBlock
+                        {
+                            Margin = new Thickness(0, 10, 0, 0),
+                            Text = "Expected type"
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Children =
+                            {
+                                typeTextBox,
+                                pickTypeButton
+                            }
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Margin = new Thickness(0, 12, 0, 0),
+                            Children =
+                            {
+                                okButton,
+                                new Button
+                                {
+                                    Content = "Cancel",
+                                    IsCancel = true,
+                                    MinWidth = 80
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            void UpdateOkState()
+            {
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text) && selectedType != null;
+            }
+
+            nameTextBox.TextChanged += (_, _) => UpdateOkState();
+            pickTypeButton.Click += (_, _) =>
+            {
+                if (ClassPickerDlg.GetClass(dialog, classOptions, "Select datatype", "Select") is not { } chosenClass)
+                {
+                    return;
+                }
+
+                selectedType = chosenClass;
+                typeTextBox.Text = chosenClass.ClassName;
+                UpdateOkState();
+            };
+            typeTextBox.MouseDoubleClick += (_, _) => pickTypeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            dialog.Loaded += (_, _) =>
+            {
+                nameTextBox.Focus();
+                nameTextBox.SelectAll();
+                UpdateOkState();
+            };
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            return dialog.ShowDialog() == true
+                ? new VariableLinkEditDialogResult(nameTextBox.Text.Trim(), selectedType?.ClassName ?? "SeqVar_Object")
+                : null;
+        }
+
+        private ActionLinkEditDialogResult ShowActionLinkEditDialog(string linkKind, string currentName,
+            ExportEntry currentLinkedOp, NameReference currentAction)
+        {
+            var nameTextBox = new TextBox
+            {
+                MinWidth = 260,
+                Text = currentName
+            };
+            ExportEntry selectedLinkedOp = currentLinkedOp;
+            var linkedOpTextBox = new TextBox
+            {
+                MinWidth = 260,
+                Text = currentLinkedOp?.InstancedFullPath ?? string.Empty,
+                IsReadOnly = true
+            };
+            var pickLinkedOpButton = new Button
+            {
+                Content = "Pick...",
+                MinWidth = 72,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            var clearLinkedOpButton = new Button
+            {
+                Content = "Clear",
+                MinWidth = 72,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            var linkActionTextBox = new TextBox
+            {
+                MinWidth = 200,
+                Text = currentAction.Name == "None" ? string.Empty : currentAction.Name
+            };
+            var linkActionNumberTextBox = new TextBox
+            {
+                MinWidth = 52,
+                Width = 52,
+                Margin = new Thickness(8, 0, 0, 0),
+                Text = currentAction.Number.ToString()
+            };
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 80,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            System.Windows.Window dialog = null;
+            dialog = new System.Windows.Window
+            {
+                Title = $"Edit {linkKind} link",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(12),
+                    Children =
+                    {
+                        new TextBlock { Text = "Label" },
+                        nameTextBox,
+                        new TextBlock
+                        {
+                            Margin = new Thickness(0, 10, 0, 0),
+                            Text = "Linked op"
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Children =
+                            {
+                                linkedOpTextBox,
+                                pickLinkedOpButton,
+                                clearLinkedOpButton
+                            }
+                        },
+                        new TextBlock
+                        {
+                            Margin = new Thickness(0, 10, 0, 0),
+                            Text = "Link action"
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Children =
+                            {
+                                linkActionTextBox,
+                                linkActionNumberTextBox
+                            }
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Margin = new Thickness(0, 12, 0, 0),
+                            Children =
+                            {
+                                okButton,
+                                new Button
+                                {
+                                    Content = "Cancel",
+                                    IsCancel = true,
+                                    MinWidth = 80
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            void UpdateOkState()
+            {
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text)
+                    && int.TryParse(linkActionNumberTextBox.Text, out int number)
+                    && number >= 0;
+            }
+
+            void RefreshLinkedOpText()
+            {
+                linkedOpTextBox.Text = selectedLinkedOp?.InstancedFullPath ?? string.Empty;
+            }
+
+            void SyncLinkActionToLinkedOp()
+            {
+                if (selectedLinkedOp != null)
+                {
+                    linkActionTextBox.Text = selectedLinkedOp.ObjectName.Name;
+                    linkActionNumberTextBox.Text = selectedLinkedOp.ObjectName.Number.ToString();
+                }
+                else
+                {
+                    linkActionTextBox.Text = string.Empty;
+                    linkActionNumberTextBox.Text = "0";
+                }
+            }
+
+            nameTextBox.TextChanged += (_, _) => UpdateOkState();
+            linkActionTextBox.TextChanged += (_, _) => UpdateOkState();
+            linkActionNumberTextBox.TextChanged += (_, _) => UpdateOkState();
+            pickLinkedOpButton.Click += (_, _) =>
+            {
+                if (EntrySelector.GetEntry<ExportEntry>(dialog, Pcc, $"Select linked op for {linkKind} link",
+                        exp => exp.IsA("Sequence") || exp.IsA("SequenceObject"), selectedLinkedOp) is not { } linkedOp)
+                {
+                    return;
+                }
+
+                selectedLinkedOp = linkedOp;
+                RefreshLinkedOpText();
+                SyncLinkActionToLinkedOp();
+            };
+            clearLinkedOpButton.Click += (_, _) =>
+            {
+                selectedLinkedOp = null;
+                RefreshLinkedOpText();
+                SyncLinkActionToLinkedOp();
+            };
+            dialog.Loaded += (_, _) =>
+            {
+                nameTextBox.Focus();
+                nameTextBox.SelectAll();
+                UpdateOkState();
+                RefreshLinkedOpText();
+            };
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            if (selectedLinkedOp != null && string.IsNullOrWhiteSpace(linkActionTextBox.Text))
+            {
+                SyncLinkActionToLinkedOp();
+            }
+
+            return dialog.ShowDialog() == true
+                ? new ActionLinkEditDialogResult(
+                    nameTextBox.Text.Trim(),
+                    selectedLinkedOp,
+                    string.IsNullOrWhiteSpace(linkActionTextBox.Text) ? "None" : linkActionTextBox.Text.Trim(),
+                    int.TryParse(linkActionNumberTextBox.Text, out int number) && number >= 0 ? number : 0)
+                : null;
+        }
+
+        private bool TryGetEditableNamedLinkStruct(ExportEntry export, string propertyName, int linkIndex,
+            out ArrayProperty<StructProperty> linkArray, out StructProperty linkStruct)
+        {
+            linkArray = GetOrCreateEditableNamedLinkArray(export, propertyName);
+            if (linkArray != null && linkIndex >= 0 && linkIndex < linkArray.Count)
+            {
+                linkStruct = linkArray[linkIndex];
+                return true;
+            }
+
+            linkStruct = null;
+            return false;
+        }
+
+        private ArrayProperty<StructProperty> GetOrCreateEditableNamedLinkArray(ExportEntry export, string propertyName)
+        {
+            if (export == null)
+            {
+                return null;
+            }
+
+            var props = export.GetProperties();
+            var linkArray = props.GetProp<ArrayProperty<StructProperty>>(propertyName);
+            if (linkArray != null)
+            {
+                return linkArray;
+            }
+
+            using var packageCache = new PackageCache { AlwaysOpenFromDisk = false };
+            packageCache.InsertIntoCache(Pcc);
+            var defaults = SequenceObjectCreator.GetSequenceObjectDefaults(Pcc, export.ClassName, Pcc.Game, packageCache);
+            packageCache.RemoveFromCache(Pcc);
+
+            linkArray = defaults?.GetProp<ArrayProperty<StructProperty>>(propertyName);
+            if (linkArray == null)
+            {
+                return null;
+            }
+
+            props.AddOrReplaceProp(linkArray);
+            export.WriteProperties(props);
+            return export.GetProperty<ArrayProperty<StructProperty>>(propertyName);
+        }
+
+        private void RemoveNamedLinkEntry(ExportEntry export, string propertyName, int linkIndex)
+        {
+            var linkArray = export.GetProperty<ArrayProperty<StructProperty>>(propertyName);
+            if (linkArray == null || linkIndex < 0 || linkIndex >= linkArray.Count)
+            {
+                return;
+            }
+
+            switch (propertyName)
+            {
+                case "InputLinks":
+                    RemoveInputLinkEntry(export, linkArray, linkIndex);
+                    break;
+                case "OutputLinks":
+                case "VariableLinks":
+                    linkArray.RemoveAt(linkIndex);
+                    export.WriteProperty(linkArray);
+                    RefreshView();
+                    break;
+            }
+        }
+
+        private void RemoveInputLinkEntry(ExportEntry export, ArrayProperty<StructProperty> inputLinks, int removedIndex)
+        {
+            foreach (var sequenceObject in Pcc.Exports.Where(exp => exp.GetProperty<ArrayProperty<StructProperty>>("OutputLinks") != null))
+            {
+                var outputLinks = sequenceObject.GetProperty<ArrayProperty<StructProperty>>("OutputLinks");
+                bool modified = false;
+                foreach (var outputLink in outputLinks)
+                {
+                    var links = outputLink.GetProp<ArrayProperty<StructProperty>>("Links");
+                    if (links == null)
+                    {
+                        continue;
+                    }
+
+                    for (int i = links.Count - 1; i >= 0; i--)
+                    {
+                        var linkedOp = links[i].GetProp<ObjectProperty>("LinkedOp");
+                        var inputLinkIdx = links[i].GetProp<IntProperty>("InputLinkIdx");
+                        if (linkedOp?.Value != export.UIndex || inputLinkIdx == null)
+                        {
+                            continue;
+                        }
+
+                        if (inputLinkIdx.Value == removedIndex)
+                        {
+                            links.RemoveAt(i);
+                            modified = true;
+                        }
+                        else if (inputLinkIdx.Value > removedIndex)
+                        {
+                            inputLinkIdx.Value--;
+                            modified = true;
+                        }
+                    }
+                }
+
+                if (modified)
+                {
+                    sequenceObject.WriteProperty(outputLinks);
+                }
+            }
+
+            inputLinks.RemoveAt(removedIndex);
+            export.WriteProperty(inputLinks);
+            RefreshView();
         }
 
         private void PromptAndAddNamedLinkEntry(ExportEntry export, string propertyName, string entryType, string defaultName)

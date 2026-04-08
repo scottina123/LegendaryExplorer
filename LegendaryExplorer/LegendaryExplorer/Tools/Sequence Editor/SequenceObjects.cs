@@ -862,6 +862,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         protected PPath VarLinkBox;
         protected PPath OutLinkBox;
         public Action<ExportEntry, string> AddLinkEntryRequested;
+        public Action<ExportEntry, string, int> EditLinkEntryRequested;
+        public Action<ExportEntry, string, int> RemoveLinkEntryRequested;
         public readonly List<OutputLink> Outlinks = new();
         public readonly List<VarLink> Varlinks = new();
         public readonly List<EventLink> EventLinks = new();
@@ -1008,6 +1010,26 @@ namespace LegendaryExplorer.Tools.SequenceObjects
             return button;
         }
 
+        protected void AttachEditLinkHandler(PNode node, string propertyName, int linkIndex)
+        {
+            if (node == null || export.IsA("SFXSceneShopNode"))
+            {
+                return;
+            }
+
+            node.AddInputEventListener(new EditLinkButtonHandler(this, propertyName, linkIndex));
+        }
+
+        protected void AttachRemoveLinkHandler(PNode node, string propertyName, int linkIndex)
+        {
+            if (node == null || export.IsA("SFXSceneShopNode"))
+            {
+                return;
+            }
+
+            node.AddInputEventListener(new RemoveLinkButtonHandler(this, propertyName, linkIndex));
+        }
+
         protected void GetVarLinks(PropertyCollection properties)
         {
             var varLinksProp = properties.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
@@ -1056,6 +1078,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(varDragHandler);
+                        AttachEditLinkHandler(dragger, "VariableLinks", Varlinks.Count);
+                        AttachRemoveLinkHandler(dragger, "VariableLinks", Varlinks.Count);
                         l.Node.AddChild(dragger);
                         Varlinks.Add(l);
                     }
@@ -1167,6 +1191,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(outputDragHandler);
+                        AttachEditLinkHandler(dragger, "OutputLinks", Outlinks.Count);
+                        AttachRemoveLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         l.Node.AddChild(dragger);
                         Outlinks.Add(l);
                     }
@@ -1208,6 +1234,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                         dragger.Brush = MostlyTransparentBrush;
                         dragger.SetBounds(l.Node.X, l.Node.Y, dragger.Width, dragger.Height);
                         dragger.AddInputEventListener(outputDragHandler);
+                        AttachEditLinkHandler(dragger, "OutputLinks", Outlinks.Count);
+                        AttachRemoveLinkHandler(dragger, "OutputLinks", Outlinks.Count);
                         l.Node.AddChild(dragger);
                         Outlinks.Add(l);
                     }
@@ -1269,6 +1297,52 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 {
                     CreateOutlink(((PPath)sender).Parent, DragTarget);
                     DragTarget = null;
+                }
+            }
+        }
+
+        private sealed class RemoveLinkButtonHandler : PBasicInputEventHandler
+        {
+            private readonly SBox owner;
+            private readonly string propertyName;
+            private readonly int linkIndex;
+
+            public RemoveLinkButtonHandler(SBox owner, string propertyName, int linkIndex)
+            {
+                this.owner = owner;
+                this.propertyName = propertyName;
+                this.linkIndex = linkIndex;
+            }
+
+            public override void OnMouseDown(object sender, PInputEventArgs e)
+            {
+                if (e.Button == MouseButtons.Right)
+                {
+                    e.Handled = true;
+                    owner.RemoveLinkEntryRequested?.Invoke(owner.export, propertyName, linkIndex);
+                }
+            }
+        }
+
+        private sealed class EditLinkButtonHandler : PBasicInputEventHandler
+        {
+            private readonly SBox owner;
+            private readonly string propertyName;
+            private readonly int linkIndex;
+
+            public EditLinkButtonHandler(SBox owner, string propertyName, int linkIndex)
+            {
+                this.owner = owner;
+                this.propertyName = propertyName;
+                this.linkIndex = linkIndex;
+            }
+
+            public override void OnDoubleClick(object sender, PInputEventArgs e)
+            {
+                e.Handled = true;
+                if (e.Button == MouseButtons.Left)
+                {
+                    owner.EditLinkEntryRequested?.Invoke(owner.export, propertyName, linkIndex);
                 }
             }
         }
@@ -2057,6 +2131,8 @@ namespace LegendaryExplorer.Tools.SequenceObjects
                 l.Node.MouseEnter += OnMouseEnter;
                 l.Node.MouseLeave += OnMouseLeave;
                 l.Node.AddInputEventListener(inputDragHandler);
+                AttachEditLinkHandler(l.Node, "InputLinks", idx);
+                AttachRemoveLinkHandler(l.Node, "InputLinks", idx);
                 InLinks.Add(l);
             }
 
@@ -2128,7 +2204,7 @@ namespace LegendaryExplorer.Tools.SequenceObjects
         {
             public override bool DoesAcceptEvent(PInputEventArgs e)
             {
-                return e.IsMouseEvent && (e.Button != MouseButtons.None || e.IsMouseEnterOrMouseLeave) && !e.Handled;
+                return (e.IsMouseEnterOrMouseLeave || (e.IsMouseEvent && e.Button == MouseButtons.Left)) && !e.Handled;
             }
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
