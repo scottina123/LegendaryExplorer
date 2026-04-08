@@ -100,12 +100,14 @@
     </UserControl.Resources>
     <DockPanel Name="InterpreterWPF_DockPanel">
         <WrapPanel DockPanel.Dock="Top" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                     SharedUI:ToolBarBehavior.RemoveOverflowButtonWhiteBackground="True">
                 <Button Name="SaveHexChange_Button" ToolTip="Commit hex changes to the export" Content="Save Hex Changes" Command="{Binding SaveHexChangesCommand}"
                     Foreground="{Binding HasUnsavedChanges, Converter={StaticResource UnsavedChangesForegroundConverter}}"/>
                 <Button Name="ToggleHexbox_Button" ToolTip="Toggle Hexbox" Command="{Binding ToggleHexBoxCommand}">
                     <fa:ImageAwesome Icon="Solid_Microchip" Height="16" Width="16" Foreground="CornflowerBlue"/>
                 </Button>
+                <Button Name="ToggleTopSelector_Button" ToolTip="Toggle top selector" Command="{Binding ToggleTopSelectorCommand}" Content="Selector" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                 <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Button Content="Add Property" ToolTip="Add a property from this class or a superclass to this object" Command="{Binding AddPropertyCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
@@ -142,7 +144,8 @@
                     Command="{Binding MoveArrayElementToBottomCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                     Content="⇓"/>
             </ToolBar>
-            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+            <ToolBar x:Name="TopSelector_ToolBar" ToolBarTray.IsLocked="True" OverflowMode="Never" Band="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                     SharedUI:ToolBarBehavior.RemoveOverflowButtonWhiteBackground="True">
                 <TextBox Width="80" Name="Value_TextBox" VerticalAlignment="Center" ToolTip="Value for this property" KeyDown="ValueTextBox_KeyDown" TextChanged="Value_TextBox_TextChanged" 
                      IsEnabled="{Binding CurrentLoadedExport, Converter={StaticResource NullEnabledConverter}}" Margin="0" ToolBar.OverflowMode="Never"
                      Style="{DynamicResource {x:Static ToolBar.TextBoxStyleKey}}"/>
@@ -283,7 +286,8 @@
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                        <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
+                                                   Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
                                     </StackPanel>
@@ -333,7 +337,8 @@
                                             <TextBox Width="40" Text="{Binding LinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                        <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
+                                                   Visibility="{Binding ShowLinkedParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Grid.Column="2" Grid.Row="1" x:Name="PropertyItem_LinkedDisplayType" FontSize="10" Text="{Binding LinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"
@@ -381,7 +386,8 @@
                                             <TextBox Width="40" Text="{Binding SecondLinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"/>
+                                        <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
+                                                   Visibility="{Binding ShowSecondLinkedParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Grid.Column="4" Grid.Row="1" x:Name="PropertyItem_SecondLinkedDisplayType" FontSize="10" Text="{Binding SecondLinkedPropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"

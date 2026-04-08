@@ -372,6 +372,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _interpreter_showlinearcolorwheel;
             set => SetProperty(ref _interpreter_showlinearcolorwheel, value);
         }
+        private static bool _interpreter_hidetopselector = false;
+        public static bool Interpreter_HideTopSelector {
+            get => _interpreter_hidetopselector;
+            set => SetProperty(ref _interpreter_hidetopselector, value);
+        }
         private static bool _soundpanel_loopaudio = false;
         public static bool Soundpanel_LoopAudio {
             get => _soundpanel_loopaudio;
@@ -624,6 +629,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Interpreter_AdvancedDisplay = TryGetSetting(settingsJson, "interpreter_advanceddisplay", true);
             Interpreter_Colorize = TryGetSetting(settingsJson, "interpreter_colorize", true);
             Interpreter_ShowLinearColorWheel = TryGetSetting(settingsJson, "interpreter_showlinearcolorwheel", false);
+            Interpreter_HideTopSelector = TryGetSetting(settingsJson, "interpreter_hidetopselector", false);
             Soundpanel_LoopAudio = TryGetSetting(settingsJson, "soundpanel_loopaudio", false);
             Wwise_3773Path = TryGetSetting(settingsJson, "wwise_3773path", "");
             Wwise_7110Path = TryGetSetting(settingsJson, "wwise_7110path", "");
@@ -733,6 +739,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["interpreter_advanceddisplay"] = Interpreter_AdvancedDisplay.ToString();
             settingsJson["interpreter_colorize"] = Interpreter_Colorize.ToString();
             settingsJson["interpreter_showlinearcolorwheel"] = Interpreter_ShowLinearColorWheel.ToString();
+            settingsJson["interpreter_hidetopselector"] = Interpreter_HideTopSelector.ToString();
             settingsJson["soundpanel_loopaudio"] = Soundpanel_LoopAudio.ToString();
             settingsJson["wwise_3773path"] = Wwise_3773Path.ToString();
             settingsJson["wwise_7110path"] = Wwise_7110Path.ToString();

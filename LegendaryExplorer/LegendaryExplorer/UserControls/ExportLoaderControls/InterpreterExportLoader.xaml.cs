@@ -87,6 +87,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly DependencyProperty HideHexBoxProperty = DependencyProperty.Register(
             nameof(HideHexBox), typeof(bool), typeof(InterpreterExportLoader), new PropertyMetadata(false, DisableHexBoxChangedCallback));
 
+        public bool HideTopSelector
+        {
+            get => (bool)GetValue(HideTopSelectorProperty);
+            set => SetValue(HideTopSelectorProperty, value);
+        }
+        public static readonly DependencyProperty HideTopSelectorProperty = DependencyProperty.Register(
+            nameof(HideTopSelector), typeof(bool), typeof(InterpreterExportLoader), new PropertyMetadata(false, HideTopSelectorChangedCallback));
+
         public bool ForceSimpleMode
         {
             get => (bool)GetValue(ForceSimpleModeProperty);
@@ -177,6 +185,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             LoadCommands();
             InitializeComponent();
+            HideTopSelector = Settings.Interpreter_HideTopSelector;
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
             EditorSetElements.Add(ObjectValueDisplayTextBox); // Object selector display
@@ -197,6 +206,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 OnPropertyChanged(nameof(AdvancedView));
                 OnPropertyChanged(nameof(ShowPropOffsets));
+            }
+            else if (e.PropertyName == nameof(Settings.Interpreter_HideTopSelector))
+            {
+                HideTopSelector = Settings.Interpreter_HideTopSelector;
             }
             else if (e.PropertyName == nameof(Settings.Global_UseOwnerFriendlyNames) && CurrentLoadedExport != null)
             {
@@ -231,6 +244,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 i.HexboxColumnDefinition.bind(ColumnDefinition.MaxWidthProperty, i, nameof(HexBoxMaxWidth));
             }
             i.OnPropertyChanged(nameof(ShowPropOffsets));
+        }
+
+        private static void HideTopSelectorChangedCallback(DependencyObject obj, DependencyPropertyChangedEventArgs e)
+        {
+            var i = (InterpreterExportLoader)obj;
+            if (i.TopSelector_ToolBar != null)
+            {
+                i.TopSelector_ToolBar.Visibility = (bool)e.NewValue ? Visibility.Collapsed : Visibility.Visible;
+            }
         }
 
         private static void SubstituteImageForHexBoxChangedCallback(DependencyObject obj, DependencyPropertyChangedEventArgs e)
@@ -283,6 +305,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand MoveArrayElementToBottomCommand { get; set; }
         public ICommand SaveHexChangesCommand { get; set; }
         public ICommand ToggleHexBoxCommand { get; set; }
+        public ICommand ToggleTopSelectorCommand { get; set; }
         public ICommand AddArrayElementCommand { get; set; }
         public ICommand AddMultipleArrayElementsCommand { get; set; }
         public ICommand RemoveArrayElementCommand { get; set; }
@@ -319,6 +342,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             SaveHexChangesCommand = new GenericCommand(Interpreter_SaveHexChanges, IsExportLoaded);
             ToggleHexBoxCommand = new GenericCommand(ToggleHexbox);
+            ToggleTopSelectorCommand = new GenericCommand(ToggleTopSelector);
             AddArrayElementCommand = new GenericCommand(AddArrayElement, CanAddArrayElement);
             AddMultipleArrayElementsCommand = new GenericCommand(AddMultipleArrayElements, CanAddArrayElement);
             RemoveArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
@@ -2545,6 +2569,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        public void ToggleTopSelector()
+        {
+            Settings.Interpreter_HideTopSelector = HideTopSelector = !HideTopSelector;
+        }
+
         private void Interpreter_TreeViewSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             // This runs in a delegate due to how multithread bubble-up items work with treeview.
@@ -2598,7 +2627,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         SupportedEditorSetElements.Add(ObjectValueDisplayTextBox);
                         SupportedEditorSetElements.Add(ObjectValuePickButton);
                         SupportedEditorSetElements.Add(ObjectValueIndexTextBox);
-                        SupportedEditorSetElements.Add(ParsedValue_TextBlock);
 
                         // This is old implementation: Switched over in nightly 07/23/2023
                         /*
@@ -4667,6 +4695,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(ShowLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedNameInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedEditableTextBlock));
+                    OnPropertyChanged(nameof(ShowLinkedParsedValue));
                 }
             }
         }
@@ -4687,6 +4716,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ParsedValue):
                         OnPropertyChanged(nameof(LinkedParsedValue));
+                        OnPropertyChanged(nameof(ShowLinkedParsedValue));
                         break;
                     case nameof(PropertyType):
                         OnPropertyChanged(nameof(LinkedPropertyType));
@@ -4749,6 +4779,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowLinkedObjectInlineEditor => LinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowLinkedEditableTextBlock => LinkedNode?.ShowEditableTextBlock == true;
         public bool ShowLinkedNameInlineEditor => LinkedNode?.ShowNameInlineEditor == true;
+        public bool ShowLinkedParsedValue => LinkedNode?.ShowParsedValue == true;
         public IReadOnlyList<IndexedName> LinkedInlineNameChoices => LinkedNode?.InlineNameChoices;
         public string LinkedInlineEditorValue
         {
@@ -4851,6 +4882,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(ShowSecondLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedNameInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedEditableTextBlock));
+                    OnPropertyChanged(nameof(ShowSecondLinkedParsedValue));
                 }
             }
         }
@@ -4871,6 +4903,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ParsedValue):
                         OnPropertyChanged(nameof(SecondLinkedParsedValue));
+                        OnPropertyChanged(nameof(ShowSecondLinkedParsedValue));
                         break;
                     case nameof(PropertyType):
                         OnPropertyChanged(nameof(SecondLinkedPropertyType));
@@ -4933,6 +4966,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowSecondLinkedObjectInlineEditor => SecondLinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowSecondLinkedEditableTextBlock => SecondLinkedNode?.ShowEditableTextBlock == true;
         public bool ShowSecondLinkedNameInlineEditor => SecondLinkedNode?.ShowNameInlineEditor == true;
+        public bool ShowSecondLinkedParsedValue => SecondLinkedNode?.ShowParsedValue == true;
         public IReadOnlyList<IndexedName> SecondLinkedInlineNameChoices => SecondLinkedNode?.InlineNameChoices;
         public string SecondLinkedInlineEditorValue
         {
@@ -5057,6 +5091,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
+        public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);
 
         /// <summary>
         /// Used for inline editing. Return true to allow inline editing for property type
@@ -5454,7 +5489,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public string ParsedValue
         {
             get => _parsedValue ?? "";
-            set => SetProperty(ref _parsedValue, value);
+            set
+            {
+                if (SetProperty(ref _parsedValue, value))
+                {
+                    OnPropertyChanged(nameof(ShowParsedValue));
+                }
+            }
         }
 
         /// <summary>
