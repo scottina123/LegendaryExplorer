@@ -2767,7 +2767,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             var expectedType = GlobalUnrealObjectInfo.GetExpectedClassTypeForObjectProperty(CurrentLoadedExport, op, containingClassOrStructName, uPropertyTreeViewEntry.UPParent?.Property);
-            CurrentObjectPropertyChoices = MakeAllEntriesList(expectedType);
+            CurrentObjectPropertyChoices = MakeAllEntriesList(expectedType, exactTypeOnly: ShouldUseExactObjectTypeSelection(op, expectedType));
+        }
+
+        private static bool ShouldUseExactObjectTypeSelection(ObjectProperty objectProperty, string expectedType)
+        {
+            return string.Equals(objectProperty?.Name.Name, "ParentSequence", StringComparison.Ordinal)
+                   && string.Equals(expectedType, "Sequence", StringComparison.Ordinal);
         }
 
         private void SetObjectPropertyEditorSelection(int uIndex)
@@ -2925,7 +2931,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             UpdateInlineObjectPropertyDisplayText(targetNode, GetObjectPropertyDisplayText(targetNode.InlineObjectIndexValue));
         }
 
-        private List<object> MakeAllEntriesList(string onlyOfType = null)
+        private List<object> MakeAllEntriesList(string onlyOfType = null, bool exactTypeOnly = false)
         {
             var allEntriesNew = new List<object>();
             ImportEntry imp = null;
@@ -2937,6 +2943,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 imp = CurrentLoadedExport.FileRef.Imports[i];
                 if (onlyOfType != null)
                 {
+                    if (exactTypeOnly)
+                    {
+                        if (imp.ClassName == onlyOfType)
+                        {
+                            allEntriesNew.Add(imp);
+                        }
+
+                        continue;
+                    }
+
                     if (imp.IsClass)
                     {
                         if ((onlyOfType == @"Class" && imp.ClassName == @"Class") || imp.ClassName == onlyOfType || imp.InheritsFrom(onlyOfType))
@@ -2965,6 +2981,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 if (onlyOfType != null)
                 {
+                    if (exactTypeOnly)
+                    {
+                        if (exp.ClassName == onlyOfType)
+                        {
+                            allEntriesNew.Add(exp);
+                        }
+
+                        continue;
+                    }
+
                     if (exp.IsClass)
                     {
                         if (onlyOfType == @"Class" || exp.InheritsFrom(onlyOfType))
