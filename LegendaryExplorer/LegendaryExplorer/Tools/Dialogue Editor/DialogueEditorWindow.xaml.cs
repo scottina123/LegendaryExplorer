@@ -111,6 +111,8 @@ namespace LegendaryExplorer.DialogueEditor
         {
             Top,
             SecondTop,
+            ThirdTop,
+            ThirdBottom,
             SecondBottom,
             Bottom
         }
@@ -6225,6 +6227,8 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 CloneInsertionPosition.Top => 0,
                 CloneInsertionPosition.SecondTop => Math.Min(1, itemCount),
+                CloneInsertionPosition.ThirdTop => Math.Min(2, itemCount),
+                CloneInsertionPosition.ThirdBottom => Math.Max(itemCount - 2, 0),
                 CloneInsertionPosition.SecondBottom => Math.Max(itemCount - 1, 0),
                 _ => itemCount
             };
@@ -6236,6 +6240,8 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 CloneInsertionPosition.Top => "Top",
                 CloneInsertionPosition.SecondTop => "Second from top",
+                CloneInsertionPosition.ThirdTop => "Third from top",
+                CloneInsertionPosition.ThirdBottom => "Third from bottom",
                 CloneInsertionPosition.SecondBottom => "Second from bottom",
                 _ => "Bottom"
             };
@@ -6292,6 +6298,8 @@ namespace LegendaryExplorer.DialogueEditor
             };
             optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.Top));
             optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.SecondTop));
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.ThirdTop));
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.ThirdBottom));
             optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.SecondBottom));
             optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.Bottom));
 
@@ -6389,6 +6397,8 @@ namespace LegendaryExplorer.DialogueEditor
             };
             optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.Top));
             optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.SecondTop));
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.ThirdTop));
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.ThirdBottom));
             optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.SecondBottom));
             optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.Bottom));
 
