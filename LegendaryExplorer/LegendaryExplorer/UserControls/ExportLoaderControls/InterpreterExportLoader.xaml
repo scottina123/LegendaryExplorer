@@ -286,6 +286,26 @@
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
+                                         <StackPanel x:Name="PropertyItem_EnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                     Visibility="{Binding ShowEnumInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                             <ComboBox MinWidth="180"
+                                                       IsEditable="False"
+                                                       IsTextSearchEnabled="True"
+                                                       ScrollViewer.CanContentScroll="True"
+                                                       VirtualizingPanel.IsVirtualizing="True"
+                                                       VirtualizingPanel.VirtualizationMode="Recycling"
+                                                       ItemsSource="{Binding InlineEnumChoices}"
+                                                       SelectedItem="{Binding InlineEnumValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                       Tag="{Binding}"
+                                                       KeyDown="InlineEditor_KeyDown">
+                                                 <ComboBox.ItemsPanel>
+                                                     <ItemsPanelTemplate>
+                                                         <VirtualizingStackPanel />
+                                                     </ItemsPanelTemplate>
+                                                 </ComboBox.ItemsPanel>
+                                             </ComboBox>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                         </StackPanel>
                                         <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
@@ -337,6 +357,26 @@
                                             <TextBox Width="40" Text="{Binding LinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding LinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
+                                         <StackPanel x:Name="PropertyItem_LinkedEnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                     Visibility="{Binding ShowLinkedEnumInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                             <ComboBox MinWidth="180"
+                                                       IsEditable="False"
+                                                       IsTextSearchEnabled="True"
+                                                       ScrollViewer.CanContentScroll="True"
+                                                       VirtualizingPanel.IsVirtualizing="True"
+                                                       VirtualizingPanel.VirtualizationMode="Recycling"
+                                                       ItemsSource="{Binding LinkedInlineEnumChoices}"
+                                                       SelectedItem="{Binding LinkedInlineEnumValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                       Tag="{Binding LinkedNode}"
+                                                       KeyDown="InlineEditor_KeyDown">
+                                                 <ComboBox.ItemsPanel>
+                                                     <ItemsPanelTemplate>
+                                                         <VirtualizingStackPanel />
+                                                     </ItemsPanelTemplate>
+                                                 </ComboBox.ItemsPanel>
+                                             </ComboBox>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding LinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                         </StackPanel>
                                         <TextBlock x:Name="PropertyItem_LinkedParsedValue" Margin="5,0,0,0" Text="{Binding LinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
                                                    Visibility="{Binding ShowLinkedParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
@@ -386,6 +426,26 @@
                                             <TextBox Width="40" Text="{Binding SecondLinkedInlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding SecondLinkedNode}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
                                         </StackPanel>
+                                         <StackPanel x:Name="PropertyItem_SecondLinkedEnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                     Visibility="{Binding ShowSecondLinkedEnumInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                             <ComboBox MinWidth="180"
+                                                       IsEditable="False"
+                                                       IsTextSearchEnabled="True"
+                                                       ScrollViewer.CanContentScroll="True"
+                                                       VirtualizingPanel.IsVirtualizing="True"
+                                                       VirtualizingPanel.VirtualizationMode="Recycling"
+                                                       ItemsSource="{Binding SecondLinkedInlineEnumChoices}"
+                                                       SelectedItem="{Binding SecondLinkedInlineEnumValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                       Tag="{Binding SecondLinkedNode}"
+                                                       KeyDown="InlineEditor_KeyDown">
+                                                 <ComboBox.ItemsPanel>
+                                                     <ItemsPanelTemplate>
+                                                         <VirtualizingStackPanel />
+                                                     </ItemsPanelTemplate>
+                                                 </ComboBox.ItemsPanel>
+                                             </ComboBox>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding SecondLinkedNode}" Click="InlineEditorConfirmButton_Click"/>
+                                         </StackPanel>
                                         <TextBlock x:Name="PropertyItem_SecondLinkedParsedValue" Margin="5,0,0,0" Text="{Binding SecondLinkedParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
                                                    Visibility="{Binding ShowSecondLinkedParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
@@ -530,6 +590,9 @@
                             <DataTrigger Binding="{Binding ShowNameInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowEnumInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_PrimaryOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding ShowLinkedNumericInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
@@ -539,6 +602,9 @@
                             <DataTrigger Binding="{Binding ShowLinkedNameInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowLinkedEnumInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_LinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding ShowSecondLinkedNumericInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
@@ -546,6 +612,9 @@
                                 <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding ShowSecondLinkedNameInlineEditor}" Value="True">
+                                <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ShowSecondLinkedEnumInlineEditor}" Value="True">
                                 <Setter TargetName="PropertyItem_SecondLinkedOverlay" Property="IsHitTestVisible" Value="False"/>
                             </DataTrigger>
                         </HierarchicalDataTemplate.Triggers>

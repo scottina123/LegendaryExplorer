@@ -3753,6 +3753,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case NameProperty _:
                     updated = node.CommitInlineNameEdit();
                     break;
+                case EnumProperty ep:
+                    if (node.InlineEnumValue is NameReference enumValue && enumValue != ep.Value)
+                    {
+                        ep.Value = enumValue;
+                        updated = true;
+                    }
+                    break;
             }
 
             if (!updated)
@@ -4691,9 +4698,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(LinkedInlineNameChoices));
                     OnPropertyChanged(nameof(LinkedInlineNameValue));
                     OnPropertyChanged(nameof(LinkedInlineNameIndexValue));
+                    OnPropertyChanged(nameof(LinkedInlineEnumChoices));
+                    OnPropertyChanged(nameof(LinkedInlineEnumValue));
                     OnPropertyChanged(nameof(ShowLinkedNumericInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedNameInlineEditor));
+                    OnPropertyChanged(nameof(ShowLinkedEnumInlineEditor));
                     OnPropertyChanged(nameof(ShowLinkedEditableTextBlock));
                     OnPropertyChanged(nameof(ShowLinkedParsedValue));
                 }
@@ -4704,7 +4714,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing)
                 or nameof(InlineEditorValue) or nameof(InlineObjectDisplayValue) or nameof(InlineObjectIndexValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue)
-                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor))
+                or nameof(InlineEnumValue) or nameof(InlineEnumChoices)
+                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor) or nameof(ShowEnumInlineEditor))
             {
                 switch (e.PropertyName)
                 {
@@ -4742,6 +4753,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(InlineNameIndexValue):
                         OnPropertyChanged(nameof(LinkedInlineNameIndexValue));
                         break;
+                    case nameof(InlineEnumChoices):
+                        OnPropertyChanged(nameof(LinkedInlineEnumChoices));
+                        break;
+                    case nameof(InlineEnumValue):
+                        OnPropertyChanged(nameof(LinkedInlineEnumValue));
+                        break;
                     case nameof(ShowNameInlineEditor):
                         OnPropertyChanged(nameof(ShowLinkedNameInlineEditor));
                         break;
@@ -4750,6 +4767,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ShowObjectInlineEditor):
                         OnPropertyChanged(nameof(ShowLinkedObjectInlineEditor));
+                        break;
+                    case nameof(ShowEnumInlineEditor):
+                        OnPropertyChanged(nameof(ShowLinkedEnumInlineEditor));
                         break;
                     case nameof(ShowEditableTextBlock):
                         OnPropertyChanged(nameof(ShowLinkedEditableTextBlock));
@@ -4779,8 +4799,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowLinkedObjectInlineEditor => LinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowLinkedEditableTextBlock => LinkedNode?.ShowEditableTextBlock == true;
         public bool ShowLinkedNameInlineEditor => LinkedNode?.ShowNameInlineEditor == true;
+        public bool ShowLinkedEnumInlineEditor => LinkedNode?.ShowEnumInlineEditor == true;
         public bool ShowLinkedParsedValue => LinkedNode?.ShowParsedValue == true;
         public IReadOnlyList<IndexedName> LinkedInlineNameChoices => LinkedNode?.InlineNameChoices;
+        public IReadOnlyList<NameReference> LinkedInlineEnumChoices => LinkedNode?.InlineEnumChoices;
         public string LinkedInlineEditorValue
         {
             get => LinkedNode?.InlineEditorValue ?? "";
@@ -4836,6 +4858,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
             }
         }
+        public NameReference LinkedInlineEnumValue
+        {
+            get => LinkedNode is null ? default : LinkedNode.InlineEnumValue;
+            set
+            {
+                if (LinkedNode != null)
+                {
+                    LinkedNode.InlineEnumValue = value;
+                }
+            }
+        }
         public bool IsLinkedInlineEditing
         {
             get => LinkedNode?.IsInlineEditing == true;
@@ -4878,9 +4911,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnPropertyChanged(nameof(SecondLinkedInlineNameChoices));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameValue));
                     OnPropertyChanged(nameof(SecondLinkedInlineNameIndexValue));
+                    OnPropertyChanged(nameof(SecondLinkedInlineEnumChoices));
+                    OnPropertyChanged(nameof(SecondLinkedInlineEnumValue));
                     OnPropertyChanged(nameof(ShowSecondLinkedNumericInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedObjectInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedNameInlineEditor));
+                    OnPropertyChanged(nameof(ShowSecondLinkedEnumInlineEditor));
                     OnPropertyChanged(nameof(ShowSecondLinkedEditableTextBlock));
                     OnPropertyChanged(nameof(ShowSecondLinkedParsedValue));
                 }
@@ -4891,7 +4927,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (e.PropertyName is nameof(DisplayName) or nameof(EditableValue) or nameof(ParsedValue) or nameof(PropertyType) or nameof(IsEditorSelected) or nameof(IsInlineEditing)
                 or nameof(InlineEditorValue) or nameof(InlineObjectDisplayValue) or nameof(InlineObjectIndexValue) or nameof(InlineNameValue) or nameof(InlineNameIndexValue)
-                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor))
+                or nameof(InlineEnumValue) or nameof(InlineEnumChoices)
+                or nameof(ShowEditableTextBlock) or nameof(ShowNameInlineEditor) or nameof(ShowNumericInlineEditor) or nameof(ShowObjectInlineEditor) or nameof(ShowEnumInlineEditor))
             {
                 switch (e.PropertyName)
                 {
@@ -4929,6 +4966,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case nameof(InlineNameIndexValue):
                         OnPropertyChanged(nameof(SecondLinkedInlineNameIndexValue));
                         break;
+                    case nameof(InlineEnumChoices):
+                        OnPropertyChanged(nameof(SecondLinkedInlineEnumChoices));
+                        break;
+                    case nameof(InlineEnumValue):
+                        OnPropertyChanged(nameof(SecondLinkedInlineEnumValue));
+                        break;
                     case nameof(ShowNameInlineEditor):
                         OnPropertyChanged(nameof(ShowSecondLinkedNameInlineEditor));
                         break;
@@ -4937,6 +4980,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         break;
                     case nameof(ShowObjectInlineEditor):
                         OnPropertyChanged(nameof(ShowSecondLinkedObjectInlineEditor));
+                        break;
+                    case nameof(ShowEnumInlineEditor):
+                        OnPropertyChanged(nameof(ShowSecondLinkedEnumInlineEditor));
                         break;
                     case nameof(ShowEditableTextBlock):
                         OnPropertyChanged(nameof(ShowSecondLinkedEditableTextBlock));
@@ -4966,8 +5012,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowSecondLinkedObjectInlineEditor => SecondLinkedNode?.ShowObjectInlineEditor == true;
         public bool ShowSecondLinkedEditableTextBlock => SecondLinkedNode?.ShowEditableTextBlock == true;
         public bool ShowSecondLinkedNameInlineEditor => SecondLinkedNode?.ShowNameInlineEditor == true;
+        public bool ShowSecondLinkedEnumInlineEditor => SecondLinkedNode?.ShowEnumInlineEditor == true;
         public bool ShowSecondLinkedParsedValue => SecondLinkedNode?.ShowParsedValue == true;
         public IReadOnlyList<IndexedName> SecondLinkedInlineNameChoices => SecondLinkedNode?.InlineNameChoices;
+        public IReadOnlyList<NameReference> SecondLinkedInlineEnumChoices => SecondLinkedNode?.InlineEnumChoices;
         public string SecondLinkedInlineEditorValue
         {
             get => SecondLinkedNode?.InlineEditorValue ?? "";
@@ -5020,6 +5068,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (SecondLinkedNode != null)
                 {
                     SecondLinkedNode.InlineNameIndexValue = value;
+                }
+            }
+        }
+        public NameReference SecondLinkedInlineEnumValue
+        {
+            get => SecondLinkedNode is null ? default : SecondLinkedNode.InlineEnumValue;
+            set
+            {
+                if (SecondLinkedNode != null)
+                {
+                    SecondLinkedNode.InlineEnumValue = value;
                 }
             }
         }
@@ -5085,12 +5144,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsRotatorIntProperty => Property is IntProperty && UPParent?.Property is StructProperty { StructType: "Rotator" };
         private bool IsNameProperty => Property is NameProperty;
         private bool IsObjectProperty => Property is ObjectProperty;
+        private bool IsEnumProperty => Property is EnumProperty;
 
-        public bool IsInlineEditable => Property is FloatProperty or IntProperty or NameProperty;
+        public bool IsInlineEditable => Property is FloatProperty or IntProperty or NameProperty or EnumProperty;
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty;
         public bool ShowObjectInlineEditor => IsObjectProperty;
-        public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor);
+        public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
+        public bool ShowEnumInlineEditor => IsEnumProperty;
         public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);
 
         /// <summary>
@@ -5169,6 +5230,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private IReadOnlyList<IndexedName> _inlineNameChoices;
         public IReadOnlyList<IndexedName> InlineNameChoices => _inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList();
 
+        private IReadOnlyList<NameReference> _inlineEnumChoices;
+        public IReadOnlyList<NameReference> InlineEnumChoices => _inlineEnumChoices ??= Property is EnumProperty enumProperty && AttachedExport is not null
+            ? GlobalUnrealObjectInfo.GetEnumValues(AttachedExport.Game, enumProperty.EnumType, true)
+            : null;
+
         private string _inlineEditorValue;
         public string InlineEditorValue
         {
@@ -5230,6 +5296,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _inlineNameIndexValue, value);
         }
 
+        private NameReference? _inlineEnumValue;
+        public NameReference InlineEnumValue
+        {
+            get => _inlineEnumValue ?? (Property is EnumProperty enumProperty ? enumProperty.Value : default);
+            set => SetProperty(ref _inlineEnumValue, value);
+        }
+
         public void ResetInlineEditorValues()
         {
             _inlineEditorValue = Property switch
@@ -5251,6 +5324,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             if (Property is not NameProperty nameProperty)
             {
+                if (Property is EnumProperty enumProperty)
+                {
+                    _inlineEnumValue = enumProperty.Value;
+                    OnPropertyChanged(nameof(InlineEnumValue));
+                }
+
                 return;
             }
 
