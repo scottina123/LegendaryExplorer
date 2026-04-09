@@ -3733,6 +3733,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         updated = true;
                     }
                     break;
+                case StringRefProperty strRefProperty:
+                    if (node.TryGetInlineIntValue(out int stringRefValue) && stringRefValue != strRefProperty.Value)
+                    {
+                        strRefProperty.Value = stringRefValue;
+                        updated = true;
+                    }
+                    break;
                 case ObjectProperty op:
                     UpdateObjectComboBoxOptions(op, node);
                     if (!TryGetObjectPropertyEditorSelection(node.InlineObjectIndexValue, out int objectIndex, out var entry, out _, out string errorMessage))
@@ -5146,8 +5153,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
 
-        public bool IsInlineEditable => Property is FloatProperty or IntProperty or NameProperty or EnumProperty;
-        public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty;
+        public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or NameProperty or EnumProperty;
+        public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty;
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
@@ -5170,7 +5177,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     case FloatProperty _:
                     case IntProperty _:
                     //case NameProperty _:
-                    //case StringRefProperty _:
+                    case StringRefProperty _:
                     case StrProperty _:
                         //case ObjectProperty _:
                         return true;
@@ -5243,6 +5250,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 IntProperty intProp when IsRotatorIntProperty => $"{intProp.Value.UnrealRotationUnitsToDegrees():0.0######}",
                 IntProperty intProp => intProp.Value.ToString(),
                 FloatProperty floatProp => floatProp.Value.ToString(),
+                StringRefProperty stringRefProp => stringRefProp.Value.ToString(),
                 _ => ""
             };
             set => SetProperty(ref _inlineEditorValue, value);
@@ -5310,6 +5318,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 IntProperty intProp when IsRotatorIntProperty => $"{intProp.Value.UnrealRotationUnitsToDegrees():0.0######}",
                 IntProperty intProp => intProp.Value.ToString(),
                 FloatProperty floatProp => floatProp.Value.ToString(),
+                StringRefProperty stringRefProp => stringRefProp.Value.ToString(),
                 _ => _inlineEditorValue
             };
             OnPropertyChanged(nameof(InlineEditorValue));
