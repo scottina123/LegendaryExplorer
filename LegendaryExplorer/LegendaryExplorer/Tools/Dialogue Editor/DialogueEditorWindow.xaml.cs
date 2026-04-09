@@ -107,6 +107,14 @@ namespace LegendaryExplorer.DialogueEditor
             AdvancedColumn
         }
 
+        private enum CloneInsertionPosition
+        {
+            Top,
+            SecondTop,
+            SecondBottom,
+            Bottom
+        }
+
         private readonly ConvGraphEditor graphEditor;
         public ObservableCollectionExtended<IEntry> FFXAnimsets { get; } = new();
         public ObservableCollectionExtended<ConversationExtended> Conversations { get; } = new();
@@ -4888,54 +4896,54 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void AddStartNodeForEntry(int entryIndex, bool insertAtTop = false)
         {
+            AddStartNodeForEntry(entryIndex, insertAtTop ? CloneInsertionPosition.Top : CloneInsertionPosition.Bottom);
+        }
+
+        private void AddStartNodeForEntry(int entryIndex, CloneInsertionPosition insertionPosition)
+        {
             if (SelectedConv == null)
             {
                 return;
             }
 
-            if (insertAtTop)
+            var existingStartPositions = CurrentObjects
+                .OfType<DStart>()
+                .OrderBy(start => start.Order)
+                .Select(start => new PointF(start.X + start.OffsetX, start.Y + start.OffsetY))
+                .ToList();
+
+            var orderedStarts = SelectedConv.StartingList
+                .OrderBy(kvp => kvp.Key)
+                .Select(kvp => kvp.Value)
+                .ToList();
+
+            int insertionIndex = GetCloneInsertionIndex(orderedStarts.Count, insertionPosition);
+            orderedStarts.Insert(insertionIndex, entryIndex);
+            SelectedConv.StartingList.Clear();
+            for (int i = 0; i < orderedStarts.Count; i++)
             {
-                var existingStartPositions = CurrentObjects
-                    .OfType<DStart>()
-                    .OrderBy(start => start.Order)
-                    .Select(start => new PointF(start.X + start.OffsetX, start.Y + start.OffsetY))
-                    .ToList();
-
-                var orderedStarts = SelectedConv.StartingList
-                    .OrderBy(kvp => kvp.Key)
-                    .Select(kvp => kvp.Value)
-                    .ToList();
-
-                orderedStarts.Insert(0, entryIndex);
-                SelectedConv.StartingList.Clear();
-                for (int i = 0; i < orderedStarts.Count; i++)
-                {
-                    SelectedConv.StartingList.Add(i, orderedStarts[i]);
-                }
-
-                forcedSelectStart = 0;
-
-                var preferredPositions = new Dictionary<int, PointF>
-                {
-                    [0] = GetNewStartNodePosition(0, entryIndex)
-                };
-
-                for (int i = 0; i < existingStartPositions.Count; i++)
-                {
-                    preferredPositions[i + 1] = existingStartPositions[i];
-                }
-
-                ApplyStartMutationInPlace(preferredPositions);
-                return;
+                SelectedConv.StartingList.Add(i, orderedStarts[i]);
             }
 
-            int newKey = SelectedConv.StartingList.Count;
-            SelectedConv.StartingList.Add(newKey, entryIndex);
-            forcedSelectStart = newKey;
-            ApplyStartMutationInPlace(new Dictionary<int, PointF>
+            forcedSelectStart = insertionIndex;
+
+            var preferredPositions = new Dictionary<int, PointF>
             {
-                [newKey] = GetNewStartNodePosition(newKey, entryIndex)
-            });
+                [insertionIndex] = GetNewStartNodePosition(insertionIndex, entryIndex)
+            };
+
+            int existingPositionIndex = 0;
+            for (int i = 0; i < orderedStarts.Count; i++)
+            {
+                if (i == insertionIndex)
+                {
+                    continue;
+                }
+
+                preferredPositions[i] = existingStartPositions[existingPositionIndex++];
+            }
+
+            ApplyStartMutationInPlace(preferredPositions);
         }
 
         private void EntryNode_CreateStart_Click(object sender, RoutedEventArgs e)
@@ -6211,7 +6219,242 @@ namespace LegendaryExplorer.DialogueEditor
             return incomingRows;
         }
 
+        private static int GetCloneInsertionIndex(int itemCount, CloneInsertionPosition insertionPosition)
+        {
+            return insertionPosition switch
+            {
+                CloneInsertionPosition.Top => 0,
+                CloneInsertionPosition.SecondTop => Math.Min(1, itemCount),
+                CloneInsertionPosition.SecondBottom => Math.Max(itemCount - 1, 0),
+                _ => itemCount
+            };
+        }
+
+        private static string GetCloneInsertionPositionDisplayText(CloneInsertionPosition insertionPosition)
+        {
+            return insertionPosition switch
+            {
+                CloneInsertionPosition.Top => "Top",
+                CloneInsertionPosition.SecondTop => "Second from top",
+                CloneInsertionPosition.SecondBottom => "Second from bottom",
+                _ => "Bottom"
+            };
+        }
+
+        private CloneInsertionPosition? PromptForCloneInsertionPosition(string promptText)
+        {
+            var dialog = new Window
+            {
+                Title = "Clone Node",
+                Width = 520,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            CloneInsertionPosition? selectedPosition = null;
+
+            Button CreateChoiceButton(CloneInsertionPosition position)
+            {
+                var button = new Button
+                {
+                    Content = GetCloneInsertionPositionDisplayText(position),
+                    MinWidth = 120,
+                    Margin = new Thickness(6),
+                    Padding = new Thickness(10, 6, 10, 6)
+                };
+                button.Click += (_, _) =>
+                {
+                    selectedPosition = position;
+                    dialog.DialogResult = true;
+                };
+                return button;
+            }
+
+            var promptBlock = new TextBlock
+            {
+                Text = promptText,
+                Margin = new Thickness(18, 18, 18, 12),
+                TextWrapping = TextWrapping.Wrap
+            };
+            promptBlock.SetResourceReference(TextBlock.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+
+            var optionPanel = new WrapPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(12, 0, 12, 12)
+            };
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.Top));
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.SecondTop));
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.SecondBottom));
+            optionPanel.Children.Add(CreateChoiceButton(CloneInsertionPosition.Bottom));
+
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 120,
+                Margin = new Thickness(6),
+                Padding = new Thickness(10, 6, 10, 6),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+            var rootPanel = new StackPanel();
+            rootPanel.Children.Add(promptBlock);
+            rootPanel.Children.Add(optionPanel);
+            rootPanel.Children.Add(cancelButton);
+
+            dialog.Content = rootPanel;
+            return dialog.ShowDialog() == true ? selectedPosition : null;
+        }
+
+        private (bool? CloneLinks, CloneInsertionPosition InsertionPosition) PromptForCloneLinksOptions()
+        {
+            var dialog = new Window
+            {
+                Title = "Clone Node",
+                Width = 520,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            bool? cloneLinks = null;
+            CloneInsertionPosition selectedPosition = CloneInsertionPosition.Top;
+
+            var promptBlock = new TextBlock
+            {
+                Text = "Clone links as well?",
+                Margin = new Thickness(18, 18, 18, 12),
+                TextWrapping = TextWrapping.Wrap
+            };
+            promptBlock.SetResourceReference(TextBlock.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+
+            var optionHeader = new TextBlock
+            {
+                Text = "Insert cloned links at:",
+                Margin = new Thickness(18, 0, 18, 8),
+                FontWeight = FontWeights.SemiBold
+            };
+            optionHeader.SetResourceReference(TextBlock.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+
+            var checkBoxes = new List<CheckBox>();
+
+            CheckBox CreateOptionCheckBox(CloneInsertionPosition position)
+            {
+                var checkBox = new CheckBox
+                {
+                    Content = GetCloneInsertionPositionDisplayText(position),
+                    Margin = new Thickness(6),
+                    IsChecked = position == CloneInsertionPosition.Top
+                };
+                checkBox.Checked += (_, _) =>
+                {
+                    selectedPosition = position;
+                    foreach (var otherCheckBox in checkBoxes)
+                    {
+                        if (!ReferenceEquals(otherCheckBox, checkBox))
+                        {
+                            otherCheckBox.IsChecked = false;
+                        }
+                    }
+                };
+                checkBox.Unchecked += (_, _) =>
+                {
+                    if (checkBoxes.All(cb => cb.IsChecked != true))
+                    {
+                        checkBox.IsChecked = true;
+                    }
+                };
+                checkBoxes.Add(checkBox);
+                return checkBox;
+            }
+
+            var optionPanel = new WrapPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(12, 0, 12, 12)
+            };
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.Top));
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.SecondTop));
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.SecondBottom));
+            optionPanel.Children.Add(CreateOptionCheckBox(CloneInsertionPosition.Bottom));
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(12, 0, 12, 18)
+            };
+
+            var yesButton = new Button
+            {
+                Content = "Yes",
+                MinWidth = 120,
+                Margin = new Thickness(6),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            yesButton.Click += (_, _) =>
+            {
+                cloneLinks = true;
+                dialog.DialogResult = true;
+            };
+
+            var noButton = new Button
+            {
+                Content = "No",
+                MinWidth = 120,
+                Margin = new Thickness(6),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            noButton.Click += (_, _) =>
+            {
+                cloneLinks = false;
+                dialog.DialogResult = true;
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 120,
+                Margin = new Thickness(6),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+
+            buttonPanel.Children.Add(yesButton);
+            buttonPanel.Children.Add(noButton);
+            buttonPanel.Children.Add(cancelButton);
+
+            var rootPanel = new StackPanel();
+            rootPanel.Children.Add(promptBlock);
+            rootPanel.Children.Add(optionHeader);
+            rootPanel.Children.Add(optionPanel);
+            rootPanel.Children.Add(buttonPanel);
+
+            dialog.Content = rootPanel;
+            dialog.ShowDialog();
+            return (cloneLinks, selectedPosition);
+        }
+
         private void CloneIncomingLinkToNode(DiagEdEdge sourceEdge, DiagNode targetNode, bool insertAtTop)
+        {
+            CloneIncomingLinkToNode(sourceEdge, targetNode, insertAtTop ? CloneInsertionPosition.Top : CloneInsertionPosition.Bottom);
+        }
+
+        private void CloneIncomingLinkToNode(DiagEdEdge sourceEdge, DiagNode targetNode, CloneInsertionPosition insertionPosition)
         {
             if (sourceEdge?.originator is not DiagNode sourceNode || targetNode == null)
             {
@@ -6232,14 +6475,7 @@ namespace LegendaryExplorer.DialogueEditor
                     ? (IntProperty)entryList[sourceLinkIndex].DeepClone()
                     : new IntProperty(targetNode.NodeID);
                 clonedLink.Value = targetNode.NodeID;
-                if (insertAtTop)
-                {
-                    entryList.Insert(0, clonedLink);
-                }
-                else
-                {
-                    entryList.Add(clonedLink);
-                }
+                entryList.Insert(GetCloneInsertionIndex(entryList.Count, insertionPosition), clonedLink);
                 sourceNode.NodeProp.Properties.AddOrReplaceProp(entryList);
             }
             else
@@ -6264,14 +6500,7 @@ namespace LegendaryExplorer.DialogueEditor
                     });
                 }
 
-                if (insertAtTop)
-                {
-                    replyList.Insert(0, clonedLink);
-                }
-                else
-                {
-                    replyList.Add(clonedLink);
-                }
+                replyList.Insert(GetCloneInsertionIndex(replyList.Count, insertionPosition), clonedLink);
                 sourceNode.NodeProp.Properties.AddOrReplaceProp(replyList);
             }
         }
@@ -6787,20 +7016,24 @@ namespace LegendaryExplorer.DialogueEditor
 
             DiagNode node = null;
             bool isReply = false;
-            IsLocalUpdate = true;
-            panToSelection = false;
-            graphEditor.Enabled = false;
-            graphEditor.UseWaitCursor = true;
             bool cloneLinks = false;
-            bool insertClonedLinksAtTop = false;
+            CloneInsertionPosition clonedLinkInsertionPosition = CloneInsertionPosition.Top;
             bool cloneStartNode = false;
-            bool insertClonedStartAtTop = false;
+            CloneInsertionPosition clonedStartInsertionPosition = CloneInsertionPosition.Bottom;
             List<DiagEdEdge> inputEdges = [];
             if (command is "CloneReply" or "CloneEntry")
             {
-                if (MessageBox.Show("Clone links as well?", "Dialogue Editor", MessageBoxButton.YesNo) is MessageBoxResult.Yes)
+                var cloneLinkOptions = PromptForCloneLinksOptions();
+                if (!cloneLinkOptions.CloneLinks.HasValue)
+                {
+                    return;
+                }
+
+                if (cloneLinkOptions.CloneLinks.Value)
                 {
                     cloneLinks = true;
+                    clonedLinkInsertionPosition = cloneLinkOptions.InsertionPosition;
+
                     foreach (var edge in diagNode.InputEdges)
                     {
                         if (edge.originator is DiagNode)
@@ -6813,23 +7046,24 @@ namespace LegendaryExplorer.DialogueEditor
                         }
                     }
 
-                    if (inputEdges.Count > 0)
-                    {
-                        insertClonedLinksAtTop = MessageBox.Show(
-                            "Should the cloned node be inserted at the top of each previous node's outgoing connections?",
-                            "Dialogue Editor",
-                            MessageBoxButton.YesNo) is MessageBoxResult.Yes;
-                    }
-
                     if (cloneStartNode)
                     {
-                        insertClonedStartAtTop = MessageBox.Show(
-                            "The cloned entry is connected to a start node. Should the new start node be moved to the top of the start node list?",
-                            "Dialogue Editor",
-                            MessageBoxButton.YesNo) is MessageBoxResult.Yes;
+                        CloneInsertionPosition? insertionPosition = PromptForCloneInsertionPosition(
+                            "Choose where the cloned start node should be inserted in the start node list.");
+                        if (!insertionPosition.HasValue)
+                        {
+                            return;
+                        }
+
+                        clonedStartInsertionPosition = insertionPosition.Value;
                     }
                 }
             }
+
+            IsLocalUpdate = true;
+            panToSelection = false;
+            graphEditor.Enabled = false;
+            graphEditor.UseWaitCursor = true;
 
             if (command == "CloneReply")
             {
@@ -6902,7 +7136,7 @@ namespace LegendaryExplorer.DialogueEditor
                 using var suppressedPackageUpdates = SuppressPackageUpdates();
                 foreach (var inputEdge in inputEdges)
                 {
-                    CloneIncomingLinkToNode(inputEdge, node, insertClonedLinksAtTop);
+                    CloneIncomingLinkToNode(inputEdge, node, clonedLinkInsertionPosition);
                     if (inputEdge.originator is DiagNode inputNode)
                     {
                         PushLocalGraphChanges(inputNode, persistConversation: false);
@@ -6914,7 +7148,7 @@ namespace LegendaryExplorer.DialogueEditor
 
                 if (cloneStartNode)
                 {
-                    AddStartNodeForEntry(newIndex, insertClonedStartAtTop);
+                    AddStartNodeForEntry(newIndex, clonedStartInsertionPosition);
                     DialogueNode_SelectByIndex(newIndex, isReply);
                     graphEditor.Camera.AnimateViewToCenterBounds(node.GlobalFullBounds, false, 500);
                 }
