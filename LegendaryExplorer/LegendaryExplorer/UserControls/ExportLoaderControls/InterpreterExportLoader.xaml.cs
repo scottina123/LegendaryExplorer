@@ -346,8 +346,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddArrayElementCommand = new GenericCommand(AddArrayElement, CanAddArrayElement);
             AddMultipleArrayElementsCommand = new GenericCommand(AddMultipleArrayElements, CanAddArrayElement);
             RemoveArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
-            CloneArrayElementCommand = new GenericCommand(AddArrayElement, ArrayElementIsSelected);
-            MultiCloneArrayElementCommand = new GenericCommand(AddMultipleArrayElements, ArrayElementIsSelected);
+            CloneArrayElementCommand = new GenericCommand(CloneArrayElement, ArrayElementIsSelected);
+            MultiCloneArrayElementCommand = new GenericCommand(MultiCloneArrayElements, ArrayElementIsSelected);
             DeleteArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
             MoveArrayElementUpCommand = new GenericCommand(MoveArrayElementUp, CanMoveArrayElementUp);
             MoveArrayElementDownCommand = new GenericCommand(MoveArrayElementDown, CanMoveArrayElementDown);
@@ -1560,11 +1560,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             item.ExpandParents();
             item.IsExpanded |= ExpandedNodePaths.Contains(GetNodePath(item));
+            TreeSelectedItem = null;
             TreeSelectedItem = item;
             SelectedItem = item;
+            item.IsSelected = true;
 
-            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, (Action)(() =>
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)(() =>
             {
+                item.ExpandParents();
+                TreeSelectedItem = null;
+                TreeSelectedItem = item;
+                SelectedItem = item;
+                item.IsSelected = true;
                 Interpreter_TreeView?.Focus();
                 Keyboard.Focus(Interpreter_TreeView);
             }));
@@ -3797,22 +3804,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddArrayElementsInternal(1);
         }
 
+        private void CloneArrayElement()
+        {
+            AddArrayElementsInternal(1, cloneSelectedElement: true);
+        }
+
         private void AddMultipleArrayElements()
         {
-            string result = PromptDialog.Prompt(this, "How many elements to add?", "Add Multiple Array Elements", "2", selectText: true,
+            if (TryPromptForArrayElementCount("How many elements to add?", "Add Multiple Array Elements", out int count))
+            {
+                AddArrayElementsInternal(count);
+            }
+        }
+
+        private void MultiCloneArrayElements()
+        {
+            if (TryPromptForArrayElementCount("How many copies to create?", "Clone Multiple Array Elements", out int count))
+            {
+                AddArrayElementsInternal(count, cloneSelectedElement: true);
+            }
+        }
+
+        private bool TryPromptForArrayElementCount(string message, string title, out int count)
+        {
+            count = 0;
+            string result = PromptDialog.Prompt(this, message, title, "2", selectText: true,
                 validator: s =>
                 {
                     if (int.TryParse(s, out int val) && val > 0 && val <= 10000)
                         return (true, null);
                     return (false, "Please enter a positive integer (max 10,000).");
                 });
-            if (result != null && int.TryParse(result, out int count) && count > 0)
-            {
-                AddArrayElementsInternal(count);
-            }
+
+            return result != null && int.TryParse(result, out count) && count > 0;
         }
 
-        private void AddArrayElementsInternal(int count)
+        private void AddArrayElementsInternal(int count, bool cloneSelectedElement = false)
         {
             if (Interpreter_TreeView.SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null)
             {
@@ -3853,15 +3880,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     for (int i = 0; i < count; i++)
                     {
                         int currentInsertIndex = insertIndex + i;
+                        int sourceIndex = cloneSelectedElement ? insertIndex - 1 : currentInsertIndex - 1;
                         foreach (var syncedArray in syncedArrays)
                         {
-                            var syncedElement = CreateStructArrayElement(syncedArray, containingType, isInImmutable, GetFallbackStructType(syncedArray, tvi), currentInsertIndex - 1);
+                            var syncedElement = cloneSelectedElement
+                                ? CloneArrayElementValue(syncedArray, sourceIndex)
+                                : CreateStructArrayElement(syncedArray, containingType, isInImmutable, GetFallbackStructType(syncedArray, tvi), sourceIndex);
                             if (syncedElement is null)
                             {
                                 return;
                             }
 
-                            InitializeSyncedStructArrayElement(syncedElement, syncedArray, currentInsertIndex - 1);
+                            if (!cloneSelectedElement)
+                            {
+                                InitializeSyncedStructArrayElement(syncedElement, syncedArray, sourceIndex);
+                            }
+
                             syncedArray.Insert(currentInsertIndex, syncedElement);
                         }
                     }
@@ -3872,55 +3906,65 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 for (int i = 0; i < count; i++)
                 {
+                    int currentInsertIndex = insertIndex + i;
+                    int sourceIndex = cloneSelectedElement ? insertIndex - 1 : currentInsertIndex - 1;
                     switch (propertyToAddItemTo)
                     {
                         case ArrayProperty<NameProperty> anp:
-                            NameProperty np = new NameProperty("None");
-                            anp.Insert(insertIndex + i, np);
+                            anp.Insert(currentInsertIndex, CloneArrayElementValue(anp, sourceIndex) ?? new NameProperty("None"));
                             break;
                         case ArrayProperty<ObjectProperty> aop:
-                            aop.Insert(insertIndex + i, new ObjectProperty(0));
+                            aop.Insert(currentInsertIndex, CloneArrayElementValue(aop, sourceIndex) ?? new ObjectProperty(0));
                             break;
-                        case ArrayProperty<DelegateProperty> aop:
-                            aop.Insert(insertIndex + i, new DelegateProperty("None", 0));
+                        case ArrayProperty<DelegateProperty> adp:
+                            adp.Insert(currentInsertIndex, CloneArrayElementValue(adp, sourceIndex) ?? new DelegateProperty("None", 0));
                             break;
                         case ArrayProperty<EnumProperty> aep:
                             {
-                                PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, aep.Name, containingType);
-                                string typeName = p.Reference;
-                                EnumProperty ep = new EnumProperty(typeName, Pcc.Game);
-                                aep.Insert(insertIndex + i, ep);
+                                var enumProperty = CloneArrayElementValue(aep, sourceIndex);
+                                if (enumProperty is null)
+                                {
+                                    PropertyInfo p = GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, aep.Name, containingType);
+                                    string typeName = p.Reference;
+                                    enumProperty = new EnumProperty(typeName, Pcc.Game);
+                                }
+
+                                aep.Insert(currentInsertIndex, enumProperty);
                             }
                             break;
                         case ArrayProperty<IntProperty> aip:
-                            aip.Insert(insertIndex + i, new IntProperty(0));
+                            aip.Insert(currentInsertIndex, CloneArrayElementValue(aip, sourceIndex) ?? new IntProperty(0));
                             break;
                         case ArrayProperty<FloatProperty> afp:
-                            FloatProperty fp = new FloatProperty(0);
-                            afp.Insert(insertIndex + i, fp);
+                            afp.Insert(currentInsertIndex, CloneArrayElementValue(afp, sourceIndex) ?? new FloatProperty(0));
                             break;
                         case ArrayProperty<StrProperty> asp:
-                            asp.Insert(insertIndex + i, new StrProperty("Empty String"));
+                            asp.Insert(currentInsertIndex, CloneArrayElementValue(asp, sourceIndex) ?? new StrProperty("Empty String"));
                             break;
                         case ArrayProperty<BoolProperty> abp:
-                            abp.Insert(insertIndex + i, new BoolProperty(false));
+                            abp.Insert(currentInsertIndex, CloneArrayElementValue(abp, sourceIndex) ?? new BoolProperty(false));
                             break;
                         case ArrayProperty<StringRefProperty> astrf:
-                            astrf.Insert(insertIndex + i, new StringRefProperty());
+                            astrf.Insert(currentInsertIndex, CloneArrayElementValue(astrf, sourceIndex) ?? new StringRefProperty());
                             break;
                         case ArrayProperty<ByteProperty> abyte:
-                            abyte.Insert(insertIndex + i, new ByteProperty(0));
+                            abyte.Insert(currentInsertIndex, CloneArrayElementValue(abyte, sourceIndex) ?? new ByteProperty(0));
                             break;
                         case ArrayProperty<BioMask4Property> ab4:
-                            ab4.Insert(insertIndex + i, new BioMask4Property(0));
+                            ab4.Insert(currentInsertIndex, CloneArrayElementValue(ab4, sourceIndex) ?? new BioMask4Property(0));
                             break;
                         case ArrayProperty<StructProperty> astructp:
                             {
-                                var isInImmutable = IsInImmutable(tvi);
-                                var element = CreateStructArrayElement(astructp, containingType, isInImmutable, sourceIndex: insertIndex + i - 1);
+                                var element = CloneArrayElementValue(astructp, sourceIndex);
+                                if (element is null)
+                                {
+                                    var isInImmutable = IsInImmutable(tvi);
+                                    element = CreateStructArrayElement(astructp, containingType, isInImmutable, sourceIndex: sourceIndex);
+                                }
+
                                 if (element != null)
                                 {
-                                    astructp.Insert(insertIndex + i, element);
+                                    astructp.Insert(currentInsertIndex, element);
                                 }
                             }
                             break;
@@ -3933,6 +3977,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
+        }
+
+        private static T CloneArrayElementValue<T>(ArrayProperty<T> arrayProperty, int sourceIndex) where T : Property
+        {
+            return sourceIndex >= 0 && sourceIndex < arrayProperty.Count
+                ? (T)arrayProperty[sourceIndex].DeepClone()
+                : null;
         }
 
         private bool TryGetSynchronizedStructArrays(UPropertyTreeViewEntry tvi, ArrayPropertyBase arrayProperty, out List<ArrayProperty<StructProperty>> syncedArrays)
