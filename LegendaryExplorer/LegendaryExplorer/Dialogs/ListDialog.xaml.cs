@@ -35,6 +35,21 @@ namespace LegendaryExplorer.Dialogs
             set => SetProperty(ref topText, value);
         }
 
+        private void ListView_MouseRightClick(object sender, MouseButtonEventArgs e)
+        {
+            var ctx = ((FrameworkElement)e.OriginalSource).DataContext;
+            if (ctx is EntryStringPair esp && (esp.Entry is not null || esp.Openable is not null))
+            {
+                DoubleClickEntryHandler?.Invoke(esp);
+            }
+            else if (ctx != null)
+            {
+                DoubleClickItemHandler?.Invoke(ctx);
+            }
+        }
+
+
+
         public string SecondaryActionText
         {
             get => secondaryActionText;
@@ -46,7 +61,6 @@ namespace LegendaryExplorer.Dialogs
                 }
             }
         }
-
         public Visibility SecondaryActionVisibility
         {
             get => secondaryActionVisibility;
