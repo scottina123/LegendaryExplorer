@@ -2932,7 +2932,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void PickObjectPropertyValue()
             => PickObjectPropertyValue(SelectedItem);
 
-        private void PickObjectPropertyValue(UPropertyTreeViewEntry targetNode)
+        private void PickObjectPropertyValue(UPropertyTreeViewEntry targetNode, bool commitInlineSelection = false)
         {
             if (targetNode?.Property is not ObjectProperty objectProperty || CurrentLoadedExport == null || Pcc == null)
             {
@@ -2964,6 +2964,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             targetNode.InlineObjectIndexValue = selectedIndex.ToString();
             UpdateInlineObjectPropertyDisplayText(targetNode, GetObjectPropertyDisplayText(targetNode.InlineObjectIndexValue));
+
+            if (commitInlineSelection)
+            {
+                TryCommitInlineEditor(targetNode);
+            }
         }
 
         private List<object> MakeAllEntriesList(string onlyOfType = null, bool exactTypeOnly = false)
@@ -3693,7 +3698,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
             {
-                PickObjectPropertyValue(node);
+                PickObjectPropertyValue(node, commitInlineSelection: true);
                 e.Handled = true;
             }
         }
