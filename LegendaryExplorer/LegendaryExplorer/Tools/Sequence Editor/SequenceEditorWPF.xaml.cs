@@ -141,11 +141,80 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             List<CopiedVariableConnection> VariableConnections,
             string SourceFilePath);
         private record SelectionHistoryEntry(string FilePath, int ObjectUIndex);
+        private record QuickCreateMenuEntry(string Header, params string[] ClassNames);
+
+        private static readonly QuickCreateMenuEntry[] QuickCreateEventEntries =
+        [
+            new("Console", "SeqEvent_Console"),
+            new("Level is live", "SeqEvent_LevelIsLive"),
+            new("Level is loaded", "SeqEvent_LevelLoaded"),
+            new("RemoteEvent", "SeqEvent_RemoteEvent"),
+            new("Touch", "SeqEvent_Touch"),
+            new("Touch (SFX)", "SFXSeqEvt_Touch"),
+            new("Used", "SeqEvent_Used")
+        ];
+
+        private static readonly QuickCreateMenuEntry[] QuickCreateActionEntries =
+        [
+            new("ActivateRemoteEvent", "SeqAct_ActivateRemoteEvent"),
+            new("AddToParty", "BioSeqAct_AddToParty"),
+            new("AttachToActor", "SeqAct_AttachToActor"),
+            new("AttachToEvent", "SeqAct_AttachToEvent"),
+            new("Ambient Performance", "SFXSeqAct_SetAmbientPerformance"),
+            new("BlackScreen", "BioSeqAct_BlackScreen", "SFXSeqAct_BlackScreen"),
+            new("CheckConditional", "BioSeqAct_PMCheckConditional"),
+            new("CheckState", "BioSeqAct_PMCheckState"),
+            new("CombatPawn", "BioSeqVar_CombatPawn"),
+            new("Delay", "SeqAct_Delay"),
+            new("EnableAI", "BioSeqAct_EnableAI"),
+            new("ExecuteTransition", "BioSeqAct_PMExecuteTransition"),
+            new("FaceOnly VO", "SFXSeqAct_FaceOnlyVO"),
+            new("Gate", "SeqAct_Gate"),
+            new("GetTag", "SeqAct_GetTag"),
+            new("Interp", "SeqAct_Interp"),
+            new("LevelStreaming", "BioSeqAct_LevelStreaming"),
+            new("MailGUI", "SFXSeqAct_MailGUI_Sorted"),
+            new("Random Switch", "SeqAct_RandomSwitch"),
+            new("RemoveFromParty", "BioSeqAct_RemoveFromParty"),
+            new("SetActive", "BioSeqAct_SetActive"),
+            new("SetBool", "SeqAct_SetBool"),
+            new("SetInt", "SeqAct_SetInt"),
+            new("SetLocation", "SeqAct_SetLocation"),
+            new("SetMultipleStreamingStates", "BioSeqAct_SetMultipleStreamingStates"),
+            new("SetObject", "SeqAct_SetObject"),
+            new("SetStreamingState", "BioSeqAct_SetStreamingState"),
+            new("SetTag", "SeqAct_SetTag"),
+            new("SetTargetable", "BioSeqAct_SetTargetable"),
+            new("Teleport", "SeqAct_Teleport"),
+            new("ToggleHidden", "SeqAct_ToggleHidden")
+        ];
+
+        private static readonly QuickCreateMenuEntry[] QuickCreateConditionalEntries =
+        [
+            new("Compare bool", "SeqCond_CompareBool"),
+            new("Compareint", "SeqCond_CompareInt")
+        ];
+
+        private static readonly QuickCreateMenuEntry[] QuickCreateVariableEntries =
+        [
+            new("Bool", "SeqVar_Bool"),
+            new("Interpdata", "InterpData"),
+            new("Name", "SeqVar_Name"),
+            new("Object", "SeqVar_Object"),
+            new("Object FindBy Tag", "BioSeqVar_ObjectFindByTag"),
+            new("Player", "SeqVar_Player"),
+            new("SeqVarInt", "SeqVar_Int"),
+            new("Story Manager Bool", "BioSeqVar_StoryManagerBool"),
+            new("StoryManager Int", "BioSeqVar_StoryManagerInt"),
+            new("StrRef", "BioSeqVar_StrRef")
+        ];
 
         private SavedViewData SavedView;
         private bool forceAutoLayoutOnInitialPackageLoad = true;
         private bool forceAutoLayoutForCurrentPackage;
         private readonly HashSet<int> autoLaidOutSequencesForCurrentPackage = [];
+        private PointF? backgroundContextMenuGraphLocation;
+        private PointF? pendingNewObjectPosition;
         private List<CopiedInputConnection> copiedInputConnections;
         private string copiedInputConnectionsSourceFilePath;
         private List<CopiedOutputConnection> copiedOutputConnections;
@@ -871,6 +940,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
+            PointF creationPosition = ConsumePendingNewObjectPosition();
+
             int? randomSwitchLinkCount = null;
             if (info.ClassName == "SeqAct_RandomSwitch")
             {
@@ -922,8 +993,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 var randomSwitch = SequenceObjectCreator.CreateRandSwitch(SelectedSequence, randomSwitchLinkCount.Value,
                     packageCache);
                 packageCache.RemoveFromCache(Pcc); // This prevents ref decrementing when cache is disposed
-                customSaveData[randomSwitch.UIndex] =
-                    new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+                customSaveData[randomSwitch.UIndex] = creationPosition;
                 EndBusy();
                 return;
             }
@@ -949,7 +1019,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 CreateBlankBioDynamicAnimSet(newSeqObj);
             }
 
-            addObject(newSeqObj);
+            addObject(newSeqObj, preferredPosition: creationPosition);
             EndBusy();
         }
 
@@ -2234,6 +2304,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             if (e.Button == System.Windows.Forms.MouseButtons.Right)
             {
+                backgroundContextMenuGraphLocation = e.Position;
                 var clickPoint = System.Windows.Forms.Control.MousePosition;
                 floatingToolboxScreenLocation = new System.Windows.Point(clickPoint.X, clickPoint.Y);
                 if (FindResource("backContextMenu") is ContextMenu contextMenu)
@@ -2271,6 +2342,172 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void OpenFloatingToolbox_Click(object sender, RoutedEventArgs e)
         {
             OpenFloatingToolbox();
+        }
+
+        private void BackContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ContextMenu contextMenu)
+            {
+                return;
+            }
+
+            contextMenu.Items.Clear();
+            contextMenu.Items.Add(CreateBackContextMenuItem("Add Existing Object", AddObject_Clicked,
+                "Add existing Sequence Object to this Sequence"));
+            contextMenu.Items.Add(CreateBackContextMenuItem("Create Empty Subsequence", CreateEmptySubsequence_Clicked,
+                "Create a new empty child sequence under the current sequence"));
+            contextMenu.Items.Add(new Separator());
+            contextMenu.Items.Add(CreateQuickCreateMenu("Events", QuickCreateEventEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Actions", QuickCreateActionEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Conditionals", QuickCreateConditionalEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Variables", QuickCreateVariableEntries));
+            contextMenu.Items.Add(new Separator());
+            contextMenu.Items.Add(CreateBackContextMenuItem("Open floating toolbox", OpenFloatingToolbox_Click,
+                "Open the sequence toolbox in a separate floating window at the clicked viewport location"));
+        }
+
+        private void BackContextMenu_Closed(object sender, RoutedEventArgs e)
+        {
+            backgroundContextMenuGraphLocation = null;
+        }
+
+        private IEnumerable<ClassInfo> GetQuickCreateSourceClasses(string header)
+        {
+            return header switch
+            {
+                "Actions" => actionsToolBox?.Classes ?? Enumerable.Empty<ClassInfo>(),
+                "Conditionals" => conditionsToolBox?.Classes ?? Enumerable.Empty<ClassInfo>(),
+                "Events" => eventsToolBox?.Classes ?? Enumerable.Empty<ClassInfo>(),
+                "Variables" => variablesToolBox?.Classes ?? Enumerable.Empty<ClassInfo>(),
+                _ => Enumerable.Empty<ClassInfo>()
+            };
+        }
+
+        private static string NormalizeQuickCreateName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            return new string(name
+                .Replace("BioSeqAct_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SFXSeqAct_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SeqAct_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("BioSeqCond_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SeqCond_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("BioSeqEvt_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SFXSeqEvt_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SeqEvent_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("BioSeqVar_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SFXSeqVar_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Replace("SeqVar_", string.Empty, StringComparison.InvariantCultureIgnoreCase)
+                .Where(char.IsLetterOrDigit)
+                .ToArray())
+                .ToLowerInvariant();
+        }
+
+        private ClassInfo ResolveQuickCreateClassInfo(string header, QuickCreateMenuEntry entry)
+        {
+            if (Pcc == null)
+            {
+                return null;
+            }
+
+            var sourceClasses = GetQuickCreateSourceClasses(header).ToList();
+
+            foreach (string className in entry.ClassNames)
+            {
+                if (sourceClasses.FirstOrDefault(info => string.Equals(info.ClassName, className, StringComparison.InvariantCultureIgnoreCase)) is { } toolboxInfo)
+                {
+                    return toolboxInfo;
+                }
+            }
+
+            string normalizedHeader = NormalizeQuickCreateName(entry.Header);
+            var normalizedCandidates = entry.ClassNames
+                .Append(entry.Header)
+                .Select(NormalizeQuickCreateName)
+                .Where(name => !string.IsNullOrEmpty(name))
+                .ToHashSet(StringComparer.InvariantCultureIgnoreCase);
+
+            if (!string.IsNullOrEmpty(normalizedHeader))
+            {
+                normalizedCandidates.Add(normalizedHeader);
+            }
+
+            if (sourceClasses.FirstOrDefault(info => normalizedCandidates.Contains(NormalizeQuickCreateName(info.ClassName))) is { } normalizedToolboxInfo)
+            {
+                return normalizedToolboxInfo;
+            }
+
+            foreach (string className in entry.ClassNames)
+            {
+                if (GlobalUnrealObjectInfo.GetClassOrStructInfo(Pcc.Game, className) is { } info)
+                {
+                    return info;
+                }
+            }
+
+            return null;
+        }
+
+        private MenuItem CreateQuickCreateMenu(string header, IEnumerable<QuickCreateMenuEntry> entries)
+        {
+            var menuItem = new MenuItem { Header = header };
+            var availableEntries = entries
+                .Select(entry => new { Entry = entry, Info = ResolveQuickCreateClassInfo(header, entry) })
+                .Where(item => item.Info is not null)
+                .OrderBy(item => item.Entry.Header, StringComparer.InvariantCultureIgnoreCase)
+                .ToList();
+
+            if (availableEntries.Count == 0)
+            {
+                menuItem.Items.Add(new MenuItem
+                {
+                    Header = "No supported entries",
+                    IsEnabled = false
+                });
+                return menuItem;
+            }
+
+            foreach (var item in availableEntries)
+            {
+                menuItem.Items.Add(new MenuItem
+                {
+                    Header = item.Entry.Header,
+                    Tag = item.Info
+                });
+            }
+
+            foreach (MenuItem child in menuItem.Items)
+            {
+                child.Click += QuickCreateFromBackgroundMenu_Click;
+            }
+
+            return menuItem;
+        }
+
+        private static MenuItem CreateBackContextMenuItem(string header, RoutedEventHandler clickHandler, string toolTip = null)
+        {
+            var menuItem = new MenuItem
+            {
+                Header = header,
+                ToolTip = toolTip
+            };
+            menuItem.Click += clickHandler;
+            return menuItem;
+        }
+
+        private void QuickCreateFromBackgroundMenu_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: ClassInfo info })
+            {
+                return;
+            }
+
+            pendingNewObjectPosition = backgroundContextMenuGraphLocation;
+            CreateNewObject(info);
         }
 
         private void OpenFloatingToolbox()
@@ -5271,10 +5508,20 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
-        private void addObject(ExportEntry exportToAdd, bool removeLinks = true)
+        private PointF ConsumePendingNewObjectPosition()
         {
-            customSaveData[exportToAdd.UIndex] =
-                new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+            if (pendingNewObjectPosition is { } pendingPosition)
+            {
+                pendingNewObjectPosition = null;
+                return pendingPosition;
+            }
+
+            return new PointF(graphEditor.Camera.ViewCenterX, graphEditor.Camera.ViewCenterY);
+        }
+
+        private void addObject(ExportEntry exportToAdd, bool removeLinks = true, PointF? preferredPosition = null)
+        {
+            customSaveData[exportToAdd.UIndex] = preferredPosition ?? ConsumePendingNewObjectPosition();
             if (SelectedSequence.IsA("SFXSceneShopGameData"))
             {
                 if (!TryAddSceneShopGroupToParentInterpData(exportToAdd))

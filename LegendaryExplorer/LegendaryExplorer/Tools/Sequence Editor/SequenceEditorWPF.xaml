@@ -144,7 +144,7 @@
             <MenuItem Header="Remove from sequence" Name="removeFromSequenceMenuItem" Click="RemoveFromSequence_Click"/>
             <MenuItem Header="Trash and remove from sequence" Name="trashAndRemoveFromSequenceMenuItem" Click="TrashAndRemoveFromSequence_Click"/>
         </ContextMenu>
-        <ContextMenu x:Key="backContextMenu">
+        <ContextMenu x:Key="backContextMenu" Opened="BackContextMenu_Opened" Closed="BackContextMenu_Closed">
             <MenuItem Header="Add Existing Object" Click="AddObject_Clicked" ToolTip="Add existing Sequence Object to this Sequence"/>
             <MenuItem Header="Create Empty Subsequence" Click="CreateEmptySubsequence_Clicked" ToolTip="Create a new empty child sequence under the current sequence"/>
             <Separator />
