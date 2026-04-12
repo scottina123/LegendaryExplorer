@@ -2494,7 +2494,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 menuItem.Items.Add(new MenuItem
                 {
                     Header = item.Entry.Header,
-                    Tag = item.Info
+                    Tag = item.Info,
+                    StaysOpenOnClick = true
                 });
             }
 
