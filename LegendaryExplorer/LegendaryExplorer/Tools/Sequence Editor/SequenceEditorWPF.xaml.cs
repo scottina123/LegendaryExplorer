@@ -146,9 +146,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private static readonly QuickCreateMenuEntry[] QuickCreateEventEntries =
         [
             new("Console", "SeqEvent_Console"),
+            new("ConvNode", "BioSeqEvt_ConvNode"),
             new("Level is live", "SeqEvent_LevelIsLive"),
             new("Level is loaded", "SeqEvent_LevelLoaded"),
             new("RemoteEvent", "SeqEvent_RemoteEvent"),
+            new("Sequence Activated", "SeqEvent_SequenceActivated"),
             new("Touch", "SeqEvent_Touch"),
             new("Touch (SFX)", "SFXSeqEvt_Touch"),
             new("Used", "SeqEvent_Used")
@@ -162,23 +164,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             new("AttachToEvent", "SeqAct_AttachToEvent"),
             new("Ambient Performance", "SFXSeqAct_SetAmbientPerformance"),
             new("BlackScreen", "BioSeqAct_BlackScreen", "SFXSeqAct_BlackScreen"),
-            new("CheckConditional", "BioSeqAct_PMCheckConditional"),
-            new("CheckState", "BioSeqAct_PMCheckState"),
             new("CombatPawn", "BioSeqVar_CombatPawn"),
             new("Delay", "SeqAct_Delay"),
             new("EnableAI", "BioSeqAct_EnableAI"),
-            new("ExecuteTransition", "BioSeqAct_PMExecuteTransition"),
-            new("FaceOnly VO", "SFXSeqAct_FaceOnlyVO"),
+            new("Finish Sequence", "SeqAct_FinishSequence"),
             new("Gate", "SeqAct_Gate"),
             new("GetTag", "SeqAct_GetTag"),
-            new("Interp", "SeqAct_Interp"),
             new("LevelStreaming", "BioSeqAct_LevelStreaming"),
             new("MailGUI", "SFXSeqAct_MailGUI_Sorted"),
             new("Random Switch", "SeqAct_RandomSwitch"),
             new("RemoveFromParty", "BioSeqAct_RemoveFromParty"),
             new("SetActive", "BioSeqAct_SetActive"),
-            new("SetBool", "SeqAct_SetBool"),
-            new("SetInt", "SeqAct_SetInt"),
             new("SetLocation", "SeqAct_SetLocation"),
             new("SetMultipleStreamingStates", "BioSeqAct_SetMultipleStreamingStates"),
             new("SetObject", "SeqAct_SetObject"),
@@ -186,7 +182,27 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             new("SetTag", "SeqAct_SetTag"),
             new("SetTargetable", "BioSeqAct_SetTargetable"),
             new("Teleport", "SeqAct_Teleport"),
-            new("ToggleHidden", "SeqAct_ToggleHidden")
+            new("ToggleHidden", "SeqAct_ToggleHidden"),
+            new("WwisePostEvent", "SeqAct_WwisePostEvent")
+        ];
+
+        private static readonly QuickCreateMenuEntry[] QuickCreateConversationActionEntries =
+        [
+            new("EndCurrentConvNode", "BioSeqAct_EndCurrentConvNode"),
+            new("FaceOnly VO", "SFXSeqAct_FaceOnlyVO"),
+            new("Interp", "SeqAct_Interp"),
+            new("Start Ambient Conversation", "BioSeqAct_StartAmbientConv", "SFXSeqAct_StartAmbientConv", "SeqAct_StartAmbientConv"),
+            new("Start Conversation", "BioSeqAct_StartConversation", "SFXSeqAct_StartConversation", "SeqAct_StartConversation"),
+            new("WwisePostEvent", "SeqAct_WwisePostEvent")
+        ];
+
+        private static readonly QuickCreateMenuEntry[] QuickCreatePlotActionEntries =
+        [
+            new("CheckConditional", "BioSeqAct_PMCheckConditional"),
+            new("CheckState", "BioSeqAct_PMCheckState"),
+            new("ExecuteTransition", "BioSeqAct_PMExecuteTransition"),
+            new("SetBool", "SeqAct_SetBool"),
+            new("SetInt", "SeqAct_SetInt")
         ];
 
         private static readonly QuickCreateMenuEntry[] QuickCreateConditionalEntries =
@@ -2359,6 +2375,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             contextMenu.Items.Add(new Separator());
             contextMenu.Items.Add(CreateQuickCreateMenu("Events", QuickCreateEventEntries));
             contextMenu.Items.Add(CreateQuickCreateMenu("Actions", QuickCreateActionEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Conversation Actions", QuickCreateConversationActionEntries));
+            contextMenu.Items.Add(CreateQuickCreateMenu("Plot Actions", QuickCreatePlotActionEntries));
             contextMenu.Items.Add(CreateQuickCreateMenu("Conditionals", QuickCreateConditionalEntries));
             contextMenu.Items.Add(CreateQuickCreateMenu("Variables", QuickCreateVariableEntries));
             contextMenu.Items.Add(new Separator());
