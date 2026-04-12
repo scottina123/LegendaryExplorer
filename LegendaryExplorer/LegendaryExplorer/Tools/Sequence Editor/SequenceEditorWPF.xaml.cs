@@ -5481,6 +5481,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             if (SelectedObjects.Any())
             {
+                ScrollCurrentObjectSelectionIntoView(CurrentObjects_ListBox.SelectedItem as SObj ?? SelectedObjects.LastOrDefault());
+
                 if (panToSelection)
                 {
                     if (SelectedObjects.Count == 1)
@@ -5497,6 +5499,20 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             panToSelection = true;
             graphEditor.Refresh();
+        }
+
+        private void ScrollCurrentObjectSelectionIntoView(SObj selectedObject)
+        {
+            if (selectedObject == null)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                CurrentObjects_ListBox?.UpdateLayout();
+                CurrentObjects_ListBox?.ScrollIntoView(selectedObject);
+            }));
         }
 
         private void SaveImage()
