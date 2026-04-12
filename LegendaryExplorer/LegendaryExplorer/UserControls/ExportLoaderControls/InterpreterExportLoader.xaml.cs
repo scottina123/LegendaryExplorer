@@ -2761,6 +2761,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     CurrentLoadedExport?.WriteProperties(CurrentLoadedProperties);
                     e.Handled = true;
                     break;
+                case StrProperty when node.ShowEditableTextBlock && node.EditableType:
+                    node.IsInlineEditing = true;
+                    e.Handled = true;
+                    break;
             }
         }
 
@@ -3749,6 +3753,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     if (node.TryGetInlineIntValue(out int stringRefValue) && stringRefValue != strRefProperty.Value)
                     {
                         strRefProperty.Value = stringRefValue;
+                        updated = true;
+                    }
+                    break;
+                case StrProperty strProperty:
+                    if (node.InlineEditorValue != strProperty.Value)
+                    {
+                        strProperty.Value = node.InlineEditorValue ?? string.Empty;
                         updated = true;
                     }
                     break;
@@ -5209,8 +5220,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
 
-        public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or NameProperty or EnumProperty;
-        public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty;
+        public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
+        public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
@@ -5307,6 +5318,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 IntProperty intProp => intProp.Value.ToString(),
                 FloatProperty floatProp => floatProp.Value.ToString(),
                 StringRefProperty stringRefProp => stringRefProp.Value.ToString(),
+                StrProperty strProp => strProp.Value,
                 _ => ""
             };
             set => SetProperty(ref _inlineEditorValue, value);
@@ -5375,6 +5387,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 IntProperty intProp => intProp.Value.ToString(),
                 FloatProperty floatProp => floatProp.Value.ToString(),
                 StringRefProperty stringRefProp => stringRefProp.Value.ToString(),
+                StrProperty strProp => strProp.Value,
                 _ => _inlineEditorValue
             };
             OnPropertyChanged(nameof(InlineEditorValue));
@@ -5527,6 +5540,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             else
                             {
                                 return;
+                            }
+                            break;
+                        case StrProperty strProp:
+                            if (strProp.Value != value)
+                            {
+                                strProp.Value = value;
+                                PropertyUpdated?.Invoke(this, EventArgs.Empty);
+                                HasChanges = true;
                             }
                             break;
                         case NameProperty nameProp:
