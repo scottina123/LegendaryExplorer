@@ -517,6 +517,7 @@ namespace LegendaryExplorerCore.Dialogue
             int spkridx = -2;
             int cond = -1;
             int param = 0;
+            int transitionParam = 0;
             string line = "Unknown Reference";
             int stevent = -1;
             bool bcond = false;
@@ -528,6 +529,7 @@ namespace LegendaryExplorerCore.Dialogue
                 cond = node.GetProp<IntProperty>("nConditionalFunc")?.Value ?? -1;
                 param = node.GetProp<IntProperty>("nConditionalParam")?.Value ?? 0;
                 stevent = node.GetProp<IntProperty>("nStateTransition")?.Value ?? -1;
+                transitionParam = node.GetProp<IntProperty>("nStateTransitionParam")?.Value ?? 0;
                 bcond = node.GetProp<BoolProperty>("bFireConditional");
                 if (isReply)
                 {
@@ -539,7 +541,7 @@ namespace LegendaryExplorerCore.Dialogue
                 }
 
                 int listenerIdx = node.GetProp<IntProperty>("nListenerIndex")?.Value ?? -3;
-                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply, param)
+                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply, param, transitionParam)
                 {
                     Listener = listenerIdx
                 };
@@ -548,9 +550,9 @@ namespace LegendaryExplorerCore.Dialogue
             {
                 if (LegendaryExplorerCoreLib.IsDebug)
                 {
-                    throw new Exception($"List Parse failed: N{count} Reply?:{isReply}, {linestrref}, {line}, {cond}, {stevent}, {bcond}, {eReply}", e);  //Note some convos don't have replies.
+                    throw new Exception($"List Parse failed: N{count} Reply?:{isReply}, {linestrref}, {line}, {cond}, {stevent}, {transitionParam}, {bcond}, {eReply}", e);  //Note some convos don't have replies.
                 }
-                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply);
+                return new DialogueNodeExtended(node, isReply, count, spkridx, linestrref, line, bcond, cond, stevent, eReply, transitionParam: transitionParam);
             }
         }
 
