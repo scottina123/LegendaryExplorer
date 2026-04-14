@@ -74,11 +74,12 @@ namespace LegendaryExplorer.Dialogs
         /// <param name="entryPredicate">A predicate to narrow the displayed entries</param>
         /// <param name="supportRootSelection">Whether to include a special option in the selection list</param>
         /// <param name="rootSelectionLabel">Label for the special option when <paramref name="supportRootSelection"/> is true</param>
-        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null, Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false, string rootSelectionLabel = "[Package root]")
+        private EntrySelector(Window owner, IMEPackage pcc, SupportedTypes supportedInputTypes, string directionsText = null, Predicate<IEntry> entryPredicate = null, bool supportRootSelection = false, string rootSelectionLabel = "[Package root]", string searchHelpText = null)
         {
             this.Pcc = pcc;
             this.SupportedInputTypes = supportedInputTypes;
             this.DirectionsTextOverride = directionsText;
+            this.SearchHelpTextOverride = searchHelpText;
 
             var allEntriesBuilding = new List<object>();
             if (SupportedInputTypes.HasFlag(SupportedTypes.Imports))
@@ -107,6 +108,21 @@ namespace LegendaryExplorer.Dialogs
                 allEntriesBuilding.Insert(0, rootSelectionLabel);
             }
             AllEntriesList.ReplaceAll(allEntriesBuilding);
+            Owner = owner;
+            DataContext = this;
+            LoadCommands();
+            InitializeComponent();
+            UpdateFilteredEntries();
+            EntrySearchTextBox.Focus();
+        }
+
+        private EntrySelector(Window owner, IEnumerable<object> items, string directionsText = null, string searchHelpText = null)
+        {
+            Pcc = null;
+            SupportedInputTypes = SupportedTypes.ExportsAndImports;
+            DirectionsTextOverride = directionsText;
+            SearchHelpTextOverride = searchHelpText;
+            AllEntriesList.ReplaceAll(items ?? []);
             Owner = owner;
             DataContext = this;
             LoadCommands();
@@ -188,6 +204,18 @@ namespace LegendaryExplorer.Dialogs
             return null;
         }
 
+        public static T GetItem<T>(Window owner, IEnumerable<T> items, string directionsText = null, T defaultItem = default, bool selectLastItemByDefault = false, string searchHelpText = null) where T : class
+        {
+            using var dlg = new EntrySelector(owner, items?.Cast<object>() ?? [], directionsText, searchHelpText);
+            dlg.SetInitialSelection(defaultItem, selectLastItemByDefault);
+            if (dlg.ShowDialog() == true)
+            {
+                return dlg.SelectedEntryItem as T;
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Gets the command for accepting the current selection.
         /// </summary>
@@ -260,7 +288,7 @@ namespace LegendaryExplorer.Dialogs
 
             if (item is not IEntry entry)
             {
-                return false;
+                return item?.ToString()?.Contains(search, StringComparison.OrdinalIgnoreCase) == true;
             }
 
             string normalizedSearch = search.TrimStart('#');
@@ -296,6 +324,7 @@ namespace LegendaryExplorer.Dialogs
         /// Custom directions text to display to the user, overriding the default.
         /// </summary>
         private string DirectionsTextOverride;
+        private string SearchHelpTextOverride;
         
         /// <summary>
         /// Gets the directions text to display to the user based on the supported input types.
@@ -317,6 +346,8 @@ namespace LegendaryExplorer.Dialogs
                 return "Unknown input type selected";
             }
         }
+
+        public string SearchHelpText => SearchHelpTextOverride ?? "Search by export/import number, object name, class, or full path";
 
         #region IDisposable Support
         /// <summary>

@@ -3611,6 +3611,14 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private sealed record ReplacementFileChoice(string FilePath)
+        {
+            public override string ToString()
+            {
+                return Path.GetFileName(FilePath);
+            }
+        }
+
         private List<ConversationReplacementCandidate> GetReplacementConversationCandidates(ConversationExtended conversation)
         {
             if (conversation?.Export == null || Pcc == null)
@@ -3661,6 +3669,78 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             return candidates;
+        }
+
+        private ConversationReplacementCandidate PickReplacementConversationCandidate(ConversationExtended conversation, List<ConversationReplacementCandidate> candidates)
+        {
+            if (conversation?.Export == null || Pcc == null || candidates == null || candidates.Count == 0)
+            {
+                return null;
+            }
+
+            var availableFiles = candidates
+                .Select(candidate => candidate.FilePath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .Select(path => new ReplacementFileChoice(path))
+                .ToList();
+
+            ReplacementFileChoice selectedFile = EntrySelector.GetItem(
+                this,
+                availableFiles,
+                "Choose replacement conversation file.",
+                availableFiles[0],
+                searchHelpText: "Search by package file name");
+
+            if (selectedFile == null)
+            {
+                return null;
+            }
+
+            string selectedFilePath = selectedFile.FilePath;
+
+            var fileCandidates = candidates
+                .Where(candidate => candidate.FilePath.Equals(selectedFilePath, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (fileCandidates.Count == 0)
+            {
+                return null;
+            }
+
+            var candidateUIndexes = fileCandidates.Select(candidate => candidate.UIndex).ToHashSet();
+
+            try
+            {
+                using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(selectedFilePath, forceLoadFromDisk: true);
+                if (sourcePackage.Game != Pcc.Game)
+                {
+                    MessageBox.Show("Selected file is for a different game.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return null;
+                }
+
+                string selectedConversationName = conversation.Export.ObjectName.Instanced;
+                var selectedExport = EntrySelector.GetEntry<ExportEntry>(
+                    this,
+                    sourcePackage,
+                    $"Choose the same-named BioConversation to import from '{Path.GetFileName(selectedFilePath)}'.",
+                    exp => exp.ClassName == "BioConversation"
+                        && candidateUIndexes.Contains(exp.UIndex)
+                        && string.Equals(exp.ObjectName.Instanced, selectedConversationName, StringComparison.OrdinalIgnoreCase));
+
+                if (selectedExport == null)
+                {
+                    return null;
+                }
+
+                IEntry topLevelEntry = GetTopLevelEntry(selectedExport);
+                return new ConversationReplacementCandidate(selectedFilePath, selectedExport.UIndex, topLevelEntry?.InstancedFullPath ?? selectedExport.InstancedFullPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Unable to open replacement file:\n{ex.Message}", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Error);
+                return null;
+            }
         }
 
         private static HashSet<int> GetReferencedObjectUIndexes(IEntry entry)
@@ -4051,17 +4131,7 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            ConversationReplacementCandidate replacementCandidate = candidates.Count == 1 ? candidates[0] : null;
-            if (replacementCandidate == null)
-            {
-                string selectedCandidate = InputComboBoxDialog.GetValue(
-                    this,
-                    "Choose the same-named conversation to import.",
-                    "Replace top-level package",
-                    candidates,
-                    candidates[0].ToString());
-                replacementCandidate = candidates.FirstOrDefault(candidate => candidate.ToString() == selectedCandidate);
-            }
+            ConversationReplacementCandidate replacementCandidate = PickReplacementConversationCandidate(conversation, candidates);
 
             if (replacementCandidate == null)
             {

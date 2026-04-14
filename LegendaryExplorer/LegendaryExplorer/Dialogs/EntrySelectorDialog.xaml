@@ -56,8 +56,8 @@
                      Margin="0,8,0,0"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      KeyDown="EntrySearchTextBox_KeyDown"
-                     ToolTip="Search by UIndex, name, class, or full path"/>
-            <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="Search by export/import number, object name, class, or full path"/>
+                     ToolTip="{Binding SearchHelpText}"/>
+            <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="{Binding SearchHelpText}"/>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Margin="0,10,0,0">
