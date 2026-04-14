@@ -93,6 +93,16 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             List<string> Messages,
             List<string> Failures);
 
+        private sealed record DuplicateIndexReindexTarget(
+            string ParentPath,
+            string ObjectName,
+            string ClassName);
+
+        private sealed record DuplicateIndexReindexSummary(
+            int ReindexedGroupCount,
+            int ReindexedEntryCount,
+            List<string> RemainingDuplicates);
+
         private sealed record BulkPropertyClassTarget(
             string ClassName,
             List<ExportEntry> Exports)
@@ -316,6 +326,78 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
         {
             DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
+        }
+
+        public static void ReindexAllDuplicateIndicesInPackage(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            List<EntryStringPair> duplicates = EntryChecker.CheckForDuplicateIndices(pew.Pcc);
+            if (duplicates.Count == 0)
+            {
+                MessageBox.Show(pew,
+                    "No duplicate indexes were found in the current package.",
+                    "Reindex duplicate indexes",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            int duplicateGroupCount = GetDuplicateIndexGroups(pew.Pcc).Count;
+            if (MessageBox.Show(pew,
+                    $"This will reindex every export or import involved in duplicate indexing in the current package.\n\nDetected {duplicateGroupCount} duplicate group{(duplicateGroupCount == 1 ? string.Empty : "s")} and {duplicates.Count} duplicate entry warning{(duplicates.Count == 1 ? string.Empty : "s")}.\n\nMatching entries under the same parent and class will be renumbered starting at 1. Back up the file first.\n\nContinue?",
+                    "Reindex duplicate indexes",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            pew.BusyText = "Reindexing duplicate indexes";
+            pew.IsBusy = true;
+
+            Task.Run(() => ReindexAllDuplicateIndices(pew.Pcc))
+                .ContinueWithOnUIThread(task =>
+                {
+                    pew.IsBusy = false;
+
+                    if (task.Exception != null)
+                    {
+                        MessageBox.Show(pew,
+                            task.Exception.FlattenException(),
+                            "Reindex duplicate indexes",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
+
+                    DuplicateIndexReindexSummary summary = task.Result;
+                    if (summary.RemainingDuplicates.Count == 0)
+                    {
+                        MessageBox.Show(pew,
+                            $"Reindexed {summary.ReindexedEntryCount} entr{(summary.ReindexedEntryCount == 1 ? "y" : "ies")} across {summary.ReindexedGroupCount} duplicate group{(summary.ReindexedGroupCount == 1 ? string.Empty : "s")}.",
+                            "Reindex duplicate indexes",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                        return;
+                    }
+
+                    var lines = new List<string>
+                    {
+                        $"Reindexed {summary.ReindexedEntryCount} entr{(summary.ReindexedEntryCount == 1 ? "y" : "ies")} across {summary.ReindexedGroupCount} duplicate group{(summary.ReindexedGroupCount == 1 ? string.Empty : "s") }.",
+                        string.Empty,
+                        "Remaining duplicate indexes:",
+                    };
+                    lines.AddRange(summary.RemainingDuplicates);
+
+                    new ListDialog(lines,
+                        "Reindex duplicate indexes",
+                        "Some duplicate indexes remain after the bulk reindex.",
+                        pew).Show();
+                });
         }
 
         public static void BulkAddPropertiesToClass(PackageEditorWindow pew)
@@ -839,6 +921,104 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(group => new BulkPropertyClassTarget(group.Key, group.OrderBy(export => export.UIndex).ToList()))
                 .ToList();
+        }
+
+        private static DuplicateIndexReindexSummary ReindexAllDuplicateIndices(IMEPackage package)
+        {
+            int reindexedGroupCount = 0;
+            int reindexedEntryCount = 0;
+
+            while (GetNextDuplicateIndexTarget(package) is { } target)
+            {
+                int changedEntries = ReindexDuplicateIndexTarget(package, target);
+                if (changedEntries == 0)
+                {
+                    break;
+                }
+
+                reindexedGroupCount++;
+                reindexedEntryCount += changedEntries;
+            }
+
+            List<string> remainingDuplicates = EntryChecker.CheckForDuplicateIndices(package)
+                .Select(duplicate => duplicate.Message)
+                .ToList();
+            return new DuplicateIndexReindexSummary(reindexedGroupCount, reindexedEntryCount, remainingDuplicates);
+        }
+
+        private static DuplicateIndexReindexTarget GetNextDuplicateIndexTarget(IMEPackage package)
+        {
+            List<IEntry> nextDuplicateGroup = GetDuplicateIndexGroups(package).FirstOrDefault();
+            return nextDuplicateGroup == null
+                ? null
+                : new DuplicateIndexReindexTarget(nextDuplicateGroup[0].ParentInstancedFullPath, nextDuplicateGroup[0].ObjectName.Name, nextDuplicateGroup[0].ClassName);
+        }
+
+        private static List<List<IEntry>> GetDuplicateIndexGroups(IMEPackage package)
+        {
+            return EnumeratePackageEntries(package)
+                .Where(entry => !ShouldIgnoreDuplicateIndexEntry(entry))
+                .GroupBy(entry => new { entry.InstancedFullPath, entry.ClassName })
+                .Where(group => group.Count() > 1)
+                .Select(group => group.OrderBy(entry => entry.UIndex).ToList())
+                .OrderBy(group => GetEntryPathDepth(group[0]))
+                .ThenBy(group => group[0].InstancedFullPath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(group => group[0].ClassName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(group => group[0].UIndex)
+                .ToList();
+        }
+
+        private static IEnumerable<IEntry> EnumeratePackageEntries(IMEPackage package)
+        {
+            foreach (ExportEntry export in package.Exports)
+            {
+                yield return export;
+            }
+
+            foreach (ImportEntry import in package.Imports)
+            {
+                yield return import;
+            }
+        }
+
+        private static bool ShouldIgnoreDuplicateIndexEntry(IEntry entry)
+        {
+            return entry.InstancedFullPath.StartsWith(UnrealPackageFile.TrashPackageName, StringComparison.OrdinalIgnoreCase)
+                   && entry.ClassName == "Package";
+        }
+
+        private static int GetEntryPathDepth(IEntry entry)
+        {
+            return string.IsNullOrWhiteSpace(entry?.InstancedFullPath)
+                ? 0
+                : entry.InstancedFullPath.Count(ch => ch == '.');
+        }
+
+        private static int ReindexDuplicateIndexTarget(IMEPackage package, DuplicateIndexReindexTarget target)
+        {
+            List<IEntry> entries = EnumeratePackageEntries(package)
+                .Where(entry => !ShouldIgnoreDuplicateIndexEntry(entry)
+                                && string.Equals(entry.ParentInstancedFullPath, target.ParentPath, StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(entry.ObjectName.Name, target.ObjectName, StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(entry.ClassName, target.ClassName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.indexValue)
+                .ThenBy(entry => entry.UIndex)
+                .ToList();
+
+            int changedEntries = 0;
+            for (int index = 1; index <= entries.Count; index++)
+            {
+                IEntry entry = entries[index - 1];
+                if (entry.indexValue == index)
+                {
+                    continue;
+                }
+
+                entry.indexValue = index;
+                changedEntries++;
+            }
+
+            return changedEntries;
         }
 
         private static List<PropNameStaticArrayIdxPair> GetCommonRootProperties(List<ExportEntry> exports)

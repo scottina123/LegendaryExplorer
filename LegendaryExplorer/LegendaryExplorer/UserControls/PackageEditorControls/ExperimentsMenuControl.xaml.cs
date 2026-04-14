@@ -907,6 +907,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.MoveLargePackageStoredTexturesToTfc(GetPEWindow());
         }
 
+        private void ReindexAllDuplicateIndicesInPackage_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.ReindexAllDuplicateIndicesInPackage(GetPEWindow());
+        }
+
         private void ExportFaceFXAssetToXml_Click(object sender, RoutedEventArgs e)
         {
             if (!GetPEWindow().TryGetSelectedExport(out var export))
