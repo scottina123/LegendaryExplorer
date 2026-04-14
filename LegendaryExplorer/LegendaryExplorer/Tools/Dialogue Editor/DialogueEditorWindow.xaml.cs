@@ -3454,6 +3454,210 @@ namespace LegendaryExplorer.DialogueEditor
             return importedConversation?.UIndex ?? fallbackConversationUIndex;
         }
 
+        private static List<IEntry> GetEntryTree(IEntry rootEntry)
+        {
+            if (rootEntry == null)
+            {
+                return [];
+            }
+
+            return [rootEntry, .. rootEntry.GetAllDescendants()];
+        }
+
+        private static string GetRelativeEntryPath(IEntry rootEntry, IEntry entry)
+        {
+            if (rootEntry == null || entry == null)
+            {
+                return null;
+            }
+
+            if (ReferenceEquals(rootEntry, entry))
+            {
+                return string.Empty;
+            }
+
+            string rootPath = rootEntry.InstancedFullPath;
+            string entryPath = entry.InstancedFullPath;
+            if (string.IsNullOrEmpty(rootPath) || string.IsNullOrEmpty(entryPath))
+            {
+                return entryPath;
+            }
+
+            return entryPath.StartsWith(rootPath + ".", StringComparison.OrdinalIgnoreCase)
+                ? entryPath[(rootPath.Length + 1)..]
+                : entryPath;
+        }
+
+        private static Dictionary<string, IEntry> BuildRelativeEntryPathMap(IEntry rootEntry)
+        {
+            return GetEntryTree(rootEntry)
+                .GroupBy(entry => GetRelativeEntryPath(rootEntry, entry), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static List<(IEntry Entry, string RelativePath, string LookupKey)> BuildReplacementSnapshot(IEntry rootEntry)
+        {
+            return GetEntryTree(rootEntry)
+                .Select(entry =>
+                    (
+                        Entry: entry,
+                        RelativePath: GetRelativeEntryPath(rootEntry, entry),
+                        LookupKey: GetEntryReplacementLookupKey(entry)
+                    ))
+                .ToList();
+        }
+
+        private static int? TryGetWwiseEventStrRef(IEntry entry)
+        {
+            if (entry?.ClassName != "WwiseEvent")
+            {
+                return null;
+            }
+
+            string objectName = entry.ObjectName.Name;
+            if (!objectName.StartsWith("VO_", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string parsing = objectName[3..];
+            int nextUnderscore = parsing.IndexOf('_');
+            if (nextUnderscore <= 0)
+            {
+                return null;
+            }
+
+            return int.TryParse(parsing[..nextUnderscore], out int parsedInt) ? parsedInt : null;
+        }
+
+        private static int? TryGetWwiseStreamStrRef(IEntry entry)
+        {
+            if (entry?.ClassName != "WwiseStream")
+            {
+                return null;
+            }
+
+            string[] splits = entry.ObjectName.Name.Split('_', ',');
+            for (int i = splits.Length - 1; i >= 0; i--)
+            {
+                if (int.TryParse(splits[i], out int parsedInt))
+                {
+                    return parsedInt;
+                }
+            }
+
+            return null;
+        }
+
+        private static string GetAudioGenderToken(IEntry entry)
+        {
+            string objectName = entry?.ObjectName.Name ?? string.Empty;
+            if (objectName.Contains("_f_", StringComparison.OrdinalIgnoreCase))
+            {
+                return "f";
+            }
+
+            if (objectName.Contains("_m_", StringComparison.OrdinalIgnoreCase))
+            {
+                return "m";
+            }
+
+            return string.Empty;
+        }
+
+        private static string NormalizeReplacementLookupText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            text = RemoveWrappingQuotes(text);
+            text = Regex.Replace(text, @"\s+", " ").Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+
+        private static string GetEntryReplacementLookupKey(IEntry entry)
+        {
+            if (entry?.FileRef == null)
+            {
+                return null;
+            }
+
+            int? strRef = entry.ClassName switch
+            {
+                "WwiseEvent" => TryGetWwiseEventStrRef(entry),
+                "WwiseStream" => TryGetWwiseStreamStrRef(entry),
+                _ => null
+            };
+
+            if (!strRef.HasValue)
+            {
+                return null;
+            }
+
+            string tlkText = NormalizeReplacementLookupText(GlobalFindStrRefbyID(strRef.Value, entry.FileRef));
+            if (string.IsNullOrWhiteSpace(tlkText) || tlkText == "No Data")
+            {
+                tlkText = strRef.Value.ToString();
+            }
+
+            return $"{entry.ClassName}|{GetAudioGenderToken(entry)}|{tlkText}";
+        }
+
+        private static Dictionary<string, IEntry> BuildReplacementLookupKeyMap(IEntry rootEntry)
+        {
+            return GetEntryTree(rootEntry)
+                .Select(entry => (entry, key: GetEntryReplacementLookupKey(entry)))
+                .Where(item => !string.IsNullOrWhiteSpace(item.key))
+                .GroupBy(item => item.key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().entry, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static ListenableDictionary<IEntry, IEntry> BuildReplacementRelinkMap(List<(IEntry Entry, string RelativePath, string LookupKey)> oldEntrySnapshot, IEntry sourceRootEntry, RelinkerOptionsPackage rop)
+        {
+            var relinkMap = new ListenableDictionary<IEntry, IEntry>();
+            if (oldEntrySnapshot == null || sourceRootEntry == null || rop?.CrossPackageMap == null)
+            {
+                return relinkMap;
+            }
+
+            var sourceEntriesByRelativePath = BuildRelativeEntryPathMap(sourceRootEntry);
+            var sourceEntriesByLookupKey = BuildReplacementLookupKeyMap(sourceRootEntry);
+
+            foreach (var snapshot in oldEntrySnapshot)
+            {
+                IEntry oldEntry = snapshot.Entry;
+                IEntry sourceEntry = null;
+
+                if (!string.IsNullOrWhiteSpace(snapshot.RelativePath))
+                {
+                    sourceEntriesByRelativePath.TryGetValue(snapshot.RelativePath, out sourceEntry);
+                }
+
+                if (sourceEntry == null)
+                {
+                    string lookupKey = snapshot.LookupKey;
+                    if (!string.IsNullOrWhiteSpace(lookupKey))
+                    {
+                        sourceEntriesByLookupKey.TryGetValue(lookupKey, out sourceEntry);
+                    }
+                }
+
+                if (sourceEntry == null
+                    || !rop.CrossPackageMap.TryGetValue(sourceEntry, out IEntry newEntry)
+                    || newEntry == null
+                    || ReferenceEquals(oldEntry, newEntry))
+                {
+                    continue;
+                }
+
+                relinkMap[oldEntry] = newEntry;
+            }
+
+            return relinkMap;
+        }
+
         private void RefreshConversationsAfterStructureChange(int? preferredConversationUIndex = null)
         {
             int? targetConversationUIndex = preferredConversationUIndex ?? SelectedConv?.UIndex;
@@ -3613,14 +3817,6 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private sealed record ReplacementFileChoice(string FilePath)
-        {
-            public override string ToString()
-            {
-                return Path.GetFileName(FilePath);
-            }
-        }
-
         private List<ConversationReplacementCandidate> GetReplacementConversationCandidates(ConversationExtended conversation)
         {
             if (conversation?.Export == null || Pcc == null)
@@ -3680,72 +3876,18 @@ namespace LegendaryExplorer.DialogueEditor
                 return null;
             }
 
-            var availableFiles = candidates
-                .Select(candidate => candidate.FilePath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                .Select(path => new ReplacementFileChoice(path))
-                .ToList();
-
-            ReplacementFileChoice selectedFile = EntrySelector.GetItem(
+            return EntrySelector.GetItem(
                 this,
-                availableFiles,
-                "Choose replacement conversation file.",
-                availableFiles[0],
-                searchHelpText: "Search by package file name");
-
-            if (selectedFile == null)
-            {
-                return null;
-            }
-
-            string selectedFilePath = selectedFile.FilePath;
-
-            var fileCandidates = candidates
-                .Where(candidate => candidate.FilePath.Equals(selectedFilePath, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (fileCandidates.Count == 0)
-            {
-                return null;
-            }
-
-            var candidateUIndexes = fileCandidates.Select(candidate => candidate.UIndex).ToHashSet();
-
-            try
-            {
-                using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(selectedFilePath, forceLoadFromDisk: true);
-                if (sourcePackage.Game != Pcc.Game)
-                {
-                    MessageBox.Show("Selected file is for a different game.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return null;
-                }
-
-                string selectedConversationName = conversation.Export.ObjectName.Instanced;
-                var selectedExport = EntrySelector.GetEntry<ExportEntry>(
-                    this,
-                    sourcePackage,
-                    $"Choose the same-named BioConversation to import from '{Path.GetFileName(selectedFilePath)}'.",
-                    exp => exp.ClassName == "BioConversation"
-                        && candidateUIndexes.Contains(exp.UIndex)
-                        && string.Equals(exp.ObjectName.Instanced, selectedConversationName, StringComparison.OrdinalIgnoreCase));
-
-                if (selectedExport == null)
-                {
-                    return null;
-                }
-
-                IEntry topLevelEntry = GetTopLevelEntry(selectedExport);
-                return new ConversationReplacementCandidate(selectedFilePath, selectedExport.UIndex, topLevelEntry?.InstancedFullPath ?? selectedExport.InstancedFullPath);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Unable to open replacement file:\n{ex.Message}", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Error);
-                return null;
-            }
+                candidates
+                    .OrderBy(candidate => Path.GetFileName(candidate.FilePath), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(candidate => candidate.TopLevelEntryPath, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                "Choose the same-named BioConversation to import.",
+                candidates[0],
+                searchHelpText: "Search by package file name or top-level path");
         }
 
-        private static HashSet<int> GetReferencedObjectUIndexes(IEntry entry)
+        private static HashSet<int> GetReferencedObjectUIndexes(IEntry entry, bool includeStructuralReferences = true)
         {
             var references = new HashSet<int>();
             if (entry?.FileRef == null)
@@ -3803,15 +3945,21 @@ namespace LegendaryExplorer.DialogueEditor
             switch (entry)
             {
                 case ImportEntry:
-                    AddReference(entry.idxLink);
+                    if (includeStructuralReferences)
+                    {
+                        AddReference(entry.idxLink);
+                    }
                     break;
                 case ExportEntry exp:
                     try
                     {
-                        AddReference(exp.idxLink);
-                        AddReference(exp.idxArchetype);
-                        AddReference(exp.idxClass);
-                        AddReference(exp.idxSuperClass);
+                        if (includeStructuralReferences)
+                        {
+                            AddReference(exp.idxLink);
+                            AddReference(exp.idxArchetype);
+                            AddReference(exp.idxClass);
+                            AddReference(exp.idxSuperClass);
+                        }
 
                         if (exp.HasComponentMap)
                         {
@@ -3821,7 +3969,7 @@ namespace LegendaryExplorer.DialogueEditor
                             }
                         }
 
-                        if (!exp.HasStack && exp.TemplateOwnerClassIdx is >= 0)
+                        if (includeStructuralReferences && !exp.HasStack && exp.TemplateOwnerClassIdx is >= 0)
                         {
                             AddReference(exp.TemplateOwnerClassIdx);
                         }
@@ -3855,7 +4003,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private List<ExportEntry> GetExternalReferencedExports(IEntry topLevelEntry)
+        private List<IEntry> GetExternalReferencedEntries(IEntry topLevelEntry)
         {
             if (topLevelEntry?.FileRef == null)
             {
@@ -3865,7 +4013,7 @@ namespace LegendaryExplorer.DialogueEditor
             IMEPackage package = topLevelEntry.FileRef;
             HashSet<int> topLevelTreeUIndexes = [topLevelEntry.UIndex, .. topLevelEntry.GetAllDescendants().Select(x => x.UIndex).Where(x => x > 0)];
             HashSet<int> visitedUIndexes = [];
-            HashSet<ExportEntry> externalExports = [];
+            HashSet<IEntry> externalEntries = [];
             Stack<IEntry> entriesToProcess = new([topLevelEntry, .. topLevelEntry.GetAllDescendants()]);
 
             while (entriesToProcess.Count > 0)
@@ -3876,35 +4024,23 @@ namespace LegendaryExplorer.DialogueEditor
                     continue;
                 }
 
-                foreach (int referencedUIndex in GetReferencedObjectUIndexes(currentEntry))
+                foreach (int referencedUIndex in GetReferencedObjectUIndexes(currentEntry, includeStructuralReferences: false))
                 {
-                    if (!package.TryGetUExport(referencedUIndex, out ExportEntry referencedExport)
-                        || referencedExport.ClassName == "Package"
-                        || topLevelTreeUIndexes.Contains(referencedExport.UIndex)
-                        || referencedExport.IsTrash())
+                    if (!package.TryGetEntry(referencedUIndex, out IEntry referencedEntry)
+                        || topLevelTreeUIndexes.Contains(referencedEntry.UIndex)
+                        || referencedEntry.IsTrash())
                     {
                         continue;
                     }
 
-                    if (externalExports.Add(referencedExport))
+                    if (externalEntries.Add(referencedEntry))
                     {
-                        entriesToProcess.Push(referencedExport);
+                        entriesToProcess.Push(referencedEntry);
                     }
                 }
             }
 
-            return externalExports
-                .OrderBy(exp => exp.InstancedFullPath.Count(c => c == '.'))
-                .ThenBy(exp => exp.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private List<ExportEntry> GetExternalReferencedTopLevelEntries(IEntry topLevelEntry)
-        {
-            return GetExternalReferencedExports(topLevelEntry)
-                .Select(export => GetTopLevelEntry(export) as ExportEntry)
-                .Where(entry => entry != null && entry != topLevelEntry && !IsEntryDescendantOrSame(entry, topLevelEntry))
-                .Distinct()
+            return externalEntries
                 .OrderBy(entry => entry.InstancedFullPath.Count(c => c == '.'))
                 .ThenBy(entry => entry.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -3941,9 +4077,9 @@ namespace LegendaryExplorer.DialogueEditor
                 return itemsToTrash.ToList();
             }
 
-            foreach (ExportEntry externalTopLevelEntry in GetExternalReferencedTopLevelEntries(topLevelEntry))
+            foreach (IEntry referencedEntry in GetExternalReferencedEntries(topLevelEntry))
             {
-                AddEntryAndDescendants(externalTopLevelEntry);
+                itemsToTrash.Add(referencedEntry);
             }
 
             return itemsToTrash.ToList();
@@ -4006,6 +4142,9 @@ namespace LegendaryExplorer.DialogueEditor
                 IsCrossGame = sourceEntry.Game != Pcc.Game && sourceEntry.Game != MEGame.UDK,
                 Cache = new PackageCache(),
                 ImportExportDependencies = true,
+                GenerateImportsForGlobalFiles = true,
+                PortImportsMemorySafe = true,
+                PortExportsAsImportsWhenPossible = true,
             };
 
             var relinkResults = EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceEntry, Pcc,
@@ -4028,6 +4167,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             IEntry newEntry = null;
+            IEntry targetTopLevelEntry = GetTopLevelConversationEntry(targetConversation);
+            var targetReplacementSnapshot = BuildReplacementSnapshot(targetTopLevelEntry);
             try
             {
                 using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(replacementCandidate.FilePath, forceLoadFromDisk: true);
@@ -4044,12 +4185,40 @@ namespace LegendaryExplorer.DialogueEditor
                     return;
                 }
 
-                if (!TrashTopLevelConversationPackage(targetConversation, confirm: false, refreshAfter: false, includeExternalReferencedPackages: true))
+                if (targetTopLevelEntry == null)
                 {
                     return;
                 }
 
-                newEntry = CloneTopLevelConversationPackageFromSource(sourceTopLevelEntry);
+                var relinkOptions = new RelinkerOptionsPackage
+                {
+                    IsCrossGame = sourceTopLevelEntry.Game != Pcc.Game && sourceTopLevelEntry.Game != MEGame.UDK,
+                    Cache = new PackageCache(),
+                    ImportExportDependencies = true,
+                    GenerateImportsForGlobalFiles = true,
+                    PortImportsMemorySafe = true,
+                    PortExportsAsImportsWhenPossible = true,
+                };
+
+                if (!TrashTopLevelConversationPackage(targetConversation, confirm: false, refreshAfter: false))
+                {
+                    return;
+                }
+
+                EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceTopLevelEntry, Pcc,
+                    null, true, relinkOptions, out newEntry);
+
+                var replacementRelinkMap = BuildReplacementRelinkMap(targetReplacementSnapshot, sourceTopLevelEntry, relinkOptions);
+                if (replacementRelinkMap.Count > 0)
+                {
+                    Relinker.RelinkSamePackage(Pcc, replacementRelinkMap);
+                }
+
+                if ((relinkOptions.RelinkReport?.Count ?? 0) > 0)
+                {
+                    new ListDialog(relinkOptions.RelinkReport, "Relink report",
+                        "The following items reported relinking issues.", this).Show();
+                }
             }
             catch (Exception ex)
             {
