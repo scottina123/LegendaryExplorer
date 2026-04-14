@@ -317,7 +317,108 @@ namespace LegendaryExplorer.Tools.PlotEditor
 
         public override void HandleUpdate(List<PackageUpdate> updates)
         {
-            //TODO: implement handleUpdate
+            if (Pcc == null || updates is null || updates.Count == 0)
+            {
+                return;
+            }
+
+            HashSet<int> updatedExports = updates
+                .Where(update => update.Change.HasFlag(PackageChange.Export))
+                .Select(update => update.Index)
+                .ToHashSet();
+
+            if (updatedExports.Count == 0)
+            {
+                return;
+            }
+
+            HashSet<int> plotMapExports = [];
+            if (CodexMapView.TryFindCodexMap(Pcc, out ExportEntry codexMapExport, out _))
+            {
+                plotMapExports.Add(codexMapExport.UIndex);
+            }
+
+            if (QuestMapControl?.TryFindQuestMap(Pcc, out ExportEntry questMapExport, out _) == true)
+            {
+                plotMapExports.Add(questMapExport.UIndex);
+            }
+
+            if (StateEventMapView.TryFindStateEventMap(Pcc, out ExportEntry stateEventMapExport))
+            {
+                plotMapExports.Add(stateEventMapExport.UIndex);
+            }
+
+            if (StateEventMapView.TryFindStateEventMap(Pcc, out ExportEntry consequenceMapExport, "ConsequenceMap"))
+            {
+                plotMapExports.Add(consequenceMapExport.UIndex);
+            }
+
+            if (!updatedExports.Overlaps(plotMapExports))
+            {
+                return;
+            }
+
+            int selectedTabIndex = MainTabControl.SelectedIndex;
+            int selectedCodexTreeTabIndex = CodexMapControl?.SelectedCodexTreeTabIndex ?? 0;
+            int? selectedCodexPageId = CodexMapControl?.SelectedCodexPage.Value != null ? CodexMapControl.SelectedCodexPage.Key : null;
+            int? selectedCodexSectionId = CodexMapControl?.SelectedCodexSection.Value != null ? CodexMapControl.SelectedCodexSection.Key : null;
+            string codexSearchText = CodexMapControl?.SearchText;
+            int? selectedQuestId = QuestMapControl?.SelectedQuest.Value != null ? QuestMapControl.SelectedQuest.Key : null;
+            string questSearchText = QuestMapControl?.QuestSearchText;
+            int? selectedStateEventId = StateEventMapControl?.SelectedStateEvent.Value != null ? StateEventMapControl.SelectedStateEvent.Key : null;
+            string stateEventSearchText = StateEventMapControl?.StateEventSearchText;
+            int? selectedConsequenceId = ConsequenceMapControl?.SelectedStateEvent.Value != null ? ConsequenceMapControl.SelectedStateEvent.Key : null;
+            string consequenceSearchText = ConsequenceMapControl?.StateEventSearchText;
+
+            CodexMapControl?.Open(Pcc);
+            QuestMapControl?.Open(Pcc);
+            StateEventMapControl?.Open(Pcc);
+            ConsequenceMapControl?.Open(Pcc, "ConsequenceMap");
+
+            if (CodexMapControl != null)
+            {
+                CodexMapControl.SearchText = codexSearchText;
+                CodexMapControl.SelectedCodexTreeTabIndex = selectedCodexTreeTabIndex;
+                if (selectedCodexPageId is int codexPageId)
+                {
+                    CodexMapControl.SelectedCodexPage = CodexMapControl.CodexPages?.FirstOrDefault(pair => pair.Key == codexPageId) ?? default;
+                    CodexMapControl.SelectedCodexSection = default;
+                }
+                else if (selectedCodexSectionId is int codexSectionId)
+                {
+                    CodexMapControl.SelectedCodexSection = CodexMapControl.CodexSections?.FirstOrDefault(pair => pair.Key == codexSectionId) ?? default;
+                    CodexMapControl.SelectedCodexPage = default;
+                }
+            }
+
+            if (QuestMapControl != null)
+            {
+                QuestMapControl.QuestSearchText = questSearchText;
+                QuestMapControl.SelectedQuest = selectedQuestId is int questId
+                    ? QuestMapControl.Quests?.FirstOrDefault(pair => pair.Key == questId) ?? default
+                    : default;
+            }
+
+            if (StateEventMapControl != null)
+            {
+                StateEventMapControl.StateEventSearchText = stateEventSearchText;
+                StateEventMapControl.SelectedStateEvent = selectedStateEventId is int stateEventId
+                    ? StateEventMapControl.StateEvents?.FirstOrDefault(pair => pair.Key == stateEventId) ?? default
+                    : default;
+            }
+
+            if (ConsequenceMapControl != null)
+            {
+                ConsequenceMapControl.StateEventSearchText = consequenceSearchText;
+                ConsequenceMapControl.SelectedStateEvent = selectedConsequenceId is int consequenceId
+                    ? ConsequenceMapControl.StateEvents?.FirstOrDefault(pair => pair.Key == consequenceId) ?? default
+                    : default;
+            }
+
+            if (selectedTabIndex >= 0 && selectedTabIndex < MainTabControl.Items.Count)
+            {
+                MainTabControl.SelectedIndex = selectedTabIndex;
+            }
         }
 
         private void Save_CanExecute(object sender, CanExecuteRoutedEventArgs e)

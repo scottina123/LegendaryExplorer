@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using LegendaryExplorer.Libraries;
 using LegendaryExplorer.MainWindow;
 using LegendaryExplorer.Misc;
@@ -140,6 +141,26 @@ namespace LegendaryExplorer.SharedUI.Bases
             if (!string.IsNullOrWhiteSpace(CurrentPackageFilePath))
             {
                 Clipboard.SetText(Path.GetFileName(CurrentPackageFilePath));
+            }
+        }
+
+        void IWeakPackageUser.HandleUpdate(List<PackageUpdate> updates)
+        {
+            IntPtr originalForegroundWindow = WindowsAPI.GetForegroundRootOwnerWindow();
+            IntPtr windowHandle = new WindowInteropHelper(this).Handle;
+
+            try
+            {
+                HandleUpdate(updates);
+            }
+            finally
+            {
+                if (originalForegroundWindow != IntPtr.Zero
+                    && originalForegroundWindow != windowHandle
+                    && WindowsAPI.GetForegroundRootOwnerWindow() == windowHandle)
+                {
+                    WindowsAPI.SetForegroundWindow(originalForegroundWindow);
+                }
             }
         }
 

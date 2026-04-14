@@ -2086,6 +2086,8 @@ namespace LegendaryExplorer.DialogueEditor
                 if (SelectedConv != null) updatedConvos.Add(SelectedConv.Export.UIndex);
             }
 
+            RemoveConversationGraphCache(updatedConvos);
+
             if (SelectedDialogueNode != null) //Update any changes to live dialogue node
             {
                 if (SelectedDialogueNode.InterpData != null && updatedExportIndexes.Contains(SelectedDialogueNode.InterpData.UIndex))

@@ -2862,78 +2862,64 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 return; //nothing is loaded
             }
-            var originalForegroundWindow = WindowsAPI.GetForegroundRootOwnerWindow();
-            var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
 
-            try
+            InterpData_MetadataEditor.LoadPccData(Pcc);
+
+            IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
+            List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
+
+            if (InterpDataTreeNodes.Count > 0)
             {
-                InterpData_MetadataEditor.LoadPccData(Pcc);
+                var interpTreeIndexes = InterpDataTreeNodes
+                    .SelectMany(root => root.FlattenTree())
+                    .Select(node => node.UIndex)
+                    .ToHashSet();
 
-                IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
-                List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
-
-                if (InterpDataTreeNodes.Count > 0)
+                if (updatedExports.Any(interpTreeIndexes.Contains))
                 {
-                    var interpTreeIndexes = InterpDataTreeNodes
-                        .SelectMany(root => root.FlattenTree())
-                        .Select(node => node.UIndex)
-                        .ToHashSet();
-
-                    if (updatedExports.Any(interpTreeIndexes.Contains))
-                    {
-                        RefreshInterpDataTreePreserveState();
-                    }
-                }
-
-                if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
-                {
-                    //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
-                    if (!SelectedSequence.IsSequence() && !SelectedSequence.IsA("SFXSceneShopGameData"))
-                    {
-                        SelectedSequence = null;
-                        graphEditor.nodeLayer.RemoveAllChildren();
-                        graphEditor.edgeLayer.RemoveAllChildren();
-                        CurrentObjects.ClearEx();
-                        SequenceExports.ClearEx();
-                        SelectedObjects.ClearEx();
-                        Properties_InterpreterWPF.UnloadExport();
-                        InterpData_MetadataEditor.UnloadExport();
-                    }
-
-                    RefreshView();
-                    LoadSequences();
-                }
-                else
-                {
-                    if (updatedExports.Intersect(CurrentObjects.Select(obj => obj.UIndex)).Any())
-                    {
-                        RefreshView();
-                    }
-
-                    foreach (var updatedExportUIndex in updatedExports)
-                    {
-                        if (Pcc.TryGetUExport(updatedExportUIndex, out ExportEntry updatedExport) &&
-                            (updatedExport.IsSequence() || updatedExport.IsA("SFXSceneShopGameData")) && updatedExport != SelectedSequence)
-                        {
-                            LoadSequences();
-                            break;
-                        }
-                    }
-                }
-
-                if (updatedExports.Any(uIdx => Pcc.GetEntry(uIdx) is ExportEntry { IsClass: true }))
-                {
-                    RefreshToolboxItems();
+                    RefreshInterpDataTreePreserveState();
                 }
             }
-            finally
+
+            if (SelectedSequence != null && updatedExports.Contains(SelectedSequence.UIndex))
             {
-                if (originalForegroundWindow != IntPtr.Zero
-                    && originalForegroundWindow != windowHandle
-                    && WindowsAPI.GetForegroundRootOwnerWindow() == windowHandle)
+                //loaded sequence is no longer a sequence (or SFXSceneShopGameData container)
+                if (!SelectedSequence.IsSequence() && !SelectedSequence.IsA("SFXSceneShopGameData"))
                 {
-                    WindowsAPI.SetForegroundWindow(originalForegroundWindow);
+                    SelectedSequence = null;
+                    graphEditor.nodeLayer.RemoveAllChildren();
+                    graphEditor.edgeLayer.RemoveAllChildren();
+                    CurrentObjects.ClearEx();
+                    SequenceExports.ClearEx();
+                    SelectedObjects.ClearEx();
+                    Properties_InterpreterWPF.UnloadExport();
+                    InterpData_MetadataEditor.UnloadExport();
                 }
+
+                RefreshView();
+                LoadSequences();
+            }
+            else
+            {
+                if (updatedExports.Intersect(CurrentObjects.Select(obj => obj.UIndex)).Any())
+                {
+                    RefreshView();
+                }
+
+                foreach (var updatedExportUIndex in updatedExports)
+                {
+                    if (Pcc.TryGetUExport(updatedExportUIndex, out ExportEntry updatedExport) &&
+                        (updatedExport.IsSequence() || updatedExport.IsA("SFXSceneShopGameData")) && updatedExport != SelectedSequence)
+                    {
+                        LoadSequences();
+                        break;
+                    }
+                }
+            }
+
+            if (updatedExports.Any(uIdx => Pcc.GetEntry(uIdx) is ExportEntry { IsClass: true }))
+            {
+                RefreshToolboxItems();
             }
         }
 
