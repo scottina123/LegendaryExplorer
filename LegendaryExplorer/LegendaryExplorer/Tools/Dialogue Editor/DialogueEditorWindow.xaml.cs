@@ -3663,7 +3663,211 @@ namespace LegendaryExplorer.DialogueEditor
             return candidates;
         }
 
-        private bool TrashTopLevelConversationPackage(ConversationExtended conversation, bool confirm = true, bool refreshAfter = true)
+        private static HashSet<int> GetReferencedObjectUIndexes(IEntry entry)
+        {
+            var references = new HashSet<int>();
+            if (entry?.FileRef == null)
+            {
+                return references;
+            }
+
+            IMEPackage package = entry.FileRef;
+            MEGame game = package.Game;
+
+            void AddReference(int uIndex)
+            {
+                if (uIndex != 0 && uIndex != entry.UIndex && package.IsEntry(uIndex))
+                {
+                    references.Add(uIndex);
+                }
+            }
+
+            static void AddPropertyReferences(PropertyCollection props, ExportEntry exp, Action<int> addReference)
+            {
+                if (props == null)
+                {
+                    return;
+                }
+
+                foreach (Property prop in props)
+                {
+                    switch (prop)
+                    {
+                        case ObjectProperty objectProperty:
+                            addReference(objectProperty.Value);
+                            break;
+                        case DelegateProperty delegateProperty:
+                            addReference(delegateProperty.Value.ContainingObjectUIndex);
+                            break;
+                        case StructProperty structProperty:
+                            AddPropertyReferences(structProperty.Properties, exp, addReference);
+                            break;
+                        case ArrayProperty<ObjectProperty> objectArray:
+                            foreach (ObjectProperty objectProp in objectArray)
+                            {
+                                addReference(objectProp.Value);
+                            }
+                            break;
+                        case ArrayProperty<StructProperty> structArray:
+                            foreach (StructProperty structProp in structArray)
+                            {
+                                AddPropertyReferences(structProp.Properties, exp, addReference);
+                            }
+                            break;
+                    }
+                }
+            }
+
+            switch (entry)
+            {
+                case ImportEntry:
+                    AddReference(entry.idxLink);
+                    break;
+                case ExportEntry exp:
+                    try
+                    {
+                        AddReference(exp.idxLink);
+                        AddReference(exp.idxArchetype);
+                        AddReference(exp.idxClass);
+                        AddReference(exp.idxSuperClass);
+
+                        if (exp.HasComponentMap)
+                        {
+                            foreach ((_, int value) in exp.ComponentMap)
+                            {
+                                AddReference(value);
+                            }
+                        }
+
+                        if (!exp.HasStack && exp.TemplateOwnerClassIdx is >= 0)
+                        {
+                            AddReference(exp.TemplateOwnerClassIdx);
+                        }
+
+                        AddPropertyReferences(exp.GetProperties(), exp, AddReference);
+
+                        if (!exp.IsDefaultObject
+                            && exp.ClassName != "AnimSequence"
+                            && ObjectBinary.From(exp) is ObjectBinary objBin)
+                        {
+                            objBin.ForEachUIndex(game, new ReferencedObjectCollector(exp, references));
+                        }
+                    }
+                    catch
+                    {
+                    }
+                    break;
+            }
+
+            return references;
+        }
+
+        private readonly struct ReferencedObjectCollector(IEntry entry, HashSet<int> references) : IUIndexAction
+        {
+            public void Invoke(ref int uIndex, string propName)
+            {
+                if (uIndex != 0 && uIndex != entry.UIndex && entry.FileRef.IsEntry(uIndex))
+                {
+                    references.Add(uIndex);
+                }
+            }
+        }
+
+        private List<ExportEntry> GetExternalReferencedExports(IEntry topLevelEntry)
+        {
+            if (topLevelEntry?.FileRef == null)
+            {
+                return [];
+            }
+
+            IMEPackage package = topLevelEntry.FileRef;
+            HashSet<int> topLevelTreeUIndexes = [topLevelEntry.UIndex, .. topLevelEntry.GetAllDescendants().Select(x => x.UIndex).Where(x => x > 0)];
+            HashSet<int> visitedUIndexes = [];
+            HashSet<ExportEntry> externalExports = [];
+            Stack<IEntry> entriesToProcess = new([topLevelEntry, .. topLevelEntry.GetAllDescendants()]);
+
+            while (entriesToProcess.Count > 0)
+            {
+                IEntry currentEntry = entriesToProcess.Pop();
+                if (currentEntry == null || !visitedUIndexes.Add(currentEntry.UIndex))
+                {
+                    continue;
+                }
+
+                foreach (int referencedUIndex in GetReferencedObjectUIndexes(currentEntry))
+                {
+                    if (!package.TryGetUExport(referencedUIndex, out ExportEntry referencedExport)
+                        || referencedExport.ClassName == "Package"
+                        || topLevelTreeUIndexes.Contains(referencedExport.UIndex)
+                        || referencedExport.IsTrash())
+                    {
+                        continue;
+                    }
+
+                    if (externalExports.Add(referencedExport))
+                    {
+                        entriesToProcess.Push(referencedExport);
+                    }
+                }
+            }
+
+            return externalExports
+                .OrderBy(exp => exp.InstancedFullPath.Count(c => c == '.'))
+                .ThenBy(exp => exp.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private List<ExportEntry> GetExternalReferencedTopLevelEntries(IEntry topLevelEntry)
+        {
+            return GetExternalReferencedExports(topLevelEntry)
+                .Select(export => GetTopLevelEntry(export) as ExportEntry)
+                .Where(entry => entry != null && entry != topLevelEntry && !IsEntryDescendantOrSame(entry, topLevelEntry))
+                .Distinct()
+                .OrderBy(entry => entry.InstancedFullPath.Count(c => c == '.'))
+                .ThenBy(entry => entry.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private List<IEntry> GetConversationEntriesToTrash(ConversationExtended conversation, bool includeExternalReferencedPackages = false)
+        {
+            IEntry topLevelEntry = GetTopLevelConversationEntry(conversation);
+            if (topLevelEntry == null)
+            {
+                return [];
+            }
+
+            HashSet<IEntry> itemsToTrash = [];
+
+            void AddEntryAndDescendants(IEntry entry)
+            {
+                if (entry == null || !ReferenceEquals(entry.FileRef, Pcc))
+                {
+                    return;
+                }
+
+                itemsToTrash.Add(entry);
+                foreach (var descendant in entry.GetAllDescendants())
+                {
+                    itemsToTrash.Add(descendant);
+                }
+            }
+
+            AddEntryAndDescendants(topLevelEntry);
+
+            if (!includeExternalReferencedPackages)
+            {
+                return itemsToTrash.ToList();
+            }
+
+            foreach (ExportEntry externalTopLevelEntry in GetExternalReferencedTopLevelEntries(topLevelEntry))
+            {
+                AddEntryAndDescendants(externalTopLevelEntry);
+            }
+
+            return itemsToTrash.ToList();
+        }
+
+        private bool TrashTopLevelConversationPackage(ConversationExtended conversation, bool confirm = true, bool refreshAfter = true, bool includeExternalReferencedPackages = false)
         {
             IEntry topLevelEntry = GetTopLevelConversationEntry(conversation);
             if (topLevelEntry == null)
@@ -3672,7 +3876,9 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             if (confirm && MessageBox.Show(
-                    $"Trash top-level package '{topLevelEntry.InstancedFullPath}' and all of its children?",
+                    includeExternalReferencedPackages
+                        ? $"Trash top-level package '{topLevelEntry.InstancedFullPath}', all of its children, and all externally referenced packages used by this conversation?"
+                        : $"Trash top-level package '{topLevelEntry.InstancedFullPath}' and all of its children?",
                     "Confirm trash",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning,
@@ -3681,10 +3887,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return false;
             }
 
-            var itemsToTrash = Pcc.Exports.Where(exp => IsEntryDescendantOrSame(exp, topLevelEntry)).Cast<IEntry>()
-                .Concat(Pcc.Imports.Where(imp => IsEntryDescendantOrSame(imp, topLevelEntry)))
-                .Distinct()
-                .ToList();
+            var itemsToTrash = GetConversationEntriesToTrash(conversation, includeExternalReferencedPackages);
+            if (itemsToTrash.Count == 0)
+            {
+                return false;
+            }
 
             EntryPruner.TrashEntries(Pcc, itemsToTrash);
             if (refreshAfter)
@@ -3755,7 +3962,7 @@ namespace LegendaryExplorer.DialogueEditor
                     return;
                 }
 
-                if (!TrashTopLevelConversationPackage(targetConversation, confirm: false, refreshAfter: false))
+                if (!TrashTopLevelConversationPackage(targetConversation, confirm: false, refreshAfter: false, includeExternalReferencedPackages: true))
                 {
                     return;
                 }
