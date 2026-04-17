@@ -26,7 +26,7 @@ using Microsoft.AppCenter.Analytics;
 using DataFormats = System.Windows.DataFormats;
 using DragDropEffects = System.Windows.DragDropEffects;
 using DragEventArgs = System.Windows.DragEventArgs;
-using MessageBox = System.Windows.MessageBox;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using LegendaryExplorer.Misc;
