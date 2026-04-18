@@ -1423,7 +1423,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var choices = foundCandidates.Result.DiskFiles.ToList(); //make new list
                 choices.AddRange(foundCandidates.Result.SFARPackageStreams.Select(x => x.Key));
 
-                var choice = InputComboBoxDialog.GetValue(this, "Choose file to compare to:", "Unmodified file comparison", choices, choices.Last());
+                var choice = SharedPackageTools.SelectUnmodifiedComparisonCandidate(this, choices);
                 if (string.IsNullOrEmpty(choice))
                 {
                     return;
@@ -7475,8 +7475,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var choices = foundCandidates.DiskFiles.ToList();
             choices.AddRange(foundCandidates.SFARPackageStreams.Select(x => x.Key));
 
-            var choice = InputComboBoxDialog.GetValue(this, "Choose file to compare to:",
-                "Unmodified file comparison", choices, choices.Last());
+            var choice = SharedPackageTools.SelectUnmodifiedComparisonCandidate(this, choices);
             if (string.IsNullOrEmpty(choice))
             {
                 return;

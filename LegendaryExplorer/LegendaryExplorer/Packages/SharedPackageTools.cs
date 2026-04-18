@@ -150,8 +150,7 @@ namespace LegendaryExplorer.Packages
                 var choices = foundCandidates.Result.DiskFiles.ToList(); //make new list
                 choices.AddRange(foundCandidates.Result.SFARPackageStreams.Select(x => x.Key));
 
-                var choice = InputComboBoxDialog.GetValue(wpfBase, "Choose file to compare to:",
-                    "Unmodified file comparison", choices, choices.Last());
+                var choice = SelectUnmodifiedComparisonCandidate(wpfBase, choices);
                 if (string.IsNullOrEmpty(choice))
                 {
                     return;
@@ -170,6 +169,21 @@ namespace LegendaryExplorer.Packages
                     MessageBox.Show("Selected candidate not found in the lists! This is a bug", "OH NO");
                 }
             });
+        }
+
+        internal static string SelectUnmodifiedComparisonCandidate(Window owner, IReadOnlyList<string> choices)
+        {
+            if (choices is null || choices.Count == 0)
+            {
+                return null;
+            }
+
+            return EntrySelector.GetItem(
+                owner,
+                choices,
+                "Choose file to compare to:",
+                choices[^1],
+                searchHelpText: "Search by filename or full path");
         }
 
         public static void ComparePackageToAnother(WPFBase wpfBase, Action<EntryStringPair> entryDoubleClickCallback, bool structuralCompare = false)
