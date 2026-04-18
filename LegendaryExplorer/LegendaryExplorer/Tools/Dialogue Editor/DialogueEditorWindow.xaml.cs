@@ -8357,7 +8357,14 @@ namespace LegendaryExplorer.DialogueEditor
             switch (tool)
             {
                 case "PackEdLvl":
-                    OpenInToolkit("PackageEditor", 0, Level);
+                    if (TryGetBaseConversationReferenceTarget(Level, out string basePackagePath, out int basePackageTargetUIndex))
+                    {
+                        OpenInToolkit("PackageEditor", basePackageTargetUIndex, basePackagePath);
+                    }
+                    else
+                    {
+                        OpenInToolkit("PackageEditor", 0, Level);
+                    }
                     break;
                 case "PackEdConv":
                     OpenInToolkit("PackageEditor", SelectedConv.UIndex);
@@ -8378,7 +8385,14 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
                 case "SeqEdLvl":
-                    OpenInToolkit("SequenceEditor", 0, Level);
+                    if (TryGetBaseConversationReferenceTarget(Level, out string baseSequencePath, out int baseSequenceTargetUIndex))
+                    {
+                        OpenInToolkit("SequenceEditor", baseSequenceTargetUIndex, baseSequencePath);
+                    }
+                    else
+                    {
+                        OpenInToolkit("SequenceEditor", 0, Level);
+                    }
                     break;
                 case "SeqEdNode":
                     if (SelectedConv.Sequence.UIndex < 0)
@@ -8604,6 +8618,49 @@ namespace LegendaryExplorer.DialogueEditor
             };
         }
 
+        private bool TryGetBaseConversationReferenceTarget(string filename, out string filePath, out int targetUIndex)
+        {
+            filePath = null;
+            targetUIndex = 0;
+
+            if (SelectedConv?.Export == null || string.IsNullOrWhiteSpace(filename) || !TryResolveToolkitFilePath(filename, out filePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                using IMEPackage basePackage = MEPackageHandler.OpenMEPackage(filePath, forceLoadFromDisk: true);
+                IEntry conversationEntry = basePackage.Imports.FirstOrDefault(imp => imp.ClassName == "BioConversation"
+                                                                                      && string.Equals(imp.InstancedFullPath, SelectedConv.Export.InstancedFullPath, StringComparison.OrdinalIgnoreCase));
+                conversationEntry ??= basePackage.Imports.FirstOrDefault(imp => imp.ClassName == "BioConversation"
+                                                                                && string.Equals(imp.ObjectName.Instanced, SelectedConv.Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase));
+                conversationEntry ??= basePackage.Exports.FirstOrDefault(exp => exp.ClassName == "BioConversation"
+                                                                                && string.Equals(exp.InstancedFullPath, SelectedConv.Export.InstancedFullPath, StringComparison.OrdinalIgnoreCase));
+                conversationEntry ??= basePackage.Exports.FirstOrDefault(exp => exp.ClassName == "BioConversation"
+                                                                                && string.Equals(exp.ObjectName.Instanced, SelectedConv.Export.ObjectName.Instanced, StringComparison.OrdinalIgnoreCase));
+
+                if (conversationEntry == null)
+                {
+                    return false;
+                }
+
+                targetUIndex = conversationEntry.GetEntriesThatReferenceThisOne()
+                    .Keys
+                    .OfType<ExportEntry>()
+                    .OrderBy(exp => exp.UIndex)
+                    .Select(exp => exp.UIndex)
+                    .FirstOrDefault();
+
+                return targetUIndex > 0;
+            }
+            catch (Exception ex) when (!App.IsDebug)
+            {
+                Debug.WriteLine($"Failed to resolve base conversation reference target in '{filePath}': {ex.Message}");
+                return false;
+            }
+        }
+
         private static void ShowWindowAtFront(System.Windows.Window targetWindow)
         {
             if (targetWindow == null)
@@ -8638,54 +8695,10 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void OpenInToolkit(string tool, int uIndex = 0, string filename = null, string param = null)
         {
-            string filePath = null;
-            if (filename != null)  //If file is a new loaded file need to find path.
+            if (!TryResolveToolkitFilePath(filename, out string filePath))
             {
-                if (!MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, filename, out filePath))
-                {
-                    filePath = Path.Combine(Path.GetDirectoryName(Pcc.FilePath), filename);
-
-                    if (!File.Exists(filePath))
-                    {
-                        string rootPath = null;
-                        switch (Pcc.Game)
-                        {
-                            case MEGame.ME1:
-                                rootPath = ME1Directory.DefaultGamePath;
-                                break;
-                            case MEGame.ME2:
-                                rootPath = ME2Directory.DefaultGamePath;
-                                break;
-                            case MEGame.ME3:
-                                rootPath = ME3Directory.DefaultGamePath;
-                                break;
-                            case MEGame.LE1:
-                                rootPath = LE1Directory.DefaultGamePath;
-                                break;
-                            case MEGame.LE2:
-                                rootPath = LE2Directory.DefaultGamePath;
-                                break;
-                            case MEGame.LE3:
-                                rootPath = LE3Directory.DefaultGamePath;
-                                break;
-                        }
-                        filePath = Directory.GetFiles(rootPath, Level, SearchOption.AllDirectories).FirstOrDefault();
-                        if (filePath == null)
-                        {
-                            MessageBox.Show($"File {filename} not found.");
-                            return;
-                        }
-
-                        var dlg = MessageBox.Show($"Opening level at {filePath}", "Dialogue Editor", MessageBoxButton.OKCancel);
-                        if (dlg == MessageBoxResult.Cancel)
-                        {
-                            return;
-                        }
-                    }
-                }
+                return;
             }
-
-            filePath ??= Pcc.FilePath;
 
             switch (tool)
             {
@@ -8751,6 +8764,61 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
             }
+        }
+
+        private bool TryResolveToolkitFilePath(string filename, out string filePath)
+        {
+            filePath = null;
+            if (filename == null)
+            {
+                filePath = Pcc.FilePath;
+                return true;
+            }
+
+            if (File.Exists(filename))
+            {
+                filePath = filename;
+                return true;
+            }
+
+            if (MELoadedFiles.TryGetHighestMountedFile(Pcc.Game, filename, out filePath))
+            {
+                return true;
+            }
+
+            filePath = Path.Combine(Path.GetDirectoryName(Pcc.FilePath), filename);
+            if (File.Exists(filePath))
+            {
+                return true;
+            }
+
+            string rootPath = Pcc.Game switch
+            {
+                MEGame.ME1 => ME1Directory.DefaultGamePath,
+                MEGame.ME2 => ME2Directory.DefaultGamePath,
+                MEGame.ME3 => ME3Directory.DefaultGamePath,
+                MEGame.LE1 => LE1Directory.DefaultGamePath,
+                MEGame.LE2 => LE2Directory.DefaultGamePath,
+                MEGame.LE3 => LE3Directory.DefaultGamePath,
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(rootPath) && Directory.Exists(rootPath))
+            {
+                filePath = Directory.GetFiles(rootPath, filename, SearchOption.AllDirectories).FirstOrDefault();
+                if (filePath != null)
+                {
+                    var dlg = MessageBox.Show($"Opening level at {filePath}", "Dialogue Editor", MessageBoxButton.OKCancel);
+                    if (dlg != MessageBoxResult.Cancel)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            MessageBox.Show($"File {filename} not found.");
+            filePath = null;
+            return false;
         }
 
         public void TrySelectStrRef(int strRef, bool suppressErrorMessageBox = false)
