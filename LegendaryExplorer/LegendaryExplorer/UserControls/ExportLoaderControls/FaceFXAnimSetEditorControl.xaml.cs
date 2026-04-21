@@ -1517,7 +1517,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 SelectedLine.NameIndex = FaceFX.Names.IndexOf(result);
                 SelectedLine.NameAsString = result;
             }
-            else if (MessageBoxResult.Yes == MessageBox.Show($"The names list does not contain the name \"{result}\", do you want to add it?", "", MessageBoxButton.YesNo))
+            else
             {
                 FaceFX.Names.Add(result);
                 SelectedLine.NameIndex = FaceFX.Names.Count - 1;
