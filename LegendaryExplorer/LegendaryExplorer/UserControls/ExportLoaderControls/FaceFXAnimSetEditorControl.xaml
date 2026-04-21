@@ -125,9 +125,9 @@
         <Label Content="Animations" Grid.Row="0" Grid.Column="2"/>
         <ListBox x:Name="animationListBox" Grid.Column="2" Grid.Row="1" Grid.RowSpan="2" ItemsSource="{Binding Animations}"
                 SelectionChanged="animationListBox_SelectionChanged" 
-                 AllowDrop="True" PreviewMouseLeftButtonDown="animationListBox_PreviewMouseLeftButtonDown" MouseMove="animationListBox_MouseMove"
+                 AllowDrop="True" PreviewMouseLeftButtonDown="animationListBox_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="animationListBox_PreviewMouseLeftButtonUp" MouseMove="animationListBox_MouseMove"
                  DragEnter="animationListBox_DragEnter" Drop="animationListBox_Drop" HorizontalContentAlignment="Stretch"
-                 HorizontalAlignment="Stretch" SelectedItem="{Binding SelectedAnimation}">
+                 HorizontalAlignment="Stretch" SelectedItem="{Binding SelectedAnimation}" SelectionMode="Extended">
             <ListBox.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>

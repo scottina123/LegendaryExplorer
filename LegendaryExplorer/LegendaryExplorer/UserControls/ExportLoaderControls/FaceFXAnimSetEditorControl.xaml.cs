@@ -959,15 +959,72 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private struct FaceFXAnimDragDropObject
         {
-            public Animation anim;
-            public int group;
+            public List<Animation> anims;
             public string fromDlg;
             public string fromAnimset;
         }
 
+        private Animation _pendingAnimationSelection;
+        private bool _pendingAnimationToggle;
+        private bool _animationDragStarted;
+
         private void animationListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            dragStart = e.OriginalSource is TextBlock ? e.GetPosition(null) : default;
+            if (ItemsControl.ContainerFromElement(animationListBox, e.OriginalSource as DependencyObject) is not ListBoxItem item
+                || item.DataContext is not Animation animation)
+            {
+                ClearPendingAnimationSelection();
+                dragStart = default;
+                return;
+            }
+
+            dragStart = e.GetPosition(null);
+            _animationDragStarted = false;
+
+            bool ctrlPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            bool shiftPressed = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+            if (item.IsSelected && ctrlPressed && !shiftPressed)
+            {
+                _pendingAnimationSelection = animation;
+                _pendingAnimationToggle = true;
+                e.Handled = true;
+            }
+            else if (item.IsSelected && !ctrlPressed && !shiftPressed && animationListBox.SelectedItems.Count > 1)
+            {
+                _pendingAnimationSelection = animation;
+                _pendingAnimationToggle = false;
+                e.Handled = true;
+            }
+            else
+            {
+                ClearPendingAnimationSelection();
+            }
+        }
+
+        private void animationListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_pendingAnimationSelection == null || _animationDragStarted)
+            {
+                ClearPendingAnimationSelection();
+                return;
+            }
+
+            if (_pendingAnimationToggle)
+            {
+                animationListBox.SelectedItems.Remove(_pendingAnimationSelection);
+                if (ReferenceEquals(SelectedAnimation, _pendingAnimationSelection))
+                {
+                    SelectedAnimation = animationListBox.SelectedItems.Cast<Animation>().LastOrDefault();
+                }
+            }
+            else
+            {
+                animationListBox.SelectedItems.Clear();
+                animationListBox.SelectedItem = _pendingAnimationSelection;
+            }
+
+            ClearPendingAnimationSelection();
         }
 
         private void animationListBox_MouseMove(object sender, MouseEventArgs e)
@@ -980,17 +1037,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     try
                     {
                         dragStart = new Point(0, 0);
-                        if (!(e.OriginalSource is ScrollViewer) && SelectedAnimation != null)
+                        if (!(e.OriginalSource is ScrollViewer) && SelectedLine != null && CurrentLoadedExport != null)
                         {
-                            Animation a = SelectedAnimation;
+                            var selectedAnimations = animationListBox.SelectedItems.Cast<Animation>().ToList();
+                            if (selectedAnimations.Count == 0)
+                            {
+                                return;
+                            }
+
+                            _animationDragStarted = true;
                             var dragDropObject = new FaceFXAnimDragDropObject
                             {
-                                anim = a,
-                                group = SelectedLine.NumKeys[animationListBox.SelectedIndex],
+                                anims = selectedAnimations.Select(CloneAnimation).ToList(),
                                 fromDlg = SelectedLine.NameAsString,
                                 fromAnimset = CurrentLoadedExport.InstancedFullPath
                             };
-                            DragDrop.DoDragDrop(linesListBox, new DataObject("FaceFXAnim", dragDropObject), DragDropEffects.Copy);
+                            DragDrop.DoDragDrop(animationListBox, new DataObject("FaceFXAnim", dragDropObject), DragDropEffects.Copy);
+                            ClearPendingAnimationSelection();
                         }
                     }
                     catch
@@ -1018,11 +1081,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     || (d.fromDlg == SelectedLine.NameAsString
                     && d.fromAnimset == CurrentLoadedExport.InstancedFullPath)) return;
 
-                Animations.Add(d.anim);
-                FaceFX.Names.FindOrAdd(d.anim.Name);
+                foreach (var anim in d.anims ?? [])
+                {
+                    var clonedAnim = CloneAnimation(anim);
+                    Animations.Add(clonedAnim);
+                    FaceFX.Names.FindOrAdd(clonedAnim.Name);
+                }
+
                 SaveChanges();
                 UpdateAnimListBox();
             }
+        }
+
+        private static Animation CloneAnimation(Animation source)
+        {
+            return new Animation
+            {
+                Name = source.Name,
+                Points = new LinkedList<CurvePoint>(source.Points.Select(p => new CurvePoint(p.InVal, p.OutVal, p.ArriveTangent, p.LeaveTangent, p.InterpMode))),
+                IsReferenceAnim = false
+            };
+        }
+
+        private void ClearPendingAnimationSelection()
+        {
+            _pendingAnimationSelection = null;
+            _pendingAnimationToggle = false;
+            _animationDragStarted = false;
         }
         #endregion
 
