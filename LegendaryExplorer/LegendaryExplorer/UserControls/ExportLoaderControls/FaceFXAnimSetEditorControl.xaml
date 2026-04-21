@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
              xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
+              xmlns:sharedUiControls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
              xmlns:Converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
              xmlns:forms="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"
              mc:Ignorable="d" 
@@ -122,52 +123,62 @@
         </WindowsFormsHost>-->
         </Grid>
         <GridSplitter Grid.Row="1" Grid.RowSpan="2" Width="5" HorizontalAlignment="Stretch" Grid.Column="1"/>
-        <Label Content="Animations" Grid.Row="0" Grid.Column="2"/>
-        <ListBox x:Name="animationListBox" Grid.Column="2" Grid.Row="1" Grid.RowSpan="2" ItemsSource="{Binding Animations}"
-                SelectionChanged="animationListBox_SelectionChanged" 
-                 AllowDrop="True" PreviewMouseLeftButtonDown="animationListBox_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="animationListBox_PreviewMouseLeftButtonUp" MouseMove="animationListBox_MouseMove"
-                 DragEnter="animationListBox_DragEnter" Drop="animationListBox_Drop" HorizontalContentAlignment="Stretch"
-                 HorizontalAlignment="Stretch" SelectedItem="{Binding SelectedAnimation}" SelectionMode="Extended">
-            <ListBox.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
-                    <MenuItem Header="Replace All Animations" Click="ReplaceAnimations_Click"/>
-                </ContextMenu>
-            </ListBox.ContextMenu>
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="{x:Type exportLoaderControls:Animation}">
-                    <TextBlock Text="{Binding Name}" Margin="0 0 5 0">
-                        <TextBlock.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
-                                <MenuItem Header="Delete" Click="DeleteAnim_Click"/>
-                                <MenuItem Header="Delete All Keys" Click="DeleteAnimKeys_Click"/>
-                                <MenuItem Header="Set As Reference Curve" Click="SelectForCompare_Click"/>
-                                <MenuItem Header="Clone" Click="CloneAnimation_Click"/>
-                                <MenuItem Header="Change Name" Click="ChangeAnimName_Click"></MenuItem>
-                                <MenuItem Header="Replace All Animations" Click="ReplaceAnimations_Click"/>
-                                <MenuItem Header="Replace All Animations Except Lipsync" Click="ReplaceAnimations_Click" CommandParameter="m_"/>
-                                <MenuItem Header="Export Curve to Excel" Click="ExportToExcel_Click">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/excel.png" Width="16" Height="16" Margin="0,0,2,0"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Import Curve from Excel" Click="ImportFromExcel_Click">
-                                    <MenuItem.Icon>
-                                        <Image Source="/Resources/Images/excel.png" Width="16" Height="16" Margin="0,0,2,0"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                            </ContextMenu>
-                        </TextBlock.ContextMenu>
-                    </TextBlock>
-                    <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding IsReferenceAnim}" Value="True">
-                            <Setter Property="TextBlock.Foreground" Value="Blue"/>
-                        </DataTrigger>
-                    </DataTemplate.Triggers>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <Grid Grid.Column="2" Grid.Row="0" Grid.RowSpan="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Label Content="Animations" Grid.Row="0"/>
+            <sharedUiControls:SearchBox x:Name="animationSearchBox" Grid.Row="1" Margin="0,0,0,4"
+                                        WatermarkText="Filter animations"
+                                        TextChanged="AnimationSearchBox_OnTextChanged"/>
+            <ListBox x:Name="animationListBox" Grid.Row="2" ItemsSource="{Binding AnimationsView}"
+                    SelectionChanged="animationListBox_SelectionChanged"
+                     AllowDrop="True" PreviewMouseLeftButtonDown="animationListBox_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="animationListBox_PreviewMouseLeftButtonUp" MouseMove="animationListBox_MouseMove"
+                     DragEnter="animationListBox_DragEnter" Drop="animationListBox_Drop" HorizontalContentAlignment="Stretch"
+                     HorizontalAlignment="Stretch" SelectedItem="{Binding SelectedAnimation}" SelectionMode="Extended">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
+                        <MenuItem Header="Replace All Animations" Click="ReplaceAnimations_Click"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type exportLoaderControls:Animation}">
+                        <TextBlock Text="{Binding Name}" Margin="0 0 5 0">
+                            <TextBlock.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Add Animation" Click="AddAnimation_Click"/>
+                                    <MenuItem Header="Delete" Click="DeleteAnim_Click"/>
+                                    <MenuItem Header="Delete All Keys" Click="DeleteAnimKeys_Click"/>
+                                    <MenuItem Header="Set As Reference Curve" Click="SelectForCompare_Click"/>
+                                    <MenuItem Header="Clone" Click="CloneAnimation_Click"/>
+                                    <MenuItem Header="Change Name" Click="ChangeAnimName_Click"></MenuItem>
+                                    <MenuItem Header="Replace All Animations" Click="ReplaceAnimations_Click"/>
+                                    <MenuItem Header="Replace All Animations Except Lipsync" Click="ReplaceAnimations_Click" CommandParameter="m_"/>
+                                    <MenuItem Header="Export Curve to Excel" Click="ExportToExcel_Click">
+                                        <MenuItem.Icon>
+                                            <Image Source="/Resources/Images/excel.png" Width="16" Height="16" Margin="0,0,2,0"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Import Curve from Excel" Click="ImportFromExcel_Click">
+                                        <MenuItem.Icon>
+                                            <Image Source="/Resources/Images/excel.png" Width="16" Height="16" Margin="0,0,2,0"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </TextBlock.ContextMenu>
+                        </TextBlock>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsReferenceAnim}" Value="True">
+                                <Setter Property="TextBlock.Foreground" Value="Blue"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
         <GridSplitter Width="5" HorizontalAlignment="Stretch" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"/>
         <Grid Grid.Column="4" Grid.Row="0" Grid.RowSpan="2">
             <Grid.RowDefinitions>

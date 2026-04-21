@@ -17,12 +17,14 @@ using Microsoft.WindowsAPICodePack.Dialogs;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
@@ -84,6 +86,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             InitializeComponent();
             DataContext = this;
+            AnimationsView = CollectionViewSource.GetDefaultView(Animations);
+            AnimationsView.Filter = FilterAnimation;
             AddKeyWithZeroWeightCommand = new GenericCommand(() => graph.AddKeyAtZero_MousePosition());
         }
 
@@ -159,6 +163,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private readonly ExtraCurveGraphLine PlayheadPositionLine = new() { LabelOffset = 15, Color = new SolidColorBrush(Colors.Aqua) };
 
         public ObservableCollectionExtended<Animation> Animations { get; } = [];
+        public ICollectionView AnimationsView { get; }
+
+        private string _animationFilterText;
+        public string AnimationFilterText
+        {
+            get => _animationFilterText;
+            set
+            {
+                if (SetProperty(ref _animationFilterText, value))
+                {
+                    AnimationsView.Refresh();
+                }
+            }
+        }
 
         Animation _selectedAnimation;
         public Animation SelectedAnimation
@@ -228,6 +246,22 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Animations.Clear();
             TreeNodes.ClearEx();
             graph.Clear();
+        }
+
+        private bool FilterAnimation(object item)
+        {
+            if (item is not Animation animation)
+            {
+                return false;
+            }
+
+            return string.IsNullOrWhiteSpace(AnimationFilterText)
+                   || animation.Name.Contains(AnimationFilterText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void AnimationSearchBox_OnTextChanged(SharedUI.Controls.SearchBox sender, string newText)
+        {
+            AnimationFilterText = newText?.Trim();
         }
 
         public override void PopOut()
