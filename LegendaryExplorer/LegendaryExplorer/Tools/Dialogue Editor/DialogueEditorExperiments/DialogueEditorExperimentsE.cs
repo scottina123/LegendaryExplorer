@@ -659,6 +659,15 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
             if (dew.Pcc != null && selectedDialogueNode != null)
             {
+                string cloneCommand = selectedDialogueNode.IsReply ? "CloneReply" : "CloneEntry";
+                DiagNode selectedGraphNode = dew.SelectedObjects.OfType<DiagNode>().FirstOrDefault()
+                    ?? dew.CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => node.Node.NodeCount == selectedDialogueNode.NodeCount && node.Node.IsReply == selectedDialogueNode.IsReply);
+                DialogueEditorWindow.CloneDialogueNodeOptions cloneOptions = dew.PromptForCloneDialogueNodeOptions(cloneCommand, selectedGraphNode);
+                if (cloneOptions == null)
+                {
+                    return;
+                }
+
                 using var _ = dew.SuppressPackageUpdates();
 
                 // Need to check if the node has associated data
@@ -762,9 +771,11 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }
 
                 // Clone and select the cloned node
-                dew.NodeAddCommand.Execute(selectedDialogueNode.IsReply ? "CloneReply" : "CloneEntry");
-                int index = selectedDialogueNode.IsReply ? dew.SelectedConv.ReplyList.Count : dew.SelectedConv.EntryList.Count;
-                DialogueNodeExtended node = selectedDialogueNode.IsReply ? dew.SelectedConv.ReplyList[index - 1] : dew.SelectedConv.EntryList[index - 1];
+                DialogueNodeExtended node = dew.CloneDialogueNodeInPlace(cloneCommand, cloneOptions);
+                if (node == null)
+                {
+                    return;
+                }
 
                 // Set the ExportID
                 StructProperty prop = node.NodeProp;

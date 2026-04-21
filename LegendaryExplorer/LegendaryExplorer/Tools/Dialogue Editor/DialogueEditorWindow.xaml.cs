@@ -107,7 +107,7 @@ namespace LegendaryExplorer.DialogueEditor
             AdvancedColumn
         }
 
-        private enum CloneInsertionPosition
+        internal enum CloneInsertionPosition
         {
             Top,
             SecondTop,
@@ -115,6 +115,15 @@ namespace LegendaryExplorer.DialogueEditor
             ThirdBottom,
             SecondBottom,
             Bottom
+        }
+
+        internal sealed class CloneDialogueNodeOptions
+        {
+            internal bool CloneLinks { get; init; }
+            internal CloneInsertionPosition LinkInsertionPosition { get; init; } = CloneInsertionPosition.Top;
+            internal bool CloneStartNode { get; init; }
+            internal CloneInsertionPosition StartInsertionPosition { get; init; } = CloneInsertionPosition.Bottom;
+            internal List<DiagEdEdge> InputEdges { get; init; } = [];
         }
 
         private readonly ConvGraphEditor graphEditor;
@@ -6962,7 +6971,7 @@ namespace LegendaryExplorer.DialogueEditor
             return dialog.ShowDialog() == true ? selectedPosition : null;
         }
 
-        private (bool? CloneLinks, CloneInsertionPosition InsertionPosition) PromptForCloneLinksOptions()
+        private (bool CloneLinks, CloneInsertionPosition InsertionPosition)? PromptForCloneLinksOptions()
         {
             var dialog = new Window
             {
@@ -6979,7 +6988,7 @@ namespace LegendaryExplorer.DialogueEditor
             dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
             CustomWindowChrome.ApplyCustomChrome(dialog);
 
-            bool? cloneLinks = null;
+            bool cloneLinks = false;
             CloneInsertionPosition selectedPosition = CloneInsertionPosition.Top;
 
             var promptBlock = new TextBlock
@@ -7083,6 +7092,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Margin = new Thickness(6),
                 Padding = new Thickness(10, 6, 10, 6)
             };
+            cancelButton.Click += (_, _) => dialog.DialogResult = false;
 
             buttonPanel.Children.Add(yesButton);
             buttonPanel.Children.Add(noButton);
@@ -7095,8 +7105,64 @@ namespace LegendaryExplorer.DialogueEditor
             rootPanel.Children.Add(buttonPanel);
 
             dialog.Content = rootPanel;
-            dialog.ShowDialog();
-            return (cloneLinks, selectedPosition);
+            return dialog.ShowDialog() == true
+                ? (cloneLinks, selectedPosition)
+                : null;
+        }
+
+        internal CloneDialogueNodeOptions PromptForCloneDialogueNodeOptions(string command, DiagNode diagNode)
+        {
+            if (command is not "CloneReply" and not "CloneEntry" || diagNode == null)
+            {
+                return new CloneDialogueNodeOptions();
+            }
+
+            var cloneLinkOptions = PromptForCloneLinksOptions();
+            if (!cloneLinkOptions.HasValue)
+            {
+                return null;
+            }
+
+            var cloneLinkOptionsValue = cloneLinkOptions.Value;
+            var inputEdges = new List<DiagEdEdge>();
+            bool cloneStartNode = false;
+            CloneInsertionPosition clonedStartInsertionPosition = CloneInsertionPosition.Bottom;
+
+            if (cloneLinkOptionsValue.Item1)
+            {
+                foreach (var edge in diagNode.InputEdges)
+                {
+                    if (edge.originator is DiagNode)
+                    {
+                        inputEdges.Add(edge);
+                    }
+                    else if (command == "CloneEntry" && edge.originator is DStart)
+                    {
+                        cloneStartNode = true;
+                    }
+                }
+
+                if (cloneStartNode)
+                {
+                    CloneInsertionPosition? insertionPosition = PromptForCloneInsertionPosition(
+                        "Choose where the cloned start node should be inserted in the start node list.");
+                    if (!insertionPosition.HasValue)
+                    {
+                        return null;
+                    }
+
+                    clonedStartInsertionPosition = insertionPosition.Value;
+                }
+            }
+
+            return new CloneDialogueNodeOptions
+            {
+                CloneLinks = cloneLinkOptionsValue.Item1,
+                LinkInsertionPosition = cloneLinkOptionsValue.Item2,
+                CloneStartNode = cloneStartNode,
+                StartInsertionPosition = clonedStartInsertionPosition,
+                InputEdges = inputEdges
+            };
         }
 
         private void CloneIncomingLinkToNode(DiagEdEdge sourceEdge, DiagNode targetNode, bool insertAtTop)
@@ -7642,23 +7708,24 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private void DialogueNode_Add(object obj)
+        internal DialogueNodeExtended CloneDialogueNodeInPlace(string command, CloneDialogueNodeOptions cloneOptions = null)
         {
-            string command = obj as string;
-
             if (command == "AddReply")
             {
                 AddDialogueNodeInPlace(isReply: true);
-                return;
+                return SelectedDialogueNode;
             }
 
             if (command == "AddEntry")
             {
                 AddDialogueNodeInPlace(isReply: false);
-                return;
+                return SelectedDialogueNode;
             }
 
-            if (SelectedObjects.Count is 0 || SelectedObjects[0] is not DiagNode diagNode) return;
+            if (SelectedObjects.Count is 0 || SelectedObjects[0] is not DiagNode diagNode)
+            {
+                return null;
+            }
 
             float newX = diagNode.OffsetX + 100;
             float newY = diagNode.OffsetY + 150;
@@ -7673,40 +7740,19 @@ namespace LegendaryExplorer.DialogueEditor
             List<DiagEdEdge> inputEdges = [];
             if (command is "CloneReply" or "CloneEntry")
             {
-                var cloneLinkOptions = PromptForCloneLinksOptions();
-                if (!cloneLinkOptions.CloneLinks.HasValue)
+                cloneOptions ??= PromptForCloneDialogueNodeOptions(command, diagNode);
+                if (cloneOptions == null)
                 {
-                    return;
+                    return null;
                 }
 
-                if (cloneLinkOptions.CloneLinks.Value)
+                if (cloneOptions.CloneLinks)
                 {
                     cloneLinks = true;
-                    clonedLinkInsertionPosition = cloneLinkOptions.InsertionPosition;
-
-                    foreach (var edge in diagNode.InputEdges)
-                    {
-                        if (edge.originator is DiagNode)
-                        {
-                            inputEdges.Add(edge);
-                        }
-                        else if (command == "CloneEntry" && edge.originator is DStart)
-                        {
-                            cloneStartNode = true;
-                        }
-                    }
-
-                    if (cloneStartNode)
-                    {
-                        CloneInsertionPosition? insertionPosition = PromptForCloneInsertionPosition(
-                            "Choose where the cloned start node should be inserted in the start node list.");
-                        if (!insertionPosition.HasValue)
-                        {
-                            return;
-                        }
-
-                        clonedStartInsertionPosition = insertionPosition.Value;
-                    }
+                    clonedLinkInsertionPosition = cloneOptions.LinkInsertionPosition;
+                    cloneStartNode = cloneOptions.CloneStartNode;
+                    clonedStartInsertionPosition = cloneOptions.StartInsertionPosition;
+                    inputEdges = cloneOptions.InputEdges ?? [];
                 }
             }
 
@@ -7806,6 +7852,16 @@ namespace LegendaryExplorer.DialogueEditor
             else
             {
                 PushConvoToFile(SelectedConv);
+            }
+
+            return node?.Node;
+        }
+
+        private void DialogueNode_Add(object obj)
+        {
+            if (obj is string command)
+            {
+                CloneDialogueNodeInPlace(command);
             }
         }
         private void DialogueNode_DeleteLinks(object obj)
