@@ -9,6 +9,7 @@ using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
@@ -508,6 +509,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             public FaceFXLine line;
             public string[] sourceNames;
             public string fromExport;
+            public string sourceFilePath;
+            public string sourceRootPath;
+            public string sourceEventPath;
         }
 
         private void linesListBox_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -540,7 +544,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     if (!(e.OriginalSource is ScrollViewer) && SelectedLine != null)
                     {
                         FaceFXLine d = SelectedLine.Clone();
-                        var dragDropObject = new FaceFXLineDragDropObject { line = d, sourceNames = FaceFX.Names.ToArray(), fromExport = CurrentLoadedExport.InstancedFullPath };
+                        var sourceEvent = GetReferencedSoundCueForLine(SelectedLine);
+                        var dragDropObject = new FaceFXLineDragDropObject
+                        {
+                            line = d,
+                            sourceNames = FaceFX.Names.ToArray(),
+                            fromExport = CurrentLoadedExport.InstancedFullPath,
+                            sourceFilePath = Pcc?.FilePath,
+                            sourceRootPath = CurrentLoadedExport.ParentInstancedFullPath,
+                            sourceEventPath = sourceEvent?.InstancedFullPath
+                        };
                         DragDrop.DoDragDrop(linesListBox, new DataObject("FaceFXLine", dragDropObject), DragDropEffects.Copy);
                     }
                 }
@@ -561,13 +574,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Window.GetWindow(this).RestoreAndBringToFront();
             if (e.Data.GetDataPresent("FaceFXLine") && e.Data.GetData("FaceFXLine") is FaceFXLineDragDropObject d)
             {
-                if (CurrentLoadedExport == null || d.fromExport == CurrentLoadedExport.InstancedFullPath) return;
+                if (CurrentLoadedExport == null || (d.fromExport == CurrentLoadedExport.InstancedFullPath && d.sourceFilePath == Pcc?.FilePath)) return;
 
                 string[] sourceNames = d.sourceNames;
                 FaceFXLineEntry lineEntry = new FaceFXLineEntry(d.line);
                 lineEntry.Line.NameIndex = FaceFX.Names.FindOrAdd(sourceNames[lineEntry.Line.NameIndex]);
                 if (FaceFX.Binary is FaceFXAnimSet animSet) animSet.FixNodeTable();
                 lineEntry.Line.AnimationNames = lineEntry.Line.AnimationNames.Select(idx => FaceFX.Names.FindOrAdd(sourceNames[idx])).ToList();
+                lineEntry.Line.Index = FaceFX.Lines.Count;
+
+                var clonedEvent = CloneDraggedLineAudio(d);
+                if (clonedEvent != null)
+                {
+                    lineEntry.Line.Path = clonedEvent.InstancedFullPath;
+                    SetReferencedSoundCueForLine(lineEntry.Line.Index, clonedEvent);
+                }
+                else if (!string.IsNullOrWhiteSpace(lineEntry.Line.Path))
+                {
+                    lineEntry.Line.Path = RebaseInstancedPath(lineEntry.Line.Path, d.sourceRootPath, CurrentLoadedExport.ParentInstancedFullPath);
+                }
+
                 FaceFX.Lines.Add(lineEntry.Line);
 
                 if (int.TryParse(lineEntry.Line.ID, out int tlkID))
@@ -578,6 +604,353 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Lines.Add(lineEntry);
                 AutoIndexLines();
             }
+        }
+
+        private ExportEntry GetReferencedSoundCueForLine(FaceFXLine line)
+        {
+            if (CurrentLoadedExport == null || line == null)
+            {
+                return null;
+            }
+
+            var referencedSoundCues = CurrentLoadedExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues");
+            if (referencedSoundCues != null && line.Index >= 0 && line.Index < referencedSoundCues.Count)
+            {
+                int referencedUIndex = referencedSoundCues[line.Index].Value;
+                if (Pcc.IsUExport(referencedUIndex))
+                {
+                    return Pcc.GetUExport(referencedUIndex);
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(line.Path) ? null : Pcc.FindExport(line.Path);
+        }
+
+        private void SetReferencedSoundCueForLine(int lineIndex, ExportEntry wwiseEvent)
+        {
+            if (CurrentLoadedExport == null || lineIndex < 0)
+            {
+                return;
+            }
+
+            var props = CurrentLoadedExport.GetProperties();
+            var referencedSoundCues = props.GetProp<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")
+                                      ?? new ArrayProperty<ObjectProperty>("ReferencedSoundCues");
+
+            while (referencedSoundCues.Count <= lineIndex)
+            {
+                referencedSoundCues.Add(new ObjectProperty(0));
+            }
+
+            referencedSoundCues[lineIndex] = new ObjectProperty(wwiseEvent?.UIndex ?? 0);
+            props.AddOrReplaceProp(referencedSoundCues);
+            CurrentLoadedExport.WriteProperties(props);
+        }
+
+        private ExportEntry CloneDraggedLineAudio(FaceFXLineDragDropObject draggedLine)
+        {
+            if (CurrentLoadedExport == null || Pcc == null || string.IsNullOrWhiteSpace(draggedLine.sourceEventPath))
+            {
+                return null;
+            }
+
+            using var sourcePackage = string.Equals(draggedLine.sourceFilePath, Pcc.FilePath, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : MEPackageHandler.OpenMEPackage(draggedLine.sourceFilePath);
+
+            var sourcePcc = sourcePackage ?? Pcc;
+            var sourceEvent = sourcePcc.FindExport(draggedLine.sourceEventPath);
+            if (sourceEvent?.ClassName != "WwiseEvent")
+            {
+                return null;
+            }
+
+            var sourceRoot = string.IsNullOrWhiteSpace(draggedLine.sourceRootPath) ? null : sourcePcc.FindEntry(draggedLine.sourceRootPath);
+            var targetRoot = CurrentLoadedExport.Parent;
+            var clonedStreams = new Dictionary<int, ExportEntry>();
+
+            foreach (var sourceStream in GetWwiseStreamsForEvent(sourcePcc, sourceEvent))
+            {
+                var targetStreamParent = CreateEquivalentPackagePath(sourceStream.Parent, sourceRoot, targetRoot);
+                var clonedStream = EnsureClonedExport(sourcePcc, sourceStream, targetStreamParent);
+                clonedStreams[sourceStream.UIndex] = clonedStream;
+            }
+
+            var targetEventParent = CreateEquivalentPackagePath(sourceEvent.Parent, sourceRoot, targetRoot);
+            var clonedEvent = EnsureClonedExport(sourcePcc, sourceEvent, targetEventParent);
+            UpdateWwiseEventReferences(sourcePcc, clonedEvent, clonedStreams, sourceRoot, targetRoot);
+            return clonedEvent;
+        }
+
+        private List<ExportEntry> GetWwiseStreamsForEvent(IMEPackage sourcePcc, ExportEntry wwiseEventExport)
+        {
+            var streams = new List<ExportEntry>();
+            var seenStreams = new HashSet<int>();
+            var wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExport);
+
+            if (wwiseEvent.Links != null)
+            {
+                foreach (var link in wwiseEvent.Links)
+                {
+                    foreach (int streamUIndex in link.WwiseStreams)
+                    {
+                        if (sourcePcc.IsUExport(streamUIndex) && seenStreams.Add(streamUIndex))
+                        {
+                            var streamExport = sourcePcc.GetUExport(streamUIndex);
+                            if (streamExport.ClassName == "WwiseStream")
+                            {
+                                streams.Add(streamExport);
+                            }
+                        }
+                    }
+                }
+            }
+
+            var references = wwiseEventExport.GetProperty<ArrayProperty<StructProperty>>("References");
+            if (references != null)
+            {
+                foreach (var reference in references)
+                {
+                    var relationships = reference.GetProp<StructProperty>("Relationships");
+                    var referencedStreams = relationships?.GetProp<ArrayProperty<ObjectProperty>>("Streams");
+                    if (referencedStreams == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var streamRef in referencedStreams)
+                    {
+                        if (sourcePcc.IsUExport(streamRef.Value) && seenStreams.Add(streamRef.Value))
+                        {
+                            var streamExport = sourcePcc.GetUExport(streamRef.Value);
+                            if (streamExport.ClassName == "WwiseStream")
+                            {
+                                streams.Add(streamExport);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return streams;
+        }
+
+        private void UpdateWwiseEventReferences(IMEPackage sourcePcc, ExportEntry eventExport, IReadOnlyDictionary<int, ExportEntry> clonedStreams, IEntry sourceRoot, IEntry targetRoot)
+        {
+            if (eventExport == null)
+            {
+                return;
+            }
+
+            var props = eventExport.GetProperties();
+            var references = props.GetProp<ArrayProperty<StructProperty>>("References");
+            if (references != null)
+            {
+                foreach (var reference in references)
+                {
+                    var relationships = reference.GetProp<StructProperty>("Relationships");
+                    UpdateReferencedBank(sourcePcc, relationships, sourceRoot, targetRoot);
+                    var referencedStreams = relationships?.GetProp<ArrayProperty<ObjectProperty>>("Streams");
+                    if (referencedStreams == null)
+                    {
+                        continue;
+                    }
+
+                    for (int i = 0; i < referencedStreams.Count; i++)
+                    {
+                        int streamUIndex = referencedStreams[i].Value;
+                        if (clonedStreams.TryGetValue(streamUIndex, out var clonedStream))
+                        {
+                            referencedStreams[i] = new ObjectProperty(clonedStream);
+                        }
+                    }
+                }
+            }
+
+            UpdateReferencedBank(sourcePcc, props.GetProp<StructProperty>("Relationships"), sourceRoot, targetRoot);
+
+            var wwiseEvent = ObjectBinary.From<WwiseEvent>(eventExport);
+            if (wwiseEvent.Links != null)
+            {
+                foreach (var link in wwiseEvent.Links)
+                {
+                    for (int i = 0; i < link.WwiseStreams.Count; i++)
+                    {
+                        int streamUIndex = link.WwiseStreams[i];
+                        if (clonedStreams.TryGetValue(streamUIndex, out var clonedStream))
+                        {
+                            link.WwiseStreams[i] = clonedStream.UIndex;
+                        }
+                    }
+                }
+            }
+
+            eventExport.WritePropertiesAndBinary(props, wwiseEvent);
+        }
+
+        private void UpdateReferencedBank(IMEPackage sourcePcc, StructProperty relationships, IEntry sourceRoot, IEntry targetRoot)
+        {
+            var bankReference = relationships?.GetProp<ObjectProperty>("Bank");
+            if (bankReference == null || bankReference.Value == 0)
+            {
+                return;
+            }
+
+            var sourceBankEntry = sourcePcc.GetEntry(bankReference.Value);
+            if (sourceBankEntry is ExportEntry sourceBankExport)
+            {
+                var targetBankParent = CreateEquivalentPackagePath(sourceBankExport.Parent, sourceRoot, targetRoot);
+                var clonedBank = EnsureClonedExport(sourcePcc, sourceBankExport, targetBankParent);
+                bankReference.Value = clonedBank.UIndex;
+            }
+            else if (sourceBankEntry != null)
+            {
+                var existingBank = Pcc.FindEntry(sourceBankEntry.InstancedFullPath, sourceBankEntry.ClassName);
+                bankReference.Value = existingBank?.UIndex ?? 0;
+            }
+        }
+
+        private IEntry CreateEquivalentPackagePath(IEntry sourceParent, IEntry sourceRoot, IEntry targetRoot)
+        {
+            IEntry currentParent = targetRoot;
+            foreach (var packageName in GetRelativePackagePath(sourceParent, sourceRoot))
+            {
+                currentParent = Pcc.CreatePackageExport(packageName, currentParent);
+            }
+
+            return currentParent;
+        }
+
+        private static IEnumerable<NameReference> GetRelativePackagePath(IEntry sourceParent, IEntry sourceRoot)
+        {
+            var packageNames = new Stack<NameReference>();
+            for (var current = sourceParent; current != null && current != sourceRoot; current = current.Parent)
+            {
+                if (current is ExportEntry { ClassName: "Package" } packageExport)
+                {
+                    packageNames.Push(packageExport.ObjectName);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return packageNames;
+        }
+
+        private ExportEntry EnsureClonedExport(IMEPackage sourcePcc, ExportEntry sourceExport, IEntry targetParent)
+        {
+            string targetPath = targetParent != null
+                ? $"{targetParent.InstancedFullPath}.{sourceExport.ObjectName.Instanced}"
+                : sourceExport.ObjectName.Instanced;
+
+            var existingExport = Pcc.FindExport(targetPath, sourceExport.ClassName);
+            if (existingExport != null)
+            {
+                return existingExport;
+            }
+
+            if (ReferenceEquals(sourcePcc, Pcc))
+            {
+                var samePackageClone = EntryCloner.CloneEntry(sourceExport, incrementIndex: false);
+                samePackageClone.idxLink = targetParent?.UIndex ?? 0;
+                return samePackageClone;
+            }
+
+            var targetExportClone = Pcc.CreateExport(sourceExport.ObjectName, sourceExport.ClassName, targetParent, indexed: false);
+            targetExportClone.ObjectFlags = sourceExport.ObjectFlags;
+            targetExportClone.ExportFlags = sourceExport.ExportFlags | (targetExportClone.ExportFlags & UnrealFlags.EExportFlags.ForcedExport);
+
+            if (sourceExport.ClassName == "WwiseStream")
+            {
+                CloneWwiseStreamData(sourceExport, targetExportClone);
+            }
+            else if (sourceExport.ClassName == "WwiseEvent")
+            {
+                CloneWwiseEventData(sourceExport, targetExportClone);
+            }
+            else
+            {
+                targetExportClone.Data = sourceExport.Data;
+            }
+
+            return targetExportClone;
+        }
+
+        private void CloneWwiseStreamData(ExportEntry sourceStreamExport, ExportEntry targetStreamExport)
+        {
+            var props = sourceStreamExport.GetProperties();
+            var sourceStream = sourceStreamExport.GetBinaryData<WwiseStream>();
+            var targetStream = sourceStreamExport.GetBinaryData<WwiseStream>();
+
+            if (sourceStream.IsPCCStored)
+            {
+                targetStream.EmbeddedData = sourceStream.EmbeddedData?.ToArray() ?? [];
+                targetStream.DataSize = targetStream.EmbeddedData.Length;
+                targetStream.DataOffset = 0;
+            }
+            else
+            {
+                string sourceAfcPath = sourceStream.GetPathToAFC();
+                if (string.IsNullOrWhiteSpace(sourceAfcPath) || !File.Exists(sourceAfcPath))
+                {
+                    throw new FileNotFoundException($"Could not find source AFC for {sourceStreamExport.InstancedFullPath}.", sourceAfcPath);
+                }
+
+                string targetDirectory = Path.GetDirectoryName(Pcc.FilePath);
+                string targetAfcPath = Path.Combine(targetDirectory, sourceStream.Filename + ".afc");
+                Directory.CreateDirectory(targetDirectory);
+
+                using var sourceFile = new FileStream(sourceAfcPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var targetFile = new FileStream(targetAfcPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+
+                sourceFile.Seek(sourceStream.DataOffset, SeekOrigin.Begin);
+                targetStream.DataOffset = (int)targetFile.Length;
+                targetStream.DataSize = 0;
+                targetStream.EmbeddedData = null;
+
+                var buffer = new byte[81920];
+                int remaining = sourceStream.DataSize;
+                while (remaining > 0)
+                {
+                    int read = sourceFile.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+                    if (read <= 0)
+                    {
+                        throw new EndOfStreamException($"Unexpected end of AFC data while copying {sourceStreamExport.InstancedFullPath}.");
+                    }
+
+                    targetFile.Write(buffer, 0, read);
+                    targetStream.DataSize += read;
+                    remaining -= read;
+                }
+            }
+
+            targetStreamExport.WritePropertiesAndBinary(props, targetStream);
+        }
+
+        private void CloneWwiseEventData(ExportEntry sourceEventExport, ExportEntry targetEventExport)
+        {
+            var props = sourceEventExport.GetProperties();
+            var sourceEvent = sourceEventExport.GetBinaryData<WwiseEvent>();
+
+            targetEventExport.WritePropertiesAndBinary(props, sourceEvent);
+        }
+
+        private static string RebaseInstancedPath(string originalPath, string sourceRootPath, string targetRootPath)
+        {
+            if (string.IsNullOrWhiteSpace(originalPath) || string.IsNullOrWhiteSpace(sourceRootPath) || string.IsNullOrWhiteSpace(targetRootPath))
+            {
+                return originalPath;
+            }
+
+            string sourcePrefix = sourceRootPath + ".";
+            if (!originalPath.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return originalPath;
+            }
+
+            return targetRootPath + originalPath[sourceRootPath.Length..];
         }
 
         #endregion
