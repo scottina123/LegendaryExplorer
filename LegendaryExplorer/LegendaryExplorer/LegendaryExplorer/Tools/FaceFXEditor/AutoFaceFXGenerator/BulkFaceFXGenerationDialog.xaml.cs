@@ -56,6 +56,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _lipSyncIntensity = value; OnPropertyChanged(); }
         }
 
+        private float _blinkFrequency = 0.2f;
+        public float BlinkFrequency
+        {
+            get => _blinkFrequency;
+            set { _blinkFrequency = value; OnPropertyChanged(); }
+        }
+
         /// <summary>
         /// The selected species as enum value
         /// </summary>
