@@ -2176,6 +2176,11 @@ namespace LegendaryExplorer.DialogueEditor
 
             var newReplyListProp = new ArrayProperty<StructProperty>("ReplyListNew");
             var oldReplyListProp = start.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+            int insertionIndex = Editor.PromptForLinkInsertionIndex("Choose where the new link should be inserted in the node's outgoing link list.", oldReplyListProp?.Count ?? 0) ?? -1;
+            if (insertionIndex < 0)
+            {
+                return;
+            }
 
             if (oldReplyListProp != null && oldReplyListProp.Count > 0)
             {
@@ -2184,7 +2189,7 @@ namespace LegendaryExplorer.DialogueEditor
                     newReplyListProp.Add(rprop);
                 }
             }
-            newReplyListProp.Add(new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+            newReplyListProp.Insert(Math.Clamp(insertionIndex, 0, newReplyListProp.Count), new StructProperty("BioDialogReplyListDetails", new PropertyCollection
             {
                 new IntProperty(endNode - 1000, "nIndex"),
                 new StringRefProperty(663399, "srParaphrase"),
@@ -2193,7 +2198,7 @@ namespace LegendaryExplorer.DialogueEditor
                 new NoneProperty()
             }));
 
-            Node.NodeProp.Properties.AddOrReplaceProp(newReplyListProp);
+            start.NodeProp.Properties.AddOrReplaceProp(newReplyListProp);
             Editor.PushLocalGraphChanges(this);
         }
     }
@@ -2332,6 +2337,11 @@ namespace LegendaryExplorer.DialogueEditor
 
             var newEntriesProp = new ArrayProperty<IntProperty>("EntryList");
             var oldEntriesProp = start.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+            int insertionIndex = Editor.PromptForLinkInsertionIndex("Choose where the new link should be inserted in the node's outgoing link list.", oldEntriesProp?.Count ?? 0) ?? -1;
+            if (insertionIndex < 0)
+            {
+                return;
+            }
             if (oldEntriesProp != null)
             {
                 foreach (var i in oldEntriesProp)
@@ -2340,7 +2350,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
 
-            newEntriesProp.Add(new IntProperty(endNode));
+            newEntriesProp.Insert(Math.Clamp(insertionIndex, 0, newEntriesProp.Count), new IntProperty(endNode));
             start.NodeProp.Properties.AddOrReplaceProp(newEntriesProp);  //Push to Property
 
             Editor.PushLocalGraphChanges(this);
