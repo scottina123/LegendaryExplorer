@@ -7178,6 +7178,216 @@ namespace LegendaryExplorer.DialogueEditor
             };
         }
 
+        internal DialogueLinkEditDialogResult PromptForNewEntryLinkOptions(DiagNode startNode, DiagNode endNode)
+        {
+            if (startNode == null || endNode == null)
+            {
+                return null;
+            }
+
+            string selectedTarget = $"{endNode.Node.NodeCount}: {endNode.Node.LineStrRef} {endNode.Node.Line}";
+            var existingLinks = startNode.Links.OrderBy(link => link.Order).Select(link => new ReplyChoiceNode(link)).ToList();
+            var tempLinks = new List<ReplyChoiceNode>(existingLinks)
+            {
+                new ReplyChoiceNode(endNode.Node.NodeCount, string.Empty, 663399, EReplyCategory.REPLY_CATEGORY_DEFAULT, GlobalFindStrRefbyID(663399, Pcc))
+                {
+                    Order = existingLinks.Count
+                }
+            };
+
+            var dialog = new Window
+            {
+                Title = "Create Link",
+                Width = 760,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            int selectedInsertionIndex = 0;
+            int replyStrRef = 663399;
+            string selectedCategory = EReplyCategory.REPLY_CATEGORY_DEFAULT.ToString();
+
+            var rootPanel = new StackPanel { Margin = new Thickness(18) };
+
+            var promptBlock = new TextBlock
+            {
+                Text = $"Choose where the new link to R{endNode.Node.NodeCount} should be inserted.",
+                Margin = new Thickness(0, 0, 0, 12),
+                TextWrapping = TextWrapping.Wrap
+            };
+            rootPanel.Children.Add(promptBlock);
+
+            var optionHeader = new TextBlock
+            {
+                Text = "Insert new link at:",
+                Margin = new Thickness(0, 0, 0, 8),
+                FontWeight = FontWeights.SemiBold
+            };
+            rootPanel.Children.Add(optionHeader);
+
+            var checkBoxes = new List<CheckBox>();
+            CheckBox CreateOptionCheckBox(int insertionIndex)
+            {
+                var checkBox = new CheckBox
+                {
+                    Content = GetCloneInsertionIndexDisplayText(insertionIndex, existingLinks.Count),
+                    Margin = new Thickness(6),
+                    IsChecked = insertionIndex == 0
+                };
+                checkBox.Checked += (_, _) =>
+                {
+                    selectedInsertionIndex = insertionIndex;
+                    foreach (var otherCheckBox in checkBoxes)
+                    {
+                        if (!ReferenceEquals(otherCheckBox, checkBox))
+                        {
+                            otherCheckBox.IsChecked = false;
+                        }
+                    }
+                };
+                checkBox.Unchecked += (_, _) =>
+                {
+                    if (checkBoxes.All(cb => cb.IsChecked != true))
+                    {
+                        checkBox.IsChecked = true;
+                    }
+                };
+                checkBoxes.Add(checkBox);
+                return checkBox;
+            }
+
+            var optionPanel = new WrapPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            for (int insertionIndex = 0; insertionIndex <= existingLinks.Count; insertionIndex++)
+            {
+                optionPanel.Children.Add(CreateOptionCheckBox(insertionIndex));
+            }
+            rootPanel.Children.Add(optionPanel);
+
+            var tlkPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+            tlkPanel.Children.Add(new TextBlock
+            {
+                Text = "Dialogue wheel TLK string reference",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            var replyStrRefTextBox = new TextBox { Text = replyStrRef.ToString(CultureInfo.InvariantCulture) };
+            var replyPreviewTextBlock = new TextBlock
+            {
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            };
+            void UpdateReplyPreview()
+            {
+                if (int.TryParse(replyStrRefTextBox.Text, out int parsedStrRef) && parsedStrRef > 0)
+                {
+                    replyPreviewTextBlock.Text = RemoveWrappingQuotes(GlobalFindStrRefbyID(parsedStrRef, Pcc));
+                }
+                else
+                {
+                    replyPreviewTextBlock.Text = "No Data";
+                }
+            }
+            replyStrRefTextBox.TextChanged += (_, _) => UpdateReplyPreview();
+            UpdateReplyPreview();
+            tlkPanel.Children.Add(replyStrRefTextBox);
+            tlkPanel.Children.Add(replyPreviewTextBlock);
+            rootPanel.Children.Add(tlkPanel);
+
+            var categoryPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
+            categoryPanel.Children.Add(new TextBlock
+            {
+                Text = "Dialogue wheel category",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            var categoryComboBox = new ComboBox();
+            foreach (var category in GetInlineReplyCategoryValues())
+            {
+                var categoryBrush = ReplyCategoryBrushConverter.Convert(category, typeof(System.Windows.Media.Brush), null, CultureInfo.CurrentCulture) as System.Windows.Media.Brush
+                    ?? System.Windows.Media.Brushes.Black;
+                categoryComboBox.Items.Add(new ComboBoxItem
+                {
+                    Content = new TextBlock
+                    {
+                        Text = GetReplyCategoryDisplayText(category),
+                        Foreground = categoryBrush
+                    },
+                    Tag = category.ToString(),
+                    Foreground = categoryBrush
+                });
+            }
+            categoryComboBox.SelectedItem = categoryComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag as string, selectedCategory, StringComparison.Ordinal));
+            categoryPanel.Children.Add(categoryComboBox);
+            rootPanel.Children.Add(categoryPanel);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 120,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            okButton.Click += (_, _) =>
+            {
+                if (!int.TryParse(replyStrRefTextBox.Text, out replyStrRef) || replyStrRef <= 0)
+                {
+                    System.Windows.MessageBox.Show(dialog, "The string reference must be a positive whole number.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                selectedCategory = (categoryComboBox.SelectedItem as ComboBoxItem)?.Tag as string;
+                if (string.IsNullOrWhiteSpace(selectedCategory))
+                {
+                    System.Windows.MessageBox.Show(dialog, "Select a dialogue wheel category.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                dialog.DialogResult = true;
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 120,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            cancelButton.Click += (_, _) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+            rootPanel.Children.Add(buttonPanel);
+
+            dialog.Content = rootPanel;
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            return new DialogueLinkEditDialogResult(selectedTarget, replyStrRef, selectedCategory, selectedInsertionIndex);
+        }
+
         private void CloneIncomingLinkToNode(DiagEdEdge sourceEdge, DiagNode targetNode, bool insertAtTop)
         {
             CloneIncomingLinkToNode(sourceEdge, targetNode, insertAtTop ? 0 : int.MaxValue);

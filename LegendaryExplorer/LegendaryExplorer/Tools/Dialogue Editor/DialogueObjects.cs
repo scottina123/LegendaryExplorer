@@ -3,6 +3,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorer.Dialogs;
 using Piccolo;
 using Piccolo.Event;
 using Piccolo.Nodes;
@@ -2176,8 +2177,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             var newReplyListProp = new ArrayProperty<StructProperty>("ReplyListNew");
             var oldReplyListProp = start.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
-            int insertionIndex = Editor.PromptForLinkInsertionIndex("Choose where the new link should be inserted in the node's outgoing link list.", oldReplyListProp?.Count ?? 0) ?? -1;
-            if (insertionIndex < 0)
+            DialogueLinkEditDialogResult linkOptions = Editor.PromptForNewEntryLinkOptions(start, end);
+            if (linkOptions == null)
             {
                 return;
             }
@@ -2189,12 +2190,12 @@ namespace LegendaryExplorer.DialogueEditor
                     newReplyListProp.Add(rprop);
                 }
             }
-            newReplyListProp.Insert(Math.Clamp(insertionIndex, 0, newReplyListProp.Count), new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+            newReplyListProp.Insert(Math.Clamp(linkOptions.SelectedOrder, 0, newReplyListProp.Count), new StructProperty("BioDialogReplyListDetails", new PropertyCollection
             {
                 new IntProperty(endNode - 1000, "nIndex"),
-                new StringRefProperty(663399, "srParaphrase"),
+                new StringRefProperty(linkOptions.ReplyStrRef, "srParaphrase"),
                 new StrProperty("", "sParaphrase"),
-                new EnumProperty("REPLY_CATEGORY_DEFAULT", "EReplyCategory", Editor.Pcc.Game, "Category"),
+                new EnumProperty(linkOptions.SelectedCategory, "EReplyCategory", Editor.Pcc.Game, "Category"),
                 new NoneProperty()
             }));
 
