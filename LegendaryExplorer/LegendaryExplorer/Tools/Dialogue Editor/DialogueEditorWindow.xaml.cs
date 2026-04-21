@@ -5196,16 +5196,208 @@ namespace LegendaryExplorer.DialogueEditor
                 }
             }
         }
+
+        private (NameReference SpeakerName, ExportEntry MaleFaceFX, ExportEntry FemaleFaceFX)? PromptForNewSpeaker()
+        {
+            if (Pcc == null)
+            {
+                return null;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Add a speaker",
+                Width = 640,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            ExportEntry selectedMaleFaceFx = null;
+            ExportEntry selectedFemaleFaceFx = null;
+
+            var actorTagTextBox = new TextBox
+            {
+                Margin = new Thickness(0, 4, 0, 0),
+                MinWidth = 360
+            };
+
+            var maleFaceFxTextBox = new TextBox
+            {
+                Margin = new Thickness(0, 4, 8, 0),
+                IsReadOnly = true,
+                Text = "None"
+            };
+
+            var femaleFaceFxTextBox = new TextBox
+            {
+                Margin = new Thickness(0, 4, 8, 0),
+                IsReadOnly = true,
+                Text = "None"
+            };
+
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                IsEnabled = false,
+                MinWidth = 90,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+
+            void UpdateOkState()
+            {
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(actorTagTextBox.Text)
+                    && selectedMaleFaceFx != null
+                    && selectedFemaleFaceFx != null;
+            }
+
+            Button CreateFaceFxSelectButton(bool isMale, TextBox targetTextBox)
+            {
+                var button = new Button
+                {
+                    Content = "Select...",
+                    MinWidth = 90,
+                    Margin = new Thickness(0, 4, 0, 0),
+                    Padding = new Thickness(10, 4, 10, 4)
+                };
+
+                button.Click += (_, _) =>
+                {
+                    var currentSelection = isMale ? selectedMaleFaceFx : selectedFemaleFaceFx;
+                    var selectedFaceFx = EntrySelector.GetEntry<ExportEntry>(
+                        dialog,
+                        Pcc,
+                        $"Select the {(isMale ? "male" : "female")} FaceFX animation set for the new speaker.",
+                        exp => exp.ClassName == "FaceFXAnimSet",
+                        currentSelection,
+                        selectLastItemByDefault: true);
+
+                    if (selectedFaceFx == null)
+                    {
+                        return;
+                    }
+
+                    if (isMale)
+                    {
+                        selectedMaleFaceFx = selectedFaceFx;
+                    }
+                    else
+                    {
+                        selectedFemaleFaceFx = selectedFaceFx;
+                    }
+
+                    targetTextBox.Text = GetSpeakerFaceFXDisplayText(selectedFaceFx);
+                    UpdateOkState();
+                };
+
+                return button;
+            }
+
+            actorTagTextBox.TextChanged += (_, _) => UpdateOkState();
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            var rootPanel = new StackPanel
+            {
+                Margin = new Thickness(18)
+            };
+
+            var actorTagPanel = new StackPanel();
+            actorTagPanel.Children.Add(new TextBlock
+            {
+                Text = "Actor's tag"
+            });
+            actorTagPanel.Children.Add(actorTagTextBox);
+            rootPanel.Children.Add(actorTagPanel);
+
+            Grid CreateFaceFxRow(string label, TextBox displayTextBox, bool isMale)
+            {
+                var grid = new Grid
+                {
+                    Margin = new Thickness(0, 12, 0, 0)
+                };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var labelBlock = new TextBlock
+                {
+                    Text = label,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0)
+                };
+                Grid.SetColumn(labelBlock, 0);
+                grid.Children.Add(labelBlock);
+
+                Grid.SetColumn(displayTextBox, 1);
+                grid.Children.Add(displayTextBox);
+
+                var selectButton = CreateFaceFxSelectButton(isMale, displayTextBox);
+                Grid.SetColumn(selectButton, 2);
+                grid.Children.Add(selectButton);
+
+                return grid;
+            }
+
+            rootPanel.Children.Add(CreateFaceFxRow("Male FaceFX", maleFaceFxTextBox, isMale: true));
+            rootPanel.Children.Add(CreateFaceFxRow("Female FaceFX", femaleFaceFxTextBox, isMale: false));
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Both FaceFX selections are required before the speaker can be created.",
+                Margin = new Thickness(0, 12, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 18, 0, 0)
+            };
+
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 90,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            });
+
+            rootPanel.Children.Add(buttonPanel);
+            dialog.Content = rootPanel;
+
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            return (
+                NameReference.FromInstancedString(actorTagTextBox.Text.Trim()),
+                selectedMaleFaceFx,
+                selectedFemaleFaceFx);
+        }
+
         private void SpeakerAdd()
         {
             int maxID = SelectedSpeakerList.Max(x => x.SpeakerID);
-            var ndlg = new PromptDialog("Enter the new actors tag", "Add a speaker", "Actor_Tag");
-            ndlg.ShowDialog();
-            if (ndlg.ResponseText is null or "Actor_Tag")
+            var newSpeaker = PromptForNewSpeaker();
+            if (!newSpeaker.HasValue)
                 return;
-            var speakerName = NameReference.FromInstancedString(ndlg.ResponseText);
+
+            var (speakerName, maleFaceFx, femaleFaceFx) = newSpeaker.Value;
             Pcc.FindNameOrAdd(speakerName.Name);
-            SelectedSpeakerList.Add(new SpeakerExtended(maxID + 1, speakerName, null, null, 0, "No Data"));
+            int strRefId = LookupTagRef(speakerName.Instanced);
+            string friendlyName = strRefId > 0 ? GlobalFindStrRefbyID(strRefId, Pcc) : "No Data";
+            SelectedSpeakerList.Add(new SpeakerExtended(maxID + 1, speakerName, maleFaceFx, femaleFaceFx, strRefId, friendlyName));
             SaveSpeakerChangesInPlace(reindexSpeakerIds: true);
             Speakers_ListBox.SelectedIndex = SelectedSpeakerList.Count - 1;
         }
