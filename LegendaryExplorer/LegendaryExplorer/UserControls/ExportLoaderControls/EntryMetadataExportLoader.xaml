@@ -174,10 +174,30 @@
             </Button>
         </Grid>
         
-        <TextBox Name="InfoTab_ObjectnameIndex_TextBox"  VerticalAlignment="Center" Grid.Row="1" 
-                 Grid.Column="1" Grid.ColumnSpan="2" TextChanged="Info_IndexTextBox_TextChanged" 
-                 Style="{StaticResource MetadataTextboxStyle}"
-                 ToolTip="The instance index of this object name.&#10;Instance numbers should be unique to other objects under the same parent with the same name, otherwise duplicates will be dropped from memory.&#10;If you are having issues with things not loading it may be the index is wrong"/>
+        <Grid Grid.Row="1" Grid.Column="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Name="InfoTab_ObjectnameIndex_TextBox"
+                     Grid.Column="0"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource MetadataTextboxStyle}"
+                     PreviewKeyDown="InfoTab_ObjectnameIndex_TextBox_PreviewKeyDown"
+                     LostFocus="InfoTab_ObjectnameIndex_TextBox_LostFocus"
+                     GotFocus="InfoTab_ObjectNameIndex_ComboBox_GotFocus"
+                     ToolTip="The instance index of this object name.&#10;Instance numbers should be unique to other objects under the same parent with the same name, otherwise duplicates will be dropped from memory.&#10;If you are having issues with things not loading it may be the index is wrong"/>
+            <Button Name="InfoTab_ObjectnameIndexCommit_Button"
+                    Grid.Column="2"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    PreviewMouseLeftButtonDown="InfoTab_ObjectnameIndexCommit_Button_PreviewMouseLeftButtonDown"
+                    Click="InfoTab_ObjectnameIndexCommit_Button_Click"
+                    ToolTip="Save the typed object index immediately">
+                Save
+            </Button>
+        </Grid>
 
         <TextBox Text="{Binding CurrentLoadedEntry.InstancedFullPath, Mode=OneWay}"  VerticalAlignment="Center" Grid.Row="2"
                  IsReadOnly="True"

@@ -104,6 +104,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private TextBox ArchetypeDisplayTextBox => (TextBox)FindName("InfoTab_ArchetypeDisplay_TextBox");
         private bool _objectNameSaveButtonClickInProgress;
         private bool _objectNameSuggestionClickInProgress;
+        private bool _objectIndexSaveButtonClickInProgress;
         private bool _classSaveButtonClickInProgress;
         private bool _superclassSaveButtonClickInProgress;
         private bool _packageLinkSaveButtonClickInProgress;
@@ -770,6 +771,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private int GetObjectNameHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXOBJECTNAME : HEADER_OFFSET_IMP_IDXOBJECTNAME;
 
+        private int GetObjectIndexHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_INDEXVALUE : HEADER_OFFSET_IMP_IDXOBJECTNAME + 4;
+
         private int GetLinkHeaderOffset() => CurrentLoadedEntry is ExportEntry ? HEADER_OFFSET_EXP_IDXLINK : HEADER_OFFSET_IMP_IDXLINK;
 
         private static int GetEntrySelectionIndex(IMEPackage package, int uIndex) => uIndex + package.ImportCount;
@@ -782,6 +785,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return EndianReader.ToInt32(headerByteProvider.Span, GetObjectNameHeaderOffset(), CurrentLoadedEntry.FileRef.Endian);
+        }
+
+        private int GetPendingObjectIndex()
+        {
+            if (CurrentLoadedEntry == null || headerByteProvider.Length < GetObjectIndexHeaderOffset() + 4)
+            {
+                return 0;
+            }
+
+            return EndianReader.ToInt32(headerByteProvider.Span, GetObjectIndexHeaderOffset(), CurrentLoadedEntry.FileRef.Endian);
         }
 
         private static object FindSelectionItem(IList<object> entries, int uIndex)
@@ -867,6 +880,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             SetDisplayedObjectNames(GetPendingObjectNameIndex());
+        }
+
+        private void RestorePendingObjectIndexText()
+        {
+            InfoTab_ObjectnameIndex_TextBox.Text = GetPendingObjectIndex().ToString();
         }
 
         private int GetPendingLinkUIndex()
@@ -1247,6 +1265,36 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private bool TryCommitObjectIndexText(bool showError, bool saveImmediately = false)
+        {
+            if (loadingNewData || CurrentLoadedEntry == null)
+            {
+                return false;
+            }
+
+            if (!int.TryParse(InfoTab_ObjectnameIndex_TextBox.Text?.Trim(), out int objectIndex))
+            {
+                if (showError)
+                {
+                    MessageBox.Show("Enter a valid integer for Object index.");
+                }
+
+                RestorePendingObjectIndexText();
+                return false;
+            }
+
+            headerByteProvider.WriteBytes(GetObjectIndexHeaderOffset(), BitConverter.GetBytes(objectIndex));
+            InfoTab_ObjectnameIndex_TextBox.Text = objectIndex.ToString();
+            Header_Hexbox?.Refresh();
+
+            if (saveImmediately)
+            {
+                SaveHeaderChangesImmediatelyIfNeeded();
+            }
+
+            return true;
+        }
+
         private void Info_ArchetypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!loadingNewData && InfoTab_Archetype_ComboBox.SelectedIndex >= 0)
@@ -1273,6 +1321,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 InfoTab_ArchetypeUIndex_TextBox.Text = unrealIndex.ToString();
                 Header_Hexbox?.Refresh();
                 UpdateArchetypeDisplayText();
+            }
+        }
+
+        private void InfoTab_ObjectnameIndex_TextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Return)
+            {
+                TryCommitObjectIndexText(true, true);
+                e.Handled = true;
+            }
+        }
+
+        private void InfoTab_ObjectnameIndex_TextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_objectIndexSaveButtonClickInProgress)
+            {
+                return;
+            }
+
+            TryCommitObjectIndexText(false);
+        }
+
+        private void InfoTab_ObjectnameIndexCommit_Button_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _objectIndexSaveButtonClickInProgress = true;
+        }
+
+        private void InfoTab_ObjectnameIndexCommit_Button_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                TryCommitObjectIndexText(true, true);
+            }
+            finally
+            {
+                _objectIndexSaveButtonClickInProgress = false;
             }
         }
 
