@@ -73,8 +73,9 @@
                             <TextBlock Text="{Binding TLKString, Mode=OneWay}" TextWrapping="Wrap" FontSize="10" FontStyle="Italic"  Visibility="{Binding TLKString, Converter={StaticResource NullVisibilityConverter}}"/>
                             <TextBlock Text="{Binding LengthAsString, Mode=OneWay}" VerticalAlignment="Center" Foreground="Gray"/>
                             <StackPanel.ContextMenu>
-                                <ContextMenu x:Name="lineContextMenu">
+                                <ContextMenu x:Name="lineContextMenu" Opened="LineContextMenu_OnOpened">
                                     <MenuItem Header="Add Line" Click="AddLine_Click"/>
+                                    <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations for this line"/>
                                     <MenuItem Header="Delete Section of line" Click="DelLineSec_Click"/>
                                     <MenuItem Header="Import Section of line" Click="ImpLineSec_Click"/>
                                     <MenuItem Header="Export Section of line" Click="ExpLineSec_Click"/>

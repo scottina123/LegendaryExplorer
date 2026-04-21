@@ -515,6 +515,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             dragEnabled = false;
         }
 
+        private void LineContextMenu_OnOpened(object sender, RoutedEventArgs e)
+        {
+            if (sender is ContextMenu { PlacementTarget: FrameworkElement { DataContext: FaceFXLineEntry lineEntry } })
+            {
+                SelectedLineEntry = lineEntry;
+            }
+        }
+
         private void linesListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             dragStart = e.GetPosition(linesListBox);
