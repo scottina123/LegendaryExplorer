@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Numerics;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
@@ -42,6 +43,7 @@ using LegendaryExplorerCore.Pathing;
 using LegendaryExplorerCore.Shaders;
 using LegendaryExplorerCore.UDK;
 using LegendaryExplorerCore.UnrealScript.Documentation;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorerCore.Diagnostics;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
@@ -2577,20 +2579,13 @@ defaultproperties
                 return;
             }
 
-            const string currentPackageOption = "Current package";
-            const string folderOption = "Folder (all .pcc files recursively)";
-
-            var selectedScope = InputComboBoxDialog.GetValue(pe,
-                "Choose where to run this experiment.",
-                "Fix Bad Forced Exports",
-                new List<string> { currentPackageOption, folderOption },
-                currentPackageOption);
-            if (string.IsNullOrWhiteSpace(selectedScope))
+            var selectedScope = ShowFixBadForcedExportsScopeDialog(pe);
+            if (selectedScope == FixBadForcedExportsScope.Cancel)
             {
                 return;
             }
 
-            if (selectedScope == folderOption)
+            if (selectedScope == FixBadForcedExportsScope.Folder)
             {
                 FixBadForcedExportsInFolder(pe);
                 return;
@@ -2616,6 +2611,107 @@ defaultproperties
 
             PackageDiags.FixBadForcedExport(pe.Pcc);
             MessageBox.Show($@"Done. Fixed {badLeaves.Count} inconsistent forced export chain(s) in the current package.");
+        }
+
+        private enum FixBadForcedExportsScope
+        {
+            Cancel,
+            CurrentPackage,
+            Folder
+        }
+
+        private static FixBadForcedExportsScope ShowFixBadForcedExportsScopeDialog(PackageEditorWindow owner)
+        {
+            FixBadForcedExportsScope selectedScope = FixBadForcedExportsScope.Cancel;
+
+            Window dialog = null;
+            dialog = new Window
+            {
+                Title = "Fix Bad Forced Exports",
+                Owner = owner,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false
+            };
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            dialog.Content = new StackPanel
+            {
+                Margin = new Thickness(12),
+                MinWidth = 420,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Choose where to run this experiment.",
+                        Margin = new Thickness(0, 0, 0, 12),
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    CreateFixBadForcedExportsOptionButton("Current package",
+                        "Scan only the package currently open in Package Editor.",
+                        () =>
+                        {
+                            selectedScope = FixBadForcedExportsScope.CurrentPackage;
+                            dialog.DialogResult = true;
+                        }),
+                    CreateFixBadForcedExportsOptionButton("Folder (all .pcc files recursively)",
+                        "Scan all .pcc files in selected folder(s) and save any fixes.",
+                        () =>
+                        {
+                            selectedScope = FixBadForcedExportsScope.Folder;
+                            dialog.DialogResult = true;
+                        }),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Margin = new Thickness(0, 12, 0, 0),
+                        Children =
+                        {
+                            new Button
+                            {
+                                Content = "Cancel",
+                                Width = 80,
+                                IsCancel = true
+                            }
+                        }
+                    }
+                }
+            };
+
+            dialog.ShowDialog();
+            return selectedScope;
+        }
+
+        private static Button CreateFixBadForcedExportsOptionButton(string title, string description, Action onClick)
+        {
+            var button = new Button
+            {
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(12, 10, 12, 10),
+                Content = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = title,
+                            FontWeight = FontWeights.SemiBold
+                        },
+                        new TextBlock
+                        {
+                            Text = description,
+                            Margin = new Thickness(0, 4, 0, 0),
+                            Opacity = 0.85,
+                            TextWrapping = TextWrapping.Wrap
+                        }
+                    }
+                }
+            };
+            button.Click += (_, _) => onClick();
+            return button;
         }
 
         private static void FixBadForcedExportsInFolder(PackageEditorWindow pe)
