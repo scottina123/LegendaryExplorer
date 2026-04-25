@@ -32,6 +32,7 @@ using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.GameFilesystem;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using ICSharpCode.AvalonEdit.Editing;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using ICSharpCode.AvalonEdit.Rendering;
@@ -176,6 +177,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private bool _suppressEditorEvents;
         private bool _isRestoringState;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
+        private readonly SelectionMatchRenderer _selectionMatchRenderer = new();
         private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
         private CoalescedSearchMatch? _currentSearchMatch;
         private Point _tabDragStartPoint;
@@ -187,9 +189,11 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             InitializeComponent();
             DataContext = this;
             TextEditor.TextArea.TextView.BackgroundRenderers.Add(_xmlTagMatchRenderer);
+            TextEditor.TextArea.TextView.BackgroundRenderers.Add(_selectionMatchRenderer);
             TextEditor.TextArea.TextView.ElementGenerators.Add(_tlkInlineAnnotationGenerator);
             TextEditor.TextChanged += TextEditor_TextChanged;
             TextEditor.TextArea.Caret.PositionChanged += TextArea_Caret_PositionChanged;
+            TextEditor.TextArea.SelectionChanged += TextArea_SelectionChanged;
             RestoreOpenFiles();
             UpdateWelcomeVisibility();
         }
@@ -835,6 +839,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 }
 
                 UpdateXmlTagMatchHighlight();
+                UpdateSelectionMatchHighlight();
                 UpdateTlkInlineAnnotations();
                 RestoreCurrentEditorViewState();
                 ResetSearchState();
@@ -857,6 +862,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
 
             UpdateXmlTagMatchHighlight();
+            UpdateSelectionMatchHighlight();
             UpdateTlkInlineAnnotations();
             ResetSearchState();
             UpdateSearchStatus();
@@ -868,6 +874,14 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 return;
 
             UpdateXmlTagMatchHighlight();
+        }
+
+        private void TextArea_SelectionChanged(object sender, EventArgs e)
+        {
+            if (_suppressEditorEvents)
+                return;
+
+            UpdateSelectionMatchHighlight();
         }
 
         private void UpdateXmlTagMatchHighlight()
@@ -888,6 +902,57 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             }
 
             _xmlTagMatchRenderer.SetMatches(match.Value.openIndex, match.Value.openLength, match.Value.closeIndex, match.Value.closeLength);
+        }
+
+        private void UpdateSelectionMatchHighlight()
+        {
+            if (TextEditor?.Document is null)
+            {
+                _selectionMatchRenderer.Clear();
+                return;
+            }
+
+            var selection = TextEditor.TextArea.Selection;
+            if (selection is null || selection.IsEmpty)
+            {
+                _selectionMatchRenderer.Clear();
+                return;
+            }
+
+            string selectedText = selection.GetText();
+            if (string.IsNullOrWhiteSpace(selectedText) || selectedText.Contains('\r') || selectedText.Contains('\n'))
+            {
+                _selectionMatchRenderer.Clear();
+                return;
+            }
+
+            int selectionStart = TextEditor.SelectionStart;
+            int selectionLength = TextEditor.SelectionLength;
+            if (selectionLength <= 0)
+            {
+                _selectionMatchRenderer.Clear();
+                return;
+            }
+
+            var segments = new List<(int Offset, int Length)>();
+            string text = TextEditor.Text;
+            int startIndex = 0;
+
+            while (startIndex < text.Length)
+            {
+                int matchIndex = text.IndexOf(selectedText, startIndex, StringComparison.Ordinal);
+                if (matchIndex < 0)
+                    break;
+
+                if (matchIndex != selectionStart || selectedText.Length != selectionLength)
+                {
+                    segments.Add((matchIndex, selectedText.Length));
+                }
+
+                startIndex = matchIndex + Math.Max(selectedText.Length, 1);
+            }
+
+            _selectionMatchRenderer.SetMatches(segments);
         }
 
         private static (int openIndex, int openLength, int closeIndex, int closeLength)? FindMatchingXmlTagPair(string text, int caretOffset)
@@ -2298,6 +2363,63 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             _segments.Clear();
             _segments.Add(new TextSegment { StartOffset = firstOffset, Length = firstLength });
             _segments.Add(new TextSegment { StartOffset = secondOffset, Length = secondLength });
+            _textView?.InvalidateLayer(Layer);
+        }
+
+        public void Clear()
+        {
+            if (_segments.Count == 0)
+                return;
+
+            _segments.Clear();
+            _textView?.InvalidateLayer(Layer);
+        }
+    }
+
+    public class SelectionMatchRenderer : IBackgroundRenderer
+    {
+        private readonly Brush _backgroundBrush = new SolidColorBrush(Color.FromArgb(90, 214, 157, 0));
+        private readonly Pen _borderPen = new(new SolidColorBrush(Color.FromArgb(180, 255, 204, 102)), 1);
+        private readonly TextSegmentCollection<TextSegment> _segments;
+        private TextView _textView;
+
+        public SelectionMatchRenderer()
+        {
+            _backgroundBrush.Freeze();
+            _borderPen.Freeze();
+            _segments = new TextSegmentCollection<TextSegment>();
+        }
+
+        public KnownLayer Layer => KnownLayer.Selection;
+
+        public void Draw(TextView textView, DrawingContext drawingContext)
+        {
+            _textView = textView;
+            if (_segments.Count == 0 || !textView.VisualLinesValid)
+                return;
+
+            foreach (var segment in _segments)
+            {
+                foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, segment))
+                {
+                    var geometry = new RectangleGeometry(new Rect(rect.Location, new Size(rect.Width, rect.Height)));
+                    drawingContext.DrawGeometry(_backgroundBrush, _borderPen, geometry);
+                }
+            }
+        }
+
+        public void SetMatches(IEnumerable<(int Offset, int Length)> matches)
+        {
+            _segments.Clear();
+
+            foreach (var match in matches)
+            {
+                if (match.Length <= 0)
+                    continue;
+
+                _segments.Add(new TextSegment { StartOffset = match.Offset, Length = match.Length });
+            }
+
             _textView?.InvalidateLayer(Layer);
         }
 
