@@ -2239,6 +2239,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                             var cd = CurrentDataBase.ContentDir[directoryKey];
                             int mount = -1;
                             dlcs.TryGetValue(cd, out mount);
+                            if (mount < 0)
+                            {
+                                string normalizedContentDir = cd.NormalizeDLCFolderName();
+                                if (!string.IsNullOrWhiteSpace(normalizedContentDir))
+                                {
+                                    dlcs.TryGetValue(normalizedContentDir, out mount);
+                                }
+                            }
                             FileListExtended.Add(new(fileName, cd, mount));
                         }
 
@@ -2610,14 +2618,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return null;
             }
 
-            filePath = Directory.EnumerateFiles(rootPath, filename, SearchOption.AllDirectories).FirstOrDefault(f => f.Contains(contentdir));
+            filePath = FindContentDirectoryFilePath(rootPath, filename, contentdir);
 
             if (filePath == null)
             {
                 if (CurrentGame == MEGame.ME3)
                 {
                     // This is very inefficient...
-                    var testFile = Directory.EnumerateFiles(rootPath, "Default.sfar", SearchOption.AllDirectories).FirstOrDefault(f => f.Contains(contentdir));
+                    var testFile = FindContentDirectoryFilePath(rootPath, "Default.sfar", contentdir);
                     if (testFile != null)
                     {
                         DLCPackage dlp = new DLCPackage(testFile);
@@ -4753,13 +4761,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private string GetFilePath(int fileListIndex)
         {
             (string filename, string contentdir, int mount) = FileListExtended[fileListIndex];
-            var retFile = Directory.GetFiles(MEDirectories.GetDefaultGamePath(CurrentGame), $"{filename}.*", SearchOption.AllDirectories).FirstOrDefault(f => f.Contains(contentdir));
+            var rootPath = MEDirectories.GetDefaultGamePath(CurrentGame);
+            var retFile = FindContentDirectoryFilePath(rootPath, $"{filename}.*", contentdir);
             if (retFile != null)
                 return retFile;
             if (CurrentGame == MEGame.ME3)
             {
-                var sfar = Path.Combine(MEDirectories.GetDLCPath(MEGame.ME3), contentdir, "CookedPCConsole", "Default.sfar");
-                if (File.Exists(sfar))
+                foreach (string sfar in EnumerateContentDirectoryCandidates(MEDirectories.GetDLCPath(MEGame.ME3), contentdir)
+                             .Select(path => Path.Combine(path, "CookedPCConsole", "Default.sfar"))
+                             .Where(File.Exists))
                 {
                     DLCPackage dlp = new DLCPackage(sfar);
                     var dlpFile = dlp.FindFileEntry(filename);
@@ -4772,6 +4782,54 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             return null;
+        }
+
+        private static bool ContentDirectoryMatchesPath(string path, string contentDir)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(contentDir))
+            {
+                return false;
+            }
+
+            string normalizedContentDir = contentDir.NormalizeDLCFolderName() ?? contentDir;
+            string normalizedPath = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+            if (normalizedPath.Contains(contentDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return !string.Equals(normalizedContentDir, contentDir, StringComparison.OrdinalIgnoreCase)
+                && normalizedPath.Contains(normalizedContentDir, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IEnumerable<string> EnumerateContentDirectoryCandidates(string dlcRootPath, string contentDir)
+        {
+            if (string.IsNullOrWhiteSpace(dlcRootPath) || string.IsNullOrWhiteSpace(contentDir) || !Directory.Exists(dlcRootPath))
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            string normalizedContentDir = contentDir.NormalizeDLCFolderName() ?? contentDir;
+            return Directory.EnumerateDirectories(dlcRootPath)
+                .Where(dir =>
+                {
+                    string folderName = Path.GetFileName(dir);
+                    string normalizedFolderName = folderName.NormalizeDLCFolderName() ?? folderName;
+                    return string.Equals(folderName, contentDir, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(normalizedFolderName, normalizedContentDir, StringComparison.OrdinalIgnoreCase);
+                });
+        }
+
+        private static string FindContentDirectoryFilePath(string rootPath, string searchPattern, string contentDir)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath) || string.IsNullOrWhiteSpace(searchPattern) || string.IsNullOrWhiteSpace(contentDir))
+            {
+                return null;
+            }
+
+            return Directory.EnumerateFiles(rootPath, searchPattern, SearchOption.AllDirectories)
+                .FirstOrDefault(file => ContentDirectoryMatchesPath(file, contentDir));
         }
 
         private void genderTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)

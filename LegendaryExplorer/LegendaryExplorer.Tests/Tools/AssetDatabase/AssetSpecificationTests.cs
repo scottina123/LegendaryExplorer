@@ -1,7 +1,11 @@
 using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using LegendaryExplorer.Tools.AssetDatabase;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
+using LegendaryExplorerCore.Helpers;
 
 namespace LegendaryExplorer.Tests.Tools.AssetDatabase
 {
@@ -100,6 +104,38 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase
 
             spec.IsSelected = true;
             Assert.AreEqual(2, timesInvoked);
+        }
+
+        [TestMethod]
+        public void NormalizeDLCFolderName_HandlesDisabledAssetDatabaseDirectoryNames()
+        {
+            Assert.AreEqual("DLC_MOD_ProjectVariety", "OFFDLC_MOD_ProjectVariety".NormalizeDLCFolderName());
+            Assert.AreEqual("DLC_MOD_ProjectVariety", "DLC_MOD_ProjectVariety".NormalizeDLCFolderName());
+        }
+
+        [TestMethod]
+        public void ContentDirectoryMatching_FindsFilesAcrossOffDlcRename()
+        {
+            string tempRoot = Path.Combine(Path.GetTempPath(), $"LEX_AssetDbTests_{Guid.NewGuid():N}");
+            string filePath = Path.Combine(tempRoot, "BioGame", "DLC", "DLC_MOD_ProjectVariety", "CookedPCConsole", "BioP_Lev001.pcc");
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+            File.WriteAllText(filePath, string.Empty);
+
+            try
+            {
+                MethodInfo method = typeof(AssetDatabaseWindow).GetMethod("FindContentDirectoryFilePath", BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.IsNotNull(method);
+
+                string resolvedPath = (string)method.Invoke(null, [tempRoot, "BioP_Lev001.pcc", "OFFDLC_MOD_ProjectVariety"]);
+                Assert.AreEqual(filePath, resolvedPath);
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
         }
     }
 }
