@@ -41,6 +41,8 @@
                 <Separator Name="EditorSet_Separator_LeftsideArray" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Label IsEnabled="False">Array:</Label>
+                <xctk:IntegerUpDown Name="AddArrayCount_UpDown" Width="50" VerticalAlignment="Center" Margin="5,0,0,0"
+                                    Value="{Binding AddArrayCount}" Minimum="1" ToolTip="Number of elements to add"/>
                 <Button Name="AddArrayElement_Button" ToolTip="Add a new element to the selected array"
                         Click="AddArrayElement_Button_Click" 
                         VerticalAlignment="Center">

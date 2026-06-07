@@ -115,6 +115,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _byteShiftUpDownValue, value);
         }
 
+        private int? _addArrayCount = 1;
+        public int? AddArrayCount
+        {
+            get => _addArrayCount;
+            set => SetProperty(ref _addArrayCount, value);
+        }
+
         private Visibility _genericEditorSetVisibility;
         public Visibility GenericEditorSetVisibility
         {
@@ -145,6 +152,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             EditorSetElements.Add(NameIndexPrefix_TextBlock); //nameindex
             EditorSetElements.Add(NameIndex_TextBox); //nameindex
             EditorSetElements.Add(ParsedValue_TextBlock);
+            EditorSetElements.Add(AddArrayCount_UpDown);
             EditorSetElements.Add(AddArrayElement_Button);
             EditorSetElements.Add(RemoveArrayElement_Button);
             EditorSetElements.Add(EditorSet_Separator_LeftsideArray);
@@ -1066,6 +1074,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                     if (bitve.ArrayAddAlgorithm != BinInterpNode.ArrayPropertyChildAddAlgorithm.None)
                     {
+                        AddArrayCount ??= 1;
+                        AddArrayCount_UpDown.Value = AddArrayCount;
+                        SupportedEditorSetElements.Add(AddArrayCount_UpDown);
                         SupportedEditorSetElements.Add(AddArrayElement_Button);
                         SupportedEditorSetElements.Add(EditorSet_Separator_LeftsideArray);
                     }
@@ -1403,18 +1414,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             container = (BinInterpNode)bitvi.Parent; //container
                         }
+                        int numberToAdd = Math.Max(1, AddArrayCount ?? 1);
                         var dataCopy = CurrentLoadedExport.Data;
                         int countOffset = container.Offset;
                         int count = BitConverter.ToInt32(dataCopy, countOffset);
 
                         //Incrememnt Count
-                        dataCopy.OverwriteRange(countOffset, BitConverter.GetBytes(count + 1));
+                        dataCopy.OverwriteRange(countOffset, BitConverter.GetBytes(count + numberToAdd));
 
                         //Insert new entry
                         List<byte> memList = dataCopy.ToList();
                         int offset = countOffset + ((count + 1) * 4); //will be at the very end of the list as it is now +1
 
-                        memList.InsertRange(offset, BitConverter.GetBytes(0));
+                        memList.InsertRange(offset, Enumerable.Repeat((byte)0, numberToAdd * 4));
                         CurrentLoadedExport.Data = memList.ToArray();
                         break;
                 }
