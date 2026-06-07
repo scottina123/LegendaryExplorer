@@ -3453,9 +3453,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
                 {
-                    if (directory.Name.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase))
+                    string normalizedFolderName = directory.Name.NormalizeDLCFolderName();
+                    if (!string.IsNullOrWhiteSpace(normalizedFolderName))
                     {
-                        topLevelFolderName = directory.Name;
+                        topLevelFolderName = normalizedFolderName;
                         break;
                     }
                 }

@@ -424,9 +424,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
                 {
-                    if (directory.Name.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase))
+                    string normalizedFolderName = directory.Name.NormalizeDLCFolderName();
+                    if (!string.IsNullOrWhiteSpace(normalizedFolderName))
                     {
-                        topLevelFolderName = directory.Name;
+                        topLevelFolderName = normalizedFolderName;
                         break;
                     }
                 }
@@ -598,7 +599,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             string dlcName = filePath.DetermineDLCNameFromPath();
-            return dlcName is not null && dlcName.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase)
+            return !string.IsNullOrWhiteSpace(dlcName)
                 ? $"Textures_{dlcName}"
                 : null;
         }

@@ -477,6 +477,37 @@ namespace LegendaryExplorerCore.Helpers
         }
 
         /// <summary>
+        /// Normalizes DLC folder names so disabled DLC folders such as OFFDLC_* map back to DLC_*.
+        /// </summary>
+        /// <param name="folderName">Folder name to normalize.</param>
+        /// <returns>Normalized DLC folder name, otherwise null.</returns>
+        public static string NormalizeDLCFolderName(this string folderName)
+        {
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return null;
+            }
+
+            if (folderName.StartsWith("OFF", StringComparison.OrdinalIgnoreCase))
+            {
+                string enabledName = folderName.Substring(3);
+                if (enabledName.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase)
+                    || enabledName.StartsWith("DLC_MOD", StringComparison.OrdinalIgnoreCase))
+                {
+                    return enabledName;
+                }
+            }
+
+            if (folderName.StartsWith("DLC_", StringComparison.OrdinalIgnoreCase)
+                || folderName.StartsWith("DLC_MOD", StringComparison.OrdinalIgnoreCase))
+            {
+                return folderName;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Given a filepath, determine the name of the DLC folder. This looks for 'BIOGame'
         /// </summary>
         /// <param name="path">A filepath, either to a folder or file.</param>
@@ -487,7 +518,7 @@ namespace LegendaryExplorerCore.Helpers
             var dlcIndex = parts.IndexOf("DLC"); // We purposely do not do case insensitive here
             if (dlcIndex != -1 && parts.Length > dlcIndex + 1)
             {
-                return parts[dlcIndex + 1];
+                return parts[dlcIndex + 1].NormalizeDLCFolderName();
             }
             return null;
         }

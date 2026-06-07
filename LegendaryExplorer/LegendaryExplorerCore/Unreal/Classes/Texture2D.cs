@@ -291,13 +291,14 @@ namespace LegendaryExplorerCore.Unreal.Classes
                 {
                     string archive = textureCacheName + @".tfc";
 
-                    var localDirectoryTFCPath = Path.Combine(Path.GetDirectoryName(packagePathForLocalLookup), archive);
-                    if (File.Exists(localDirectoryTFCPath))
+                    string packageDirectory = packagePathForLocalLookup is null ? null : Path.GetDirectoryName(packagePathForLocalLookup);
+                    string localDirectoryTFCPath = packageDirectory is null ? null : Path.Combine(packageDirectory, archive);
+                    if (localDirectoryTFCPath is not null && File.Exists(localDirectoryTFCPath))
                     {
                         filename = localDirectoryTFCPath;
                     }
 
-                    if (filename == null && localDirectoryTFCPath.Contains(@"\CookedPCConsole")
+                    if (filename == null && localDirectoryTFCPath != null && localDirectoryTFCPath.Contains(@"\CookedPCConsole")
                         && !string.Equals(Path.GetFileName(Path.GetDirectoryName(packagePathForLocalLookup)), "CookedPCConsole", StringComparison.OrdinalIgnoreCase))
                     {
                         // Package is in a subfolder of CookedPCConsole - walk up to find the CookedPCConsole parent and try it
@@ -314,6 +315,11 @@ namespace LegendaryExplorerCore.Unreal.Classes
                                 filename = cookedTFCPath;
                             }
                         }
+                    }
+
+                    if (filename == null)
+                    {
+                        filename = FindTextureCachePathInDisabledDlc(game, archive, textureCacheName, gamePathToUse);
                     }
 
                     if (filename == null && additionalTFCs != null && additionalTFCs.Any(x => Path.GetFileName(x).Equals(archive, StringComparison.InvariantCultureIgnoreCase)))
@@ -394,6 +400,45 @@ namespace LegendaryExplorerCore.Unreal.Classes
                 }
             }
             return imagebytes;
+        }
+
+        internal static string FindTextureCachePathInDisabledDlc(MEGame game, string archive, string textureCacheName, string gamePathToUse = null)
+        {
+            if (game <= MEGame.ME1 || string.IsNullOrWhiteSpace(archive) || string.IsNullOrWhiteSpace(textureCacheName))
+            {
+                return null;
+            }
+
+            string dlcFolderName = textureCacheName.StartsWith("Textures_", StringComparison.OrdinalIgnoreCase)
+                ? textureCacheName.Substring("Textures_".Length).NormalizeDLCFolderName()
+                : null;
+            if (string.IsNullOrWhiteSpace(dlcFolderName))
+            {
+                return null;
+            }
+
+            string dlcPath = MEDirectories.GetDLCPath(game, gamePathToUse);
+            if (string.IsNullOrWhiteSpace(dlcPath) || !Directory.Exists(dlcPath))
+            {
+                return null;
+            }
+
+            foreach (string directory in Directory.EnumerateDirectories(dlcPath))
+            {
+                string normalizedFolderName = Path.GetFileName(directory).NormalizeDLCFolderName();
+                if (!string.Equals(normalizedFolderName, dlcFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string candidatePath = Path.Combine(directory, game.CookedDirName(), archive);
+                if (File.Exists(candidatePath))
+                {
+                    return candidatePath;
+                }
+            }
+
+            return null;
         }
 
         public static uint GetMipCRC(Texture2DMipInfo mip, string textureFormat, string gamePathToUse = null, List<string> additionalTFCs = null)

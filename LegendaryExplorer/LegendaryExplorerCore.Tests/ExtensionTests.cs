@@ -1,4 +1,5 @@
 ﻿using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Helpers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
@@ -58,6 +59,16 @@ namespace LegendaryExplorerCore.Tests
             {
                 Assert.AreEqual(v.Value, v.Key.StripUnrealLocalization(), $@"StripUnrealLocalization() returned the wrong stripped string! Input: {v.Key}");
             }
+        }
+
+        [TestMethod]
+        public void DetermineDLCNameFromPath_NormalizesDisabledDlcFolders()
+        {
+            Assert.AreEqual("DLC_MOD_ProjectVariety2",
+                @"C:\Games\ME3\BioGame\DLC\OFFDLC_MOD_ProjectVariety2\CookedPCConsole\BioP_Test.pcc".DetermineDLCNameFromPath());
+            Assert.AreEqual("DLC_MOD_ProjectVariety2", "OFFDLC_MOD_ProjectVariety2".NormalizeDLCFolderName());
+            Assert.AreEqual("DLC_MOD_ProjectVariety2", "DLC_MOD_ProjectVariety2".NormalizeDLCFolderName());
+            Assert.IsNull(@"C:\Games\ME3\BioGame\CookedPCConsole\BioP_Test.pcc".DetermineDLCNameFromPath());
         }
     }
 }

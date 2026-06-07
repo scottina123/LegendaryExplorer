@@ -101,5 +101,43 @@ namespace LegendaryExplorerCore.Tests
                 Assert.IsTrue(extTypes.Contains(Texture2D.CalculateStorageType(t, MEGame.LE3, false)));
             }
         }
+
+        [TestMethod]
+        public void GetTextureData_LoadsTfcFromDisabledDlcFolder()
+        {
+            string tempRoot = Path.Combine(Path.GetTempPath(), $"LEX_Texture2DTests_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path.Combine(tempRoot, "BioGame", "CookedPCConsole"));
+            string cookedPath = Path.Combine(tempRoot, "BioGame", "DLC", "OFFDLC_MOD_ProjectVariety2", "CookedPCConsole");
+            Directory.CreateDirectory(cookedPath);
+
+            string tfcPath = Path.Combine(cookedPath, "Textures_DLC_MOD_ProjectVariety2.tfc");
+            byte[] expectedData = [1, 2, 3, 4, 5, 6];
+            File.WriteAllBytes(tfcPath, expectedData);
+
+            try
+            {
+                byte[] textureData = Texture2D.GetTextureData(
+                    MEGame.LE3,
+                    Array.Empty<byte>(),
+                    StorageTypes.extUnc,
+                    false,
+                    expectedData.Length,
+                    expectedData.Length,
+                    0,
+                    "Textures_DLC_MOD_ProjectVariety2",
+                    tempRoot,
+                    null,
+                    null);
+
+                CollectionAssert.AreEqual(expectedData, textureData);
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
     }
 }
