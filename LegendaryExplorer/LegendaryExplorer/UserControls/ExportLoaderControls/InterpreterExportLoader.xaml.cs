@@ -322,6 +322,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand OpenInMeshplorerCommand { get; set; }
         public ICommand AttemptOpenImportDefinitionCommand { get; set; }
         public ICommand MatchMaterialsToSkeletalMeshCommand { get; set; }
+        public ICommand SyncMeshLodMaterialArraysCommand { get; set; }
         private void LoadCommands()
         {
             AddPropertiesToStructCommand = new GenericCommand(AddPropertiesToStruct, CanAddPropertiesToStruct);
@@ -339,6 +340,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             PopoutInterpreterForObjectValueCommand = new GenericCommand(PopoutInterpreterForObj, ObjectPropertyExportIsSelected);
             OpenInMeshplorerCommand = new GenericCommand(OpenReferenceInMeshplorer, CanOpenInMeshplorer);
             MatchMaterialsToSkeletalMeshCommand = new GenericCommand(MatchMaterialsToSkeletalMesh, CanMatchMaterialsToSkeletalMesh);
+            SyncMeshLodMaterialArraysCommand = new GenericCommand(SyncMeshLodMaterialArrays, CanSyncMeshLodMaterialArrays);
 
             SaveHexChangesCommand = new GenericCommand(Interpreter_SaveHexChanges, IsExportLoaded);
             ToggleHexBoxCommand = new GenericCommand(ToggleHexbox);
@@ -892,6 +894,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private bool CanClearArray() => SelectedItem?.Property is ArrayPropertyBase && !SelectedItem.HasTooManyChildrenToDisplay;
+
+        private bool CanSyncMeshLodMaterialArrays()
+        {
+            if (CurrentLoadedExport?.ClassName != "SkeletalMesh"
+                || SelectedItem?.Property is not ArrayPropertyBase arrayProperty
+                || SelectedItem.HasTooManyChildrenToDisplay
+                || SelectedItem.UPParent?.Property is not StructProperty { StructType: "SkeletalMeshLODInfo" })
+            {
+                return false;
+            }
+
+            return arrayProperty.Name.Name is "bEnableShadowCasting" or "TriangleSorting";
+        }
+
+        private void SyncMeshLodMaterialArrays()
+        {
+            if (!CanSyncMeshLodMaterialArrays()
+                || SelectedItem?.Property is not ArrayPropertyBase arrayProperty)
+            {
+                return;
+            }
+
+            int materialCount = CurrentLoadedExport.GetBinaryData<SkeletalMesh>().Materials.Length;
+            ForcedRescanOffset = (int)arrayProperty.StartOffset;
+
+            switch (arrayProperty)
+            {
+                case ArrayProperty<BoolProperty> boolArray when boolArray.Name.Name == "bEnableShadowCasting":
+                    boolArray.Clear();
+                    for (int i = 0; i < materialCount; i++)
+                    {
+                        boolArray.Add(new BoolProperty(true));
+                    }
+                    break;
+                case ArrayProperty<EnumProperty> enumArray when enumArray.Name.Name == "TriangleSorting":
+                    enumArray.Clear();
+                    for (int i = 0; i < materialCount; i++)
+                    {
+                        enumArray.Add(new EnumProperty(new NameReference("TRISORT_None"), new NameReference("TriangleSortOption"), Pcc.Game));
+                    }
+                    break;
+                default:
+                    return;
+            }
+
+            CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+        }
 
         private bool ArrayPropertyIsSelected() => SelectedItem?.Property is ArrayPropertyBase;
 

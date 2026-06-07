@@ -651,6 +651,7 @@
                         <MenuItem Header="Array sorting: By ascending value" ToolTip="Sorts an array property by its value, in ascending order." Command="{Binding SortValueArrayAscendingCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Array sorting: By descending value" ToolTip="Sorts an array property by its value, in descending order." Command="{Binding SortValueArrayDescendingCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Clear Array" ToolTip="Removes all values from the array." Command="{Binding ClearArrayCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Header="Sync mesh material arrays from binary" ToolTip="Resizes SkeletalMesh LOD material arrays to match the binary material count, setting bEnableShadowCasting to true and TriangleSorting to TRISORT_None." Command="{Binding SyncMeshLodMaterialArraysCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
                         <MenuItem Header="View referenced object in pop out Properties window" ToolTip="Opens a new Properties window displaying the referenced object value" Command="{Binding PopoutInterpreterForObjectValueCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Open in Package Editor (this instance)" ToolTip="Navigates this package editor to this object" Command="{Binding NavigateToEntryCommandInternal}" SharedUI:Bindings.VisibilityToEnabled="True"/>
