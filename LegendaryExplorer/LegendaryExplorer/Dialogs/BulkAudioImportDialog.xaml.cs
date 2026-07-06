@@ -10,12 +10,17 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorerCore.Audio;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using LegendaryExplorerCore.Helpers;
 
 namespace LegendaryExplorer.Dialogs
 {
@@ -77,6 +82,8 @@ namespace LegendaryExplorer.Dialogs
         private readonly IMEPackage _package;
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
+        private bool _syncFaceFxAssetNames = true;
+        private bool _updatingFaceFxAssetNames;
 
         public BulkAudioImportDialog(
             IMEPackage package,
@@ -153,6 +160,28 @@ namespace LegendaryExplorer.Dialogs
             WavFiles.Clear();
         }
 
+        private void TopFolderTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            if (!_syncFaceFxAssetNames || FemaleFaceFXAssetNameTextBox == null || MaleFaceFXAssetNameTextBox == null)
+            {
+                return;
+            }
+
+            var topFolderName = TopFolderTextBox.Text.Trim();
+            _updatingFaceFxAssetNames = true;
+            FemaleFaceFXAssetNameTextBox.Text = string.IsNullOrWhiteSpace(topFolderName) ? "_F" : $"{topFolderName}_F";
+            MaleFaceFXAssetNameTextBox.Text = string.IsNullOrWhiteSpace(topFolderName) ? "_M" : $"{topFolderName}_M";
+            _updatingFaceFxAssetNames = false;
+        }
+
+        private void FaceFXAssetNameTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            if (IsLoaded && !_updatingFaceFxAssetNames)
+            {
+                _syncFaceFxAssetNames = false;
+            }
+        }
+
         private async void ImportButton_Click(object sender, RoutedEventArgs e)
         {
             if (WavFiles.Count == 0)
@@ -192,6 +221,31 @@ namespace LegendaryExplorer.Dialogs
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
+            var createFaceFxAssets = CreateFaceFXAssetsCheckBox.IsChecked == true;
+            var topFolderName = TopFolderTextBox.Text.Trim();
+            var femaleFaceFxAssetName = FemaleFaceFXAssetNameTextBox.Text.Trim();
+            var maleFaceFxAssetName = MaleFaceFXAssetNameTextBox.Text.Trim();
+
+            if (createFaceFxAssets && !IsValidPackageObjectName(topFolderName))
+            {
+                MessageBox.Show("Please enter a valid top folder name. Use letters, numbers, or underscores only.",
+                    "Invalid top folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (createFaceFxAssets && (!IsValidPackageObjectName(femaleFaceFxAssetName) || !IsValidPackageObjectName(maleFaceFxAssetName)))
+            {
+                MessageBox.Show("Please enter valid female and male FaceFX asset names. Use letters, numbers, or underscores only.",
+                    "Invalid FaceFX asset name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (createFaceFxAssets && femaleFaceFxAssetName.Equals(maleFaceFxAssetName, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Female and male FaceFX asset names must be different.",
+                    "Duplicate FaceFX asset name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             ImportButton.IsEnabled = false;
             AddFilesButton.IsEnabled = false;
@@ -200,7 +254,9 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName, generateGenderedEvents, loopAudio, applyRadioEffect));
+                var result = await Task.Run(() => RunBulkAudioImport(bankName, isDialogue, volume, outputBusName,
+                    generateGenderedEvents, loopAudio, applyRadioEffect, createFaceFxAssets, topFolderName,
+                    femaleFaceFxAssetName, maleFaceFxAssetName));
                 if (result != null)
                 {
                     StatusTextBlock.Text = $"Error: {result}";
@@ -227,7 +283,9 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName, bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect)
+        private string RunBulkAudioImport(string bankName, bool isDialogue, double volume, string outputBusName,
+            bool generateGenderedEvents, bool loopAudio, bool applyRadioEffect, bool createFaceFxAssets,
+            string topFolderName, string femaleFaceFxAssetName, string maleFaceFxAssetName)
         {
             var wavFiles = Dispatcher.Invoke(() => WavFiles.ToList());
 
@@ -361,12 +419,25 @@ namespace LegendaryExplorer.Dialogs
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Importing soundbank into package...");
 
+                var effectiveBankPackageName = _bankPackageName;
+                var effectiveStreamingAudioPackageName = _bankStreamingAudioPackageName;
+                ExportEntry topFolderExport = null;
+                ExportEntry audioFolderExport = null;
+
+                if (createFaceFxAssets)
+                {
+                    topFolderExport = ExportCreator.CreatePackageExport(_package, topFolderName);
+                    audioFolderExport = ExportCreator.CreatePackageExport(_package, "audio", topFolderExport);
+                    effectiveBankPackageName = audioFolderExport.InstancedFullPath;
+                    effectiveStreamingAudioPackageName = "int";
+                }
+
                 // 10. Import the bank into the package using existing WwiseBankImport
                 //     Place everything under a top-level "audio" folder:
                 //     - WwiseBank and WwiseEvents go directly under "audio"
                 //     - WwiseStreams go under "audio.int"
                 var importResult = WwiseBankImport.ImportBank(bnkPath, isDialogue, _package,
-                    bankPackageName: _bankPackageName, bankStreamingAudioPackageName: _bankStreamingAudioPackageName);
+                    bankPackageName: effectiveBankPackageName, bankStreamingAudioPackageName: effectiveStreamingAudioPackageName);
 
                 // 11. Set DurationSeconds on events from WAV file headers.
                 //     This is critical for dialogue: without DurationSeconds the game's dialogue
@@ -377,6 +448,12 @@ namespace LegendaryExplorer.Dialogs
                 {
                     var eventDurations = BuildEventDurationMap(wavFiles, generateGenderedEvents);
                     SetEventDurations(eventDurations);
+
+                    if (createFaceFxAssets)
+                    {
+                        Dispatcher.Invoke(() => StatusTextBlock.Text = "Creating FaceFX assets and generating animations...");
+                        CreateAndGenerateFaceFxAssets(topFolderExport, audioFolderExport, femaleFaceFxAssetName, maleFaceFxAssetName);
+                    }
                 }
 
                 return importResult;
@@ -780,6 +857,266 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
+        private void CreateAndGenerateFaceFxAssets(ExportEntry topFolderExport, ExportEntry audioFolderExport,
+            string femaleFaceFxAssetName, string maleFaceFxAssetName)
+        {
+            var femaleFaceFx = GetOrCreateFaceFxAnimSetExport(topFolderExport, femaleFaceFxAssetName);
+            var maleFaceFx = GetOrCreateFaceFxAnimSetExport(topFolderExport, maleFaceFxAssetName);
+
+            AddAudioAndGenerateFaceFx(femaleFaceFx, audioFolderExport, isFemaleAsset: true, FaceFXSpecies.HumanFemale);
+            AddAudioAndGenerateFaceFx(maleFaceFx, audioFolderExport, isFemaleAsset: false, FaceFXSpecies.HumanMale);
+        }
+
+        private ExportEntry GetOrCreateFaceFxAnimSetExport(ExportEntry parent, string assetName)
+        {
+            var existingExport = _package.FindExport($"{parent.InstancedFullPath}.{assetName}", "FaceFXAnimSet") as ExportEntry;
+            if (existingExport != null)
+            {
+                return existingExport;
+            }
+
+            var faceFxExport = ExportCreator.CreateExport(_package, assetName, "FaceFXAnimSet", parent, indexed: false);
+            faceFxExport.WritePropertiesAndBinary(new PropertyCollection(), FaceFXAnimSet.Create(_package.Game));
+            return faceFxExport;
+        }
+
+        private void AddAudioAndGenerateFaceFx(ExportEntry faceFxExport, ExportEntry audioFolderExport, bool isFemaleAsset, FaceFXSpecies species)
+        {
+            var faceFx = faceFxExport.GetBinaryData<FaceFXAnimSet>();
+            AddAudioFromFolderExport(faceFxExport, faceFx, audioFolderExport, isFemaleAsset);
+
+            var options = GetBulkFaceFxGenerationOptions(faceFxExport.ObjectNameString, faceFx.Lines.Count, species, isFemaleAsset);
+            if (options != null)
+            {
+                GenerateFaceFxForAllLines(faceFxExport, faceFx, isFemaleAsset, options);
+            }
+
+            faceFxExport.WriteBinary(faceFx);
+        }
+
+        private FaceFXGenerationOptions GetBulkFaceFxGenerationOptions(string assetName, int lineCount, FaceFXSpecies defaultSpecies, bool isFemaleAsset)
+        {
+            if (lineCount == 0)
+            {
+                return null;
+            }
+
+            FaceFXGenerationOptions options = null;
+            Dispatcher.Invoke(() =>
+            {
+                StatusTextBlock.Text = $"Configure FaceFX generation for {assetName}...";
+                var bulkDialog = new BulkFaceFXGenerationDialog(lineCount, this, defaultSpecies)
+                {
+                    Title = $"Bulk FaceFX Generation - {assetName}"
+                };
+
+                if (bulkDialog.ShowDialog() == true && bulkDialog.Confirmed)
+                {
+                    options = new FaceFXGenerationOptions
+                    {
+                        CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
+                        Species = bulkDialog.SelectedSpeciesEnum,
+                        GenerateJawAnimation = true,
+                        GenerateBlinkAnimation = true,
+                        GenerateEyebrowAnimation = true,
+                        GenerateHeadMovement = false,
+                        LipSyncIntensity = bulkDialog.LipSyncIntensity,
+                        BlinkFrequency = bulkDialog.BlinkFrequency,
+                        UseAudioAmplitude = true,
+                        FxaData = null,
+                        UseTextFallback = true
+                    };
+                }
+            });
+
+            return options;
+        }
+
+        private int AddAudioFromFolderExport(ExportEntry faceFxExport, FaceFXAnimSet faceFx, ExportEntry folderExport, bool isFemaleAsset)
+        {
+            var entryTree = new EntryTree(_package);
+            var filteredEvents = entryTree.FlattenTreeOf(folderExport, includeRoot: false)
+                .OfType<ExportEntry>()
+                .Where(exp => exp.ClassName == "WwiseEvent")
+                .Where(exp => exp.ObjectName.Name.Contains(isFemaleAsset ? "f_play" : "m_play", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(exp => ExtractTlkNumber(exp.ObjectName.Name))
+                .ToList();
+
+            if (filteredEvents.Count == 0)
+            {
+                return 0;
+            }
+
+            var props = faceFxExport.GetProperties();
+            var referencedSoundCues = props.GetProp<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")
+                                      ?? new ArrayProperty<ObjectProperty>("ReferencedSoundCues");
+            var existingReferences = new HashSet<int>(referencedSoundCues.Select(op => op.Value));
+            var existingTlkIds = faceFx.Lines
+                .Select(line => int.TryParse(line.ID, out var tlkId) ? tlkId : -1)
+                .Where(tlkId => tlkId > 0)
+                .ToHashSet();
+
+            int linesAdded = 0;
+            int lineIndex = faceFx.Lines.Count;
+
+            foreach (var wwiseEvent in filteredEvents)
+            {
+                if (existingReferences.Contains(wwiseEvent.UIndex))
+                {
+                    continue;
+                }
+
+                int tlkID = ExtractTlkIdFromWwiseEventName(wwiseEvent.ObjectName.Name);
+                if (tlkID <= 0 || existingTlkIds.Contains(tlkID))
+                {
+                    continue;
+                }
+
+                var lineName = $"FXA_{tlkID}_{(isFemaleAsset ? "F" : "M")}";
+                var line = new FaceFXLine
+                {
+                    NameIndex = faceFx.Names.FindOrAdd(lineName),
+                    NameAsString = lineName,
+                    AnimationNames = [],
+                    Points = [],
+                    NumKeys = [],
+                    FadeInTime = 0.16f,
+                    FadeOutTime = 0.22f,
+                    Path = wwiseEvent.InstancedFullPath,
+                    ID = tlkID.ToString(),
+                    Index = lineIndex
+                };
+
+                while (referencedSoundCues.Count <= lineIndex)
+                {
+                    referencedSoundCues.Add(new ObjectProperty(0));
+                }
+
+                referencedSoundCues[lineIndex] = new ObjectProperty(wwiseEvent.UIndex);
+                existingReferences.Add(wwiseEvent.UIndex);
+                existingTlkIds.Add(tlkID);
+                faceFx.Lines.Add(line);
+
+                lineIndex++;
+                linesAdded++;
+            }
+
+            if (linesAdded > 0)
+            {
+                props.AddOrReplaceProp(referencedSoundCues);
+                faceFxExport.WriteProperties(props);
+                faceFxExport.WriteBinary(faceFx);
+            }
+
+            return linesAdded;
+        }
+
+        private void GenerateFaceFxForAllLines(ExportEntry faceFxExport, FaceFXAnimSet faceFx, bool isFemaleAsset, FaceFXGenerationOptions options)
+        {
+            var faceFxBinary = new FaceFxAnimSetBinary(faceFx);
+            foreach (var line in faceFx.Lines)
+            {
+                if (!int.TryParse(line.ID, out int tlkID))
+                {
+                    continue;
+                }
+
+                var tlkString = TLKManagerWPF.GlobalFindStrRefbyID(tlkID, _package);
+                if (string.IsNullOrWhiteSpace(tlkString))
+                {
+                    continue;
+                }
+
+                var audioExport = FindVoiceStreamForLine(faceFxExport, line, isMale: !isFemaleAsset);
+                var generator = new FaceFXGenerator(faceFxBinary, line, tlkString, audioExport, options);
+                if (!generator.Generate())
+                {
+                    Debug.WriteLine($"BulkAudioImport: FaceFX generation failed for {faceFxExport.InstancedFullPath}.{line.NameAsString}: {generator.LastError ?? "Unknown error"}");
+                }
+            }
+
+            faceFxExport.WriteBinary(faceFx);
+        }
+
+        private ExportEntry FindVoiceStreamForLine(ExportEntry faceFxExport, FaceFXLine line, bool isMale)
+        {
+            if (line?.ID == null || !int.TryParse(line.ID, out int tlkID))
+            {
+                return null;
+            }
+
+            var wwiseEventSearchName = $"VO_{tlkID:D6}_{(isMale ? "m" : "f")}";
+            var wwiseStreamSearchName = $"{tlkID:D8}";
+            var wwiseStreamSearchNameGendered = $"{wwiseStreamSearchName}_{(isMale ? "m" : "f")}";
+            var wwiseStreamSearchNameWithUnderscores = $"_{tlkID}_";
+            var wwiseStreamSearchNameWithUnderscoresGendered = $"{wwiseStreamSearchNameWithUnderscores}{(isMale ? "m" : "f")}";
+            var wwiseEventExp = _package.Exports.FirstOrDefault(x => x.ClassName == "WwiseEvent" &&
+                                                                      x.ObjectName.Name.Contains(wwiseEventSearchName, StringComparison.InvariantCultureIgnoreCase));
+            if (wwiseEventExp != null)
+            {
+                var wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExp);
+                if (wwiseEvent.Links != null)
+                {
+                    foreach (var link in wwiseEvent.Links)
+                    {
+                        var possibleExports = link.WwiseStreams
+                            .Where(x => faceFxExport.FileRef.IsUExport(x))
+                            .Select(x => faceFxExport.FileRef.GetUExport(x))
+                            .ToList();
+
+                        var possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase));
+                        if (possible != null) return possible;
+
+                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameWithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase));
+                        if (possible != null) return possible;
+
+                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase));
+                        if (possible != null) return possible;
+
+                        possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameWithUnderscores, StringComparison.InvariantCultureIgnoreCase));
+                        if (possible != null) return possible;
+                    }
+                }
+            }
+
+            return _package.Exports.FirstOrDefault(x => x.ClassName == "WwiseStream" &&
+                                                        (x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase) ||
+                                                         x.ObjectName.Name.Contains(wwiseStreamSearchNameWithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase) ||
+                                                         x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase) ||
+                                                         x.ObjectName.Name.Contains(wwiseStreamSearchNameWithUnderscores, StringComparison.InvariantCultureIgnoreCase)));
+        }
+
+        private static int ExtractTlkIdFromWwiseEventName(string eventName)
+        {
+            var match = Regex.Match(eventName, @"VO_(\d+)", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int tlkId))
+            {
+                return tlkId;
+            }
+
+            match = Regex.Match(eventName, @"(\d{6,})");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out tlkId))
+            {
+                return tlkId;
+            }
+
+            return -1;
+        }
+
+        private sealed class FaceFxAnimSetBinary : FaceFXAnimSetEditorControl.IFaceFXBinary
+        {
+            private readonly FaceFXAnimSet _animSet;
+
+            public FaceFxAnimSetBinary(FaceFXAnimSet animSet)
+            {
+                _animSet = animSet;
+            }
+
+            public List<string> Names => _animSet.Names;
+            public List<FaceFXLine> Lines => _animSet.Lines;
+            public ObjectBinary Binary => _animSet;
+        }
+
         /// <summary>
         /// Reads the duration in seconds from a WAV file by parsing its RIFF header.
         /// Returns 0 if the file cannot be parsed.
@@ -855,6 +1192,11 @@ namespace LegendaryExplorer.Dialogs
                     maxNum = num;
             }
             return maxNum;
+        }
+
+        private static bool IsValidPackageObjectName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name) && Regex.IsMatch(name, @"^[A-Za-z_][A-Za-z0-9_]*$");
         }
 
         /// <summary>

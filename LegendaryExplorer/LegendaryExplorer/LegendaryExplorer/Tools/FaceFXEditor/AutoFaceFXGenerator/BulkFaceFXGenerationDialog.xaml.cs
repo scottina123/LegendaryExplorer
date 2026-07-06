@@ -92,9 +92,33 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         /// </summary>
         public bool Confirmed { get; private set; }
 
-        public BulkFaceFXGenerationDialog(int lineCount, Window owner = null)
+        public BulkFaceFXGenerationDialog(int lineCount, Window owner = null, FaceFXSpecies? defaultSpecies = null)
         {
             LineCountText = $"Generate FaceFX for {lineCount} lines";
+
+            if (defaultSpecies.HasValue)
+            {
+                SelectedSpecies = defaultSpecies.Value switch
+                {
+                    FaceFXSpecies.HumanMale => "Human Male",
+                    FaceFXSpecies.HumanChild => "Human Child",
+                    FaceFXSpecies.Asari => "Asari",
+                    FaceFXSpecies.Krogan => "Krogan",
+                    FaceFXSpecies.Drell => "Drell",
+                    FaceFXSpecies.Turian => "Turian",
+                    FaceFXSpecies.Salarian => "Salarian",
+                    FaceFXSpecies.Quarian => "Quarian",
+                    FaceFXSpecies.Geth => "Geth",
+                    FaceFXSpecies.Elcor => "Elcor",
+                    FaceFXSpecies.Hanar => "Hanar",
+                    FaceFXSpecies.Volus => "Volus",
+                    FaceFXSpecies.Batarian => "Batarian",
+                    FaceFXSpecies.Vorcha => "Vorcha",
+                    FaceFXSpecies.Prothean => "Prothean",
+                    FaceFXSpecies.Yahg => "Yahg",
+                    _ => "Human Female"
+                };
+            }
 
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
