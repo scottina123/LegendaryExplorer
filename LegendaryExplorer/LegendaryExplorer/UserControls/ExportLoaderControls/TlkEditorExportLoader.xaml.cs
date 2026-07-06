@@ -111,6 +111,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ObservableCollectionExtended<TLKEditorTab> OpenTabs { get; } = new();
         private bool xmlUp;
 
+        private const string OpenHighestMountedBaseTlksMenuHeader = "Open highest mounted base TLKs";
+        private static readonly string[] BaseTlkFileNames =
+        [
+            "BIOGame_INT.tlk",
+            "DLC_EXP_Pack001_INT.tlk",
+            "DLC_EXP_Pack002_INT.tlk",
+            "DLC_EXP_Pack003_INT.tlk",
+            "DLC_EXP_Pack003_Base_INT.tlk",
+            "DLC_CON_END_INT.tlk",
+            "DLC_HEN_PR_INT.tlk",
+            "DLC_Shared_INT.tlk"
+        ];
+
         private readonly record struct TlkSearchMatch(int RowIndex, TLKStringRef Item, int ColumnIndex, int StartIndex, int Length);
 
         public TLKEditorTab ActiveTab
@@ -725,6 +738,130 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public override void PoppedOut(ExportLoaderHostedWindow elhw)
         {
             _hostedWindow = elhw;
+            AddOpenHighestMountedBaseTlksMenuItem(elhw);
+        }
+
+        private void AddOpenHighestMountedBaseTlksMenuItem(ExportLoaderHostedWindow elhw)
+        {
+            MenuItem fileMenu = elhw.MainMenu.Items.OfType<MenuItem>()
+                                       .FirstOrDefault(menuItem => string.Equals(menuItem.Header?.ToString()?.Replace("_", ""), "File", StringComparison.OrdinalIgnoreCase));
+            if (fileMenu is null || fileMenu.Items.OfType<MenuItem>().Any(menuItem => string.Equals(menuItem.Header?.ToString(), OpenHighestMountedBaseTlksMenuHeader, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var menuItem = new MenuItem
+            {
+                Header = OpenHighestMountedBaseTlksMenuHeader,
+                ToolTip = "Open the highest mounted LE3/ME3 version of each base TLK in tabs."
+            };
+            menuItem.Click += OpenHighestMountedBaseTlksMenuItem_Click;
+
+            int openItemIndex = fileMenu.Items.OfType<MenuItem>()
+                                        .Select((item, index) => new { item, index })
+                                        .FirstOrDefault(x => string.Equals(x.item.Header?.ToString(), "Open", StringComparison.OrdinalIgnoreCase))?.index ?? -1;
+            fileMenu.Items.Insert(openItemIndex >= 0 ? openItemIndex + 1 : fileMenu.Items.Count, menuItem);
+        }
+
+        private void OpenHighestMountedBaseTlksMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            OpenHighestMountedBaseTlks();
+        }
+
+        private void OpenHighestMountedBaseTlks()
+        {
+            MEGame game = GetBaseTlkGame();
+            if (game is not (MEGame.ME3 or MEGame.LE3))
+            {
+                MessageBox.Show("Could not find an installed ME3 or LE3 game path.", "Open Base TLKs");
+                return;
+            }
+
+            CaseInsensitiveDictionary<string> loadedFiles;
+            try
+            {
+                loadedFiles = MELoadedFiles.GetFilesLoadedInGame(game, true, additionalExtensions: [".tlk"]);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not enumerate mounted TLK files for {game}:\n{ex.Message}", "Open Base TLKs");
+                return;
+            }
+
+            var missingFiles = new List<string>();
+            var failedFiles = new List<string>();
+            var filesToOpen = new List<string>();
+            foreach (string fileName in BaseTlkFileNames)
+            {
+                if (loadedFiles.TryGetValue(fileName, out string filePath) && File.Exists(filePath))
+                {
+                    filesToOpen.Add(filePath);
+                }
+                else
+                {
+                    missingFiles.Add(fileName);
+                }
+            }
+
+            if (filesToOpen.Count == 0)
+            {
+                MessageBox.Show($"Could not find any mounted base TLK files for {game}.", "Open Base TLKs");
+                return;
+            }
+
+            foreach (string filePath in filesToOpen)
+            {
+                try
+                {
+                    LoadFile(filePath);
+                }
+                catch (Exception ex)
+                {
+                    failedFiles.Add($"{Path.GetFileName(filePath)}: {ex.Message}");
+                }
+            }
+
+            if (missingFiles.Count > 0 || failedFiles.Count > 0)
+            {
+                var message = new StringBuilder();
+                if (missingFiles.Count > 0)
+                {
+                    message.AppendLine("These base TLKs were not found:");
+                    message.AppendLine(string.Join(Environment.NewLine, missingFiles));
+                }
+
+                if (failedFiles.Count > 0)
+                {
+                    if (message.Length > 0)
+                    {
+                        message.AppendLine();
+                    }
+
+                    message.AppendLine("These TLKs could not be opened:");
+                    message.AppendLine(string.Join(Environment.NewLine, failedFiles));
+                }
+
+                MessageBox.Show(message.ToString(), "Open Base TLKs");
+            }
+        }
+
+        private MEGame GetBaseTlkGame()
+        {
+            MEGame currentGame = CurrentLoadedExport?.FileRef.Game ?? GetCurrentLoadedFileGame();
+            if (currentGame is MEGame.ME3 or MEGame.LE3)
+            {
+                return currentGame;
+            }
+
+            if (IsGameInstalled(MEGame.LE3)) return MEGame.LE3;
+            if (IsGameInstalled(MEGame.ME3)) return MEGame.ME3;
+            return MEGame.Unknown;
+        }
+
+        private static bool IsGameInstalled(MEGame game)
+        {
+            string bioGamePath = MEDirectories.GetBioGamePath(game);
+            return !string.IsNullOrWhiteSpace(bioGamePath) && Directory.Exists(bioGamePath);
         }
 
         /// <summary>
