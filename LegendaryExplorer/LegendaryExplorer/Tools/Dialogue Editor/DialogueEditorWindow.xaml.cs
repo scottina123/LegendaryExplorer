@@ -5813,6 +5813,7 @@ namespace LegendaryExplorer.DialogueEditor
                 : sourceNodes;
             int clonedCount = 0;
             int skippedCount = 0;
+            var faceOnlyVoNodes = new List<DialogueNodeExtended>();
 
             using var _ = SuppressPackageUpdates();
             foreach (DialogueNodeExtended sourceNode in orderedSourceNodes)
@@ -5883,6 +5884,11 @@ namespace LegendaryExplorer.DialogueEditor
                     clonedNode.InterpLength = clonedNode.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? clonedNode.InterpLength;
                 }
 
+                if (InterpDataContainsFaceOnlyVoTrack(clonedNode.InterpData))
+                {
+                    faceOnlyVoNodes.Add(clonedNode);
+                }
+
                 clonedCount++;
             }
 
@@ -5892,6 +5898,131 @@ namespace LegendaryExplorer.DialogueEditor
 
             string skippedText = skippedCount > 0 ? $" {skippedCount} node(s) were skipped." : string.Empty;
             MessageBox.Show($"Cloned {clonedCount} node(s) from '{sourceSpeaker.DisplayName}' to '{replacementSpeaker.DisplayName}'.{skippedText}", "Clone Speaker Nodes", MessageBoxButton.OK);
+            ShowFaceOnlyVoBulkCloneWarning(faceOnlyVoNodes);
+        }
+
+        private bool InterpDataContainsFaceOnlyVoTrack(ExportEntry interpData)
+        {
+            if (interpData == null || Pcc == null)
+            {
+                return false;
+            }
+
+            var interpGroups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+            if (interpGroups == null)
+            {
+                return false;
+            }
+
+            foreach (var groupRef in interpGroups)
+            {
+                if (!Pcc.TryGetUExport(groupRef.Value, out ExportEntry interpGroup))
+                {
+                    continue;
+                }
+
+                var interpTracks = interpGroup.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+                if (interpTracks == null)
+                {
+                    continue;
+                }
+
+                foreach (var trackRef in interpTracks)
+                {
+                    if (Pcc.TryGetUExport(trackRef.Value, out ExportEntry track)
+                        && track.IsA("SFXInterpTrackPlayFaceOnlyVO"))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private void ShowFaceOnlyVoBulkCloneWarning(List<DialogueNodeExtended> faceOnlyVoNodes)
+        {
+            if (faceOnlyVoNodes.Count == 0)
+            {
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "FaceOnlyVO tracks detected",
+                Width = 560,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var rootPanel = new StackPanel
+            {
+                Margin = new Thickness(18)
+            };
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = $"{faceOnlyVoNodes.Count} node(s) contain FaceOnlyVO tracks—verify timing manually.",
+                TextWrapping = TextWrapping.Wrap,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Click a node below to select it in the graph:",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+
+            var nodePanel = new StackPanel();
+            foreach (DialogueNodeExtended node in faceOnlyVoNodes)
+            {
+                var nodeButton = new Button
+                {
+                    Content = $"E{node.NodeCount}: {node.LineStrRef} {node.Line}",
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Margin = new Thickness(0, 2, 0, 2),
+                    Padding = new Thickness(8, 4, 8, 4),
+                    Tag = node
+                };
+                nodeButton.Click += (_, _) =>
+                {
+                    if (nodeButton.Tag is DialogueNodeExtended targetNode)
+                    {
+                        SelectDialogueNodeByIndex(targetNode.NodeCount, targetNode.IsReply, centerView: true);
+                    }
+                };
+                nodePanel.Children.Add(nodeButton);
+            }
+
+            rootPanel.Children.Add(new ScrollViewer
+            {
+                Content = nodePanel,
+                MaxHeight = 320,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            });
+
+            var closeButton = new Button
+            {
+                Content = "Close",
+                IsDefault = true,
+                IsCancel = true,
+                MinWidth = 90,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 14, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            closeButton.Click += (_, _) => dialog.Close();
+            rootPanel.Children.Add(closeButton);
+
+            dialog.Content = rootPanel;
+            dialog.Show();
         }
 
         private static int LookupTagRef(string actortag)
