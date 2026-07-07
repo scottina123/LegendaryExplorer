@@ -5407,7 +5407,7 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedFemaleFaceFx);
         }
 
-        private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
+        private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs, bool? UpdateInterpLengthsByFxa)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
         {
             var replacementSpeakers = SelectedSpeakerList
                 .Where(speaker => speaker.SpeakerID != sourceSpeaker.SpeakerID)
@@ -5536,6 +5536,35 @@ namespace LegendaryExplorer.DialogueEditor
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             });
 
+            var updateInterpLengthsCheckBox = new CheckBox
+            {
+                Content = "Update cloned InterpLengths after cloning",
+                IsChecked = true,
+                Margin = new Thickness(0, 18, 0, 6)
+            };
+            var interpLengthOptionsPanel = new StackPanel
+            {
+                Margin = new Thickness(18, 0, 0, 0)
+            };
+            var byFxaRadioButton = new RadioButton
+            {
+                Content = "Calculate by FXA length",
+                IsChecked = true,
+                GroupName = "BulkCloneInterpLengthMode"
+            };
+            var byAudioRadioButton = new RadioButton
+            {
+                Content = "Calculate by audio length",
+                GroupName = "BulkCloneInterpLengthMode",
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            updateInterpLengthsCheckBox.Checked += (_, _) => interpLengthOptionsPanel.IsEnabled = true;
+            updateInterpLengthsCheckBox.Unchecked += (_, _) => interpLengthOptionsPanel.IsEnabled = false;
+            interpLengthOptionsPanel.Children.Add(byFxaRadioButton);
+            interpLengthOptionsPanel.Children.Add(byAudioRadioButton);
+            rootPanel.Children.Add(updateInterpLengthsCheckBox);
+            rootPanel.Children.Add(interpLengthOptionsPanel);
+
             var buttonPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -5551,6 +5580,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Padding = new Thickness(10, 4, 10, 4)
             };
             Dictionary<DialogueNodeExtended, int> selectedLineStrRefs = null;
+            bool? selectedUpdateInterpLengthsByFxa = null;
             okButton.Click += (_, _) =>
             {
                 var lineStrRefs = new Dictionary<DialogueNodeExtended, int>();
@@ -5566,6 +5596,9 @@ namespace LegendaryExplorer.DialogueEditor
                 }
 
                 selectedLineStrRefs = lineStrRefs;
+                selectedUpdateInterpLengthsByFxa = updateInterpLengthsCheckBox.IsChecked == true
+                    ? byFxaRadioButton.IsChecked == true
+                    : null;
                 dialog.DialogResult = true;
             };
             buttonPanel.Children.Add(okButton);
@@ -5582,7 +5615,7 @@ namespace LegendaryExplorer.DialogueEditor
             dialog.Content = rootPanel;
 
             return dialog.ShowDialog() == true && speakerComboBox.SelectedItem is SpeakerExtended replacementSpeaker
-                ? (replacementSpeaker, selectedLineStrRefs ?? [])
+                ? (replacementSpeaker, selectedLineStrRefs ?? [], selectedUpdateInterpLengthsByFxa)
                 : null;
         }
 
@@ -5674,7 +5707,7 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var (replacementSpeaker, lineStrRefs) = cloneOptionsResult.Value;
+            var (replacementSpeaker, lineStrRefs, updateInterpLengthsByFxa) = cloneOptionsResult.Value;
 
             var orderedSourceNodes = insertionPosition == SpeakerNodeCloneInsertionPosition.TopOfList
                 ? sourceNodes.AsEnumerable().Reverse().ToList()
@@ -5736,6 +5769,12 @@ namespace LegendaryExplorer.DialogueEditor
                     clonedNode.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(clonedLineStrRef, "srText"));
                     UpdateNodeLineDerivedData(clonedNode);
                     DialogueEditorExperimentsE.UpdateVOAndComment(clonedNode);
+                }
+
+                if (updateInterpLengthsByFxa.HasValue)
+                {
+                    DialogueEditorExperimentsE.UpdateInterpLength(clonedNode, updateInterpLengthsByFxa.Value, FaceFXAnimSetEditorControl_F, FaceFXAnimSetEditorControl_M);
+                    clonedNode.InterpLength = clonedNode.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? clonedNode.InterpLength;
                 }
 
                 clonedCount++;

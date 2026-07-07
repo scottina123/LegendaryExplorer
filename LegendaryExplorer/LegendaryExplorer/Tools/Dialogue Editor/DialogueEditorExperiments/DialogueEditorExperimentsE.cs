@@ -1417,9 +1417,15 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         {
             if (dew.Pcc == null || dew.SelectedConv == null) { return; }
 
-            bool byFXA = MessageBoxResult.Yes == MessageBox.Show(
+            MessageBoxResult result = MessageBox.Show(
                 "Calculate the InterpLengths by the FXA length? If not, the audio length will be used.",
-                "Calculate by FXA", MessageBoxButton.YesNo);
+                "Calculate by FXA", MessageBoxButton.YesNoCancel);
+            if (result == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            bool byFXA = result == MessageBoxResult.Yes;
 
             DialogueNodeExtended[] nodes = [..dew.SelectedConv.EntryList, ..dew.SelectedConv.ReplyList];
 
@@ -1458,9 +1464,15 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 return;
             }
 
-            bool byFXA = MessageBoxResult.Yes == MessageBox.Show(
+            MessageBoxResult result = MessageBox.Show(
                 "Calculate the InterpLengths by the FXA length? If not, the audio length will be used.",
-                "Calculate by FXA", MessageBoxButton.YesNo);
+                "Calculate by FXA", MessageBoxButton.YesNoCancel);
+            if (result == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            bool byFXA = result == MessageBoxResult.Yes;
 
             using var _ = dew.SuppressPackageUpdates();
             UpdateInterpLength(node, byFXA, dew.FaceFXAnimSetEditorControl_F, dew.FaceFXAnimSetEditorControl_M);
@@ -1474,7 +1486,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// </summary>
         /// <param name="node">Node to update.</param>
         /// <param name="byFXA">Whether to update the length by the FXA length, or the audio one.</param>
-        private static void UpdateInterpLength(DialogueNodeExtended node, bool byFXA, FaceFXAnimSetEditorControl animControlF, FaceFXAnimSetEditorControl animControlM)
+        internal static void UpdateInterpLength(DialogueNodeExtended node, bool byFXA, FaceFXAnimSetEditorControl animControlF, FaceFXAnimSetEditorControl animControlM)
         {
             float interpLength = 0;
             IMEPackage pcc = node.InterpData.FileRef;
