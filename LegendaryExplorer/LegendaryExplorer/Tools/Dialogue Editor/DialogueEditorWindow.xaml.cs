@@ -5407,7 +5407,7 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedFemaleFaceFx);
         }
 
-        private SpeakerExtended PromptForReplacementSpeaker(SpeakerExtended sourceSpeaker)
+        private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
         {
             var replacementSpeakers = SelectedSpeakerList
                 .Where(speaker => speaker.SpeakerID != sourceSpeaker.SpeakerID)
@@ -5420,8 +5420,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             var dialog = new Window
             {
-                Title = "Choose replacement speaker tag",
-                Width = 420,
+                Title = "Clone speaker nodes",
+                Width = 900,
                 SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
@@ -5442,6 +5442,8 @@ namespace LegendaryExplorer.DialogueEditor
                 DisplayMemberPath = nameof(SpeakerExtended.DisplayName)
             };
 
+            var tlkRows = new List<(DialogueNodeExtended Node, TextBox TextBox, TextBlock Preview)>();
+
             var rootPanel = new StackPanel
             {
                 Margin = new Thickness(18)
@@ -5452,6 +5454,87 @@ namespace LegendaryExplorer.DialogueEditor
                 TextWrapping = TextWrapping.Wrap
             });
             rootPanel.Children.Add(speakerComboBox);
+
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "TLK string mapping for cloned nodes:",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 18, 0, 6)
+            });
+
+            var mappingGrid = new Grid();
+            mappingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            mappingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            mappingGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var originalHeader = new TextBlock
+            {
+                Text = "Original TLK String",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 8, 4)
+            };
+            var clonedHeader = new TextBlock
+            {
+                Text = "Cloned TLK String",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(8, 0, 0, 4)
+            };
+            Grid.SetColumn(originalHeader, 0);
+            Grid.SetColumn(clonedHeader, 1);
+            mappingGrid.Children.Add(originalHeader);
+            mappingGrid.Children.Add(clonedHeader);
+
+            for (int i = 0; i < sourceNodes.Count; i++)
+            {
+                DialogueNodeExtended sourceNode = sourceNodes[i];
+                int rowIndex = i + 1;
+                mappingGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var originalText = new TextBlock
+                {
+                    Text = $"E{sourceNode.NodeCount}: {sourceNode.LineStrRef}\n{sourceNode.Line}",
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 4, 8, 8)
+                };
+                Grid.SetColumn(originalText, 0);
+                Grid.SetRow(originalText, rowIndex);
+                mappingGrid.Children.Add(originalText);
+
+                var clonedPanel = new StackPanel
+                {
+                    Margin = new Thickness(8, 4, 0, 8)
+                };
+                var clonedTextBox = new TextBox
+                {
+                    Text = sourceNode.LineStrRef.ToString(CultureInfo.InvariantCulture),
+                    MinWidth = 180
+                };
+                var clonedPreview = new TextBlock
+                {
+                    Text = sourceNode.Line,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 3, 0, 0)
+                };
+                clonedTextBox.TextChanged += (_, _) =>
+                {
+                    clonedPreview.Text = int.TryParse(clonedTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int lineStrRef)
+                        ? GetDisplayTlkText(lineStrRef, Pcc)
+                        : "Invalid TLK string ref";
+                };
+                clonedPanel.Children.Add(clonedTextBox);
+                clonedPanel.Children.Add(clonedPreview);
+                Grid.SetColumn(clonedPanel, 1);
+                Grid.SetRow(clonedPanel, rowIndex);
+                mappingGrid.Children.Add(clonedPanel);
+                tlkRows.Add((sourceNode, clonedTextBox, clonedPreview));
+            }
+
+            rootPanel.Children.Add(new ScrollViewer
+            {
+                Content = mappingGrid,
+                MaxHeight = 480,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            });
 
             var buttonPanel = new StackPanel
             {
@@ -5467,7 +5550,24 @@ namespace LegendaryExplorer.DialogueEditor
                 Margin = new Thickness(6, 0, 0, 0),
                 Padding = new Thickness(10, 4, 10, 4)
             };
-            okButton.Click += (_, _) => dialog.DialogResult = true;
+            Dictionary<DialogueNodeExtended, int> selectedLineStrRefs = null;
+            okButton.Click += (_, _) =>
+            {
+                var lineStrRefs = new Dictionary<DialogueNodeExtended, int>();
+                foreach (var row in tlkRows)
+                {
+                    if (!int.TryParse(row.TextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int lineStrRef))
+                    {
+                        MessageBox.Show($"'{row.TextBox.Text}' is not a valid TLK string ref.", "Clone Speaker Nodes", MessageBoxButton.OK);
+                        return;
+                    }
+
+                    lineStrRefs[row.Node] = lineStrRef;
+                }
+
+                selectedLineStrRefs = lineStrRefs;
+                dialog.DialogResult = true;
+            };
             buttonPanel.Children.Add(okButton);
             buttonPanel.Children.Add(new Button
             {
@@ -5481,10 +5581,11 @@ namespace LegendaryExplorer.DialogueEditor
             rootPanel.Children.Add(buttonPanel);
             dialog.Content = rootPanel;
 
-            return dialog.ShowDialog() == true ? speakerComboBox.SelectedItem as SpeakerExtended : null;
+            return dialog.ShowDialog() == true && speakerComboBox.SelectedItem is SpeakerExtended replacementSpeaker
+                ? (replacementSpeaker, selectedLineStrRefs ?? [])
+                : null;
         }
 
-        // Insertion point for replacement speaker prompt logic.
         private void SpeakerAdd()
         {
             int maxID = SelectedSpeakerList.Max(x => x.SpeakerID);
@@ -5558,12 +5659,6 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var sourceSpeaker = SelectedSpeaker;
-            SpeakerExtended replacementSpeaker = PromptForReplacementSpeaker(sourceSpeaker);
-            if (replacementSpeaker == null)
-            {
-                return;
-            }
-
             var sourceNodes = SelectedConv.EntryList
                 .Where(node => node.SpeakerIndex == sourceSpeaker.SpeakerID)
                 .ToList();
@@ -5572,6 +5667,14 @@ namespace LegendaryExplorer.DialogueEditor
                 MessageBox.Show($"No entry nodes use the speaker tag '{sourceSpeaker.DisplayName}'.", "Clone Speaker Nodes", MessageBoxButton.OK);
                 return;
             }
+
+            var cloneOptionsResult = PromptForBulkCloneSpeakerOptions(sourceSpeaker, sourceNodes);
+            if (!cloneOptionsResult.HasValue)
+            {
+                return;
+            }
+
+            var (replacementSpeaker, lineStrRefs) = cloneOptionsResult.Value;
 
             var orderedSourceNodes = insertionPosition == SpeakerNodeCloneInsertionPosition.TopOfList
                 ? sourceNodes.AsEnumerable().Reverse().ToList()
@@ -5625,6 +5728,14 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     skippedCount++;
                     continue;
+                }
+
+                if (lineStrRefs.TryGetValue(sourceNode, out int clonedLineStrRef))
+                {
+                    clonedNode.LineStrRef = clonedLineStrRef;
+                    clonedNode.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(clonedLineStrRef, "srText"));
+                    UpdateNodeLineDerivedData(clonedNode);
+                    DialogueEditorExperimentsE.UpdateVOAndComment(clonedNode);
                 }
 
                 clonedCount++;

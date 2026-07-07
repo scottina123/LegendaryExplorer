@@ -1309,7 +1309,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// Update the StrRefID of the node's InterpData and the comment of the Interp linking to it.
         /// </summary>
         /// <param name="node">Node to update</param>
-        private static void UpdateVOAndComment(DialogueNodeExtended node)
+        internal static void UpdateVOAndComment(DialogueNodeExtended node)
         {
             ExportEntry interpData = node.InterpData;
 
