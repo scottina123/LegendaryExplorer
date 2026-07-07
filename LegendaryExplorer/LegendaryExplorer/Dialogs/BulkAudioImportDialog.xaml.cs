@@ -82,6 +82,7 @@ namespace LegendaryExplorer.Dialogs
         private readonly IMEPackage _package;
         private readonly string _bankPackageName;
         private readonly string _bankStreamingAudioPackageName;
+        private readonly bool _allowFaceFxAssetCreation;
         private bool _syncFaceFxAssetNames = true;
         private bool _updatingFaceFxAssetNames;
 
@@ -92,14 +93,28 @@ namespace LegendaryExplorer.Dialogs
             IEnumerable<string> initialWavFiles = null,
             string initialBankName = null,
             bool? isDialogueBank = null,
-            bool? generateGenderedEvents = null)
+            bool? generateGenderedEvents = null,
+            bool allowFaceFxAssetCreation = true)
         {
             _package = package;
             _bankPackageName = bankPackageName;
             _bankStreamingAudioPackageName = bankStreamingAudioPackageName;
+            _allowFaceFxAssetCreation = allowFaceFxAssetCreation;
             InitializeComponent();
             DataContext = this;
             CustomWindowChrome.ApplyCustomChrome(this);
+
+            if (!_allowFaceFxAssetCreation)
+            {
+                SetNamedElementVisibility("CreateFaceFXAssetsLabel", Visibility.Collapsed);
+                SetNamedElementVisibility("CreateFaceFXAssetsCheckBox", Visibility.Collapsed);
+                SetNamedElementVisibility("TopFolderLabel", Visibility.Collapsed);
+                SetNamedElementVisibility("TopFolderTextBox", Visibility.Collapsed);
+                SetNamedElementVisibility("FemaleFaceFXAssetNameLabel", Visibility.Collapsed);
+                SetNamedElementVisibility("FemaleFaceFXAssetNameTextBox", Visibility.Collapsed);
+                SetNamedElementVisibility("MaleFaceFXAssetNameLabel", Visibility.Collapsed);
+                SetNamedElementVisibility("MaleFaceFXAssetNameTextBox", Visibility.Collapsed);
+            }
 
             if (!string.IsNullOrWhiteSpace(initialBankName))
             {
@@ -122,6 +137,14 @@ namespace LegendaryExplorer.Dialogs
             if (generateGenderedEvents.HasValue)
             {
                 GenerateGenderedEventsCheckBox.IsChecked = generateGenderedEvents.Value;
+            }
+        }
+
+        private void SetNamedElementVisibility(string elementName, Visibility visibility)
+        {
+            if (FindName(elementName) is FrameworkElement element)
+            {
+                element.Visibility = visibility;
             }
         }
 
@@ -221,7 +244,7 @@ namespace LegendaryExplorer.Dialogs
             var generateGenderedEvents = GenerateGenderedEventsCheckBox.IsChecked == true;
             var loopAudio = LoopAudioCheckBox.IsChecked == true;
             var applyRadioEffect = RadioEffectCheckBox.IsChecked == true;
-            var createFaceFxAssets = CreateFaceFXAssetsCheckBox.IsChecked == true;
+            var createFaceFxAssets = _allowFaceFxAssetCreation && CreateFaceFXAssetsCheckBox.IsChecked == true;
             var topFolderName = TopFolderTextBox.Text.Trim();
             var femaleFaceFxAssetName = FemaleFaceFXAssetNameTextBox.Text.Trim();
             var maleFaceFxAssetName = MaleFaceFXAssetNameTextBox.Text.Trim();

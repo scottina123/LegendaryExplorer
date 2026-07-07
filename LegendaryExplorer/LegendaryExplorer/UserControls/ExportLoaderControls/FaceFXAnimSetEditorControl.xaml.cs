@@ -2928,6 +2928,376 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 errorCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
 
+        private void ImportAudioIntoMirroredFaceFXAssets_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentLoadedExport == null) return;
+
+            if (CurrentLoadedExport.ClassName != "FaceFXAnimSet")
+            {
+                MessageBox.Show("This workflow only supports FaceFXAnimSet exports.", "Unsupported export",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (CurrentLoadedExport.Game != MEGame.LE2 && CurrentLoadedExport.Game != MEGame.LE3)
+            {
+                MessageBox.Show("This feature only supports LE2 and LE3 packages.", "Unsupported game",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!TryGetPairedFaceFxExports(out var femaleExport, out var maleExport))
+            {
+                return;
+            }
+
+            var parent = CurrentLoadedExport.Parent;
+            var audioFolderExport = ExportCreator.CreatePackageExport(Pcc, "audio", parent);
+            ExportCreator.CreatePackageExport(Pcc, "int", audioFolderExport);
+
+            var importDialog = new BulkAudioImportDialog(Pcc, audioFolderExport.InstancedFullPath, "int",
+                isDialogueBank: true, generateGenderedEvents: true, allowFaceFxAssetCreation: false)
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            if (importDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var importedEventNames = BuildImportedGenderedEventNameSet(importDialog.WavFiles);
+            if (importedEventNames.Count == 0)
+            {
+                MessageBox.Show("No imported audio event names could be determined from the selected WAV files.",
+                    "No Imported Audio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var currentIsFemale = CurrentLoadedExport == femaleExport;
+            var femaleFaceFx = currentIsFemale ? FaceFX : new FaceFXAnimSetHandler(femaleExport);
+            var maleFaceFx = !currentIsFemale ? FaceFX : new FaceFXAnimSetHandler(maleExport);
+
+            var newFemaleLines = AddAudioFromFolderExportToAsset(femaleExport, femaleFaceFx, audioFolderExport,
+                isFemaleAsset: true, updateCurrentUi: currentIsFemale, importedEventNames);
+            var newMaleLines = AddAudioFromFolderExportToAsset(maleExport, maleFaceFx, audioFolderExport,
+                isFemaleAsset: false, updateCurrentUi: !currentIsFemale, importedEventNames);
+
+            if (newFemaleLines.Count == 0 && newMaleLines.Count == 0)
+            {
+                MessageBox.Show("No new FaceFX lines were added from the imported audio.", "No Lines Added",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (SelectedLineEntry != null)
+            {
+                UpdateAnimListBox();
+            }
+
+            var message = $"Imported audio and added new mirrored FaceFX lines.\n\nFemale lines added: {newFemaleLines.Count}\nMale lines added: {newMaleLines.Count}";
+            if (MessageBox.Show($"{message}\n\nGenerate FaceFX animations for these new lines now?",
+                    "Generate New FaceFX Lines", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                var femaleResult = GenerateFaceFxForNewLines(femaleExport, femaleFaceFx, newFemaleLines,
+                    isFemaleAsset: true, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanFemale);
+                var maleResult = GenerateFaceFxForNewLines(maleExport, maleFaceFx, newMaleLines,
+                    isFemaleAsset: false, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies.HumanMale);
+
+                if (SelectedLineEntry != null)
+                {
+                    UpdateAnimListBox();
+                }
+
+                MessageBox.Show($"{message}\n\nFaceFX generation complete.\n\nFemale: {femaleResult}\nMale: {maleResult}",
+                    "Import and Generate Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show(message, "Audio Imported", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private bool TryGetPairedFaceFxExports(out ExportEntry femaleExport, out ExportEntry maleExport)
+        {
+            femaleExport = null;
+            maleExport = null;
+
+            var currentName = CurrentLoadedExport.ObjectName.Name;
+            bool currentIsFemale = currentName.EndsWith("_F", StringComparison.OrdinalIgnoreCase);
+            bool currentIsMale = currentName.EndsWith("_M", StringComparison.OrdinalIgnoreCase);
+
+            if (!currentIsFemale && !currentIsMale)
+            {
+                MessageBox.Show("This FaceFX asset does not end with '_F' or '_M'. Cannot determine its paired asset.",
+                    "Pair not found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            var baseName = currentName[..^2];
+            var femaleName = $"{baseName}_F";
+            var maleName = $"{baseName}_M";
+            var parent = CurrentLoadedExport.Parent;
+
+            femaleExport = Pcc.Exports.FirstOrDefault(exp => exp.ClassName == "FaceFXAnimSet" && exp.Parent == parent &&
+                                                             exp.ObjectName.Name.Equals(femaleName, StringComparison.OrdinalIgnoreCase));
+            maleExport = Pcc.Exports.FirstOrDefault(exp => exp.ClassName == "FaceFXAnimSet" && exp.Parent == parent &&
+                                                           exp.ObjectName.Name.Equals(maleName, StringComparison.OrdinalIgnoreCase));
+
+            if (femaleExport == null || maleExport == null)
+            {
+                MessageBox.Show($"Could not find paired FaceFX assets under the same folder.\n\nExpected:\n{femaleName}\n{maleName}",
+                    "Pair not found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            return true;
+        }
+
+        private List<FaceFXLineEntry> AddAudioFromFolderExportToAsset(ExportEntry faceFxExport, IFaceFXBinary faceFx,
+            ExportEntry folderExport, bool isFemaleAsset, bool updateCurrentUi, HashSet<string> importedEventNames)
+        {
+            var entryTree = new EntryTree(Pcc);
+            var filteredEvents = entryTree.FlattenTreeOf(folderExport, includeRoot: false)
+                .OfType<ExportEntry>()
+                .Where(exp => exp.ClassName == "WwiseEvent")
+                .Where(exp => importedEventNames.Contains(exp.ObjectName.Name))
+                .Where(exp => exp.ObjectName.Name.Contains(isFemaleAsset ? "f_play" : "m_play", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(exp => ExtractTlkIdFromWwiseEventName(exp.ObjectName.Name))
+                .ToList();
+
+            var addedLines = new List<FaceFXLineEntry>();
+            if (filteredEvents.Count == 0)
+            {
+                return addedLines;
+            }
+
+            var props = faceFxExport.GetProperties();
+            var referencedSoundCues = props.GetProp<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")
+                                      ?? new ArrayProperty<ObjectProperty>("ReferencedSoundCues");
+            var existingReferences = new HashSet<int>(referencedSoundCues.Select(op => op.Value));
+            var existingTlkIds = faceFx.Lines
+                .Select(line => int.TryParse(line.ID, out var tlkId) ? tlkId : -1)
+                .Where(tlkId => tlkId > 0)
+                .ToHashSet();
+            int lineIndex = faceFx.Lines.Count;
+
+            foreach (var wwiseEvent in filteredEvents)
+            {
+                if (existingReferences.Contains(wwiseEvent.UIndex))
+                {
+                    continue;
+                }
+
+                int tlkID = ExtractTlkIdFromWwiseEventName(wwiseEvent.ObjectName.Name);
+                if (tlkID <= 0 || existingTlkIds.Contains(tlkID))
+                {
+                    continue;
+                }
+
+                var lineName = $"FXA_{tlkID}_{(isFemaleAsset ? "F" : "M")}";
+                var line = new FaceFXLine
+                {
+                    NameIndex = faceFx.Names.FindOrAdd(lineName),
+                    NameAsString = lineName,
+                    AnimationNames = [],
+                    Points = [],
+                    NumKeys = [],
+                    FadeInTime = 0.16f,
+                    FadeOutTime = 0.22f,
+                    Path = wwiseEvent.InstancedFullPath,
+                    ID = tlkID.ToString(),
+                    Index = lineIndex
+                };
+
+                while (referencedSoundCues.Count <= lineIndex)
+                {
+                    referencedSoundCues.Add(new ObjectProperty(0));
+                }
+
+                referencedSoundCues[lineIndex] = new ObjectProperty(wwiseEvent.UIndex);
+                existingReferences.Add(wwiseEvent.UIndex);
+                existingTlkIds.Add(tlkID);
+                faceFx.Lines.Add(line);
+
+                var lineEntry = new FaceFXLineEntry(line)
+                {
+                    IsMale = !isFemaleAsset,
+                    TLKID = tlkID,
+                    TLKString = TLKManagerWPF.GlobalFindStrRefbyID(tlkID, Pcc)
+                };
+                addedLines.Add(lineEntry);
+
+                if (updateCurrentUi)
+                {
+                    Lines.Add(lineEntry);
+                }
+
+                lineIndex++;
+            }
+
+            if (addedLines.Count > 0)
+            {
+                props.AddOrReplaceProp(referencedSoundCues);
+                faceFxExport.WriteProperties(props);
+                faceFxExport.WriteBinary(faceFx.Binary);
+            }
+
+            return addedLines;
+        }
+
+        private static HashSet<string> BuildImportedGenderedEventNameSet(IEnumerable<string> wavFiles)
+        {
+            var importedEventNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var wavPath in wavFiles)
+            {
+                var soundName = Path.GetFileNameWithoutExtension(wavPath);
+                if (string.IsNullOrWhiteSpace(soundName))
+                {
+                    continue;
+                }
+
+                var baseName = StripGenderSuffix(soundName);
+                importedEventNames.Add($"{baseName}_f_Play");
+                importedEventNames.Add($"{baseName}_m_Play");
+            }
+
+            return importedEventNames;
+        }
+
+        private static string StripGenderSuffix(string soundName)
+        {
+            if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase) ||
+                soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+            {
+                return soundName[..^2];
+            }
+
+            return soundName;
+        }
+
+        private string GenerateFaceFxForNewLines(ExportEntry faceFxExport, IFaceFXBinary faceFx, List<FaceFXLineEntry> newLines,
+            bool isFemaleAsset, Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXSpecies defaultSpecies)
+        {
+            if (newLines.Count == 0)
+            {
+                return "0 new lines";
+            }
+
+            var bulkDialog = new Tools.FaceFXEditor.AutoFaceFXGenerator.BulkFaceFXGenerationDialog(newLines.Count,
+                Window.GetWindow(this), defaultSpecies)
+            {
+                Title = $"Bulk FaceFX Generation - {faceFxExport.ObjectNameString}"
+            };
+
+            if (bulkDialog.ShowDialog() != true || !bulkDialog.Confirmed)
+            {
+                return "skipped";
+            }
+
+            int successCount = 0;
+            int skipCount = 0;
+            int errorCount = 0;
+            var errors = new List<string>();
+
+            foreach (var lineEntry in newLines)
+            {
+                if (string.IsNullOrWhiteSpace(lineEntry.TLKString))
+                {
+                    skipCount++;
+                    continue;
+                }
+
+                try
+                {
+                    var audioExport = FindVoiceStreamFromExport(faceFxExport, lineEntry);
+                    var options = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerationOptions
+                    {
+                        CharacterType = isFemaleAsset
+                            ? Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale
+                            : Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanMale,
+                        Species = bulkDialog.SelectedSpeciesEnum,
+                        GenerateJawAnimation = true,
+                        GenerateBlinkAnimation = true,
+                        GenerateEyebrowAnimation = true,
+                        GenerateHeadMovement = false,
+                        LipSyncIntensity = bulkDialog.LipSyncIntensity,
+                        BlinkFrequency = bulkDialog.BlinkFrequency,
+                        UseAudioAmplitude = true,
+                        FxaData = null,
+                        UseTextFallback = true
+                    };
+
+                    var generator = new Tools.FaceFXEditor.AutoFaceFXGenerator.FaceFXGenerator(
+                        faceFx, lineEntry.Line, lineEntry.TLKString, audioExport, options);
+
+                    if (generator.Generate())
+                    {
+                        successCount++;
+                        lineEntry.UpdateLength();
+                    }
+                    else
+                    {
+                        errorCount++;
+                        errors.Add($"{lineEntry.Name}: {generator.LastError ?? "Unknown error"}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    errors.Add($"{lineEntry.Name}: {ex.Message}");
+                }
+            }
+
+            faceFxExport.WriteBinary(faceFx.Binary);
+
+            var result = $"Success {successCount}, skipped {skipCount}, errors {errorCount}";
+            if (errors.Count > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"FaceFX mirrored import generation errors for {faceFxExport.InstancedFullPath}: {string.Join("; ", errors.Take(10))}");
+            }
+
+            return result;
+        }
+
+        private ExportEntry FindVoiceStreamFromExport(ExportEntry faceFxExport, FaceFXLineEntry selectedLine)
+        {
+            if (faceFxExport != null && selectedLine.TLKID > 0)
+            {
+                var wwiseEventSearchName = $"VO_{selectedLine.TLKID:D6}_{(selectedLine.IsMale ? "m" : "f")}";
+                var wwiseStreamSearchName = $"{selectedLine.TLKID:D8}";
+                var wwiseStreamSearchNameGendered = $"{wwiseStreamSearchName}_{(selectedLine.IsMale ? "m" : "f")}";
+                var wwiseStreamSearchNamewithUnderscores = $"_{selectedLine.TLKID}_";
+                var wwiseStreamSearchNamewithUnderscoresGendered = $"{wwiseStreamSearchNamewithUnderscores}{(selectedLine.IsMale ? "m" : "f")}";
+                var wwiseEventExp = faceFxExport.FileRef.Exports.FirstOrDefault(x => x.ClassName == "WwiseEvent" && x.ObjectName.Name.Contains(wwiseEventSearchName, StringComparison.InvariantCultureIgnoreCase));
+                if (wwiseEventExp != null)
+                {
+                    var wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExp);
+                    if (wwiseEvent.Links != null)
+                    {
+                        foreach (var link in wwiseEvent.Links)
+                        {
+                            var possibleExports = link.WwiseStreams.Where(x => faceFxExport.FileRef.IsUExport(x)).Select(x => faceFxExport.FileRef.GetUExport(x)).ToList();
+
+                            var possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNameGendered, StringComparison.InvariantCultureIgnoreCase));
+                            if (possible != null) return possible;
+
+                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscoresGendered, StringComparison.InvariantCultureIgnoreCase));
+                            if (possible != null) return possible;
+
+                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchName, StringComparison.InvariantCultureIgnoreCase));
+                            if (possible != null) return possible;
+
+                            possible = possibleExports.FirstOrDefault(x => x.ObjectName.Name.Contains(wwiseStreamSearchNamewithUnderscores, StringComparison.InvariantCultureIgnoreCase));
+                            if (possible != null) return possible;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Adds FaceFX lines from WwiseEvents found under a specific package export.
         /// This is the programmatic equivalent of <see cref="AddAudioFromFolder"/> but
