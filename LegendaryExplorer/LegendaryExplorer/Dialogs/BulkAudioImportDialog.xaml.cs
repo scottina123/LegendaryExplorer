@@ -519,16 +519,17 @@ namespace LegendaryExplorer.Dialogs
             var volumeStr = volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var sb = new System.Text.StringBuilder();
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
 
                 if (generateGenderedEvents)
                 {
-                    // Create separate Sound nodes for _m and _f so each event targets its own Sound
-                    var baseName = StripGenderSuffix(soundName);
-                    AppendSoundXml(sb, $"{baseName}_m", soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
-                    AppendSoundXml(sb, $"{baseName}_f", soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    {
+                        AppendSoundXml(sb, genderedSoundName, soundName, vorbisHighId, vorbisHighWuId, masterBusId, outputBusWuId, loopAudio);
+                    }
                 }
                 else
                 {
@@ -637,19 +638,18 @@ namespace LegendaryExplorer.Dialogs
             List<string> wavFiles, bool generateGenderedEvents)
         {
             var sb = new System.Text.StringBuilder();
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
 
                 if (generateGenderedEvents)
                 {
-                    var baseName = StripGenderSuffix(soundName);
-                    var mSoundName = $"{baseName}_m";
-                    var fSoundName = $"{baseName}_f";
-                    var mSoundId = $"{{{GenerateDeterministicGuid(mSoundName)}}}";
-                    var fSoundId = $"{{{GenerateDeterministicGuid(fSoundName)}}}";
-                    AppendEventXml(sb, $"{baseName}_m_Play", mSoundName, mSoundId, actorMixerWuId);
-                    AppendEventXml(sb, $"{baseName}_f_Play", fSoundName, fSoundId, actorMixerWuId);
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    {
+                        var soundId = $"{{{GenerateDeterministicGuid(genderedSoundName)}}}";
+                        AppendEventXml(sb, $"{genderedSoundName}_Play", genderedSoundName, soundId, actorMixerWuId);
+                    }
                 }
                 else
                 {
@@ -707,6 +707,68 @@ namespace LegendaryExplorer.Dialogs
                 return soundName[..^2];
             }
             return soundName;
+        }
+
+        private static IEnumerable<string> GetGenderedNamesForInput(string soundName, HashSet<string> pairedGenderBases)
+        {
+            var baseName = StripGenderSuffix(soundName);
+            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, out var genderSuffix))
+            {
+                yield return $"{baseName}_{genderSuffix}";
+                yield break;
+            }
+
+            yield return $"{baseName}_m";
+            yield return $"{baseName}_f";
+        }
+
+        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles)
+        {
+            var genderedBases = new Dictionary<string, (bool HasMale, bool HasFemale)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var wavPath in wavFiles)
+            {
+                var soundName = Path.GetFileNameWithoutExtension(wavPath);
+                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, out var genderSuffix))
+                {
+                    continue;
+                }
+
+                var baseName = StripGenderSuffix(soundName);
+                genderedBases.TryGetValue(baseName, out var genders);
+                if (genderSuffix == "m")
+                {
+                    genders.HasMale = true;
+                }
+                else
+                {
+                    genders.HasFemale = true;
+                }
+                genderedBases[baseName] = genders;
+            }
+
+            return genderedBases
+                .Where(pair => pair.Value.HasMale && pair.Value.HasFemale)
+                .Select(pair => pair.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool TryGetGenderSuffix(string soundName, out string genderSuffix)
+        {
+            if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase))
+            {
+                genderSuffix = "m";
+                return true;
+            }
+
+            if (soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+            {
+                genderSuffix = "f";
+                return true;
+            }
+
+            genderSuffix = null;
+            return false;
         }
 
         /// <summary>
@@ -835,6 +897,7 @@ namespace LegendaryExplorer.Dialogs
         private Dictionary<string, float> BuildEventDurationMap(List<string> wavFiles, bool generateGenderedEvents)
         {
             var map = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var pairedGenderBases = generateGenderedEvents ? GetBasesWithBothGenderedInputs(wavFiles) : [];
             foreach (var wavPath in wavFiles)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
@@ -842,9 +905,10 @@ namespace LegendaryExplorer.Dialogs
 
                 if (generateGenderedEvents)
                 {
-                    var baseName = StripGenderSuffix(soundName);
-                    map[$"{baseName}_m_Play"] = duration;
-                    map[$"{baseName}_f_Play"] = duration;
+                    foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                    {
+                        map[$"{genderedSoundName}_Play"] = duration;
+                    }
                 }
                 else
                 {

@@ -3149,7 +3149,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private static HashSet<string> BuildImportedGenderedEventNameSet(IEnumerable<string> wavFiles)
         {
             var importedEventNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var wavPath in wavFiles)
+            var wavFileList = wavFiles.ToList();
+            var pairedGenderBases = GetBasesWithBothGenderedInputs(wavFileList);
+            foreach (var wavPath in wavFileList)
             {
                 var soundName = Path.GetFileNameWithoutExtension(wavPath);
                 if (string.IsNullOrWhiteSpace(soundName))
@@ -3157,9 +3159,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     continue;
                 }
 
-                var baseName = StripGenderSuffix(soundName);
-                importedEventNames.Add($"{baseName}_f_Play");
-                importedEventNames.Add($"{baseName}_m_Play");
+                foreach (var genderedSoundName in GetGenderedNamesForInput(soundName, pairedGenderBases))
+                {
+                    importedEventNames.Add($"{genderedSoundName}_Play");
+                }
             }
 
             return importedEventNames;
@@ -3174,6 +3177,68 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return soundName;
+        }
+
+        private static IEnumerable<string> GetGenderedNamesForInput(string soundName, HashSet<string> pairedGenderBases)
+        {
+            var baseName = StripGenderSuffix(soundName);
+            if (pairedGenderBases.Contains(baseName) && TryGetGenderSuffix(soundName, out var genderSuffix))
+            {
+                yield return $"{baseName}_{genderSuffix}";
+                yield break;
+            }
+
+            yield return $"{baseName}_m";
+            yield return $"{baseName}_f";
+        }
+
+        private static HashSet<string> GetBasesWithBothGenderedInputs(IEnumerable<string> wavFiles)
+        {
+            var genderedBases = new Dictionary<string, (bool HasMale, bool HasFemale)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var wavPath in wavFiles)
+            {
+                var soundName = Path.GetFileNameWithoutExtension(wavPath);
+                if (string.IsNullOrWhiteSpace(soundName) || !TryGetGenderSuffix(soundName, out var genderSuffix))
+                {
+                    continue;
+                }
+
+                var baseName = StripGenderSuffix(soundName);
+                genderedBases.TryGetValue(baseName, out var genders);
+                if (genderSuffix == "m")
+                {
+                    genders.HasMale = true;
+                }
+                else
+                {
+                    genders.HasFemale = true;
+                }
+                genderedBases[baseName] = genders;
+            }
+
+            return genderedBases
+                .Where(pair => pair.Value.HasMale && pair.Value.HasFemale)
+                .Select(pair => pair.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool TryGetGenderSuffix(string soundName, out string genderSuffix)
+        {
+            if (soundName.EndsWith("_m", StringComparison.OrdinalIgnoreCase))
+            {
+                genderSuffix = "m";
+                return true;
+            }
+
+            if (soundName.EndsWith("_f", StringComparison.OrdinalIgnoreCase))
+            {
+                genderSuffix = "f";
+                return true;
+            }
+
+            genderSuffix = null;
+            return false;
         }
 
         private string GenerateFaceFxForNewLines(ExportEntry faceFxExport, IFaceFXBinary faceFx, List<FaceFXLineEntry> newLines,
