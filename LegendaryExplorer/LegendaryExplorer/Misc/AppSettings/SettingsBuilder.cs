@@ -487,6 +487,16 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _tlkeditor_selectedtab;
             set => SetProperty(ref _tlkeditor_selectedtab, value);
         }
+        private static bool _dialogueeditor_rememberbulkcloneinterpreplacements = false;
+        public static bool DialogueEditor_RememberBulkCloneInterpReplacements {
+            get => _dialogueeditor_rememberbulkcloneinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_rememberbulkcloneinterpreplacements, value);
+        }
+        private static List<string> _dialogueeditor_bulkcloneinterpreplacements = new List<string>();
+        public static List<string> DialogueEditor_BulkCloneInterpReplacements {
+            get => _dialogueeditor_bulkcloneinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_bulkcloneinterpreplacements, value);
+        }
 
         public static string Get_SequenceEditor_Favorites (MEGame game) => game switch
         {
@@ -650,6 +660,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             ScriptIDE_SavedThemes = TryGetSetting(settingsJson, "scriptide_savedthemes", new Dictionary<string, ThemeData>());
             TLKEditor_OpenTabs = TryGetSetting(settingsJson, "tlkeditor_opentabs", new List<string>());
             TLKEditor_SelectedTab = TryGetSetting(settingsJson, "tlkeditor_selectedtab", "");
+            DialogueEditor_RememberBulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkcloneinterpreplacements", false);
+            DialogueEditor_BulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkcloneinterpreplacements", new List<string>());
 
             ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
 
@@ -760,6 +772,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["scriptide_savedthemes"] = ScriptIDE_SavedThemes;
             settingsJson["tlkeditor_opentabs"] = TLKEditor_OpenTabs;
             settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
+            settingsJson["dialogueeditor_rememberbulkcloneinterpreplacements"] = DialogueEditor_RememberBulkCloneInterpReplacements.ToString();
+            settingsJson["dialogueeditor_bulkcloneinterpreplacements"] = DialogueEditor_BulkCloneInterpReplacements;
 
             settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
 

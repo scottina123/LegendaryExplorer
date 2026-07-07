@@ -130,6 +130,10 @@
   <setting name="TLKEditor_OpenTabs" type="List&lt;string&gt;" defaultvalue="new List&lt;string&gt;()"/>
   <setting name="TLKEditor_SelectedTab" type="string" defaultvalue=""/>
 
+  <!-- Dialogue Editor specific settings -->
+  <setting name="DialogueEditor_RememberBulkCloneInterpReplacements" type="bool" defaultvalue="false"/>
+  <setting name="DialogueEditor_BulkCloneInterpReplacements" type="List&lt;string&gt;" defaultvalue="new List&lt;string&gt;()"/>
+
   <!-- Wwise settings -->
   <setting name="Wwise_3773Path" type="string" defaultvalue="" category="Audio"
            friendlyName="WwiseCLI.exe v3773 Path" fileSelectExtension="*.exe"/>

@@ -5601,17 +5601,19 @@ namespace LegendaryExplorer.DialogueEditor
             interpNameReplacementGrid.Children.Add(originalInterpNameHeader);
             interpNameReplacementGrid.Children.Add(newInterpNameHeader);
 
-            void AddInterpNameReplacementRow()
+            void AddInterpNameReplacementRow(string originalName = "", string newName = "")
             {
                 int rowIndex = interpNameReplacementGrid.RowDefinitions.Count;
                 interpNameReplacementGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 var originalTextBox = new TextBox
                 {
+                    Text = originalName,
                     Margin = new Thickness(0, 2, 8, 2),
                     MinWidth = 220
                 };
                 var newTextBox = new TextBox
                 {
+                    Text = newName,
                     Margin = new Thickness(8, 2, 8, 2),
                     MinWidth = 220
                 };
@@ -5641,7 +5643,19 @@ namespace LegendaryExplorer.DialogueEditor
                 interpNameReplacementRows.Add((originalTextBox, newTextBox));
             }
 
-            AddInterpNameReplacementRow();
+            var rememberedInterpNameReplacements = DecodeRememberedBulkCloneInterpReplacements();
+            if (Settings.DialogueEditor_RememberBulkCloneInterpReplacements && rememberedInterpNameReplacements.Count > 0)
+            {
+                foreach (var rememberedReplacement in rememberedInterpNameReplacements)
+                {
+                    AddInterpNameReplacementRow(rememberedReplacement.Key, rememberedReplacement.Value);
+                }
+            }
+            else
+            {
+                AddInterpNameReplacementRow();
+            }
+
             rootPanel.Children.Add(interpNameReplacementGrid);
             var addInterpReplacementButton = new Button
             {
@@ -5652,6 +5666,14 @@ namespace LegendaryExplorer.DialogueEditor
             };
             addInterpReplacementButton.Click += (_, _) => AddInterpNameReplacementRow();
             rootPanel.Children.Add(addInterpReplacementButton);
+
+            var rememberInterpReplacementsCheckBox = new CheckBox
+            {
+                Content = "Remember interp name replacements across sessions",
+                IsChecked = Settings.DialogueEditor_RememberBulkCloneInterpReplacements,
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+            rootPanel.Children.Add(rememberInterpReplacementsCheckBox);
 
             var buttonPanel = new StackPanel
             {
@@ -5670,6 +5692,37 @@ namespace LegendaryExplorer.DialogueEditor
             Dictionary<DialogueNodeExtended, int> selectedLineStrRefs = null;
             bool? selectedUpdateInterpLengthsByFxa = null;
             Dictionary<string, string> selectedInterpNameReplacements = null;
+            Dictionary<string, string> GetInterpNameReplacementsFromRows()
+            {
+                var replacements = new Dictionary<string, string>();
+                foreach (var row in interpNameReplacementRows)
+                {
+                    string originalName = row.OriginalTextBox.Text;
+                    if (!string.IsNullOrEmpty(originalName))
+                    {
+                        replacements[originalName] = row.NewTextBox.Text ?? string.Empty;
+                    }
+                }
+
+                return replacements;
+            }
+
+            void PersistRememberedInterpNameReplacements()
+            {
+                if (rememberInterpReplacementsCheckBox.IsChecked == true)
+                {
+                    Settings.DialogueEditor_RememberBulkCloneInterpReplacements = true;
+                    Settings.DialogueEditor_BulkCloneInterpReplacements = EncodeRememberedBulkCloneInterpReplacements(GetInterpNameReplacementsFromRows());
+                }
+                else
+                {
+                    Settings.DialogueEditor_RememberBulkCloneInterpReplacements = false;
+                    Settings.DialogueEditor_BulkCloneInterpReplacements = [];
+                }
+            }
+
+            dialog.Closing += (_, _) => PersistRememberedInterpNameReplacements();
+
             okButton.Click += (_, _) =>
             {
                 var lineStrRefs = new Dictionary<DialogueNodeExtended, int>();
@@ -5688,15 +5741,7 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedUpdateInterpLengthsByFxa = updateInterpLengthsCheckBox.IsChecked == true
                     ? byFxaRadioButton.IsChecked == true
                     : null;
-                selectedInterpNameReplacements = new Dictionary<string, string>();
-                foreach (var row in interpNameReplacementRows)
-                {
-                    string originalName = row.OriginalTextBox.Text;
-                    if (!string.IsNullOrEmpty(originalName))
-                    {
-                        selectedInterpNameReplacements[originalName] = row.NewTextBox.Text ?? string.Empty;
-                    }
-                }
+                selectedInterpNameReplacements = GetInterpNameReplacementsFromRows();
 
                 dialog.DialogResult = true;
             };
@@ -5767,6 +5812,40 @@ namespace LegendaryExplorer.DialogueEditor
         {
             TextBox_Speaker_Name.Focus();
             TextBox_Speaker_Name.CaretIndex = TextBox_Speaker_Name.Text.Length;
+        }
+
+        private const char BulkCloneInterpReplacementSeparator = '\u001F';
+
+        private static Dictionary<string, string> DecodeRememberedBulkCloneInterpReplacements()
+        {
+            var replacements = new Dictionary<string, string>();
+            foreach (string encodedReplacement in Settings.DialogueEditor_BulkCloneInterpReplacements ?? [])
+            {
+                if (string.IsNullOrEmpty(encodedReplacement))
+                {
+                    continue;
+                }
+
+                int separatorIndex = encodedReplacement.IndexOf(BulkCloneInterpReplacementSeparator);
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                string originalName = encodedReplacement[..separatorIndex];
+                string newName = encodedReplacement[(separatorIndex + 1)..];
+                replacements[originalName] = newName;
+            }
+
+            return replacements;
+        }
+
+        private static List<string> EncodeRememberedBulkCloneInterpReplacements(Dictionary<string, string> replacements)
+        {
+            return replacements
+                .Where(kvp => !string.IsNullOrEmpty(kvp.Key))
+                .Select(kvp => $"{kvp.Key}{BulkCloneInterpReplacementSeparator}{kvp.Value ?? string.Empty}")
+                .ToList();
         }
 
         private bool CanCloneSpeakerNodes(object obj)
