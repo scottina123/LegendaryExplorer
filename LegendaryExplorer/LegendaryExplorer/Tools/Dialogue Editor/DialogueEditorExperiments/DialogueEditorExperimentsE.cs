@@ -653,7 +653,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// Clones a Dialogue Node and its related Sequence, while giving it a unique id.
         /// </summary>
         /// <param name="dew">Dialogue Editor Window instance.</param>
-        public static void CloneNodeAndSequence(DialogueEditorWindow dew)
+        public static DialogueNodeExtended CloneNodeAndSequence(DialogueEditorWindow dew, DialogueEditorWindow.CloneDialogueNodeOptions cloneOptions = null, bool showSuccessMessage = true)
         {
             DialogueNodeExtended selectedDialogueNode = dew.SelectedDialogueNode;
 
@@ -662,10 +662,10 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 string cloneCommand = selectedDialogueNode.IsReply ? "CloneReply" : "CloneEntry";
                 DiagNode selectedGraphNode = dew.SelectedObjects.OfType<DiagNode>().FirstOrDefault()
                     ?? dew.CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => node.Node.NodeCount == selectedDialogueNode.NodeCount && node.Node.IsReply == selectedDialogueNode.IsReply);
-                DialogueEditorWindow.CloneDialogueNodeOptions cloneOptions = dew.PromptForCloneDialogueNodeOptions(cloneCommand, selectedGraphNode);
+                cloneOptions ??= dew.PromptForCloneDialogueNodeOptions(cloneCommand, selectedGraphNode);
                 if (cloneOptions == null)
                 {
-                    return;
+                    return null;
                 }
 
                 using var _ = dew.SuppressPackageUpdates();
@@ -674,7 +674,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 if (selectedDialogueNode.InterpData == null)
                 {
                     MessageBox.Show("The selected node does not have an InterpData associated with it.", "Warning", MessageBoxButton.OK);
-                    return;
+                    return null;
                 }
 
                 int newID = dew.SelectedConv.EntryList.Concat(dew.SelectedConv.ReplyList).Max(node => node.ExportID) + 1;
@@ -686,7 +686,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 if (interpDataReferences.Key is not ExportEntry oldInterp)
                 {
                     MessageBox.Show("The selected Node's InterpData is linked to multiple Interps. Please ensure it's only linked to one.", "Warning", MessageBoxButton.OK);
-                    return;
+                    return null;
                 }
 
                 Dictionary<int, ExportEntry> clonedEntries = [];
@@ -707,7 +707,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                     if (orderedObjectsToClone.Count == 0)
                     {
                         MessageBox.Show("Unable to determine which sequence objects should be cloned for the selected node.", "Warning", MessageBoxButton.OK);
-                        return;
+                        return null;
                     }
 
                     foreach (ExportEntry originalObject in orderedObjectsToClone)
@@ -739,7 +739,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 if (!clonedEntries.TryGetValue(oldInterp.UIndex, out ExportEntry newInterp) || newInterp == null)
                 {
                     MessageBox.Show("Unable to locate the cloned Interp in the cloned sequence.", "Warning", MessageBoxButton.OK);
-                    return;
+                    return null;
                 }
 
                 ExportEntry newInterpData = GetInterpDataLinkedToInterp(newInterp);
@@ -753,7 +753,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 if (newInterpData == null || newInterpData == oldInterpData)
                 {
                     MessageBox.Show("Unable to locate the cloned InterpData in the cloned sequence.", "Warning", MessageBoxButton.OK);
-                    return;
+                    return null;
                 }
 
                 EnsureInterpDataLink(newInterp, newInterpData);
@@ -774,7 +774,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 DialogueNodeExtended node = dew.CloneDialogueNodeInPlace(cloneCommand, cloneOptions);
                 if (node == null)
                 {
-                    return;
+                    return null;
                 }
 
                 // Set the ExportID
@@ -787,8 +787,15 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 dew.RecreateNodesToProperties(dew.SelectedConv);
                 dew.SelectDialogueNodeByIndex(node.NodeCount, node.IsReply);
 
-                MessageBox.Show($"Node cloned and given the ExportID: {newID}.", "Success", MessageBoxButton.OK);
+                if (showSuccessMessage)
+                {
+                    MessageBox.Show($"Node cloned and given the ExportID: {newID}.", "Success", MessageBoxButton.OK);
+                }
+
+                return node;
             }
+
+            return null;
         }
         #endregion
 

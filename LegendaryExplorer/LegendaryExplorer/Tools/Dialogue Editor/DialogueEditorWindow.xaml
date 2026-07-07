@@ -1810,6 +1810,12 @@
                                                 <MenuItem Header="Add New Speaker" Command="{Binding AddSpeakerCommand}" />
                                                 <MenuItem Header="Delete Speaker" Command="{Binding DeleteSpeakerCommand}" />
                                                 <MenuItem Header="Rename" Command="{Binding ChangeNameCommand}" ToolTip="Rename the speaker's tag" />
+                                                <MenuItem Header="Clone Nodes and Sequences As..." ToolTip="Clone every entry node using this speaker tag, clone each node's sequence, and change the cloned nodes to another speaker tag.">
+                                                    <MenuItem Header="Above Clone" Command="{Binding CloneSpeakerNodesCommand}" CommandParameter="AboveClone" />
+                                                    <MenuItem Header="Below Clone" Command="{Binding CloneSpeakerNodesCommand}" CommandParameter="BelowClone" />
+                                                    <MenuItem Header="Top of List" Command="{Binding CloneSpeakerNodesCommand}" CommandParameter="TopOfList" />
+                                                    <MenuItem Header="Bottom of List" Command="{Binding CloneSpeakerNodesCommand}" CommandParameter="BottomOfList" />
+                                                </MenuItem>
                                                 <Separator />
                                                 <MenuItem Header="Extract All Audio for Speaker" Command="{Binding ExtractSpeakerAudioCommand}">
                                                     <MenuItem.Icon>

@@ -117,6 +117,14 @@ namespace LegendaryExplorer.DialogueEditor
             Bottom
         }
 
+        internal enum SpeakerNodeCloneInsertionPosition
+        {
+            AboveClone,
+            BelowClone,
+            TopOfList,
+            BottomOfList
+        }
+
         internal sealed class CloneDialogueNodeOptions
         {
             internal bool CloneLinks { get; init; }
@@ -124,6 +132,8 @@ namespace LegendaryExplorer.DialogueEditor
             internal bool CloneStartNode { get; init; }
             internal int StartInsertionIndex { get; init; }
             internal List<DiagEdEdge> InputEdges { get; init; } = [];
+            internal int? NodeInsertionIndex { get; init; }
+            internal SpeakerExtended ReplacementSpeaker { get; init; }
         }
 
         private readonly ConvGraphEditor graphEditor;
@@ -297,6 +307,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand AddSpeakerCommand { get; set; }
         public ICommand DeleteSpeakerCommand { get; set; }
         public ICommand ChangeNameCommand { get; set; }
+        public ICommand CloneSpeakerNodesCommand { get; set; }
         public ICommand ChangeLineSizeCommand { get; set; }
         public ICommand StartUpCommand { get; set; }
         public ICommand StartDownCommand { get; set; }
@@ -640,6 +651,7 @@ namespace LegendaryExplorer.DialogueEditor
             AddSpeakerCommand = new GenericCommand(SpeakerAdd);
             DeleteSpeakerCommand = new GenericCommand(SpeakerDelete, HasActiveSpkr);
             ChangeNameCommand = new GenericCommand(SpeakerGoToName, HasActiveSpkr);
+            CloneSpeakerNodesCommand = new RelayCommand(CloneSpeakerNodes, CanCloneSpeakerNodes);
             ChangeLineSizeCommand = new RelayCommand(ChangeLineSize);
             StartUpCommand = new RelayCommand(StartMoveAction, StartCanMoveUp);
             StartDownCommand = new RelayCommand(StartMoveAction, StartCanMoveDown);
@@ -5395,6 +5407,84 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedFemaleFaceFx);
         }
 
+        private SpeakerExtended PromptForReplacementSpeaker(SpeakerExtended sourceSpeaker)
+        {
+            var replacementSpeakers = SelectedSpeakerList
+                .Where(speaker => speaker.SpeakerID != sourceSpeaker.SpeakerID)
+                .ToList();
+            if (replacementSpeakers.Count == 0)
+            {
+                MessageBox.Show("There are no other speaker tags available to use as the replacement.", "Clone Speaker Nodes", MessageBoxButton.OK);
+                return null;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Choose replacement speaker tag",
+                Width = 420,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var speakerComboBox = new ComboBox
+            {
+                ItemsSource = replacementSpeakers,
+                SelectedIndex = 0,
+                Margin = new Thickness(0, 4, 0, 0),
+                MinWidth = 300,
+                DisplayMemberPath = nameof(SpeakerExtended.DisplayName)
+            };
+
+            var rootPanel = new StackPanel
+            {
+                Margin = new Thickness(18)
+            };
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = $"Clone nodes using '{sourceSpeaker.DisplayName}' and change cloned nodes to:",
+                TextWrapping = TextWrapping.Wrap
+            });
+            rootPanel.Children.Add(speakerComboBox);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 18, 0, 0)
+            };
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 90,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 90,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            });
+
+            rootPanel.Children.Add(buttonPanel);
+            dialog.Content = rootPanel;
+
+            return dialog.ShowDialog() == true ? speakerComboBox.SelectedItem as SpeakerExtended : null;
+        }
+
+        // Insertion point for replacement speaker prompt logic.
         private void SpeakerAdd()
         {
             int maxID = SelectedSpeakerList.Max(x => x.SpeakerID);
@@ -5445,6 +5535,109 @@ namespace LegendaryExplorer.DialogueEditor
             TextBox_Speaker_Name.Focus();
             TextBox_Speaker_Name.CaretIndex = TextBox_Speaker_Name.Text.Length;
         }
+
+        private bool CanCloneSpeakerNodes(object obj)
+        {
+            return Pcc != null
+                && SelectedConv != null
+                && SelectedSpeaker != null
+                && SelectedSpeaker.SpeakerID >= -2
+                && SelectedConv.EntryList.Any(node => node.SpeakerIndex == SelectedSpeaker.SpeakerID && node.InterpData != null);
+        }
+
+        private void CloneSpeakerNodes(object obj)
+        {
+            if (SelectedConv == null || SelectedSpeaker == null)
+            {
+                return;
+            }
+
+            if (!Enum.TryParse(obj as string, out SpeakerNodeCloneInsertionPosition insertionPosition))
+            {
+                insertionPosition = SpeakerNodeCloneInsertionPosition.BelowClone;
+            }
+
+            var sourceSpeaker = SelectedSpeaker;
+            SpeakerExtended replacementSpeaker = PromptForReplacementSpeaker(sourceSpeaker);
+            if (replacementSpeaker == null)
+            {
+                return;
+            }
+
+            var sourceNodes = SelectedConv.EntryList
+                .Where(node => node.SpeakerIndex == sourceSpeaker.SpeakerID)
+                .ToList();
+            if (sourceNodes.Count == 0)
+            {
+                MessageBox.Show($"No entry nodes use the speaker tag '{sourceSpeaker.DisplayName}'.", "Clone Speaker Nodes", MessageBoxButton.OK);
+                return;
+            }
+
+            var orderedSourceNodes = insertionPosition == SpeakerNodeCloneInsertionPosition.TopOfList
+                ? sourceNodes.AsEnumerable().Reverse().ToList()
+                : sourceNodes;
+            int clonedCount = 0;
+            int skippedCount = 0;
+
+            using var _ = SuppressPackageUpdates();
+            foreach (DialogueNodeExtended sourceNode in orderedSourceNodes)
+            {
+                int sourceIndex = SelectedConv.EntryList.IndexOf(sourceNode);
+                if (sourceIndex < 0)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                if (sourceNode.InterpData == null)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                int insertionIndex = insertionPosition switch
+                {
+                    SpeakerNodeCloneInsertionPosition.AboveClone => sourceIndex,
+                    SpeakerNodeCloneInsertionPosition.BelowClone => sourceIndex + 1,
+                    SpeakerNodeCloneInsertionPosition.TopOfList => 0,
+                    SpeakerNodeCloneInsertionPosition.BottomOfList => SelectedConv.EntryList.Count,
+                    _ => sourceIndex + 1
+                };
+
+                if (CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, sourceNode)) is DiagNode sourceGraphNode)
+                {
+                    DialogueNode_Selected(sourceGraphNode);
+                }
+                else
+                {
+                    SelectDialogueNodeByIndex(sourceNode.NodeCount, sourceNode.IsReply);
+                }
+
+                var cloneOptions = new CloneDialogueNodeOptions
+                {
+                    CloneLinks = false,
+                    NodeInsertionIndex = insertionIndex,
+                    ReplacementSpeaker = replacementSpeaker
+                };
+
+                DialogueNodeExtended clonedNode = DialogueEditorExperimentsE.CloneNodeAndSequence(this, cloneOptions, showSuccessMessage: false);
+                if (clonedNode == null)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                clonedCount++;
+            }
+
+            RecreateNodesToProperties(SelectedConv);
+            RebuildGraphInPlace(rebuildStarts: true);
+            ApplySpeakerNodeHighlighting();
+
+            string skippedText = skippedCount > 0 ? $" {skippedCount} node(s) were skipped." : string.Empty;
+            MessageBox.Show($"Cloned {clonedCount} node(s) from '{sourceSpeaker.DisplayName}' to '{replacementSpeaker.DisplayName}'.{skippedText}", "Clone Speaker Nodes", MessageBoxButton.OK);
+        }
+
         private static int LookupTagRef(string actortag)
         {
             if (!TagDBLoaded)
@@ -7961,6 +8154,8 @@ namespace LegendaryExplorer.DialogueEditor
             bool cloneStartNode = false;
             int clonedStartInsertionIndex = 0;
             List<DiagEdEdge> inputEdges = [];
+            SpeakerExtended replacementSpeaker = null;
+            int? nodeInsertionIndex = null;
             if (command is "CloneReply" or "CloneEntry")
             {
                 cloneOptions ??= PromptForCloneDialogueNodeOptions(command, diagNode);
@@ -7977,6 +8172,9 @@ namespace LegendaryExplorer.DialogueEditor
                     clonedStartInsertionIndex = cloneOptions.StartInsertionIndex;
                     inputEdges = cloneOptions.InputEdges ?? [];
                 }
+
+                replacementSpeaker = cloneOptions.ReplacementSpeaker;
+                nodeInsertionIndex = cloneOptions.NodeInsertionIndex;
             }
 
             IsLocalUpdate = true;
@@ -7987,7 +8185,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (command == "CloneReply")
             {
                 isReply = true;
-                newIndex = SelectedConv.ReplyList.Count;
+                newIndex = GetCloneInsertionIndex(SelectedConv.ReplyList.Count, nodeInsertionIndex ?? SelectedConv.ReplyList.Count);
                 var replyprop = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_ReplyList");
                 string typeName = "BioDialogReplyNode";
                 PropertyCollection props = new();
@@ -8001,23 +8199,25 @@ namespace LegendaryExplorer.DialogueEditor
                     props.AddOrReplaceProp(op);
                 }
                 props.AddOrReplaceProp(new NoneProperty());
-                replyprop.Add(new StructProperty(typeName, props));
+                replyprop.Insert(newIndex, new StructProperty(typeName, props));
                 var nodeExtended = SelectedConv.ParseSingleLine(replyprop[newIndex], newIndex, isReply, TLKLookup);
                 nodeExtended.InterpData = SelectedDialogueNode.InterpData;
                 nodeExtended.InterpLength = SelectedDialogueNode.InterpLength;
                 nodeExtended.Line = SelectedDialogueNode.Line;
-                nodeExtended.SpeakerTag = SelectedDialogueNode.SpeakerTag;
+                nodeExtended.SpeakerIndex = replacementSpeaker?.SpeakerID ?? SelectedDialogueNode.SpeakerIndex;
+                nodeExtended.SpeakerTag = replacementSpeaker ?? SelectedDialogueNode.SpeakerTag;
                 nodeExtended.WwiseStream_Female = SelectedDialogueNode.WwiseStream_Female;
                 nodeExtended.WwiseStream_Male = SelectedDialogueNode.WwiseStream_Male;
                 nodeExtended.FaceFX_Female = SelectedDialogueNode.FaceFX_Female;
                 nodeExtended.FaceFX_Male = SelectedDialogueNode.FaceFX_Male;
-                SelectedConv.ReplyList.Add(nodeExtended);
+                SelectedConv.ReplyList.Insert(newIndex, nodeExtended);
+                ReindexConversationNodeCounts();
                 RecreateNodesToProperties(SelectedConv);
-                node = new DiagNodeReply(this, nodeExtended, newX, newY, graphEditor);
+                node = new DiagNodeReply(this, SelectedConv.ReplyList[newIndex], newX, newY, graphEditor);
             }
             else if (command == "CloneEntry")
             {
-                newIndex = SelectedConv.EntryList.Count;
+                newIndex = GetCloneInsertionIndex(SelectedConv.EntryList.Count, nodeInsertionIndex ?? SelectedConv.EntryList.Count);
                 var entryprop = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList");
                 string typeName = "BioDialogEntryNode";
                 PropertyCollection props = new();
@@ -8030,18 +8230,24 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     props.AddOrReplaceProp(op);
                 }
+                if (replacementSpeaker != null)
+                {
+                    props.AddOrReplaceProp(new IntProperty(replacementSpeaker.SpeakerID, "nSpeakerIndex"));
+                }
                 props.AddOrReplaceProp(new NoneProperty());
-                entryprop.Add(new StructProperty(typeName, props));
+                entryprop.Insert(newIndex, new StructProperty(typeName, props));
                 var nodeExtended = SelectedConv.ParseSingleLine(entryprop[newIndex], newIndex, isReply, TLKLookup);
                 nodeExtended.InterpData = SelectedDialogueNode.InterpData;
                 nodeExtended.InterpLength = SelectedDialogueNode.InterpLength;
                 nodeExtended.Line = SelectedDialogueNode.Line;
-                nodeExtended.SpeakerTag = SelectedDialogueNode.SpeakerTag;
+                nodeExtended.SpeakerIndex = replacementSpeaker?.SpeakerID ?? SelectedDialogueNode.SpeakerIndex;
+                nodeExtended.SpeakerTag = replacementSpeaker ?? SelectedDialogueNode.SpeakerTag;
                 nodeExtended.WwiseStream_Female = SelectedDialogueNode.WwiseStream_Female;
                 nodeExtended.WwiseStream_Male = SelectedDialogueNode.WwiseStream_Male;
                 nodeExtended.FaceFX_Female = SelectedDialogueNode.FaceFX_Female;
                 nodeExtended.FaceFX_Male = SelectedDialogueNode.FaceFX_Male;
-                SelectedConv.EntryList.Add(nodeExtended);
+                SelectedConv.EntryList.Insert(newIndex, nodeExtended);
+                ReindexConversationNodeCounts();
                 RecreateNodesToProperties(SelectedConv);
                 node = new DiagNodeEntry(this, SelectedConv.EntryList[newIndex], newX, newY, graphEditor);
             }
