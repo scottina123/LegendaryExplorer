@@ -5407,7 +5407,7 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedFemaleFaceFx);
         }
 
-        private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs, bool? UpdateInterpLengthsByFxa)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
+        private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs, bool? UpdateInterpLengthsByFxa, Dictionary<string, string> InterpNameReplacements)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
         {
             var replacementSpeakers = SelectedSpeakerList
                 .Where(speaker => speaker.SpeakerID != sourceSpeaker.SpeakerID)
@@ -5565,6 +5565,94 @@ namespace LegendaryExplorer.DialogueEditor
             rootPanel.Children.Add(updateInterpLengthsCheckBox);
             rootPanel.Children.Add(interpLengthOptionsPanel);
 
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Interp name replacements:",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 18, 0, 6)
+            });
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Enter original and new names to replace in cloned Interp group names, m_nmSFXFindActor, and track m_nmFindActor values.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+
+            var interpNameReplacementRows = new List<(TextBox OriginalTextBox, TextBox NewTextBox)>();
+            var interpNameReplacementGrid = new Grid();
+            interpNameReplacementGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            interpNameReplacementGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            interpNameReplacementGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            interpNameReplacementGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var originalInterpNameHeader = new TextBlock
+            {
+                Text = "Original",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 8, 4)
+            };
+            var newInterpNameHeader = new TextBlock
+            {
+                Text = "New",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(8, 0, 8, 4)
+            };
+            Grid.SetColumn(originalInterpNameHeader, 0);
+            Grid.SetColumn(newInterpNameHeader, 1);
+            interpNameReplacementGrid.Children.Add(originalInterpNameHeader);
+            interpNameReplacementGrid.Children.Add(newInterpNameHeader);
+
+            void AddInterpNameReplacementRow()
+            {
+                int rowIndex = interpNameReplacementGrid.RowDefinitions.Count;
+                interpNameReplacementGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var originalTextBox = new TextBox
+                {
+                    Margin = new Thickness(0, 2, 8, 2),
+                    MinWidth = 220
+                };
+                var newTextBox = new TextBox
+                {
+                    Margin = new Thickness(8, 2, 8, 2),
+                    MinWidth = 220
+                };
+                var removeButton = new Button
+                {
+                    Content = "Remove",
+                    Margin = new Thickness(0, 2, 0, 2),
+                    Padding = new Thickness(8, 2, 8, 2)
+                };
+                removeButton.Click += (_, _) =>
+                {
+                    originalTextBox.Text = string.Empty;
+                    newTextBox.Text = string.Empty;
+                    originalTextBox.Visibility = Visibility.Collapsed;
+                    newTextBox.Visibility = Visibility.Collapsed;
+                    removeButton.Visibility = Visibility.Collapsed;
+                };
+                Grid.SetColumn(originalTextBox, 0);
+                Grid.SetRow(originalTextBox, rowIndex);
+                Grid.SetColumn(newTextBox, 1);
+                Grid.SetRow(newTextBox, rowIndex);
+                Grid.SetColumn(removeButton, 2);
+                Grid.SetRow(removeButton, rowIndex);
+                interpNameReplacementGrid.Children.Add(originalTextBox);
+                interpNameReplacementGrid.Children.Add(newTextBox);
+                interpNameReplacementGrid.Children.Add(removeButton);
+                interpNameReplacementRows.Add((originalTextBox, newTextBox));
+            }
+
+            AddInterpNameReplacementRow();
+            rootPanel.Children.Add(interpNameReplacementGrid);
+            var addInterpReplacementButton = new Button
+            {
+                Content = "Add interp name replacement",
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 6, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            addInterpReplacementButton.Click += (_, _) => AddInterpNameReplacementRow();
+            rootPanel.Children.Add(addInterpReplacementButton);
+
             var buttonPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -5581,6 +5669,7 @@ namespace LegendaryExplorer.DialogueEditor
             };
             Dictionary<DialogueNodeExtended, int> selectedLineStrRefs = null;
             bool? selectedUpdateInterpLengthsByFxa = null;
+            Dictionary<string, string> selectedInterpNameReplacements = null;
             okButton.Click += (_, _) =>
             {
                 var lineStrRefs = new Dictionary<DialogueNodeExtended, int>();
@@ -5599,6 +5688,16 @@ namespace LegendaryExplorer.DialogueEditor
                 selectedUpdateInterpLengthsByFxa = updateInterpLengthsCheckBox.IsChecked == true
                     ? byFxaRadioButton.IsChecked == true
                     : null;
+                selectedInterpNameReplacements = new Dictionary<string, string>();
+                foreach (var row in interpNameReplacementRows)
+                {
+                    string originalName = row.OriginalTextBox.Text;
+                    if (!string.IsNullOrEmpty(originalName))
+                    {
+                        selectedInterpNameReplacements[originalName] = row.NewTextBox.Text ?? string.Empty;
+                    }
+                }
+
                 dialog.DialogResult = true;
             };
             buttonPanel.Children.Add(okButton);
@@ -5615,7 +5714,7 @@ namespace LegendaryExplorer.DialogueEditor
             dialog.Content = rootPanel;
 
             return dialog.ShowDialog() == true && speakerComboBox.SelectedItem is SpeakerExtended replacementSpeaker
-                ? (replacementSpeaker, selectedLineStrRefs ?? [], selectedUpdateInterpLengthsByFxa)
+                ? (replacementSpeaker, selectedLineStrRefs ?? [], selectedUpdateInterpLengthsByFxa, selectedInterpNameReplacements ?? [])
                 : null;
         }
 
@@ -5707,7 +5806,7 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var (replacementSpeaker, lineStrRefs, updateInterpLengthsByFxa) = cloneOptionsResult.Value;
+            var (replacementSpeaker, lineStrRefs, updateInterpLengthsByFxa, interpNameReplacements) = cloneOptionsResult.Value;
 
             var orderedSourceNodes = insertionPosition == SpeakerNodeCloneInsertionPosition.TopOfList
                 ? sourceNodes.AsEnumerable().Reverse().ToList()
@@ -5763,15 +5862,22 @@ namespace LegendaryExplorer.DialogueEditor
                     continue;
                 }
 
+                bool tlkChanged = false;
                 if (lineStrRefs.TryGetValue(sourceNode, out int clonedLineStrRef))
                 {
+                    tlkChanged = clonedLineStrRef != sourceNode.LineStrRef;
                     clonedNode.LineStrRef = clonedLineStrRef;
                     clonedNode.NodeProp.Properties.AddOrReplaceProp(new StringRefProperty(clonedLineStrRef, "srText"));
                     UpdateNodeLineDerivedData(clonedNode);
                     DialogueEditorExperimentsE.UpdateVOAndComment(clonedNode);
                 }
 
-                if (updateInterpLengthsByFxa.HasValue)
+                if (interpNameReplacements.Count > 0)
+                {
+                    BulkInterpEditorDialog.ApplyNameReplacementsToInterpData(clonedNode.InterpData, interpNameReplacements);
+                }
+
+                if (tlkChanged && updateInterpLengthsByFxa.HasValue)
                 {
                     DialogueEditorExperimentsE.UpdateInterpLength(clonedNode, updateInterpLengthsByFxa.Value, FaceFXAnimSetEditorControl_F, FaceFXAnimSetEditorControl_M);
                     clonedNode.InterpLength = clonedNode.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? clonedNode.InterpLength;

@@ -259,6 +259,147 @@ namespace LegendaryExplorer.DialogueEditor
             return null;
         }
 
+        public static int ApplyNameReplacementsToInterpData(ExportEntry interpData, IReadOnlyDictionary<string, string> replacements)
+        {
+            if (interpData == null || replacements == null || replacements.Count == 0)
+            {
+                return 0;
+            }
+
+            IMEPackage pcc = interpData.FileRef;
+            if (pcc == null)
+            {
+                return 0;
+            }
+
+            var normalizedReplacements = replacements
+                .Where(kvp => !string.IsNullOrEmpty(kvp.Key))
+                .ToList();
+            if (normalizedReplacements.Count == 0)
+            {
+                return 0;
+            }
+
+            int changesApplied = 0;
+            ExportEntry seqActInterp = FindSeqActInterpForInterpData(interpData);
+            var interpGroups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+            if (interpGroups == null)
+            {
+                return 0;
+            }
+
+            foreach (var groupRef in interpGroups)
+            {
+                if (!pcc.TryGetUExport(groupRef.Value, out ExportEntry interpGroup))
+                {
+                    continue;
+                }
+
+                var groupProps = interpGroup.GetProperties();
+                string originalGroupName = groupProps.GetProp<NameProperty>("GroupName")?.Value.Instanced;
+                if (TryApplyNameReplacement(originalGroupName, normalizedReplacements, out string newGroupName))
+                {
+                    groupProps.AddOrReplaceProp(new NameProperty(newGroupName, "GroupName"));
+                    UpdateSeqActInterpVariableLink(seqActInterp, originalGroupName, newGroupName);
+                    changesApplied++;
+                }
+
+                string originalSfxFindActor = groupProps.GetProp<NameProperty>("m_nmSFXFindActor")?.Value.Instanced;
+                if (TryApplyNameReplacement(originalSfxFindActor, normalizedReplacements, out string newSfxFindActor))
+                {
+                    groupProps.AddOrReplaceProp(new NameProperty(newSfxFindActor, "m_nmSFXFindActor"));
+                    changesApplied++;
+                }
+
+                interpGroup.WriteProperties(groupProps);
+
+                var interpTracks = interpGroup.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+                if (interpTracks == null)
+                {
+                    continue;
+                }
+
+                foreach (var trackRef in interpTracks)
+                {
+                    if (!pcc.TryGetUExport(trackRef.Value, out ExportEntry track))
+                    {
+                        continue;
+                    }
+
+                    var trackProps = track.GetProperties();
+                    string originalTrackFindActor = trackProps.GetProp<NameProperty>("m_nmFindActor")?.Value.Instanced;
+                    if (TryApplyNameReplacement(originalTrackFindActor, normalizedReplacements, out string newTrackFindActor))
+                    {
+                        trackProps.AddOrReplaceProp(new NameProperty(newTrackFindActor, "m_nmFindActor"));
+                        track.WriteProperties(trackProps);
+                        changesApplied++;
+                    }
+                }
+            }
+
+            return changesApplied;
+        }
+
+        private static ExportEntry FindSeqActInterpForInterpData(ExportEntry interpData)
+        {
+            var refs = interpData.GetEntriesThatReferenceThisOne();
+            foreach (var entry in refs.Keys)
+            {
+                if (entry.ClassName == "SeqAct_Interp")
+                {
+                    return entry as ExportEntry;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryApplyNameReplacement(string value, IReadOnlyList<KeyValuePair<string, string>> replacements, out string newValue)
+        {
+            newValue = value;
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            foreach (var replacement in replacements)
+            {
+                newValue = newValue.Replace(replacement.Key, replacement.Value ?? string.Empty);
+            }
+
+            return newValue != value;
+        }
+
+        private static void UpdateSeqActInterpVariableLink(ExportEntry seqActInterp, string originalGroupName, string groupName)
+        {
+            if (seqActInterp == null || string.IsNullOrEmpty(originalGroupName))
+            {
+                return;
+            }
+
+            var varLinksProp = seqActInterp.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+            if (varLinksProp == null)
+            {
+                return;
+            }
+
+            bool modified = false;
+            foreach (var varLink in varLinksProp)
+            {
+                var linkDesc = varLink.GetProp<StrProperty>("LinkDesc");
+                if (linkDesc != null && linkDesc.Value == originalGroupName)
+                {
+                    linkDesc.Value = groupName;
+                    modified = true;
+                }
+            }
+
+            if (modified)
+            {
+                seqActInterp.WriteProperty(varLinksProp);
+            }
+        }
+
         /// <summary>
         /// Applies bulk find/replace and then writes all changes to the package.
         /// </summary>
