@@ -1851,6 +1851,11 @@
                                         <TextBlock Text="" FontSize="10" />
                                         <DockPanel HorizontalAlignment="Stretch">
                                             <TextBlock Text="Male FaceFX Animation Set:" VerticalAlignment="Bottom" HorizontalAlignment="Left" ToolTip="Facial Animations for when the Player is Male" DockPanel.Dock="Left" />
+                                            <Button Name="Button_Spkr_OpenPackEdFFXM" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="PackEdFaceFXSpkrM" ToolTip="Open this Speaker's Male AnimSet in Package Editor.">
+                                                <Button.Content>
+                                                    <fa:ImageAwesome Icon="Solid_BoxOpen" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                </Button.Content>
+                                            </Button>
                                         <Button Name="Button_Spkr_OpenFFXM" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrM" ToolTip="Open this Speaker's Male AnimSet in FaceFX Editor.">
                                                 <Button.Content>
                                                     <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
@@ -1883,6 +1888,11 @@
                                         <TextBlock Text="" FontSize="10" />
                                         <DockPanel HorizontalAlignment="Stretch">
                                             <TextBlock Text="Female FaceFX Animation Set:" VerticalAlignment="Bottom" HorizontalAlignment="Left" ToolTip="Facial Animations for when the Player is Female" DockPanel.Dock="Left" />
+                                            <Button Name="Button_Spkr_OpenPackEdFFXF" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="PackEdFaceFXSpkrF" ToolTip="Open this Speaker's Female AnimSet in Package Editor.">
+                                                <Button.Content>
+                                                    <fa:ImageAwesome Icon="Solid_BoxOpen" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />
+                                                </Button.Content>
+                                            </Button>
                                         <Button Name="Button_Spkr_OpenFFXF" Padding="3" DockPanel.Dock="Right" Command="{Binding OpenInCommand}" CommandParameter="FaceFXSpkrF" ToolTip="Open this Speaker's Female AnimSet in FaceFX Editor.">
                                                 <Button.Content>
                                                     <fa:ImageAwesome Icon="Solid_TheaterMasks" Width="16" Height="16" Foreground="{DynamicResource IconForegroundBrush}" />

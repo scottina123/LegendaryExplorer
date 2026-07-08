@@ -9554,6 +9554,18 @@ namespace LegendaryExplorer.DialogueEditor
                         OpenInToolkit("PackageEditor", SelectedDialogueNode.WwiseStream_Female.UIndex);
                     }
                     break;
+                case "PackEdFaceFXSpkrM":
+                    if (SelectedSpeaker.FaceFX_Male != null)
+                    {
+                        OpenInToolkit("PackageEditor", SelectedSpeaker.FaceFX_Male.UIndex);
+                    }
+                    break;
+                case "PackEdFaceFXSpkrF":
+                    if (SelectedSpeaker.FaceFX_Female != null)
+                    {
+                        OpenInToolkit("PackageEditor", SelectedSpeaker.FaceFX_Female.UIndex);
+                    }
+                    break;
                 case "SeqEdLvl":
                     if (TryGetBaseConversationReferenceTarget(Level, out string baseSequencePath, out int baseSequenceTargetUIndex))
                     {
