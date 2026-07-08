@@ -39,6 +39,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
         private string FileQueuedForLoad;
         private ExportEntry ExportQueuedForFocusing;
         private string LineQueuedForFocusing;
+        private bool ImportAudioIntoMirroredFaceFXAssetsQueued;
 
         public FaceFXEditorWindow() : base("FaceFX Editor")
         {
@@ -80,6 +81,17 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
             {
                 editorControl.SelectLineByName(lineName);
             }
+        }
+
+        public void ImportAudioIntoMirroredFaceFXAssets()
+        {
+            if (Pcc is null || SelectedExport is null)
+            {
+                ImportAudioIntoMirroredFaceFXAssetsQueued = true;
+                return;
+            }
+
+            editorControl.ImportAudioIntoMirroredFaceFXAssets();
         }
 
         private void LoadAnimset()
@@ -214,6 +226,12 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
                         if (LineQueuedForFocusing != null)
                         {
                             editorControl.SelectLineByName(LineQueuedForFocusing);
+                        }
+
+                        if (ImportAudioIntoMirroredFaceFXAssetsQueued)
+                        {
+                            ImportAudioIntoMirroredFaceFXAssetsQueued = false;
+                            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(ImportAudioIntoMirroredFaceFXAssets));
                         }
                     }
                     ExportQueuedForFocusing = null;

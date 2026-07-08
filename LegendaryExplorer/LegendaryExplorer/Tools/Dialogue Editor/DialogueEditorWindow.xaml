@@ -1824,6 +1824,7 @@
                                                 </MenuItem>
                                                 <Separator />
                                                 <MenuItem Header="Localize Speaker FaceFX" Command="{Binding LocalizeSpeakerFaceFXCommand}" ToolTip="Clones the speaker's FaceFX and WwiseEvents under the conversation's package and updates references." />
+                                                <MenuItem Header="Import Audio into Male/Female FaceFX Assets" Command="{Binding ImportSpeakerFaceFXAudioCommand}" ToolTip="Import audio into this speaker's male FaceFX asset and mirror it to the matching female FaceFX asset." />
                                             </ContextMenu>
                                         </ListBox.ContextMenu>
                                     </ListBox>

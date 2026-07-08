@@ -333,6 +333,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand ForceRefreshCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
         public ICommand LocalizeSpeakerFaceFXCommand { get; set; }
+        public ICommand ImportSpeakerFaceFXAudioCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         private bool copiedOutgoingConnectionsAreReplyNode;
         private List<ReplyChoiceNode> copiedOutgoingConnections;
@@ -677,6 +678,7 @@ namespace LegendaryExplorer.DialogueEditor
             ForceRefreshCommand = new RelayCommand(ForceRefresh);
             ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= -2);
             LocalizeSpeakerFaceFXCommand = new GenericCommand(() => DialogueEditorExperimentsS.LocalizeSpeakerFaceFX(this), () => SelectedSpeaker != null && SelectedConv != null);
+            ImportSpeakerFaceFXAudioCommand = new RelayCommand(ImportSpeakerFaceFXAudio, CanImportSpeakerFaceFXAudio);
             BulkEditInterpGroupsCommand = new GenericCommand(OpenBulkInterpEditor, LineHasInterpData);
         }
 
@@ -5201,6 +5203,31 @@ namespace LegendaryExplorer.DialogueEditor
                 PickSpeakerFaceFX(false);
             }
         }
+
+        private bool CanImportSpeakerFaceFXAudio(object obj)
+        {
+            return SelectedSpeaker != null
+                && Pcc != null
+                && SelectedSpeaker.FaceFX_Male is ExportEntry faceFx
+                && faceFx.ClassName == "FaceFXAnimSet";
+        }
+
+        private void ImportSpeakerFaceFXAudio(object obj)
+        {
+            if (!CanImportSpeakerFaceFXAudio(obj))
+            {
+                return;
+            }
+
+            if (SelectedSpeaker.FaceFX_Male is not ExportEntry faceFx)
+            {
+                return;
+            }
+
+            FaceFXAnimSetEditorControl_M.LoadExport(faceFx);
+            FaceFXAnimSetEditorControl_M.ImportAudioIntoMirroredFaceFXAssets();
+        }
+
         private void EnterName_Speaker_KeyUp(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)

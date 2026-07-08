@@ -2928,6 +2928,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 errorCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
 
+        public void ImportAudioIntoMirroredFaceFXAssets()
+        {
+            ImportAudioIntoMirroredFaceFXAssets_Click(this, new RoutedEventArgs());
+        }
+
         private void ImportAudioIntoMirroredFaceFXAssets_Click(object sender, RoutedEventArgs e)
         {
             if (CurrentLoadedExport == null) return;
