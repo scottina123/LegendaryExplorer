@@ -136,6 +136,18 @@ namespace LegendaryExplorer.DialogueEditor
             internal SpeakerExtended ReplacementSpeaker { get; init; }
         }
 
+        private sealed class BulkCloneIncomingLinkSnapshot
+        {
+            internal DialogueNodeExtended SourceNode { get; init; }
+            internal int MatchingTargetOrdinal { get; init; }
+            internal Property SourceLinkProperty { get; init; }
+        }
+
+        private sealed class BulkCloneStartLinkSnapshot
+        {
+            internal int MatchingTargetOrdinal { get; init; }
+        }
+
         private readonly ConvGraphEditor graphEditor;
         public ObservableCollectionExtended<IEntry> FFXAnimsets { get; } = new();
         public ObservableCollectionExtended<ConversationExtended> Conversations { get; } = new();
@@ -1772,6 +1784,62 @@ namespace LegendaryExplorer.DialogueEditor
             for (int i = 0; i < SelectedConv.ReplyList.Count; i++)
             {
                 SelectedConv.ReplyList[i].NodeCount = i;
+            }
+        }
+
+        private void ShiftConversationLinksForInsertedNode(bool insertedNodeIsReply, int insertionIndex)
+        {
+            if (SelectedConv == null)
+            {
+                return;
+            }
+
+            if (insertedNodeIsReply)
+            {
+                foreach (var entry in SelectedConv.EntryList)
+                {
+                    var replyLinksProp = entry.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+                    if (replyLinksProp == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var link in replyLinksProp)
+                    {
+                        var linkIndex = link.GetProp<IntProperty>("nIndex");
+                        if (linkIndex != null && linkIndex.Value >= insertionIndex)
+                        {
+                            linkIndex.Value++;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                foreach (var reply in SelectedConv.ReplyList)
+                {
+                    var entryLinksProp = reply.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+                    if (entryLinksProp == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var link in entryLinksProp)
+                    {
+                        if (link.Value >= insertionIndex)
+                        {
+                            link.Value++;
+                        }
+                    }
+                }
+
+                foreach ((int key, int val) in SelectedConv.StartingList.ToList())
+                {
+                    if (val >= insertionIndex)
+                    {
+                        SelectedConv.StartingList[key] = val + 1;
+                    }
+                }
             }
         }
 
@@ -5920,6 +5988,8 @@ namespace LegendaryExplorer.DialogueEditor
             int clonedCount = 0;
             int skippedCount = 0;
             var faceOnlyVoNodes = new List<DialogueNodeExtended>();
+            var incomingLinkSnapshots = CreateBulkCloneIncomingLinkSnapshots(sourceNodes);
+            var startLinkSnapshots = CreateBulkCloneStartLinkSnapshots(sourceNodes);
 
             using var _ = SuppressPackageUpdates();
             foreach (DialogueNodeExtended sourceNode in orderedSourceNodes)
@@ -5946,18 +6016,21 @@ namespace LegendaryExplorer.DialogueEditor
                     _ => sourceIndex + 1
                 };
 
-                if (CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, sourceNode)) is DiagNode sourceGraphNode)
+                DiagNode sourceGraphNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, sourceNode));
+                if (sourceGraphNode != null)
                 {
                     DialogueNode_Selected(sourceGraphNode);
                 }
                 else
                 {
                     SelectDialogueNodeByIndex(sourceNode.NodeCount, sourceNode.IsReply);
+                    sourceGraphNode = SelectedObjects.OfType<DiagNode>().FirstOrDefault();
                 }
 
                 var cloneOptions = new CloneDialogueNodeOptions
                 {
-                    CloneLinks = false,
+                    CloneLinks = true,
+                    InputEdges = [],
                     NodeInsertionIndex = insertionIndex,
                     ReplacementSpeaker = replacementSpeaker
                 };
@@ -5968,6 +6041,9 @@ namespace LegendaryExplorer.DialogueEditor
                     skippedCount++;
                     continue;
                 }
+
+                CloneBulkIncomingLinks(sourceNode, clonedNode, incomingLinkSnapshots, insertionPosition);
+                CloneBulkStartLinks(sourceNode, clonedNode, startLinkSnapshots, insertionPosition);
 
                 bool tlkChanged = false;
                 if (lineStrRefs.TryGetValue(sourceNode, out int clonedLineStrRef))
@@ -6005,6 +6081,339 @@ namespace LegendaryExplorer.DialogueEditor
             string skippedText = skippedCount > 0 ? $" {skippedCount} node(s) were skipped." : string.Empty;
             MessageBox.Show($"Cloned {clonedCount} node(s) from '{sourceSpeaker.DisplayName}' to '{replacementSpeaker.DisplayName}'.{skippedText}", "Clone Speaker Nodes", MessageBoxButton.OK);
             ShowFaceOnlyVoBulkCloneWarning(faceOnlyVoNodes);
+        }
+
+        private Dictionary<DialogueNodeExtended, List<BulkCloneIncomingLinkSnapshot>> CreateBulkCloneIncomingLinkSnapshots(IEnumerable<DialogueNodeExtended> sourceNodes)
+        {
+            var snapshots = new Dictionary<DialogueNodeExtended, List<BulkCloneIncomingLinkSnapshot>>();
+            foreach (var sourceNode in sourceNodes)
+            {
+                var sourceGraphNode = CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, sourceNode));
+                if (sourceGraphNode == null)
+                {
+                    continue;
+                }
+
+                foreach (var edge in sourceGraphNode.InputEdges)
+                {
+                    if (edge.originator is not DiagNode inputNode)
+                    {
+                        continue;
+                    }
+
+                    int sourceLinkIndex = inputNode.Outlinks.FindIndex(outlink => outlink.Edges.Contains(edge));
+                    Property sourceLinkProperty = GetLinkPropertyAt(inputNode.Node, sourceLinkIndex);
+                    if (sourceLinkIndex < 0 || sourceLinkProperty == null)
+                    {
+                        continue;
+                    }
+
+                    if (!snapshots.TryGetValue(sourceNode, out var nodeSnapshots))
+                    {
+                        nodeSnapshots = [];
+                        snapshots[sourceNode] = nodeSnapshots;
+                    }
+
+                    nodeSnapshots.Add(new BulkCloneIncomingLinkSnapshot
+                    {
+                        SourceNode = inputNode.Node,
+                        MatchingTargetOrdinal = GetMatchingLinkOrdinal(inputNode.Node, sourceNode, sourceLinkIndex),
+                        SourceLinkProperty = sourceLinkProperty.DeepClone()
+                    });
+                }
+            }
+
+            return snapshots;
+        }
+
+        private Dictionary<DialogueNodeExtended, List<BulkCloneStartLinkSnapshot>> CreateBulkCloneStartLinkSnapshots(IEnumerable<DialogueNodeExtended> sourceNodes)
+        {
+            var snapshots = new Dictionary<DialogueNodeExtended, List<BulkCloneStartLinkSnapshot>>();
+            foreach (var sourceNode in sourceNodes)
+            {
+                int matchingTargetOrdinal = 0;
+                foreach (var startLink in SelectedConv.StartingList.OrderBy(kvp => kvp.Key))
+                {
+                    if (startLink.Value != sourceNode.NodeCount)
+                    {
+                        continue;
+                    }
+
+                    if (!snapshots.TryGetValue(sourceNode, out var nodeSnapshots))
+                    {
+                        nodeSnapshots = [];
+                        snapshots[sourceNode] = nodeSnapshots;
+                    }
+
+                    nodeSnapshots.Add(new BulkCloneStartLinkSnapshot
+                    {
+                        MatchingTargetOrdinal = matchingTargetOrdinal
+                    });
+                    matchingTargetOrdinal++;
+                }
+            }
+
+            return snapshots;
+        }
+
+        private void CloneBulkIncomingLinks(
+            DialogueNodeExtended sourceNode,
+            DialogueNodeExtended clonedNode,
+            Dictionary<DialogueNodeExtended, List<BulkCloneIncomingLinkSnapshot>> incomingLinkSnapshots,
+            SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            if (!incomingLinkSnapshots.TryGetValue(sourceNode, out var nodeSnapshots))
+            {
+                return;
+            }
+
+            foreach (var snapshot in nodeSnapshots)
+            {
+                int sourceLinkIndex = FindCurrentLinkIndex(snapshot.SourceNode, sourceNode, snapshot.MatchingTargetOrdinal);
+                int insertionIndex = GetBulkCloneRelativeInsertionIndex(sourceLinkIndex, insertionPosition);
+                CloneIncomingLinkToNode(snapshot.SourceNode, snapshot.SourceLinkProperty, clonedNode, insertionIndex);
+            }
+        }
+
+        private void CloneBulkStartLinks(
+            DialogueNodeExtended sourceNode,
+            DialogueNodeExtended clonedNode,
+            Dictionary<DialogueNodeExtended, List<BulkCloneStartLinkSnapshot>> startLinkSnapshots,
+            SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            if (!startLinkSnapshots.TryGetValue(sourceNode, out var nodeSnapshots))
+            {
+                return;
+            }
+
+            foreach (var snapshot in nodeSnapshots)
+            {
+                int sourceStartIndex = FindCurrentStartIndex(sourceNode, snapshot.MatchingTargetOrdinal);
+                int insertionIndex = GetBulkCloneRelativeInsertionIndex(sourceStartIndex, insertionPosition);
+                AddStartNodeForEntry(clonedNode.NodeCount, insertionIndex);
+            }
+        }
+
+        private static Property GetLinkPropertyAt(DialogueNodeExtended sourceNode, int linkIndex)
+        {
+            if (sourceNode == null || linkIndex < 0)
+            {
+                return null;
+            }
+
+            if (sourceNode.IsReply)
+            {
+                var entryList = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+                return linkIndex < entryList?.Count ? entryList[linkIndex] : null;
+            }
+
+            var replyList = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+            return linkIndex < replyList?.Count ? replyList[linkIndex] : null;
+        }
+
+        private static int GetMatchingLinkOrdinal(DialogueNodeExtended linkSourceNode, DialogueNodeExtended targetNode, int sourceLinkIndex)
+        {
+            int matchingTargetOrdinal = 0;
+            for (int i = 0; i < sourceLinkIndex; i++)
+            {
+                if (GetLinkTargetIndex(linkSourceNode, i) == targetNode.NodeCount)
+                {
+                    matchingTargetOrdinal++;
+                }
+            }
+
+            return matchingTargetOrdinal;
+        }
+
+        private static int FindCurrentLinkIndex(DialogueNodeExtended linkSourceNode, DialogueNodeExtended targetNode, int matchingTargetOrdinal)
+        {
+            int currentOrdinal = 0;
+            int linkCount = GetLinkCount(linkSourceNode);
+            for (int i = 0; i < linkCount; i++)
+            {
+                if (GetLinkTargetIndex(linkSourceNode, i) != targetNode.NodeCount)
+                {
+                    continue;
+                }
+
+                if (currentOrdinal == matchingTargetOrdinal)
+                {
+                    return i;
+                }
+
+                currentOrdinal++;
+            }
+
+            return -1;
+        }
+
+        private int FindCurrentStartIndex(DialogueNodeExtended targetNode, int matchingTargetOrdinal)
+        {
+            int currentOrdinal = 0;
+            foreach (var startLink in SelectedConv.StartingList.OrderBy(kvp => kvp.Key))
+            {
+                if (startLink.Value != targetNode.NodeCount)
+                {
+                    continue;
+                }
+
+                if (currentOrdinal == matchingTargetOrdinal)
+                {
+                    return startLink.Key;
+                }
+
+                currentOrdinal++;
+            }
+
+            return -1;
+        }
+
+        private static int GetBulkCloneRelativeInsertionIndex(int sourceIndex, SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            return insertionPosition switch
+            {
+                SpeakerNodeCloneInsertionPosition.TopOfList => 0,
+                SpeakerNodeCloneInsertionPosition.BottomOfList => int.MaxValue,
+                SpeakerNodeCloneInsertionPosition.AboveClone => sourceIndex >= 0 ? sourceIndex : 0,
+                _ => sourceIndex >= 0 ? sourceIndex + 1 : int.MaxValue
+            };
+        }
+
+        private static int GetLinkCount(DialogueNodeExtended sourceNode)
+        {
+            if (sourceNode == null)
+            {
+                return 0;
+            }
+
+            return sourceNode.IsReply
+                ? sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Count ?? 0
+                : sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Count ?? 0;
+        }
+
+        private static int GetLinkTargetIndex(DialogueNodeExtended sourceNode, int linkIndex)
+        {
+            if (sourceNode == null || linkIndex < 0)
+            {
+                return -1;
+            }
+
+            if (sourceNode.IsReply)
+            {
+                var entryList = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+                return linkIndex < entryList?.Count ? entryList[linkIndex].Value : -1;
+            }
+
+            var replyList = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+            return linkIndex < replyList?.Count ? replyList[linkIndex].GetProp<IntProperty>("nIndex")?.Value ?? -1 : -1;
+        }
+
+        private void CloneIncomingLinkToNode(DialogueNodeExtended sourceNode, Property sourceLinkProperty, DialogueNodeExtended targetNode, int insertionIndex)
+        {
+            if (sourceNode == null || sourceLinkProperty == null || targetNode == null)
+            {
+                return;
+            }
+
+            if (sourceNode.IsReply)
+            {
+                var entryList = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")
+                                ?? new ArrayProperty<IntProperty>("EntryList");
+                var clonedLink = sourceLinkProperty is IntProperty intProperty
+                    ? (IntProperty)intProperty.DeepClone()
+                    : new IntProperty(targetNode.NodeCount);
+                clonedLink.Value = targetNode.NodeCount;
+                entryList.Insert(GetCloneInsertionIndex(entryList.Count, insertionIndex), clonedLink);
+                sourceNode.NodeProp.Properties.AddOrReplaceProp(entryList);
+            }
+            else
+            {
+                var replyList = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")
+                                ?? new ArrayProperty<StructProperty>("ReplyListNew");
+                StructProperty clonedLink;
+                if (sourceLinkProperty is StructProperty structProperty)
+                {
+                    clonedLink = (StructProperty)structProperty.DeepClone();
+                    clonedLink.Properties.AddOrReplaceProp(new IntProperty(targetNode.NodeCount, "nIndex"));
+                }
+                else
+                {
+                    clonedLink = new StructProperty("BioDialogReplyListDetails", new PropertyCollection
+                    {
+                        new IntProperty(targetNode.NodeCount, "nIndex"),
+                        new StringRefProperty(663399, "srParaphrase"),
+                        new StrProperty(string.Empty, "sParaphrase"),
+                        new EnumProperty("REPLY_CATEGORY_DEFAULT", "EReplyCategory", Pcc.Game, "Category"),
+                        new NoneProperty()
+                    });
+                }
+
+                replyList.Insert(GetCloneInsertionIndex(replyList.Count, insertionIndex), clonedLink);
+                sourceNode.NodeProp.Properties.AddOrReplaceProp(replyList);
+            }
+        }
+
+        private static int GetBulkCloneLinkInsertionIndex(DiagNode sourceGraphNode, List<DiagEdEdge> inputEdges, SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            return insertionPosition switch
+            {
+                SpeakerNodeCloneInsertionPosition.TopOfList => 0,
+                SpeakerNodeCloneInsertionPosition.BottomOfList => int.MaxValue,
+                _ => GetBulkCloneRelativeLinkInsertionIndex(sourceGraphNode, inputEdges, insertionPosition)
+            };
+        }
+
+        private static int GetBulkCloneRelativeLinkInsertionIndex(DiagNode sourceGraphNode, List<DiagEdEdge> inputEdges, SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            foreach (var inputEdge in inputEdges)
+            {
+                if (inputEdge.originator is not DiagNode inputNode)
+                {
+                    continue;
+                }
+
+                int sourceLinkIndex = inputNode.Outlinks.FindIndex(outlink => outlink.Edges.Contains(inputEdge));
+                if (sourceLinkIndex >= 0)
+                {
+                    return insertionPosition == SpeakerNodeCloneInsertionPosition.AboveClone
+                        ? sourceLinkIndex
+                        : sourceLinkIndex + 1;
+                }
+            }
+
+            return insertionPosition == SpeakerNodeCloneInsertionPosition.AboveClone
+                ? 0
+                : sourceGraphNode?.InputEdges.Count ?? int.MaxValue;
+        }
+
+        private int GetBulkCloneStartInsertionIndex(DiagNode sourceGraphNode, SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            return insertionPosition switch
+            {
+                SpeakerNodeCloneInsertionPosition.TopOfList => 0,
+                SpeakerNodeCloneInsertionPosition.BottomOfList => SelectedConv?.StartingList.Count ?? int.MaxValue,
+                _ => GetBulkCloneRelativeStartInsertionIndex(sourceGraphNode, insertionPosition)
+            };
+        }
+
+        private int GetBulkCloneRelativeStartInsertionIndex(DiagNode sourceGraphNode, SpeakerNodeCloneInsertionPosition insertionPosition)
+        {
+            var sourceStart = sourceGraphNode?.InputEdges
+                .Select(edge => edge.originator)
+                .OfType<DStart>()
+                .OrderBy(start => start.Order)
+                .FirstOrDefault();
+
+            if (sourceStart == null)
+            {
+                return insertionPosition == SpeakerNodeCloneInsertionPosition.AboveClone
+                    ? 0
+                    : SelectedConv?.StartingList.Count ?? int.MaxValue;
+            }
+
+            return insertionPosition == SpeakerNodeCloneInsertionPosition.AboveClone
+                ? sourceStart.Order
+                : sourceStart.Order + 1;
         }
 
         private bool InterpDataContainsFaceOnlyVoTrack(ExportEntry interpData)
@@ -8678,7 +9087,8 @@ namespace LegendaryExplorer.DialogueEditor
             if (command == "CloneReply")
             {
                 isReply = true;
-                newIndex = GetCloneInsertionIndex(SelectedConv.ReplyList.Count, nodeInsertionIndex ?? SelectedConv.ReplyList.Count);
+                int originalReplyCount = SelectedConv.ReplyList.Count;
+                newIndex = GetCloneInsertionIndex(originalReplyCount, nodeInsertionIndex ?? originalReplyCount);
                 var replyprop = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_ReplyList");
                 string typeName = "BioDialogReplyNode";
                 PropertyCollection props = new();
@@ -8689,7 +9099,7 @@ namespace LegendaryExplorer.DialogueEditor
                         props.AddOrReplaceProp(new ArrayProperty<IntProperty>(op.Name));
                         continue;
                     }
-                    props.AddOrReplaceProp(op);
+                    props.AddOrReplaceProp(op.DeepClone());
                 }
                 props.AddOrReplaceProp(new NoneProperty());
                 replyprop.Insert(newIndex, new StructProperty(typeName, props));
@@ -8704,13 +9114,18 @@ namespace LegendaryExplorer.DialogueEditor
                 nodeExtended.FaceFX_Female = SelectedDialogueNode.FaceFX_Female;
                 nodeExtended.FaceFX_Male = SelectedDialogueNode.FaceFX_Male;
                 SelectedConv.ReplyList.Insert(newIndex, nodeExtended);
+                if (newIndex < originalReplyCount)
+                {
+                    ShiftConversationLinksForInsertedNode(insertedNodeIsReply: true, newIndex);
+                }
                 ReindexConversationNodeCounts();
                 RecreateNodesToProperties(SelectedConv);
                 node = new DiagNodeReply(this, SelectedConv.ReplyList[newIndex], newX, newY, graphEditor);
             }
             else if (command == "CloneEntry")
             {
-                newIndex = GetCloneInsertionIndex(SelectedConv.EntryList.Count, nodeInsertionIndex ?? SelectedConv.EntryList.Count);
+                int originalEntryCount = SelectedConv.EntryList.Count;
+                newIndex = GetCloneInsertionIndex(originalEntryCount, nodeInsertionIndex ?? originalEntryCount);
                 var entryprop = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList");
                 string typeName = "BioDialogEntryNode";
                 PropertyCollection props = new();
@@ -8721,7 +9136,7 @@ namespace LegendaryExplorer.DialogueEditor
                         props.AddOrReplaceProp(new ArrayProperty<StructProperty>(op.Name));
                         continue;
                     }
-                    props.AddOrReplaceProp(op);
+                    props.AddOrReplaceProp(op.DeepClone());
                 }
                 if (replacementSpeaker != null)
                 {
@@ -8740,6 +9155,10 @@ namespace LegendaryExplorer.DialogueEditor
                 nodeExtended.FaceFX_Female = SelectedDialogueNode.FaceFX_Female;
                 nodeExtended.FaceFX_Male = SelectedDialogueNode.FaceFX_Male;
                 SelectedConv.EntryList.Insert(newIndex, nodeExtended);
+                if (newIndex < originalEntryCount)
+                {
+                    ShiftConversationLinksForInsertedNode(insertedNodeIsReply: false, newIndex);
+                }
                 ReindexConversationNodeCounts();
                 RecreateNodesToProperties(SelectedConv);
                 node = new DiagNodeEntry(this, SelectedConv.EntryList[newIndex], newX, newY, graphEditor);
