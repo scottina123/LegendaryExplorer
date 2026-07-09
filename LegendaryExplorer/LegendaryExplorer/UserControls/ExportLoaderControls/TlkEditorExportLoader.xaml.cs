@@ -112,6 +112,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool xmlUp;
 
         private const string OpenHighestMountedBaseTlksMenuHeader = "Open highest mounted base TLKs";
+        private const string SaveToAllLanguageTlksMenuHeader = "Save to all TLK languages in folder";
         private static readonly string[] BaseTlkFileNames =
         [
             "BIOGame_INT.tlk",
@@ -123,6 +124,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             "DLC_HEN_PR_INT.tlk",
             "DLC_Shared_INT.tlk"
         ];
+        private static readonly Regex LanguageTlkFileNamePattern = new(@"^(?<prefix>.+_)(?<language>[A-Z]{3})\.tlk$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private readonly record struct TlkSearchMatch(int RowIndex, TLKStringRef Item, int ColumnIndex, int StartIndex, int Length);
 
@@ -739,6 +741,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             _hostedWindow = elhw;
             AddOpenHighestMountedBaseTlksMenuItem(elhw);
+            AddSaveToAllLanguageTlksMenuItem(elhw);
+        }
+
+        private void AddSaveToAllLanguageTlksMenuItem(ExportLoaderHostedWindow elhw)
+        {
+            MenuItem fileMenu = elhw.MainMenu.Items.OfType<MenuItem>()
+                                       .FirstOrDefault(menuItem => string.Equals(menuItem.Header?.ToString()?.Replace("_", ""), "File", StringComparison.OrdinalIgnoreCase));
+            if (fileMenu is null || fileMenu.Items.OfType<MenuItem>().Any(menuItem => string.Equals(menuItem.Header?.ToString(), SaveToAllLanguageTlksMenuHeader, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var menuItem = new MenuItem
+            {
+                Header = SaveToAllLanguageTlksMenuHeader,
+                ToolTip = "Save the current TLK data to every matching language TLK in the same folder.",
+                Command = new GenericCommand(SaveCurrentTlkToAllLanguageTlks, CanSaveCurrentTlkToAllLanguageTlks)
+            };
+
+            MenuItem saveAsItem = fileMenu.Items.OfType<MenuItem>()
+                                             .FirstOrDefault(item => string.Equals(item.Header?.ToString(), "Save As", StringComparison.OrdinalIgnoreCase));
+            int saveAsItemIndex = saveAsItem is not null ? fileMenu.Items.IndexOf(saveAsItem) : -1;
+            fileMenu.Items.Insert(saveAsItemIndex >= 0 ? saveAsItemIndex + 1 : fileMenu.Items.Count, menuItem);
         }
 
         private void AddOpenHighestMountedBaseTlksMenuItem(ExportLoaderHostedWindow elhw)
@@ -1228,6 +1253,142 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
             //throw new NotImplementedException();
 
+        }
+
+        private bool CanSaveCurrentTlkToAllLanguageTlks()
+        {
+            return CurrentLoadedExport is null
+                   && _currentMe2Me3Me2Me3TalkFile is not null
+                   && !string.IsNullOrWhiteSpace(CurrentLoadedFile)
+                   && File.Exists(CurrentLoadedFile)
+                   && GetLanguageSiblingTlkFiles(CurrentLoadedFile).Count > 1;
+        }
+
+        private void SaveCurrentTlkToAllLanguageTlks()
+        {
+            if (CurrentLoadedExport is not null || _currentMe2Me3Me2Me3TalkFile is null || string.IsNullOrWhiteSpace(CurrentLoadedFile))
+            {
+                MessageBox.Show("This option is only available for TLK files loaded from disk.", "Save to all TLK languages", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            List<string> languageTlks = GetLanguageSiblingTlkFiles(CurrentLoadedFile);
+            if (languageTlks.Count <= 1)
+            {
+                MessageBox.Show("No matching language TLK files were found in the current TLK folder.", "Save to all TLK languages", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string languageList = string.Join(Environment.NewLine, languageTlks.Select(Path.GetFileName));
+            MessageBoxResult result = MessageBox.Show(
+                $"This will overwrite {languageTlks.Count} TLK files with the current TLK data:\n\n{languageList}\n\nContinue?",
+                "Save to all TLK languages",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            NormalizeLoadedStrings();
+
+            List<TLKStringRef> stringsToSave = CloneTlkStrings(LoadedStrings);
+            var savedFiles = new List<string>();
+            var failedFiles = new List<string>();
+            foreach (string languageTlk in languageTlks)
+            {
+                try
+                {
+                    ME2ME3HuffmanCompression.SaveToTlkFile(languageTlk, stringsToSave);
+                    savedFiles.Add(languageTlk);
+                }
+                catch (Exception ex)
+                {
+                    failedFiles.Add($"{Path.GetFileName(languageTlk)}: {ex.Message}");
+                }
+            }
+
+            RefreshOpenTabsAfterLanguageTlkSave(savedFiles, stringsToSave);
+
+            MEGame currentGame = GetCurrentLoadedFileGame();
+            foreach (string savedFile in savedFiles)
+            {
+                RefreshLoadedTlksAfterSave(currentGame, savedFile);
+            }
+
+            if (failedFiles.Count > 0)
+            {
+                MessageBox.Show(
+                    $"Saved {savedFiles.Count} TLK files, but these files failed:\n\n{string.Join(Environment.NewLine, failedFiles)}",
+                    "Save to all TLK languages",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            MessageBox.Show($"Saved {savedFiles.Count} TLK files.", "Save to all TLK languages", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private static List<string> GetLanguageSiblingTlkFiles(string tlkPath)
+        {
+            if (!TryGetLanguageTlkFileParts(tlkPath, out string directory, out string fileNamePrefix))
+            {
+                return [];
+            }
+
+            try
+            {
+                return Directory.EnumerateFiles(directory, "*.tlk")
+                                .Where(filePath =>
+                                {
+                                    Match match = LanguageTlkFileNamePattern.Match(Path.GetFileName(filePath));
+                                    return match.Success && string.Equals(match.Groups["prefix"].Value, fileNamePrefix, StringComparison.OrdinalIgnoreCase);
+                                })
+                                .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        private static bool TryGetLanguageTlkFileParts(string tlkPath, out string directory, out string fileNamePrefix)
+        {
+            directory = Path.GetDirectoryName(tlkPath);
+            Match match = LanguageTlkFileNamePattern.Match(Path.GetFileName(tlkPath));
+            if (string.IsNullOrWhiteSpace(directory) || !match.Success)
+            {
+                fileNamePrefix = null;
+                return false;
+            }
+
+            fileNamePrefix = match.Groups["prefix"].Value;
+            return true;
+        }
+
+        private void RefreshOpenTabsAfterLanguageTlkSave(List<string> savedFiles, List<TLKStringRef> savedStrings)
+        {
+            foreach (TLKEditorTab tab in OpenTabs.Where(tab => savedFiles.Any(filePath => string.Equals(filePath, tab.FilePath, StringComparison.OrdinalIgnoreCase))))
+            {
+                tab.TalkFile = new ME2ME3TalkFile(tab.FilePath);
+                tab.LoadedStrings = CloneTlkStrings(savedStrings);
+                tab.IsModified = false;
+            }
+
+            if (ActiveTab is not null && savedFiles.Any(filePath => string.Equals(filePath, ActiveTab.FilePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                _currentMe2Me3Me2Me3TalkFile = ActiveTab.TalkFile;
+                LoadedStrings = ActiveTab.LoadedStrings;
+                RefreshVisibleStrings();
+                SetFileModified(false);
+            }
+        }
+
+        private static List<TLKStringRef> CloneTlkStrings(IEnumerable<TLKStringRef> strings)
+        {
+            return strings?.Select(stringRef => new TLKStringRef(stringRef.StringID, stringRef.Data, stringRef.Flags)).ToList() ?? [];
         }
 
         private void RefreshLoadedTlksAfterSave(MEGame game, string tlkPath, int exportNumber = 0)
