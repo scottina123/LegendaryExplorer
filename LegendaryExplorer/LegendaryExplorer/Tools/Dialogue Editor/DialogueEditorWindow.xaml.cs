@@ -6076,6 +6076,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             RecreateNodesToProperties(SelectedConv);
             RebuildGraphInPlace(rebuildStarts: true);
+            SelectedSpeaker = replacementSpeaker;
             ApplySpeakerNodeHighlighting();
 
             string skippedText = skippedCount > 0 ? $" {skippedCount} node(s) were skipped." : string.Empty;
