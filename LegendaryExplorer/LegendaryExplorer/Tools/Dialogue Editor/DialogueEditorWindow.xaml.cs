@@ -5531,7 +5531,7 @@ namespace LegendaryExplorer.DialogueEditor
             var speakerComboBox = new ComboBox
             {
                 ItemsSource = replacementSpeakers,
-                SelectedIndex = 0,
+                SelectedIndex = replacementSpeakers.Count - 1,
                 Margin = new Thickness(0, 4, 0, 0),
                 MinWidth = 300,
                 DisplayMemberPath = nameof(SpeakerExtended.DisplayName)
