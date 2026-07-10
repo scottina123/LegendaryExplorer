@@ -1686,6 +1686,103 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void ExportLineToXML_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLineEntry == null)
+            {
+                MessageBox.Show(Window.GetWindow(this), "Select a line to export first.", "No line selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SaveChanges();
+            string lineName = SelectedLineEntry.Line.NameAsString;
+            var sfd = new SaveFileDialog
+            {
+                Filter = "*.xml|*.xml",
+                AddExtension = true,
+                FileName = $"{SanitizeXmlFileName(lineName)}.xml",
+                CustomPlaces = AppDirectories.GameCustomPlaces
+            };
+            if (sfd.ShowDialog() == true)
+            {
+                SaveFaceFXLinesToXml(sfd.FileName, [SelectedLineEntry.Line]);
+            }
+        }
+
+        private void ExportAllLinesToXML_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show(Window.GetWindow(this), "There are no lines to export.", "No lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SaveChanges();
+            string exportName = CurrentLoadedExport?.ObjectNameString ?? "FaceFXLines";
+            var sfd = new SaveFileDialog
+            {
+                Filter = "*.xml|*.xml",
+                AddExtension = true,
+                FileName = $"{SanitizeXmlFileName(exportName)}_Lines.xml",
+                CustomPlaces = AppDirectories.GameCustomPlaces
+            };
+            if (sfd.ShowDialog() == true)
+            {
+                SaveFaceFXLinesToXml(sfd.FileName, Lines.Select(entry => entry.Line));
+            }
+        }
+
+        private void SaveFaceFXLinesToXml(string fileName, IEnumerable<FaceFXLine> lines)
+        {
+            var doc = new XDocument(
+                new XDeclaration("1.0", "UTF-8", null),
+                new XElement("actor",
+                    new XAttribute("name", CurrentLoadedExport?.ObjectNameString ?? "FaceFX"),
+                    new XAttribute("version", "1740"),
+                    new XAttribute("path", ""),
+                    new XElement("animation_groups",
+                        new XElement("animation_group",
+                            new XAttribute("name", CurrentLoadedExport?.ObjectNameString ?? "FaceFX"),
+                            lines.Select(CreateFaceFXLineXml)))));
+
+            doc.Save(fileName);
+        }
+
+        private XElement CreateFaceFXLineXml(FaceFXLine line)
+        {
+            return new XElement("animation",
+                new XAttribute("name", line.NameAsString),
+                new XAttribute("id", line.ID ?? ""),
+                new XAttribute("path", line.Path ?? ""),
+                new XAttribute("index", line.Index),
+                new XElement("curves", GetLineCurveElements(line)));
+        }
+
+        private IEnumerable<XElement> GetLineCurveElements(FaceFXLine line)
+        {
+            for (int i = 0, pointIndex = 0; i < line.AnimationNames.Count; i++)
+            {
+                string curveName = FaceFX.Names[line.AnimationNames[i]];
+                int pointCount = line.NumKeys[i];
+                yield return new XElement("curve",
+                    new XAttribute("name", curveName),
+                    string.Join(" ", line.Points.Skip(pointIndex).Take(pointCount).SelectMany(point => new[]
+                    {
+                        point.time.ToString("F6", CultureInfo.InvariantCulture),
+                        point.weight.ToString("F6", CultureInfo.InvariantCulture),
+                        point.inTangent.ToString("F6", CultureInfo.InvariantCulture),
+                        point.leaveTangent.ToString("F6", CultureInfo.InvariantCulture)
+                    })));
+                pointIndex += pointCount;
+            }
+        }
+
+        private static string SanitizeXmlFileName(string fileName)
+        {
+            string sanitized = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            return string.IsNullOrWhiteSpace(sanitized) ? "FaceFXLine" : sanitized;
+        }
+
         private void OffsetKeysAfterTime_Click(object sender, RoutedEventArgs e)
         {
             string startS = PromptDialog.Prompt(this, "Please enter the start time (keys at or after this time will be offset):");

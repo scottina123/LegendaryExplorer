@@ -45,6 +45,7 @@
                     <MenuItem Header="Re-assign Line IDs to new range" Click="ReAssignLineIds_Click"/>
                     <MenuItem Header="Auto Index Lines" Click="AutoIndexLines_Click" ToolTip="Re-index all lines starting from 0, incrementing by 1"/>
                     <MenuItem Header="Add Lines from XML" Click="AddLinesFromXML_Click"/>
+                        <MenuItem Header="Export All Lines to XML" Click="ExportAllLinesToXML_Click"/>
                     <MenuItem Header="Add Audio from Folder" Click="AddAudioFromFolder_Click" ToolTip="Add lines from WwiseEvents in a package folder"/>
                     <MenuItem Header="Import Audio into Male/Female FaceFX Assets" Click="ImportAudioIntoMirroredFaceFXAssets_Click" ToolTip="Import WAV files into the sibling audio folder, add new lines to both paired FaceFX assets, and optionally generate FaceFX for only those new lines"/>
                     <Separator/>
@@ -81,6 +82,7 @@
                                     <MenuItem Header="Delete Section of line" Click="DelLineSec_Click"/>
                                     <MenuItem Header="Import Section of line" Click="ImpLineSec_Click"/>
                                     <MenuItem Header="Export Section of line" Click="ExpLineSec_Click"/>
+                                    <MenuItem Header="Export Line to XML" Click="ExportLineToXML_Click"/>
                                     <MenuItem Header="Offset keys after time" Click="OffsetKeysAfterTime_Click" />
                                     <MenuItem Header="Clear all 'm__' lip sync keys" Click="ClearLipSyncKeys_Click"/>
                                     <MenuItem Header="Clear all Animations" Click="ClearAnimations_Click"/>
