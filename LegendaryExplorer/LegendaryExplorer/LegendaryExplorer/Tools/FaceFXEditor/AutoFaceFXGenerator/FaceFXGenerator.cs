@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LegendaryExplorer.Resources;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using static LegendaryExplorer.UserControls.ExportLoaderControls.FaceFXAnimSetEditorControl;
@@ -88,6 +89,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
         private float _audioDuration;
         private List<AmplitudeData> _amplitudeData;
         private List<PhonemeData> _phonemes; // Store phoneme data for use by jaw animations
+        private static readonly Lazy<FxaAnimationData> QuarianReferenceFaceFx = new(() => FxaXmlParser.ParseFxaXml(EmbeddedResources.QuarianFaceFxReference));
 
         /// <summary>
         /// Contains the last error message if generation failed
@@ -135,6 +137,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
                 // Clear existing lip sync animations
                 ClearLipSyncAnimations();
+
+                if (_options.Species == FaceFXSpecies.Quarian)
+                {
+                    GenerateQuarianReferenceAnimations();
+                    LastError = null;
+                    return true;
+                }
 
                 // ALWAYS generate text-based phonemes - this is the foundation
                 List<PhonemeData> textPhonemes = null;
@@ -870,6 +879,49 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
 
                 AddAnimation(animName, points);
             }
+        }
+
+        private void GenerateQuarianReferenceAnimations()
+        {
+            var referenceData = QuarianReferenceFaceFx.Value;
+            float duration = Math.Max(_audioDuration, 1.0f);
+            float referenceDuration = referenceData.Animations.Values
+                .SelectMany(anim => anim.Keys)
+                .Select(key => key.Time)
+                .DefaultIfEmpty(duration)
+                .Max();
+            float timeScale = referenceDuration > 0.01f ? duration / referenceDuration : 1.0f;
+
+            foreach ((string animName, FxaAnimation referenceAnimation) in referenceData.Animations)
+            {
+                if (referenceAnimation.Keys.Count == 0)
+                {
+                    continue;
+                }
+
+                var points = referenceAnimation.Keys
+                    .Select(key => new FaceFXControlPoint
+                    {
+                        time = key.Time * timeScale,
+                        weight = ScaleQuarianReferenceWeight(animName, key.Value),
+                        inTangent = key.InTangent,
+                        leaveTangent = key.OutTangent
+                    })
+                    .OrderBy(point => point.time)
+                    .ToList();
+
+                AddAnimation(animName, points);
+            }
+        }
+
+        private float ScaleQuarianReferenceWeight(string animName, float weight)
+        {
+            if (animName == "jawOpen")
+            {
+                return Math.Clamp(weight * _options.LipSyncIntensity, 0f, 1f);
+            }
+
+            return weight;
         }
 
 

@@ -47,6 +47,7 @@
 		<None Remove="Resources\HLSL.xshd" />
 		<None Remove="Resources\Images\bink.jpg" />
 		<None Remove="Resources\Images\GameIcons\UDK_48.ico" />
+		<None Remove="WwiseTestData\QurianFacefx.xml" />
 		<Compile Remove="Resources\exec\**" />
 		<Compile Remove="Resources\FileAssocIcons\**" />
 		<Compile Remove="Tools\PlotEditor\SFXGame\biodefine\**" />
@@ -100,6 +101,7 @@
 		<!-- Kismet font being an EmbeddedResource instead of a Resource like the other fonts is intentional, do not change it!-->
 		<EmbeddedResource Include="Resources\Fonts\KismetFont.ttf" />
 		<EmbeddedResource Include="Resources\StandardShader.hlsl" />
+		<EmbeddedResource Include="WwiseTestData\QurianFacefx.xml" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\..\SharedProjects\Be.Windows.Forms.HexBox\Be.Windows.Forms.HexBox.csproj" />
