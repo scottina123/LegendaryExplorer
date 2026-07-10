@@ -12,7 +12,10 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
 using LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments;
+using LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -93,6 +96,101 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             List<string> Messages,
             List<string> Failures);
 
+        private sealed record FaceFxFolderScanSummary(
+            List<string> PackageFiles,
+            int FilesWithMatches,
+            int FemaleAssetCount,
+            int FemaleLineCount,
+            int MaleAssetCount,
+            int MaleLineCount,
+            int UnknownGenderAssetCount,
+            List<string> Failures);
+
+        private sealed record FaceFxGenerationSettings(
+            FaceFXSpecies Species,
+            float LipSyncIntensity,
+            float BlinkFrequency);
+
+        private sealed record FaceFxGenerationSummary(
+            int FilesScanned,
+            int FilesWithMatches,
+            int ModifiedFileCount,
+            int AssetCount,
+            int LineCount,
+            int SkippedLineCount,
+            int ErrorCount,
+            List<string> Messages);
+
+        private sealed class FaceFxAnimSetBinary(FaceFXAnimSet animSet) : FaceFXAnimSetEditorControl.IFaceFXBinary
+        {
+            public List<string> Names => animSet.Names;
+            public List<FaceFXLine> Lines => animSet.Lines;
+            public ObjectBinary Binary => animSet;
+        }
+
+        private static FaceFxFolderScanSummary ScanFolderForMatchingFaceFxAnimSets(string folderPath, string nameFragment)
+        {
+            List<string> packageFiles = Directory.EnumerateFiles(folderPath, "*.pcc", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            int filesWithMatches = 0;
+            int femaleAssetCount = 0;
+            int femaleLineCount = 0;
+            int maleAssetCount = 0;
+            int maleLineCount = 0;
+            int unknownGenderAssetCount = 0;
+            var failures = new List<string>();
+
+            foreach (string packageFile in packageFiles)
+            {
+                try
+                {
+                    using var package = MEPackageHandler.OpenMEPackage(packageFile, forceLoadFromDisk: true);
+                    List<ExportEntry> matchingAnimSets = GetMatchingFaceFxAnimSets(package, nameFragment);
+                    if (matchingAnimSets.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    filesWithMatches++;
+                    foreach (ExportEntry animSetExport in matchingAnimSets)
+                    {
+                        FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
+                        if (animSetExport.ObjectNameString.EndsWith("_F", StringComparison.OrdinalIgnoreCase))
+                        {
+                            femaleAssetCount++;
+                            femaleLineCount += animSet.Lines.Count;
+                        }
+                        else if (animSetExport.ObjectNameString.EndsWith("_M", StringComparison.OrdinalIgnoreCase))
+                        {
+                            maleAssetCount++;
+                            maleLineCount += animSet.Lines.Count;
+                        }
+                        else
+                        {
+                            unknownGenderAssetCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"FAILED TO SCAN {Path.GetFileName(packageFile)}: {ex.Message}");
+                }
+            }
+
+            return new FaceFxFolderScanSummary(packageFiles, filesWithMatches, femaleAssetCount, femaleLineCount,
+                maleAssetCount, maleLineCount, unknownGenderAssetCount, failures);
+        }
+
+        private static List<ExportEntry> GetMatchingFaceFxAnimSets(IMEPackage package, string nameFragment)
+        {
+            return package.Exports
+                .Where(exp => exp.ClassName == "FaceFXAnimSet"
+                              && exp.ObjectNameString.Contains(nameFragment, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(exp => exp.ObjectNameString, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         private sealed record DuplicateIndexReindexTarget(
             string ParentPath,
             string ObjectName,
@@ -115,6 +213,379 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             Applied,
             Cancelled,
             Unsupported
+        }
+
+        public static async void GenerateFaceFxForAnimSetsMatchingName(PackageEditorWindow pew)
+        {
+            if (pew == null)
+            {
+                return;
+            }
+
+            string nameFragment = PromptDialog.Prompt(pew,
+                "Enter part of the FaceFXAnimSet name to generate. Matching is case-insensitive and includes both _F and _M versions.",
+                "Generate matching FaceFXAnimSets");
+            if (string.IsNullOrWhiteSpace(nameFragment))
+            {
+                return;
+            }
+            nameFragment = nameFragment.Trim();
+
+            var folderDialog = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                EnsurePathExists = true,
+                Title = "Select folder containing PCC files"
+            };
+            if (folderDialog.ShowDialog(pew) != CommonFileDialogResult.Ok)
+            {
+                return;
+            }
+
+            try
+            {
+                pew.BusyText = "Scanning PCC files for matching FaceFXAnimSets";
+                pew.IsBusy = true;
+                FaceFxFolderScanSummary scan = await Task.Run(() =>
+                    ScanFolderForMatchingFaceFxAnimSets(folderDialog.FileName, nameFragment));
+                pew.IsBusy = false;
+
+                if (scan.PackageFiles.Count == 0)
+                {
+                    MessageBox.Show(pew,
+                        "No PCC files were found in the selected folder or its subfolders.",
+                        "Generate matching FaceFXAnimSets",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                if (scan.FemaleAssetCount == 0 && scan.MaleAssetCount == 0)
+                {
+                    string noMatchesMessage = $"No _F or _M FaceFXAnimSet exports contain '{nameFragment}' in their name across {scan.PackageFiles.Count} PCC file(s).";
+                    if (scan.UnknownGenderAssetCount > 0)
+                    {
+                        noMatchesMessage += $"\n\nFound {scan.UnknownGenderAssetCount} matching asset(s) without an _F or _M suffix.";
+                    }
+                    if (scan.Failures.Count > 0)
+                    {
+                        noMatchesMessage += $"\n\n{scan.Failures.Count} file(s) could not be scanned.";
+                    }
+
+                    MessageBox.Show(pew, noMatchesMessage, "Generate matching FaceFXAnimSets", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                FaceFxGenerationSettings femaleSettings = null;
+                FaceFxGenerationSettings maleSettings = null;
+                if (scan.FemaleAssetCount > 0
+                    && !TryGetFaceFxGenerationSettings(pew, scan.FemaleLineCount, isFemale: true, out femaleSettings))
+                {
+                    return;
+                }
+
+                if (scan.MaleAssetCount > 0
+                    && !TryGetFaceFxGenerationSettings(pew, scan.MaleLineCount, isFemale: false, out maleSettings))
+                {
+                    return;
+                }
+
+                string confirmation = $"Generate FaceFX in {scan.FilesWithMatches} of {scan.PackageFiles.Count} PCC file(s)?\n\n" +
+                                      $"Female: {scan.FemaleAssetCount} asset(s), {scan.FemaleLineCount} line(s)\n" +
+                                      $"Male: {scan.MaleAssetCount} asset(s), {scan.MaleLineCount} line(s)";
+                if (scan.UnknownGenderAssetCount > 0)
+                {
+                    confirmation += $"\nSkipped without _F/_M suffix: {scan.UnknownGenderAssetCount} asset(s)";
+                }
+                confirmation += "\n\nFiles will be modified in place. Make sure you have a backup and that these files are not open elsewhere in Legendary Explorer.";
+                if (MessageBox.Show(pew,
+                        confirmation,
+                        "Generate matching FaceFXAnimSets",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+
+                pew.BusyText = "Generating matching FaceFXAnimSets in PCC files";
+                pew.IsBusy = true;
+                FaceFxGenerationSummary summary = await Task.Run(() =>
+                    GenerateFaceFxForFolder(scan, nameFragment, femaleSettings, maleSettings));
+                pew.IsBusy = false;
+
+                string message = $"FaceFX folder generation complete.\n\nPCC files scanned: {summary.FilesScanned}\n" +
+                                 $"Files with matches: {summary.FilesWithMatches}\nFiles modified: {summary.ModifiedFileCount}\n" +
+                                 $"Assets generated: {summary.AssetCount}\nLines generated: {summary.LineCount}\n" +
+                                 $"Skipped lines/assets: {summary.SkippedLineCount}\nErrors: {summary.ErrorCount}";
+                if (summary.Messages.Count > 0)
+                {
+                    message += "\n\n" + string.Join("\n", summary.Messages.Take(15));
+                    if (summary.Messages.Count > 15)
+                    {
+                        message += $"\n...and {summary.Messages.Count - 15} more message(s).";
+                    }
+                }
+
+                MessageBox.Show(pew,
+                    message,
+                    "Generate matching FaceFXAnimSets",
+                    MessageBoxButton.OK,
+                    summary.ErrorCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(pew, ex.FlattenException(), "Generate matching FaceFXAnimSets", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                pew.IsBusy = false;
+            }
+        }
+
+        private static bool TryGetFaceFxGenerationSettings(PackageEditorWindow owner, int lineCount, bool isFemale,
+            out FaceFxGenerationSettings settings)
+        {
+            string genderName = isFemale ? "Female" : "Male";
+            var dialog = new BulkFaceFXGenerationDialog(
+                lineCount,
+                owner,
+                isFemale ? FaceFXSpecies.HumanFemale : FaceFXSpecies.HumanMale)
+            {
+                Title = $"Bulk FaceFX Generation - All {genderName} Assets"
+            };
+            if (dialog.ShowDialog() != true || !dialog.Confirmed)
+            {
+                settings = null;
+                return false;
+            }
+
+            settings = new FaceFxGenerationSettings(dialog.SelectedSpeciesEnum, dialog.LipSyncIntensity, dialog.BlinkFrequency);
+            return true;
+        }
+
+        private static FaceFxGenerationSummary GenerateFaceFxForFolder(FaceFxFolderScanSummary scan, string nameFragment,
+            FaceFxGenerationSettings femaleSettings, FaceFxGenerationSettings maleSettings)
+        {
+            int filesWithMatches = 0;
+            int modifiedFileCount = 0;
+            int assetCount = 0;
+            int lineCount = 0;
+            int skippedCount = 0;
+            int errorCount = scan.Failures.Count;
+            var messages = new List<string>(scan.Failures);
+
+            foreach (string packageFile in scan.PackageFiles)
+            {
+                try
+                {
+                    using var package = MEPackageHandler.OpenMEPackage(packageFile, forceLoadFromDisk: true);
+                    List<ExportEntry> animSetExports = GetMatchingFaceFxAnimSets(package, nameFragment);
+                    if (animSetExports.Count == 0)
+                    {
+                        continue;
+                    }
+                    filesWithMatches++;
+
+                    foreach (ExportEntry animSetExport in animSetExports)
+                    {
+                        bool isFemaleAsset;
+                        FaceFxGenerationSettings settings;
+                        if (animSetExport.ObjectNameString.EndsWith("_F", StringComparison.OrdinalIgnoreCase))
+                        {
+                            isFemaleAsset = true;
+                            settings = femaleSettings;
+                        }
+                        else if (animSetExport.ObjectNameString.EndsWith("_M", StringComparison.OrdinalIgnoreCase))
+                        {
+                            isFemaleAsset = false;
+                            settings = maleSettings;
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            messages.Add($"Skipped {Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}: name does not end in _F or _M.");
+                            continue;
+                        }
+
+                        if (settings == null)
+                        {
+                            skippedCount++;
+                            messages.Add($"Skipped {Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}: no {(!isFemaleAsset ? "male" : "female")} settings were configured.");
+                            continue;
+                        }
+
+                        FaceFXAnimSet animSet;
+                        try
+                        {
+                            animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
+                        }
+                        catch (Exception ex)
+                        {
+                            errorCount++;
+                            messages.Add($"{Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}: {ex.Message}");
+                            continue;
+                        }
+
+                        if (animSet.Lines.Count == 0)
+                        {
+                            skippedCount++;
+                            messages.Add($"Skipped {Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}: no FaceFX lines.");
+                            continue;
+                        }
+
+                        var faceFxBinary = new FaceFxAnimSetBinary(animSet);
+                        var options = new FaceFXGenerationOptions
+                        {
+                            CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
+                            Species = settings.Species,
+                            GenerateJawAnimation = true,
+                            GenerateBlinkAnimation = true,
+                            GenerateEyebrowAnimation = true,
+                            GenerateHeadMovement = false,
+                            LipSyncIntensity = settings.LipSyncIntensity,
+                            BlinkFrequency = settings.BlinkFrequency,
+                            UseAudioAmplitude = true,
+                            FxaData = null,
+                            UseTextFallback = true
+                        };
+                        int generatedForAsset = 0;
+                        foreach (FaceFXLine line in animSet.Lines)
+                        {
+                            if (!TryGetFaceFxLineTlkId(line, out int tlkId))
+                            {
+                                skippedCount++;
+                                continue;
+                            }
+
+                            string tlkText = TLKManagerWPF.GlobalFindStrRefbyID(tlkId, package);
+                            if (string.IsNullOrWhiteSpace(tlkText))
+                            {
+                                skippedCount++;
+                                continue;
+                            }
+
+                            try
+                            {
+                                ExportEntry audioExport = FindFaceFxVoiceStream(animSetExport, tlkId, isMale: !isFemaleAsset);
+                                var generator = new FaceFXGenerator(faceFxBinary, line, tlkText, audioExport, options);
+                                if (generator.Generate())
+                                {
+                                    generatedForAsset++;
+                                    lineCount++;
+                                }
+                                else
+                                {
+                                    errorCount++;
+                                    messages.Add($"{Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}.{line.NameAsString}: {generator.LastError ?? "Unknown error"}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errorCount++;
+                                messages.Add($"{Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}.{line.NameAsString}: {ex.Message}");
+                            }
+                        }
+
+                        animSetExport.WriteBinary(animSet);
+                        assetCount++;
+                        messages.Add($"{Path.GetFileName(packageFile)}:{animSetExport.ObjectNameString}: generated {generatedForAsset} of {animSet.Lines.Count} line(s).");
+                    }
+
+                    if (package.IsModified)
+                    {
+                        package.Save();
+                        modifiedFileCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    messages.Add($"FAILED {Path.GetFileName(packageFile)}: {ex.Message}");
+                }
+            }
+
+            return new FaceFxGenerationSummary(scan.PackageFiles.Count, filesWithMatches, modifiedFileCount,
+                assetCount, lineCount, skippedCount, errorCount, messages);
+        }
+
+        private static bool TryGetFaceFxLineTlkId(FaceFXLine line, out int tlkId)
+        {
+            foreach (string value in new[] { line.ID, line.NameAsString })
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                string idText = value;
+                int voPosition = idText.IndexOf("VO_", StringComparison.OrdinalIgnoreCase);
+                if (voPosition >= 0)
+                {
+                    idText = idText[(voPosition + 3)..].TrimEnd('M', 'm', 'F', 'f').TrimEnd('_');
+                }
+
+                if (int.TryParse(idText, out tlkId))
+                {
+                    return true;
+                }
+            }
+
+            tlkId = 0;
+            return false;
+        }
+
+        private static ExportEntry FindFaceFxVoiceStream(ExportEntry animSetExport, int tlkId, bool isMale)
+        {
+            string gender = isMale ? "m" : "f";
+            string eventName = $"VO_{tlkId:D6}_{gender}";
+            string paddedId = $"{tlkId:D8}";
+            string genderedPaddedId = $"{paddedId}_{gender}";
+            string bracketedId = $"_{tlkId}_";
+            string genderedBracketedId = $"{bracketedId}{gender}";
+            ExportEntry eventExport = animSetExport.FileRef.Exports.FirstOrDefault(exp =>
+                exp.ClassName == "WwiseEvent" && exp.ObjectName.Name.Contains(eventName, StringComparison.OrdinalIgnoreCase));
+            if (eventExport != null)
+            {
+                WwiseEvent wwiseEvent = ObjectBinary.From<WwiseEvent>(eventExport);
+                if (wwiseEvent.Links != null)
+                {
+                    foreach (var link in wwiseEvent.Links)
+                    {
+                        List<ExportEntry> streams = link.WwiseStreams
+                            .Where(animSetExport.FileRef.IsUExport)
+                            .Select(animSetExport.FileRef.GetUExport)
+                            .ToList();
+                        ExportEntry match = FindFaceFxVoiceStreamByName(streams, genderedPaddedId, genderedBracketedId, paddedId, bracketedId);
+                        if (match != null)
+                        {
+                            return match;
+                        }
+                    }
+                }
+            }
+
+            return FindFaceFxVoiceStreamByName(
+                animSetExport.FileRef.Exports.Where(exp => exp.ClassName == "WwiseStream"),
+                genderedPaddedId,
+                genderedBracketedId,
+                paddedId,
+                bracketedId);
+        }
+
+        private static ExportEntry FindFaceFxVoiceStreamByName(IEnumerable<ExportEntry> streams, params string[] searchNames)
+        {
+            List<ExportEntry> streamList = streams.ToList();
+            foreach (string searchName in searchNames)
+            {
+                ExportEntry match = streamList.FirstOrDefault(exp =>
+                    exp.ObjectName.Name.Contains(searchName, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
         }
 
         public static void DeleteSectionOfLineForAllFaceFxAssets(PackageEditorWindow pew)

@@ -902,6 +902,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.FixBrokenPlayerFaceFxReferencesInFolder(GetPEWindow());
         }
 
+        private void GenerateFaceFxForMatchingAnimSets_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.GenerateFaceFxForAnimSetsMatchingName(GetPEWindow());
+        }
+
         private void MoveLargePackageStoredTexturesToTfc_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsScottina.MoveLargePackageStoredTexturesToTfc(GetPEWindow());
