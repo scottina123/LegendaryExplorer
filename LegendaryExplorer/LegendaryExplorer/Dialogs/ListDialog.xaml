@@ -61,6 +61,12 @@
                     Padding="3"
                     Margin="5,0,0,0"
                     Visibility="{Binding QuaternaryActionVisibility}"/>
+            <Button FlowDirection="LeftToRight"
+                    Click="QuinaryAction_Click"
+                    Content="{Binding QuinaryActionText}"
+                    Padding="3"
+                    Margin="5,0,0,0"
+                    Visibility="{Binding QuinaryActionVisibility}"/>
             <Label Name="ListDialog_Status" FlowDirection="LeftToRight" Content="Copied to clipboard" Margin="8,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
         </StackPanel>
         <ListView Name="ListDialog_List" HorizontalAlignment="Stretch" AlternationCount="2" 

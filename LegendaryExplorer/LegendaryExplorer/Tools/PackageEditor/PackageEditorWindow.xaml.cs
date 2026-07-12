@@ -3223,7 +3223,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                     $"#{kvp.Key.UIndex} {kvp.Key.ObjectName.Instanced}: {refName}"))).ToList(),
                             $"{prevTask.Result.Usages.Count} Objects that use '{name}'",
                             "There may be additional usages of this name in the unparsed binary of some objects", this)
-                    { DoubleClickEntryHandler = nameUsageDoubleClick };
+                    {
+                        DoubleClickEntryHandler = nameUsageDoubleClick,
+                        QuinaryActionText = $"Replace editable references to '{name}'",
+                        QuinaryActionHandler = () => ReplaceEditableNameReferences(name, prevTask.Result.Usages)
+                    };
                     if (prevTask.Result.AddableUsages.Count > 0)
                     {
                         dlg.SecondaryActionText = $"Add another name to {prevTask.Result.AddableUsages.Count} matching array entr{(prevTask.Result.AddableUsages.Count == 1 ? "y" : "ies")}";
@@ -3238,6 +3242,152 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     }
                     dlg.Show();
                 });
+            }
+        }
+
+        private void ReplaceEditableNameReferences(string sourceName, Dictionary<IEntry, List<string>> usages)
+        {
+            string replacementName = PromptDialog.Prompt(
+                this,
+                $"Enter the new name for editable references to '{sourceName}'. The original name-table entry will not be renamed.",
+                "Replace name references",
+                defaultValue: sourceName,
+                selectText: true)?.Trim();
+            if (string.IsNullOrEmpty(replacementName) || replacementName == sourceName)
+            {
+                return;
+            }
+
+            int usageCount = usages.Sum(usage => usage.Value.Count);
+            if (MessageBox.Show(
+                    this,
+                    $"Replace editable references to '{sourceName}' with '{replacementName}'?\n\nReferences stored only in binary data or read-only type metadata will be left unchanged.",
+                    "Replace name references",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            int replacedCount = 0;
+            int modifiedEntries = 0;
+            foreach (IEntry entry in usages.Keys)
+            {
+                int entryReplacementCount = 0;
+                switch (entry)
+                {
+                    case ExportEntry export:
+                        if (export.ObjectName.Name == sourceName)
+                        {
+                            export.ObjectName = ReplaceName(export.ObjectName, replacementName);
+                            entryReplacementCount++;
+                        }
+
+                        PropertyCollection properties = export.GetProperties();
+                        entryReplacementCount += ReplacePropertyNameReferences(properties, sourceName, replacementName);
+                        if (entryReplacementCount > 0)
+                        {
+                            export.WriteProperties(properties);
+                        }
+                        break;
+                    case ImportEntry import:
+                        if (import.ObjectName.Name == sourceName)
+                        {
+                            import.ObjectName = ReplaceName(import.ObjectName, replacementName);
+                            entryReplacementCount++;
+                        }
+                        if (import.PackageFile == sourceName)
+                        {
+                            import.PackageFile = replacementName;
+                            entryReplacementCount++;
+                        }
+                        if (import.ClassName == sourceName)
+                        {
+                            import.ClassName = replacementName;
+                            entryReplacementCount++;
+                        }
+                        break;
+                }
+
+                if (entryReplacementCount > 0)
+                {
+                    replacedCount += entryReplacementCount;
+                    modifiedEntries++;
+                }
+            }
+
+            if (replacedCount > 0)
+            {
+                RefreshNames();
+                RefreshView();
+                Preview(true);
+            }
+
+            int unchangedCount = Math.Max(0, usageCount - replacedCount);
+            MessageBox.Show(
+                this,
+                $"Replaced {replacedCount} reference{(replacedCount == 1 ? string.Empty : "s")} across {modifiedEntries} entr{(modifiedEntries == 1 ? "y" : "ies")}.\n" +
+                $"Left {unchangedCount} usage{(unchangedCount == 1 ? string.Empty : "s")} unchanged because they are binary-only or use read-only metadata.",
+                "Replace name references",
+                MessageBoxButton.OK,
+                unchangedCount == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+
+            static NameReference ReplaceName(NameReference currentName, string newName) => new(newName, currentName.Number);
+
+            static int ReplacePropertyNameReferences(PropertyCollection properties, string oldName, string newName, bool isInImmutable = false)
+            {
+                int replacementCount = 0;
+                foreach (Property property in properties)
+                {
+                    if (!isInImmutable && property.Name.Name == oldName)
+                    {
+                        property.Name = ReplaceName(property.Name, newName);
+                        replacementCount++;
+                    }
+
+                    switch (property)
+                    {
+                        case NameProperty nameProperty when nameProperty.Value.Name == oldName:
+                            nameProperty.Value = ReplaceName(nameProperty.Value, newName);
+                            replacementCount++;
+                            break;
+                        case DelegateProperty delegateProperty when delegateProperty.Value.FunctionName.Name == oldName:
+                            delegateProperty.Value = new ScriptDelegate(
+                                delegateProperty.Value.ContainingObjectUIndex,
+                                ReplaceName(delegateProperty.Value.FunctionName, newName));
+                            replacementCount++;
+                            break;
+                        case EnumProperty enumProperty when enumProperty.Value.Name == oldName:
+                            enumProperty.Value = ReplaceName(enumProperty.Value, newName);
+                            replacementCount++;
+                            break;
+                        case StructProperty structProperty:
+                            replacementCount += ReplacePropertyNameReferences(structProperty.Properties, oldName, newName, structProperty.IsImmutable);
+                            break;
+                        case ArrayProperty<NameProperty> nameArray:
+                            foreach (NameProperty arrayElement in nameArray.Where(element => element.Value.Name == oldName))
+                            {
+                                arrayElement.Value = ReplaceName(arrayElement.Value, newName);
+                                replacementCount++;
+                            }
+                            break;
+                        case ArrayProperty<EnumProperty> enumArray:
+                            foreach (EnumProperty arrayElement in enumArray.Where(element => element.Value.Name == oldName))
+                            {
+                                arrayElement.Value = ReplaceName(arrayElement.Value, newName);
+                                replacementCount++;
+                            }
+                            break;
+                        case ArrayProperty<StructProperty> structArray:
+                            foreach (StructProperty arrayElement in structArray)
+                            {
+                                replacementCount += ReplacePropertyNameReferences(arrayElement.Properties, oldName, newName, arrayElement.IsImmutable);
+                            }
+                            break;
+                    }
+                }
+
+                return replacementCount;
             }
         }
 
@@ -5757,10 +5907,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     if (update.Change == PackageChange.NameAdd) //names are 0 indexed
                     {
                         var nr = Pcc.Names[update.Index];
-                        NamesList.Add(new IndexedName(update.Index, nr));
+                        var indexedName = new IndexedName(update.Index, nr);
+                        if (update.Index < NamesList.Count)
+                        {
+                            NamesList[update.Index] = indexedName;
+                        }
+                        else
+                        {
+                            NamesList.Add(indexedName);
+                        }
+
+                        while (NamesList.Count > Pcc.NameCount)
+                        {
+                            NamesList.RemoveAt(NamesList.Count - 1);
+                        }
+
                         if (CurrentView == CurrentViewMode.Names)
                         {
-                            LeftSideList_ItemsSource.Add(new IndexedName(update.Index, nr));
+                            LeftSideList_ItemsSource.ReplaceAll(NamesList);
                         }
                     }
                     else if (update.Change == PackageChange.NameEdit)

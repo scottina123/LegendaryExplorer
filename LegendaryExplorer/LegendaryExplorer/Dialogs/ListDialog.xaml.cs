@@ -19,6 +19,7 @@ namespace LegendaryExplorer.Dialogs
         public Action SecondaryActionHandler { get; set; }
         public Action TertiaryActionHandler { get; set; }
         public Action QuaternaryActionHandler { get; set; }
+        public Action QuinaryActionHandler { get; set; }
         // General-purpose handler for arbitrary list items (strings, etc.)
         public Action<object> DoubleClickItemHandler { get; set; }
         private string topText;
@@ -28,6 +29,8 @@ namespace LegendaryExplorer.Dialogs
         private Visibility tertiaryActionVisibility = Visibility.Collapsed;
         private string quaternaryActionText;
         private Visibility quaternaryActionVisibility = Visibility.Collapsed;
+        private string quinaryActionText;
+        private Visibility quinaryActionVisibility = Visibility.Collapsed;
 
         public string TopText
         {
@@ -87,6 +90,24 @@ namespace LegendaryExplorer.Dialogs
         {
             get => quaternaryActionVisibility;
             set => SetProperty(ref quaternaryActionVisibility, value);
+        }
+
+        public string QuinaryActionText
+        {
+            get => quinaryActionText;
+            set
+            {
+                if (SetProperty(ref quinaryActionText, value))
+                {
+                    QuinaryActionVisibility = string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+                }
+            }
+        }
+
+        public Visibility QuinaryActionVisibility
+        {
+            get => quinaryActionVisibility;
+            set => SetProperty(ref quinaryActionVisibility, value);
         }
 
         private ListDialog(string title, string message, Window owner, int width = 0, int height = 0) : base("List Dialog", false)
@@ -171,6 +192,11 @@ namespace LegendaryExplorer.Dialogs
         private void QuaternaryAction_Click(object sender, RoutedEventArgs e)
         {
             QuaternaryActionHandler?.Invoke();
+        }
+
+        private void QuinaryAction_Click(object sender, RoutedEventArgs e)
+        {
+            QuinaryActionHandler?.Invoke();
         }
     }
 }
