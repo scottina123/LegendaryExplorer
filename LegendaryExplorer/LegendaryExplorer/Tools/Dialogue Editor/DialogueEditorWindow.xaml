@@ -316,6 +316,9 @@
                     <MenuItem Header="Test for looping paths" Command="{Binding TestPathsCommand}"
                               ToolTip="Test the dialogue for looping paths."
                               IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+                    <MenuItem Header="Clear All Plot Checks and Transitions" Command="{Binding ClearAllPlotDataCommand}"
+                              ToolTip="Clear all plot checks and plot transitions from every node in this conversation."
+                              IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
                     <Separator />
                     <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}" CommandParameter="Add"
                               ToolTip="Create a new start node"

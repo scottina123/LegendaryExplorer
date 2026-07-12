@@ -336,6 +336,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand NodeRemoveCommand { get; set; }
         public ICommand NodeDeleteAllLinksCommand { get; set; }
         public ICommand TestPathsCommand { get; set; }
+        public ICommand ClearAllPlotDataCommand { get; set; }
         public ICommand DefaultColorsCommand { get; set; }
         public ICommand StageDirectionsModCommand { get; set; }
         public ICommand RecenterCommand { get; set; }
@@ -682,6 +683,7 @@ namespace LegendaryExplorer.DialogueEditor
             NodeDeleteAllLinksCommand = new RelayCommand(DialogueNode_DeleteLinks);
             StageDirectionsModCommand = new RelayCommand(StageDirections_Modify);
             TestPathsCommand = new GenericCommand(TestPaths);
+            ClearAllPlotDataCommand = new GenericCommand(ClearAllPlotData, () => SelectedConv != null);
             DefaultColorsCommand = new GenericCommand(ResetColorsToDefault);
             RecenterCommand = new GenericCommand(graphEditor_PanTo);
             UpdateLayoutDefaultsCommand = new RelayCommand(UpdateLayoutDefaults);
@@ -1901,6 +1903,31 @@ namespace LegendaryExplorer.DialogueEditor
         {
             conv.SerializeNodes(pushtofile);
         }
+
+        private void ClearAllPlotData()
+        {
+            if (SelectedConv == null || MessageBox.Show(
+                    "Clear all plot checks and plot transitions from every node in this conversation?",
+                    "Clear Plot Data",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Warning) != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            foreach (var node in SelectedConv.EntryList.Concat(SelectedConv.ReplyList))
+            {
+                node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nConditionalFunc"));
+                node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nConditionalParam"));
+                node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nStateTransition"));
+                node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nStateTransitionParam"));
+            }
+
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            ForceRefreshPreserveLayout();
+        }
+
         private void SaveScriptsToProperties(ConversationExtended conv, bool pushtofile = true)
         {
             if (Pcc.Game.IsGame3())
