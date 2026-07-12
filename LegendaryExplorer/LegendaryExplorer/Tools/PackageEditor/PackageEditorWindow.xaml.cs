@@ -470,6 +470,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ImportEmbeddedFileCommand { get; set; }
         public ICommand ReindexCommand { get; set; }
         public ICommand TrashCommand { get; set; }
+        public ICommand TrashChildrenCommand { get; set; }
         public ICommand SetIndicesInTreeToZeroCommand { get; set; }
         public ICommand PackageHeaderViewerCommand { get; set; }
         public ICommand LECLEditorCommand { get; set; }
@@ -559,7 +560,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             FindReferencesCommand = new GenericCommand(FindReferencesToObject, EntryIsSelected);
             ReindexCommand = new GenericCommand(ReindexObjectByName, ExportIsSelected);
             SetIndicesInTreeToZeroCommand = new GenericCommand(SetIndicesInTreeToZero, TreeEntryIsSelected);
-            TrashCommand = new GenericCommand(TrashEntryAndChildren, TreeEntryIsSelected);
+            TrashCommand = new GenericCommand(() => TrashEntryAndChildren(true), () => TreeEntryIsSelected());
+            TrashChildrenCommand = new GenericCommand(() => TrashEntryAndChildren(false), () => TreeEntryHasChildren());
             PackageHeaderViewerCommand = new GenericCommand(ViewPackageInfo, PackageIsLoaded);
             LECLEditorCommand = new GenericCommand(EditLECLData, CanEditLECLData);
             PackageExportIsSelectedCommand = new EnableCommand(PackageExportIsSelected);
@@ -2861,7 +2863,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 "Below is information about this package from the package summary.", this).Show();
         }
 
-        private void TrashEntryAndChildren()
+        private void TrashEntryAndChildren(bool includeSelectedEntry = true)
         {
             if (TreeEntryIsSelected())
             {
@@ -2879,11 +2881,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 BusyText = "Performing reference check...";
                 IsBusy = true;
-                var positionInBranch = selected.Parent.Sublinks.IndexOf(selected);
+                var positionInBranch = includeSelectedEntry ? selected.Parent.Sublinks.IndexOf(selected) : -1;
                 var treeViewScrollState = CaptureTreeViewScrollState();
                 Task.Run(() =>
                 {
-                    List<IEntry> itemsToTrash = selected.FlattenTree().OrderByDescending(x => x.UIndex).Select(tvEntry => tvEntry.Entry).ToList();
+                    IEnumerable<TreeViewEntry> treeEntriesToTrash = includeSelectedEntry
+                        ? selected.FlattenTree()
+                        : selected.Sublinks.SelectMany(child => child.FlattenTree());
+                    List<IEntry> itemsToTrash = treeEntriesToTrash.OrderByDescending(x => x.UIndex).Select(tvEntry => tvEntry.Entry).ToList();
 
                     IEntry entryWithReferences =
                         // Requested by Khaar 05/12/2022
@@ -2908,26 +2913,29 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         }
                     }
 
-                    int newSelection = selected.Entry.Parent?.UIndex ?? 0; // The parent
-                    if (positionInBranch > 0)
+                    if (includeSelectedEntry)
                     {
-                        if (selected.Parent.Sublinks.Count > positionInBranch + 1) // Node has not been removed yet from the entry tree so we have to check +1
+                        int newSelection = selected.Entry.Parent?.UIndex ?? 0; // The parent
+                        if (positionInBranch > 0)
                         {
-                            newSelection = selected.Parent.Sublinks[positionInBranch + 1].UIndex; // Go to the item that will be shifted into our position
+                            if (selected.Parent.Sublinks.Count > positionInBranch + 1) // Node has not been removed yet from the entry tree so we have to check +1
+                            {
+                                newSelection = selected.Parent.Sublinks[positionInBranch + 1].UIndex; // Go to the item that will be shifted into our position
+                            }
+                            else if (positionInBranch > 0) // go to the previous item
+                            {
+                                newSelection = selected.Parent.Sublinks[positionInBranch - 1].UIndex; // Go to the item that is was before our item
+                            }
                         }
-                        else if (positionInBranch > 0) // go to the previous item
+
+                        if (!GoToNumber(newSelection))
                         {
-                            newSelection = selected.Parent.Sublinks[positionInBranch - 1].UIndex; // Go to the item that is was before our item
+                            AllTreeViewNodesX[0].IsProgramaticallySelecting = true;
+                            SelectedItem = AllTreeViewNodesX[0];
                         }
                     }
 
-                    if (!GoToNumber(newSelection))
-                    {
-                        AllTreeViewNodesX[0].IsProgramaticallySelecting = true;
-                        SelectedItem = AllTreeViewNodesX[0];
-                    }
-
-                    bool removedFromLevel = selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
+                    bool removedFromLevel = includeSelectedEntry && selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
                     RemoveFromStaticCollectionActors(itemsToTrash);
 
                     EntryPruner.TrashEntries(Pcc, itemsToTrash);
@@ -4037,6 +4045,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool TreeEntryIsSelected()
         {
             return CurrentView == CurrentViewMode.Tree && EntryIsSelected();
+        }
+
+        private bool TreeEntryHasChildren()
+        {
+            return TreeEntryIsSelected() && LeftSide_TreeView.SelectedItem is TreeViewEntry { Sublinks.Count: > 0 };
         }
 
         private bool NameIsSelected() =>
