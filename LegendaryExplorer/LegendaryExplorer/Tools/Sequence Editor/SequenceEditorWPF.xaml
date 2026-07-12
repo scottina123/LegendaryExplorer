@@ -210,6 +210,9 @@
                                 ToolTip="Add existing Sequence Object to this Sequence"
                                 IsEnabled="{Binding SelectedSequence, Converter={StaticResource NullEnabledConverter}}" />
                     <MenuItem Header="Search By Comment" Command="{Binding SearchCommand}" InputGestureText="Ctrl+F" />
+                    <MenuItem Header="Replace variable link names..." Click="ReplaceVariableLinkNames_Click"
+                              ToolTip="Replace every matching VariableLinks LinkDesc in the loaded package"
+                              IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}" />
                     <MenuItem Header="Save View" Command="{Binding SaveViewCommand}" ToolTip="Save the node layout" />
                     <MenuItem Header="Save Image" Command="{Binding SaveImageCommand}"
                                 ToolTip="Save image of full Sequence" />

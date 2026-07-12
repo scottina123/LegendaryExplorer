@@ -3303,6 +3303,144 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             }
         }
 
+        private record VariableLinkReplacementDialogResult(string OldName, string NewName);
+
+        private VariableLinkReplacementDialogResult ShowVariableLinkReplacementDialog()
+        {
+            var oldNameTextBox = new TextBox
+            {
+                MinWidth = 300
+            };
+            var newNameTextBox = new TextBox
+            {
+                MinWidth = 300
+            };
+            var okButton = new Button
+            {
+                Content = "OK",
+                IsDefault = true,
+                MinWidth = 80,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var dialog = new System.Windows.Window
+            {
+                Title = "Replace Variable Link Names",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(12),
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Existing LinkDesc"
+                        },
+                        oldNameTextBox,
+                        new TextBlock
+                        {
+                            Margin = new Thickness(0, 10, 0, 0),
+                            Text = "Replacement LinkDesc"
+                        },
+                        newNameTextBox,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Margin = new Thickness(0, 12, 0, 0),
+                            Children =
+                            {
+                                okButton,
+                                new Button
+                                {
+                                    Content = "Cancel",
+                                    IsCancel = true,
+                                    MinWidth = 80
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            void UpdateOkState()
+            {
+                okButton.IsEnabled = !string.IsNullOrWhiteSpace(oldNameTextBox.Text)
+                                     && !string.IsNullOrWhiteSpace(newNameTextBox.Text)
+                                     && !string.Equals(oldNameTextBox.Text.Trim(), newNameTextBox.Text.Trim(),
+                                         StringComparison.Ordinal);
+            }
+
+            oldNameTextBox.TextChanged += (_, _) => UpdateOkState();
+            newNameTextBox.TextChanged += (_, _) => UpdateOkState();
+            dialog.Loaded += (_, _) =>
+            {
+                oldNameTextBox.Focus();
+                UpdateOkState();
+            };
+            okButton.Click += (_, _) => dialog.DialogResult = true;
+
+            return dialog.ShowDialog() == true
+                ? new VariableLinkReplacementDialogResult(oldNameTextBox.Text.Trim(), newNameTextBox.Text.Trim())
+                : null;
+        }
+
+        private void ReplaceVariableLinkNames_Click(object sender, RoutedEventArgs e)
+        {
+            const string title = "Replace Variable Link Names";
+            if (ShowVariableLinkReplacementDialog() is not { } replacement)
+            {
+                return;
+            }
+
+            string oldName = replacement.OldName;
+            string newName = replacement.NewName;
+
+            int replacedLinkCount = 0;
+            int modifiedExportCount = 0;
+            foreach (var export in Pcc.Exports)
+            {
+                var variableLinks = export.GetProperty<ArrayProperty<StructProperty>>("VariableLinks");
+                if (variableLinks == null)
+                {
+                    continue;
+                }
+
+                int exportReplacementCount = 0;
+                foreach (var variableLink in variableLinks)
+                {
+                    var linkDesc = variableLink.GetProp<StrProperty>("LinkDesc");
+                    if (string.Equals(linkDesc?.Value, oldName, StringComparison.Ordinal))
+                    {
+                        variableLink.Properties.AddOrReplaceProp(new StrProperty(newName, "LinkDesc"));
+                        exportReplacementCount++;
+                    }
+                }
+
+                if (exportReplacementCount > 0)
+                {
+                    export.WriteProperty(variableLinks);
+                    replacedLinkCount += exportReplacementCount;
+                    modifiedExportCount++;
+                }
+            }
+
+            if (replacedLinkCount > 0)
+            {
+                RefreshView();
+            }
+
+            MessageBox.Show(this,
+                $"Replaced {replacedLinkCount} variable link name{(replacedLinkCount == 1 ? string.Empty : "s")} " +
+                $"in {modifiedExportCount} export{(modifiedExportCount == 1 ? string.Empty : "s")}.",
+                title, MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private record VariableLinkEditDialogResult(string EntryName, string ExpectedTypeName);
         private record ActionLinkEditDialogResult(string EntryName, ExportEntry LinkedOp, string LinkActionName, int LinkActionNumber);
 
