@@ -319,6 +319,9 @@
                     <MenuItem Header="Clear All Plot Checks and Transitions" Command="{Binding ClearAllPlotDataCommand}"
                               ToolTip="Clear all plot checks and plot transitions from every node in this conversation."
                               IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+                    <MenuItem Header="Bulk Change Connection TLK String Reference" Command="{Binding BulkChangeConnectionStrRefCommand}"
+                              ToolTip="Change the dialogue-wheel TLK string reference on every entry connection targeting a reply."
+                              IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
                     <Separator />
                     <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}" CommandParameter="Add"
                               ToolTip="Create a new start node"

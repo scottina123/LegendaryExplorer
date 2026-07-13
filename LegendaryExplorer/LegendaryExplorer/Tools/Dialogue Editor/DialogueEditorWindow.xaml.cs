@@ -337,6 +337,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand NodeDeleteAllLinksCommand { get; set; }
         public ICommand TestPathsCommand { get; set; }
         public ICommand ClearAllPlotDataCommand { get; set; }
+        public ICommand BulkChangeConnectionStrRefCommand { get; set; }
         public ICommand DefaultColorsCommand { get; set; }
         public ICommand StageDirectionsModCommand { get; set; }
         public ICommand RecenterCommand { get; set; }
@@ -684,6 +685,7 @@ namespace LegendaryExplorer.DialogueEditor
             StageDirectionsModCommand = new RelayCommand(StageDirections_Modify);
             TestPathsCommand = new GenericCommand(TestPaths);
             ClearAllPlotDataCommand = new GenericCommand(ClearAllPlotData, () => SelectedConv != null);
+            BulkChangeConnectionStrRefCommand = new GenericCommand(BulkChangeConnectionStrRef, () => SelectedConv != null);
             DefaultColorsCommand = new GenericCommand(ResetColorsToDefault);
             RecenterCommand = new GenericCommand(graphEditor_PanTo);
             UpdateLayoutDefaultsCommand = new RelayCommand(UpdateLayoutDefaults);
@@ -1964,6 +1966,193 @@ namespace LegendaryExplorer.DialogueEditor
             IsLocalUpdate = true;
             RecreateNodesToProperties(SelectedConv);
             ForceRefreshPreserveLayout();
+        }
+
+        private void BulkChangeConnectionStrRef()
+        {
+            if (SelectedConv == null || !PromptForBulkConnectionStrRef(out int targetReplyIndex, out int replacementStrRef))
+            {
+                return;
+            }
+
+            int changedConnectionCount = 0;
+            foreach (var entry in SelectedConv.EntryList)
+            {
+                var replyLinks = entry.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+                if (replyLinks == null)
+                {
+                    continue;
+                }
+
+                foreach (var link in replyLinks)
+                {
+                    if (link.GetProp<IntProperty>("nIndex")?.Value != targetReplyIndex)
+                    {
+                        continue;
+                    }
+
+                    link.Properties.AddOrReplaceProp(new StringRefProperty(replacementStrRef, "srParaphrase"));
+                    changedConnectionCount++;
+                }
+            }
+
+            if (changedConnectionCount == 0)
+            {
+                MessageBox.Show(this, $"No entry connections target R{targetReplyIndex}.", "Bulk Change Connection TLK String Reference", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            ForceRefreshPreserveLayout();
+            MessageBox.Show(this, $"Changed {changedConnectionCount} connection TLK string reference{(changedConnectionCount == 1 ? string.Empty : "s")} targeting R{targetReplyIndex}.", "Bulk Change Connection TLK String Reference", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private bool PromptForBulkConnectionStrRef(out int targetReplyIndex, out int replacementStrRef)
+        {
+            targetReplyIndex = -1;
+            replacementStrRef = 0;
+            if (SelectedConv?.ReplyList.Count is null or 0)
+            {
+                MessageBox.Show(this, "The selected conversation has no reply nodes.", "Bulk Change Connection TLK String Reference", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Bulk Change Connection TLK String Reference",
+                Width = 620,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var rootPanel = new StackPanel { Margin = new Thickness(18) };
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Change the dialogue-wheel TLK string reference on every entry connection targeting the selected reply.",
+                Margin = new Thickness(0, 0, 0, 12),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Target reply",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            var replyComboBox = new ComboBox { Margin = new Thickness(0, 0, 0, 4) };
+            foreach (var reply in SelectedConv.ReplyList)
+            {
+                replyComboBox.Items.Add(new ComboBoxItem
+                {
+                    Content = $"R{reply.NodeCount}: {reply.LineStrRef} {RemoveWrappingQuotes(reply.Line)}",
+                    Tag = reply.NodeCount
+                });
+            }
+
+            int initialReplyIndex = SelectedDialogueNode?.IsReply == true ? SelectedDialogueNode.NodeCount : 0;
+            replyComboBox.SelectedItem = replyComboBox.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (int)item.Tag == initialReplyIndex)
+                                         ?? replyComboBox.Items[0];
+            rootPanel.Children.Add(replyComboBox);
+
+            var connectionCountText = new TextBlock { Margin = new Thickness(0, 0, 0, 12) };
+            void UpdateConnectionCount()
+            {
+                int selectedReplyIndex = (replyComboBox.SelectedItem as ComboBoxItem)?.Tag as int? ?? -1;
+                int connectionCount = SelectedConv.EntryList.Sum(entry => entry.NodeProp
+                    .GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?
+                    .Count(link => link.GetProp<IntProperty>("nIndex")?.Value == selectedReplyIndex) ?? 0);
+                connectionCountText.Text = $"Matching incoming connections: {connectionCount}";
+            }
+            replyComboBox.SelectionChanged += (_, _) => UpdateConnectionCount();
+            UpdateConnectionCount();
+            rootPanel.Children.Add(connectionCountText);
+
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Replacement TLK string reference",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            var strRefTextBox = new TextBox { Margin = new Thickness(0, 0, 0, 4) };
+            var tlkPreview = new TextBlock
+            {
+                Margin = new Thickness(0, 0, 0, 18),
+                TextWrapping = TextWrapping.Wrap
+            };
+            void UpdateTlkPreview()
+            {
+                tlkPreview.Text = int.TryParse(strRefTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int strRef) && strRef > 0
+                    ? RemoveWrappingQuotes(GlobalFindStrRefbyID(strRef, Pcc))
+                    : "Enter a positive TLK string reference.";
+            }
+            strRefTextBox.TextChanged += (_, _) => UpdateTlkPreview();
+            UpdateTlkPreview();
+            rootPanel.Children.Add(strRefTextBox);
+            rootPanel.Children.Add(tlkPreview);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            var okButton = new Button
+            {
+                Content = "Change All",
+                IsDefault = true,
+                MinWidth = 120,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            int selectedTargetReplyIndex = -1;
+            int selectedReplacementStrRef = 0;
+            okButton.Click += (_, _) =>
+            {
+                if (replyComboBox.SelectedItem is not ComboBoxItem { Tag: int replyIndex })
+                {
+                    System.Windows.MessageBox.Show(dialog, "Select a target reply.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!int.TryParse(strRefTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int strRef) || strRef <= 0)
+                {
+                    System.Windows.MessageBox.Show(dialog, "The replacement TLK string reference must be a positive whole number.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                selectedTargetReplyIndex = replyIndex;
+                selectedReplacementStrRef = strRef;
+                dialog.DialogResult = true;
+            };
+            var cancelButton = new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 120,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            cancelButton.Click += (_, _) => dialog.DialogResult = false;
+            buttonPanel.Children.Add(okButton);
+            buttonPanel.Children.Add(cancelButton);
+            rootPanel.Children.Add(buttonPanel);
+
+            dialog.Content = rootPanel;
+            if (dialog.ShowDialog() != true)
+            {
+                return false;
+            }
+
+            targetReplyIndex = selectedTargetReplyIndex;
+            replacementStrRef = selectedReplacementStrRef;
+            return true;
         }
 
         private void SaveScriptsToProperties(ConversationExtended conv, bool pushtofile = true)
