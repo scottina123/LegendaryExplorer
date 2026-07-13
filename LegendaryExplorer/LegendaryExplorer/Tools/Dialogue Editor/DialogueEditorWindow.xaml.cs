@@ -1128,6 +1128,44 @@ namespace LegendaryExplorer.DialogueEditor
                 : category;
         }
 
+        internal void EnsureInterruptTrackForReplyCategory(DialogueNodeExtended sourceNode, string replyCategory)
+        {
+            if (!Enum.TryParse(replyCategory, out EReplyCategory category)
+                || category is not EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT
+                    and not EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT
+                || sourceNode?.InterpData is not ExportEntry interpData
+                || Pcc == null)
+            {
+                return;
+            }
+
+            ExportEntry directorGroup = null;
+            var interpGroups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+            if (interpGroups != null)
+            {
+                foreach (var groupRef in interpGroups)
+                {
+                    if (!Pcc.TryGetUExport(groupRef.Value, out ExportEntry group)
+                        || group.ClassName is not "InterpGroupDirector" and not "InterpDirector")
+                    {
+                        continue;
+                    }
+
+                    directorGroup ??= group;
+                    var interpTracks = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+                    if (interpTracks?.Any(trackRef => Pcc.TryGetUExport(trackRef.Value, out ExportEntry track)
+                                                      && track.IsA("BioEvtSysTrackInterrupt")) == true)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            directorGroup ??= MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
+            ExportEntry interruptTrack = MatineeHelper.AddNewTrackToGroup(directorGroup, "BioEvtSysTrackInterrupt");
+            MatineeHelper.AddDefaultPropertiesToTrack(interruptTrack);
+        }
+
 
         private void BackParse(object sender, DoWorkEventArgs e)
         {
@@ -8960,6 +8998,13 @@ namespace LegendaryExplorer.DialogueEditor
                         new NoneProperty()
                     })
                 ), "ReplyListNew"));
+
+                var interruptLink = orderedLinks.FirstOrDefault(link => link.RCategory is EReplyCategory.REPLY_CATEGORY_PARAGON_INTERRUPT
+                    or EReplyCategory.REPLY_CATEGORY_RENEGADE_INTERRUPT);
+                if (interruptLink != null)
+                {
+                    EnsureInterruptTrackForReplyCategory(node.Node, interruptLink.RCategory.ToString());
+                }
             }
         }
 

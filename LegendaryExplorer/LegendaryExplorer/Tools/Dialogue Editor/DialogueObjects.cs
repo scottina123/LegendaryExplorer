@@ -2200,6 +2200,7 @@ namespace LegendaryExplorer.DialogueEditor
             }));
 
             start.NodeProp.Properties.AddOrReplaceProp(newReplyListProp);
+            Editor.EnsureInterruptTrackForReplyCategory(start.Node, linkOptions.SelectedCategory);
             Editor.PushLocalGraphChanges(this);
         }
     }
