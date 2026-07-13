@@ -490,6 +490,29 @@ public class GalaxyMapObjectProxy : ActorProxy
         LoadPlanetTextures(context.RenderContext);
     }
 
+    protected override void LoadFromProperties()
+    {
+        Property tagProperty = Properties.FirstOrDefault(prop => prop.Name.Name.CaseInsensitiveEquals("Tag"));
+        Tag = tagProperty switch
+        {
+            NameProperty nameProperty => nameProperty.Value,
+            StrProperty stringProperty => new NameReference(stringProperty.Value),
+            _ => NameReference.None
+        };
+
+        StructProperty rotationProp = Properties.GetProp<StructProperty>("Rotation");
+        StructProperty locationProp = Properties.GetProp<StructProperty>("location")
+                                      ?? Properties.GetProp<StructProperty>("Location");
+        StructProperty drawScale3DProp = Properties.GetProp<StructProperty>("DrawScale3D");
+        StructProperty prePivotProp = Properties.GetProp<StructProperty>("PrePivot");
+
+        drawScale = Properties.GetProp<FloatProperty>("DrawScale")?.Value ?? 1f;
+        location = locationProp is not null ? CommonStructs.GetVector3(locationProp) : Vector3.Zero;
+        drawScale3D = drawScale3DProp is not null ? CommonStructs.GetVector3(drawScale3DProp) : Vector3.One;
+        prePivot = prePivotProp is not null ? CommonStructs.GetVector3(prePivotProp) : Vector3.Zero;
+        rotation = rotationProp is not null ? CommonStructs.GetRotator(rotationProp) : new Rotator(0, 0, 0);
+    }
+
     public void RefreshFromExport(PackageCache packageCache)
     {
         Properties = Export.GetCondensedProperties();
@@ -609,28 +632,18 @@ public class GalaxyMapObjectProxy : ActorProxy
 
         foreach (string propName in propertyNames)
         {
-            string strValue = props.GetProp<StrProperty>(propName)?.Value;
-            if (IsUsefulDisplayName(strValue))
+            Property property = props.FirstOrDefault(prop => prop.Name.Name.CaseInsensitiveEquals(propName));
+            string value = property switch
             {
-                return strValue.Trim();
-            }
-
-            string nameValue = props.GetProp<NameProperty>(propName)?.Value.Instanced;
-            if (IsUsefulDisplayName(nameValue))
+                StrProperty strProperty => strProperty.Value,
+                NameProperty nameProperty => nameProperty.Value.Instanced,
+                StringRefProperty { Value: > 0 } stringRefProperty => TLKManagerWPF.GlobalFindStrRefbyID(stringRefProperty.Value, Export.FileRef),
+                IntProperty { Value: > 0 } intProperty => TLKManagerWPF.GlobalFindStrRefbyID(intProperty.Value, Export.FileRef),
+                _ => null
+            };
+            if (IsUsefulDisplayName(value))
             {
-                return nameValue.Trim();
-            }
-
-            int strRef = props.GetProp<StringRefProperty>(propName)?.Value
-                         ?? props.GetProp<IntProperty>(propName)?.Value
-                         ?? 0;
-            if (strRef <= 0)
-                continue;
-
-            string resolved = TLKManagerWPF.GlobalFindStrRefbyID(strRef, Export.FileRef);
-            if (IsUsefulDisplayName(resolved))
-            {
-                return resolved.Trim();
+                return value.Trim();
             }
         }
 
