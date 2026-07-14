@@ -404,6 +404,94 @@ namespace LegendaryExplorer.Tools.PlotEditor
             AddStateEvent(newId, new BioStateEvent(SelectedStateEvent.Value));
         }
 
+        public void CloneMultipleStateEvents()
+        {
+            if (StateEvents == null || SelectedStateEvent.Value == null)
+            {
+                return;
+            }
+
+            int maxStateEventId = GetMaxStateEventId();
+
+            var dlg = new AddMultipleStateEventElementsDialog
+            {
+                Title = "Clone Multiple State Events",
+                HeaderText = "Specify the first state event ID and number of clones.",
+                ContentText = $"Clone state event #{SelectedStateEvent.Key} and increment its plot properties",
+                StartingValue = maxStateEventId < int.MaxValue ? maxStateEventId + 1 : int.MaxValue,
+                Count = 1
+            };
+
+            if (dlg.ShowDialog() == false || dlg.Count <= 0 || dlg.StartingValue < 0)
+            {
+                return;
+            }
+
+            long lastId = (long)dlg.StartingValue + dlg.Count - 1;
+            if (lastId > int.MaxValue)
+            {
+                return;
+            }
+
+            HashSet<int> existingIds = StateEvents.Select(pair => pair.Key).ToHashSet();
+            if (Enumerable.Range(dlg.StartingValue, dlg.Count).Any(existingIds.Contains))
+            {
+                return;
+            }
+
+            BioStateEvent sourceStateEvent = SelectedStateEvent.Value;
+            var clones = new List<KeyValuePair<int, BioStateEvent>>(dlg.Count);
+            try
+            {
+                for (int i = 0; i < dlg.Count; i++)
+                {
+                    var clone = new BioStateEvent(sourceStateEvent);
+                    IncrementStateEventProperties(clone, i + 1);
+                    clones.Add(new KeyValuePair<int, BioStateEvent>(dlg.StartingValue + i, clone));
+                }
+            }
+            catch (OverflowException)
+            {
+                return;
+            }
+
+            foreach ((int id, BioStateEvent clone) in clones)
+            {
+                AddStateEvent(id, clone);
+            }
+        }
+
+        private static void IncrementStateEventProperties(BioStateEvent stateEvent, int increment)
+        {
+            foreach (BioStateEventElement element in stateEvent.Elements)
+            {
+                switch (element)
+                {
+                    case BioStateEventElementBool boolElement:
+                        boolElement.GlobalBool = checked(boolElement.GlobalBool + increment);
+                        break;
+                    case BioStateEventElementConsequence consequenceElement:
+                        consequenceElement.Consequence = checked(consequenceElement.Consequence + increment);
+                        break;
+                    case BioStateEventElementFloat floatElement:
+                        floatElement.GlobalFloat = checked(floatElement.GlobalFloat + increment);
+                        break;
+                    case BioStateEventElementFunction functionElement:
+                        functionElement.Parameter = checked(functionElement.Parameter + increment);
+                        break;
+                    case BioStateEventElementInt intElement:
+                        intElement.GlobalInt = checked(intElement.GlobalInt + increment);
+                        break;
+                    case BioStateEventElementLocalInt localIntElement:
+                        localIntElement.NewValue = checked(localIntElement.NewValue + increment);
+                        break;
+                    case BioStateEventElementSubstate substateElement:
+                        substateElement.GlobalBool = checked(substateElement.GlobalBool + increment);
+                        break;
+                }
+            }
+        }
+
         public void CopyStateEventElement()
         {
             if (StateEvents == null || SelectedStateEvent.Value == null || SelectedStateEventElement == null)
@@ -812,6 +900,11 @@ namespace LegendaryExplorer.Tools.PlotEditor
         private void CloneStateEvent_Click(object sender, System.Windows.RoutedEventArgs e)
         {
             CloneStateEvent();
+        }
+
+        private void CloneMultipleStateEvents_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            CloneMultipleStateEvents();
         }
 
         private void RemoveStateEvent_Click(object sender, System.Windows.RoutedEventArgs e)
