@@ -2183,6 +2183,7 @@ namespace LegendaryExplorer.DialogueEditor
                     ".sfm"
                 };
                 var sections = new List<(string ConversationName, List<string> Lines)>();
+                var processedConversationNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 int failedPackageCount = 0;
                 var packagePaths = Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories)
                     .Where(path => supportedExtensions.Contains(Path.GetExtension(path)))
@@ -2197,6 +2198,11 @@ namespace LegendaryExplorer.DialogueEditor
                                      .Where(export => export.ClassName == "BioConversation")
                                      .OrderBy(export => export.ObjectName.Instanced, StringComparer.OrdinalIgnoreCase))
                         {
+                            if (!processedConversationNames.Add(conversationExport.ObjectName.Instanced))
+                            {
+                                continue;
+                            }
+
                             var conversation = new ConversationExtended(conversationExport);
                             conversation.ParseSpeakers();
                             var speakerIds = conversation.Speakers
