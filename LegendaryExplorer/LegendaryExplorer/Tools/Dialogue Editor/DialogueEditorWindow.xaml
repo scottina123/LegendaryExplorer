@@ -322,6 +322,8 @@
                     <MenuItem Header="Bulk Change Connection TLK String Reference" Command="{Binding BulkChangeConnectionStrRefCommand}"
                               ToolTip="Change the dialogue-wheel TLK string reference on every entry connection targeting a reply."
                               IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+                    <MenuItem Header="Copy Speaker Lines from Folder" Command="{Binding CopySpeakerLinesFromFolderCommand}"
+                              ToolTip="Copy all dialogue lines for a speaker tag from BioConversations in a folder." />
                     <Separator />
                     <MenuItem Header="Add New Start" Command="{Binding StartAddCommand}" CommandParameter="Add"
                               ToolTip="Create a new start node"

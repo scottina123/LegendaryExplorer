@@ -41,6 +41,7 @@ using Newtonsoft.Json;
 using Piccolo;
 using Piccolo.Event;
 using Piccolo.Nodes;
+using Microsoft.WindowsAPICodePack.Dialogs;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -338,6 +339,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand TestPathsCommand { get; set; }
         public ICommand ClearAllPlotDataCommand { get; set; }
         public ICommand BulkChangeConnectionStrRefCommand { get; set; }
+        public ICommand CopySpeakerLinesFromFolderCommand { get; set; }
         public ICommand DefaultColorsCommand { get; set; }
         public ICommand StageDirectionsModCommand { get; set; }
         public ICommand RecenterCommand { get; set; }
@@ -686,6 +688,7 @@ namespace LegendaryExplorer.DialogueEditor
             TestPathsCommand = new GenericCommand(TestPaths);
             ClearAllPlotDataCommand = new GenericCommand(ClearAllPlotData, () => SelectedConv != null);
             BulkChangeConnectionStrRefCommand = new GenericCommand(BulkChangeConnectionStrRef, () => SelectedConv != null);
+            CopySpeakerLinesFromFolderCommand = new GenericCommand(CopySpeakerLinesFromFolder);
             DefaultColorsCommand = new GenericCommand(ResetColorsToDefault);
             RecenterCommand = new GenericCommand(graphEditor_PanTo);
             UpdateLayoutDefaultsCommand = new RelayCommand(UpdateLayoutDefaults);
@@ -2153,6 +2156,236 @@ namespace LegendaryExplorer.DialogueEditor
             targetReplyIndex = selectedTargetReplyIndex;
             replacementStrRef = selectedReplacementStrRef;
             return true;
+        }
+
+        private async void CopySpeakerLinesFromFolder()
+        {
+            var options = PromptForSpeakerLineFolderOptions();
+            if (!options.HasValue)
+            {
+                return;
+            }
+
+            var (folderPath, speakerTag) = options.Value;
+            while (!TLKLoader.TlkFirstLoadDone)
+            {
+                await Task.Delay(100);
+            }
+
+            StatusText = $"Scanning packages for speaker tag '{speakerTag}'...";
+            var scanResult = await Task.Run(() =>
+            {
+                var supportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ".pcc",
+                    ".upk",
+                    ".u",
+                    ".sfm"
+                };
+                var sections = new List<(string ConversationName, List<string> Lines)>();
+                int failedPackageCount = 0;
+                var packagePaths = Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories)
+                    .Where(path => supportedExtensions.Contains(Path.GetExtension(path)))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
+
+                foreach (string packagePath in packagePaths)
+                {
+                    try
+                    {
+                        using IMEPackage package = MEPackageHandler.OpenMEPackage(packagePath, forceLoadFromDisk: true);
+                        foreach (ExportEntry conversationExport in package.Exports
+                                     .Where(export => export.ClassName == "BioConversation")
+                                     .OrderBy(export => export.ObjectName.Instanced, StringComparer.OrdinalIgnoreCase))
+                        {
+                            var conversation = new ConversationExtended(conversationExport);
+                            conversation.ParseSpeakers();
+                            var speakerIds = conversation.Speakers
+                                .Where(speaker => string.Equals(speaker.SpeakerName, speakerTag, StringComparison.OrdinalIgnoreCase))
+                                .Select(speaker => speaker.SpeakerID)
+                                .ToHashSet();
+                            if (speakerIds.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            conversation.ParseEntryList(TLKLookup);
+                            conversation.ParseReplyList(TLKLookup);
+                            var lines = conversation.EntryList
+                                .Concat(conversation.ReplyList)
+                                .Where(node => speakerIds.Contains(node.SpeakerIndex))
+                                .Select(node => NormalizeTlkLineForClipboard(node.Line))
+                                .ToList();
+                            if (lines.Count > 0)
+                            {
+                                sections.Add((conversationExport.ObjectName.Instanced, lines));
+                            }
+                        }
+                    }
+                    catch (Exception e) when (!App.IsDebug)
+                    {
+                        failedPackageCount++;
+                        Debug.WriteLine($"Failed to scan package '{packagePath}' for speaker lines: {e.Message}");
+                    }
+                }
+
+                return (Sections: sections, FailedPackageCount: failedPackageCount);
+            });
+
+            if (scanResult.Sections.Count == 0)
+            {
+                StatusText = "No matching speaker lines found";
+                MessageBox.Show(this,
+                    $"No dialogue lines using speaker tag '{speakerTag}' were found in the selected folder.",
+                    "Copy Speaker Lines from Folder",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string clipboardText = string.Join(
+                Environment.NewLine + Environment.NewLine,
+                scanResult.Sections.Select(section =>
+                    $"=== {section.ConversationName} ==={Environment.NewLine}{string.Join(Environment.NewLine, section.Lines)}"));
+            Clipboard.SetText(clipboardText);
+            int lineCount = scanResult.Sections.Sum(section => section.Lines.Count);
+            StatusText = $"Copied {lineCount} speaker lines from {scanResult.Sections.Count} conversations";
+
+            string skippedPackageMessage = scanResult.FailedPackageCount > 0
+                ? $" {scanResult.FailedPackageCount} unreadable package file{(scanResult.FailedPackageCount == 1 ? " was" : "s were")} skipped."
+                : string.Empty;
+            MessageBox.Show(this,
+                $"Copied {lineCount} line{(lineCount == 1 ? string.Empty : "s")} from {scanResult.Sections.Count} BioConversation section{(scanResult.Sections.Count == 1 ? string.Empty : "s")} to the clipboard.{skippedPackageMessage}",
+                "Copy Speaker Lines from Folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        private static string NormalizeTlkLineForClipboard(string line)
+        {
+            return Regex.Replace(line ?? string.Empty, @"\r\n|\r|\n", " ");
+        }
+
+        private (string FolderPath, string SpeakerTag)? PromptForSpeakerLineFolderOptions()
+        {
+            var dialog = new Window
+            {
+                Title = "Copy Speaker Lines from Folder",
+                Width = 700,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var rootPanel = new StackPanel { Margin = new Thickness(18) };
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Copy every dialogue line using the specified speaker tag from BioConversations in the selected folder and its subfolders.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Speaker tag",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            var speakerTagTextBox = new TextBox
+            {
+                Text = SelectedSpeaker?.SpeakerName ?? string.Empty,
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            rootPanel.Children.Add(speakerTagTextBox);
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Package folder",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            var folderGrid = new Grid { Margin = new Thickness(0, 0, 0, 18) };
+            folderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            folderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var folderTextBox = new TextBox
+            {
+                Text = Path.GetDirectoryName(Pcc?.FilePath) ?? string.Empty,
+                MinWidth = 500
+            };
+            var browseButton = new Button
+            {
+                Content = "Browse...",
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            browseButton.Click += (_, _) =>
+            {
+                var folderDialog = new CommonOpenFileDialog("Select folder containing package files")
+                {
+                    IsFolderPicker = true
+                };
+                if (Directory.Exists(folderTextBox.Text))
+                {
+                    folderDialog.InitialDirectory = folderTextBox.Text;
+                }
+
+                if (folderDialog.ShowDialog(dialog) == CommonFileDialogResult.Ok)
+                {
+                    folderTextBox.Text = folderDialog.FileName;
+                }
+            };
+            Grid.SetColumn(browseButton, 1);
+            folderGrid.Children.Add(folderTextBox);
+            folderGrid.Children.Add(browseButton);
+            rootPanel.Children.Add(folderGrid);
+
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            var copyButton = new Button
+            {
+                Content = "Copy Lines",
+                IsDefault = true,
+                MinWidth = 120,
+                Padding = new Thickness(10, 6, 10, 6)
+            };
+            copyButton.Click += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(speakerTagTextBox.Text))
+                {
+                    System.Windows.MessageBox.Show(dialog, "Enter a speaker tag.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (!Directory.Exists(folderTextBox.Text))
+                {
+                    System.Windows.MessageBox.Show(dialog, "Select an existing package folder.", "Dialogue Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                dialog.DialogResult = true;
+            };
+            buttonPanel.Children.Add(copyButton);
+            buttonPanel.Children.Add(new Button
+            {
+                Content = "Cancel",
+                IsCancel = true,
+                MinWidth = 120,
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 6, 10, 6)
+            });
+            rootPanel.Children.Add(buttonPanel);
+            dialog.Content = rootPanel;
+
+            return dialog.ShowDialog() == true
+                ? (Path.GetFullPath(folderTextBox.Text), speakerTagTextBox.Text.Trim())
+                : null;
         }
 
         private void SaveScriptsToProperties(ConversationExtended conv, bool pushtofile = true)
@@ -5819,7 +6052,7 @@ namespace LegendaryExplorer.DialogueEditor
             void CopyTlkLinesToClipboard(IEnumerable<string> lines)
             {
                 string clipboardText = string.Join(Environment.NewLine,
-                    lines.Select(line => Regex.Replace(line ?? string.Empty, @"\r\n|\r|\n", " ")));
+                    lines.Select(NormalizeTlkLineForClipboard));
                 Clipboard.SetText(clipboardText);
             }
 
