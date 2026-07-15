@@ -14,14 +14,19 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Be.Windows.Forms;
+using Gammtek.Conduit.MassEffect3.SFXGame.StateEventMap;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.PackageEditor;
+using LegendaryExplorer.Tools.PlotDatabase;
+using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Gammtek.IO;
@@ -30,6 +35,7 @@ using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.PlotDatabase;
+using LegendaryExplorerCore.PlotDatabase.PlotElements;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -325,6 +331,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand AttemptOpenImportDefinitionCommand { get; set; }
         public ICommand MatchMaterialsToSkeletalMeshCommand { get; set; }
         public ICommand SyncMeshLodMaterialArraysCommand { get; set; }
+        public ICommand OpenPlotElementCommand { get; set; }
         private void LoadCommands()
         {
             AddPropertiesToStructCommand = new GenericCommand(AddPropertiesToStruct, CanAddPropertiesToStruct);
@@ -362,6 +369,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             NavigateToEntryCommandInternal = new GenericCommand(FireNavigateCallback, CanFireNavigateCallback);
             OpenInPackageEditorCommand = new GenericCommand(OpenInPackageEditor, ObjectPropertyExportIsSelected);
             AttemptOpenImportDefinitionCommand = new GenericCommand(AttemptOpenImport, ObjectPropertyImportIsSelected);
+            OpenPlotElementCommand = new GenericCommand(OpenPlotElement, CanOpenPlotElement);
 
             CopyValueCommand = new GenericCommand(CopyPropertyValue, CanCopyPropertyValue);
             CopyPropNameCommand = new GenericCommand(CopyPropertyName, CanCopyPropertyName);
@@ -370,6 +378,138 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CopyPropertyCommand = new GenericCommand(CopyProperty, CanCopyProperty);
             CopyAllPropertiesCommand = new GenericCommand(CopyAllProperties, CanCopyAllProperties);
             PastePropertyCommand = new GenericCommand(PasteProperty, CanPasteProperty);
+        }
+
+        private bool CanOpenPlotElement()
+        {
+            if (CurrentLoadedExport == null
+                || Interpreter_TreeView?.SelectedItem is not UPropertyTreeViewEntry
+                {
+                    Property: IntProperty { Value: not 0 } indexProperty,
+                    UPParent.Property: null
+                }
+                || indexProperty.Name != "m_nIndex")
+            {
+                return false;
+            }
+
+            return CurrentLoadedExport.ClassName is "BioSeqAct_PMCheckState"
+                or "BioSeqAct_PMCheckConditional"
+                or "BioSeqAct_PMExecuteTransition";
+        }
+
+        private void OpenPlotElement()
+        {
+            if (!CanOpenPlotElement()
+                || Interpreter_TreeView.SelectedItem is not UPropertyTreeViewEntry { Property: IntProperty indexProperty })
+            {
+                return;
+            }
+
+            switch (CurrentLoadedExport.ClassName)
+            {
+                case "BioSeqAct_PMCheckState":
+                    OpenPlotDatabaseElement(PlotDatabases.FindPlotBoolByID(indexProperty.Value, Pcc.Game), "bool", indexProperty.Value);
+                    break;
+                case "BioSeqAct_PMCheckConditional":
+                    if (Pcc.Game.IsGame3())
+                    {
+                        OpenConditional(indexProperty.Value);
+                    }
+                    else
+                    {
+                        OpenPlotDatabaseElement(PlotDatabases.FindPlotConditionalByID(indexProperty.Value, Pcc.Game), "conditional", indexProperty.Value);
+                    }
+                    break;
+                case "BioSeqAct_PMExecuteTransition":
+                    OpenTransition(indexProperty.Value);
+                    break;
+            }
+        }
+
+        private void OpenPlotDatabaseElement(PlotElement element, string elementType, int id)
+        {
+            if (element == null)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Could not find {elementType} {id} in the plot database.", "Property Interpreter", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var plotDatabase = new PlotManagerWindow(Pcc.Game, element);
+            plotDatabase.Show();
+        }
+
+        private void OpenConditional(int conditionalId)
+        {
+            var cookedDirectories = MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                .OrderByDescending(directory => MELoadedDLC.GetMountPriority(directory, Pcc.Game))
+                .Select(directory => Path.Combine(directory, Pcc.Game.CookedDirName()))
+                .Append(MEDirectories.GetCookedPath(Pcc.Game))
+                .Where(Directory.Exists);
+
+            string matchedFile = cookedDirectories
+                .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cnd"))
+                .FirstOrDefault(file => CNDFile.FromFile(file).ConditionalEntries.Any(conditional => conditional.ID == conditionalId));
+
+            if (matchedFile == null)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Could not find conditional {conditionalId} in any mounted .cnd file.", "Property Interpreter", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var conditionalsEditor = new ConditionalsEditorWindow();
+            conditionalsEditor.Show();
+            conditionalsEditor.LoadFile(matchedFile, conditionalId);
+        }
+
+        private void OpenTransition(int transitionId)
+        {
+            IEnumerable<string> plotFiles = Pcc.Game switch
+            {
+                MEGame.ME3 or MEGame.LE3 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                    .OrderByDescending(directory => MELoadedDLC.GetMountPriority(directory, Pcc.Game))
+                    .Select(directory => Path.Combine(directory, Pcc.Game.CookedDirName(), $"Startup_{MELoadedDLC.GetDLCNameFromDir(directory)}_INT.pcc"))
+                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "SFXGameInfoSP_SF.pcc"))
+                    .Where(File.Exists),
+                MEGame.ME2 or MEGame.LE2 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                    .OrderByDescending(directory => MELoadedDLC.GetMountPriority(directory, Pcc.Game))
+                    .Select(directory => Path.Combine(directory, Pcc.Game.CookedDirName(), $"Startup_{MELoadedDLC.GetDLCNameFromDir(directory)}_INT.pcc"))
+                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "Startup_INT.pcc"))
+                    .Where(File.Exists),
+                MEGame.LE1 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                    .OrderByDescending(directory => MELoadedDLC.GetMountPriority(directory, Pcc.Game))
+                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), "BIOC_Materials.pcc"))
+                    .Where(File.Exists),
+                MEGame.ME1 => MELoadedDLC.GetEnabledDLCFolders(Pcc.Game)
+                    .OrderByDescending(directory => MELoadedDLC.GetMountPriority(directory, Pcc.Game))
+                    .Select(directory => Path.Combine(directory, Pcc.Game.CookedDirName(), $@"Packages\PlotManagerAuto{MELoadedDLC.GetDLCNameFromDir(directory)}.upk"))
+                    .Append(Path.Combine(MEDirectories.GetCookedPath(Pcc.Game), @"Packages\PlotManagerAuto.upk"))
+                    .Where(File.Exists),
+                _ => []
+            };
+
+            string matchedFile = null;
+            foreach (string plotFile in plotFiles)
+            {
+                using IMEPackage package = MEPackageHandler.OpenMEPackage(plotFile);
+                if (StateEventMapView.TryFindStateEventMap(package, out ExportEntry export)
+                    && BinaryBioStateEventMap.Load(export).StateEvents.ContainsKey(transitionId))
+                {
+                    matchedFile = plotFile;
+                    break;
+                }
+            }
+
+            if (matchedFile == null)
+            {
+                MessageBox.Show(Window.GetWindow(this), $"Could not find transition {transitionId} in any mounted state event map.", "Property Interpreter", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var plotEditor = new PlotEditorWindow();
+            plotEditor.Show();
+            plotEditor.LoadFile(matchedFile);
+            plotEditor.GoToStateEvent(transitionId);
         }
 
         private void CopyProperty()

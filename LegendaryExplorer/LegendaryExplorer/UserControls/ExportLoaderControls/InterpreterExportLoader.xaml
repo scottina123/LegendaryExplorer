@@ -656,6 +656,7 @@
                         <MenuItem Header="Copy all properties" ToolTip="Copies all root properties from the current export so they can be pasted into another export in the same package" Command="{Binding CopyAllPropertiesCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Paste property" ToolTip="Pastes the currently copied property" Command="{Binding PastePropertyCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Copy parsed value" ToolTip="Copies the parsed value to the clipboard" Command="{Binding CopyValueCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Header="Open in Plot Tool" ToolTip="Opens this bool, conditional, or transition in its plot tool" Command="{Binding OpenPlotElementCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
 
                         <MenuItem Header="Sort children properties alphabetically" ToolTip="Sorts properties alphabetically. This is a cosmetic only change." Command="{Binding SortChildrenCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Clone array element" ToolTip="Clones the selected array element" Command="{Binding CloneArrayElementCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
