@@ -5816,18 +5816,41 @@ namespace LegendaryExplorer.DialogueEditor
             mappingGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             mappingGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var originalHeader = new TextBlock
+            void CopyTlkLinesToClipboard(IEnumerable<string> lines)
             {
-                Text = "Original TLK String",
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 8, 4)
-            };
-            var clonedHeader = new TextBlock
+                string clipboardText = string.Join(Environment.NewLine,
+                    lines.Select(line => Regex.Replace(line ?? string.Empty, @"\r\n|\r|\n", " ")));
+                Clipboard.SetText(clipboardText);
+            }
+
+            Grid CreateTlkHeader(string text, RoutedEventHandler copyHandler, Thickness margin)
             {
-                Text = "Cloned TLK String",
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(8, 0, 0, 4)
-            };
+                var header = new Grid { Margin = margin };
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                header.Children.Add(new TextBlock
+                {
+                    Text = text,
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                var copyButton = new Button
+                {
+                    Content = "Copy lines",
+                    Padding = new Thickness(8, 2, 8, 2)
+                };
+                copyButton.Click += copyHandler;
+                Grid.SetColumn(copyButton, 1);
+                header.Children.Add(copyButton);
+                return header;
+            }
+
+            var originalHeader = CreateTlkHeader("Original TLK String",
+                (_, _) => CopyTlkLinesToClipboard(sourceNodes.Select(node => node.Line)),
+                new Thickness(0, 0, 8, 4));
+            var clonedHeader = CreateTlkHeader("Cloned TLK String",
+                (_, _) => CopyTlkLinesToClipboard(tlkRows.Select(row => row.Preview.Text)),
+                new Thickness(8, 0, 0, 4));
             Grid.SetColumn(originalHeader, 0);
             Grid.SetColumn(clonedHeader, 1);
             mappingGrid.Children.Add(originalHeader);
