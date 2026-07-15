@@ -89,6 +89,9 @@
                 <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
                 <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
                 <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+                <Separator />
+                <MenuItem Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
+                <MenuItem Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
             </MenuItem>
             <MenuItem Header="Audio">
                 <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
@@ -138,6 +141,9 @@
                 <MenuItem Header="Interp Editor" Command="{Binding OpenInCommand}" CommandParameter="InterpEdLine"/>
                 <MenuItem Header="Male FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineM"/>
                 <MenuItem Header="Female FaceFX Line" Command="{Binding OpenInCommand}" CommandParameter="FaceFXLineF"/>
+                <Separator />
+                <MenuItem Header="Conditional/Bool in Conditionals Editor or Plot Database" Command="{Binding OpenInCommand}" CommandParameter="PlotDbCnd"/>
+                <MenuItem Header="Transition in Plot Editor" Command="{Binding OpenInCommand}" CommandParameter="PlotDbTrans"/>
             </MenuItem>
             <MenuItem Header="Audio">
                 <MenuItem Header="Open Male Audio in Soundplorer" Command="{Binding OpenInCommand}" CommandParameter="SoundP_StreamM"/>
