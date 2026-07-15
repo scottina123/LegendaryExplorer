@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -290,6 +291,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         #region Commands
         public ICommand RemovePropertyCommand { get; set; }
         public ICommand AddPropertyCommand { get; set; }
+        public ICommand IncrementHenchmenFloatPropertiesCommand { get; set; }
         public ICommand AddPropertiesToStructCommand { get; set; }
         public ICommand CollapseChildrenCommand { get; set; }
         public ICommand ExpandChildrenCommand { get; set; }
@@ -328,6 +330,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddPropertiesToStructCommand = new GenericCommand(AddPropertiesToStruct, CanAddPropertiesToStruct);
             RemovePropertyCommand = new GenericCommand(RemoveProperty, CanRemoveProperty);
             AddPropertyCommand = new GenericCommand(AddProperty, CanAddProperty);
+            IncrementHenchmenFloatPropertiesCommand = new GenericCommand(IncrementHenchmenFloatProperties, CanIncrementHenchmenFloatProperties);
             CollapseChildrenCommand = new GenericCommand(CollapseChildren, CanExpandOrCollapseChildren);
             ExpandChildrenCommand = new GenericCommand(ExpandChildren, CanExpandOrCollapseChildren);
             SortChildrenCommand = new GenericCommand(SortChildren, CanSortChildren);
@@ -1131,6 +1134,44 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return true;
+        }
+
+        private bool CanIncrementHenchmenFloatProperties()
+        {
+            return CurrentLoadedExport?.ClassName is "SFXSeqAct_GetHenchmenInSquad" or "SFXSeqAct_GetHenchmenInSquad_Override";
+        }
+
+        private void IncrementHenchmenFloatProperties()
+        {
+            string result = PromptDialog.Prompt(
+                this,
+                "Enter the amount to add to every float property:",
+                "Increment Float Properties",
+                "1",
+                true,
+                validator: value => TryParseFiniteFloat(value, out _)
+                    ? (true, null)
+                    : (false, "Enter a valid finite number."));
+
+            if (result is null || !TryParseFiniteFloat(result, out float increment))
+            {
+                return;
+            }
+
+            foreach (FloatProperty floatProperty in CurrentLoadedProperties.OfType<FloatProperty>())
+            {
+                floatProperty.Value += increment;
+            }
+
+            CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            StartScan();
+
+            static bool TryParseFiniteFloat(string value, out float result)
+            {
+                bool parsed = float.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result)
+                              || float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+                return parsed && float.IsFinite(result);
+            }
         }
 
         private void AddProperty()

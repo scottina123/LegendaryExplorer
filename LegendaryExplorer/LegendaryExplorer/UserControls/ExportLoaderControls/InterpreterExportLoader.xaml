@@ -111,6 +111,21 @@
                 <ToggleButton Name="ToggleInsertMode_Button" ToolTip="Toggle insert mode (Insert key)" Content="INS" Click="ToggleInsertMode_Click" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                 <Separator Name="SaveToggle_Separator" Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Button Content="Add Property" ToolTip="Add a property from this class or a superclass to this object" Command="{Binding AddPropertyCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                <Button Content="Increment Floats" ToolTip="Increment every float property in this object by a specified amount" Command="{Binding IncrementHenchmenFloatPropertiesCommand}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">
+                    <Button.Style>
+                        <Style TargetType="{x:Type Button}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CurrentLoadedExport.ClassName}" Value="SFXSeqAct_GetHenchmenInSquad">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding CurrentLoadedExport.ClassName}" Value="SFXSeqAct_GetHenchmenInSquad_Override">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
                 <Label IsEnabled="False" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}">Array:</Label>
