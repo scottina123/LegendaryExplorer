@@ -2513,6 +2513,218 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddLinesFromXML();
         }
 
+        private void BulkImportLinesFromXML_Click(object sender, RoutedEventArgs e)
+        {
+            BulkImportLinesFromXMLById();
+        }
+
+        private void BulkImportLinesFromXMLById()
+        {
+            if (CurrentLoadedExport == null) return;
+
+            var ofd = new OpenFileDialog
+            {
+                Filter = "*.xml|*.xml",
+                CheckFileExists = true,
+                CustomPlaces = AppDirectories.GameCustomPlaces
+            };
+            if (ofd.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var xmlDoc = XElement.Load(ofd.FileName);
+            var animations = xmlDoc.Descendants("animation_groups")
+                .Descendants("animation_group")
+                .Descendants("animation")
+                .Select(animation => new
+                {
+                    Element = animation,
+                    Name = animation.Attribute("name")?.Value,
+                    TlkId = ExtractTlkIdFromWwiseEventName(animation.Attribute("name")?.Value ?? "")
+                })
+                .ToList();
+            if (animations.Count == 0)
+            {
+                MessageBox.Show(Window.GetWindow(this), "No animations found in this XML file!");
+                return;
+            }
+
+            var importableAnimations = animations.Where(animation => animation.TlkId > 0).ToList();
+            if (importableAnimations.Count == 0)
+            {
+                MessageBox.Show(Window.GetWindow(this), "None of the XML animation names contain a TLK ID (for example, VO_17250592_m).", "No Matching IDs", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SaveChanges();
+
+            bool isNonSpkr = CurrentLoadedExport.ObjectName.Name.Contains("NonSpkr");
+            bool isFemaleAsset = CurrentLoadedExport.ObjectName.Name.EndsWith("_F", StringComparison.OrdinalIgnoreCase);
+            var missingAnimations = importableAnimations
+                .Where(animation => FindLineByTlkId(animation.TlkId) == null)
+                .ToList();
+
+            string audioPackage = null;
+            if (!isNonSpkr && missingAnimations.Count > 0)
+            {
+                var pckExp = EntrySelector.GetEntry<ExportEntry>(Window.GetWindow(this), Pcc,
+                    "Select the package containing (or intended to contain) audio exports for new lines.",
+                    exp => exp.ClassName is "Package");
+                if (pckExp is null) return;
+                audioPackage = pckExp.InstancedFullPath;
+            }
+
+            ArrayProperty<ObjectProperty> referencedSoundCues = null;
+            HashSet<int> existingReferences = null;
+            if (!isNonSpkr)
+            {
+                referencedSoundCues = CurrentLoadedExport.GetProperty<ArrayProperty<ObjectProperty>>("ReferencedSoundCues")
+                                      ?? new ArrayProperty<ObjectProperty>("ReferencedSoundCues");
+                existingReferences = new HashSet<int>(referencedSoundCues.Select(reference => reference.Value));
+            }
+
+            int updatedCount = 0;
+            int addedCount = 0;
+            int audioReferencesAdded = 0;
+            foreach (var animation in importableAnimations)
+            {
+                FaceFXLineEntry lineEntry = FindLineByTlkId(animation.TlkId);
+                if (lineEntry == null)
+                {
+                    bool isFemale = GetAnimationGender(animation.Name) ?? isFemaleAsset;
+                    FaceFXLine line = CreateLineForXmlAnimation(animation.TlkId, animation.Name, audioPackage, isNonSpkr, isFemale);
+                    lineEntry = new FaceFXLineEntry(line)
+                    {
+                        IsMale = !isFemale,
+                        TLKID = animation.TlkId,
+                        TLKString = TLKManagerWPF.GlobalFindStrRefbyID(animation.TlkId, Pcc)
+                    };
+                    FaceFX.Lines.Add(line);
+                    Lines.Add(lineEntry);
+                    addedCount++;
+
+                    if (!isNonSpkr && Pcc.FindEntry(line.Path) is ExportEntry audio && existingReferences.Add(audio.UIndex))
+                    {
+                        referencedSoundCues.Add(new ObjectProperty(audio.UIndex));
+                        audioReferencesAdded++;
+                    }
+                }
+                else
+                {
+                    updatedCount++;
+                }
+
+                MergeXmlAnimationIntoLine(lineEntry, ReadXMLAnimation(animation.Element));
+            }
+
+            if (audioReferencesAdded > 0)
+            {
+                CurrentLoadedExport.WriteProperty(referencedSoundCues);
+            }
+            CurrentLoadedExport.WriteBinary(FaceFX.Binary);
+            UpdateAnimListBox();
+
+            int skippedCount = animations.Count - importableAnimations.Count;
+            string result = $"Imported {importableAnimations.Count} XML animation(s): {updatedCount} existing line(s) updated and {addedCount} new line(s) added.";
+            if (skippedCount > 0)
+            {
+                result += $"\nSkipped {skippedCount} animation(s) whose names did not contain a TLK ID.";
+            }
+            if (addedCount > audioReferencesAdded && !isNonSpkr)
+            {
+                result += $"\nFound and added {audioReferencesAdded} matching audio reference(s). Add references for the remaining new lines after their audio exports exist.";
+            }
+            MessageBox.Show(Window.GetWindow(this), result, "Bulk XML Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private FaceFXLineEntry FindLineByTlkId(int tlkId)
+        {
+            string id = tlkId.ToString(CultureInfo.InvariantCulture);
+            return Lines.FirstOrDefault(line => line.TLKID == tlkId
+                                                || string.Equals(line.Line.ID, id, StringComparison.OrdinalIgnoreCase)
+                                                || ExtractTlkIdFromWwiseEventName(line.Line.NameAsString) == tlkId);
+        }
+
+        private FaceFXLine CreateLineForXmlAnimation(int tlkId, string animationName, string audioPackage, bool isNonSpkr, bool isFemale)
+        {
+            string genderUpper = isFemale ? "F" : "M";
+            string genderLower = isFemale ? "f" : "m";
+            string lineName;
+            string path = "";
+            string id = "";
+            int index = -1;
+
+            if (isNonSpkr)
+            {
+                lineName = animationName;
+            }
+            else if (Pcc.Game.IsGame1())
+            {
+                lineName = $"FXA_{tlkId}{(isFemale ? "" : "_M")}";
+                path = $"{audioPackage}.VO_{tlkId}{(isFemale ? "" : "_m")}_Play";
+                id = $"{audioPackage.Replace("_N", "")}:VO_{tlkId}{(isFemale ? "" : "_m")}_Play";
+                index = FaceFX.Lines.Count;
+            }
+            else
+            {
+                lineName = $"FXA_{tlkId}_{genderUpper}";
+                path = $"{audioPackage}.VO_{tlkId}_{genderLower}_Play";
+                id = tlkId.ToString(CultureInfo.InvariantCulture);
+                index = FaceFX.Lines.Count;
+            }
+
+            return new FaceFXLine
+            {
+                NameIndex = FaceFX.Names.FindOrAdd(lineName),
+                NameAsString = lineName,
+                AnimationNames = [],
+                Points = [],
+                NumKeys = [],
+                FadeInTime = 0.16F,
+                FadeOutTime = 0.22F,
+                Path = path,
+                ID = id,
+                Index = index
+            };
+        }
+
+        private static bool? GetAnimationGender(string animationName)
+        {
+            if (animationName.EndsWith("_f", StringComparison.OrdinalIgnoreCase)) return true;
+            if (animationName.EndsWith("_m", StringComparison.OrdinalIgnoreCase)) return false;
+            return null;
+        }
+
+        private void MergeXmlAnimationIntoLine(FaceFXLineEntry lineEntry, LineSection lineSection)
+        {
+            FaceFXLine line = lineEntry.Line;
+            var newPoints = new List<FaceFXControlPoint>();
+            for (int animationIndex = 0, pointIndex = 0; animationIndex < line.AnimationNames.Count; animationIndex++)
+            {
+                string animationName = FaceFX.Names[line.AnimationNames[animationIndex]];
+                int existingPointCount = line.NumKeys[animationIndex];
+                if (lineSection.animSecs.Remove(animationName, out List<FaceFXControlPoint> importedPoints))
+                {
+                    newPoints.AddRange(importedPoints);
+                    line.NumKeys[animationIndex] = importedPoints.Count;
+                }
+                else
+                {
+                    newPoints.AddRange(line.Points.Skip(pointIndex).Take(existingPointCount));
+                }
+                pointIndex += existingPointCount;
+            }
+
+            foreach ((string animationName, List<FaceFXControlPoint> importedPoints) in lineSection.animSecs)
+            {
+                line.AnimationNames.Add(FaceFX.Names.FindOrAdd(animationName));
+                line.NumKeys.Add(importedPoints.Count);
+                newPoints.AddRange(importedPoints);
+            }
+            lineEntry.Points = newPoints;
+        }
+
         private void AddAudioFromFolder_Click(object sender, RoutedEventArgs e)
         {
             AddAudioFromFolder();

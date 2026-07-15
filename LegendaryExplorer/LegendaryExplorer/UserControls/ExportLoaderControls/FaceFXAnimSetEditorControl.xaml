@@ -52,6 +52,7 @@
                     <MenuItem Header="Auto FaceFX Generation" Click="AutoFaceFXGeneration_Click" ToolTip="Automatically generate lip sync animations for selected line"/>
                     <Separator/>
                     <MenuItem Header="Bulk Operations">
+                        <MenuItem Header="Bulk Import Lines from XML by ID" Click="BulkImportLinesFromXML_Click" ToolTip="Import every XML animation into the FaceFX line with the matching TLK ID, creating missing lines"/>
                         <MenuItem Header="Import Audio and Generate FaceFX" Click="ImportAudioAndGenerateFaceFX_Click" ToolTip="Import WAV files via Wwise, add them as FaceFX lines, and bulk-generate lip sync animations"/>
                         <Separator/>
                         <MenuItem Header="Bulk Generate FaceFX for All Lines" Click="BulkGenerateFaceFX_Click" ToolTip="Generate lip sync animations for all lines in this FaceFX asset"/>
