@@ -6141,6 +6141,70 @@ namespace LegendaryExplorer.DialogueEditor
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             });
 
+            var sequentialTlkPanel = new Grid
+            {
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+            sequentialTlkPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            sequentialTlkPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            sequentialTlkPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var sequentialTlkLabel = new TextBlock
+            {
+                Text = "Starting cloned TLK string ref:",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var sequentialTlkTextBox = new TextBox
+            {
+                MinWidth = 180
+            };
+            var applySequentialTlkButton = new Button
+            {
+                Content = "Apply sequential refs",
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            applySequentialTlkButton.Click += (_, _) =>
+            {
+                if (!int.TryParse(sequentialTlkTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int startingStrRef)
+                    || startingStrRef <= 0)
+                {
+                    System.Windows.MessageBox.Show(dialog,
+                        "Enter a positive starting TLK string reference.",
+                        "Clone Speaker Nodes",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (tlkRows.Count > 0 && startingStrRef > int.MaxValue - (tlkRows.Count - 1))
+                {
+                    System.Windows.MessageBox.Show(dialog,
+                        "The starting TLK string reference is too large for the number of cloned nodes.",
+                        "Clone Speaker Nodes",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                for (int i = 0; i < tlkRows.Count; i++)
+                {
+                    tlkRows[i].TextBox.Text = (startingStrRef + i).ToString(CultureInfo.InvariantCulture);
+                }
+            };
+            Grid.SetColumn(sequentialTlkTextBox, 1);
+            Grid.SetColumn(applySequentialTlkButton, 2);
+            sequentialTlkPanel.Children.Add(sequentialTlkLabel);
+            sequentialTlkPanel.Children.Add(sequentialTlkTextBox);
+            sequentialTlkPanel.Children.Add(applySequentialTlkButton);
+            rootPanel.Children.Add(sequentialTlkPanel);
+            rootPanel.Children.Add(new TextBlock
+            {
+                Text = "Fills the cloned TLK column from the starting reference, increasing each following node by 1.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+
             var updateInterpLengthsCheckBox = new CheckBox
             {
                 Content = "Update cloned InterpLengths after cloning",
