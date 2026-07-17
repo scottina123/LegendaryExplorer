@@ -38,6 +38,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
+    private string playbackKeyframeStatus = "Not playing";
     private float playbackStartTime;
     private float playbackEndTime;
     private float playbackElapsed;
@@ -73,6 +74,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         get => sceneStatus;
         private set => SetProperty(ref sceneStatus, value);
+    }
+
+    public string PlaybackKeyframeStatus
+    {
+        get => playbackKeyframeStatus;
+        private set => SetProperty(ref playbackKeyframeStatus, value);
     }
 
     public CurveEditor3DKeyframe SelectedKeyframe
@@ -123,6 +130,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         model.Clear();
         trajectorySamples = [];
         trajectorySamplesDirty = false;
+        PlaybackKeyframeStatus = "Not playing";
         KeyframeList.ItemsSource = null;
         SelectedKeyframe = null;
         CurrentLoadedExport = null;
@@ -572,8 +580,32 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Camera.Pitch = rotation.Y * degreesToRadians;
         RenderContext.Camera.Yaw = rotation.Z * degreesToRadians;
         RenderContext.Camera.FocusDepth = 0f;
+        PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
         SceneStatus = $"Playing camera at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         SceneViewer.MarkRenderDirty();
+    }
+
+    private string GetPlaybackKeyframeStatus(float time)
+    {
+        int keyframeCount = model.Keyframes.Count;
+        if (keyframeCount == 0)
+        {
+            return "Not playing";
+        }
+
+        int currentIndex = 0;
+        for (int i = 1; i < keyframeCount; i++)
+        {
+            if (model.Keyframes[i].Time > time)
+            {
+                break;
+            }
+
+            currentIndex = i;
+        }
+
+        CurveEditor3DKeyframe currentKeyframe = model.Keyframes[currentIndex];
+        return $"Keyframe {currentIndex + 1} of {keyframeCount} (InVal {currentKeyframe.Time:0.###})";
     }
 
     private void StopPlayback(bool restoreStatus = true)
@@ -585,6 +617,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         isPlayingMove = false;
         playbackElapsed = 0f;
+        PlaybackKeyframeStatus = "Not playing";
         RenderContext.ForceContinuousRendering = false;
         if (playMoveButton is not null)
         {

@@ -50,6 +50,9 @@
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="8">
                 <StackPanel>
                     <TextBlock Text="Keyframes" FontSize="18" FontWeight="SemiBold"/>
+                    <GroupBox Header="Playback" Margin="0,4,0,8">
+                        <TextBlock Margin="6" Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
+                    </GroupBox>
                     <ListBox x:Name="KeyframeList" Margin="0,4,0,10" MaxHeight="220"
                              SelectionChanged="KeyframeList_SelectionChanged">
                         <ListBox.ItemTemplate>
