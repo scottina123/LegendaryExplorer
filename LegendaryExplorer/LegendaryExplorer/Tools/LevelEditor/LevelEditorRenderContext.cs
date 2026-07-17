@@ -24,6 +24,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public event Action<ActorProxy> SelectActor;
     public event Action<ActorProxy> RightClickActor;
     public event Action<IHitProxy> SelectHitProxy;
+    public event Action<IHitProxy> RightClickHitProxy;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
@@ -150,6 +151,10 @@ public class LevelEditorRenderContext : MeshRenderContext
                 {
                     RightClickActor?.Invoke(rightClickedActor);
                 }
+                else if (selected is not null)
+                {
+                    RightClickHitProxy?.Invoke(selected);
+                }
             }
             else
             {
@@ -198,6 +203,7 @@ public class LevelEditorRenderContext : MeshRenderContext
                 case ActorProxy:
                     return base.MouseDown(button, x, y);
                 case not null:
+                    base.MouseDown(button, x, y);
                     SelectHitProxy?.Invoke(selected);
                     return true;
             }

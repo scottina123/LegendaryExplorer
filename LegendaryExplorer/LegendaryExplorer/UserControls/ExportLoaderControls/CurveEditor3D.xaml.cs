@@ -45,6 +45,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         InitializeComponent();
+        ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
         ThemeManager.ThemeChanged += OnThemeChanged;
@@ -148,7 +149,29 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         model.Changed -= Model_Changed;
         RenderContext.UpdateScene -= UpdatePlayback;
         ThemeManager.ThemeChanged -= OnThemeChanged;
+        KeyframeList.PreviewMouseRightButtonDown -= KeyframeList_PreviewMouseRightButtonDown;
         SceneViewer.Dispose();
+    }
+
+    private void ConfigureKeyframeContextMenu()
+    {
+        KeyframeList.PreviewMouseRightButtonDown += KeyframeList_PreviewMouseRightButtonDown;
+        KeyframeList.ContextMenu = CreateKeyframeContextMenu();
+    }
+
+    private ContextMenu CreateKeyframeContextMenu()
+    {
+        var menu = new ContextMenu();
+
+        var addItem = new MenuItem { Header = "Add Keyframe..." };
+        addItem.Click += AddKeyframe_Click;
+        menu.Items.Add(addItem);
+
+        var deleteItem = new MenuItem { Header = "Delete Keyframe" };
+        deleteItem.Click += DeleteKeyframe_Click;
+        menu.Items.Add(deleteItem);
+
+        return menu;
     }
 
     private void OnThemeChanged(object sender, bool isDarkMode)
@@ -178,6 +201,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         RenderContext.RenderScene += RenderScene;
         RenderContext.SelectHitProxy += SelectHitProxy;
+        RenderContext.RightClickHitProxy += RightClickHitProxy;
         RenderContext.SelectActor += IgnoreActorSelection;
         eventsAttached = true;
     }
@@ -191,6 +215,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectHitProxy -= SelectHitProxy;
+        RenderContext.RightClickHitProxy -= RightClickHitProxy;
         RenderContext.SelectActor -= IgnoreActorSelection;
         eventsAttached = false;
     }
@@ -200,6 +225,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (hitProxy is CurveEditor3DKeyframe keyframe)
         {
             SelectedKeyframe = keyframe;
+        }
+    }
+
+    private void RightClickHitProxy(IHitProxy hitProxy)
+    {
+        if (hitProxy is CurveEditor3DKeyframe keyframe)
+        {
+            SelectedKeyframe = keyframe;
+            ShowKeyframeContextMenu(SceneViewer);
         }
     }
 
@@ -227,6 +261,86 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (KeyframeList.SelectedItem is CurveEditor3DKeyframe keyframe && keyframe != SelectedKeyframe)
         {
             SelectedKeyframe = keyframe;
+        }
+    }
+
+    private void AddKeyframe_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (SelectedKeyframe is not { } keyframe)
+        {
+            return;
+        }
+
+        MessageBoxResult result = MessageBox.Show(
+            "Add keyframe before or after the selected keyframe?\n\nYes = before\nNo = after",
+            "Add Keyframe",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+        bool addAfter;
+        switch (result)
+        {
+            case MessageBoxResult.Yes:
+                addAfter = false;
+                break;
+            case MessageBoxResult.No:
+                addAfter = true;
+                break;
+            default:
+                return;
+        }
+
+        CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, addAfter);
+        if (newKeyframe is null)
+        {
+            return;
+        }
+
+        RenderContext.AddHitProxy(newKeyframe);
+        SelectedKeyframe = newKeyframe;
+        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {model.Keyframes.Count} trajectory keyframe(s).";
+        RefreshKeyframePanel();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void DeleteKeyframe_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (SelectedKeyframe is not { } keyframe)
+        {
+            return;
+        }
+
+        RenderContext.RemoveHitProxy(keyframe);
+        SelectedKeyframe = model.DeleteKeyframe(keyframe);
+        SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        RefreshKeyframePanel();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void KeyframeList_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(KeyframeList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: CurveEditor3DKeyframe keyframe })
+        {
+            SelectedKeyframe = keyframe;
+        }
+    }
+
+    private void ShowKeyframeContextMenu(FrameworkElement placementTarget)
+    {
+        ContextMenu menu = CreateKeyframeContextMenu();
+        menu.PlacementTarget = placementTarget;
+        menu.IsOpen = true;
+    }
+
+    private void RefreshKeyframePanel()
+    {
+        KeyframeList?.Items.Refresh();
+        OnPropertyChanged(nameof(SelectedKeyframe));
+        KeyframeList.SelectedItem = SelectedKeyframe;
+        if (SelectedKeyframe is not null)
+        {
+            KeyframeList.ScrollIntoView(SelectedKeyframe);
         }
     }
 

@@ -69,6 +69,57 @@ public sealed class CurveEditor3DModel
         return samples;
     }
 
+    public CurveEditor3DKeyframe AddKeyframe(CurveEditor3DKeyframe selectedKeyframe, bool addAfter)
+    {
+        if (Export is null || selectedKeyframe is null)
+        {
+            return null;
+        }
+
+        float newTime = selectedKeyframe.Time + (addAfter ? 5f : -5f);
+        Vector3 newLocation = selectedKeyframe.Location + new Vector3(100f, 100f, 100f);
+        Vector3 newRotation = selectedKeyframe.Rotation;
+        EInterpCurveMode interpMode = selectedKeyframe.InterpMode;
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, newLocation, interpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, interpMode);
+        var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
+        Keyframes.Add(keyframe);
+        CommitKeyframe(keyframe, null);
+        return keyframe;
+    }
+
+    public CurveEditor3DKeyframe DeleteKeyframe(CurveEditor3DKeyframe keyframe)
+    {
+        if (Export is null || keyframe is null)
+        {
+            return null;
+        }
+
+        int index = Keyframes.IndexOf(keyframe);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        PositionTrack.Points.Remove(keyframe.PositionPoint);
+        if (keyframe.RotationPoint is not null)
+        {
+            RotationTrack.Points.Remove(keyframe.RotationPoint);
+        }
+        Keyframes.RemoveAt(index);
+        PositionTrack.ReCalculateTangents();
+        RotationTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+
+        if (Keyframes.Count == 0)
+        {
+            return null;
+        }
+
+        return Keyframes[Math.Min(index, Keyframes.Count - 1)];
+    }
+
     private void RebuildKeyframes()
     {
         Keyframes.Clear();
@@ -109,12 +160,16 @@ public sealed class CurveEditor3DModel
         Keyframes.Sort((left, right) => left.Time.CompareTo(right.Time));
         PositionTrack.ReCalculateTangents();
         RotationTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
 
+    private void WriteTracks()
+    {
         PropertyCollection properties = Export.GetProperties();
         properties.AddOrReplaceProp(PositionTrack.ToStructProperty(Export.Game, "PosTrack"));
         properties.AddOrReplaceProp(RotationTrack.ToStructProperty(Export.Game, "EulerTrack"));
         Export.WriteProperties(properties);
-        Changed?.Invoke();
     }
 
     private static InterpCurvePoint<Vector3> FindPoint(InterpCurveVector track, float time)

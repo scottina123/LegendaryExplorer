@@ -25,6 +25,7 @@
             <Separator/>
             <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False"
                     ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
+
             <Separator/>
             <Button Content="Translate" Click="TranslateMode_Click" ToolTip="Drag the selected cube with the translation gizmo"/>
             <Button Content="Rotate" Click="RotateMode_Click" ToolTip="Rotate the selected cube with the rotation gizmo"/>
