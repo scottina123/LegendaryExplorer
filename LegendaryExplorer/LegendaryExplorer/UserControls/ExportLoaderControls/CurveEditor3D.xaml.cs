@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
@@ -23,19 +21,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext
 {
+    private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
+
     private readonly CurveEditor3DModel model = new();
     private readonly List<IMEPackage> levelPackages = [];
     private readonly List<ActorProxy> levelActors = [];
     private readonly List<string> levelPaths = [];
-    private readonly DispatcherTimer playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
-    private readonly Stopwatch playbackClock = new();
+    private IReadOnlyList<Vector3> trajectorySamples = [];
     private bool eventsAttached;
+    private bool isPlayingMove;
+    private bool trajectorySamplesDirty;
     private Button playMoveButton;
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
     private float playbackStartTime;
     private float playbackEndTime;
+    private float playbackElapsed;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -47,7 +49,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.EnableTransformWidget();
         ThemeManager.ThemeChanged += OnThemeChanged;
         model.Changed += Model_Changed;
-        playbackTimer.Tick += PlaybackTimer_Tick;
+        RenderContext.UpdateScene += UpdatePlayback;
     }
 
     public LevelEditorRenderContext RenderContext { get; }
@@ -98,6 +100,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
         model.Load(exportEntry);
+        trajectorySamplesDirty = true;
         KeyframeList.ItemsSource = model.Keyframes;
         RegisterKeyframes();
         SelectedKeyframe = model.Keyframes.FirstOrDefault();
@@ -113,6 +116,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         model.Clear();
+        trajectorySamples = [];
+        trajectorySamplesDirty = false;
         KeyframeList.ItemsSource = null;
         SelectedKeyframe = null;
         CurrentLoadedExport = null;
@@ -141,7 +146,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CloseLevels();
         DetachEvents();
         model.Changed -= Model_Changed;
-        playbackTimer.Tick -= PlaybackTimer_Tick;
+        RenderContext.UpdateScene -= UpdatePlayback;
         ThemeManager.ThemeChanged -= OnThemeChanged;
         SceneViewer.Dispose();
     }
@@ -256,7 +261,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void PlayMove_Click(object sender, RoutedEventArgs e)
     {
-        if (playbackTimer.IsEnabled)
+        if (isPlayingMove)
         {
             StopPlayback();
             return;
@@ -280,15 +285,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             playMoveButton.Content = "Stop";
         }
         RenderContext.TransformWidget.Attach = null;
-        playbackClock.Restart();
-        playbackTimer.Start();
+        playbackElapsed = 0f;
+        isPlayingMove = true;
+        RenderContext.ForceContinuousRendering = true;
         ApplyCameraAtTime(playbackStartTime);
         SceneViewer.Focus();
     }
 
-    private void PlaybackTimer_Tick(object sender, EventArgs e)
+    private void UpdatePlayback(object sender, float deltaTime)
     {
-        float time = playbackStartTime + (float)playbackClock.Elapsed.TotalSeconds;
+        if (!isPlayingMove)
+        {
+            return;
+        }
+
+        playbackElapsed += deltaTime;
+        float time = playbackStartTime + playbackElapsed;
         if (time >= playbackEndTime)
         {
             ApplyCameraAtTime(playbackEndTime);
@@ -315,13 +327,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void StopPlayback(bool restoreStatus = true)
     {
-        if (!playbackTimer.IsEnabled && !playbackClock.IsRunning)
+        if (!isPlayingMove)
         {
             return;
         }
 
-        playbackTimer.Stop();
-        playbackClock.Reset();
+        isPlayingMove = false;
+        playbackElapsed = 0f;
+        RenderContext.ForceContinuousRendering = false;
         if (playMoveButton is not null)
         {
             playMoveButton.Content = "Play";
@@ -342,7 +355,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         playMoveButton.IsEnabled = model.Keyframes.Count > 0;
-        if (!playbackTimer.IsEnabled)
+        if (!isPlayingMove)
         {
             playMoveButton.Content = "Play";
         }
@@ -370,14 +383,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         StopPlayback();
         UpdatePlaybackButton();
+        trajectorySamplesDirty = true;
         KeyframeList?.Items.Refresh();
         SceneViewer?.MarkRenderDirty();
     }
 
     private void RenderScene(object sender, EventArgs e)
     {
-        RenderContext.RefreshSceneLights();
-        foreach (RenderPass pass in new[] { RenderPass.Base, RenderPass.Hair })
+        foreach (RenderPass pass in RenderPasses)
         {
             foreach (ActorProxy actor in RenderContext.DrawList_3D)
             {
@@ -387,7 +400,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (!playbackTimer.IsEnabled)
+        if (!isPlayingMove)
         {
             DrawTrajectory();
         }
@@ -396,7 +409,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void DrawTrajectory()
     {
-        IReadOnlyList<Vector3> samples = model.SampleTrajectory();
+        IReadOnlyList<Vector3> samples = GetTrajectorySamples();
         Vector4 pathColor = new(1f, 0.65f, 0.05f, 1f);
         for (int i = 1; i < samples.Count; i++)
         {
@@ -413,6 +426,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             DrawKeyframe(keyframe);
         }
+    }
+
+    private IReadOnlyList<Vector3> GetTrajectorySamples()
+    {
+        if (trajectorySamplesDirty)
+        {
+            trajectorySamples = model.SampleTrajectory();
+            trajectorySamplesDirty = false;
+        }
+
+        return trajectorySamples;
     }
 
     private void DrawKeyframe(CurveEditor3DKeyframe keyframe)

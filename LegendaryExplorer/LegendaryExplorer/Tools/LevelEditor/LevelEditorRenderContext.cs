@@ -7,6 +7,7 @@ using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -26,6 +27,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
+    private readonly Dictionary<ActorProxy, SceneLight> sceneLightCache = [];
 
     private USparseArray<IHitProxy> HitProxies = [];
 
@@ -33,7 +35,9 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     private Texture2D _hitStagingTexture;
 
-    public override bool IsActivelyUpdating() => base.IsActivelyUpdating() || TransformWidget.IsDragging;
+    public bool ForceContinuousRendering { get; set; }
+
+    public override bool IsActivelyUpdating() => ForceContinuousRendering || base.IsActivelyUpdating() || TransformWidget.IsDragging;
 
     public readonly BatchedPrimitives Primitives = new();
 
@@ -52,12 +56,68 @@ public class LevelEditorRenderContext : MeshRenderContext
     public void RefreshSceneLights()
     {
         SceneLights.Clear();
+        sceneLightCache.Clear();
         foreach (ActorProxy actor in DrawList_3D)
         {
             if (actor.TryGetSceneLight(out SceneLight light))
             {
                 SceneLights.Add(light);
+                sceneLightCache.Add(actor, light);
             }
+        }
+    }
+
+    private static bool CanAffectSceneLight(string propertyName)
+        => string.IsNullOrEmpty(propertyName) || propertyName is
+            nameof(ActorProxy.Location) or
+            nameof(ActorProxy.XPos) or
+            nameof(ActorProxy.YPos) or
+            nameof(ActorProxy.ZPos) or
+            nameof(ActorProxy.Rotation) or
+            nameof(ActorProxy.PitchDegrees) or
+            nameof(ActorProxy.YawDegrees) or
+            nameof(ActorProxy.RollDegrees) or
+            nameof(ActorProxy.LightRadius) or
+            nameof(ActorProxy.Brightness) or
+            nameof(ActorProxy.LightColor) or
+            nameof(ActorProxy.InnerConeAngle) or
+            nameof(ActorProxy.OuterConeAngle);
+
+    private void Actor_PropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        if (sender is ActorProxy actor && actor.HasLightSettings && CanAffectSceneLight(e.PropertyName))
+        {
+            RefreshCachedSceneLight(actor);
+        }
+    }
+
+    private void CacheSceneLight(ActorProxy actor)
+    {
+        if (actor.TryGetSceneLight(out SceneLight light))
+        {
+            sceneLightCache[actor] = light;
+            SceneLights.Add(light);
+        }
+    }
+
+    private void RefreshCachedSceneLight(ActorProxy actor)
+    {
+        sceneLightCache.Remove(actor);
+        if (actor.TryGetSceneLight(out SceneLight light))
+        {
+            sceneLightCache[actor] = light;
+        }
+
+        SceneLights.Clear();
+        SceneLights.AddRange(sceneLightCache.Values);
+    }
+
+    private void RemoveSceneLight(ActorProxy actor)
+    {
+        if (sceneLightCache.Remove(actor))
+        {
+            SceneLights.Clear();
+            SceneLights.AddRange(sceneLightCache.Values);
         }
     }
 
@@ -134,6 +194,10 @@ public class LevelEditorRenderContext : MeshRenderContext
                 case AxisHitProxy axisProxy:
                     TransformWidget.CurrentAxis = axisProxy.Axis;
                     TransformWidget.BeginDrag(x, y);
+                    return true;
+                case ActorProxy actor when button is not MouseButtons.Right:
+                    TransformWidget.Attach = actor;
+                    SelectActor?.Invoke(actor);
                     return true;
                 case not null:
                     SelectHitProxy?.Invoke(selected);
@@ -250,6 +314,8 @@ public class LevelEditorRenderContext : MeshRenderContext
         foreach (var actor in actors)
         {
             actor.HitID = HitProxies.Add(actor);
+            actor.PropertyChanged += Actor_PropertyChanged;
+            CacheSceneLight(actor);
         }
         if (!DrawList_UI.Contains(LightIcons))
         {
@@ -294,8 +360,14 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         EmptyCaches();
         HitProxies.Reset();
+        foreach (ActorProxy actor in DrawList_3D)
+        {
+            actor.PropertyChanged -= Actor_PropertyChanged;
+        }
         DrawList_3D.DisposeAndClear();
         DrawList_UI.Clear();
+        SceneLights.Clear();
+        sceneLightCache.Clear();
         TransformWidget.Attach = null;
     }
 
@@ -329,6 +401,8 @@ public class LevelEditorRenderContext : MeshRenderContext
     {
         if (DrawList_3D.Remove(actor))
         {
+            actor.PropertyChanged -= Actor_PropertyChanged;
+            RemoveSceneLight(actor);
             HitProxies.RemoveAt(actor.HitID);
         }
     }
@@ -339,6 +413,8 @@ public class LevelEditorRenderContext : MeshRenderContext
         {
             DrawList_3D.Add(actor);
             actor.HitID = HitProxies.Add(actor);
+            actor.PropertyChanged += Actor_PropertyChanged;
+            CacheSceneLight(actor);
         }
     }
 }

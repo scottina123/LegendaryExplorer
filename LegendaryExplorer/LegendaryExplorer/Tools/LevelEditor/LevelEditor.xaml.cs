@@ -549,7 +549,6 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         RenderContext.ShowVolumes = ShowVolumes;
         RenderContext.ShowVolumetrics = ShowVolumetrics;
-        RenderContext.RefreshSceneLights();
         Span<RenderPass> passes = ShowCollision
             ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
             : [RenderPass.Base, RenderPass.Hair];
