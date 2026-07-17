@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
@@ -25,10 +27,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<IMEPackage> levelPackages = [];
     private readonly List<ActorProxy> levelActors = [];
     private readonly List<string> levelPaths = [];
+    private readonly DispatcherTimer playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly Stopwatch playbackClock = new();
     private bool eventsAttached;
+    private Button playMoveButton;
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
+    private float playbackStartTime;
+    private float playbackEndTime;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -40,6 +47,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.EnableTransformWidget();
         ThemeManager.ThemeChanged += OnThemeChanged;
         model.Changed += Model_Changed;
+        playbackTimer.Tick += PlaybackTimer_Tick;
     }
 
     public LevelEditorRenderContext RenderContext { get; }
@@ -86,6 +94,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     public override void LoadExport(ExportEntry exportEntry)
     {
+        StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
         model.Load(exportEntry);
@@ -94,18 +103,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SelectedKeyframe = model.Keyframes.FirstOrDefault();
         CurrentExportName = $"{exportEntry.UIndex}: {exportEntry.InstancedFullPath}";
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        UpdatePlaybackButton();
         FocusCameraOnKey(SelectedKeyframe);
         SceneViewer?.MarkRenderDirty();
     }
 
     public override void UnloadExport()
     {
+        StopPlayback(false);
         UnregisterKeyframes();
         model.Clear();
         KeyframeList.ItemsSource = null;
         SelectedKeyframe = null;
         CurrentLoadedExport = null;
         CurrentExportName = null;
+        UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -129,6 +141,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CloseLevels();
         DetachEvents();
         model.Changed -= Model_Changed;
+        playbackTimer.Tick -= PlaybackTimer_Tick;
         ThemeManager.ThemeChanged -= OnThemeChanged;
         SceneViewer.Dispose();
     }
@@ -214,6 +227,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void SnapCameraToKey_Click(object sender, RoutedEventArgs e)
     {
+        StopPlayback();
         if (SelectedKeyframe is not { } keyframe)
         {
             return;
@@ -232,6 +246,106 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Camera.FocusDepth = 0f;
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
+    }
+
+    private void PlayMoveButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        playMoveButton = (Button)sender;
+        UpdatePlaybackButton();
+    }
+
+    private void PlayMove_Click(object sender, RoutedEventArgs e)
+    {
+        if (playbackTimer.IsEnabled)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (model.Keyframes.Count == 0)
+        {
+            return;
+        }
+
+        playbackStartTime = model.Keyframes[0].Time;
+        playbackEndTime = model.Keyframes[^1].Time;
+        if (playbackEndTime <= playbackStartTime)
+        {
+            ApplyCameraAtTime(playbackStartTime);
+            return;
+        }
+
+        if (playMoveButton is not null)
+        {
+            playMoveButton.Content = "Stop";
+        }
+        RenderContext.TransformWidget.Attach = null;
+        playbackClock.Restart();
+        playbackTimer.Start();
+        ApplyCameraAtTime(playbackStartTime);
+        SceneViewer.Focus();
+    }
+
+    private void PlaybackTimer_Tick(object sender, EventArgs e)
+    {
+        float time = playbackStartTime + (float)playbackClock.Elapsed.TotalSeconds;
+        if (time >= playbackEndTime)
+        {
+            ApplyCameraAtTime(playbackEndTime);
+            StopPlayback();
+            return;
+        }
+
+        ApplyCameraAtTime(time);
+    }
+
+    private void ApplyCameraAtTime(float time)
+    {
+        Vector3 location = model.PositionTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        Vector3 rotation = model.RotationTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        const float degreesToRadians = 0.017453292519943295f;
+        RenderContext.Camera.Position = location;
+        RenderContext.Camera.Roll = rotation.X * degreesToRadians;
+        RenderContext.Camera.Pitch = rotation.Y * degreesToRadians;
+        RenderContext.Camera.Yaw = rotation.Z * degreesToRadians;
+        RenderContext.Camera.FocusDepth = 0f;
+        SceneStatus = $"Playing camera at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void StopPlayback(bool restoreStatus = true)
+    {
+        if (!playbackTimer.IsEnabled && !playbackClock.IsRunning)
+        {
+            return;
+        }
+
+        playbackTimer.Stop();
+        playbackClock.Reset();
+        if (playMoveButton is not null)
+        {
+            playMoveButton.Content = "Play";
+        }
+        RenderContext.TransformWidget.Attach = SelectedKeyframe;
+        if (restoreStatus)
+        {
+            SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        }
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void UpdatePlaybackButton()
+    {
+        if (playMoveButton is null)
+        {
+            return;
+        }
+
+        playMoveButton.IsEnabled = model.Keyframes.Count > 0;
+        if (!playbackTimer.IsEnabled)
+        {
+            playMoveButton.Content = "Play";
+        }
     }
 
     private void FocusCameraOnKey(CurveEditor3DKeyframe keyframe)
@@ -254,6 +368,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void Model_Changed()
     {
+        StopPlayback();
+        UpdatePlaybackButton();
         KeyframeList?.Items.Refresh();
         SceneViewer?.MarkRenderDirty();
     }
@@ -271,7 +387,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        DrawTrajectory();
+        if (!playbackTimer.IsEnabled)
+        {
+            DrawTrajectory();
+        }
         RenderContext.DrawUI();
     }
 

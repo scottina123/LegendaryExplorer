@@ -20,6 +20,9 @@
                 </Button.ContextMenu>
             </Button>
             <Separator/>
+            <Button Content="Play" Click="PlayMove_Click" Loaded="PlayMoveButton_Loaded" IsEnabled="False"
+                    ToolTip="Play the move through the scene camera using the track interpolation modes"/>
+            <Separator/>
             <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False"
                     ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
             <Separator/>
