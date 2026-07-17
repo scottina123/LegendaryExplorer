@@ -195,10 +195,8 @@ public class LevelEditorRenderContext : MeshRenderContext
                     TransformWidget.CurrentAxis = axisProxy.Axis;
                     TransformWidget.BeginDrag(x, y);
                     return true;
-                case ActorProxy actor when button is not MouseButtons.Right:
-                    TransformWidget.Attach = actor;
-                    SelectActor?.Invoke(actor);
-                    return true;
+                case ActorProxy:
+                    return base.MouseDown(button, x, y);
                 case not null:
                     SelectHitProxy?.Invoke(selected);
                     return true;
