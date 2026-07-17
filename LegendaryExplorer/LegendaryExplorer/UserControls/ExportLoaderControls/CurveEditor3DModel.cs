@@ -88,6 +88,25 @@ public sealed class CurveEditor3DModel
         return keyframe;
     }
 
+    public CurveEditor3DKeyframe AddKeyframeAfterLast(Vector3 location)
+    {
+        if (Export is null || Keyframes.Count == 0)
+        {
+            return null;
+        }
+
+        CurveEditor3DKeyframe lastKeyframe = Keyframes[^1];
+        float newTime = lastKeyframe.Time + 1f;
+        Vector3 newRotation = lastKeyframe.Rotation;
+        EInterpCurveMode interpMode = lastKeyframe.InterpMode;
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, location, interpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, interpMode);
+        var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
+        Keyframes.Add(keyframe);
+        CommitKeyframe(keyframe, null);
+        return keyframe;
+    }
+
     public CurveEditor3DKeyframe DeleteKeyframe(CurveEditor3DKeyframe keyframe)
     {
         if (Export is null || keyframe is null)

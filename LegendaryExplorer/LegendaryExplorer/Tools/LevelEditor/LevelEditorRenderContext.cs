@@ -25,6 +25,7 @@ public class LevelEditorRenderContext : MeshRenderContext
     public event Action<ActorProxy> RightClickActor;
     public event Action<IHitProxy> SelectHitProxy;
     public event Action<IHitProxy> RightClickHitProxy;
+    public event Action RightClickViewport;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
@@ -154,6 +155,10 @@ public class LevelEditorRenderContext : MeshRenderContext
                 else if (selected is not null)
                 {
                     RightClickHitProxy?.Invoke(selected);
+                }
+                else
+                {
+                    RightClickViewport?.Invoke();
                 }
             }
             else

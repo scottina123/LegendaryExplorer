@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
@@ -40,6 +41,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackStartTime;
     private float playbackEndTime;
     private float playbackElapsed;
+    private Vector3 pendingViewportKeyframeLocation;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -211,6 +213,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.SelectHitProxy += SelectHitProxy;
         RenderContext.RightClickHitProxy += RightClickHitProxy;
         RenderContext.SelectActor += IgnoreActorSelection;
+        RenderContext.RightClickActor += RightClickActor;
+        RenderContext.RightClickViewport += RightClickViewport;
         eventsAttached = true;
     }
 
@@ -225,6 +229,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.SelectHitProxy -= SelectHitProxy;
         RenderContext.RightClickHitProxy -= RightClickHitProxy;
         RenderContext.SelectActor -= IgnoreActorSelection;
+        RenderContext.RightClickActor -= RightClickActor;
+        RenderContext.RightClickViewport -= RightClickViewport;
         eventsAttached = false;
     }
 
@@ -243,11 +249,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SelectedKeyframe = keyframe;
             ShowKeyframeContextMenu(SceneViewer);
         }
+        else
+        {
+            ShowViewportContextMenu(SceneViewer);
+        }
     }
 
     private void IgnoreActorSelection(ActorProxy actor)
     {
         RenderContext.TransformWidget.Attach = SelectedKeyframe;
+    }
+
+    private void RightClickActor(ActorProxy actor)
+    {
+        ShowViewportContextMenu(SceneViewer);
+    }
+
+    private void RightClickViewport()
+    {
+        ShowViewportContextMenu(SceneViewer);
     }
 
     private void TranslateMode_Click(object sender, RoutedEventArgs e)
@@ -299,6 +319,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, addAfter);
+        if (newKeyframe is null)
+        {
+            return;
+        }
+
+        RenderContext.AddHitProxy(newKeyframe);
+        SelectedKeyframe = newKeyframe;
+        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {model.Keyframes.Count} trajectory keyframe(s).";
+        RefreshKeyframePanel();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void AddKeyframeAfterLast_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        CurveEditor3DKeyframe newKeyframe = model.AddKeyframeAfterLast(pendingViewportKeyframeLocation);
         if (newKeyframe is null)
         {
             return;
@@ -376,6 +412,62 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ContextMenu menu = CreateKeyframeContextMenu();
         menu.PlacementTarget = placementTarget;
         menu.IsOpen = true;
+    }
+
+    private void ShowViewportContextMenu(FrameworkElement placementTarget)
+    {
+        pendingViewportKeyframeLocation = GetViewportKeyframeLocation(Mouse.GetPosition(SceneViewer));
+        var menu = new ContextMenu { PlacementTarget = placementTarget };
+        var addItem = new MenuItem
+        {
+            Header = "Add Keyframe After Last",
+            IsEnabled = model.Keyframes.Count > 0
+        };
+        addItem.Click += AddKeyframeAfterLast_Click;
+        menu.Items.Add(addItem);
+        menu.IsOpen = true;
+    }
+
+    private Vector3 GetViewportKeyframeLocation(Point viewportPoint)
+    {
+        if (model.Keyframes.Count == 0)
+        {
+            return RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
+        }
+
+        Vector3 lastLocation = model.Keyframes[^1].Location;
+        float width = MathF.Max(RenderContext.Width, 1f);
+        float height = MathF.Max(RenderContext.Height, 1f);
+        float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
+        float normalizedY = 1f - ((float)viewportPoint.Y / height * 2f);
+        Vector3 forward = RenderContext.Camera.CameraForward;
+        Vector3 right = RenderContext.Camera.CameraRight;
+        Vector3 up = RenderContext.Camera.CameraUp;
+        Vector3 cameraPosition = RenderContext.Camera.Position;
+
+        if (RenderContext.Camera.IsOrthographic)
+        {
+            return cameraPosition
+                   + (right * (normalizedX * RenderContext.Camera.OrthoWidth * 0.5f))
+                   + (up * (normalizedY * RenderContext.Camera.OrthoWidth / MathF.Max(RenderContext.Camera.aspect, float.Epsilon) * 0.5f))
+                   + (forward * Vector3.Dot(lastLocation - cameraPosition, forward));
+        }
+
+        float halfHeightAtUnitDepth = MathF.Tan(RenderContext.Camera.FOV * 0.5f);
+        Vector3 rayDirection = Vector3.Normalize(forward + right * normalizedX * halfHeightAtUnitDepth * RenderContext.Camera.aspect + up * normalizedY * halfHeightAtUnitDepth);
+        float denominator = Vector3.Dot(rayDirection, forward);
+        if (MathF.Abs(denominator) < 0.0001f)
+        {
+            return lastLocation;
+        }
+
+        float distance = Vector3.Dot(lastLocation - cameraPosition, forward) / denominator;
+        if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
+        {
+            return lastLocation;
+        }
+
+        return cameraPosition + rayDirection * distance;
     }
 
     private void RefreshKeyframePanel()
