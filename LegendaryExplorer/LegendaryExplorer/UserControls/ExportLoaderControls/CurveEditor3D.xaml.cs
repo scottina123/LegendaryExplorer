@@ -6,10 +6,12 @@ using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -171,6 +173,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         deleteItem.Click += DeleteKeyframe_Click;
         menu.Items.Add(deleteItem);
 
+        menu.Items.Add(new Separator());
+
+        var shiftItem = new MenuItem { Header = "Shift InterpTrack..." };
+        shiftItem.Click += ShiftInterpTrack_Click;
+        menu.Items.Add(shiftItem);
+
         return menu;
     }
 
@@ -314,6 +322,43 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.RemoveHitProxy(keyframe);
         SelectedKeyframe = model.DeleteKeyframe(keyframe);
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        RefreshKeyframePanel();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void ShiftInterpTrack_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (CurrentLoadedExport is null)
+        {
+            return;
+        }
+
+        var dialog = new ShiftInterpTrackDialog
+        {
+            Owner = Window.GetWindow(this)
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        float selectedTime = SelectedKeyframe?.Time ?? 0f;
+        PackageEditorExperimentsM.ShiftInterpTrackMove(CurrentLoadedExport, dialog.Parameters);
+        ReloadCurrentExport(selectedTime + dialog.Parameters.TimeOffset);
+        SceneStatus = $"Shifted {model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+    }
+
+    private void ReloadCurrentExport(float preferredSelectionTime)
+    {
+        UnregisterKeyframes();
+        model.Load(CurrentLoadedExport);
+        trajectorySamplesDirty = true;
+        KeyframeList.ItemsSource = model.Keyframes;
+        RegisterKeyframes();
+        SelectedKeyframe = model.Keyframes.Count == 0
+            ? null
+            : model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - preferredSelectionTime));
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
     }
