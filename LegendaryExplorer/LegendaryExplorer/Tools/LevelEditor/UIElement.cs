@@ -64,7 +64,7 @@ public sealed class LightIconOverlay : UIElement
         int maxIcons = Math.Max(1, context.MaxLightIcons);
 
         // ensure selected/attached light is always included
-        ActorProxy attached = context.TransformWidget.Attach;
+        ActorProxy attached = context.TransformWidget.Attach as ActorProxy;
         bool attachedIncluded = false;
 
         int take = Math.Min(maxIcons, candidates.Count);
@@ -177,9 +177,20 @@ public enum EWidgetMode
     Scale
 }
 
+public interface ITransformWidgetTarget
+{
+    Vector3 Location { get; set; }
+    Rotator Rotation { get; set; }
+    float DrawScale { get; set; }
+    Vector3 DrawScale3D { get; set; }
+    bool IsReadOnly { get; }
+    Matrix4x4 LocalToWorld { get; }
+    TransformSnapshot SnapshotTransform();
+}
+
 public class Widget : UIElement
 {
-    public ActorProxy Attach;
+    public ITransformWidgetTarget Attach;
 
     public EWidgetMode Mode = EWidgetMode.Translate;
     public bool UseLocalCoords = true;
@@ -623,7 +634,10 @@ public class Widget : UIElement
             var afterSnapshot = Attach.SnapshotTransform();
             if (!_dragStartSnapshot.Equals(afterSnapshot))
             {
-                OnDragComplete?.Invoke(Attach, _dragStartSnapshot, afterSnapshot);
+                if (Attach is ActorProxy actor)
+                {
+                    OnDragComplete?.Invoke(actor, _dragStartSnapshot, afterSnapshot);
+                }
             }
         }
         IsDragging = false;

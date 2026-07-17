@@ -1,0 +1,118 @@
+<exportLoaderControls:ExportLoaderControl x:Class="LegendaryExplorer.UserControls.ExportLoaderControls.CurveEditor3D"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
+        xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
+        mc:Ignorable="d"
+        d:DesignHeight="600" d:DesignWidth="1000"
+        DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Loaded="CurveEditor3D_Loaded"
+        Unloaded="CurveEditor3D_Unloaded">
+    <DockPanel>
+        <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
+            <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
+            <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
+            <Menu Background="Transparent">
+                <MenuItem x:Name="RecentLevelsMenu" Header="Recent Levels" SubmenuOpened="RecentLevelsMenu_SubmenuOpened"/>
+            </Menu>
+            <Separator/>
+            <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False"
+                    ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
+            <Separator/>
+            <Button Content="Translate" Click="TranslateMode_Click" ToolTip="Drag the selected cube with the translation gizmo"/>
+            <Button Content="Rotate" Click="RotateMode_Click" ToolTip="Rotate the selected cube with the rotation gizmo"/>
+            <Separator/>
+            <TextBlock Text="{Binding CurrentExportName}" VerticalAlignment="Center" Margin="4,0"/>
+        </ToolBar>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <TextBlock Text="{Binding SceneStatus}"/>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="280"/>
+            </Grid.ColumnDefinitions>
+
+            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="0"/>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="8">
+                <StackPanel>
+                    <TextBlock Text="Keyframes" FontSize="18" FontWeight="SemiBold"/>
+                    <ListBox x:Name="KeyframeList" Margin="0,4,0,10" MaxHeight="220"
+                             SelectionChanged="KeyframeList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="2">
+                                    <Border Width="11" Height="11" Margin="0,0,7,0" BorderThickness="2"
+                                            BorderBrush="#FFFFB21A" Background="#FF242424"/>
+                                    <TextBlock Text="{Binding Time, StringFormat=InVal {0:0.###}}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel DataContext="{Binding SelectedKeyframe}">
+                        <TextBlock Text="Selected Keyframe" FontSize="18" FontWeight="SemiBold"/>
+
+                        <GroupBox Header="Timing (InVal)" Margin="0,4,0,8">
+                            <TextBox Margin="6" Text="{Binding Time, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                        </GroupBox>
+
+                        <GroupBox Header="Location" Margin="0,0,0,8">
+                            <Grid Margin="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="X" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <TextBlock Grid.Row="1" Text="Y" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <TextBlock Grid.Row="2" Text="Z" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="Rotation" Margin="0,0,0,8">
+                            <Grid Margin="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Roll" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <TextBlock Grid.Row="1" Text="Pitch" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <TextBlock Grid.Row="2" Text="Yaw" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="Interp Mode Type">
+                            <ComboBox Margin="6" ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                      SelectedItem="{Binding InterpMode, UpdateSourceTrigger=PropertyChanged}"/>
+                        </GroupBox>
+
+                        <TextBlock Margin="0,12,0,0" Text="Select a cube or list item, then edit values or use the Translate/Rotate gizmo." TextWrapping="Wrap" Opacity="0.7"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</exportLoaderControls:ExportLoaderControl>

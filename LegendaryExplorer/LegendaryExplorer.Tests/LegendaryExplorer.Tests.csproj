@@ -21,6 +21,7 @@
     
     <ItemGroup>
         <Folder Include="TestData\*" />
+        <Folder Include="UserControls\InterpTrackMove3D\" />
     </ItemGroup>
 
     <ItemGroup>

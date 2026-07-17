@@ -325,6 +325,9 @@
 		<Compile Update="UserControls\ExportLoaderControls\CurveEditor.xaml.cs">
 			<DependentUpon>CurveEditor.xaml</DependentUpon>
 		</Compile>
+		<Compile Update="UserControls\ExportLoaderControls\CurveEditor3D.xaml.cs">
+			<DependentUpon>CurveEditor3D.xaml</DependentUpon>
+		</Compile>
 		<Compile Update="UserControls\ExportLoaderControls\ParticleSystems\ParticleModuleExportLoader.xaml.cs">
 			<DependentUpon>ParticleModuleExportLoader.xaml</DependentUpon>
 		</Compile>
@@ -511,6 +514,9 @@
 		<Page Update="UserControls\ExportLoaderControls\CurveEditor.xaml">
 			<SubType>Designer</SubType>
 		</Page>
+		<Page Update="UserControls\ExportLoaderControls\CurveEditor3D.xaml">
+			<SubType>Designer</SubType>
+		</Page>
 		<Page Update="UserControls\ExportLoaderControls\ParticleSystems\ParticleModuleExportLoader.xaml">
 			<SubType>Designer</SubType>
 		</Page>
@@ -561,6 +567,7 @@
 	  <Folder Include="LegendaryExplorer\Dialogs\" />
 	  <Folder Include="LegendaryExplorer\Tools\AssetDatabase\" />
 	  <Folder Include="LegendaryExplorer\Tools\Dialogue Editor\DialogueEditorExperiments\" />
+	  <Folder Include="UserControls\SharedToolControls\InterpTrackMove3D\" />
 	</ItemGroup>
 
 	<PropertyGroup>

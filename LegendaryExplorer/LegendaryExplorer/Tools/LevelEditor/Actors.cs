@@ -18,12 +18,14 @@ using MediaColor = System.Windows.Media.Color;
 
 namespace LegendaryExplorer.Tools.LevelEditor;
 
-public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy
+public class ActorProxy : NotifyPropertyChangedBase, IDisposable, IHitProxy, ITransformWidgetTarget
 {
     public IActorEditorContext Editor;
     public OpenLevelFile OwningFile { get; set; }
 
     public Matrix4x4 LocalToWorld;
+
+    Matrix4x4 ITransformWidgetTarget.LocalToWorld => LocalToWorld;
 
     public List<PrimitiveComponentProxy> Components = [];
 

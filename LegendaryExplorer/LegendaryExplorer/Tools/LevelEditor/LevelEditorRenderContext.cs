@@ -22,6 +22,7 @@ public class LevelEditorRenderContext : MeshRenderContext
 {
     public event Action<ActorProxy> SelectActor;
     public event Action<ActorProxy> RightClickActor;
+    public event Action<IHitProxy> SelectHitProxy;
     public List<ActorProxy> DrawList_3D = [];
     public List<UIElement> DrawList_UI = [];
     private readonly LightIconOverlay LightIcons = new();
@@ -96,11 +97,15 @@ public class LevelEditorRenderContext : MeshRenderContext
                 switch (selected)
                 {
                     case ActorProxy actor:
-                        SelectActor?.Invoke(actor);
                         TransformWidget.Attach = actor;
+                        SelectActor?.Invoke(actor);
                         break;
                     case AxisHitProxy axisProxy:
                         TransformWidget.CurrentAxis = axisProxy.Axis;
+                        break;
+                    case not null:
+                        SelectHitProxy?.Invoke(selected);
+                        TransformWidget.Attach = null;
                         break;
                 }
             }
@@ -129,6 +134,9 @@ public class LevelEditorRenderContext : MeshRenderContext
                 case AxisHitProxy axisProxy:
                     TransformWidget.CurrentAxis = axisProxy.Axis;
                     TransformWidget.BeginDrag(x, y);
+                    return true;
+                case not null:
+                    SelectHitProxy?.Invoke(selected);
                     return true;
             }
         }
@@ -247,10 +255,30 @@ public class LevelEditorRenderContext : MeshRenderContext
         {
             DrawList_UI.Add(LightIcons);
         }
+        EnableTransformWidget();
+    }
+
+    public void EnableTransformWidget()
+    {
         if (!IsReadOnly && !DrawList_UI.Contains(TransformWidget))
         {
             DrawList_UI.Add(TransformWidget);
             TransformWidget.GetAxisHitProxies(ref HitProxies);
+        }
+    }
+
+    public int AddHitProxy(IHitProxy hitProxy)
+    {
+        hitProxy.HitID = HitProxies.Add(hitProxy);
+        return hitProxy.HitID;
+    }
+
+    public void RemoveHitProxy(IHitProxy hitProxy)
+    {
+        if (hitProxy.HitID > 0)
+        {
+            HitProxies.RemoveAt(hitProxy.HitID);
+            hitProxy.HitID = 0;
         }
     }
 

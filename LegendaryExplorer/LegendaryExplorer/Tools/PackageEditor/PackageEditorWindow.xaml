@@ -698,6 +698,12 @@
                         </TabItem.Header>
                         <exportLoaderControls:CurveEditor x:Name="CurveTab_CurveEditor"/>
                     </TabItem>
+                    <TabItem Name="CurveEditor3D_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
+                        <TabItem.Header>
+                            <TextBlock Text="3D Curve Editor" ToolTip="Edit movement curves as a 3D trajectory"/>
+                        </TabItem.Header>
+                        <exportLoaderControls:CurveEditor3D x:Name="Curve3DTab_CurveEditor"/>
+                    </TabItem>
                     <TabItem Name="FaceFXAnimSet_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
                             <TextBlock Text="FaceFX" ToolTip="Edit FaceFXAnimSets"/>
