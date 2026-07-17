@@ -514,6 +514,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand ExportAllPropsCommand { get; set; }
         public ICommand ApplyBulkPropEditsCommand { get; set; }
         public ICommand ViewReferenceGraphCommand { get; set; }
+        public ICommand AddInterpGroupCommand { get; set; }
         public ICommand AddInterpTrackCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         public ICommand OpenGestureImporterCommand { get; set; }
@@ -588,6 +589,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BulkExportSWFCommand = new GenericCommand(BulkExportSWFs, PackageIsLoaded);
             BulkImportSWFCommand = new GenericCommand(BulkImportSWFs, PackageIsLoaded);
             OpenExportInCommand = new RelayCommand(OpenExportIn, CanOpenExportIn);
+            AddInterpGroupCommand = new RelayCommand(AddInterpGroup, CanAddInterpGroup);
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
             OpenGestureImporterCommand = new GenericCommand(OpenGestureImporter, CanOpenGestureImporter);
@@ -1717,6 +1719,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
             return false;
         }
 
+        private bool CanAddInterpGroup(object obj)
+        {
+            if (!TryGetSelectedExport(out ExportEntry exp) || exp.ClassName != "InterpData")
+            {
+                return false;
+            }
+
+            if (obj is not "Director")
+            {
+                return true;
+            }
+
+            var interpGroups = exp.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+            return interpGroups?.All(groupRef => !Pcc.TryGetUExport(groupRef.Value, out ExportEntry group)
+                                                 || group.ClassName is not "InterpGroupDirector" and not "InterpDirector") ?? true;
+        }
+
         private bool CanAddInterpTrack() => TryGetSelectedExport(out ExportEntry exp) && exp.IsA("InterpGroup");
 
         private bool CanBulkEditInterpGroups() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpData";
@@ -1867,6 +1886,25 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     ExportEntry trackExport = MatineeHelper.AddNewTrackToGroup(exp, info.ClassName);
                     MatineeHelper.AddDefaultPropertiesToTrack(trackExport);
                 }
+            }
+        }
+
+        private void AddInterpGroup(object obj)
+        {
+            if (!CanAddInterpGroup(obj) || !TryGetSelectedExport(out ExportEntry exp))
+            {
+                return;
+            }
+
+            if (obj is "Director")
+            {
+                MatineeHelper.AddNewGroupDirectorToInterpData(exp);
+                return;
+            }
+
+            if (PromptDialog.Prompt(this, "Name of InterpGroup:") is string groupName)
+            {
+                MatineeHelper.AddNewGroupToInterpData(exp, groupName);
             }
         }
 
