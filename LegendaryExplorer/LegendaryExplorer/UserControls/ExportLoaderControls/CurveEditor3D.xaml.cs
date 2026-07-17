@@ -33,10 +33,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public CurveEditor3D() : base("3D Curve Editor")
     {
         RenderContext = new LevelEditorRenderContext();
+        RenderContext.BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         InitializeComponent();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
+        ThemeManager.ThemeChanged += OnThemeChanged;
         model.Changed += Model_Changed;
     }
 
@@ -127,7 +129,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CloseLevels();
         DetachEvents();
         model.Changed -= Model_Changed;
+        ThemeManager.ThemeChanged -= OnThemeChanged;
         SceneViewer.Dispose();
+    }
+
+    private void OnThemeChanged(object sender, bool isDarkMode)
+    {
+        RenderContext.BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
+        SceneViewer?.MarkRenderDirty();
     }
 
     private void CurveEditor3D_Loaded(object sender, RoutedEventArgs e)
@@ -359,7 +368,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private void RecentLevelsMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    private void RecentLevelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        RecentLevelsMenu.PlacementTarget = RecentLevelsButton;
+        RecentLevelsMenu.IsOpen = true;
+    }
+
+    private void RecentLevelsMenu_Opened(object sender, RoutedEventArgs e)
     {
         RecentLevelsMenu.Items.Clear();
         List<RecentFileSet> recentSets = LoadRecentSets();

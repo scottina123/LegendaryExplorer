@@ -14,9 +14,11 @@
         <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
             <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
             <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
-            <Menu Background="Transparent">
-                <MenuItem x:Name="RecentLevelsMenu" Header="Recent Levels" SubmenuOpened="RecentLevelsMenu_SubmenuOpened"/>
-            </Menu>
+            <Button x:Name="RecentLevelsButton" Content="Recent Levels" Click="RecentLevelsButton_Click" ToolTip="Open a recent level backdrop">
+                <Button.ContextMenu>
+                    <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
+                </Button.ContextMenu>
+            </Button>
             <Separator/>
             <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False"
                     ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
