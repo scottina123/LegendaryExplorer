@@ -282,59 +282,30 @@ namespace LegendaryExplorer.DialogueEditor
 
             int changesApplied = 0;
             ExportEntry seqActInterp = FindSeqActInterpForInterpData(interpData);
-            var interpGroups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
-            if (interpGroups == null)
+            foreach (ExportEntry export in pcc.Exports.Where(exp => exp == interpData || exp.IsDescendantOf(interpData)))
             {
-                return 0;
-            }
+                var props = export.GetProperties();
+                string originalGroupName = export.ClassName == "InterpGroup"
+                    ? props.GetProp<NameProperty>("GroupName")?.Value.Instanced
+                    : null;
 
-            foreach (var groupRef in interpGroups)
-            {
-                if (!pcc.TryGetUExport(groupRef.Value, out ExportEntry interpGroup))
+                int exportChanges = ApplyNameReplacementsToProperties(props, normalizedReplacements);
+                if (exportChanges == 0)
                 {
                     continue;
                 }
 
-                var groupProps = interpGroup.GetProperties();
-                string originalGroupName = groupProps.GetProp<NameProperty>("GroupName")?.Value.Instanced;
-                if (TryApplyNameReplacement(originalGroupName, normalizedReplacements, out string newGroupName))
+                if (!string.IsNullOrEmpty(originalGroupName))
                 {
-                    groupProps.AddOrReplaceProp(new NameProperty(newGroupName, "GroupName"));
-                    UpdateSeqActInterpVariableLink(seqActInterp, originalGroupName, newGroupName);
-                    changesApplied++;
-                }
-
-                string originalSfxFindActor = groupProps.GetProp<NameProperty>("m_nmSFXFindActor")?.Value.Instanced;
-                if (TryApplyNameReplacement(originalSfxFindActor, normalizedReplacements, out string newSfxFindActor))
-                {
-                    groupProps.AddOrReplaceProp(new NameProperty(newSfxFindActor, "m_nmSFXFindActor"));
-                    changesApplied++;
-                }
-
-                interpGroup.WriteProperties(groupProps);
-
-                var interpTracks = interpGroup.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
-                if (interpTracks == null)
-                {
-                    continue;
-                }
-
-                foreach (var trackRef in interpTracks)
-                {
-                    if (!pcc.TryGetUExport(trackRef.Value, out ExportEntry track))
+                    string groupName = props.GetProp<NameProperty>("GroupName")?.Value.Instanced;
+                    if (groupName != originalGroupName)
                     {
-                        continue;
-                    }
-
-                    var trackProps = track.GetProperties();
-                    string originalTrackFindActor = trackProps.GetProp<NameProperty>("m_nmFindActor")?.Value.Instanced;
-                    if (TryApplyNameReplacement(originalTrackFindActor, normalizedReplacements, out string newTrackFindActor))
-                    {
-                        trackProps.AddOrReplaceProp(new NameProperty(newTrackFindActor, "m_nmFindActor"));
-                        track.WriteProperties(trackProps);
-                        changesApplied++;
+                        UpdateSeqActInterpVariableLink(seqActInterp, originalGroupName, groupName);
                     }
                 }
+
+                export.WriteProperties(props);
+                changesApplied += exportChanges;
             }
 
             return changesApplied;
@@ -352,6 +323,45 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             return null;
+        }
+
+        private static int ApplyNameReplacementsToProperties(PropertyCollection properties, IReadOnlyList<KeyValuePair<string, string>> replacements)
+        {
+            int changesApplied = 0;
+            foreach (Property property in properties)
+            {
+                changesApplied += ApplyNameReplacementsToProperty(property, replacements);
+            }
+
+            return changesApplied;
+        }
+
+        private static int ApplyNameReplacementsToProperty(Property property, IReadOnlyList<KeyValuePair<string, string>> replacements)
+        {
+            switch (property)
+            {
+                case NameProperty nameProperty:
+                    string originalValue = nameProperty.Value.Instanced;
+                    if (TryApplyNameReplacement(originalValue, replacements, out string newValue))
+                    {
+                        nameProperty.Value = newValue;
+                        return 1;
+                    }
+
+                    return 0;
+                case StructProperty structProperty:
+                    return ApplyNameReplacementsToProperties(structProperty.Properties, replacements);
+                case ArrayPropertyBase arrayProperty:
+                    int changesApplied = 0;
+                    foreach (Property arrayValue in arrayProperty.Properties)
+                    {
+                        changesApplied += ApplyNameReplacementsToProperty(arrayValue, replacements);
+                    }
+
+                    return changesApplied;
+                default:
+                    return 0;
+            }
         }
 
         private static bool TryApplyNameReplacement(string value, IReadOnlyList<KeyValuePair<string, string>> replacements, out string newValue)

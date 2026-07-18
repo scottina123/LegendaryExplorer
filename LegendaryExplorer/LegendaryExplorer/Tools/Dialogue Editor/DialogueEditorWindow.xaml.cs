@@ -6248,7 +6248,7 @@ namespace LegendaryExplorer.DialogueEditor
             });
             rootPanel.Children.Add(new TextBlock
             {
-                Text = "Enter original and new names to replace in cloned Interp group names, m_nmSFXFindActor, and track m_nmFindActor values.",
+                Text = "Enter original and new names to replace in every matching name property under each cloned InterpData.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 6)
             });
