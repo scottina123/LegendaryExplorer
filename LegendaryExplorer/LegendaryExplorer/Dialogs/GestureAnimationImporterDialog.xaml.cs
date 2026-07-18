@@ -735,7 +735,7 @@ namespace LegendaryExplorer.Dialogs
 
             IEntry parent = EntryImporter.GetOrAddCrossImportOrPackage(sourceAnimSeq.ParentFullPath, sourcePackage, _pcc, relinkerOptions);
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies, sourceAnimSeq, _pcc, parent, true, relinkerOptions, out IEntry importedEntry);
-            ExportEntry importedAnimSeq = (ExportEntry)importedEntry;
+            ExportEntry importedAnimSeq = GetImportedExport(importedEntry, sourceAnimSeq, parent, relinkerOptions, "animation sequence");
 
             NameReference seqNameRef = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
             IEntry bioAnimSetData = _pcc.GetEntry(importedAnimSeq.GetProperty<ObjectProperty>("m_pBioAnimSetData").Value);
@@ -752,6 +752,60 @@ namespace LegendaryExplorer.Dialogs
             }
 
             return (setName, seqNameRef.Name);
+        }
+
+        private ExportEntry GetImportedExport(IEntry importedEntry, ExportEntry sourceExport, IEntry parent, RelinkerOptionsPackage relinkerOptions, string entryDescription)
+        {
+            if (importedEntry is ExportEntry importedExport)
+            {
+                return importedExport;
+            }
+
+            if (importedEntry is not ImportEntry importedImport)
+            {
+                throw new Exception($"Imported {entryDescription} '{sourceExport.ObjectName}' was not an export.");
+            }
+
+            ExportEntry existingExport = _pcc.FindExport(importedImport.InstancedFullPath);
+            if (existingExport != null)
+            {
+                return existingExport;
+            }
+
+            if (!EntryImporter.TryResolveImport(importedImport, out ExportEntry resolvedExport, cache: relinkerOptions.Cache, fileResolver: relinkerOptions.DestinationCustomImportFileResolver))
+            {
+                throw new Exception($"Imported {entryDescription} '{sourceExport.ObjectName}' resolved to an import, but its definition could not be found.");
+            }
+
+            return ImportResolvedExport(resolvedExport, parent, relinkerOptions, entryDescription);
+        }
+
+        private ExportEntry ImportResolvedExport(ExportEntry resolvedExport, IEntry parent, RelinkerOptionsPackage relinkerOptions, string entryDescription)
+        {
+            var exportRelinkerOptions = new RelinkerOptionsPackage
+            {
+                Cache = relinkerOptions.Cache,
+                DestinationCustomImportFileResolver = relinkerOptions.DestinationCustomImportFileResolver,
+                ErrorOccurredCallback = relinkerOptions.ErrorOccurredCallback,
+                GamePathOverride = relinkerOptions.GamePathOverride,
+                ImportChildrenOfPackages = relinkerOptions.ImportChildrenOfPackages,
+                ImportExportDependencies = relinkerOptions.ImportExportDependencies,
+                IsCrossGame = resolvedExport.FileRef.Game != _pcc.Game,
+                PortImportsMemorySafe = relinkerOptions.PortImportsMemorySafe,
+                PortLocalizationImportsMemorySafe = relinkerOptions.PortLocalizationImportsMemorySafe,
+                RelinkAllowDifferingClassesInRelink = relinkerOptions.RelinkAllowDifferingClassesInRelink,
+                SourceCustomImportFileResolver = relinkerOptions.SourceCustomImportFileResolver,
+                TargetGameDonorDB = relinkerOptions.TargetGameDonorDB,
+            };
+
+            IEntry importedResolvedEntry = EntryImporter.ImportExport(_pcc, resolvedExport, parent?.UIndex ?? 0, exportRelinkerOptions);
+            if (importedResolvedEntry is not ExportEntry importedExport)
+            {
+                throw new Exception($"Resolved {entryDescription} '{resolvedExport.ObjectName}' could not be imported as an export.");
+            }
+
+            Relinker.RelinkAll(exportRelinkerOptions);
+            return importedExport;
         }
 
         private bool TryResolveAnimationSource(AnimationRecord anim, out string filePath, out int uIndex, AnimationSourceOption preferredSource = null)
@@ -866,7 +920,7 @@ namespace LegendaryExplorer.Dialogs
         /// <summary>
         /// Find an existing BioDynamicAnimSet in the target sequence, or import one from the source package.
         /// Matches by m_nmOrigSetName so that KIS_DYN_* sets with the same anim set name are reused.
-        /// Never creates a BioDynamicAnimSet from scratch — always imports a real one to avoid malformed binary.
+        /// Creates a target BioDynamicAnimSet when the source package only contains the AnimSequence.
         /// For SFXModule_Gestures, uses m_pDefaultPoseSet instead of the sequence shared anim sets.
         /// </summary>
         private ExportEntry FindOrImportBioDynamicAnimSet(ExportEntry gestureTrack, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq, IMEPackage sourcePackage, ExportEntry sourceAnimSeq)
@@ -882,6 +936,27 @@ namespace LegendaryExplorer.Dialogs
             }
 
             return FindOrImportBioDynamicAnimSetForMatinee(gestureTrack, bioAnimSetData, setName, importedAnimSeq, sourcePackage, sourceAnimSeq);
+        }
+
+        private ExportEntry CreateBioDynamicAnimSet(IEntry parent, IEntry bioAnimSetData, string setName, ExportEntry importedAnimSeq)
+        {
+            ExportEntry dynAnimSet = ExportCreator.CreateExport(_pcc, $"KIS_DYN_{setName}", "BioDynamicAnimSet", parent);
+            NameReference seqName = importedAnimSeq.GetProperty<NameProperty>("SequenceName").Value;
+            dynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
+            dynAnimSet.WriteProperty(new NameProperty(setName, "m_nmOrigSetName"));
+            dynAnimSet.WriteProperty(new ArrayProperty<ObjectProperty>("Sequences")
+            {
+                new ObjectProperty(importedAnimSeq.UIndex)
+            });
+            dynAnimSet.WriteBinary(new BioDynamicAnimSet
+            {
+                SequenceNamesToUnkMap = new UMultiMap<NameReference, int>(
+                [
+                    new KeyValuePair<NameReference, int>(seqName, 1)
+                ])
+            });
+
+            return dynAnimSet;
         }
 
         /// <summary>
@@ -916,13 +991,16 @@ namespace LegendaryExplorer.Dialogs
             ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
             if (sourceDynAnimSet == null)
             {
-                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+                ExportEntry createdDynAnimSet = CreateBioDynamicAnimSet(gestureModule, bioAnimSetData, setName, importedAnimSeq);
+                gestureModule.WriteProperty(new ObjectProperty(createdDynAnimSet.UIndex, "m_pDefaultPoseSet"));
+                return createdDynAnimSet;
             }
 
             // Import the BioDynamicAnimSet as a child of the SFXModule_Gestures
+            var relinkerOptions = new RelinkerOptionsPackage();
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
-                sourceDynAnimSet, _pcc, gestureModule, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
-            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+                sourceDynAnimSet, _pcc, gestureModule, true, relinkerOptions, out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, gestureModule, relinkerOptions, "BioDynamicAnimSet");
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
@@ -986,13 +1064,14 @@ namespace LegendaryExplorer.Dialogs
             ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
             if (sourceDynAnimSet == null)
             {
-                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+                return CreateBioDynamicAnimSet(skelMeshComp, bioAnimSetData, setName, importedAnimSeq);
             }
 
             // Import the BioDynamicAnimSet as a child of the SkeletalMeshComponent
+            var relinkerOptions = new RelinkerOptionsPackage();
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
-                sourceDynAnimSet, _pcc, skelMeshComp, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
-            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+                sourceDynAnimSet, _pcc, skelMeshComp, true, relinkerOptions, out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, skelMeshComp, relinkerOptions, "BioDynamicAnimSet");
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
@@ -1055,13 +1134,21 @@ namespace LegendaryExplorer.Dialogs
             ExportEntry sourceDynAnimSet = FindSourceBioDynamicAnimSet(sourcePackage, sourceAnimSeq);
             if (sourceDynAnimSet == null)
             {
-                throw new Exception("Could not find a BioDynamicAnimSet in the source package to import.");
+                ExportEntry createdDynAnimSet = CreateBioDynamicAnimSet(sequenceExport, bioAnimSetData, setName, importedAnimSeq);
+                if (sharedAnimSets == null)
+                {
+                    sharedAnimSets = new ArrayProperty<ObjectProperty>(sharedAnimSetsPropName);
+                }
+                sharedAnimSets.Add(new ObjectProperty(createdDynAnimSet.UIndex));
+                sequenceExport.WriteProperty(sharedAnimSets);
+                return createdDynAnimSet;
             }
 
             // Import the BioDynamicAnimSet from the source package into the sequence
+            var relinkerOptions = new RelinkerOptionsPackage();
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
-                sourceDynAnimSet, _pcc, sequenceExport, true, new RelinkerOptionsPackage(), out IEntry importedDynEntry);
-            ExportEntry importedDynAnimSet = (ExportEntry)importedDynEntry;
+                sourceDynAnimSet, _pcc, sequenceExport, true, relinkerOptions, out IEntry importedDynEntry);
+            ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, sequenceExport, relinkerOptions, "BioDynamicAnimSet");
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
