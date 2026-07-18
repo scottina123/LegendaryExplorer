@@ -2959,6 +2959,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             var selectedSpecies = bulkDialog.SelectedSpeciesEnum;
             var lipSyncIntensity = bulkDialog.LipSyncIntensity;
+            var generateBlinkAnimation = bulkDialog.GenerateBlinkAnimation;
             var blinkFrequency = bulkDialog.BlinkFrequency;
 
             int successCount = 0;
@@ -2983,7 +2984,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
                         Species = selectedSpecies,
                         GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = true,
+                        GenerateBlinkAnimation = generateBlinkAnimation,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
                         LipSyncIntensity = lipSyncIntensity,
@@ -3170,6 +3171,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             var selectedSpecies = bulkDialog.SelectedSpeciesEnum;
             var lipSyncIntensity = bulkDialog.LipSyncIntensity;
+            var generateBlinkAnimation = bulkDialog.GenerateBlinkAnimation;
+            var blinkFrequency = bulkDialog.BlinkFrequency;
 
             int successCount = 0;
             int skipCount = 0;
@@ -3193,11 +3196,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         CharacterType = Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanFemale,
                         Species = selectedSpecies,
                         GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = true,
+                        GenerateBlinkAnimation = generateBlinkAnimation,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
                         LipSyncIntensity = lipSyncIntensity,
-                        BlinkFrequency = 0.2f,
+                        BlinkFrequency = blinkFrequency,
                         UseAudioAmplitude = true,
                         FxaData = null,
                         UseTextFallback = true
@@ -3597,7 +3600,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             : Tools.FaceFXEditor.AutoFaceFXGenerator.CharacterType.HumanMale,
                         Species = bulkDialog.SelectedSpeciesEnum,
                         GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = true,
+                        GenerateBlinkAnimation = bulkDialog.GenerateBlinkAnimation,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
                         LipSyncIntensity = bulkDialog.LipSyncIntensity,

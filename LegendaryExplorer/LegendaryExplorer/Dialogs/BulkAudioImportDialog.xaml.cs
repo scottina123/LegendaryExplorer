@@ -1004,7 +1004,7 @@ namespace LegendaryExplorer.Dialogs
                         CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
                         Species = bulkDialog.SelectedSpeciesEnum,
                         GenerateJawAnimation = true,
-                        GenerateBlinkAnimation = true,
+                        GenerateBlinkAnimation = bulkDialog.GenerateBlinkAnimation,
                         GenerateEyebrowAnimation = true,
                         GenerateHeadMovement = false,
                         LipSyncIntensity = bulkDialog.LipSyncIntensity,

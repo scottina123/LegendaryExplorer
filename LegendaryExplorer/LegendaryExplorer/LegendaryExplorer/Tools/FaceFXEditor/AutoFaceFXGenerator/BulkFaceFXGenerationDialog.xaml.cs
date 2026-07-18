@@ -63,6 +63,13 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
             set { _blinkFrequency = value; OnPropertyChanged(); }
         }
 
+        private bool _generateBlinkAnimation = true;
+        public bool GenerateBlinkAnimation
+        {
+            get => _generateBlinkAnimation;
+            set { _generateBlinkAnimation = value; OnPropertyChanged(); }
+        }
+
         /// <summary>
         /// The selected species as enum value
         /// </summary>

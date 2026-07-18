@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Bulk FaceFX Generation"
-        Height="360" Width="400"
+        Height="390" Width="400"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         d:DataContext="{d:DesignInstance Type={x:Type local:BulkFaceFXGenerationDialog}, IsDesignTimeCreatable=False}"
@@ -50,7 +50,12 @@
                            Width="40" VerticalAlignment="Center" Margin="5,0"/>
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="0,5">
+            <CheckBox Content="Generate Blink Animation"
+                      IsChecked="{Binding GenerateBlinkAnimation}"
+                      Margin="5"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,5"
+                        IsEnabled="{Binding GenerateBlinkAnimation}">
                 <Label Content="Blink Frequency:" Width="100"/>
                 <Slider Value="{Binding BlinkFrequency}" Minimum="0.1" Maximum="0.5"
                         Width="150" VerticalAlignment="Center"/>

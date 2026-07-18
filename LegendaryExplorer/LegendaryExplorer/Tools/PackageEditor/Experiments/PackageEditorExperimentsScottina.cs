@@ -109,6 +109,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private sealed record FaceFxGenerationSettings(
             FaceFXSpecies Species,
             float LipSyncIntensity,
+            bool GenerateBlinkAnimation,
             float BlinkFrequency);
 
         private sealed record FaceFxGenerationSummary(
@@ -359,7 +360,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return false;
             }
 
-            settings = new FaceFxGenerationSettings(dialog.SelectedSpeciesEnum, dialog.LipSyncIntensity, dialog.BlinkFrequency);
+            settings = new FaceFxGenerationSettings(dialog.SelectedSpeciesEnum, dialog.LipSyncIntensity,
+                dialog.GenerateBlinkAnimation, dialog.BlinkFrequency);
             return true;
         }
 
@@ -439,7 +441,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                             CharacterType = isFemaleAsset ? CharacterType.HumanFemale : CharacterType.HumanMale,
                             Species = settings.Species,
                             GenerateJawAnimation = true,
-                            GenerateBlinkAnimation = true,
+                            GenerateBlinkAnimation = settings.GenerateBlinkAnimation,
                             GenerateEyebrowAnimation = true,
                             GenerateHeadMovement = false,
                             LipSyncIntensity = settings.LipSyncIntensity,
