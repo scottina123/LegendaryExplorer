@@ -1808,8 +1808,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var createdNodes = new List<DialogueNodeExtended>();
-            DialogueNodeExtended firstEntryNode = null;
-            DialogueNodeExtended firstReplyNode = null;
+            var createdEntryNodes = new List<DialogueNodeExtended>();
+            var createdReplyNodes = new List<DialogueNodeExtended>();
             RectangleF viewBounds = graphEditor.Camera.ViewBounds;
             const float nodeWidth = 220f;
             float entryX = viewBounds.Left + (viewBounds.Width * 0.25f) - (nodeWidth / 2f);
@@ -1830,7 +1830,7 @@ namespace LegendaryExplorer.DialogueEditor
                         DialogueNodeExtended entryNode = AddDialogueNodeInPlace(isReply: false, lineStrRef: row.EntryTlk.Value,
                             entrySpeakerIndex: -1, entryListenerIndex: -2,
                             preferredPosition: new PointF(entryX, topY), selectNode: false);
-                        firstEntryNode ??= entryNode;
+                        createdEntryNodes.Add(entryNode);
                         createdNodes.Add(entryNode);
                     }
 
@@ -1838,7 +1838,7 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         DialogueNodeExtended replyNode = AddDialogueNodeInPlace(isReply: true, lineStrRef: row.ReplyTlk.Value,
                             preferredPosition: new PointF(replyX, topY), selectNode: false);
-                        firstReplyNode ??= replyNode;
+                        createdReplyNodes.Add(replyNode);
                         createdNodes.Add(replyNode);
                     }
                 }
@@ -1852,8 +1852,15 @@ namespace LegendaryExplorer.DialogueEditor
                 RecreateNodesToProperties(SelectedConv);
             }
 
-            CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, firstEntryNode))?.MoveToFront();
-            CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, firstReplyNode))?.MoveToFront();
+            foreach (DialogueNodeExtended node in createdEntryNodes.AsEnumerable().Reverse())
+            {
+                CurrentObjects.OfType<DiagNode>().FirstOrDefault(graphNode => ReferenceEquals(graphNode.Node, node))?.MoveToFront();
+            }
+
+            foreach (DialogueNodeExtended node in createdReplyNodes.AsEnumerable().Reverse())
+            {
+                CurrentObjects.OfType<DiagNode>().FirstOrDefault(graphNode => ReferenceEquals(graphNode.Node, node))?.MoveToFront();
+            }
 
             ApplySpeakerNodeHighlighting();
             UpdateSelectedConnectionHighlighting();
