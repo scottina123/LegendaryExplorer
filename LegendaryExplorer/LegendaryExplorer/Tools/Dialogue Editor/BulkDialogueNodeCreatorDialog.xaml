@@ -73,7 +73,7 @@
                           Grid.Row="1"
                           ItemsSource="{Binding CustomGroups}"
                           AutoGenerateColumns="False"
-                          CanUserAddRows="True"
+                          CanUserAddRows="False"
                           CanUserDeleteRows="True"
                           CanUserReorderColumns="False"
                           GridLinesVisibility="All">
@@ -86,12 +86,15 @@
                                             Width="*" />
                     </DataGrid.Columns>
                 </DataGrid>
-                <Button Grid.Row="2"
-                        HorizontalAlignment="Left"
-                        MinWidth="130"
-                        Margin="0,6,0,0"
-                        Click="AddCustomGroup_Click"
-                        Content="Add Custom Group" />
+                <StackPanel Grid.Row="2" Margin="0,6,0,0" Orientation="Horizontal">
+                    <Button MinWidth="130"
+                            Margin="0,0,6,0"
+                            Click="AddCustomGroup_Click"
+                            Content="Add Custom Group" />
+                    <Button MinWidth="150"
+                            Click="RemoveCustomGroup_Click"
+                            Content="Remove Selected Group" />
+                </StackPanel>
             </Grid>
         </GroupBox>
 

@@ -138,6 +138,14 @@ namespace LegendaryExplorer.DialogueEditor
             CustomGroupsGrid.BeginEdit();
         }
 
+        private void RemoveCustomGroup_Click(object sender, RoutedEventArgs e)
+        {
+            if (CustomGroupsGrid.SelectedItem is BulkInterpGroupDefinition group)
+            {
+                CustomGroups.Remove(group);
+            }
+        }
+
         private void ClearReplyColumn_Click(object sender, RoutedEventArgs e)
         {
             foreach (BulkDialogueNodeRow row in Rows)

@@ -1706,17 +1706,19 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Refresh();
         }
 
-        private void AddDialogueNodeInPlace(bool isReply, int? lineStrRef = null, EReplyTypes? replyType = null, int entrySpeakerIndex = -1, int? entryListenerIndex = null)
+        private DialogueNodeExtended AddDialogueNodeInPlace(bool isReply, int? lineStrRef = null, EReplyTypes? replyType = null,
+            int entrySpeakerIndex = -1, int? entryListenerIndex = null, PointF? preferredPosition = null, bool selectNode = true)
         {
             if (SelectedConv == null)
             {
-                return;
+                return null;
             }
 
             var anchorNode = SelectedObjects.OfType<DiagNode>().FirstOrDefault();
-            PointF position = GetNewDialogueNodePosition(isReply, anchorNode);
+            PointF position = preferredPosition ?? GetNewDialogueNodePosition(isReply, anchorNode);
             int newIndex;
             DiagNode graphNode;
+            DialogueNodeExtended nodeExtended;
 
             if (isReply)
             {
@@ -1740,7 +1742,7 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedConv.BioConvo.AddOrReplaceProp(props);
 
                 newIndex = SelectedConv.ReplyList.Count;
-                var nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, true, TLKLookup);
+                nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, true, TLKLookup);
                 InitializeDialogueNodeDerivedData(nodeExtended);
                 SelectedConv.ReplyList.Add(nodeExtended);
 
@@ -1774,7 +1776,7 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedConv.BioConvo.AddOrReplaceProp(props);
 
                 newIndex = SelectedConv.EntryList.Count;
-                var nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, false, TLKLookup);
+                nodeExtended = SelectedConv.ParseSingleLine(props[newIndex], newIndex, false, TLKLookup);
                 InitializeDialogueNodeDerivedData(nodeExtended);
                 SelectedConv.EntryList.Add(nodeExtended);
 
@@ -1784,7 +1786,12 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             AddDialogueNodeToGraphInPlace(graphNode, position, centerView: false);
-            DialogueNode_SelectByIndex(newIndex, isReply);
+            if (selectNode)
+            {
+                DialogueNode_SelectByIndex(newIndex, isReply);
+            }
+
+            return nodeExtended;
         }
 
         private void OpenBulkDialogueNodeCreator()
@@ -1801,6 +1808,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             var createdNodes = new List<DialogueNodeExtended>();
+            DialogueNodeExtended firstEntryNode = null;
+            DialogueNodeExtended firstReplyNode = null;
+            RectangleF viewBounds = graphEditor.Camera.ViewBounds;
+            const float nodeWidth = 220f;
+            float entryX = viewBounds.Left + (viewBounds.Width * 0.25f) - (nodeWidth / 2f);
+            float replyX = viewBounds.Left + (viewBounds.Width * 0.75f) - (nodeWidth / 2f);
+            float topY = viewBounds.Top + 25f;
             var usedExportIds = SelectedConv.EntryList
                 .Concat(SelectedConv.ReplyList)
                 .Where(node => node.ExportID > 0)
@@ -1813,14 +1827,19 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     if (row.EntryTlk.HasValue)
                     {
-                        AddDialogueNodeInPlace(isReply: false, lineStrRef: row.EntryTlk.Value, entrySpeakerIndex: -1, entryListenerIndex: -2);
-                        createdNodes.Add(SelectedDialogueNode);
+                        DialogueNodeExtended entryNode = AddDialogueNodeInPlace(isReply: false, lineStrRef: row.EntryTlk.Value,
+                            entrySpeakerIndex: -1, entryListenerIndex: -2,
+                            preferredPosition: new PointF(entryX, topY), selectNode: false);
+                        firstEntryNode ??= entryNode;
+                        createdNodes.Add(entryNode);
                     }
 
                     if (row.ReplyTlk.HasValue)
                     {
-                        AddDialogueNodeInPlace(isReply: true, lineStrRef: row.ReplyTlk.Value);
-                        createdNodes.Add(SelectedDialogueNode);
+                        DialogueNodeExtended replyNode = AddDialogueNodeInPlace(isReply: true, lineStrRef: row.ReplyTlk.Value,
+                            preferredPosition: new PointF(replyX, topY), selectNode: false);
+                        firstReplyNode ??= replyNode;
+                        createdNodes.Add(replyNode);
                     }
                 }
 
@@ -1833,7 +1852,12 @@ namespace LegendaryExplorer.DialogueEditor
                 RecreateNodesToProperties(SelectedConv);
             }
 
-            ForceRefreshPreserveLayout();
+            CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, firstEntryNode))?.MoveToFront();
+            CurrentObjects.OfType<DiagNode>().FirstOrDefault(node => ReferenceEquals(node.Node, firstReplyNode))?.MoveToFront();
+
+            ApplySpeakerNodeHighlighting();
+            UpdateSelectedConnectionHighlighting();
+            graphEditor.Refresh();
             MessageBox.Show(this,
                 $"Created {createdNodes.Count} dialogue node{(createdNodes.Count == 1 ? string.Empty : "s")} with sequence data and FXA-based InterpLengths.",
                 "Bulk Dialogue Node Creator", MessageBoxButton.OK, MessageBoxImage.Information);
