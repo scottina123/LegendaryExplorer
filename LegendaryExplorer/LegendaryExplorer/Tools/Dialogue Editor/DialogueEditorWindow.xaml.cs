@@ -1704,7 +1704,7 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Refresh();
         }
 
-        private void AddDialogueNodeInPlace(bool isReply)
+        private void AddDialogueNodeInPlace(bool isReply, int? lineStrRef = null, EReplyTypes? replyType = null)
         {
             if (SelectedConv == null)
             {
@@ -1722,7 +1722,11 @@ namespace LegendaryExplorer.DialogueEditor
                 var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_ReplyList") ??
                             new ArrayProperty<StructProperty>("m_ReplyList");
                 newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle"));
-                newprop.AddOrReplaceProp(new EnumProperty("REPLY_STANDARD", "EReplyTypes", Pcc.Game, "ReplyType"));
+                newprop.AddOrReplaceProp(new EnumProperty((replyType ?? EReplyTypes.REPLY_STANDARD).ToString(), "EReplyTypes", Pcc.Game, "ReplyType"));
+                if (lineStrRef.HasValue)
+                {
+                    newprop.AddOrReplaceProp(new StringRefProperty(lineStrRef.Value, "srText"));
+                }
                 newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
                 newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
                 newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
@@ -1748,6 +1752,10 @@ namespace LegendaryExplorer.DialogueEditor
                 var props = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>("m_EntryList") ??
                             new ArrayProperty<StructProperty>("m_EntryList");
                 newprop.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", Pcc.Game, "eGUIStyle"));
+                if (lineStrRef.HasValue)
+                {
+                    newprop.AddOrReplaceProp(new StringRefProperty(lineStrRef.Value, "srText"));
+                }
                 newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
                 newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
                 newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
@@ -9622,9 +9630,21 @@ namespace LegendaryExplorer.DialogueEditor
                 return SelectedDialogueNode;
             }
 
+            if (command == "AddAutoContinueReply")
+            {
+                AddDialogueNodeInPlace(isReply: true, lineStrRef: 599768, replyType: EReplyTypes.REPLY_AUTOCONTINUE);
+                return SelectedDialogueNode;
+            }
+
             if (command == "AddEntry")
             {
                 AddDialogueNodeInPlace(isReply: false);
+                return SelectedDialogueNode;
+            }
+
+            if (command == "AddNoDataEntry")
+            {
+                AddDialogueNodeInPlace(isReply: false, lineStrRef: 599754);
                 return SelectedDialogueNode;
             }
 

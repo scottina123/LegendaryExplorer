@@ -51,8 +51,14 @@
             <MenuItem Header="Add New Entry" Command="{Binding NodeAddCommand}" CommandParameter="AddEntry"
                       ToolTip="Add new entry to this Dialogue"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Add No Data Entry" Command="{Binding NodeAddCommand}" CommandParameter="AddNoDataEntry"
+                      ToolTip="Add a new entry node with the No Data TLK string"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
             <MenuItem Header="Add New Reply" Command="{Binding NodeAddCommand}" CommandParameter="AddReply"
                       ToolTip="Add new reply to this Dialogue"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Add Autocontinue Reply" Command="{Binding NodeAddCommand}" CommandParameter="AddAutoContinueReply"
+                      ToolTip="Add a new autocontinue reply with the Autocontinue TLK string"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
         </ContextMenu>
         <ContextMenu x:Key="replynodeContextMenu" Closed="ContextMenu_Closed">
