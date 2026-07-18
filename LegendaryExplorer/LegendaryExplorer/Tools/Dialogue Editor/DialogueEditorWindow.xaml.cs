@@ -339,6 +339,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand NodeDeleteAllLinksCommand { get; set; }
         public ICommand TestPathsCommand { get; set; }
         public ICommand ClearAllPlotDataCommand { get; set; }
+        public ICommand MakeAllDialogueSkippableCommand { get; set; }
         public ICommand BulkChangeConnectionStrRefCommand { get; set; }
         public ICommand CopySpeakerLinesFromFolderCommand { get; set; }
         public ICommand DefaultColorsCommand { get; set; }
@@ -689,6 +690,7 @@ namespace LegendaryExplorer.DialogueEditor
             StageDirectionsModCommand = new RelayCommand(StageDirections_Modify);
             TestPathsCommand = new GenericCommand(TestPaths);
             ClearAllPlotDataCommand = new GenericCommand(ClearAllPlotData, () => SelectedConv != null);
+            MakeAllDialogueSkippableCommand = new GenericCommand(MakeAllDialogueSkippable, () => SelectedConv != null);
             BulkChangeConnectionStrRefCommand = new GenericCommand(BulkChangeConnectionStrRef, () => SelectedConv != null);
             CopySpeakerLinesFromFolderCommand = new GenericCommand(CopySpeakerLinesFromFolder);
             DefaultColorsCommand = new GenericCommand(ResetColorsToDefault);
@@ -2061,6 +2063,32 @@ namespace LegendaryExplorer.DialogueEditor
                 node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nConditionalParam"));
                 node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nStateTransition"));
                 node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(-1, "nStateTransitionParam"));
+            }
+
+            IsLocalUpdate = true;
+            RecreateNodesToProperties(SelectedConv);
+            ForceRefreshPreserveLayout();
+        }
+
+        private void MakeAllDialogueSkippable()
+        {
+            if (SelectedConv == null || MessageBox.Show(
+                    "Make every entry skippable and every reply not unskippable in this conversation?",
+                    "Make All Dialogue Skippable",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Warning) != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            foreach (var entry in SelectedConv.EntryList)
+            {
+                entry.NodeProp.Properties.AddOrReplaceProp(new BoolProperty(true, "bSkippable"));
+            }
+
+            foreach (var reply in SelectedConv.ReplyList)
+            {
+                reply.NodeProp.Properties.AddOrReplaceProp(new BoolProperty(false, "bUnskippable"));
             }
 
             IsLocalUpdate = true;
