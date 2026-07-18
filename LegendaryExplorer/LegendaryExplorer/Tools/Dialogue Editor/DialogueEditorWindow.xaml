@@ -337,6 +337,9 @@
                     <MenuItem Header="Make All Dialogue Skippable" Command="{Binding MakeAllDialogueSkippableCommand}"
                               ToolTip="Make every entry skippable and every reply not unskippable in this conversation."
                               IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+                    <MenuItem Header="Make All Dialogue Unskippable" Command="{Binding MakeAllDialogueUnskippableCommand}"
+                              ToolTip="Make every entry non-skippable and every reply unskippable in this conversation."
+                              IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
                     <MenuItem Header="Bulk Change Connection TLK String Reference" Command="{Binding BulkChangeConnectionStrRefCommand}"
                               ToolTip="Change the dialogue-wheel TLK string reference on every entry connection targeting a reply."
                               IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
