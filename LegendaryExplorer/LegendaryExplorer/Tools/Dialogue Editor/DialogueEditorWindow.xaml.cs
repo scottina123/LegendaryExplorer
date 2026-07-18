@@ -1824,7 +1824,7 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                 }
 
-                DialogueEditorExperimentsE.CreateNodesSequence(Pcc, SelectedConv, 100, createdNodes, usedExportIds);
+                DialogueEditorExperimentsE.CreateNodesSequence(Pcc, SelectedConv, 100, createdNodes, usedExportIds, dialog.CustomGroupsToCreate);
                 foreach (DialogueNodeExtended node in createdNodes)
                 {
                     DialogueEditorExperimentsE.UpdateInterpLength(node, true, FaceFXAnimSetEditorControl_F, FaceFXAnimSetEditorControl_M);

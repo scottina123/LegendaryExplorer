@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Bulk Dialogue Node Creator"
-        Height="650"
+        Height="760"
         Width="760"
         MinHeight="450"
         MinWidth="500"
@@ -13,6 +13,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -58,8 +59,44 @@
             <Button Grid.Column="2" MinWidth="90" Click="GenerateRange_Click" Content="Generate" />
         </Grid>
 
+        <GroupBox Grid.Row="2" Margin="0,0,0,10" Header="Custom InterpGroups">
+            <Grid Margin="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="120" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Margin="0,0,0,6"
+                           Text="Add any extra groups required by each generated InterpData. Leave a field blank to omit that property."
+                           TextWrapping="Wrap" />
+                <DataGrid x:Name="CustomGroupsGrid"
+                          Grid.Row="1"
+                          ItemsSource="{Binding CustomGroups}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="True"
+                          CanUserDeleteRows="True"
+                          CanUserReorderColumns="False"
+                          GridLinesVisibility="All">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Group Name"
+                                            Binding="{Binding GroupName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="*" />
+                        <DataGridTextColumn Header="m_nmSFXFindActor"
+                                            Binding="{Binding SFXFindActor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Button Grid.Row="2"
+                        HorizontalAlignment="Left"
+                        MinWidth="130"
+                        Margin="0,6,0,0"
+                        Click="AddCustomGroup_Click"
+                        Content="Add Custom Group" />
+            </Grid>
+        </GroupBox>
+
         <DataGrid x:Name="TlkGrid"
-                  Grid.Row="2"
+                  Grid.Row="3"
                   ItemsSource="{Binding Rows}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="True"
@@ -78,7 +115,7 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <Grid Grid.Row="3" Margin="0,10,0,0">
+        <Grid Grid.Row="4" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />

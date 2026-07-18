@@ -1050,7 +1050,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// <param name="nodes">Nodes to generate the sequence objects for.</param>
         /// <param name="usedIDs">ExportIDs in use.</param>
         public static void CreateNodesSequence(IMEPackage pcc, ConversationExtended conversation, int convNodeIDBase,
-            List<DialogueNodeExtended> nodes, HashSet<int> usedIDs)
+            List<DialogueNodeExtended> nodes, HashSet<int> usedIDs, IReadOnlyList<BulkInterpGroupDefinition> customGroups = null)
         {
             List<int> newExportIDs = GenerateIDs(convNodeIDBase, nodes.Count, usedIDs);
             List<ExportEntry> newExports = new(); // Sequence objects to add
@@ -1065,7 +1065,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
                 // Create the required sequence elements and add it to the new exports list
                 List<ExportEntry> nodeExports = CreateDialogueNodeSequence(pcc, exportID, conversation.BioConvo.GetProp<IntProperty>("m_nResRefID").Value,
-                    node.LineStrRef, node.Line);
+                    node.LineStrRef, node.Line, customGroups);
                 node.InterpData = nodeExports.First(entry => entry.ClassName == "InterpData");
                 node.InterpLength = node.InterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? -1;
                 newExports.AddRange(nodeExports);
@@ -1091,7 +1091,8 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// <param name="strRefID">Node's StrRefID.</param>
         /// <param name="line">Text of the Node's StrRefID.</param>
         /// <returns>List of created exports.</returns>
-        private static List<ExportEntry> CreateDialogueNodeSequence(IMEPackage pcc, int nodeID, int convResRefID, int strRefID, string line)
+        private static List<ExportEntry> CreateDialogueNodeSequence(IMEPackage pcc, int nodeID, int convResRefID, int strRefID, string line,
+            IReadOnlyList<BulkInterpGroupDefinition> customGroups = null)
         {
             List<ExportEntry> exports = new();
 
@@ -1114,7 +1115,10 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             // Add group variable links
             ArrayProperty<StructProperty> variableLinks = interpProps.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
             int index = pcc.FindImport("Engine.SeqVar_Object").UIndex;
-            foreach (string linkDescription in new[] { "Conversation", "Player", "Owner", "Cam1" })
+            IEnumerable<string> linkDescriptions = new[] { "Conversation", "Player", "Owner", "Cam1" }
+                .Concat(customGroups?.Where(group => !string.IsNullOrWhiteSpace(group.GroupName)).Select(group => group.GroupName) ?? [])
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            foreach (string linkDescription in linkDescriptions)
             {
                 PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, "SeqVarLink", true, pcc);
                 props.AddOrReplaceProp(new StrProperty(linkDescription, "LinkDesc"));
@@ -1151,10 +1155,18 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }, "BioTrackKey")
             });
 
-            MatineeHelper.AddNewGroupToInterpData(interpData, "Player");
-            MatineeHelper.AddNewGroupToInterpData(interpData, "Owner");
+            AddGroupActorGestureTrack(interpData, "Player");
+            AddGroupActorGestureTrack(interpData, "Owner");
             ExportEntry cameraGroup = MatineeHelper.AddNewGroupToInterpData(interpData, "Cam1");
             cameraGroup.WriteProperty(new NameProperty("Cam1", "m_nmSFXFindActor"));
+            foreach (BulkInterpGroupDefinition customGroup in customGroups ?? [])
+            {
+                ExportEntry group = MatineeHelper.AddNewGroupToInterpData(interpData, customGroup.GroupName);
+                if (!string.IsNullOrWhiteSpace(customGroup.SFXFindActor))
+                {
+                    group.WriteProperty(new NameProperty(customGroup.SFXFindActor, "m_nmSFXFindActor"));
+                }
+            }
             ExportEntry directorGroup = MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
             ExportEntry directorTrack = MatineeHelper.AddNewTrackToGroup(directorGroup, "InterpTrackDirector");
             MatineeHelper.AddDefaultPropertiesToTrack(directorTrack);
@@ -1168,6 +1180,24 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             KismetHelper.CreateVariableLink(interp, "Data", interpData);
 
             return exports;
+        }
+
+        private static void AddGroupActorGestureTrack(ExportEntry interpData, string groupName)
+        {
+            ExportEntry group = MatineeHelper.AddNewGroupToInterpData(interpData, groupName);
+            group.WriteProperty(new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"));
+
+            ExportEntry gestureTrack = MatineeHelper.AddNewTrackToGroup(group, "BioEvtSysTrackGesture");
+            gestureTrack.WriteProperty(new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"));
+            gestureTrack.WriteProperty(new ArrayProperty<StructProperty>("m_aGestures"));
+            gestureTrack.WriteProperty(new ArrayProperty<StructProperty>("m_aTrackKeys"));
+            gestureTrack.WriteProperty(new NameProperty("None", "nmStartingPoseSet"));
+            gestureTrack.WriteProperty(new NameProperty("None", "nmStartingPoseAnim"));
+            gestureTrack.WriteProperty(new FloatProperty(0, "m_fStartPoseOffset"));
+            gestureTrack.WriteProperty(new EnumProperty("None", "EBioTrackAllPoseGroups", interpData.Game, "ePoseFilter"));
+            gestureTrack.WriteProperty(new EnumProperty("None", "EBioGestureAllPoses", interpData.Game, "eStartingPose"));
+            gestureTrack.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
+            gestureTrack.WriteProperty(new StrProperty($"Gesture -- {groupName}", "TrackTitle"));
         }
 
         /// <summary>

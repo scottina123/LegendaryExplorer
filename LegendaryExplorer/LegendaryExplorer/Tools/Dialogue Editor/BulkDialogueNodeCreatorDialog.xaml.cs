@@ -41,12 +41,20 @@ namespace LegendaryExplorer.DialogueEditor
         }
     }
 
+    public sealed class BulkInterpGroupDefinition
+    {
+        public string GroupName { get; set; }
+        public string SFXFindActor { get; set; }
+    }
+
     public partial class BulkDialogueNodeCreatorDialog : Window
     {
         private const int MaximumRangeSize = 1000;
 
         public ObservableCollection<BulkDialogueNodeRow> Rows { get; } = new();
+        public ObservableCollection<BulkInterpGroupDefinition> CustomGroups { get; } = new();
         public IReadOnlyList<BulkDialogueNodeRow> NodesToCreate { get; private set; }
+        public IReadOnlyList<BulkInterpGroupDefinition> CustomGroupsToCreate { get; private set; }
 
         public BulkDialogueNodeCreatorDialog(Window owner)
         {
@@ -121,6 +129,15 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void AddCustomGroup_Click(object sender, RoutedEventArgs e)
+        {
+            var group = new BulkInterpGroupDefinition();
+            CustomGroups.Add(group);
+            CustomGroupsGrid.SelectedItem = group;
+            CustomGroupsGrid.ScrollIntoView(group);
+            CustomGroupsGrid.BeginEdit();
+        }
+
         private void ClearReplyColumn_Click(object sender, RoutedEventArgs e)
         {
             foreach (BulkDialogueNodeRow row in Rows)
@@ -133,6 +150,8 @@ namespace LegendaryExplorer.DialogueEditor
         {
             TlkGrid.CommitEdit();
             TlkGrid.CommitEdit();
+            CustomGroupsGrid.CommitEdit();
+            CustomGroupsGrid.CommitEdit();
 
             List<BulkDialogueNodeRow> populatedRows = Rows
                 .Where(row => row.EntryTlk.HasValue || row.ReplyTlk.HasValue)
@@ -152,6 +171,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             NodesToCreate = populatedRows;
+            CustomGroupsToCreate = CustomGroups
+                .Select(group => new BulkInterpGroupDefinition
+                {
+                    GroupName = string.IsNullOrWhiteSpace(group.GroupName) ? null : group.GroupName.Trim(),
+                    SFXFindActor = string.IsNullOrWhiteSpace(group.SFXFindActor) ? null : group.SFXFindActor.Trim()
+                })
+                .ToList();
             DialogResult = true;
         }
 
