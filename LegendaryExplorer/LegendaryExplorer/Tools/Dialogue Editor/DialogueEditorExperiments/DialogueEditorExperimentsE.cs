@@ -1064,12 +1064,20 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 node.NodeProp.Properties.AddOrReplaceProp(new IntProperty(exportID, "nExportID"));
 
                 // Create the required sequence elements and add it to the new exports list
-                newExports.AddRange(CreateDialogueNodeSequence(pcc, exportID, conversation.BioConvo.GetProp<IntProperty>("m_nResRefID").Value,
-                    node.LineStrRef, node.Line));
+                List<ExportEntry> nodeExports = CreateDialogueNodeSequence(pcc, exportID, conversation.BioConvo.GetProp<IntProperty>("m_nResRefID").Value,
+                    node.LineStrRef, node.Line);
+                node.InterpData = nodeExports.First(entry => entry.ClassName == "InterpData");
+                node.InterpLength = node.InterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? -1;
+                newExports.AddRange(nodeExports);
             }
 
             if (newExports.Any())
             {
+                if (newExports.Any(entry => entry.FileRef != pcc || entry.UIndex <= 0))
+                {
+                    throw new InvalidOperationException("Generated sequence exports are not valid members of the current package.");
+                }
+
                 KismetHelper.AddObjectsToSequence((ExportEntry)conversation.Sequence, false, newExports.ToArray());
             }
         }
@@ -1103,15 +1111,18 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 new StrProperty(line == "No Data" ? "" : line.Length <= 32 ? line : $"{line.AsSpan(0, 29)}...")
             });
             interpProps.AddOrReplaceProp(new BoolProperty(true, "bRewindOnPlay"));
-            // Add Conversation variable link
+            // Add group variable links
             ArrayProperty<StructProperty> variableLinks = interpProps.GetProp<ArrayProperty<StructProperty>>("VariableLinks");
-            PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, "SeqVarLink", true, pcc);
-            props.AddOrReplaceProp(new StrProperty("Conversation", "LinkDesc"));
             int index = pcc.FindImport("Engine.SeqVar_Object").UIndex;
-            props.AddOrReplaceProp(new ObjectProperty(index, "ExpectedType"));
-            props.AddOrReplaceProp(new IntProperty(1, "MinVars"));
-            props.AddOrReplaceProp(new IntProperty(255, "MaxVars"));
-            variableLinks.Add(new StructProperty("SeqVarLink", props));
+            foreach (string linkDescription in new[] { "Conversation", "Player", "Owner", "Cam1" })
+            {
+                PropertyCollection props = GlobalUnrealObjectInfo.getDefaultStructValue(pcc.Game, "SeqVarLink", true, pcc);
+                props.AddOrReplaceProp(new StrProperty(linkDescription, "LinkDesc"));
+                props.AddOrReplaceProp(new ObjectProperty(index, "ExpectedType"));
+                props.AddOrReplaceProp(new IntProperty(1, "MinVars"));
+                props.AddOrReplaceProp(new IntProperty(255, "MaxVars"));
+                variableLinks.Add(new StructProperty("SeqVarLink", props));
+            }
             interpProps.AddOrReplaceProp(variableLinks);
             interp.WriteProperties(interpProps);
             exports.Add(interp);
@@ -1139,6 +1150,14 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                     new FloatProperty(0, "fTime")
                 }, "BioTrackKey")
             });
+
+            MatineeHelper.AddNewGroupToInterpData(interpData, "Player");
+            MatineeHelper.AddNewGroupToInterpData(interpData, "Owner");
+            ExportEntry cameraGroup = MatineeHelper.AddNewGroupToInterpData(interpData, "Cam1");
+            cameraGroup.WriteProperty(new NameProperty("Cam1", "m_nmSFXFindActor"));
+            ExportEntry directorGroup = MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
+            ExportEntry directorTrack = MatineeHelper.AddNewTrackToGroup(directorGroup, "InterpTrackDirector");
+            MatineeHelper.AddDefaultPropertiesToTrack(directorTrack);
 
             exports.Add(interpData);
 

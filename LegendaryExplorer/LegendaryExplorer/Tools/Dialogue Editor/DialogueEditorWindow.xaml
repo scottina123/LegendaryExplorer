@@ -60,6 +60,9 @@
             <MenuItem Header="Add Autocontinue Reply" Command="{Binding NodeAddCommand}" CommandParameter="AddAutoContinueReply"
                       ToolTip="Add a new autocontinue reply with the Autocontinue TLK string"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Bulk Create Dialogue Nodes" Command="{Binding BulkCreateDialogueNodesCommand}"
+                      ToolTip="Create editable ranges of Entry and Reply nodes with sequence and InterpData objects"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
         </ContextMenu>
         <ContextMenu x:Key="replynodeContextMenu" Closed="ContextMenu_Closed">
             <MenuItem Header="Edit Links" Name="replyLinkEditContextMenu" Command="{Binding NodeEditCommand}" CommandParameter="Reply" ToolTip="Edit Links order and details"/>

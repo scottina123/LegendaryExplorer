@@ -331,6 +331,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand ScriptDeleteCommand { get; set; }
         public ICommand NodeEditCommand { get; set; }
         public ICommand NodeAddCommand { get; set; }
+        public ICommand BulkCreateDialogueNodesCommand { get; set; }
         public ICommand CloneNodeAndSequenceCommand { get; set; }
         public ICommand UpdateInterpLengthCommand { get; set; }
         public ICommand UpdateVOElementsAndInterpCommentCommand { get; set; }
@@ -679,6 +680,7 @@ namespace LegendaryExplorer.DialogueEditor
             ScriptDeleteCommand = new GenericCommand(Script_Delete, ScriptCanDelete);
             NodeEditCommand = new RelayCommand(DialogueNode_OpenLinkEditor);
             NodeAddCommand = new RelayCommand(DialogueNode_Add);
+            BulkCreateDialogueNodesCommand = new GenericCommand(OpenBulkDialogueNodeCreator, () => SelectedConv != null);
             CloneNodeAndSequenceCommand = new GenericCommand(() => DialogueEditorExperimentsE.CloneNodeAndSequence(this), LineHasInterpData);
             UpdateInterpLengthCommand = new GenericCommand(() => DialogueEditorExperimentsE.UpdateInterpLengthExperiment(this), LineHasInterpData);
             UpdateVOElementsAndInterpCommentCommand = new GenericCommand(() => DialogueEditorExperimentsE.UpdateVOAndCommentExperiment(this), LineHasInterpData);
@@ -1783,6 +1785,58 @@ namespace LegendaryExplorer.DialogueEditor
 
             AddDialogueNodeToGraphInPlace(graphNode, position, centerView: false);
             DialogueNode_SelectByIndex(newIndex, isReply);
+        }
+
+        private void OpenBulkDialogueNodeCreator()
+        {
+            if (SelectedConv == null || Pcc == null)
+            {
+                return;
+            }
+
+            var dialog = new BulkDialogueNodeCreatorDialog(this);
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var createdNodes = new List<DialogueNodeExtended>();
+            var usedExportIds = SelectedConv.EntryList
+                .Concat(SelectedConv.ReplyList)
+                .Where(node => node.ExportID > 0)
+                .Select(node => node.ExportID)
+                .ToHashSet();
+
+            using (SuppressPackageUpdates())
+            {
+                foreach (BulkDialogueNodeRow row in dialog.NodesToCreate)
+                {
+                    if (row.EntryTlk.HasValue)
+                    {
+                        AddDialogueNodeInPlace(isReply: false, lineStrRef: row.EntryTlk.Value, entrySpeakerIndex: -1, entryListenerIndex: -2);
+                        createdNodes.Add(SelectedDialogueNode);
+                    }
+
+                    if (row.ReplyTlk.HasValue)
+                    {
+                        AddDialogueNodeInPlace(isReply: true, lineStrRef: row.ReplyTlk.Value);
+                        createdNodes.Add(SelectedDialogueNode);
+                    }
+                }
+
+                DialogueEditorExperimentsE.CreateNodesSequence(Pcc, SelectedConv, 100, createdNodes, usedExportIds);
+                foreach (DialogueNodeExtended node in createdNodes)
+                {
+                    DialogueEditorExperimentsE.UpdateInterpLength(node, true, FaceFXAnimSetEditorControl_F, FaceFXAnimSetEditorControl_M);
+                }
+
+                RecreateNodesToProperties(SelectedConv);
+            }
+
+            ForceRefreshPreserveLayout();
+            MessageBox.Show(this,
+                $"Created {createdNodes.Count} dialogue node{(createdNodes.Count == 1 ? string.Empty : "s")} with sequence data and FXA-based InterpLengths.",
+                "Bulk Dialogue Node Creator", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void RebuildGraphInPlace(bool rebuildStarts = false)

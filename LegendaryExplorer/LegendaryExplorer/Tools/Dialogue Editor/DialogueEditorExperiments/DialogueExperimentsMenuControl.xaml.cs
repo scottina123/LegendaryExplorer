@@ -74,6 +74,11 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             DialogueEditorExperimentsE.CreateNodeSequenceExperiment(GetDEWindow());
         }
 
+        private void BulkCreateDialogueNodes_Click(object sender, RoutedEventArgs e)
+        {
+            GetDEWindow()?.BulkCreateDialogueNodesCommand.Execute(null);
+        }
+
         private void BatchUpdateVOsAndComments_Click(object sender, RoutedEventArgs e)
         {
             DialogueEditorExperimentsE.BatchUpdateVOsAndCommentsExperiment(GetDEWindow());
