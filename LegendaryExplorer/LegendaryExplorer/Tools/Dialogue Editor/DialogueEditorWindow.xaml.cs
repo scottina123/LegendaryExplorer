@@ -1704,7 +1704,7 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.Refresh();
         }
 
-        private void AddDialogueNodeInPlace(bool isReply, int? lineStrRef = null, EReplyTypes? replyType = null)
+        private void AddDialogueNodeInPlace(bool isReply, int? lineStrRef = null, EReplyTypes? replyType = null, int entrySpeakerIndex = -1, int? entryListenerIndex = null)
         {
             if (SelectedConv == null)
             {
@@ -1756,7 +1756,11 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     newprop.AddOrReplaceProp(new StringRefProperty(lineStrRef.Value, "srText"));
                 }
-                newprop.GetProp<IntProperty>("nSpeakerIndex").Value = -1;
+                newprop.GetProp<IntProperty>("nSpeakerIndex").Value = entrySpeakerIndex;
+                if (entryListenerIndex.HasValue)
+                {
+                    newprop.GetProp<IntProperty>("nListenerIndex").Value = entryListenerIndex.Value;
+                }
                 newprop.GetProp<IntProperty>("nScriptIndex").Value = -1;
                 newprop.GetProp<BoolProperty>("bFireConditional").Value = true;
                 newprop.GetProp<IntProperty>("nConditionalFunc").Value = -1;
@@ -9644,7 +9648,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (command == "AddNoDataEntry")
             {
-                AddDialogueNodeInPlace(isReply: false, lineStrRef: 599754);
+                AddDialogueNodeInPlace(isReply: false, lineStrRef: 599754, entrySpeakerIndex: -1, entryListenerIndex: -2);
                 return SelectedDialogueNode;
             }
 
