@@ -602,6 +602,11 @@ public sealed class SceneRenderControl : ContentControl, IDisposable, INotifyPro
 
     public void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.S && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            return;
+        }
+
         if (e.Key == Key.F11 && RenderDoc.IsRenderDocAttached())
         {
             CaptureNextFrame = true;
