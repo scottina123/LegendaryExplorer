@@ -2829,10 +2829,18 @@ namespace LegendaryExplorer.DialogueEditor
                     .SelectMany(root => root.FlattenTree())
                     .Select(node => node.UIndex)
                     .ToHashSet();
+                List<PackageUpdate> interpTreeUpdates = relevantUpdates
+                    .Where(update => interpTreeIndexes.Contains(update.Index))
+                    .ToList();
 
-                if (updatedExportIndexes.Overlaps(interpTreeIndexes))
+                if (interpTreeUpdates.Any(update => update.Change != PackageChange.ExportData))
                 {
                     RefreshInterpDataTreePreserveState();
+                }
+                else if (GetSelectedInterpDataTreeExport() is ExportEntry selectedInterpExport
+                         && interpTreeUpdates.Any(update => update.Index == selectedInterpExport.UIndex))
+                {
+                    LoadInterpDataEditors(selectedInterpExport);
                 }
             }
 
