@@ -852,6 +852,12 @@
                                     <TabItem Header="Metadata">
                                         <exportLoaderControls:EntryMetadataExportLoader x:Name="InterpData_MetadataEditor" />
                                     </TabItem>
+                                    <TabItem x:Name="InterpData_CurveEditorTab" Header="2D Curve Editor" IsEnabled="False">
+                                        <exportLoaderControls:CurveEditor x:Name="InterpData_CurveEditor" />
+                                    </TabItem>
+                                    <TabItem x:Name="InterpData_CurveEditor3DTab" Header="3D Curve Editor" IsEnabled="False">
+                                        <exportLoaderControls:CurveEditor3D x:Name="InterpData_CurveEditor3D" />
+                                    </TabItem>
                                 </TabControl>
                             </Grid>
                         </TabItem>

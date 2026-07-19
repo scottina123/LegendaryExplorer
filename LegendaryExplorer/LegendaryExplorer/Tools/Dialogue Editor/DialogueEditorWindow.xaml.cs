@@ -910,13 +910,15 @@ namespace LegendaryExplorer.DialogueEditor
             });
             CurrentObjects.Clear();
             graphEditor.Dispose();
+            ClearInterpDataTree();
             Properties_InterpreterWPF.Dispose();
             InterpData_InterpreterWPF.Dispose();
+            InterpData_CurveEditor.Dispose();
+            InterpData_CurveEditor3D.Dispose();
             SoundpanelWPF_F.Dispose();
             SoundpanelWPF_M.Dispose();
             FaceFXAnimSetEditorControl_F.Dispose();
             FaceFXAnimSetEditorControl_M.Dispose();
-            ClearInterpDataTree();
             GraphHost.Child = null; //This seems to be required to clear OnChildGotFocus handler from WinFormsHost
             GraphHost.Dispose();
             DataContext = null;
@@ -1034,7 +1036,7 @@ namespace LegendaryExplorer.DialogueEditor
             SelectedSpeakerList.ClearEx();
             RebuildSpeakerNodeFilterMenu();
             Properties_InterpreterWPF.UnloadExport();
-            InterpData_InterpreterWPF.UnloadExport();
+            UnloadInterpDataEditors();
             SoundpanelWPF_F.UnloadExport();
             SoundpanelWPF_M.UnloadExport();
             FaceFXAnimSetEditorControl_F.UnloadExport();
@@ -2843,8 +2845,7 @@ namespace LegendaryExplorer.DialogueEditor
                 graphEditor.nodeLayer.RemoveAllChildren();
                 graphEditor.edgeLayer.RemoveAllChildren();
                 Properties_InterpreterWPF.UnloadExport();
-                InterpData_InterpreterWPF.UnloadExport();
-                InterpData_MetadataEditor.UnloadExport();
+                UnloadInterpDataEditors();
                 SoundpanelWPF_F.UnloadExport();
                 SoundpanelWPF_M.UnloadExport();
                 FaceFXAnimSetEditorControl_F.UnloadExport();
@@ -3890,7 +3891,6 @@ namespace LegendaryExplorer.DialogueEditor
             EndInlinePlotFieldEdit(false);
             ClearInlineLinkEditor();
             ClearInterpDataTree();
-            InterpData_InterpreterWPF.UnloadExport();
             SoundpanelWPF_F.UnloadExport();
             SoundpanelWPF_M.UnloadExport();
             FaceFXAnimSetEditorControl_F.UnloadExport();
@@ -3978,8 +3978,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (SelectedDialogueNode?.InterpData is not ExportEntry interpDataExport || Pcc == null)
             {
-                InterpData_InterpreterWPF.UnloadExport();
-                InterpData_MetadataEditor.UnloadExport();
+                UnloadInterpDataEditors();
                 return;
             }
 
@@ -3992,8 +3991,7 @@ namespace LegendaryExplorer.DialogueEditor
             var root = BuildInterpDataTreeNode(interpDataExport, null, new HashSet<int>(), childrenByParent);
             if (root == null)
             {
-                InterpData_InterpreterWPF.UnloadExport();
-                InterpData_MetadataEditor.UnloadExport();
+                UnloadInterpDataEditors();
                 return;
             }
 
@@ -4002,8 +4000,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (selectRoot)
             {
                 root.IsSelected = true;
-                InterpData_InterpreterWPF.LoadExport(interpDataExport);
-                InterpData_MetadataEditor.LoadExport(interpDataExport);
+                LoadInterpDataEditors(interpDataExport);
             }
         }
 
@@ -4043,7 +4040,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             InterpDataTreeNodes.ClearEx();
-            InterpData_MetadataEditor.UnloadExport();
+            UnloadInterpDataEditors();
         }
 
         private ExportEntry GetSelectedInterpDataTreeExport()
@@ -4055,14 +4052,50 @@ namespace LegendaryExplorer.DialogueEditor
         {
             if (e.NewValue is TreeViewEntry { Entry: ExportEntry export })
             {
-                InterpData_InterpreterWPF.LoadExport(export);
-                InterpData_MetadataEditor.LoadExport(export);
+                LoadInterpDataEditors(export);
             }
             else if (suppressInterpDataInterpreterUnloadDepth == 0)
             {
-                InterpData_InterpreterWPF.UnloadExport();
-                InterpData_MetadataEditor.UnloadExport();
+                UnloadInterpDataEditors();
             }
+        }
+
+        private void LoadInterpDataEditors(ExportEntry export)
+        {
+            InterpData_InterpreterWPF.LoadExport(export);
+            InterpData_MetadataEditor.LoadExport(export);
+
+            bool isMoveTrack = export.ClassName == "InterpTrackMove";
+            InterpData_CurveEditorTab.IsEnabled = isMoveTrack && InterpData_CurveEditor.CanParse(export);
+            InterpData_CurveEditor3DTab.IsEnabled = isMoveTrack && InterpData_CurveEditor3D.CanParse(export);
+
+            if (InterpData_CurveEditorTab.IsEnabled)
+            {
+                InterpData_CurveEditor.LoadExport(export);
+            }
+            else
+            {
+                InterpData_CurveEditor.UnloadExport();
+            }
+
+            if (InterpData_CurveEditor3DTab.IsEnabled)
+            {
+                InterpData_CurveEditor3D.LoadExport(export);
+            }
+            else
+            {
+                InterpData_CurveEditor3D.UnloadExport();
+            }
+        }
+
+        private void UnloadInterpDataEditors()
+        {
+            InterpData_InterpreterWPF.UnloadExport();
+            InterpData_MetadataEditor.UnloadExport();
+            InterpData_CurveEditor.UnloadExport();
+            InterpData_CurveEditor3D.UnloadExport();
+            InterpData_CurveEditorTab.IsEnabled = false;
+            InterpData_CurveEditor3DTab.IsEnabled = false;
         }
 
         private void RefreshInterpDataTreePreserveState(int? preferredSelectedUIndex = null)
@@ -5749,8 +5782,6 @@ namespace LegendaryExplorer.DialogueEditor
                 SelectedSpeakerList.ClearEx();
                 RebuildSpeakerNodeFilterMenu();
                 Properties_InterpreterWPF.UnloadExport();
-                InterpData_InterpreterWPF.UnloadExport();
-                InterpData_MetadataEditor.UnloadExport();
                 SoundpanelWPF_F.UnloadExport();
                 SoundpanelWPF_M.UnloadExport();
                 FaceFXAnimSetEditorControl_F.UnloadExport();
