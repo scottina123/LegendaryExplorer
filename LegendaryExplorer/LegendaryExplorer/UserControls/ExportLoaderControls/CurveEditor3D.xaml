@@ -90,13 +90,13 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="X" VerticalAlignment="Center"/>
+                                <TextBlock Text="X" Foreground="#FFFF0000" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Column="1" Value="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
-                                <TextBlock Grid.Row="1" Text="Y" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Text="Y" Foreground="#FF00FF00" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
-                                <TextBlock Grid.Row="2" Text="Z" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Text="Z" Foreground="#FF0000FF" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                             </Grid>
@@ -113,13 +113,13 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="Roll" VerticalAlignment="Center"/>
+                                <TextBlock Text="Roll" Foreground="#FFFF0000" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Column="1" Value="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
-                                <TextBlock Grid.Row="1" Text="Pitch" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Text="Pitch" Foreground="#FF00FF00" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
-                                <TextBlock Grid.Row="2" Text="Yaw" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Text="Yaw" Foreground="#FF0000FF" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                             </Grid>

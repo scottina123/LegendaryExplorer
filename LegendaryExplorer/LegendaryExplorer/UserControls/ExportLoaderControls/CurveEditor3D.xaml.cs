@@ -107,6 +107,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     public override void LoadExport(ExportEntry exportEntry)
     {
+        bool isSameExport = CurrentLoadedExport is not null
+                            && CurrentLoadedExport.FileRef == exportEntry.FileRef
+                            && CurrentLoadedExport.UIndex == exportEntry.UIndex;
+        float? selectedKeyframeTime = isSameExport ? SelectedKeyframe?.Time : null;
         StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
@@ -114,11 +118,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         trajectorySamplesDirty = true;
         KeyframeList.ItemsSource = model.Keyframes;
         RegisterKeyframes();
-        SelectedKeyframe = model.Keyframes.FirstOrDefault();
+        SelectedKeyframe = selectedKeyframeTime.HasValue && model.Keyframes.Count > 0
+            ? model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedKeyframeTime.Value))
+            : model.Keyframes.FirstOrDefault();
         CurrentExportName = $"{exportEntry.UIndex}: {exportEntry.InstancedFullPath}";
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         UpdatePlaybackButton();
-        FocusCameraOnKey(SelectedKeyframe);
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -201,7 +206,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         AttachEvents();
         SceneViewer.SetShouldRender(true);
-        FocusCameraOnKey(SelectedKeyframe ?? model.Keyframes.FirstOrDefault());
     }
 
     private void CurveEditor3D_Unloaded(object sender, RoutedEventArgs e)
@@ -669,24 +673,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             playMoveButton.Content = "Play";
         }
-    }
-
-    private void FocusCameraOnKey(CurveEditor3DKeyframe keyframe)
-    {
-        if (keyframe is null)
-        {
-            return;
-        }
-
-        Rotator rotator = Rotator.FromDegreesVector(keyframe.Rotation);
-        const float degreesToRadians = 0.017453292519943295f;
-        RenderContext.Camera.Roll = keyframe.Roll * degreesToRadians;
-        RenderContext.Camera.Pitch = keyframe.Pitch * degreesToRadians;
-        RenderContext.Camera.Yaw = keyframe.Yaw * degreesToRadians;
-        Vector3 forward = rotator.GetDirectionalVector();
-        RenderContext.Camera.Position = keyframe.Location - (forward * 600f);
-        RenderContext.Camera.FocusDepth = 600f;
-        SceneViewer?.MarkRenderDirty();
     }
 
     private void Model_Changed()
