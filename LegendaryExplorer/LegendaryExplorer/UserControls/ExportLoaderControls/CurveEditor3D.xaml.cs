@@ -43,6 +43,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackEndTime;
     private float playbackElapsed;
     private Vector3 pendingViewportKeyframeLocation;
+    private Vector3 pendingViewportSelectedKeyframeLocation;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -337,6 +338,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer.MarkRenderDirty();
     }
 
+    private void SnapSelectedKeyframeToViewport_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (SelectedKeyframe is not { } keyframe)
+        {
+            return;
+        }
+
+        keyframe.Location = pendingViewportSelectedKeyframeLocation;
+        SceneStatus = $"Snapped keyframe at InVal {keyframe.Time:0.###} to the viewport cursor.";
+    }
+
     private void AddKeyframeAfterLast_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
@@ -422,8 +435,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ShowViewportContextMenu(FrameworkElement placementTarget)
     {
-        pendingViewportKeyframeLocation = GetViewportKeyframeLocation(Mouse.GetPosition(SceneViewer));
+        Point viewportPoint = Mouse.GetPosition(SceneViewer);
+        pendingViewportKeyframeLocation = GetViewportKeyframeLocation(viewportPoint);
+        if (SelectedKeyframe is { } selectedKeyframe)
+        {
+            pendingViewportSelectedKeyframeLocation = GetViewportKeyframeLocation(viewportPoint, selectedKeyframe.Location);
+        }
+
         var menu = new ContextMenu { PlacementTarget = placementTarget };
+        var snapItem = new MenuItem
+        {
+            Header = "Snap Selected Keyframe Here",
+            IsEnabled = SelectedKeyframe is not null
+        };
+        snapItem.Click += SnapSelectedKeyframeToViewport_Click;
+        menu.Items.Add(snapItem);
+        menu.Items.Add(new Separator());
+
         var addItem = new MenuItem
         {
             Header = "Add Keyframe After Last",
@@ -434,14 +462,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         menu.IsOpen = true;
     }
 
-    private Vector3 GetViewportKeyframeLocation(Point viewportPoint)
+    private Vector3 GetViewportKeyframeLocation(Point viewportPoint, Vector3? depthReference = null)
     {
-        if (model.Keyframes.Count == 0)
+        if (depthReference is null && model.Keyframes.Count == 0)
         {
             return RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
         }
 
-        Vector3 lastLocation = model.Keyframes[^1].Location;
+        Vector3 referenceLocation = depthReference ?? model.Keyframes[^1].Location;
         float width = MathF.Max(RenderContext.Width, 1f);
         float height = MathF.Max(RenderContext.Height, 1f);
         float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
@@ -456,7 +484,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return cameraPosition
                    + (right * (normalizedX * RenderContext.Camera.OrthoWidth * 0.5f))
                    + (up * (normalizedY * RenderContext.Camera.OrthoWidth / MathF.Max(RenderContext.Camera.aspect, float.Epsilon) * 0.5f))
-                   + (forward * Vector3.Dot(lastLocation - cameraPosition, forward));
+                   + (forward * Vector3.Dot(referenceLocation - cameraPosition, forward));
         }
 
         float halfHeightAtUnitDepth = MathF.Tan(RenderContext.Camera.FOV * 0.5f);
@@ -464,13 +492,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         float denominator = Vector3.Dot(rayDirection, forward);
         if (MathF.Abs(denominator) < 0.0001f)
         {
-            return lastLocation;
+            return referenceLocation;
         }
 
-        float distance = Vector3.Dot(lastLocation - cameraPosition, forward) / denominator;
+        float distance = Vector3.Dot(referenceLocation - cameraPosition, forward) / denominator;
         if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
         {
-            return lastLocation;
+            return referenceLocation;
         }
 
         return cameraPosition + rayDirection * distance;
