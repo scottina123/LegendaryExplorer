@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D"
         mc:Ignorable="d"
@@ -69,7 +70,12 @@
                     <StackPanel DataContext="{Binding SelectedKeyframe}">
                         <TextBlock Text="Selected Keyframe" FontSize="18" FontWeight="SemiBold"/>
 
-                        <GroupBox Header="Timing (InVal)" Margin="0,4,0,8">
+                        <GroupBox Header="Increment" Margin="0,4,0,8">
+                            <xctk:SingleUpDown x:Name="TransformIncrementUpDown" Margin="6" Value="1" Increment="0.1" Minimum="0.0001"
+                                               ToolTip="Amount added or subtracted by the location and rotation arrow buttons"/>
+                        </GroupBox>
+
+                        <GroupBox Header="Timing (InVal)" Margin="0,0,0,8">
                             <TextBox Margin="6" Text="{Binding Time, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
                         </GroupBox>
 
@@ -85,11 +91,14 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="X" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Text="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Column="1" Value="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                                 <TextBlock Grid.Row="1" Text="Y" VerticalAlignment="Center"/>
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                                 <TextBlock Grid.Row="2" Text="Z" VerticalAlignment="Center"/>
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                             </Grid>
                         </GroupBox>
 
@@ -105,11 +114,14 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Roll" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Text="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Column="1" Value="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                                 <TextBlock Grid.Row="1" Text="Pitch" VerticalAlignment="Center"/>
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                                 <TextBlock Grid.Row="2" Text="Yaw" VerticalAlignment="Center"/>
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                                <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
+                                                   Increment="{Binding Value, ElementName=TransformIncrementUpDown}"/>
                             </Grid>
                         </GroupBox>
 

@@ -174,8 +174,8 @@ public class LevelEditorRenderContext : MeshRenderContext
                         TransformWidget.CurrentAxis = axisProxy.Axis;
                         break;
                     case not null:
-                        SelectHitProxy?.Invoke(selected);
                         TransformWidget.Attach = null;
+                        SelectHitProxy?.Invoke(selected);
                         break;
                 }
             }

@@ -87,17 +87,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         get => selectedKeyframe;
         private set
         {
-            if (SetProperty(ref selectedKeyframe, value))
+            bool selectionChanged = SetProperty(ref selectedKeyframe, value);
+            SnapToKeyButton.IsEnabled = value is not null;
+            KeyframeList.SelectedItem = value;
+            if (value is not null && (selectionChanged || !KeyframeList.IsKeyboardFocusWithin))
             {
-                SnapToKeyButton.IsEnabled = value is not null;
-                KeyframeList.SelectedItem = value;
-                if (value is not null)
-                {
-                    KeyframeList.ScrollIntoView(value);
-                }
-                RenderContext.TransformWidget.Attach = value;
-                SceneViewer?.MarkRenderDirty();
+                KeyframeList.ScrollIntoView(value);
             }
+            RenderContext.TransformWidget.Attach = value;
+            SceneViewer?.MarkRenderDirty();
         }
     }
 
@@ -668,7 +666,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback();
         UpdatePlaybackButton();
         trajectorySamplesDirty = true;
-        KeyframeList?.Items.Refresh();
+        RefreshKeyframePanel();
         SceneViewer?.MarkRenderDirty();
     }
 
