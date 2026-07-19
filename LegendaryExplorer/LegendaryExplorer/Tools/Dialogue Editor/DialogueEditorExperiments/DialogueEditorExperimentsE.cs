@@ -1171,6 +1171,15 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             ExportEntry directorGroup = MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
             ExportEntry directorTrack = MatineeHelper.AddNewTrackToGroup(directorGroup, "InterpTrackDirector");
             MatineeHelper.AddDefaultPropertiesToTrack(directorTrack);
+            PropertyInfo cutTrackInfo = GlobalUnrealObjectInfo.GetPropertyInfo(interpData.Game, "CutTrack", "InterpTrackDirector");
+            PropertyCollection cutProperties = GlobalUnrealObjectInfo.getDefaultStructValue(interpData.Game, cutTrackInfo.Reference, true, pcc);
+            cutProperties.AddOrReplaceProp(new NameProperty("Cam1", "TargetCamGroup"));
+            cutProperties.AddOrReplaceProp(new FloatProperty(0, "Time"));
+            directorTrack.WriteProperty(new ArrayProperty<StructProperty>("CutTrack")
+            {
+                new StructProperty(cutTrackInfo.Reference, cutProperties,
+                    isImmutable: GlobalUnrealObjectInfo.IsImmutable(cutTrackInfo.Reference, interpData.Game))
+            });
 
             exports.Add(interpData);
 
