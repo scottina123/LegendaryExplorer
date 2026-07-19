@@ -1050,7 +1050,8 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// <param name="nodes">Nodes to generate the sequence objects for.</param>
         /// <param name="usedIDs">ExportIDs in use.</param>
         public static void CreateNodesSequence(IMEPackage pcc, ConversationExtended conversation, int convNodeIDBase,
-            List<DialogueNodeExtended> nodes, HashSet<int> usedIDs, IReadOnlyList<BulkInterpGroupDefinition> customGroups = null)
+            List<DialogueNodeExtended> nodes, HashSet<int> usedIDs, IReadOnlyList<BulkInterpGroupDefinition> customGroups = null,
+            string ownerFindActor = null)
         {
             List<int> newExportIDs = GenerateIDs(convNodeIDBase, nodes.Count, usedIDs);
             List<ExportEntry> newExports = new(); // Sequence objects to add
@@ -1065,7 +1066,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
                 // Create the required sequence elements and add it to the new exports list
                 List<ExportEntry> nodeExports = CreateDialogueNodeSequence(pcc, exportID, conversation.BioConvo.GetProp<IntProperty>("m_nResRefID").Value,
-                    node.LineStrRef, node.Line, customGroups);
+                    node.LineStrRef, node.Line, customGroups, ownerFindActor);
                 node.InterpData = nodeExports.First(entry => entry.ClassName == "InterpData");
                 node.InterpLength = node.InterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? -1;
                 newExports.AddRange(nodeExports);
@@ -1092,7 +1093,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         /// <param name="line">Text of the Node's StrRefID.</param>
         /// <returns>List of created exports.</returns>
         private static List<ExportEntry> CreateDialogueNodeSequence(IMEPackage pcc, int nodeID, int convResRefID, int strRefID, string line,
-            IReadOnlyList<BulkInterpGroupDefinition> customGroups = null)
+            IReadOnlyList<BulkInterpGroupDefinition> customGroups = null, string ownerFindActor = null)
         {
             List<ExportEntry> exports = new();
 
@@ -1155,8 +1156,8 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }, "BioTrackKey")
             });
 
-            AddGroupActorGestureTrack(interpData, "Player");
-            AddGroupActorGestureTrack(interpData, "Owner");
+            AddGroupActorGestureTrack(interpData, "Player", "player");
+            AddGroupActorGestureTrack(interpData, "Owner", ownerFindActor);
             ExportEntry cameraGroup = MatineeHelper.AddNewGroupToInterpData(interpData, "Cam1");
             cameraGroup.WriteProperty(new NameProperty("Cam1", "m_nmSFXFindActor"));
             foreach (BulkInterpGroupDefinition customGroup in customGroups ?? [])
@@ -1182,22 +1183,31 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             return exports;
         }
 
-        private static void AddGroupActorGestureTrack(ExportEntry interpData, string groupName)
+        private static void AddGroupActorGestureTrack(ExportEntry interpData, string groupName, string findActorName)
         {
             ExportEntry group = MatineeHelper.AddNewGroupToInterpData(interpData, groupName);
             group.WriteProperty(new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"));
 
             ExportEntry gestureTrack = MatineeHelper.AddNewTrackToGroup(group, "BioEvtSysTrackGesture");
-            gestureTrack.WriteProperty(new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"));
-            gestureTrack.WriteProperty(new ArrayProperty<StructProperty>("m_aGestures"));
-            gestureTrack.WriteProperty(new ArrayProperty<StructProperty>("m_aTrackKeys"));
-            gestureTrack.WriteProperty(new NameProperty("None", "nmStartingPoseSet"));
-            gestureTrack.WriteProperty(new NameProperty("None", "nmStartingPoseAnim"));
-            gestureTrack.WriteProperty(new FloatProperty(0, "m_fStartPoseOffset"));
-            gestureTrack.WriteProperty(new EnumProperty("None", "EBioTrackAllPoseGroups", interpData.Game, "ePoseFilter"));
-            gestureTrack.WriteProperty(new EnumProperty("None", "EBioGestureAllPoses", interpData.Game, "eStartingPose"));
-            gestureTrack.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
-            gestureTrack.WriteProperty(new StrProperty($"Gesture -- {groupName}", "TrackTitle"));
+            var gestureTrackProperties = new PropertyCollection
+            {
+                new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"),
+                new ArrayProperty<StructProperty>("m_aGestures"),
+                new ArrayProperty<StructProperty>("m_aTrackKeys"),
+                new NameProperty("None", "nmStartingPoseSet"),
+                new NameProperty("None", "nmStartingPoseAnim"),
+                new FloatProperty(0, "m_fStartPoseOffset"),
+                new EnumProperty("None", "EBioTrackAllPoseGroups", interpData.Game, "ePoseFilter"),
+                new EnumProperty("None", "EBioGestureAllPoses", interpData.Game, "eStartingPose"),
+                new BoolProperty(true, "m_bUseDynamicAnimSets"),
+                new StrProperty($"Gesture -- {groupName}", "TrackTitle")
+            };
+            if (!string.IsNullOrWhiteSpace(findActorName))
+            {
+                gestureTrackProperties.Add(new NameProperty(findActorName, "m_nmFindActor"));
+            }
+
+            gestureTrack.WriteProperties(gestureTrackProperties);
         }
 
         /// <summary>

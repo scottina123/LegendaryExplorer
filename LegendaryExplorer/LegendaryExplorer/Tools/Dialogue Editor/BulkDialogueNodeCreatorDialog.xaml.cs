@@ -55,6 +55,8 @@ namespace LegendaryExplorer.DialogueEditor
         public ObservableCollection<BulkInterpGroupDefinition> CustomGroups { get; } = new();
         public IReadOnlyList<BulkDialogueNodeRow> NodesToCreate { get; private set; }
         public IReadOnlyList<BulkInterpGroupDefinition> CustomGroupsToCreate { get; private set; }
+        public string OwnerFindActorInput { get; set; }
+        public string OwnerFindActor { get; private set; }
 
         public BulkDialogueNodeCreatorDialog(Window owner)
         {
@@ -178,7 +180,15 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            string ownerFindActor = OwnerFindActorInput?.Trim();
+            if (string.IsNullOrWhiteSpace(ownerFindActor))
+            {
+                MessageBox.Show(this, "Enter the Owner m_nmFindActor name.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             NodesToCreate = populatedRows;
+            OwnerFindActor = ownerFindActor;
             CustomGroupsToCreate = CustomGroups
                 .Select(group => new BulkInterpGroupDefinition
                 {
