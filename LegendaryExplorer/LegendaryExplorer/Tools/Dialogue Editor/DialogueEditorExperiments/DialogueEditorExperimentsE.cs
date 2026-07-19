@@ -1198,7 +1198,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         private static void AddGroupActorGestureTrack(ExportEntry interpData, string groupName, string findActorName)
         {
             ExportEntry group = MatineeHelper.AddNewGroupToInterpData(interpData, groupName);
-            group.WriteProperty(new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"));
+            group.WriteProperty(new NameProperty(findActorName, "m_nmSFXFindActor"));
 
             ExportEntry gestureTrack = MatineeHelper.AddNewTrackToGroup(group, "BioEvtSysTrackGesture");
             var gestureTrackProperties = new PropertyCollection
