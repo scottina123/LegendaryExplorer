@@ -60,6 +60,13 @@
             <MenuItem Header="Add Autocontinue Reply" Command="{Binding NodeAddCommand}" CommandParameter="AddAutoContinueReply"
                       ToolTip="Add a new autocontinue reply with the Autocontinue TLK string"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <Separator />
+            <MenuItem Header="Create Entry with Sequence" Command="{Binding CreateEntryWithSequenceCommand}"
+                      ToolTip="Create one Entry with sequence and InterpData objects"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <MenuItem Header="Create Reply with Sequence" Command="{Binding CreateReplyWithSequenceCommand}"
+                      ToolTip="Create one Reply with sequence and InterpData objects"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
             <MenuItem Header="Bulk Create Dialogue Nodes" Command="{Binding BulkCreateDialogueNodesCommand}"
                       ToolTip="Create editable ranges of Entry and Reply nodes with sequence and InterpData objects"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />

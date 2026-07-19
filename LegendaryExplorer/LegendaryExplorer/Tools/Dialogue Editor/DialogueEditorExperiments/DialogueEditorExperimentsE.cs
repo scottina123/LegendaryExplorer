@@ -1169,8 +1169,11 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }
             }
             ExportEntry directorGroup = MatineeHelper.AddNewGroupDirectorToInterpData(interpData);
-            ExportEntry directorTrack = MatineeHelper.AddNewTrackToGroup(directorGroup, "InterpTrackDirector");
-            MatineeHelper.AddDefaultPropertiesToTrack(directorTrack);
+            if (!MatineeHelper.TryGetInterpTrack(directorGroup, "InterpTrackDirector", out ExportEntry directorTrack))
+            {
+                throw new InvalidOperationException("The director preset did not create an InterpTrackDirector.");
+            }
+
             PropertyInfo cutTrackInfo = GlobalUnrealObjectInfo.GetPropertyInfo(interpData.Game, "CutTrack", "InterpTrackDirector");
             PropertyCollection cutProperties = GlobalUnrealObjectInfo.getDefaultStructValue(interpData.Game, cutTrackInfo.Reference, true, pcc);
             cutProperties.AddOrReplaceProp(new NameProperty("Cam1", "TargetCamGroup"));
@@ -1200,7 +1203,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             ExportEntry gestureTrack = MatineeHelper.AddNewTrackToGroup(group, "BioEvtSysTrackGesture");
             var gestureTrackProperties = new PropertyCollection
             {
-                new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eSFXFindActorMode"),
+                new EnumProperty("UseGroupActor", "ESFXFindByTagTypes", interpData.Game, "m_eFindActorMode"),
                 new ArrayProperty<StructProperty>("m_aGestures"),
                 new ArrayProperty<StructProperty>("m_aTrackKeys"),
                 new NameProperty("None", "nmStartingPoseSet"),
