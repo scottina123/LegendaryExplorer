@@ -899,6 +899,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"Shifted {model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
+    private void ApplyInterpModeToAll_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (SelectedKeyframe is not { } keyframe || model.Keyframes.Count == 0)
+        {
+            return;
+        }
+
+        model.SetAllInterpModes(keyframe.InterpMode);
+        RefreshKeyframePanel();
+        trajectorySamplesDirty = true;
+        SceneStatus = $"Set InterpMode to {keyframe.InterpMode} for {model.Keyframes.Count} keyframe(s).";
+        SceneViewer.MarkRenderDirty();
+    }
+
     private void ReloadCurrentExport(float preferredSelectionTime)
     {
         UnregisterKeyframes();

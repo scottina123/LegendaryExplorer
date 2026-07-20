@@ -310,11 +310,23 @@ public class LevelEditorRenderContext : MeshRenderContext
 
     public void DrawUI()
     {
+        bool drawTransformWidgetLast = DrawList_UI.Contains(TransformWidget);
         foreach (UIElement uiElem in DrawList_UI)
         {
+            if (drawTransformWidgetLast && ReferenceEquals(uiElem, TransformWidget))
+            {
+                continue;
+            }
+
             uiElem.Draw(this);
         }
         Primitives.Render(this);
+
+        if (drawTransformWidgetLast)
+        {
+            TransformWidget.Draw(this);
+            Primitives.Render(this);
+        }
     }
 
     public void LoadActors(IList<ActorProxy> actors)

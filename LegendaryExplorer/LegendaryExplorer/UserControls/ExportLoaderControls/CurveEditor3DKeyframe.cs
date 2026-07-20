@@ -98,13 +98,22 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     public EInterpCurveMode InterpMode
     {
         get => interpMode;
-        set
+        set => SetInterpMode(value, commit: true);
+    }
+
+    internal bool SetInterpMode(EInterpCurveMode value, bool commit)
+    {
+        if (!SetProperty(ref interpMode, value, nameof(InterpMode)))
         {
-            if (SetProperty(ref interpMode, value))
-            {
-                changed(this, null);
-            }
+            return false;
         }
+
+        if (commit)
+        {
+            changed(this, null);
+        }
+
+        return true;
     }
 
     public int HitID { get; set; }

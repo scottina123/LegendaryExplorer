@@ -259,8 +259,11 @@
                         </GroupBox>
 
                         <GroupBox Header="Interp Mode Type">
-                            <ComboBox Margin="6" ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
-                                      SelectedItem="{Binding InterpMode, UpdateSourceTrigger=PropertyChanged}"/>
+                            <StackPanel Margin="6">
+                                <ComboBox ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                          SelectedItem="{Binding InterpMode, UpdateSourceTrigger=PropertyChanged}"/>
+                                <Button Margin="0,6,0,0" Content="Apply to all keyframes" Click="ApplyInterpModeToAll_Click"/>
+                            </StackPanel>
                         </GroupBox>
 
                         <TextBlock Margin="0,12,0,0" Text="Select a cube or list item, then edit values or use the Translate/Rotate gizmo." TextWrapping="Wrap" Opacity="0.7"/>

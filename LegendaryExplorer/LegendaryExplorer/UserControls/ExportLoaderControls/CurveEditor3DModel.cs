@@ -139,6 +139,34 @@ public sealed class CurveEditor3DModel
         return Keyframes[Math.Min(index, Keyframes.Count - 1)];
     }
 
+    public void SetAllInterpModes(EInterpCurveMode interpMode)
+    {
+        if (Export is null)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            keyframe.SetInterpMode(interpMode, commit: false);
+        }
+
+        foreach (InterpCurvePoint<Vector3> point in PositionTrack.Points)
+        {
+            point.InterpMode = interpMode;
+        }
+
+        foreach (InterpCurvePoint<Vector3> point in RotationTrack.Points)
+        {
+            point.InterpMode = interpMode;
+        }
+
+        PositionTrack.ReCalculateTangents();
+        RotationTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
     private void RebuildKeyframes()
     {
         Keyframes.Clear();
