@@ -13,7 +13,8 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     private float time;
     private Vector3 location;
     private Vector3 rotation;
-    private EInterpCurveMode interpMode;
+    private EInterpCurveMode posTrackInterpMode;
+    private EInterpCurveMode eulerTrackInterpMode;
 
     internal CurveEditor3DKeyframe(
         InterpCurvePoint<Vector3> positionPoint,
@@ -26,7 +27,8 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
         time = positionPoint.InVal;
         location = positionPoint.OutVal;
         this.rotation = rotation;
-        interpMode = positionPoint.InterpMode;
+        posTrackInterpMode = positionPoint.InterpMode;
+        eulerTrackInterpMode = rotationPoint?.InterpMode ?? positionPoint.InterpMode;
         this.changed = changed;
     }
 
@@ -95,15 +97,36 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
         set => SetRotation(rotation with { Z = value }, nameof(Yaw));
     }
 
-    public EInterpCurveMode InterpMode
+    public EInterpCurveMode PosTrackInterpMode
     {
-        get => interpMode;
-        set => SetInterpMode(value, commit: true);
+        get => posTrackInterpMode;
+        set => SetPosTrackInterpMode(value, commit: true);
     }
 
-    internal bool SetInterpMode(EInterpCurveMode value, bool commit)
+    public EInterpCurveMode EulerTrackInterpMode
     {
-        if (!SetProperty(ref interpMode, value, nameof(InterpMode)))
+        get => eulerTrackInterpMode;
+        set => SetEulerTrackInterpMode(value, commit: true);
+    }
+
+    internal bool SetPosTrackInterpMode(EInterpCurveMode value, bool commit)
+    {
+        if (!SetProperty(ref posTrackInterpMode, value, nameof(PosTrackInterpMode)))
+        {
+            return false;
+        }
+
+        if (commit)
+        {
+            changed(this, null);
+        }
+
+        return true;
+    }
+
+    internal bool SetEulerTrackInterpMode(EInterpCurveMode value, bool commit)
+    {
+        if (!SetProperty(ref eulerTrackInterpMode, value, nameof(EulerTrackInterpMode)))
         {
             return false;
         }

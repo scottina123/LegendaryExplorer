@@ -259,11 +259,27 @@
                         </GroupBox>
 
                         <GroupBox Header="Interp Mode Type">
-                            <StackPanel Margin="6">
-                                <ComboBox ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
-                                          SelectedItem="{Binding InterpMode, UpdateSourceTrigger=PropertyChanged}"/>
-                                <Button Margin="0,6,0,0" Content="Apply to all keyframes" Click="ApplyInterpModeToAll_Click"/>
-                            </StackPanel>
+                            <Grid Margin="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel>
+                                    <TextBlock Text="PosTrack" FontWeight="SemiBold"/>
+                                    <ComboBox Margin="0,4,0,0" ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                              SelectedItem="{Binding PosTrackInterpMode, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Margin="0,6,0,0" Content="Apply Pos to all" Click="ApplyPosTrackInterpModeToAll_Click"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="EulerTrack" FontWeight="SemiBold"/>
+                                    <ComboBox Margin="0,4,0,0" ItemsSource="{Binding DataContext.InterpModes, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}}"
+                                              SelectedItem="{Binding EulerTrackInterpMode, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Margin="0,6,0,0" Content="Apply Euler to all" Click="ApplyEulerTrackInterpModeToAll_Click"/>
+                                </StackPanel>
+                            </Grid>
                         </GroupBox>
 
                         <TextBlock Margin="0,12,0,0" Text="Select a cube or list item, then edit values or use the Translate/Rotate gizmo." TextWrapping="Wrap" Opacity="0.7"/>

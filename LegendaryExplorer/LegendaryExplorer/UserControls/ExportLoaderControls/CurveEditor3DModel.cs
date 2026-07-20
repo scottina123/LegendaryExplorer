@@ -79,9 +79,8 @@ public sealed class CurveEditor3DModel
         float newTime = selectedKeyframe.Time + (addAfter ? 5f : -5f);
         Vector3 newLocation = selectedKeyframe.Location + new Vector3(100f, 100f, 100f);
         Vector3 newRotation = selectedKeyframe.Rotation;
-        EInterpCurveMode interpMode = selectedKeyframe.InterpMode;
-        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, newLocation, interpMode);
-        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, interpMode);
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, newLocation, selectedKeyframe.PosTrackInterpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, selectedKeyframe.EulerTrackInterpMode);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);
@@ -98,9 +97,8 @@ public sealed class CurveEditor3DModel
         CurveEditor3DKeyframe lastKeyframe = Keyframes[^1];
         float newTime = lastKeyframe.Time + 1f;
         Vector3 newRotation = lastKeyframe.Rotation;
-        EInterpCurveMode interpMode = lastKeyframe.InterpMode;
-        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, location, interpMode);
-        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, interpMode);
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, location, lastKeyframe.PosTrackInterpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, lastKeyframe.EulerTrackInterpMode);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);
@@ -139,7 +137,7 @@ public sealed class CurveEditor3DModel
         return Keyframes[Math.Min(index, Keyframes.Count - 1)];
     }
 
-    public void SetAllInterpModes(EInterpCurveMode interpMode)
+    public void SetAllPosTrackInterpModes(EInterpCurveMode interpMode)
     {
         if (Export is null)
         {
@@ -148,7 +146,7 @@ public sealed class CurveEditor3DModel
 
         foreach (CurveEditor3DKeyframe keyframe in Keyframes)
         {
-            keyframe.SetInterpMode(interpMode, commit: false);
+            keyframe.SetPosTrackInterpMode(interpMode, commit: false);
         }
 
         foreach (InterpCurvePoint<Vector3> point in PositionTrack.Points)
@@ -156,12 +154,28 @@ public sealed class CurveEditor3DModel
             point.InterpMode = interpMode;
         }
 
+        PositionTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
+    public void SetAllEulerTrackInterpModes(EInterpCurveMode interpMode)
+    {
+        if (Export is null)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            keyframe.SetEulerTrackInterpMode(interpMode, commit: false);
+        }
+
         foreach (InterpCurvePoint<Vector3> point in RotationTrack.Points)
         {
             point.InterpMode = interpMode;
         }
 
-        PositionTrack.ReCalculateTangents();
         RotationTrack.ReCalculateTangents();
         WriteTracks();
         Changed?.Invoke();
@@ -194,14 +208,14 @@ public sealed class CurveEditor3DModel
             RotationTrack,
             previousTime ?? keyframe.Time,
             keyframe.Rotation,
-            keyframe.InterpMode);
+            keyframe.EulerTrackInterpMode);
 
         positionPoint.InVal = keyframe.Time;
         positionPoint.OutVal = keyframe.Location;
-        positionPoint.InterpMode = keyframe.InterpMode;
+        positionPoint.InterpMode = keyframe.PosTrackInterpMode;
         rotationPoint.InVal = keyframe.Time;
         rotationPoint.OutVal = keyframe.Rotation;
-        rotationPoint.InterpMode = keyframe.InterpMode;
+        rotationPoint.InterpMode = keyframe.EulerTrackInterpMode;
         PositionTrack.Points.Sort((left, right) => left.InVal.CompareTo(right.InVal));
         RotationTrack.Points.Sort((left, right) => left.InVal.CompareTo(right.InVal));
         Keyframes.Sort((left, right) => left.Time.CompareTo(right.Time));

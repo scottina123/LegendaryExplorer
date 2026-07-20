@@ -899,7 +899,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"Shifted {model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
-    private void ApplyInterpModeToAll_Click(object sender, RoutedEventArgs e)
+    private void ApplyPosTrackInterpModeToAll_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
         if (SelectedKeyframe is not { } keyframe || model.Keyframes.Count == 0)
@@ -907,10 +907,25 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        model.SetAllInterpModes(keyframe.InterpMode);
+        model.SetAllPosTrackInterpModes(keyframe.PosTrackInterpMode);
         RefreshKeyframePanel();
         trajectorySamplesDirty = true;
-        SceneStatus = $"Set InterpMode to {keyframe.InterpMode} for {model.Keyframes.Count} keyframe(s).";
+        SceneStatus = $"Set PosTrack InterpMode to {keyframe.PosTrackInterpMode} for {model.Keyframes.Count} keyframe(s).";
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyEulerTrackInterpModeToAll_Click(object sender, RoutedEventArgs e)
+    {
+        StopPlayback();
+        if (SelectedKeyframe is not { } keyframe || model.Keyframes.Count == 0)
+        {
+            return;
+        }
+
+        model.SetAllEulerTrackInterpModes(keyframe.EulerTrackInterpMode);
+        RefreshKeyframePanel();
+        trajectorySamplesDirty = true;
+        SceneStatus = $"Set EulerTrack InterpMode to {keyframe.EulerTrackInterpMode} for {model.Keyframes.Count} keyframe(s).";
         SceneViewer.MarkRenderDirty();
     }
 
