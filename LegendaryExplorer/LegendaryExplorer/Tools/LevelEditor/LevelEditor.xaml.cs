@@ -2074,6 +2074,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.RenderScene -= RenderScene;
         RenderContext.SelectActor -= ViewportActorSelect;
         RenderContext.RightClickActor -= OnViewportRightClickActor;
+        RenderContext.RightClickViewport -= OnViewportRightClickViewport;
 
         UndoHistory.PropertyChanged -= UndoHistory_PropertyChanged;
         UndoHistory.Clear();
@@ -2087,6 +2088,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         RenderContext.RenderScene += RenderScene;
         RenderContext.SelectActor += ViewportActorSelect;
         RenderContext.RightClickActor += OnViewportRightClickActor;
+        RenderContext.RightClickViewport += OnViewportRightClickViewport;
 
         if (_unlit)
             RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
@@ -2384,10 +2386,76 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private void OnViewportRightClickActor(ActorProxy actor)
     {
-        var contextMenu = BuildActorContextMenu(actor);
+        Point viewportPoint = Mouse.GetPosition(SceneViewer);
+        var contextMenu = BuildActorContextMenu(actor, viewportPoint);
         contextMenu.PlacementTarget = SceneViewer;
         contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         contextMenu.IsOpen = true;
+    }
+
+    private void OnViewportRightClickViewport()
+    {
+        Point viewportPoint = Mouse.GetPosition(SceneViewer);
+        var contextMenu = new System.Windows.Controls.ContextMenu
+        {
+            PlacementTarget = SceneViewer,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
+        };
+
+        var snapItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "Snap Selected Actor Here",
+            IsEnabled = SelectedActor is not null && !SelectedActor.IsReadOnly
+        };
+        snapItem.Click += (_, _) => SnapSelectedActorToViewportPoint(viewportPoint);
+        contextMenu.Items.Add(snapItem);
+
+        contextMenu.IsOpen = true;
+    }
+
+    private void SnapSelectedActorToViewportPoint(Point viewportPoint)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly) return;
+
+        SelectedActor.Location = GetViewportLocationAtSelectedActorDepth(viewportPoint);
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private Vector3 GetViewportLocationAtSelectedActorDepth(Point viewportPoint)
+    {
+        Vector3 referenceLocation = SelectedActor?.Location ?? RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
+        float width = MathF.Max(RenderContext.Width, 1f);
+        float height = MathF.Max(RenderContext.Height, 1f);
+        float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
+        float normalizedY = 1f - ((float)viewportPoint.Y / height * 2f);
+        Vector3 forward = RenderContext.Camera.CameraForward;
+        Vector3 right = RenderContext.Camera.CameraRight;
+        Vector3 up = RenderContext.Camera.CameraUp;
+        Vector3 cameraPosition = RenderContext.Camera.Position;
+
+        if (RenderContext.Camera.IsOrthographic)
+        {
+            return cameraPosition
+                   + (right * (normalizedX * RenderContext.Camera.OrthoWidth * 0.5f))
+                   + (up * (normalizedY * RenderContext.Camera.OrthoWidth / MathF.Max(RenderContext.Camera.aspect, float.Epsilon) * 0.5f))
+                   + (forward * Vector3.Dot(referenceLocation - cameraPosition, forward));
+        }
+
+        float halfHeightAtUnitDepth = MathF.Tan(RenderContext.Camera.FOV * 0.5f);
+        Vector3 rayDirection = Vector3.Normalize(forward + right * normalizedX * halfHeightAtUnitDepth * RenderContext.Camera.aspect + up * normalizedY * halfHeightAtUnitDepth);
+        float denominator = Vector3.Dot(rayDirection, forward);
+        if (MathF.Abs(denominator) < 0.0001f)
+        {
+            return referenceLocation;
+        }
+
+        float distance = Vector3.Dot(referenceLocation - cameraPosition, forward) / denominator;
+        if (distance <= 0f || float.IsNaN(distance) || float.IsInfinity(distance))
+        {
+            return referenceLocation;
+        }
+
+        return cameraPosition + rayDirection * distance;
     }
 
     private void MeshExportsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -2412,7 +2480,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         e.Handled = true;
     }
 
-    private System.Windows.Controls.ContextMenu BuildActorContextMenu(ActorProxy actor)
+    private System.Windows.Controls.ContextMenu BuildActorContextMenu(ActorProxy actor, Point? viewportPoint = null)
     {
         var contextMenu = new System.Windows.Controls.ContextMenu();
 
@@ -2438,6 +2506,18 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             FocusOnBounds(actor.GetBounds());
         };
         contextMenu.Items.Add(focusItem);
+
+        if (viewportPoint.HasValue)
+        {
+            var snapHereItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Snap Selected Actor Here",
+                IsEnabled = SelectedActor is not null && !SelectedActor.IsReadOnly
+            };
+            Point snapPoint = viewportPoint.Value;
+            snapHereItem.Click += (_, _) => SnapSelectedActorToViewportPoint(snapPoint);
+            contextMenu.Items.Add(snapHereItem);
+        }
 
         var openPEItem = new System.Windows.Controls.MenuItem { Header = "Open in Package Editor" };
         openPEItem.Click += (_, _) =>
