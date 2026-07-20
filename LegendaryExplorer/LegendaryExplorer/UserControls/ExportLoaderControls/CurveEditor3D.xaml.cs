@@ -30,6 +30,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 {
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
 
+    private enum AddKeyframePlacement
+    {
+        Before,
+        After
+    }
+
     private readonly CurveEditor3DModel model = new();
     private readonly List<IMEPackage> levelPackages = [];
     private readonly List<ActorProxy> levelActors = [];
@@ -802,24 +808,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        MessageBoxResult result = MessageBox.Show(
-            "Add keyframe before or after the selected keyframe?\n\nYes = before\nNo = after",
-            "Add Keyframe",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
-        bool addAfter;
-        switch (result)
+        AddKeyframePlacement? placement = ShowAddKeyframePlacementDialog(Window.GetWindow(this), keyframe);
+        if (placement is null)
         {
-            case MessageBoxResult.Yes:
-                addAfter = false;
-                break;
-            case MessageBoxResult.No:
-                addAfter = true;
-                break;
-            default:
-                return;
+            return;
         }
 
+        bool addAfter = placement == AddKeyframePlacement.After;
         CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, addAfter);
         if (newKeyframe is null)
         {
@@ -831,6 +826,73 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {model.Keyframes.Count} trajectory keyframe(s).";
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
+    }
+
+    private static AddKeyframePlacement? ShowAddKeyframePlacementDialog(Window owner, CurveEditor3DKeyframe keyframe)
+    {
+        AddKeyframePlacement? placement = null;
+        var dialog = new Window
+        {
+            Title = "Add Keyframe",
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                MinWidth = 300,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"Add a new keyframe relative to InVal {keyframe.Time:0.###}.",
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 12)
+                    },
+                    new Button
+                    {
+                        Content = "Before selected keyframe",
+                        Margin = new Thickness(0, 0, 0, 6),
+                        Padding = new Thickness(10, 4, 10, 4),
+                        IsDefault = true,
+                        Tag = AddKeyframePlacement.Before
+                    },
+                    new Button
+                    {
+                        Content = "After selected keyframe",
+                        Margin = new Thickness(0, 0, 0, 12),
+                        Padding = new Thickness(10, 4, 10, 4),
+                        Tag = AddKeyframePlacement.After
+                    },
+                    new Button
+                    {
+                        Content = "Cancel",
+                        Padding = new Thickness(10, 4, 10, 4),
+                        IsCancel = true
+                    }
+                }
+            }
+        };
+        CustomWindowChrome.ApplyCustomChrome(dialog);
+
+        if (owner is not null)
+        {
+            dialog.Owner = owner;
+        }
+
+        if (dialog.Content is Panel panel)
+        {
+            foreach (Button button in panel.Children.OfType<Button>().Where(button => button.Tag is AddKeyframePlacement))
+            {
+                button.Click += (_, _) =>
+                {
+                    placement = (AddKeyframePlacement)button.Tag;
+                    dialog.DialogResult = true;
+                };
+            }
+        }
+
+        return dialog.ShowDialog() == true ? placement : null;
     }
 
     private void SnapSelectedKeyframeToViewport_Click(object sender, RoutedEventArgs e)
