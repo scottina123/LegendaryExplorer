@@ -45,7 +45,8 @@
                     <MenuItem Header="Re-assign Line IDs to new range" Click="ReAssignLineIds_Click"/>
                     <MenuItem Header="Auto Index Lines" Click="AutoIndexLines_Click" ToolTip="Re-index all lines starting from 0, incrementing by 1"/>
                     <MenuItem Header="Add Lines from XML" Click="AddLinesFromXML_Click"/>
-                        <MenuItem Header="Export All Lines to XML" Click="ExportAllLinesToXML_Click"/>
+                    <MenuItem Header="Export All Lines to XML" Click="ExportAllLinesToXML_Click"/>
+                    <MenuItem Header="Copy All Line TLK Text to Clipboard" Click="CopyAllLineTlkTextToClipboard_Click" ToolTip="Copy the resolved TLK text for every line in this FaceFX asset, one line per clipboard line"/>
                     <MenuItem Header="Add Audio from Folder" Click="AddAudioFromFolder_Click" ToolTip="Add lines from WwiseEvents in a package folder"/>
                     <MenuItem Header="Import Audio into Male/Female FaceFX Assets" Click="ImportAudioIntoMirroredFaceFXAssets_Click" ToolTip="Import WAV files into the sibling audio folder, add new lines to both paired FaceFX assets, and optionally generate FaceFX for only those new lines"/>
                     <Separator/>

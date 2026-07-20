@@ -1732,6 +1732,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void CopyAllLineTlkTextToClipboard_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show(Window.GetWindow(this), "There are no lines to copy.", "No lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            Clipboard.SetText(string.Join(Environment.NewLine, Lines.Select(entry => (entry.TLKString ?? string.Empty).Trim('"', '“', '”'))));
+        }
+
         private void SaveFaceFXLinesToXml(string fileName, IEnumerable<FaceFXLine> lines)
         {
             var doc = new XDocument(
