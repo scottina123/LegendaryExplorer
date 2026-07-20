@@ -10,19 +10,23 @@ using System.Windows.Input;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
+using System.Windows.Threading;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
-public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext
+public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
 {
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
 
@@ -44,12 +48,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackElapsed;
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
+    private bool showCollision = Settings.LevelEditor_ShowCollision;
+    private bool showLightIcons = Settings.LevelEditor_ShowLightIcons;
+    private bool showVolumes = Settings.LevelEditor_ShowVolumes;
+    private bool showVolumetrics;
+    private bool unlit = Settings.LevelEditor_Unlit;
+    private bool setAlphaToBlack = true;
+    private bool showRedChannel = true;
+    private bool showGreenChannel = true;
+    private bool showBlueChannel = true;
+    private bool showAlphaChannel = true;
+    private System.Windows.Media.Color backgroundColor;
+    private string cameraPositionX = "0";
+    private string cameraPositionY = "0";
+    private string cameraPositionZ = "0";
+    private string cameraRotationX = "0";
+    private string cameraRotationY = "0";
+    private string cameraRotationZ = "0";
+    private float cameraPositionStep = 10f;
+    private float cameraRotationStep = 5f;
+    private bool updatingCameraPositionText;
+    private int cameraPositionEditorsFocused;
+    private bool updatingCameraRotationText;
+    private int cameraRotationEditorsFocused;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
         RenderContext = new LevelEditorRenderContext();
-        RenderContext.BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
+        backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
+        RenderContext.BackgroundColor = backgroundColor;
+        RenderContext.ShowLightIcons = showLightIcons;
+        if (unlit)
+        {
+            RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+        }
         InterpModes = Enum.GetValues<EInterpCurveMode>();
+        LoadCommands();
         InitializeComponent();
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
@@ -62,6 +96,247 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public LevelEditorRenderContext RenderContext { get; }
 
     public bool IsApplyingUndoRedo => false;
+
+    public bool ShowCollision
+    {
+        get => showCollision;
+        set
+        {
+            if (SetProperty(ref showCollision, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool ShowLightIcons
+    {
+        get => showLightIcons;
+        set
+        {
+            if (SetProperty(ref showLightIcons, value))
+            {
+                RenderContext.ShowLightIcons = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool ShowVolumes
+    {
+        get => showVolumes;
+        set
+        {
+            if (SetProperty(ref showVolumes, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool ShowVolumetrics
+    {
+        get => showVolumetrics;
+        set
+        {
+            if (SetProperty(ref showVolumetrics, value))
+            {
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool Unlit
+    {
+        get => unlit;
+        set
+        {
+            if (SetProperty(ref unlit, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.Unlit;
+                }
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool SetAlphaToBlack
+    {
+        get => setAlphaToBlack;
+        set
+        {
+            if (SetProperty(ref setAlphaToBlack, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.AlphaAsBlack;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.AlphaAsBlack;
+                }
+            }
+        }
+    }
+
+    public bool ShowRedChannel
+    {
+        get => showRedChannel;
+        set
+        {
+            if (SetProperty(ref showRedChannel, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableRedChannel;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableRedChannel;
+                }
+            }
+        }
+    }
+
+    public bool ShowGreenChannel
+    {
+        get => showGreenChannel;
+        set
+        {
+            if (SetProperty(ref showGreenChannel, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableGreenChannel;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableGreenChannel;
+                }
+            }
+        }
+    }
+
+    public bool ShowBlueChannel
+    {
+        get => showBlueChannel;
+        set
+        {
+            if (SetProperty(ref showBlueChannel, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableBlueChannel;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableBlueChannel;
+                }
+            }
+        }
+    }
+
+    public bool ShowAlphaChannel
+    {
+        get => showAlphaChannel;
+        set
+        {
+            if (SetProperty(ref showAlphaChannel, value))
+            {
+                if (value)
+                {
+                    RenderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.EnableAlphaChannel;
+                }
+                else
+                {
+                    RenderContext.RenderFlags &= ~LevelEditorRenderContext.ShaderFlags.EnableAlphaChannel;
+                }
+            }
+        }
+    }
+
+    public System.Windows.Media.Color BackgroundColor
+    {
+        get => backgroundColor;
+        set
+        {
+            if (SetProperty(ref backgroundColor, value))
+            {
+                RenderContext.BackgroundColor = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool UseLocalCoordsForWidget
+    {
+        get => RenderContext.TransformWidget.UseLocalCoords;
+        set => SetProperty(ref RenderContext.TransformWidget.UseLocalCoords, value);
+    }
+
+    public string CameraPositionX
+    {
+        get => cameraPositionX;
+        set => SetProperty(ref cameraPositionX, value);
+    }
+
+    public string CameraPositionY
+    {
+        get => cameraPositionY;
+        set => SetProperty(ref cameraPositionY, value);
+    }
+
+    public string CameraPositionZ
+    {
+        get => cameraPositionZ;
+        set => SetProperty(ref cameraPositionZ, value);
+    }
+
+    public string CameraRotationX
+    {
+        get => cameraRotationX;
+        set => SetProperty(ref cameraRotationX, value);
+    }
+
+    public string CameraRotationY
+    {
+        get => cameraRotationY;
+        set => SetProperty(ref cameraRotationY, value);
+    }
+
+    public string CameraRotationZ
+    {
+        get => cameraRotationZ;
+        set => SetProperty(ref cameraRotationZ, value);
+    }
+
+    public float CameraPositionStep
+    {
+        get => cameraPositionStep;
+        set => SetProperty(ref cameraPositionStep, value);
+    }
+
+    public float CameraRotationStep
+    {
+        get => cameraRotationStep;
+        set => SetProperty(ref cameraRotationStep, value);
+    }
+
+    public ICommand ToggleTranslateCommand { get; private set; }
+
+    public ICommand ToggleRotateCommand { get; private set; }
+
+    public ICommand ToggleScaleCommand { get; private set; }
+
+    public ICommand ToggleUniformScaleCommand { get; private set; }
+
+    public ICommand ToggleLocalCoordsCommand { get; private set; }
 
     public IReadOnlyList<EInterpCurveMode> InterpModes { get; }
 
@@ -198,8 +473,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void OnThemeChanged(object sender, bool isDarkMode)
     {
-        RenderContext.BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
-        SceneViewer?.MarkRenderDirty();
+        BackgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
+    }
+
+    private void LoadCommands()
+    {
+        ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate);
+        ToggleRotateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Rotate);
+        ToggleScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Scale);
+        ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale);
+        ToggleLocalCoordsCommand = new GenericCommand(() => UseLocalCoordsForWidget = !UseLocalCoordsForWidget);
     }
 
     private void CurveEditor3D_Loaded(object sender, RoutedEventArgs e)
@@ -293,6 +576,214 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.TransformWidget.Mode = EWidgetMode.Rotate;
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
+    }
+
+    private void CameraPositionAdjustButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        string[] parts = tag.Split(',');
+        if (parts.Length != 2 || !float.TryParse(parts[1], out float direction)) return;
+
+        Vector3 position = RenderContext.Camera.Position;
+        if (float.TryParse(CameraPositionX, out float x)) position.X = x;
+        if (float.TryParse(CameraPositionY, out float y)) position.Y = y;
+        if (float.TryParse(CameraPositionZ, out float z)) position.Z = z;
+
+        float delta = CameraPositionStep * direction;
+        switch (parts[0])
+        {
+            case "X":
+                position.X += delta;
+                break;
+            case "Y":
+                position.Y += delta;
+                break;
+            case "Z":
+                position.Z += delta;
+                break;
+            default:
+                return;
+        }
+
+        CameraPositionX = position.X.ToString("0.##");
+        CameraPositionY = position.Y.ToString("0.##");
+        CameraPositionZ = position.Z.ToString("0.##");
+        MoveCameraToEnteredPosition();
+    }
+
+    private void CameraRotationAdjustButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        string[] parts = tag.Split(',');
+        if (parts.Length != 2 || !float.TryParse(parts[1], out float direction)) return;
+
+        float x = MathUtil.RadiansToDegrees(RenderContext.Camera.Roll);
+        float y = MathUtil.RadiansToDegrees(RenderContext.Camera.Pitch);
+        float z = MathUtil.RadiansToDegrees(RenderContext.Camera.Yaw);
+        if (float.TryParse(CameraRotationX, out float enteredX)) x = enteredX;
+        if (float.TryParse(CameraRotationY, out float enteredY)) y = enteredY;
+        if (float.TryParse(CameraRotationZ, out float enteredZ)) z = enteredZ;
+
+        float delta = CameraRotationStep * direction;
+        switch (parts[0])
+        {
+            case "X":
+                x += delta;
+                break;
+            case "Y":
+                y += delta;
+                break;
+            case "Z":
+                z += delta;
+                break;
+            default:
+                return;
+        }
+
+        CameraRotationX = x.ToString("0.##");
+        CameraRotationY = y.ToString("0.##");
+        CameraRotationZ = z.ToString("0.##");
+        MoveCameraToEnteredRotation();
+    }
+
+    private bool AreCameraPositionBoxesFocused() => cameraPositionEditorsFocused > 0;
+
+    private bool AreCameraRotationBoxesFocused() => cameraRotationEditorsFocused > 0;
+
+    private void UpdateCameraPositionText()
+    {
+        if (AreCameraPositionBoxesFocused()) return;
+
+        updatingCameraPositionText = true;
+        try
+        {
+            Vector3 position = RenderContext.Camera.Position;
+            CameraPositionX = position.X.ToString("0.##");
+            CameraPositionY = position.Y.ToString("0.##");
+            CameraPositionZ = position.Z.ToString("0.##");
+        }
+        finally
+        {
+            updatingCameraPositionText = false;
+        }
+    }
+
+    private void UpdateCameraRotationText()
+    {
+        if (AreCameraRotationBoxesFocused()) return;
+
+        updatingCameraRotationText = true;
+        try
+        {
+            CameraRotationX = MathUtil.RadiansToDegrees(RenderContext.Camera.Roll).ToString("0.##");
+            CameraRotationY = MathUtil.RadiansToDegrees(RenderContext.Camera.Pitch).ToString("0.##");
+            CameraRotationZ = MathUtil.RadiansToDegrees(RenderContext.Camera.Yaw).ToString("0.##");
+        }
+        finally
+        {
+            updatingCameraRotationText = false;
+        }
+    }
+
+    private void CameraPositionBoxes_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            MoveCameraToEnteredPosition();
+            e.Handled = true;
+        }
+    }
+
+    private void CameraPositionBoxes_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        cameraPositionEditorsFocused++;
+    }
+
+    private void CameraPositionBoxes_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        cameraPositionEditorsFocused = Math.Max(0, cameraPositionEditorsFocused - 1);
+        if (updatingCameraPositionText) return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!updatingCameraPositionText && !AreCameraPositionBoxesFocused())
+            {
+                MoveCameraToEnteredPosition();
+            }
+        }));
+    }
+
+    private void MoveCameraToEnteredPosition()
+    {
+        if (!float.TryParse(CameraPositionX, out float x)
+            || !float.TryParse(CameraPositionY, out float y)
+            || !float.TryParse(CameraPositionZ, out float z))
+        {
+            UpdateCameraPositionText();
+            return;
+        }
+
+        RenderContext.Camera.Position = new Vector3(x, y, z);
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void CameraRotationBoxes_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)
+        {
+            MoveCameraToEnteredRotation();
+            e.Handled = true;
+        }
+    }
+
+    private void CameraRotationBoxes_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        cameraRotationEditorsFocused++;
+    }
+
+    private void CameraRotationBoxes_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        cameraRotationEditorsFocused = Math.Max(0, cameraRotationEditorsFocused - 1);
+        if (updatingCameraRotationText) return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!updatingCameraRotationText && !AreCameraRotationBoxesFocused())
+            {
+                MoveCameraToEnteredRotation();
+            }
+        }));
+    }
+
+    private void MoveCameraToEnteredRotation()
+    {
+        if (!float.TryParse(CameraRotationX, out float x)
+            || !float.TryParse(CameraRotationY, out float y)
+            || !float.TryParse(CameraRotationZ, out float z))
+        {
+            UpdateCameraRotationText();
+            return;
+        }
+
+        RenderContext.Camera.Roll = MathUtil.DegreesToRadians(x);
+        RenderContext.Camera.Pitch = MathUtil.Clamp(MathUtil.DegreesToRadians(y), -MathF.PI / 2 + 0.01f, MathF.PI / 2 - 0.01f);
+        RenderContext.Camera.Yaw = MathUtil.DegreesToRadians(z);
+        UpdateCameraRotationText();
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer?.Focus();
+    }
+
+    private void CoordinateEditor_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (Keyboard.PrimaryDevice.IsKeyDown(Key.Tab) && sender is TextBox textBox)
+        {
+            textBox.SelectAll();
+        }
     }
 
     private void KeyframeList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -538,6 +1029,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Camera.Pitch = keyframe.Pitch * degreesToRadians;
         RenderContext.Camera.Yaw = keyframe.Yaw * degreesToRadians;
         RenderContext.Camera.FocusDepth = 0f;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
     }
@@ -612,6 +1105,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Camera.FocusDepth = 0f;
         PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
         SceneStatus = $"Playing camera at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
         SceneViewer.MarkRenderDirty();
     }
 
@@ -690,6 +1185,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             foreach (ActorProxy actor in RenderContext.DrawList_3D)
             {
+                if (actor.IsVolume && !ShowVolumes) continue;
+                if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
                 int hitId = actor.HitID;
                 RenderContext.CurrentHitTestId = new Vector3((hitId & 0xFF) / 255f, ((hitId >> 8) & 0xFF) / 255f, ((hitId >> 16) & 0xFF) / 255f);
                 actor.Render(RenderContext, pass);
@@ -805,6 +1302,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             await LoadLevelAsync(dialog.FileName, replace: false).ConfigureAwait(true);
         }
+    }
+
+    private void UnloadLevel_Click(object sender, RoutedEventArgs e)
+    {
+        CloseLevels();
+        SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
     private void RecentLevelsButton_Click(object sender, RoutedEventArgs e)

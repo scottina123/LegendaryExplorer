@@ -12,27 +12,150 @@
         Loaded="CurveEditor3D_Loaded"
         Unloaded="CurveEditor3D_Unloaded">
     <DockPanel>
-        <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
-            <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
-            <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
-            <Button x:Name="RecentLevelsButton" Content="Recent Levels" Click="RecentLevelsButton_Click" ToolTip="Open a recent level backdrop">
-                <Button.ContextMenu>
-                    <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
-                </Button.ContextMenu>
-            </Button>
-            <Separator/>
-            <Button Content="Play" Click="PlayMove_Click" Loaded="PlayMoveButton_Loaded" IsEnabled="False"
-                    ToolTip="Play the move through the scene camera using the track interpolation modes"/>
-            <Separator/>
-            <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False"
-                    ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
-
-            <Separator/>
-            <Button Content="Translate" Click="TranslateMode_Click" ToolTip="Drag the selected cube with the translation gizmo"/>
-            <Button Content="Rotate" Click="RotateMode_Click" ToolTip="Rotate the selected cube with the rotation gizmo"/>
-            <Separator/>
-            <TextBlock Text="{Binding CurrentExportName}" VerticalAlignment="Center" Margin="4,0"/>
-        </ToolBar>
+        <WrapPanel DockPanel.Dock="Top">
+            <ToolBar ToolBarTray.IsLocked="True" OverflowMode="Never">
+                <Button Content="Open Level" Click="OpenLevel_Click" ToolTip="Replace the level backdrop"/>
+                <Button Content="Add Level" Click="AddLevel_Click" ToolTip="Add another level file to the backdrop"/>
+                <Button Content="Unload Level" Click="UnloadLevel_Click" ToolTip="Unload all level backdrop files"/>
+                <Button x:Name="RecentLevelsButton" Content="Recent Levels" Click="RecentLevelsButton_Click" ToolTip="Open a recent level backdrop">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="RecentLevelsMenu" Opened="RecentLevelsMenu_Opened"/>
+                    </Button.ContextMenu>
+                </Button>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Loc" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="Red"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraPositionX_TextBox" Width="72"
+                                 Text="{Binding CameraPositionX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera X position"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="X,1" Click="CameraPositionAdjustButton_Click" ToolTip="Increase X position"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="X,-1" Click="CameraPositionAdjustButton_Click" ToolTip="Decrease X position"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Y:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="#FF00C91D"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraPositionY_TextBox" Width="72"
+                                 Text="{Binding CameraPositionY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Y position"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="Y,1" Click="CameraPositionAdjustButton_Click" ToolTip="Increase Y position"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="Y,-1" Click="CameraPositionAdjustButton_Click" ToolTip="Decrease Y position"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Z:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="Blue"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraPositionZ_TextBox" Width="72"
+                                 Text="{Binding CameraPositionZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraPositionBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraPositionBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraPositionBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Z position"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="Z,1" Click="CameraPositionAdjustButton_Click" ToolTip="Increase Z position"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="Z,-1" Click="CameraPositionAdjustButton_Click" ToolTip="Decrease Z position"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Step:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                    <xctk:SingleUpDown Width="70" Value="{Binding CameraPositionStep}" Minimum="0.01"
+                                       ButtonSpinnerLocation="Left" FormatString="F2"
+                                       VerticalContentAlignment="Center" ToolTip="Camera position adjustment step"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <TextBlock Text="Rot" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="X:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="Red"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraRotationX_TextBox" Width="72"
+                                 Text="{Binding CameraRotationX, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraRotationBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera X rotation (Roll, degrees)"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="X,1" Click="CameraRotationAdjustButton_Click" ToolTip="Increase X rotation"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="X,-1" Click="CameraRotationAdjustButton_Click" ToolTip="Decrease X rotation"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Y:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="#FF00C91D"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraRotationY_TextBox" Width="72"
+                                 Text="{Binding CameraRotationY, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraRotationBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Y rotation (Pitch, degrees)"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="Y,1" Click="CameraRotationAdjustButton_Click" ToolTip="Increase Y rotation"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="Y,-1" Click="CameraRotationAdjustButton_Click" ToolTip="Decrease Y rotation"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Z:" Margin="0,0,4,0" VerticalAlignment="Center" Foreground="Blue"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                        <TextBox x:Name="CameraRotationZ_TextBox" Width="72"
+                                 Text="{Binding CameraRotationZ, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyUp="CameraRotationBoxes_KeyUp"
+                                 GotKeyboardFocus="CameraRotationBoxes_GotKeyboardFocus"
+                                 LostKeyboardFocus="CameraRotationBoxes_LostKeyboardFocus"
+                                 GotFocus="CoordinateEditor_GotFocus"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="Consolas"
+                                 ToolTip="Camera Z rotation (Yaw, degrees)"/>
+                        <StackPanel Margin="2,0,0,0">
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▲"
+                                    Tag="Z,1" Click="CameraRotationAdjustButton_Click" ToolTip="Increase Z rotation"/>
+                            <Button Width="16" Height="11" Padding="0" FontSize="8" Content="▼"
+                                    Tag="Z,-1" Click="CameraRotationAdjustButton_Click" ToolTip="Decrease Z rotation"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="Step:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                    <xctk:SingleUpDown Width="70" Value="{Binding CameraRotationStep}" Minimum="0.1"
+                                       ButtonSpinnerLocation="Left" FormatString="F2"
+                                       VerticalContentAlignment="Center" ToolTip="Camera rotation adjustment step in degrees"/>
+                </StackPanel>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <xctk:DropDownButton Content="View options" MaxDropDownHeight="220" CloseOnFocusLoss="False"
+                                     BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                    <xctk:DropDownButton.DropDownContent>
+                        <scene3D:SceneControlOptionsControl/>
+                    </xctk:DropDownButton.DropDownContent>
+                </xctk:DropDownButton>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" />
+                <TextBlock Text="{Binding CurrentExportName}" VerticalAlignment="Center" Margin="4,0"/>
+            </ToolBar>
+        </WrapPanel>
 
         <StatusBar DockPanel.Dock="Bottom">
             <TextBlock Text="{Binding SceneStatus}"/>
@@ -52,7 +175,17 @@
                 <StackPanel>
                     <TextBlock Text="Keyframes" FontSize="18" FontWeight="SemiBold"/>
                     <GroupBox Header="Playback" Margin="0,4,0,8">
-                        <TextBlock Margin="6" Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
+                        <StackPanel Margin="6">
+                            <WrapPanel Margin="0,0,0,6">
+                                <Button Content="Play" Click="PlayMove_Click" Loaded="PlayMoveButton_Loaded" IsEnabled="False" Margin="0,0,4,4"
+                                        ToolTip="Play the move through the scene camera using the track interpolation modes"/>
+                                <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False" Margin="0,0,4,4"
+                                        ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
+                                <Button Content="Translate" Click="TranslateMode_Click" Margin="0,0,4,4" ToolTip="Drag the selected cube with the translation gizmo"/>
+                                <Button Content="Rotate" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube with the rotation gizmo"/>
+                            </WrapPanel>
+                            <TextBlock Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
+                        </StackPanel>
                     </GroupBox>
                     <ListBox x:Name="KeyframeList" Margin="0,4,0,10" MaxHeight="220"
                              SelectionChanged="KeyframeList_SelectionChanged">
