@@ -1160,6 +1160,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             AddGroupActorGestureTrack(interpData, "Owner", ownerFindActor);
             ExportEntry cameraGroup = MatineeHelper.AddNewGroupToInterpData(interpData, "Cam1");
             cameraGroup.WriteProperty(new NameProperty("Cam1", "m_nmSFXFindActor"));
+            AddCameraMoveTrack(cameraGroup);
             foreach (BulkInterpGroupDefinition customGroup in customGroups ?? [])
             {
                 ExportEntry group = MatineeHelper.AddNewGroupToInterpData(interpData, customGroup.GroupName);
@@ -1193,6 +1194,31 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             KismetHelper.CreateVariableLink(interp, "Data", interpData);
 
             return exports;
+        }
+
+        private static void AddCameraMoveTrack(ExportEntry cameraGroup)
+        {
+            ExportEntry moveTrack = MatineeHelper.AddNewTrackToGroup(cameraGroup, "InterpTrackMove");
+            var zeroVector = System.Numerics.Vector3.Zero;
+
+            var posTrack = new InterpCurve<System.Numerics.Vector3>();
+            posTrack.Points.Add(new InterpCurvePoint<System.Numerics.Vector3>(0, zeroVector, zeroVector, zeroVector, EInterpCurveMode.CIM_Constant));
+
+            var eulerTrack = new InterpCurve<System.Numerics.Vector3>();
+            eulerTrack.Points.Add(new InterpCurvePoint<System.Numerics.Vector3>(0, zeroVector, zeroVector, zeroVector, EInterpCurveMode.CIM_Constant));
+
+            moveTrack.WriteProperties(new PropertyCollection
+            {
+                posTrack.ToStructProperty(moveTrack.Game, "PosTrack"),
+                eulerTrack.ToStructProperty(moveTrack.Game, "EulerTrack"),
+                new StructProperty("InterpLookupTrack", new PropertyCollection
+                {
+                    new ArrayProperty<StructProperty>("Points")
+                    {
+                        new StructProperty("InterpLookupPoint", false, new NameProperty("None", "GroupName"), new FloatProperty(0, "Time"))
+                    }
+                }, "LookupTrack")
+            });
         }
 
         private static void AddGroupActorGestureTrack(ExportEntry interpData, string groupName, string findActorName)

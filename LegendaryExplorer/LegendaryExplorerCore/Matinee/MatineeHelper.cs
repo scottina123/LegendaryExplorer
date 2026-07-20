@@ -5,6 +5,7 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
+using InterpCurvePointVector = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurvePoint<System.Numerics.Vector3>;
 using InterpCurveVector = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<System.Numerics.Vector3>;
 using InterpCurveFloat = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<float>;
 
@@ -330,11 +331,21 @@ namespace LegendaryExplorerCore.Matinee
             }
             else if (trackExport.IsA("InterpTrackMove"))
             {
-                trackExport.WriteProperty(new InterpCurveVector().ToStructProperty(trackExport.Game, "PosTrack"));
-                trackExport.WriteProperty(new InterpCurveVector().ToStructProperty(trackExport.Game, "EulerTrack"));
+                var zeroVector = System.Numerics.Vector3.Zero;
+                var posTrack = new InterpCurveVector();
+                posTrack.Points.Add(new InterpCurvePointVector(0, zeroVector, zeroVector, zeroVector, EInterpCurveMode.CIM_Constant));
+
+                var eulerTrack = new InterpCurveVector();
+                eulerTrack.Points.Add(new InterpCurvePointVector(0, zeroVector, zeroVector, zeroVector, EInterpCurveMode.CIM_Constant));
+
+                trackExport.WriteProperty(posTrack.ToStructProperty(trackExport.Game, "PosTrack"));
+                trackExport.WriteProperty(eulerTrack.ToStructProperty(trackExport.Game, "EulerTrack"));
                 trackExport.WriteProperty(new StructProperty("InterpLookupTrack", new PropertyCollection
                 {
                     new ArrayProperty<StructProperty>("Points")
+                    {
+                        new StructProperty("InterpLookupPoint", false, new NameProperty("None", "GroupName"), new FloatProperty(0, "Time"))
+                    }
                 }, "LookupTrack"));
             }
             else if (trackExport.IsA("InterpTrackVisibility"))
