@@ -251,7 +251,14 @@ namespace LegendaryExplorer.DialogueEditor
         public string StatusText
         {
             get => _statusText;
-            set => SetProperty(ref _statusText, $"{CurrentFile} {value}");
+            set
+            {
+                string packageStatus = GetStatusBarText();
+                string statusText = string.IsNullOrWhiteSpace(packageStatus)
+                    ? value
+                    : string.IsNullOrWhiteSpace(value) ? packageStatus : $"{packageStatus} {value}";
+                SetProperty(ref _statusText, statusText);
+            }
         }
         private ELayoutMode LayoutMode; //0 = column, 1 = waterfall.
         private ESaveViewMode SaveViewMode; //0 = auto save, 1 = manual save, 2 = autogenerate.
