@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Xaml.Behaviors;
 
 // From https://stackoverflow.com/questions/183636/selecting-a-node-in-virtualized-treeview-with-wpf?answertab=votes#tab-top
@@ -12,6 +14,8 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
 {
     public class NodeTreeSelectionBehavior : Behavior<TreeView>
     {
+        private int _selectionVersion;
+
         public TreeViewEntry SelectedItem
         {
             get => (TreeViewEntry)GetValue(SelectedItemProperty);
@@ -21,6 +25,15 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
         public static readonly DependencyProperty SelectedItemProperty =
             DependencyProperty.Register("SelectedItem", typeof(TreeViewEntry), typeof(NodeTreeSelectionBehavior),
                 new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnSelectedItemChanged));
+
+        public bool DeferContainerRealization
+        {
+            get => (bool)GetValue(DeferContainerRealizationProperty);
+            set => SetValue(DeferContainerRealizationProperty, value);
+        }
+
+        public static readonly DependencyProperty DeferContainerRealizationProperty =
+            DependencyProperty.Register(nameof(DeferContainerRealization), typeof(bool), typeof(NodeTreeSelectionBehavior));
 
         private static void OnSelectedItemChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -35,6 +48,13 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             
             var behavior = (NodeTreeSelectionBehavior)d;
             var tree = behavior.AssociatedObject;
+
+            int selectionVersion = ++behavior._selectionVersion;
+            if (behavior.DeferContainerRealization)
+            {
+                _ = behavior.SelectItemDeferredAsync(newNode, selectionVersion);
+                return;
+            }
 
             var nodeDynasty = new List<TreeViewEntry> { newNode };
             var parent = newNode.Parent;
@@ -69,6 +89,96 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
                 newParent.IsExpanded = true;
                 currentParent = newParent;
             }
+        }
+
+        private async Task SelectItemDeferredAsync(TreeViewEntry newNode, int selectionVersion)
+        {
+            var nodeDynasty = new List<TreeViewEntry> { newNode };
+            for (TreeViewEntry parent = newNode.Parent; parent is not null; parent = parent.Parent)
+            {
+                nodeDynasty.Insert(0, parent);
+            }
+
+            ItemsControl currentParent = AssociatedObject;
+            foreach (TreeViewEntry node in nodeDynasty)
+            {
+                TreeViewItem newParent = await TryGetTreeViewItemDeferredAsync(currentParent, node, selectionVersion);
+                if (newParent is null || selectionVersion != _selectionVersion || _isCleanedUp)
+                {
+                    return;
+                }
+
+                if (ReferenceEquals(node, newNode))
+                {
+                    newParent.IsSelected = true;
+                    newParent.BringIntoView();
+                    return;
+                }
+
+                bool needsExpansion = !newParent.IsExpanded;
+                newParent.IsExpanded = true;
+                currentParent = newParent;
+                if (needsExpansion)
+                {
+                    await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Loaded);
+                    if (selectionVersion != _selectionVersion || _isCleanedUp)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
+        private async Task<TreeViewItem> TryGetTreeViewItemDeferredAsync(
+            ItemsControl currentParent,
+            object node,
+            int selectionVersion)
+        {
+            if (currentParent.ItemContainerGenerator.ContainerFromItem(node) is TreeViewItem existingContainer)
+            {
+                return existingContainer;
+            }
+
+            currentParent.ApplyTemplate();
+            if (currentParent.Template.FindName("ItemsHost", currentParent) is ItemsPresenter itemsPresenter)
+            {
+                itemsPresenter.ApplyTemplate();
+            }
+
+            int index = currentParent.Items.IndexOf(node);
+            if (index < 0)
+            {
+                Debug.WriteLine($"Skipping tree selection for node '{node}' because it is no longer present in the current container.");
+                return null;
+            }
+
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                if (selectionVersion != _selectionVersion || _isCleanedUp)
+                {
+                    return null;
+                }
+
+                if (GetItemsHost(currentParent) is VirtualizingPanel virtualizingPanel)
+                {
+                    CallEnsureGenerator(virtualizingPanel);
+                    try
+                    {
+                        virtualizingPanel.BringIndexIntoViewPublic(index);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Loaded);
+                if (currentParent.ItemContainerGenerator.ContainerFromIndex(index) is TreeViewItem generatedContainer)
+                {
+                    return generatedContainer;
+                }
+            }
+
+            return null;
         }
 
         private static bool TryGetTreeViewItem(ItemsControl currentParent, object node, out TreeViewItem newParent)
@@ -146,6 +256,7 @@ namespace LegendaryExplorer.SharedUI.PeregrineTreeView
             if (!_isCleanedUp)
             {
                 _isCleanedUp = true;
+                _selectionVersion++;
                 AssociatedObject.SelectedItemChanged -= OnTreeViewSelectedItemChanged;
                 AssociatedObject.Unloaded -= AssociatedObjectOnUnloaded;
             }

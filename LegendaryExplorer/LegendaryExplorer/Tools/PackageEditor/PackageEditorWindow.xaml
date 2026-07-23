@@ -595,7 +595,7 @@
                         <vhelp:TreeViewHelper BoundSelectedItem="{Binding SelectedItem}" />
                     </i:Interaction.Behaviors>-->
                     <b:Interaction.Behaviors>
-                        <peregrineTreeView:NodeTreeSelectionBehavior SelectedItem="{Binding SelectedItem}" />
+                        <peregrineTreeView:NodeTreeSelectionBehavior SelectedItem="{Binding SelectedItem}" DeferContainerRealization="True" />
                     </b:Interaction.Behaviors>
                 </TreeView>
                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Grid.Row="1"/>

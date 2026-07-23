@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -83,6 +84,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private readonly record struct TreeViewScrollState(double HorizontalOffset, double VerticalOffset);
 
         private readonly record struct TextureTfcMoveResult(int MovedCount, int FailedCount, List<EntryStringPair> Messages);
+
+        private const int SearchBatchSize = 2048;
+
+        private CancellationTokenSource _entrySearchCancellationTokenSource;
 
         private static readonly HashSet<string> CommonStringRefPropertyNames =
         [
@@ -2134,6 +2139,45 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             Search_TextBox.Focus();
             Search_TextBox.SelectAll();
+        }
+
+        private CancellationTokenSource BeginEntrySearch()
+        {
+            _entrySearchCancellationTokenSource?.Cancel();
+            _entrySearchCancellationTokenSource?.Dispose();
+            _entrySearchCancellationTokenSource = new CancellationTokenSource();
+            return _entrySearchCancellationTokenSource;
+        }
+
+        private async Task<bool> ContinueEntrySearchAsync(
+            int numSearched,
+            IMEPackage package,
+            CurrentViewMode view,
+            CancellationToken cancellationToken)
+        {
+            bool canContinue = !cancellationToken.IsCancellationRequested
+                               && ReferenceEquals(Pcc, package)
+                               && CurrentView == view;
+            if (!canContinue || numSearched == 0 || numSearched % SearchBatchSize != 0)
+            {
+                return canContinue;
+            }
+
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            return !cancellationToken.IsCancellationRequested
+                   && ReferenceEquals(Pcc, package)
+                   && CurrentView == view;
+        }
+
+        private void EndEntrySearch(CancellationTokenSource searchCancellation)
+        {
+            if (!ReferenceEquals(_entrySearchCancellationTokenSource, searchCancellation))
+            {
+                return;
+            }
+
+            _entrySearchCancellationTokenSource = null;
+            searchCancellation.Dispose();
         }
 
         private void FocusGoto()
@@ -6827,12 +6871,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void FindNextObjectByClass(string searchClass, bool reverse)
+        private async Task FindNextObjectByClassAsync(string searchClass, bool reverse)
         {
             if (Pcc == null || string.IsNullOrWhiteSpace(searchClass))
             {
                 return;
             }
+
+            IMEPackage package = Pcc;
+            CurrentViewMode view = CurrentView;
+            CancellationTokenSource searchCancellation = BeginEntrySearch();
+            CancellationToken cancellationToken = searchCancellation.Token;
 
             void LoopFunc(ref int integer, int count)
             {
@@ -6855,9 +6904,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            RunWithDeferredPreview(() =>
+            try
             {
-                if (CurrentView == CurrentViewMode.Tree)
+                if (view == CurrentViewMode.Tree)
                 {
                     TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
                     List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
@@ -6867,6 +6916,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         numSearched < items.Count;
                         LoopFunc(ref i, items.Count), numSearched++)
                     {
+                        if (!await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
+                        {
+                            return;
+                        }
+
                         TreeViewEntry node = items[i];
                         if (node.Entry == null)
                         {
@@ -6876,8 +6930,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         if (node.Entry.ClassName.Equals(searchClass))
                         {
                             node.IsProgramaticallySelecting = true;
-                            SelectedItem = node;
-                            break;
+                            RunWithDeferredPreview(() => SelectedItem = node);
+                            return;
                         }
                     }
                 }
@@ -6885,33 +6939,51 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     int n = LeftSide_ListView.SelectedIndex;
                     int start = n == -1 ? 0 : n + 1;
-                    if (CurrentView == CurrentViewMode.Exports)
+                    if (view == CurrentViewMode.Exports)
                     {
-                        for (int i = start; i < Pcc.Exports.Count; i++)
+                        int count = package.ExportCount;
+                        for (int i = start; i < count; i++)
                         {
-                            if (Pcc.Exports[i].ClassName == searchClass)
+                            if (package.ExportCount != count
+                                || !await ContinueEntrySearchAsync(i - start, package, view, cancellationToken))
                             {
-                                LeftSide_ListView.SelectedIndex = i;
-                                break;
+                                return;
+                            }
+
+                            if (package.Exports[i].ClassName == searchClass)
+                            {
+                                RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                                return;
                             }
                         }
                     }
-                    else if (CurrentView == CurrentViewMode.Imports)
+                    else if (view == CurrentViewMode.Imports)
                     {
-                        for (int i = start; i < Pcc.Imports.Count; i++)
+                        int count = package.ImportCount;
+                        for (int i = start; i < count; i++)
                         {
-                            if (Pcc.Imports[i].ClassName == searchClass)
+                            if (package.ImportCount != count
+                                || !await ContinueEntrySearchAsync(i - start, package, view, cancellationToken))
                             {
-                                LeftSide_ListView.SelectedIndex = i;
-                                break;
+                                return;
+                            }
+
+                            if (package.Imports[i].ClassName == searchClass)
+                            {
+                                RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                                return;
                             }
                         }
                     }
                 }
-            });
+            }
+            finally
+            {
+                EndEntrySearch(searchCancellation);
+            }
         }
 
-        private void FindObjectByClass_Click(object sender, RoutedEventArgs e)
+        private async void FindObjectByClass_Click(object sender, RoutedEventArgs e)
         {
             if (Pcc == null)
             {
@@ -6920,20 +6992,20 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             if (string.IsNullOrWhiteSpace(SelectedClassSearch))
             {
-                SelectClassSearch(runSearchAfterSelection: true);
+                await SelectClassSearchAsync(runSearchAfterSelection: true);
                 return;
             }
 
-            FindNextObjectByClass(SelectedClassSearch, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+            await FindNextObjectByClassAsync(SelectedClassSearch, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
         }
 
-        private void SelectedClass_TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private async void SelectedClass_TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             e.Handled = true;
-            SelectClassSearch(runSearchAfterSelection: false);
+            await SelectClassSearchAsync(runSearchAfterSelection: false);
         }
 
-        private bool SelectClassSearch(bool runSearchAfterSelection)
+        private async Task<bool> SelectClassSearchAsync(bool runSearchAfterSelection)
         {
             if (Pcc == null)
             {
@@ -6965,7 +7037,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             SelectedClassSearch = chosenClass;
             if (runSearchAfterSelection)
             {
-                FindNextObjectByClass(chosenClass, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+                await FindNextObjectByClassAsync(chosenClass, Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
             }
 
             return true;
@@ -6976,9 +7048,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void SearchButton_Clicked(object sender, RoutedEventArgs e)
+        private async void SearchButton_Clicked(object sender, RoutedEventArgs e)
         {
-            Search(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+            await SearchAsync(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
         }
 
         /// <summary>
@@ -6986,31 +7058,30 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void Searchbox_OnKeyUpHandler(object sender, KeyEventArgs e)
+        private async void Searchbox_OnKeyUpHandler(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Return)
             {
-                Search(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
+                await SearchAsync(Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift));
             }
         }
 
         /// <summary>
         /// Takes the contents of the search box and finds the next instance of it.
         /// </summary>
-        private void Search(bool reverseSearch)
+        private async Task SearchAsync(bool reverseSearch)
         {
-            if (Pcc == null)
+            if (Pcc == null || string.IsNullOrWhiteSpace(Search_TextBox.Text))
+            {
                 return;
-            int start = LeftSide_ListView.SelectedIndex;
-            if (Search_TextBox.Text == "")
-                return;
-            //int start;
-            //if (n == -1)
-            //    start = 0;
-            //else
-            //    start = n + 1;
+            }
 
+            IMEPackage package = Pcc;
+            CurrentViewMode view = CurrentView;
+            int start = LeftSide_ListView.SelectedIndex;
             string searchTerm = Search_TextBox.Text.Trim();
+            CancellationTokenSource searchCancellation = BeginEntrySearch();
+            CancellationToken cancellationToken = searchCancellation.Token;
 
             void LoopFunc(ref int integer, int count)
             {
@@ -7033,80 +7104,88 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
             }
 
-            RunWithDeferredPreview(() =>
+            try
             {
-                if (CurrentView == CurrentViewMode.Names)
+                if (view == CurrentViewMode.Names)
                 {
-                    LoopFunc(ref start,
-                        Pcc.NameCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    int count = package.NameCount;
+                    LoopFunc(ref start, count);
                     for (int i = start, numSearched = 0;
-                        numSearched < Pcc.Names.Count;
-                        LoopFunc(ref i, Pcc.NameCount), numSearched++)
+                         numSearched < count;
+                         LoopFunc(ref i, count), numSearched++)
                     {
-                        if (Pcc.Names[i].Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (package.NameCount != count
+                            || !await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
+                        {
+                            return;
+                        }
+
+                        if (package.Names[i].Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             LeftSide_ListView.SelectedIndex = i;
-                            break;
+                            return;
                         }
                     }
                 }
 
-                if (CurrentView == CurrentViewMode.Imports)
+                if (view == CurrentViewMode.Imports)
                 {
-                    LoopFunc(ref start,
-                        Pcc.ImportCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    int count = package.ImportCount;
+                    LoopFunc(ref start, count);
                     for (int i = start, numSearched = 0;
-                        numSearched < Pcc.Imports.Count;
-                        LoopFunc(ref i, Pcc.ImportCount), numSearched++)
+                         numSearched < count;
+                         LoopFunc(ref i, count), numSearched++)
                     {
-                        if (Pcc.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (package.ImportCount != count
+                            || !await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
                         {
-                            LeftSide_ListView.SelectedIndex = i;
-                            break;
+                            return;
                         }
 
-                        //if (i >= Imports.Count - 1)
-                        //{
-                        //    i = -1;
-                        //}
+                        if (package.Imports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                            return;
+                        }
                     }
                 }
 
-                if (CurrentView == CurrentViewMode.Exports)
+                if (view == CurrentViewMode.Exports)
                 {
-                    LoopFunc(ref start,
-                        Pcc.ExportCount); //increment 1 forward or back to start so we don't immediately find ourself.
+                    int count = package.ExportCount;
+                    LoopFunc(ref start, count);
                     for (int i = start, numSearched = 0;
-                        numSearched < Pcc.Exports.Count;
-                        LoopFunc(ref i, Pcc.ExportCount), numSearched++)
+                         numSearched < count;
+                         LoopFunc(ref i, count), numSearched++)
                     {
-                        if (Pcc.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        if (package.ExportCount != count
+                            || !await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
                         {
-                            LeftSide_ListView.SelectedIndex = i;
-                            break;
+                            return;
                         }
 
-                        //if (i >= Exports.Count - 1)
-                        //{
-                        //    i = -1;
-                        //}
+                        if (package.Exports[i].ObjectName.Name.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            RunWithDeferredPreview(() => LeftSide_ListView.SelectedIndex = i);
+                            return;
+                        }
                     }
                 }
 
-                if (CurrentView == CurrentViewMode.Tree && AllTreeViewNodesX.Count > 0)
+                if (view == CurrentViewMode.Tree && AllTreeViewNodesX.Count > 0)
                 {
                     TreeViewEntry selectedNode = (TreeViewEntry)LeftSide_TreeView.SelectedItem;
-                    var items = AllTreeViewNodesX[0].FlattenTree();
+                    List<TreeViewEntry> items = AllTreeViewNodesX[0].FlattenTree();
                     int pos = selectedNode == null ? 0 : items.IndexOf(selectedNode);
-                    LoopFunc(ref pos,
-                        items.Count); //increment 1 forward or back to start so we don't immediately find ourself.
+                    LoopFunc(ref pos, items.Count);
 
-                    //Start at the selected node, then search up or down the number of items in the list. If nothing is found, ding.
                     for (int numSearched = 0; numSearched < items.Count; LoopFunc(ref pos, items.Count), numSearched++)
-
-                    //for (int i = 0; i < items.Count; LoopFunc(ref i, items.Count))
                     {
-                        //int curIndex = (i + pos) % items.Count;
+                        if (!await ContinueEntrySearchAsync(numSearched, package, view, cancellationToken))
+                        {
+                            return;
+                        }
+
                         TreeViewEntry node = items[pos];
                         if (node.Entry == null)
                         {
@@ -7116,13 +7195,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         if (node.Entry.ObjectName.Instanced.Contains(searchTerm, StringComparison.InvariantCultureIgnoreCase))
                         {
                             node.IsProgramaticallySelecting = true;
-                            SelectedItem = node;
-                            //node.IsSelected = true;
-                            break;
+                            RunWithDeferredPreview(() => SelectedItem = node);
+                            return;
                         }
                     }
                 }
-            });
+            }
+            finally
+            {
+                EndEntrySearch(searchCancellation);
+            }
         }
 
         private void Window_Drop(object sender, DragEventArgs e)
