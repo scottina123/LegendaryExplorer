@@ -1618,6 +1618,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             HasUnsavedChanges = false;
             Interpreter_Hexbox.UnhighlightAll();
             bool isSameExportReload = CurrentLoadedExport != null && export.FileRef == Pcc && export.UIndex == CurrentLoadedExport.UIndex;
+            Point? propertyTreeScrollOffset = isSameExportReload ? CapturePropertyTreeScrollOffset() : null;
             ExpandedNodePaths = isSameExportReload ? CaptureExpandedNodePaths() : [];
             SelectedNodePath ??= isSameExportReload ? CaptureSelectedNodePath() : null;
             //set rescan offset
@@ -1648,6 +1649,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             Interpreter_Hexbox.ScrollByteIntoView();
             isLoadingNewData = false;
             StartScan();
+            RestorePropertyTreeScrollOffset(propertyTreeScrollOffset, export);
         }
 
         /// <summary>
@@ -1767,6 +1769,35 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return TreeSelectedItem is { } selectedItem ? GetNodePath(selectedItem) : null;
         }
 
+        private Point? CapturePropertyTreeScrollOffset()
+        {
+            return FindVisualChild<ScrollViewer>(Interpreter_TreeView) is { } scrollViewer
+                ? new Point(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset)
+                : null;
+        }
+
+        private void RestorePropertyTreeScrollOffset(Point? scrollOffset, ExportEntry export)
+        {
+            if (scrollOffset is not { } offset)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)(() =>
+            {
+                if (CurrentLoadedExport?.FileRef != export.FileRef || CurrentLoadedExport.UIndex != export.UIndex)
+                {
+                    return;
+                }
+
+                if (FindVisualChild<ScrollViewer>(Interpreter_TreeView) is { } scrollViewer)
+                {
+                    scrollViewer.ScrollToHorizontalOffset(offset.X);
+                    scrollViewer.ScrollToVerticalOffset(offset.Y);
+                }
+            }));
+        }
+
         private void RestoreExpandedNodePaths(UPropertyTreeViewEntry root)
         {
             if (ExpandedNodePaths.Count == 0)
@@ -1795,7 +1826,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SelectedItem = item;
             item.IsSelected = true;
 
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)(() =>
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)(() =>
             {
                 item.ExpandParents();
                 TreeSelectedItem = null;
@@ -1816,6 +1847,30 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return string.Join('.', segments);
+        }
+
+        private static T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent is null)
+            {
+                return null;
+            }
+
+            for (int i = 0, childCount = VisualTreeHelper.GetChildrenCount(parent); i < childCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match)
+                {
+                    return match;
+                }
+
+                if (FindVisualChild<T>(child) is { } descendant)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
         }
 
         private static UPropertyTreeViewEntry FindNodeByPath(UPropertyTreeViewEntry root, string nodePath)
