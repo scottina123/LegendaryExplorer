@@ -83,6 +83,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private ClassToolBox floatingVariablesToolBox;
         private ClassToolBox floatingSceneShopToolBox;
         private GenericToolBox floatingCustomSequencesToolBox;
+        private SearchBox floatingToolboxSearchBox;
+        private GenericToolBox floatingToolboxSearchResults;
+        private TabControl floatingToolboxTabs;
         private TabItem floatingSceneShopTab;
         private TabItem floatingCustomSequencesTab;
         public ObservableCollectionExtended<SObj> CurrentObjects { get; } = new();
@@ -128,7 +131,21 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public bool IsSceneShopSequenceSelected
         {
             get => _isSceneShopSequenceSelected;
-            private set => SetProperty(ref _isSceneShopSequenceSelected, value);
+            private set
+            {
+                if (SetProperty(ref _isSceneShopSequenceSelected, value))
+                {
+                    if (!string.IsNullOrWhiteSpace(toolboxSearchBox?.Text))
+                    {
+                        UpdateToolboxSearchResults(toolboxSearchBox.Text);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(floatingToolboxSearchBox?.Text))
+                    {
+                        UpdateFloatingToolboxSearchResults(floatingToolboxSearchBox.Text);
+                    }
+                }
+            }
         }
 
         public record SavedViewData(Dictionary<int, PointF> Positions, RectangleF ViewBounds);
@@ -142,6 +159,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             string SourceFilePath);
         private record SelectionHistoryEntry(string FilePath, int ObjectUIndex);
         private record QuickCreateMenuEntry(string Header, params string[] ClassNames);
+        private record FloatingToolboxSearchEntry(string Category, object Item)
+        {
+            public override string ToString()
+            {
+                string itemName = Item is ClassInfo classInfo ? classInfo.ClassName : Item.ToString() ?? string.Empty;
+                return $"{itemName} [{Category}]";
+            }
+        }
 
         private static readonly QuickCreateMenuEntry[] QuickCreateEventEntries =
         [
@@ -289,6 +314,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             variablesToolBox.DoubleClickCallback = CreateNewObject;
             sceneShopToolBox.DoubleClickCallback = CreateNewObject;
             customSequencesToolBox.DoubleClickCallback = CreateCustomSequence;
+            toolboxSearchResults.DoubleClickCallback = CreateFloatingToolboxSearchResult;
+            toolboxSearchResults.ShiftClickCallback = ToggleFloatingToolboxSearchResultFavorite;
 
             favoritesToolBox.ShiftClickCallback = RemoveFavorite;
             eventsToolBox.ShiftClickCallback = SetFavorite;
@@ -2322,7 +2349,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 backgroundContextMenuGraphLocation = e.Position;
                 var clickPoint = System.Windows.Forms.Control.MousePosition;
-                floatingToolboxScreenLocation = new System.Windows.Point(clickPoint.X, clickPoint.Y);
+                floatingToolboxScreenLocation = ConvertScreenPixelsToDips(clickPoint);
                 if (FindResource("backContextMenu") is ContextMenu contextMenu)
                 {
                     contextMenu.Placement = PlacementMode.MousePoint;
@@ -2550,10 +2577,14 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             floatingToolboxWindow.Activate();
         }
 
-        private System.Windows.Point GetFloatingToolboxScreenLocation()
+        private System.Windows.Point ConvertScreenPixelsToDips(System.Drawing.Point screenPoint)
         {
-            var viewportCenter = new System.Drawing.Point(graphEditor.ClientSize.Width / 2, graphEditor.ClientSize.Height / 2);
-            var screenPoint = graphEditor.PointToScreen(viewportCenter);
+            if (PresentationSource.FromVisual(this)?.CompositionTarget is { } compositionTarget)
+            {
+                return compositionTarget.TransformFromDevice.Transform(
+                    new System.Windows.Point(screenPoint.X, screenPoint.Y));
+            }
+
             return new System.Windows.Point(screenPoint.X, screenPoint.Y);
         }
 
@@ -2577,6 +2608,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             floatingVariablesToolBox = CreateFloatingClassToolBox(CreateNewObject, SetFavorite);
             floatingSceneShopToolBox = CreateFloatingClassToolBox(CreateNewObject, null);
             floatingCustomSequencesToolBox = CreateFloatingGenericToolBox(CreateCustomSequence, null);
+            floatingToolboxSearchResults = CreateFloatingGenericToolBox(CreateFloatingToolboxSearchResult,
+                ToggleFloatingToolboxSearchResultFavorite);
+
+            floatingFavoritesToolBox.IsSearchVisible = false;
+            floatingEventsToolBox.IsSearchVisible = false;
+            floatingActionsToolBox.IsSearchVisible = false;
+            floatingConditionsToolBox.IsSearchVisible = false;
+            floatingVariablesToolBox.IsSearchVisible = false;
+            floatingSceneShopToolBox.IsSearchVisible = false;
+            floatingCustomSequencesToolBox.IsSearchVisible = false;
+            floatingToolboxSearchResults.IsSearchVisible = false;
+            floatingToolboxSearchResults.Visibility = Visibility.Collapsed;
 
             floatingSceneShopTab = new TabItem
             {
@@ -2590,7 +2633,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 Visibility = App.IsDebug ? Visibility.Visible : Visibility.Collapsed
             };
 
-            var tabControl = new TabControl
+            floatingToolboxTabs = new TabControl
             {
                 Items =
                 {
@@ -2612,6 +2655,21 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 }
             };
 
+            floatingToolboxSearchBox = new SearchBox
+            {
+                WatermarkText = "Search all toolbox categories"
+            };
+            floatingToolboxSearchBox.TextChanged += FloatingToolboxSearchBox_TextChanged;
+            DockPanel.SetDock(floatingToolboxSearchBox, Dock.Top);
+
+            var toolboxViews = new Grid();
+            toolboxViews.Children.Add(floatingToolboxTabs);
+            toolboxViews.Children.Add(floatingToolboxSearchResults);
+
+            var toolboxContent = new DockPanel();
+            toolboxContent.Children.Add(floatingToolboxSearchBox);
+            toolboxContent.Children.Add(toolboxViews);
+
             floatingToolboxWindow = new Window
             {
                 Title = "Sequence Toolbox",
@@ -2622,7 +2680,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 MinHeight = 260,
                 ShowInTaskbar = false,
                 WindowStartupLocation = WindowStartupLocation.Manual,
-                Content = tabControl
+                Content = toolboxContent
             };
             CustomWindowChrome.ApplyCustomChrome(floatingToolboxWindow);
             floatingToolboxWindow.Loaded += (_, _) => PositionFloatingToolboxWindow();
@@ -2636,9 +2694,143 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 floatingVariablesToolBox = null;
                 floatingSceneShopToolBox = null;
                 floatingCustomSequencesToolBox = null;
+                floatingToolboxSearchBox = null;
+                floatingToolboxSearchResults = null;
+                floatingToolboxTabs = null;
                 floatingSceneShopTab = null;
                 floatingCustomSequencesTab = null;
             };
+        }
+
+        private void FloatingToolboxSearchBox_TextChanged(SearchBox sender, string newText)
+        {
+            UpdateFloatingToolboxSearchResults(newText);
+        }
+
+        private void ToolboxSearchBox_TextChanged(SearchBox sender, string newText)
+        {
+            UpdateToolboxSearchResults(newText);
+        }
+
+        private void UpdateToolboxSearchResults(string searchText)
+        {
+            bool isSearching = !string.IsNullOrWhiteSpace(searchText);
+            toolboxTabs.Visibility = isSearching ? Visibility.Collapsed : Visibility.Visible;
+            toolboxSearchResults.Visibility = isSearching ? Visibility.Visible : Visibility.Collapsed;
+
+            if (!isSearching)
+            {
+                toolboxSearchResults.Items.Clear();
+                return;
+            }
+
+            var results = new List<object>();
+            var seenClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Events", eventsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Actions", actionsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Conditions", conditionsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Variables", variablesToolBox, searchText);
+
+            if (IsSceneShopSequenceSelected)
+            {
+                AddFloatingToolboxClassSearchResults(results, seenClasses, "Scene Shop", sceneShopToolBox, searchText);
+            }
+
+            if (App.IsDebug)
+            {
+                results.AddRange(customSequencesToolBox.Items
+                    .Where(item => item.ToString()?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                    .Select(item => new FloatingToolboxSearchEntry("Custom sequences", item)));
+            }
+
+            toolboxSearchResults.Items.ReplaceAll(results);
+        }
+
+        private void UpdateFloatingToolboxSearchResults(string searchText)
+        {
+            if (floatingToolboxTabs == null || floatingToolboxSearchResults == null)
+            {
+                return;
+            }
+
+            bool isSearching = !string.IsNullOrWhiteSpace(searchText);
+            floatingToolboxTabs.Visibility = isSearching ? Visibility.Collapsed : Visibility.Visible;
+            floatingToolboxSearchResults.Visibility = isSearching ? Visibility.Visible : Visibility.Collapsed;
+
+            if (!isSearching)
+            {
+                floatingToolboxSearchResults.Items.Clear();
+                return;
+            }
+
+            var results = new List<object>();
+            var seenClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Events", floatingEventsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Actions", floatingActionsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Conditions", floatingConditionsToolBox, searchText);
+            AddFloatingToolboxClassSearchResults(results, seenClasses, "Variables", floatingVariablesToolBox, searchText);
+
+            if (IsSceneShopSequenceSelected)
+            {
+                AddFloatingToolboxClassSearchResults(results, seenClasses, "Scene Shop", floatingSceneShopToolBox, searchText);
+            }
+
+            if (App.IsDebug && floatingCustomSequencesToolBox != null)
+            {
+                results.AddRange(floatingCustomSequencesToolBox.Items
+                    .Where(item => item.ToString()?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                    .Select(item => new FloatingToolboxSearchEntry("Custom sequences", item)));
+            }
+
+            floatingToolboxSearchResults.Items.ReplaceAll(results);
+        }
+
+        private static void AddFloatingToolboxClassSearchResults(List<object> results, HashSet<string> seenClasses,
+            string category, ClassToolBox toolBox, string searchText)
+        {
+            if (toolBox == null)
+            {
+                return;
+            }
+
+            results.AddRange(toolBox.Classes
+                .Where(classInfo => classInfo.ClassName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                                    && seenClasses.Add(classInfo.ClassName))
+                .Select(classInfo => new FloatingToolboxSearchEntry(category, classInfo)));
+        }
+
+        private void CreateFloatingToolboxSearchResult(object result)
+        {
+            if (result is not FloatingToolboxSearchEntry searchEntry)
+            {
+                return;
+            }
+
+            if (searchEntry.Item is ClassInfo classInfo)
+            {
+                CreateNewObject(classInfo);
+            }
+            else
+            {
+                CreateCustomSequence(searchEntry.Item);
+            }
+        }
+
+        private void ToggleFloatingToolboxSearchResultFavorite(object result)
+        {
+            if (result is not FloatingToolboxSearchEntry { Item: ClassInfo classInfo })
+            {
+                return;
+            }
+
+            if (favoritesToolBox.Classes.Contains(classInfo))
+            {
+                RemoveFavorite(classInfo);
+            }
+            else
+            {
+                SetFavorite(classInfo);
+            }
         }
 
         private static ClassToolBox CreateFloatingClassToolBox(Action<ClassInfo> doubleClickCallback,
@@ -2683,6 +2875,11 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (floatingSceneShopTab != null)
             {
                 floatingSceneShopTab.Visibility = IsSceneShopSequenceSelected ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (!string.IsNullOrWhiteSpace(floatingToolboxSearchBox?.Text))
+            {
+                UpdateFloatingToolboxSearchResults(floatingToolboxSearchBox.Text);
             }
         }
 

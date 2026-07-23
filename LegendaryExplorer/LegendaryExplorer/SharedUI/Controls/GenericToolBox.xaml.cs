@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.Misc;
@@ -26,6 +27,12 @@ namespace LegendaryExplorer.SharedUI.Controls
 
         public Action<object> DoubleClickCallback;
         public Action<object> ShiftClickCallback;
+
+        public bool IsSearchVisible
+        {
+            get => searchBox.Visibility == Visibility.Visible;
+            set => searchBox.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         public GenericToolBox()
         {
