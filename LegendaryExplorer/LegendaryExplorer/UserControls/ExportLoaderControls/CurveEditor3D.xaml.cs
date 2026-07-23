@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -29,12 +30,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
 {
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
-
-    private enum AddKeyframePlacement
-    {
-        Before,
-        After
-    }
 
     private readonly CurveEditor3DModel model = new();
     private readonly List<IMEPackage> levelPackages = [];
@@ -77,6 +72,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private int cameraPositionEditorsFocused;
     private bool updatingCameraRotationText;
     private int cameraRotationEditorsFocused;
+    private string selectedKeyframeInVal;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -370,6 +366,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         private set
         {
             bool selectionChanged = SetProperty(ref selectedKeyframe, value);
+            SelectedKeyframeInVal = value?.Time.ToString(CultureInfo.CurrentCulture);
             SnapToKeyButton.IsEnabled = value is not null;
             KeyframeList.SelectedItem = value;
             if (value is not null && (selectionChanged || !KeyframeList.IsKeyboardFocusWithin))
@@ -379,6 +376,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             RenderContext.TransformWidget.Attach = value;
             SceneViewer?.MarkRenderDirty();
         }
+    }
+
+    public string SelectedKeyframeInVal
+    {
+        get => selectedKeyframeInVal;
+        set => SetProperty(ref selectedKeyframeInVal, value);
     }
 
     public override bool CanParse(ExportEntry exportEntry)
@@ -467,6 +470,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         var deleteItem = new MenuItem { Header = "Delete Keyframe" };
         deleteItem.Click += DeleteKeyframe_Click;
         menu.Items.Add(deleteItem);
+
+        var snapCameraItem = new MenuItem { Header = "Snap Camera to Key" };
+        snapCameraItem.Click += SnapCameraToKey_Click;
+        menu.Items.Add(snapCameraItem);
 
         menu.Items.Add(new Separator());
 
@@ -800,6 +807,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void ApplyKeyframeInVal_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedKeyframe is not { } keyframe)
+        {
+            return;
+        }
+
+        if (!float.TryParse(SelectedKeyframeInVal, NumberStyles.Float, CultureInfo.CurrentCulture, out float inVal) || !float.IsFinite(inVal))
+        {
+            MessageBox.Show("Enter a valid finite InVal.");
+            return;
+        }
+
+        if (model.HasKeyframeAtTime(inVal, keyframe))
+        {
+            MessageBox.Show("A keyframe already exists at this InVal.");
+            return;
+        }
+
+        StopPlayback();
+        keyframe.Time = inVal;
+        SelectedKeyframeInVal = keyframe.Time.ToString(CultureInfo.CurrentCulture);
+        SceneStatus = $"Changed keyframe InVal to {keyframe.Time:0.###}.";
+    }
+
+    private void KeyframeInVal_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        ApplyKeyframeInVal_Click(sender, e);
+        e.Handled = true;
+    }
+
     private void AddKeyframe_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
@@ -808,14 +851,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        AddKeyframePlacement? placement = ShowAddKeyframePlacementDialog(Window.GetWindow(this), keyframe);
-        if (placement is null)
+        float? inVal = PromptForKeyframeInVal(keyframe.Time + 5f);
+        if (inVal is null)
         {
             return;
         }
 
-        bool addAfter = placement == AddKeyframePlacement.After;
-        CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, addAfter);
+        CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, inVal.Value);
         if (newKeyframe is null)
         {
             return;
@@ -828,71 +870,32 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneViewer.MarkRenderDirty();
     }
 
-    private static AddKeyframePlacement? ShowAddKeyframePlacementDialog(Window owner, CurveEditor3DKeyframe keyframe)
+    private float? PromptForKeyframeInVal(float defaultValue)
     {
-        AddKeyframePlacement? placement = null;
-        var dialog = new Window
-        {
-            Title = "Add Keyframe",
-            SizeToContent = SizeToContent.WidthAndHeight,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
+        string response = PromptDialog.Prompt(
+            this,
+            "Enter the InVal for the new keyframe.",
+            "Add Keyframe",
+            defaultValue.ToString(CultureInfo.CurrentCulture),
+            selectText: true,
+            validator: text =>
             {
-                Margin = new Thickness(16),
-                MinWidth = 300,
-                Children =
+                if (!float.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out float value) || !float.IsFinite(value))
                 {
-                    new TextBlock
-                    {
-                        Text = $"Add a new keyframe relative to InVal {keyframe.Time:0.###}.",
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Thickness(0, 0, 0, 12)
-                    },
-                    new Button
-                    {
-                        Content = "Before selected keyframe",
-                        Margin = new Thickness(0, 0, 0, 6),
-                        Padding = new Thickness(10, 4, 10, 4),
-                        IsDefault = true,
-                        Tag = AddKeyframePlacement.Before
-                    },
-                    new Button
-                    {
-                        Content = "After selected keyframe",
-                        Margin = new Thickness(0, 0, 0, 12),
-                        Padding = new Thickness(10, 4, 10, 4),
-                        Tag = AddKeyframePlacement.After
-                    },
-                    new Button
-                    {
-                        Content = "Cancel",
-                        Padding = new Thickness(10, 4, 10, 4),
-                        IsCancel = true
-                    }
+                    return (false, "Enter a valid finite number.");
                 }
-            }
-        };
-        CustomWindowChrome.ApplyCustomChrome(dialog);
 
-        if (owner is not null)
-        {
-            dialog.Owner = owner;
-        }
-
-        if (dialog.Content is Panel panel)
-        {
-            foreach (Button button in panel.Children.OfType<Button>().Where(button => button.Tag is AddKeyframePlacement))
-            {
-                button.Click += (_, _) =>
+                if (model.HasKeyframeAtTime(value))
                 {
-                    placement = (AddKeyframePlacement)button.Tag;
-                    dialog.DialogResult = true;
-                };
-            }
-        }
+                    return (false, "A keyframe already exists at this InVal.");
+                }
 
-        return dialog.ShowDialog() == true ? placement : null;
+                return (true, null);
+            });
+
+        return float.TryParse(response, NumberStyles.Float, CultureInfo.CurrentCulture, out float inVal)
+            ? inVal
+            : null;
     }
 
     private void SnapSelectedKeyframeToViewport_Click(object sender, RoutedEventArgs e)
@@ -910,7 +913,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void AddKeyframeAfterLast_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        CurveEditor3DKeyframe newKeyframe = model.AddKeyframeAfterLast(pendingViewportKeyframeLocation);
+        float? inVal = PromptForKeyframeInVal(model.Keyframes[^1].Time + 1f);
+        if (inVal is null)
+        {
+            return;
+        }
+
+        CurveEditor3DKeyframe newKeyframe = model.AddKeyframeAfterLast(pendingViewportKeyframeLocation, inVal.Value);
         if (newKeyframe is null)
         {
             return;
@@ -1041,7 +1050,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         var addItem = new MenuItem
         {
-            Header = "Add Keyframe After Last",
+            Header = "Add Keyframe",
             IsEnabled = model.Keyframes.Count > 0
         };
         addItem.Click += AddKeyframeAfterLast_Click;
@@ -1116,10 +1125,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void SnapCameraToKey(CurveEditor3DKeyframe keyframe)
     {
         const float degreesToRadians = 0.017453292519943295f;
-        RenderContext.Camera.Position = keyframe.Location;
+        const float cameraDistance = 150f;
         RenderContext.Camera.Roll = keyframe.Roll * degreesToRadians;
         RenderContext.Camera.Pitch = keyframe.Pitch * degreesToRadians;
         RenderContext.Camera.Yaw = keyframe.Yaw * degreesToRadians;
+        RenderContext.Camera.Position = keyframe.Location - RenderContext.Camera.CameraForward * cameraDistance;
         RenderContext.Camera.FocusDepth = 0f;
         UpdateCameraPositionText();
         UpdateCameraRotationText();

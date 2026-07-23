@@ -69,36 +69,37 @@ public sealed class CurveEditor3DModel
         return samples;
     }
 
-    public CurveEditor3DKeyframe AddKeyframe(CurveEditor3DKeyframe selectedKeyframe, bool addAfter)
+    public bool HasKeyframeAtTime(float time, CurveEditor3DKeyframe excludedKeyframe = null)
+        => Keyframes.Any(keyframe => keyframe != excludedKeyframe && MathF.Abs(keyframe.Time - time) <= KeyTimeTolerance);
+
+    public CurveEditor3DKeyframe AddKeyframe(CurveEditor3DKeyframe selectedKeyframe, float time)
     {
-        if (Export is null || selectedKeyframe is null)
+        if (Export is null || selectedKeyframe is null || !float.IsFinite(time) || HasKeyframeAtTime(time))
         {
             return null;
         }
 
-        float newTime = selectedKeyframe.Time + (addAfter ? 5f : -5f);
         Vector3 newLocation = selectedKeyframe.Location + new Vector3(100f, 100f, 100f);
         Vector3 newRotation = selectedKeyframe.Rotation;
-        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, newLocation, selectedKeyframe.PosTrackInterpMode);
-        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, selectedKeyframe.EulerTrackInterpMode);
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, time, newLocation, selectedKeyframe.PosTrackInterpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, time, newRotation, selectedKeyframe.EulerTrackInterpMode);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);
         return keyframe;
     }
 
-    public CurveEditor3DKeyframe AddKeyframeAfterLast(Vector3 location)
+    public CurveEditor3DKeyframe AddKeyframeAfterLast(Vector3 location, float time)
     {
-        if (Export is null || Keyframes.Count == 0)
+        if (Export is null || Keyframes.Count == 0 || !float.IsFinite(time) || HasKeyframeAtTime(time))
         {
             return null;
         }
 
         CurveEditor3DKeyframe lastKeyframe = Keyframes[^1];
-        float newTime = lastKeyframe.Time + 1f;
         Vector3 newRotation = lastKeyframe.Rotation;
-        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, newTime, location, lastKeyframe.PosTrackInterpMode);
-        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, newTime, newRotation, lastKeyframe.EulerTrackInterpMode);
+        InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, time, location, lastKeyframe.PosTrackInterpMode);
+        InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, time, newRotation, lastKeyframe.EulerTrackInterpMode);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);

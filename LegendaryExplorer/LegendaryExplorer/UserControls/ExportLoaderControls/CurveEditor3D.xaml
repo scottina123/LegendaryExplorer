@@ -209,7 +209,16 @@
                         </GroupBox>
 
                         <GroupBox Header="Timing (InVal)" Margin="0,0,0,8">
-                            <TextBox Margin="6" Text="{Binding Time, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"/>
+                            <Grid Margin="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding SelectedKeyframeInVal, RelativeSource={RelativeSource AncestorType={x:Type exportLoaderControls:CurveEditor3D}}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         KeyDown="KeyframeInVal_KeyDown"/>
+                                <Button Grid.Column="1" Margin="4,0,0,0" Padding="6,0" Content="✓"
+                                        Click="ApplyKeyframeInVal_Click" ToolTip="Apply the InVal change"/>
+                            </Grid>
                         </GroupBox>
 
                         <GroupBox Header="Location" Margin="0,0,0,8">
