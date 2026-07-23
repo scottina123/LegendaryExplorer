@@ -844,12 +844,14 @@
                                     </TreeView.ItemContainerStyle>
                                 </TreeView>
                                 <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
-                                <TabControl Grid.Column="2">
-                                    <TabItem Header="Interpreter">
+                                <TabControl x:Name="InterpDataEditorTabControl"
+                                            Grid.Column="2"
+                                            SelectionChanged="InterpDataEditorTabControl_SelectionChanged">
+                                    <TabItem x:Name="InterpData_InterpreterTab" Header="Interpreter">
                                         <exportLoaderControls:InterpreterExportLoader x:Name="InterpData_InterpreterWPF"
                                                                                        HideHexBox="True" />
                                     </TabItem>
-                                    <TabItem Header="Metadata">
+                                    <TabItem x:Name="InterpData_MetadataEditorTab" Header="Metadata">
                                         <exportLoaderControls:EntryMetadataExportLoader x:Name="InterpData_MetadataEditor" />
                                     </TabItem>
                                     <TabItem x:Name="InterpData_CurveEditorTab" Header="2D Curve Editor" IsEnabled="False">

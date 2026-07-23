@@ -2826,9 +2826,12 @@ namespace LegendaryExplorer.DialogueEditor
                 return; //nothing is loaded
             }
 
-            InterpData_MetadataEditor.LoadPccData(Pcc);
-
             List<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.HasFlag(PackageChange.Export)).ToList();
+            if (updates.Any(update => update.Change != PackageChange.ExportData))
+            {
+                InterpData_MetadataEditor.LoadPccData(Pcc);
+            }
+
             HashSet<int> updatedExportIndexes = relevantUpdates.Select(x => x.Index).ToHashSet();
 
             if (InterpDataTreeNodes.Count > 0)
@@ -2848,7 +2851,10 @@ namespace LegendaryExplorer.DialogueEditor
                 else if (GetSelectedInterpDataTreeExport() is ExportEntry selectedInterpExport
                          && interpTreeUpdates.Any(update => update.Index == selectedInterpExport.UIndex))
                 {
-                    QueueInterpDataEditorsReload(selectedInterpExport.UIndex);
+                    if (!InterpData_InterpreterWPF.ConsumePendingPropertyWrite(selectedInterpExport))
+                    {
+                        QueueInterpDataEditorsReload(selectedInterpExport.UIndex);
+                    }
                 }
             }
 
@@ -4078,29 +4084,43 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void LoadInterpDataEditors(ExportEntry export)
         {
-            InterpData_InterpreterWPF.LoadExport(export);
-            InterpData_MetadataEditor.LoadExport(export);
-
             bool isMoveTrack = export.ClassName == "InterpTrackMove";
             InterpData_CurveEditorTab.IsEnabled = isMoveTrack && InterpData_CurveEditor.CanParse(export);
             InterpData_CurveEditor3DTab.IsEnabled = isMoveTrack && InterpData_CurveEditor3D.CanParse(export);
 
-            if (InterpData_CurveEditorTab.IsEnabled)
+            if (InterpDataEditorTabControl.SelectedItem is TabItem selectedTab && !selectedTab.IsEnabled)
+            {
+                InterpDataEditorTabControl.SelectedItem = InterpData_InterpreterTab;
+            }
+
+            LoadActiveInterpDataEditor(export);
+        }
+
+        private void LoadActiveInterpDataEditor(ExportEntry export)
+        {
+            if (InterpDataEditorTabControl.SelectedItem == InterpData_MetadataEditorTab)
+            {
+                InterpData_MetadataEditor.LoadExport(export);
+            }
+            else if (InterpDataEditorTabControl.SelectedItem == InterpData_CurveEditorTab)
             {
                 InterpData_CurveEditor.LoadExport(export);
             }
-            else
-            {
-                InterpData_CurveEditor.UnloadExport();
-            }
-
-            if (InterpData_CurveEditor3DTab.IsEnabled)
+            else if (InterpDataEditorTabControl.SelectedItem == InterpData_CurveEditor3DTab)
             {
                 InterpData_CurveEditor3D.LoadExport(export);
             }
             else
             {
-                InterpData_CurveEditor3D.UnloadExport();
+                InterpData_InterpreterWPF.LoadExport(export);
+            }
+        }
+
+        private void InterpDataEditorTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source == InterpDataEditorTabControl && GetSelectedInterpDataTreeExport() is ExportEntry selectedExport)
+            {
+                LoadActiveInterpDataEditor(selectedExport);
             }
         }
 

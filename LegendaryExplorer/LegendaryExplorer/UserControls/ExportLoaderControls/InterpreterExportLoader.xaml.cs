@@ -163,6 +163,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private string PendingAddedArrayNodePath;
         private int PendingAddedArrayElementIndex = -1;
         private bool SyncingObjectPropertyEditor;
+        private int pendingPropertyWriteExportUIndex;
+        private long propertyTreeInputVersion;
+        private DispatcherOperation pendingPropertyTreeSelectionRestore;
+        private DispatcherOperation pendingPropertyTreeScrollRestore;
         private TextBox ObjectValueIndexTextBox => (TextBox)FindName("Value_ObjectIndex_TextBox");
         private TextBox ObjectValueDisplayTextBox => (TextBox)FindName("Value_ObjectDisplay_TextBox");
         private Button ObjectValuePickButton => (Button)FindName("Value_ObjectPick_Button");
@@ -192,6 +196,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             LoadCommands();
             InitializeComponent();
+            Interpreter_TreeView.PreviewMouseDown += PropertyTree_UserInput;
+            Interpreter_TreeView.PreviewMouseWheel += PropertyTree_UserInput;
+            Interpreter_TreeView.PreviewKeyDown += PropertyTree_UserInput;
             HideTopSelector = Settings.Interpreter_HideTopSelector;
             Settings.StaticPropertyChanged += SettingChanged;
             EditorSetElements.Add(Value_TextBox); //str, strref, int, float, obj
@@ -1581,6 +1588,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public override void UnloadExport()
         {
+            CancelPendingPropertyTreeRestores();
             CurrentLoadedExport = null;
             OverrideLoadedProperties = null;
             ExpandedNodePaths.Clear();
@@ -1612,6 +1620,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadExportInternal(ExportEntry export, PropertyCollection overrideProperties)
         {
+            CancelPendingPropertyTreeRestores();
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
             //EditorSet_Separator.Visibility = Visibility.Collapsed;
@@ -1783,9 +1792,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)(() =>
+            long inputVersion = propertyTreeInputVersion;
+            pendingPropertyTreeScrollRestore = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)(() =>
             {
-                if (CurrentLoadedExport?.FileRef != export.FileRef || CurrentLoadedExport.UIndex != export.UIndex)
+                pendingPropertyTreeScrollRestore = null;
+                if (propertyTreeInputVersion != inputVersion
+                    || CurrentLoadedExport?.FileRef != export.FileRef
+                    || CurrentLoadedExport.UIndex != export.UIndex)
                 {
                     return;
                 }
@@ -1826,8 +1839,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SelectedItem = item;
             item.IsSelected = true;
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)(() =>
+            long inputVersion = propertyTreeInputVersion;
+            pendingPropertyTreeSelectionRestore = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, (Action)(() =>
             {
+                pendingPropertyTreeSelectionRestore = null;
+                if (propertyTreeInputVersion != inputVersion)
+                {
+                    return;
+                }
+
                 item.ExpandParents();
                 TreeSelectedItem = null;
                 TreeSelectedItem = item;
@@ -1836,6 +1856,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Interpreter_TreeView?.Focus();
                 Keyboard.Focus(Interpreter_TreeView);
             }));
+        }
+
+        private void PropertyTree_UserInput(object sender, InputEventArgs e)
+        {
+            propertyTreeInputVersion++;
+            CancelPendingPropertyTreeRestores();
+        }
+
+        private void CancelPendingPropertyTreeRestores()
+        {
+            pendingPropertyTreeSelectionRestore?.Abort();
+            pendingPropertyTreeSelectionRestore = null;
+            pendingPropertyTreeScrollRestore?.Abort();
+            pendingPropertyTreeScrollRestore = null;
         }
 
         private static string GetNodePath(UPropertyTreeViewEntry node)
@@ -2565,6 +2599,28 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             entry.IsInlineEditing = false;
+            WriteCurrentLoadedProperties();
+        }
+
+        public bool ConsumePendingPropertyWrite(ExportEntry export)
+        {
+            if (export is null || pendingPropertyWriteExportUIndex != export.UIndex || CurrentLoadedExport?.FileRef != export.FileRef)
+            {
+                return false;
+            }
+
+            pendingPropertyWriteExportUIndex = 0;
+            return true;
+        }
+
+        private void WriteCurrentLoadedProperties()
+        {
+            if (CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            pendingPropertyWriteExportUIndex = CurrentLoadedExport.UIndex;
             CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
         }
 
@@ -3043,7 +3099,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 case BoolProperty boolProperty:
                     boolProperty.Value = !boolProperty.Value;
-                    CurrentLoadedExport?.WriteProperties(CurrentLoadedProperties);
+                    node.EditableValue = boolProperty.Value.ToString();
+                    Value_ComboBox.SelectedIndex = boolProperty.Value ? 0 : 1;
+                    WriteCurrentLoadedProperties();
                     e.Handled = true;
                     break;
                 case StrProperty when node.ShowEditableTextBlock && node.EditableType:
@@ -3776,6 +3834,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         if (bp.Value != (Value_ComboBox.SelectedIndex == 0))
                         {
                             bp.Value = Value_ComboBox.SelectedIndex == 0; //0 = true
+                            tvi.EditableValue = bp.Value.ToString();
                             updated = true;
                         }
                         break;
@@ -3896,7 +3955,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (updated)
                 {
                     //will cause a refresh from packageeditor
-                    CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+                    WriteCurrentLoadedProperties();
                 }
                 //StartScan();
             }
@@ -5841,18 +5900,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 ParsedValue = nameProp.Value.Instanced;
                                 PropertyUpdated?.Invoke(this, EventArgs.Empty);
                                 HasChanges = true;
-                                _editableValue = normalizedValue;
+                                SetProperty(ref _editableValue, normalizedValue);
                                 return;
                             }
 
                             return;
                     }
                 }
-                _editableValue = Property switch
+                SetProperty(ref _editableValue, Property switch
                 {
                     IntProperty intProp => intProp.Value.ToString(),
                     _ => value
-                };
+                });
             }
         }
 
