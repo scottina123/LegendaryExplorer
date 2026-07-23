@@ -211,6 +211,7 @@ namespace LegendaryExplorer.DialogueEditor
         private BackgroundWorker BackParser = new();
         private int suppressedPackageUpdateDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
+        private DispatcherOperation pendingInterpDataEditorsReload;
         private bool NoUIRefresh; //stops graph refresh on update.
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
@@ -2847,7 +2848,7 @@ namespace LegendaryExplorer.DialogueEditor
                 else if (GetSelectedInterpDataTreeExport() is ExportEntry selectedInterpExport
                          && interpTreeUpdates.Any(update => update.Index == selectedInterpExport.UIndex))
                 {
-                    LoadInterpDataEditors(selectedInterpExport);
+                    QueueInterpDataEditorsReload(selectedInterpExport.UIndex);
                 }
             }
 
@@ -4101,6 +4102,19 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 InterpData_CurveEditor3D.UnloadExport();
             }
+        }
+
+        private void QueueInterpDataEditorsReload(int exportUIndex)
+        {
+            pendingInterpDataEditorsReload?.Abort();
+            pendingInterpDataEditorsReload = Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+            {
+                pendingInterpDataEditorsReload = null;
+                if (GetSelectedInterpDataTreeExport() is ExportEntry selectedExport && selectedExport.UIndex == exportUIndex)
+                {
+                    LoadInterpDataEditors(selectedExport);
+                }
+            }));
         }
 
         private void UnloadInterpDataEditors()
