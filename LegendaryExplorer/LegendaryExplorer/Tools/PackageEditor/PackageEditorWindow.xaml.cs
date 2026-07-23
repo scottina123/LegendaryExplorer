@@ -5905,7 +5905,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
             if (CurrentView is CurrentViewMode.Exports or CurrentViewMode.Tree && hasSelection &&
                 updates.Contains(new PackageUpdate(PackageChange.ExportData, selectedEntryUIndex)))
             {
-                Preview(true);
+                if (Pcc.GetEntry(selectedEntryUIndex) is not ExportEntry selectedExport
+                    || !InterpreterTab_Interpreter.ConsumePendingPropertyWrite(selectedExport))
+                {
+                    Preview(true);
+                }
             }
 
             if (selectedEditorTabIndex >= 0)
