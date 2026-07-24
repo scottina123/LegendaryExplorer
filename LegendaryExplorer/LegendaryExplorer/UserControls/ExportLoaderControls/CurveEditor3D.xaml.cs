@@ -37,6 +37,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<string> levelPaths = [];
     private IReadOnlyList<Vector3> trajectorySamples = [];
     private bool eventsAttached;
+    private bool hasSnappedInitialCamera;
     private bool isPlayingMove;
     private bool trajectorySamplesDirty;
     private Button playMoveButton;
@@ -405,6 +406,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SelectedKeyframe = selectedKeyframeTime.HasValue && model.Keyframes.Count > 0
             ? model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedKeyframeTime.Value))
             : model.Keyframes.FirstOrDefault();
+        if (!hasSnappedInitialCamera && model.Keyframes.MinBy(keyframe => keyframe.Time) is { } earliestKeyframe)
+        {
+            SnapCameraToKey(earliestKeyframe);
+            hasSnappedInitialCamera = true;
+        }
         CurrentExportName = $"{exportEntry.UIndex}: {exportEntry.InstancedFullPath}";
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         UpdatePlaybackButton();
