@@ -1896,7 +1896,7 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var dialog = new SingleDialogueNodeCreatorDialog(this, isReply);
+            var dialog = new SingleDialogueNodeCreatorDialog(this, isReply, Pcc);
             if (dialog.ShowDialog() != true)
             {
                 return;
@@ -7962,6 +7962,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void ApplyLineStrRefChange(DialogueNodeExtended node)
         {
             UpdateNodeLineDerivedData(node);
+            DialogueEditorExperimentsE.UpdateVOAndComment(node);
 
             var graphNode = CurrentObjects
                 .OfType<DiagNode>()
