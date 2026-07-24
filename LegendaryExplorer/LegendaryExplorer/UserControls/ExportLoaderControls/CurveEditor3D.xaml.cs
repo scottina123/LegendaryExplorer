@@ -469,10 +469,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         var menu = new ContextMenu();
 
-        var addItem = new MenuItem { Header = "Add Keyframe..." };
-        addItem.Click += AddKeyframe_Click;
-        menu.Items.Add(addItem);
-
         var deleteItem = new MenuItem { Header = "Delete Keyframe" };
         deleteItem.Click += DeleteKeyframe_Click;
         menu.Items.Add(deleteItem);
@@ -480,12 +476,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         var snapCameraItem = new MenuItem { Header = "Snap Camera to Key" };
         snapCameraItem.Click += SnapCameraToKey_Click;
         menu.Items.Add(snapCameraItem);
-
-        menu.Items.Add(new Separator());
-
-        var shiftItem = new MenuItem { Header = "Shift InterpTrack..." };
-        shiftItem.Click += ShiftInterpTrack_Click;
-        menu.Items.Add(shiftItem);
 
         return menu;
     }
@@ -498,7 +488,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void LoadCommands()
     {
         ToggleTranslateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Translate);
-        ToggleRotateCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Rotate);
+        ToggleRotateCommand = new GenericCommand(() =>
+        {
+            RenderContext.TransformWidget.Mode = EWidgetMode.Rotate;
+            RenderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        });
         ToggleScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.Scale);
         ToggleUniformScaleCommand = new GenericCommand(() => RenderContext.TransformWidget.Mode = EWidgetMode.UniformScale);
         ToggleLocalCoordsCommand = new GenericCommand(() => UseLocalCoordsForWidget = !UseLocalCoordsForWidget);
@@ -586,13 +580,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void TranslateMode_Click(object sender, RoutedEventArgs e)
     {
         RenderContext.TransformWidget.Mode = EWidgetMode.Translate;
+        RenderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        RenderContext.TransformWidget.CurrentAxis = EWidgetAxis.None;
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
     }
 
     private void RotateMode_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is not FrameworkElement { Tag: string axisName }
+            || !Enum.TryParse(axisName, out EWidgetAxis axis))
+        {
+            return;
+        }
+
         RenderContext.TransformWidget.Mode = EWidgetMode.Rotate;
+        RenderContext.TransformWidget.VisibleAxes = axis;
+        RenderContext.TransformWidget.CurrentAxis = EWidgetAxis.None;
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
     }

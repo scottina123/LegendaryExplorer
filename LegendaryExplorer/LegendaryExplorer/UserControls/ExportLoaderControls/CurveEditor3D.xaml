@@ -181,8 +181,12 @@
                                         ToolTip="Play the move through the scene camera using the track interpolation modes"/>
                                 <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False" Margin="0,0,4,4"
                                         ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
+                                <Button Content="Add Keyframe..." Click="AddKeyframe_Click" Margin="0,0,4,4" ToolTip="Add a keyframe based on the selected keyframe"/>
                                 <Button Content="Translate" Click="TranslateMode_Click" Margin="0,0,4,4" ToolTip="Drag the selected cube with the translation gizmo"/>
-                                <Button Content="Rotate" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube with the rotation gizmo"/>
+                                <Button Content="ROT Roll (X)" Tag="X" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its X axis (Roll)"/>
+                                <Button Content="ROT Pitch (Y)" Tag="Y" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its Y axis (Pitch)"/>
+                                <Button Content="ROT Yaw (Z)" Tag="Z" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its Z axis (Yaw)"/>
+                                <Button Content="Shift InterpTrack..." Click="ShiftInterpTrack_Click" Margin="0,0,4,4" ToolTip="Shift the entire interpolation track"/>
                             </WrapPanel>
                             <TextBlock Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
                         </StackPanel>
@@ -258,13 +262,13 @@
                                 <TextBlock Text="Increment" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown x:Name="RotationIncrementUpDown" Grid.Column="1" Value="1" Increment="0.1" Minimum="0.0001"
                                                    ToolTip="Amount added or subtracted by the rotation arrow buttons"/>
-                                <TextBlock Grid.Row="1" Text="Roll" Foreground="#FFFF0000" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Text="X (Roll)" Foreground="#FFFF0000" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="1" Grid.Column="1" Value="{Binding Roll, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
-                                <TextBlock Grid.Row="2" Text="Pitch" Foreground="#FF00FF00" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Text="Y (Pitch)" Foreground="#FF00FF00" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Pitch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
-                                <TextBlock Grid.Row="3" Text="Yaw" Foreground="#FF0000FF" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="3" Text="Z (Yaw)" Foreground="#FF0000FF" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
                             </Grid>

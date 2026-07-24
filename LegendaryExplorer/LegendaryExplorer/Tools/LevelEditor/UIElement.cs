@@ -193,6 +193,7 @@ public class Widget : UIElement
     public ITransformWidgetTarget Attach;
 
     public EWidgetMode Mode = EWidgetMode.Translate;
+    public EWidgetAxis VisibleAxes = EWidgetAxis.XYZ;
     public bool UseLocalCoords = true;
     Matrix4x4 LocalRotation;
 
@@ -329,9 +330,18 @@ public class Widget : UIElement
         ZMatrix = Matrix4x4.CreateRotationY(MathF.PI / 2) * Matrix4x4.CreateRotationZ(zAngle) * LocalRotation * Matrix4x4.CreateTranslation(origin);
 
         (Vector4 xColor, Vector4 yColor, Vector4 zColor) = GetAxisColors();
-        XAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.X), scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X]);
-        YAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Y), scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y]);
-        ZAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Z), scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z]);
+        if (VisibleAxes.HasFlag(EWidgetAxis.X))
+        {
+            XAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.X), scale, XMatrix, xColor, AxisHitIds[(int)EWidgetAxis.X]);
+        }
+        if (VisibleAxes.HasFlag(EWidgetAxis.Y))
+        {
+            YAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Y), scale, YMatrix, yColor, AxisHitIds[(int)EWidgetAxis.Y]);
+        }
+        if (VisibleAxes.HasFlag(EWidgetAxis.Z))
+        {
+            ZAxisEnd = DrawRingSegment(context, SweptAngle(EWidgetAxis.Z), scale, ZMatrix, zColor, AxisHitIds[(int)EWidgetAxis.Z]);
+        }
 
         float SweptAngle(EWidgetAxis axis)
         {
