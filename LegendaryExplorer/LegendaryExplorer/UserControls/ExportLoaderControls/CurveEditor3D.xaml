@@ -182,10 +182,6 @@
                                 <Button x:Name="SnapToKeyButton" Content="Snap Camera to Key" Click="SnapCameraToKey_Click" IsEnabled="False" Margin="0,0,4,4"
                                         ToolTip="Move the camera to the selected keyframe and apply its rotation"/>
                                 <Button Content="Add Keyframe..." Click="AddKeyframe_Click" Margin="0,0,4,4" ToolTip="Add a keyframe based on the selected keyframe"/>
-                                <Button Content="Translate" Click="TranslateMode_Click" Margin="0,0,4,4" ToolTip="Drag the selected cube with the translation gizmo"/>
-                                <Button Content="ROT Roll (X)" Tag="X" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its X axis (Roll)"/>
-                                <Button Content="ROT Pitch (Y)" Tag="Y" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its Y axis (Pitch)"/>
-                                <Button Content="ROT Yaw (Z)" Tag="Z" Click="RotateMode_Click" Margin="0,0,4,4" ToolTip="Rotate the selected cube around its Z axis (Yaw)"/>
                                 <Button Content="Shift InterpTrack..." Click="ShiftInterpTrack_Click" Margin="0,0,4,4" ToolTip="Shift the entire interpolation track"/>
                             </WrapPanel>
                             <TextBlock Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>

@@ -482,6 +482,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         snapCameraItem.Click += SnapCameraToKey_Click;
         menu.Items.Add(snapCameraItem);
 
+        menu.Items.Add(new Separator());
+
+        var translateItem = new MenuItem { Header = "Translate" };
+        translateItem.Click += TranslateMode_Click;
+        menu.Items.Add(translateItem);
+
+        var rollItem = new MenuItem { Header = "ROT Roll (X)", Tag = "X" };
+        rollItem.Click += RotateMode_Click;
+        menu.Items.Add(rollItem);
+
+        var pitchItem = new MenuItem { Header = "ROT Pitch (Y)", Tag = "Y" };
+        pitchItem.Click += RotateMode_Click;
+        menu.Items.Add(pitchItem);
+
+        var yawItem = new MenuItem { Header = "ROT Yaw (Z)", Tag = "Z" };
+        yawItem.Click += RotateMode_Click;
+        menu.Items.Add(yawItem);
+
         return menu;
     }
 
