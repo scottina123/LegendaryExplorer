@@ -30,6 +30,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
 {
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
+    private static readonly object sessionLevelPathsLock = new();
+    private static readonly List<string> sessionLevelPaths = [];
+    private static IMEPackage sessionSourcePackage;
 
     private readonly CurveEditor3DModel model = new();
     private readonly List<IMEPackage> levelPackages = [];
@@ -39,6 +42,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool eventsAttached;
     private bool hasSnappedInitialCamera;
     private bool isPlayingMove;
+    private bool sessionLevelsRestored;
     private bool trajectorySamplesDirty;
     private Button playMoveButton;
     private CurveEditor3DKeyframe selectedKeyframe;
@@ -498,10 +502,31 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ToggleLocalCoordsCommand = new GenericCommand(() => UseLocalCoordsForWidget = !UseLocalCoordsForWidget);
     }
 
-    private void CurveEditor3D_Loaded(object sender, RoutedEventArgs e)
+    private async void CurveEditor3D_Loaded(object sender, RoutedEventArgs e)
     {
         AttachEvents();
         SceneViewer.SetShouldRender(true);
+        await RestoreSessionLevelsAsync().ConfigureAwait(true);
+    }
+
+    private async Task RestoreSessionLevelsAsync()
+    {
+        if (sessionLevelsRestored)
+        {
+            return;
+        }
+
+        sessionLevelsRestored = true;
+        List<string> paths;
+        lock (sessionLevelPathsLock)
+        {
+            paths = [.. sessionLevelPaths];
+        }
+
+        foreach (string path in paths.Where(File.Exists))
+        {
+            await LoadLevelAsync(path, replace: false, updateSession: false).ConfigureAwait(true);
+        }
     }
 
     private void CurveEditor3D_Unloaded(object sender, RoutedEventArgs e)
@@ -1419,6 +1444,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void UnloadLevel_Click(object sender, RoutedEventArgs e)
     {
         CloseLevels();
+        UpdateSessionLevelPaths();
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
@@ -1466,13 +1492,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private async Task LoadLevelAsync(string path, bool replace)
+    private async Task LoadLevelAsync(string path, bool replace, bool updateSession = true)
     {
         try
         {
             if (replace)
             {
                 CloseLevels();
+                if (updateSession)
+                {
+                    UpdateSessionLevelPaths();
+                }
             }
 
             path = Path.GetFullPath(path);
@@ -1498,6 +1528,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             levelPaths.Add(path);
             levelActors.AddRange(actors);
             RenderContext.LoadActors(actors);
+            if (updateSession)
+            {
+                UpdateSessionLevelPaths();
+            }
             RecordRecentSet();
             SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
             SceneViewer.SetShouldRender(true);
@@ -1577,6 +1611,65 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RegisterKeyframes();
         SceneViewer?.MarkRenderDirty();
+    }
+
+    private void UpdateSessionLevelPaths()
+    {
+        lock (sessionLevelPathsLock)
+        {
+            sessionLevelPaths.Clear();
+            sessionLevelPaths.AddRange(levelPaths);
+            if (sessionLevelPaths.Count == 0)
+            {
+                TrackSessionSourcePackage(null);
+            }
+            else if (CurrentLoadedExport?.FileRef is { } package)
+            {
+                TrackSessionSourcePackage(package);
+            }
+        }
+    }
+
+    private static void TrackSessionSourcePackage(IMEPackage package)
+    {
+        if (ReferenceEquals(sessionSourcePackage, package))
+        {
+            return;
+        }
+
+        if (sessionSourcePackage is not null)
+        {
+            sessionSourcePackage.NoLongerOpenInTools -= SessionSourcePackage_NoLongerOpenInTools;
+        }
+
+        sessionSourcePackage = package;
+        if (sessionSourcePackage is not null)
+        {
+            sessionSourcePackage.NoLongerOpenInTools += SessionSourcePackage_NoLongerOpenInTools;
+        }
+    }
+
+    private static void SessionSourcePackage_NoLongerOpenInTools(UnrealPackageFile sender)
+    {
+        lock (sessionLevelPathsLock)
+        {
+            if (!ReferenceEquals(sessionSourcePackage, sender))
+            {
+                return;
+            }
+
+            IMEPackage replacement = MEPackageHandler.PackagesInTools.FirstOrDefault(package =>
+                package.Users.Count > 0
+                && string.Equals(package.FilePath, sender.FilePath, StringComparison.OrdinalIgnoreCase));
+            if (replacement is not null)
+            {
+                TrackSessionSourcePackage(replacement);
+                return;
+            }
+
+            TrackSessionSourcePackage(null);
+            sessionLevelPaths.Clear();
+        }
     }
 
     private static string RecentSetsFile => Path.Combine(
