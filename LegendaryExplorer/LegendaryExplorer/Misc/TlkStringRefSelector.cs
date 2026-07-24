@@ -21,6 +21,17 @@ namespace LegendaryExplorer.Misc
                 return null;
             }
 
+            return SelectStringRef(owner, package.Game, package.LocalTalkFiles);
+        }
+
+        public static int? SelectStringRef(Window owner, MEGame game)
+        {
+            return game == MEGame.Unknown ? null : SelectStringRef(owner, game, []);
+        }
+
+        private static int? SelectStringRef(Window owner, MEGame game, IEnumerable<ME1TalkFile> localTalkFiles)
+        {
+
             var prompt = new PromptDialog("Enter text to find anywhere in a loaded TLK string:", "Find StringRef by Text", selectText: true)
             {
                 Owner = owner,
@@ -38,7 +49,7 @@ namespace LegendaryExplorer.Misc
                 return null;
             }
 
-            List<TlkTextMatch> matches = FindMatches(package, searchText);
+            List<TlkTextMatch> matches = FindMatches(game, localTalkFiles, searchText);
             if (matches.Count == 0)
             {
                 MessageBox.Show(owner, "That text was not found in any loaded TLK for this game. Try another search.", "TLK Text Not Found", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -49,7 +60,7 @@ namespace LegendaryExplorer.Misc
                 searchHelpText: "Filter results by string ID, TLK name, or text")?.StringRef;
         }
 
-        private static List<TlkTextMatch> FindMatches(IMEPackage package, string searchText)
+        private static List<TlkTextMatch> FindMatches(MEGame game, IEnumerable<ME1TalkFile> localTalkFiles, string searchText)
         {
             var matches = new List<TlkTextMatch>();
 
@@ -74,10 +85,10 @@ namespace LegendaryExplorer.Misc
                 }
             }
 
-            switch (package.Game)
+            switch (game)
             {
                 case MEGame.ME1:
-                    AddME1Matches(package.LocalTalkFiles.Concat(ME1TalkFiles.LoadedTlks));
+                    AddME1Matches(localTalkFiles.Concat(ME1TalkFiles.LoadedTlks));
                     break;
                 case MEGame.ME2:
                     AddLazyMatches(ME2TalkFiles.LoadedTlks);
@@ -86,7 +97,7 @@ namespace LegendaryExplorer.Misc
                     AddLazyMatches(ME3TalkFiles.LoadedTlks);
                     break;
                 case MEGame.LE1:
-                    AddME1Matches(package.LocalTalkFiles.Concat(LE1TalkFiles.LoadedTlks));
+                    AddME1Matches(localTalkFiles.Concat(LE1TalkFiles.LoadedTlks));
                     break;
                 case MEGame.LE2:
                     AddLazyMatches(LE2TalkFiles.LoadedTlks);

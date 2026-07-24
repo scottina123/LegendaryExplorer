@@ -178,13 +178,14 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         private bool _isRestoringState;
         private readonly XmlTagMatchRenderer _xmlTagMatchRenderer = new();
         private readonly SelectionMatchRenderer _selectionMatchRenderer = new();
-        private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator = new();
+        private readonly TlkInlineAnnotationGenerator _tlkInlineAnnotationGenerator;
         private CoalescedSearchMatch? _currentSearchMatch;
         private Point _tabDragStartPoint;
         private OpenCoalescedFile _tabDragSource;
 
         public CoalescedEditorWindow() : base("Coalesced Editor", true)
         {
+            _tlkInlineAnnotationGenerator = new TlkInlineAnnotationGenerator(SelectTlkStringRef);
             LoadCommands();
             InitializeComponent();
             DataContext = this;
@@ -1022,7 +1023,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         #region Find and Replace
 
         private readonly record struct TextReplacement(int StartOffset, int Length, string ReplacementText);
-        private readonly record struct ResolvedTlkAnnotation(int AnchorOffset, int AnchorLength, string Text);
+        private readonly record struct ResolvedTlkAnnotation(int AnchorOffset, int AnchorLength, string Text, bool IsTlkReference = false);
         private readonly record struct CoalescedSearchMatch(int AnchorOffset, int AnchorLength, int SortOffset, int SortSubOffset, int MatchLength, bool IsFriendly);
 
         private void ShowFindReplace()
@@ -1494,13 +1495,18 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             var game = GetSelectedFileGame();
             if (string.IsNullOrWhiteSpace(text) || game == MEGame.Unknown)
             {
-                _tlkInlineAnnotationGenerator.SetAnnotations(Array.Empty<KeyValuePair<int, string>>());
+                _tlkInlineAnnotationGenerator.SetAnnotations([]);
                 TextEditor?.TextArea.TextView.Redraw();
                 return;
             }
 
             var annotations = GetResolvedTlkAnnotations(text)
-                .Select(annotation => new KeyValuePair<int, string>(annotation.AnchorOffset + annotation.AnchorLength, annotation.Text))
+                .Select(annotation => new TlkInlineAnnotation(
+                    annotation.AnchorOffset + annotation.AnchorLength,
+                    annotation.AnchorOffset,
+                    annotation.AnchorLength,
+                    annotation.Text,
+                    annotation.IsTlkReference))
                 .ToList();
 
             _tlkInlineAnnotationGenerator.SetAnnotations(annotations);
@@ -1533,10 +1539,23 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 if (string.IsNullOrWhiteSpace(friendly) || friendly == "No Data" || friendly == "UDK String Refs Not Supported")
                     continue;
 
-                annotations[match.Index] = new ResolvedTlkAnnotation(match.Index, match.Length, StripWrappingQuotes(friendly));
+                annotations[match.Index] = new ResolvedTlkAnnotation(match.Index, match.Length, StripWrappingQuotes(friendly), true);
             }
 
             return annotations.Values.OrderBy(annotation => annotation.AnchorOffset).ToList();
+        }
+
+        private void SelectTlkStringRef(int anchorOffset, int anchorLength)
+        {
+            var game = GetSelectedFileGame();
+            if (game == MEGame.Unknown || TextEditor?.Document == null || anchorOffset < 0 || anchorLength <= 0 || anchorOffset + anchorLength > TextEditor.Document.TextLength)
+                return;
+
+            int? selectedStringRef = TlkStringRefSelector.SelectStringRef(this, game);
+            if (selectedStringRef is not int stringRef)
+                return;
+
+            TextEditor.Document.Replace(anchorOffset, anchorLength, stringRef.ToString(CultureInfo.InvariantCulture));
         }
 
         private List<ResolvedTlkAnnotation> GetResolvedPlotAnnotations(string text, MEGame game)
@@ -2433,27 +2452,35 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         }
     }
 
+    internal readonly record struct TlkInlineAnnotation(int Offset, int AnchorOffset, int AnchorLength, string Text, bool HasTlkLookup);
+
     public class TlkInlineAnnotationGenerator : VisualLineElementGenerator
     {
         private const double CollapsedWidth = 364;
         private const double CollapsedHeight = 24;
         private const double ExpandedWidth = 364;
         private const double ExpandedHeight = 96;
-        private readonly Dictionary<int, string> _annotations = new();
+        private readonly Dictionary<int, TlkInlineAnnotation> _annotations = new();
         private readonly List<int> _offsets = new();
+        private readonly Action<int, int> _selectTlkStringRef;
 
-        public void SetAnnotations(IEnumerable<KeyValuePair<int, string>> annotations)
+        public TlkInlineAnnotationGenerator(Action<int, int> selectTlkStringRef)
+        {
+            _selectTlkStringRef = selectTlkStringRef;
+        }
+
+        internal void SetAnnotations(IEnumerable<TlkInlineAnnotation> annotations)
         {
             _annotations.Clear();
             _offsets.Clear();
 
             foreach (var annotation in annotations)
             {
-                if (annotation.Key < 0 || string.IsNullOrWhiteSpace(annotation.Value))
+                if (annotation.Offset < 0 || string.IsNullOrWhiteSpace(annotation.Text))
                     continue;
 
-                _annotations[annotation.Key] = annotation.Value;
-                _offsets.Add(annotation.Key);
+                _annotations[annotation.Offset] = annotation;
+                _offsets.Add(annotation.Offset);
             }
 
             _offsets.Sort();
@@ -2483,21 +2510,21 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
 
             var textBox = new TextBox
             {
-                Text = annotation,
+                Text = annotation.Text,
                 IsReadOnly = true,
                 Focusable = true,
                 IsTabStop = false,
-                Margin = new Thickness(6, -1, 0, -1),
+                Margin = new Thickness(0),
                 Padding = new Thickness(6, 1, 6, 1),
                 BorderThickness = new Thickness(1),
                 Background = new SolidColorBrush(Color.FromRgb(45, 45, 48)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(122, 122, 122)),
                 Foreground = new SolidColorBrush(Color.FromRgb(241, 241, 241)),
                 VerticalContentAlignment = VerticalAlignment.Top,
-                Width = CollapsedWidth,
+                Width = annotation.HasTlkLookup ? CollapsedWidth - 34 : CollapsedWidth,
                 Height = CollapsedHeight,
-                MinWidth = CollapsedWidth,
-                MaxWidth = CollapsedWidth,
+                MinWidth = annotation.HasTlkLookup ? CollapsedWidth - 34 : CollapsedWidth,
+                MaxWidth = annotation.HasTlkLookup ? CollapsedWidth - 34 : CollapsedWidth,
                 MinHeight = CollapsedHeight,
                 MaxHeight = CollapsedHeight,
                 TextWrapping = TextWrapping.Wrap,
@@ -2518,11 +2545,36 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
             };
             contextMenu.Items.Add(copyMenuItem);
             var expandMenuItem = new MenuItem { Header = "Expand" };
-            expandMenuItem.Click += (_, _) => ShowExpandedPopup(textBox, annotation);
+            expandMenuItem.Click += (_, _) => ShowExpandedPopup(textBox, annotation.Text);
             contextMenu.Items.Add(expandMenuItem);
             textBox.ContextMenu = contextMenu;
 
-            return new InlineObjectElement(0, textBox);
+            if (!annotation.HasTlkLookup)
+            {
+                textBox.Margin = new Thickness(6, -1, 0, -1);
+                return new InlineObjectElement(0, textBox);
+            }
+
+            var lookupButton = new Button
+            {
+                Content = "...",
+                Width = 28,
+                Height = CollapsedHeight,
+                Margin = new Thickness(6, -1, 0, -1),
+                Padding = new Thickness(0),
+                ToolTip = "Find a StringRef by text in the loaded TLKs",
+                Focusable = false
+            };
+            lookupButton.Click += (_, _) => _selectTlkStringRef(annotation.AnchorOffset, annotation.AnchorLength);
+
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            panel.Children.Add(textBox);
+            panel.Children.Add(lookupButton);
+            return new InlineObjectElement(0, panel);
         }
 
         private static void ShowExpandedPopup(TextBox placementTarget, string annotation)
