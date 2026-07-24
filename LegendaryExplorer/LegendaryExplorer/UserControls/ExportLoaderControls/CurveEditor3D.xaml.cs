@@ -419,6 +419,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
+        _ = RestoreSessionLevelsAsync();
     }
 
     public override void UnloadExport()
@@ -516,14 +517,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        sessionLevelsRestored = true;
         List<string> paths;
         lock (sessionLevelPathsLock)
         {
-            paths = [.. sessionLevelPaths];
+            paths = sessionLevelPaths.Where(File.Exists).ToList();
+        }
+        if (paths.Count == 0)
+        {
+            return;
         }
 
-        foreach (string path in paths.Where(File.Exists))
+        sessionLevelsRestored = true;
+        foreach (string path in paths)
         {
             await LoadLevelAsync(path, replace: false, updateSession: false).ConfigureAwait(true);
         }
