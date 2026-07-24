@@ -36,9 +36,6 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.PlotDatabase.PlotElements;
-using LegendaryExplorerCore.TLK;
-using LegendaryExplorerCore.TLK.ME1;
-using LegendaryExplorerCore.TLK.ME2ME3;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -4088,93 +4085,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            string searchText = PromptDialog.Prompt(this, "Enter text to find anywhere in a loaded TLK string:", "Find StringRef by Text", selectText: true,
-                validator: value => (!string.IsNullOrWhiteSpace(value), "Enter text to search for."));
-            if (searchText is null)
-            {
-                return;
-            }
-
-            List<TlkTextMatch> matches = FindTlkTextMatches(searchText);
-            if (matches.Count == 0)
-            {
-                MessageBox.Show("That text was not found in any loaded TLK for this game. Try another search.", "TLK Text Not Found", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            TlkTextMatch selectedMatch = EntrySelector.GetItem(Window.GetWindow(this), matches,
-                "Select the TLK string reference to apply:", searchHelpText: "Filter results by string ID, TLK name, or text");
-            if (selectedMatch is null)
+            int? selectedStringRef = TlkStringRefSelector.SelectStringRef(Window.GetWindow(this), CurrentLoadedExport.FileRef);
+            if (selectedStringRef is null)
             {
                 return;
             }
 
             if ((sender as FrameworkElement)?.Tag is UPropertyTreeViewEntry)
             {
-                node.InlineEditorValue = selectedMatch.StringRef.ToString(CultureInfo.InvariantCulture);
+                node.InlineEditorValue = selectedStringRef.Value.ToString(CultureInfo.InvariantCulture);
                 TryCommitInlineEditor(node);
             }
             else
             {
                 ApplySelectedTreeItem(node);
-                Value_TextBox.Text = selectedMatch.StringRef.ToString(CultureInfo.InvariantCulture);
+                Value_TextBox.Text = selectedStringRef.Value.ToString(CultureInfo.InvariantCulture);
                 SetValue_Click(null, null);
             }
-        }
-
-        private List<TlkTextMatch> FindTlkTextMatches(string searchText)
-        {
-            var matches = new List<TlkTextMatch>();
-
-            void AddME1Matches(IEnumerable<ME1TalkFile> talkFiles)
-            {
-                foreach (ME1TalkFile talkFile in talkFiles.Distinct())
-                {
-                    string source = $"{Path.GetFileName(talkFile.FilePath)} -> {talkFile.BioTlkSetName}.{talkFile.Name}";
-                    matches.AddRange(talkFile.StringRefs
-                        .Where(stringRef => stringRef.Data?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
-                        .Select(stringRef => new TlkTextMatch(stringRef.StringID, source, stringRef.Data)));
-                }
-            }
-
-            void AddLazyMatches(IEnumerable<ME2ME3LazyTLK> talkFiles)
-            {
-                foreach (ME2ME3LazyTLK talkFile in talkFiles)
-                {
-                    matches.AddRange(talkFile.FindIdsByData(searchText, StringComparison.OrdinalIgnoreCase)
-                        .Select(stringRef => new TlkTextMatch(stringRef, talkFile.FileName,
-                            talkFile.FindDataById(stringRef, returnNullIfNotFound: true, noQuotes: true))));
-                }
-            }
-
-            switch (CurrentLoadedExport.Game)
-            {
-                case MEGame.ME1:
-                    AddME1Matches(CurrentLoadedExport.FileRef.LocalTalkFiles.Concat(ME1TalkFiles.LoadedTlks));
-                    break;
-                case MEGame.ME2:
-                    AddLazyMatches(ME2TalkFiles.LoadedTlks);
-                    break;
-                case MEGame.ME3:
-                    AddLazyMatches(ME3TalkFiles.LoadedTlks);
-                    break;
-                case MEGame.LE1:
-                    AddME1Matches(CurrentLoadedExport.FileRef.LocalTalkFiles.Concat(LE1TalkFiles.LoadedTlks));
-                    break;
-                case MEGame.LE2:
-                    AddLazyMatches(LE2TalkFiles.LoadedTlks);
-                    break;
-                case MEGame.LE3:
-                    AddLazyMatches(LE3TalkFiles.LoadedTlks);
-                    break;
-            }
-
-            return matches.DistinctBy(match => (match.StringRef, match.Source)).ToList();
-        }
-
-        private sealed record TlkTextMatch(int StringRef, string Source, string Text)
-        {
-            public override string ToString() => $"{StringRef}: {Source} — {Text.ReplaceLineEndings(" ")}";
         }
 
         private void InlineObjectDisplay_MouseDoubleClick(object sender, MouseButtonEventArgs e)

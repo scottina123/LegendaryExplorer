@@ -1067,20 +1067,22 @@ namespace LegendaryExplorer.DialogueEditor
         {
             float editorX = 4;
             float editorWidth = MathF.Max(width - 8, 80);
+            const float searchButtonWidth = 18;
+            float valueEditorWidth = editorWidth - searchButtonWidth;
 
             var text = new DText(Node.LineStrRef.ToString(), boxTextColor)
             {
                 X = editorX + 4,
                 Pickable = false,
                 ConstrainWidthToTextWidth = false,
-                Width = editorWidth - 8
+                Width = valueEditorWidth - 8
             };
 
             float editorHeight = MathF.Max(18, text.Height + 4);
-            lineStrRefEditorBounds = new RectangleF(editorX, y, editorWidth, editorHeight);
+            lineStrRefEditorBounds = new RectangleF(editorX, y, valueEditorWidth, editorHeight);
             text.Y = y + ((editorHeight - text.Height) / 2);
 
-            var editorBox = PPath.CreateRectangle(editorX, y, editorWidth, editorHeight);
+            var editorBox = PPath.CreateRectangle(editorX, y, valueEditorWidth, editorHeight);
             editorBox.Brush = CreateNodeBrush();
             editorBox.Pen = new Pen(Color.FromArgb(120, boxTextColor));
 
@@ -1094,14 +1096,40 @@ namespace LegendaryExplorer.DialogueEditor
                 e.Handled = true;
                 PointF relativeToNode = e.GetPositionRelativeTo(this);
                 var clickOffsetInEditor = new PointF(relativeToNode.X - editorX, relativeToNode.Y - y);
-                clickOffsetInEditor.X = MathF.Max(0, MathF.Min(editorWidth, clickOffsetInEditor.X));
+                clickOffsetInEditor.X = MathF.Max(0, MathF.Min(valueEditorWidth, clickOffsetInEditor.X));
                 clickOffsetInEditor.Y = MathF.Max(0, MathF.Min(editorHeight, clickOffsetInEditor.Y));
-                Editor.BeginInlineLineStrRefEdit(this, Cursor.Position, editorWidth, editorHeight, clickOffsetInEditor);
+                Editor.BeginInlineLineStrRefEdit(this, Cursor.Position, valueEditorWidth, editorHeight, clickOffsetInEditor);
+            };
+
+            var searchButton = PPath.CreateRectangle(editorX + valueEditorWidth, y, searchButtonWidth, editorHeight);
+            searchButton.Brush = new SolidBrush(Color.FromArgb(30, boxTextColor));
+            searchButton.Pen = new Pen(Color.FromArgb(150, boxTextColor));
+            searchButton.Click += (_, e) =>
+            {
+                if (e.Button != MouseButtons.Left)
+                {
+                    return;
+                }
+
+                e.Handled = true;
+                Editor.SelectNodeLineStrRefFromTlkText(this);
+            };
+
+            var searchLabel = new DText("...", boxTextColor)
+            {
+                Pickable = false,
+                ConstrainWidthToTextWidth = false,
+                TextAlignment = StringAlignment.Center,
+                X = editorX + valueEditorWidth,
+                Y = y + ((editorHeight - text.Height) / 2),
+                Width = searchButtonWidth
             };
 
             var container = new PNode();
             container.AddChild(editorBox);
             container.AddChild(text);
+            container.AddChild(searchButton);
+            container.AddChild(searchLabel);
             container.Pickable = true;
             return container;
         }

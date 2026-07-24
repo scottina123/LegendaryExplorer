@@ -7913,6 +7913,21 @@ namespace LegendaryExplorer.DialogueEditor
             ApplyLineStrRefChange(node);
         }
 
+        public void SelectNodeLineStrRefFromTlkText(DiagNode graphNode)
+        {
+            if (graphNode?.Node is null || SelectedConv is null)
+            {
+                return;
+            }
+
+            EndInlineLineStrRefEdit(false);
+            int? selectedStringRef = TlkStringRefSelector.SelectStringRef(this, Pcc);
+            if (selectedStringRef.HasValue)
+            {
+                UpdateNodeLineStrRefFromGraph(graphNode.Node, selectedStringRef.Value);
+            }
+        }
+
         public void UpdateNodeExportIdFromGraph(DialogueNodeExtended node, int exportId)
         {
             if (node == null || SelectedConv == null || node.ExportID == exportId)
