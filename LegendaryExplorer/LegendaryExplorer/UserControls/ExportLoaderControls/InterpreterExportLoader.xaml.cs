@@ -36,6 +36,9 @@ using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.PlotDatabase;
 using LegendaryExplorerCore.PlotDatabase.PlotElements;
+using LegendaryExplorerCore.TLK;
+using LegendaryExplorerCore.TLK.ME1;
+using LegendaryExplorerCore.TLK.ME2ME3;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
@@ -298,8 +301,43 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public UPropertyTreeViewEntry TreeSelectedItem
         {
             get => _treeSelectedItem;
-            set => SetProperty(ref _treeSelectedItem, value);
+            set
+            {
+                if (SetProperty(ref _treeSelectedItem, value))
+                {
+                    OnPropertyChanged(nameof(IsStringRefSelected));
+                }
+            }
         }
+
+        public bool IsStringRefSelected => IsTlkStringRefProperty(TreeSelectedItem?.Property, TreeSelectedItem?.UPParent?.Property);
+
+        internal static bool IsTlkStringRefProperty(Property property, Property parentProperty = null)
+        {
+            if (property is StringRefProperty)
+            {
+                return true;
+            }
+
+            if (property is not IntProperty)
+            {
+                return false;
+            }
+
+            string propertyName = property.Name.Name;
+            if (string.IsNullOrWhiteSpace(propertyName) || propertyName == "None")
+            {
+                propertyName = parentProperty?.Name.Name;
+            }
+
+            return IsTlkStringRefPropertyName(propertyName);
+        }
+
+        private static bool IsTlkStringRefPropertyName(string propertyName) =>
+            !string.IsNullOrWhiteSpace(propertyName)
+            && (propertyName.Contains("StrRef", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Contains("StringRef", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Contains("StringID", StringComparison.OrdinalIgnoreCase));
 
         #region Commands
         public ICommand RemovePropertyCommand { get; set; }
@@ -2101,9 +2139,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             parsedValue = IntToString(prop.Name.Name ?? parent?.Property.Name.Name, ip.Value, parsingExport, useAssetDatabaseOwnerFriendlyNames);
                         }
-                        if (ip.Name == "m_nStrRefID" || ip.Name == "nLineStrRef" || ip.Name == "nStrRefID" || ip.Name == "m_iStringRef" || ip.Name == "m_iDescriptionStringRef" || ip.Name == "m_srStringID")
+                        if (IsTlkStringRefProperty(ip, parent?.Property))
                         {
-                            parsedValue = IntToString(prop.Name, ip.Value, parsingExport, useAssetDatabaseOwnerFriendlyNames);
+                            parsedValue = TLKManagerWPF.GlobalFindStrRefbyID(ip.Value, parsingExport.FileRef.Game, parsingExport.FileRef);
                         }
 
                         if (ip.Name == "VisibleConditional" || ip.Name == "UsableConditional" || ip.Name == "ReaperControlCondition" || ip.Name == "PlanetLandCondition" ||
@@ -2782,7 +2820,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             }
 
-            if (name == "m_nStrRefID" || name == "nLineStrRef" || name == "nStrRefID" || name == "m_iStringRef" || name == "m_iDescriptionStringRef" || name == "m_srStringID")
+            if (IsTlkStringRefPropertyName(name))
             {
                 return TLKManagerWPF.GlobalFindStrRefbyID(value, export.FileRef.Game, export.FileRef);
             }
@@ -4040,6 +4078,103 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void InlineEditorConfirmButton_Click(object sender, RoutedEventArgs e)
         {
             TryCommitInlineEditor(sender as FrameworkElement);
+        }
+
+        private void StringRefTextLookupButton_Click(object sender, RoutedEventArgs e)
+        {
+            UPropertyTreeViewEntry node = (sender as FrameworkElement)?.Tag as UPropertyTreeViewEntry ?? TreeSelectedItem;
+            if (!IsTlkStringRefProperty(node?.Property, node?.UPParent?.Property) || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            string searchText = PromptDialog.Prompt(this, "Enter text to find anywhere in a loaded TLK string:", "Find StringRef by Text", selectText: true,
+                validator: value => (!string.IsNullOrWhiteSpace(value), "Enter text to search for."));
+            if (searchText is null)
+            {
+                return;
+            }
+
+            List<TlkTextMatch> matches = FindTlkTextMatches(searchText);
+            if (matches.Count == 0)
+            {
+                MessageBox.Show("That text was not found in any loaded TLK for this game. Try another search.", "TLK Text Not Found", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            TlkTextMatch selectedMatch = EntrySelector.GetItem(Window.GetWindow(this), matches,
+                "Select the TLK string reference to apply:", searchHelpText: "Filter results by string ID, TLK name, or text");
+            if (selectedMatch is null)
+            {
+                return;
+            }
+
+            if ((sender as FrameworkElement)?.Tag is UPropertyTreeViewEntry)
+            {
+                node.InlineEditorValue = selectedMatch.StringRef.ToString(CultureInfo.InvariantCulture);
+                TryCommitInlineEditor(node);
+            }
+            else
+            {
+                ApplySelectedTreeItem(node);
+                Value_TextBox.Text = selectedMatch.StringRef.ToString(CultureInfo.InvariantCulture);
+                SetValue_Click(null, null);
+            }
+        }
+
+        private List<TlkTextMatch> FindTlkTextMatches(string searchText)
+        {
+            var matches = new List<TlkTextMatch>();
+
+            void AddME1Matches(IEnumerable<ME1TalkFile> talkFiles)
+            {
+                foreach (ME1TalkFile talkFile in talkFiles.Distinct())
+                {
+                    string source = $"{Path.GetFileName(talkFile.FilePath)} -> {talkFile.BioTlkSetName}.{talkFile.Name}";
+                    matches.AddRange(talkFile.StringRefs
+                        .Where(stringRef => stringRef.Data?.Contains(searchText, StringComparison.OrdinalIgnoreCase) == true)
+                        .Select(stringRef => new TlkTextMatch(stringRef.StringID, source, stringRef.Data)));
+                }
+            }
+
+            void AddLazyMatches(IEnumerable<ME2ME3LazyTLK> talkFiles)
+            {
+                foreach (ME2ME3LazyTLK talkFile in talkFiles)
+                {
+                    matches.AddRange(talkFile.FindIdsByData(searchText, StringComparison.OrdinalIgnoreCase)
+                        .Select(stringRef => new TlkTextMatch(stringRef, talkFile.FileName,
+                            talkFile.FindDataById(stringRef, returnNullIfNotFound: true, noQuotes: true))));
+                }
+            }
+
+            switch (CurrentLoadedExport.Game)
+            {
+                case MEGame.ME1:
+                    AddME1Matches(CurrentLoadedExport.FileRef.LocalTalkFiles.Concat(ME1TalkFiles.LoadedTlks));
+                    break;
+                case MEGame.ME2:
+                    AddLazyMatches(ME2TalkFiles.LoadedTlks);
+                    break;
+                case MEGame.ME3:
+                    AddLazyMatches(ME3TalkFiles.LoadedTlks);
+                    break;
+                case MEGame.LE1:
+                    AddME1Matches(CurrentLoadedExport.FileRef.LocalTalkFiles.Concat(LE1TalkFiles.LoadedTlks));
+                    break;
+                case MEGame.LE2:
+                    AddLazyMatches(LE2TalkFiles.LoadedTlks);
+                    break;
+                case MEGame.LE3:
+                    AddLazyMatches(LE3TalkFiles.LoadedTlks);
+                    break;
+            }
+
+            return matches.DistinctBy(match => (match.StringRef, match.Source)).ToList();
+        }
+
+        private sealed record TlkTextMatch(int StringRef, string Source, string Text)
+        {
+            public override string ToString() => $"{StringRef}: {Source} — {Text.ReplaceLineEndings(" ")}";
         }
 
         private void InlineObjectDisplay_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -5563,6 +5698,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool IsNameProperty => Property is NameProperty;
         private bool IsObjectProperty => Property is ObjectProperty;
         private bool IsEnumProperty => Property is EnumProperty;
+        public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;

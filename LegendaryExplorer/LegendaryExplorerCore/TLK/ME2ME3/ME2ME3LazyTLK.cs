@@ -82,5 +82,27 @@ namespace LegendaryExplorerCore.TLK.ME2ME3
 
             return returnNullIfNotFound ? null : "No Data";
         }
+
+        /// <summary>
+        /// Finds all string IDs whose text contains <paramref name="value"/>.
+        /// </summary>
+        public IReadOnlyList<int> FindIdsByData(string value, StringComparison comparison = StringComparison.Ordinal)
+        {
+            var matches = new List<int>();
+            lock (syncObj)
+            {
+                StringBuilder builder = _builder ??= new StringBuilder();
+                foreach ((int stringId, int storedBitOffset) in LazyStringRefs)
+                {
+                    int bitOffset = storedBitOffset;
+                    if (bitOffset >= 0 && GetString(ref bitOffset, builder, Bits, Nodes).Contains(value, comparison))
+                    {
+                        matches.Add(stringId);
+                    }
+                }
+            }
+
+            return matches;
+        }
     }
 }
