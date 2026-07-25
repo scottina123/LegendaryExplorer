@@ -3129,13 +3129,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            ApplySelectedTreeItem(node);
             switch (node.Property)
             {
                 case BoolProperty boolProperty:
                     boolProperty.Value = !boolProperty.Value;
                     node.EditableValue = boolProperty.Value.ToString();
-                    Value_ComboBox.SelectedIndex = boolProperty.Value ? 0 : 1;
+                    if (ReferenceEquals(node, SelectedItem))
+                    {
+                        ApplySelectedTreeItem(node);
+                    }
                     WriteCurrentLoadedProperties();
                     e.Handled = true;
                     break;
@@ -3321,7 +3323,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            ApplySelectedTreeItem(targetNode);
+            if (!commitInlineSelection)
+            {
+                ApplySelectedTreeItem(targetNode);
+            }
             UpdateObjectComboBoxOptions(objectProperty, targetNode);
 
             HashSet<int> allowedEntryUIndexes = [.. CurrentObjectPropertyChoices.OfType<IEntry>().Select(entry => entry.UIndex)];
@@ -4117,7 +4122,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
             {
-                ApplySelectedTreeItem(node);
                 UpdateInlineObjectPropertyDisplayText(node, GetObjectPropertyDisplayText(node.InlineObjectIndexValue));
             }
         }
@@ -4134,8 +4138,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 return false;
             }
-
-            ApplySelectedTreeItem(node);
 
             bool updated = false;
             switch (node.Property)
@@ -4204,6 +4206,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             node.ResetInlineEditorValues();
+            if (ReferenceEquals(node, SelectedItem))
+            {
+                ApplySelectedTreeItem(node);
+            }
             WriteCurrentLoadedProperties();
             return true;
         }
