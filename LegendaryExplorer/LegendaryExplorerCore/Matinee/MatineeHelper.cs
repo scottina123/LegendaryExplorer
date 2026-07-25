@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Drawing;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal;
@@ -596,6 +598,114 @@ namespace LegendaryExplorerCore.Matinee
 
             return interpTrack != null;
 
+        }
+
+        /// <summary>
+        /// Clones the dynamic animsets used by a gesture track into the destination conversation sequence.
+        /// </summary>
+        public static List<EntryStringPair> CloneGestureTrackAnimSets(ExportEntry sourceGestureTrack, ExportEntry destinationGestureTrack, RelinkerOptionsPackage rop)
+        {
+            var relinkResults = new List<EntryStringPair>();
+            if (sourceGestureTrack?.ClassName != "BioEvtSysTrackGesture" || destinationGestureTrack?.ClassName != "BioEvtSysTrackGesture")
+            {
+                return relinkResults;
+            }
+
+            ExportEntry sourceSequence = FindOwningSequence(sourceGestureTrack);
+            ExportEntry destinationSequence = FindOwningSequence(destinationGestureTrack);
+            HashSet<string> requiredSetNames = GetGestureAnimSetNames(sourceGestureTrack);
+            if (sourceSequence == null || destinationSequence == null || requiredSetNames.Count == 0)
+            {
+                return relinkResults;
+            }
+
+            string sourcePropertyName = sourceGestureTrack.Game is MEGame.LE1 or MEGame.ME1 ? "m_aBioDynAnimSets" : "m_aSFXSharedAnimSets";
+            string destinationPropertyName = destinationGestureTrack.Game is MEGame.LE1 or MEGame.ME1 ? "m_aBioDynAnimSets" : "m_aSFXSharedAnimSets";
+            if (sourceSequence.GetProperty<ArrayProperty<ObjectProperty>>(sourcePropertyName) is not { } sourceAnimSets)
+            {
+                return relinkResults;
+            }
+
+            ArrayProperty<ObjectProperty> destinationAnimSets = destinationSequence.GetProperty<ArrayProperty<ObjectProperty>>(destinationPropertyName)
+                                                                  ?? new ArrayProperty<ObjectProperty>(destinationPropertyName);
+            var existingSetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ObjectProperty animSetRef in destinationAnimSets)
+            {
+                if (destinationSequence.FileRef.TryGetUExport(animSetRef.Value, out ExportEntry dynamicAnimSet)
+                    && dynamicAnimSet.ClassName == "BioDynamicAnimSet"
+                    && dynamicAnimSet.GetProperty<NameProperty>("m_nmOrigSetName") is { } setName)
+                {
+                    existingSetNames.Add(setName.Value.Name);
+                }
+            }
+
+            bool changed = false;
+            foreach (ObjectProperty animSetRef in sourceAnimSets)
+            {
+                if (!sourceSequence.FileRef.TryGetUExport(animSetRef.Value, out ExportEntry sourceDynamicAnimSet)
+                    || sourceDynamicAnimSet.ClassName != "BioDynamicAnimSet"
+                    || sourceDynamicAnimSet.GetProperty<NameProperty>("m_nmOrigSetName") is not { } sourceSetName
+                    || !requiredSetNames.Contains(sourceSetName.Value.Name)
+                    || existingSetNames.Contains(sourceSetName.Value.Name))
+                {
+                    continue;
+                }
+
+                relinkResults.AddRange(EntryImporter.ImportAndRelinkEntries(
+                    EntryImporter.PortingOption.CloneAllDependencies, sourceDynamicAnimSet, destinationSequence.FileRef,
+                    destinationSequence, true, rop, out IEntry importedEntry));
+                if (importedEntry is ExportEntry importedDynamicAnimSet)
+                {
+                    destinationAnimSets.Add(new ObjectProperty(importedDynamicAnimSet.UIndex));
+                    existingSetNames.Add(sourceSetName.Value.Name);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                destinationSequence.WriteProperty(destinationAnimSets);
+            }
+
+            return relinkResults;
+        }
+
+        private static HashSet<string> GetGestureAnimSetNames(ExportEntry gestureTrack)
+        {
+            var setNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddSetName(gestureTrack.GetProperty<NameProperty>("nmStartingPoseSet"));
+            if (gestureTrack.GetProperty<ArrayProperty<StructProperty>>("m_aGestures") is { } gestures)
+            {
+                foreach (StructProperty gesture in gestures)
+                {
+                    AddSetName(gesture.GetProp<NameProperty>("nmPoseSet"));
+                    AddSetName(gesture.GetProp<NameProperty>("nmGestureSet"));
+                    AddSetName(gesture.GetProp<NameProperty>("nmTransitionSet"));
+                }
+            }
+
+            return setNames;
+
+            void AddSetName(NameProperty setName)
+            {
+                if (setName != null && !string.Equals(setName.Value.Name, "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    setNames.Add(setName.Value.Name);
+                }
+            }
+        }
+
+        private static ExportEntry FindOwningSequence(ExportEntry gestureTrack)
+        {
+            if (gestureTrack.Parent?.Parent is not ExportEntry interpData)
+            {
+                return null;
+            }
+
+            ExportEntry interpAction = gestureTrack.FileRef.Exports.FirstOrDefault(export =>
+                export.ClassName is "SeqAct_Interp" or "BioSeqAct_PMCheckConditional"
+                && export.GetProperty<ObjectProperty>("InterpData")?.Value == interpData.UIndex);
+            return interpAction?.Parent as ExportEntry ?? interpData.Parent as ExportEntry;
         }
     }
 }

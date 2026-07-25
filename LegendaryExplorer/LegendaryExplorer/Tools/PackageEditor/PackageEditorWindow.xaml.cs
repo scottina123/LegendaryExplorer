@@ -6836,6 +6836,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 var relinkResults = EntryImporter.ImportAndRelinkEntries(portingOption.PortingOptionChosen, sourceEntry, Pcc,
                     targetLinkEntry, true, rop, out IEntry newEntry);
 
+                if (sourceEntry is ExportEntry { ClassName: "BioEvtSysTrackGesture" } sourceGestureTrack
+                    && newEntry is ExportEntry destinationGestureTrack)
+                {
+                    relinkResults.AddRange(MatineeHelper.CloneGestureTrackAnimSets(sourceGestureTrack, destinationGestureTrack, rop));
+                }
+
                 if (originalIndex >= 0)
                 {
                     //index was temporarily adjusted for porting. restore state
