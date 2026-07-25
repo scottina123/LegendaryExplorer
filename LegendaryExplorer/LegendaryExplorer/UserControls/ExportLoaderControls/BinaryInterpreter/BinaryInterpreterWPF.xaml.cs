@@ -441,19 +441,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private int PreviousLoadedUIndex = -1;
-        private int PreviousSelectedTreeOffset = -1;
+        private string PreviousSelectedTreePath;
+        private readonly HashSet<string> PreviousExpandedTreePaths = [];
 
         public override void LoadExport(ExportEntry exportEntry)
         {
-            PreviousSelectedTreeOffset = -1;
+            PreviousSelectedTreePath = null;
+            PreviousExpandedTreePaths.Clear();
             LoadingNewData = true;
             ByteShift_UpDown.Value = 0;
             if (CurrentLoadedExport != null)
             {
                 PreviousLoadedUIndex = CurrentLoadedExport.UIndex;
-                if (BinaryInterpreter_TreeView.SelectedItem is BinInterpNode b)
+                if (CurrentLoadedExport.UIndex == exportEntry.UIndex)
                 {
-                    PreviousSelectedTreeOffset = b.Offset;
+                    CaptureTreeState();
                 }
             }
             CurrentLoadedExport = exportEntry;
@@ -557,7 +559,70 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     OnDemand_Panel.Visibility = Visibility.Collapsed;
                     LoadedContent_Panel.Visibility = Visibility.Visible;
                     TreeViewItems.Replace(result);
+                    if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex)
+                    {
+                        RestoreTreeState(result);
+                    }
                 });
+        }
+
+        private void CaptureTreeState()
+        {
+            var selectedNode = BinaryInterpreter_TreeView.SelectedItem as BinInterpNode;
+            for (int i = 0; i < TreeViewItems.Count; i++)
+            {
+                CaptureTreeState(TreeViewItems[i], i.ToString(), selectedNode);
+            }
+        }
+
+        private void CaptureTreeState(BinInterpNode node, string path, BinInterpNode selectedNode)
+        {
+            if (node.IsExpanded)
+            {
+                PreviousExpandedTreePaths.Add(path);
+            }
+            if (ReferenceEquals(node, selectedNode))
+            {
+                PreviousSelectedTreePath = path;
+            }
+
+            for (int i = 0; i < node.Items.Count; i++)
+            {
+                if (node.Items[i] is BinInterpNode child)
+                {
+                    CaptureTreeState(child, $"{path}/{i}", selectedNode);
+                }
+            }
+        }
+
+        private void RestoreTreeState(BinInterpNode root)
+        {
+            var selectedNode = RestoreTreeState(root, "0");
+            if (selectedNode is not null)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    selectedNode.IsProgramaticallySelecting = false;
+                    selectedNode.IsSelected = true;
+                }, DispatcherPriority.ContextIdle);
+            }
+        }
+
+        private BinInterpNode RestoreTreeState(BinInterpNode node, string path)
+        {
+            node.IsExpanded = PreviousExpandedTreePaths.Contains(path);
+            BinInterpNode selectedNode = path == PreviousSelectedTreePath ? node : null;
+
+            for (int i = 0; i < node.Items.Count; i++)
+            {
+                if (node.Items[i] is BinInterpNode child)
+                {
+                    var selectedChild = RestoreTreeState(child, $"{path}/{i}");
+                    selectedNode ??= selectedChild;
+                }
+            }
+
+            return selectedNode;
         }
 
         public static bool IsNativePropertyType(string classname)
@@ -893,12 +958,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             break;
                     }
                 }
-                if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex && PreviousSelectedTreeOffset != -1)
-                {
-                    var reSelected = AttemptSelectPreviousEntry(subNodes);
-                    Debug.WriteLine("Reselected previous entry");
-                }
-
                 GenericEditorSetVisibility = isGenericScan ? Visibility.Visible : Visibility.Collapsed;
                 foreach (ITreeItem o in subNodes)
                 {
@@ -914,31 +973,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 topLevelTree.Items.Add(new BinInterpNode(ex.FlattenException()));
             }
             return topLevelTree;
-        }
-
-        private bool AttemptSelectPreviousEntry(IEnumerable<ITreeItem> subNodes)
-        {
-            foreach (ITreeItem o in subNodes)
-            {
-                if (o is BinInterpNode b)
-                {
-                    if (b.Offset == PreviousSelectedTreeOffset)
-                    {
-                        b.IsProgramaticallySelecting = true;
-                        b.IsSelected = true;
-                        return true;
-                    }
-                    if (b.Items != null)
-                    {
-                        if (AttemptSelectPreviousEntry(b.Items))
-                        {
-                            o.IsExpanded = true;
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
         }
 
         internal void SetHexboxSelectedOffset(int v)
