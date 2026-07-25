@@ -1,11 +1,12 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using LegendaryExplorer.Misc;
 using LegendaryExplorerCore.Packages;
 
 namespace LegendaryExplorer.Dialogs
 {
-    public partial class NewPackageGameDialog : Window
+    public partial class NewPackageGameDialog : NotifyPropertyChangedWindowBase
     {
         public NewPackageGameDialog(Window owner, string titleText, bool allowLocFile)
         {
