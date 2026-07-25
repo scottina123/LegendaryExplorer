@@ -1,5 +1,4 @@
 using LegendaryExplorerCore.Packages;
-using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using System;
 using System.Collections.Generic;
@@ -68,7 +67,7 @@ public class AnimSequencePlayer : AnimPlayer
     /// <summary>
     /// Maps animation bone names to skeleton bone indices and prepares for playback.
     /// </summary>
-    public void SetAnimation(AnimSequence animSequence)
+    public void SetAnimation(AnimSequence animSequence, PackageCache packageCache = null)
     {
         _animSequence = animSequence;
         CurrentTime = 0;
@@ -93,6 +92,25 @@ public class AnimSequencePlayer : AnimPlayer
             throw new InvalidOperationException("AnimSequence has no animation data!");
         }
 
+        PackageCache temporaryCache = null;
+        ExportEntry animSetData;
+        try
+        {
+            animSetData = GetAnimSetData(animSequence, packageCache ?? (temporaryCache = new PackageCache()));
+            if (animSetData?.GetProperty<ArrayProperty<NameProperty>>("TrackBoneNames") is { Count: > 0 } trackBoneNames)
+            {
+                animSequence.Bones = trackBoneNames.Select(nameProperty => nameProperty.Value.Instanced).ToList();
+            }
+
+            _animRotationOnly = animSetData?.GetProperty<BoolProperty>("bAnimRotationOnly")?.Value ?? true;
+            _useTranslationBones = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("UseTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
+            _forceMeshTranslationBoneNames = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("ForceMeshTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
+        }
+        finally
+        {
+            temporaryCache?.Dispose();
+        }
+
         // Build name -> skeleton index map
         var nameToIndex = new Dictionary<string, int>(_bones.Length, StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < _bones.Length; i++)
@@ -109,17 +127,12 @@ public class AnimSequencePlayer : AnimPlayer
             }
         }
 
-        // look up the animData from the AnimSequence, look up the UseTranslationBoneNames property, save it
-        var animSetData = GetAnimSetData(animSequence);
-        _animRotationOnly = animSetData?.GetProperty<BoolProperty>("bAnimRotationOnly")?.Value ?? true;
-        _useTranslationBones = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("UseTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
-        _forceMeshTranslationBoneNames = [.. animSetData?.GetProperty<ArrayProperty<NameProperty>>("ForceMeshTranslationBoneNames")?.Select(np => np.Value.Instanced) ?? []];
     }
 
-    private static ExportEntry GetAnimSetData(AnimSequence animSequence)
+    private static ExportEntry GetAnimSetData(AnimSequence animSequence, PackageCache packageCache)
     {
-        var animDataEntry = animSequence?.Export.GetProperty<ObjectProperty>("m_pBioAnimSetData").ResolveToEntry(animSequence.Export.FileRef);
-        return animDataEntry is ExportEntry ? animDataEntry as ExportEntry : EntryImporter.ResolveImport(animDataEntry as ImportEntry, new PackageCache());
+        ObjectProperty animSetDataReference = animSequence?.Export.GetProperty<ObjectProperty>("m_pBioAnimSetData");
+        return animSetDataReference?.ResolveToExport(animSequence.Export.FileRef, packageCache);
     }
 
     private bool ShouldBoneUsePositionTrack(string boneName)
@@ -159,7 +172,7 @@ public class AnimSequencePlayer : AnimPlayer
     /// Snapshots the current bone transforms and interpolates toward the new animation
     /// over <paramref name="blendDuration"/> seconds.
     /// </summary>
-    public void CrossfadeTo(AnimSequence newSequence, float blendDuration)
+    public void CrossfadeTo(AnimSequence newSequence, float blendDuration, PackageCache packageCache = null)
     {
         if (_animSequence != null && blendDuration > 0 && _boneComponentSpace != null)
         {
@@ -174,7 +187,7 @@ public class AnimSequencePlayer : AnimPlayer
             _crossfadeDuration = 0;
         }
 
-        SetAnimation(newSequence);
+        SetAnimation(newSequence, packageCache);
     }
 
     /// <summary>

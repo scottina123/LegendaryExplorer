@@ -304,6 +304,7 @@ namespace LegendaryExplorer.Dialogs
         // Animation preview state
         private IMEPackage _animPreviewPcc;
         private IMEPackage _ambPerfPreviewPcc;
+        private readonly PackageCache _ambPerfPreviewPackageCache = new();
         private List<MeshRecord> _skeletonMeshes;
 
         public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner)
@@ -1898,6 +1899,8 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
+            AmbPerfPreviewControl.ClearAnimation();
+            _ambPerfPreviewPackageCache.ReleasePackages();
             _ambPerfPreviewPcc?.Dispose();
             _ambPerfPreviewPcc = MEPackageHandler.OpenMEPackage(filePath);
 
@@ -1909,25 +1912,49 @@ namespace LegendaryExplorer.Dialogs
 
             ExportEntry ambPerfExport = _ambPerfPreviewPcc.GetUExport(ambientPerfUIndex);
 
-            // Find a child AnimSequence to preview
+            // Find an AnimSequence in either local or imported dynamic animation sets.
             ExportEntry animSeqToPreview = null;
+            var dynamicAnimSets = new HashSet<ExportEntry>();
+            var animSetReferences = ambPerfExport.GetProperty<ArrayProperty<ObjectProperty>>("m_aAnimsets");
+            if (animSetReferences != null)
+            {
+                foreach (ObjectProperty animSetReference in animSetReferences)
+                {
+                    if (animSetReference.ResolveToExport(_ambPerfPreviewPcc, _ambPerfPreviewPackageCache) is { ClassName: "BioDynamicAnimSet" } animSet)
+                    {
+                        dynamicAnimSets.Add(animSet);
+                    }
+                }
+            }
+
             foreach (var child in ambPerfExport.GetChildren())
             {
                 if (child is ExportEntry childExp && childExp.ClassName == "BioDynamicAnimSet")
                 {
-                    var seqs = childExp.GetProperty<ArrayProperty<ObjectProperty>>("Sequences");
-                    if (seqs != null)
+                    dynamicAnimSets.Add(childExp);
+                }
+            }
+
+            foreach (ExportEntry dynamicAnimSet in dynamicAnimSets)
+            {
+                var sequences = dynamicAnimSet.GetProperty<ArrayProperty<ObjectProperty>>("Sequences");
+                if (sequences == null)
+                {
+                    continue;
+                }
+
+                foreach (ObjectProperty sequenceReference in sequences)
+                {
+                    if (sequenceReference.ResolveToExport(dynamicAnimSet.FileRef, _ambPerfPreviewPackageCache) is { ClassName: "AnimSequence" } sequence)
                     {
-                        foreach (var seqRef in seqs)
-                        {
-                            if (_ambPerfPreviewPcc.TryGetUExport(seqRef.Value, out ExportEntry seqExp) && seqExp.ClassName == "AnimSequence")
-                            {
-                                animSeqToPreview = seqExp;
-                                break;
-                            }
-                        }
+                        animSeqToPreview = sequence;
+                        break;
                     }
-                    if (animSeqToPreview != null) break;
+                }
+
+                if (animSeqToPreview != null)
+                {
+                    break;
                 }
             }
 
@@ -2110,6 +2137,7 @@ namespace LegendaryExplorer.Dialogs
             _animPreviewPcc = null;
             _ambPerfPreviewPcc?.Dispose();
             _ambPerfPreviewPcc = null;
+            _ambPerfPreviewPackageCache.Dispose();
         }
     }
 }

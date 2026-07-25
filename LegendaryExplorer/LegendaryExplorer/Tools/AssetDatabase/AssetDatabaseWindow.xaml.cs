@@ -713,6 +713,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
+        private readonly PackageCache _animPreviewPackageCache = new();
         private IMEPackage _ambPerfMasterPcc;
         private record struct AmbPerfStep(ExportEntry AnimExport, float BlendInTime);
         private const string AmbientLeFolderName = "AmbientLE";
@@ -1008,6 +1009,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             meshPcc?.Dispose();
             textPcc?.Dispose();
             animPcc?.Dispose();
+            _animPreviewPackageCache.Dispose();
             _ambPerfMasterPcc?.Dispose();
 
             audioPcc = null;
@@ -2145,6 +2147,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
             _ambPerfAnimQueue = null;
             animPcc?.Dispose();
+            _animPreviewPackageCache.ReleasePackages();
             animPcc = null;
             _ambPerfMasterPcc?.Dispose();
             _ambPerfMasterPcc = null;
@@ -3048,6 +3051,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     _ambPerfAnimQueue = null;
                     AnimPreviewControl.Clear();
                     animPcc?.Dispose();
+                    _animPreviewPackageCache.ReleasePackages();
                     animPcc = null;
                     btn_AnimPreviewToggle.IsChecked = false;
                     btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
@@ -3896,6 +3900,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 _ambPerfAnimQueue = null;
                 AnimPreviewControl.Clear();
                 animPcc?.Dispose();
+                _animPreviewPackageCache.ReleasePackages();
                 animPcc = null;
                 return;
             }
@@ -3925,6 +3930,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             animPcc?.Dispose();
+            _animPreviewPackageCache.ReleasePackages();
             ExportEntry animExp;
             if (anim.IsAmbPerf && TryOpenAmbientLeAnimationPackage(anim, out var ambientLePackage, out var ambientLeExport))
             {
@@ -3951,7 +3957,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 AnimPreviewControl.IsPlayingChanged -= OnAmbPerfAnimLooped;
                 _ambPerfVersion++;
 
-                _ambPerfAnimQueue = BuildAmbPerfStepSequence(animExp);
+                _ambPerfAnimQueue = BuildAmbPerfStepSequence(animExp, _animPreviewPackageCache);
                 _ambPerfAnimIndex = 0;
 
                 if (_ambPerfAnimQueue.Count > 0)
@@ -4150,7 +4156,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             });
         }
 
-        private static List<ExportEntry> FindAllAnimSequencesInAmbPerf(ExportEntry ambPerfExport)
+        private static List<ExportEntry> FindAllAnimSequencesInAmbPerf(ExportEntry ambPerfExport, PackageCache cache)
         {
             // SFXAmbPerfGameData has:
             //   m_aAnimsets: ArrayProperty<ObjectProperty> referencing BioDynamicAnimSet exports (or imports)
@@ -4167,8 +4173,6 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             var pkg = ambPerfExport.FileRef;
 
             var seqNameToExport = new Dictionary<(string setName, string seqName), ExportEntry>();
-            using var cache = new PackageCache();
-
             // Collect BioDynamicAnimSet exports from two sources:
             // 1) m_aAnimsets property (may contain exports and/or unresolvable imports)
             // 2) Direct children of the SFXAmbPerfGameData export in the tree
@@ -4179,9 +4183,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 foreach (var animSetRef in animSetRefs)
                 {
-                    if (animSetRef.Value > 0 && pkg.TryGetUExport(animSetRef.Value, out var localExp))
+                    if (ResolveToExport(pkg, animSetRef.Value, cache) is { ClassName: "BioDynamicAnimSet" } animSetExport)
                     {
-                        animSetExports.Add(localExp);
+                        animSetExports.Add(animSetExport);
                     }
                 }
             }
@@ -4272,12 +4276,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// Each step includes the animation to play and the blend time for transitioning into it.
         /// The sequence follows: pose idle → transition anim → dest pose idle → transition → ...
         /// </summary>
-        private static List<AmbPerfStep> BuildAmbPerfStepSequence(ExportEntry ambPerfExport)
+        private static List<AmbPerfStep> BuildAmbPerfStepSequence(ExportEntry ambPerfExport, PackageCache cache)
         {
             var pkg = ambPerfExport.FileRef;
             var seqNameToExport = new Dictionary<(string setName, string seqName), ExportEntry>();
-            using var cache = new PackageCache();
-
             // Collect BioDynamicAnimSet exports (same resolution as FindAllAnimSequencesInAmbPerf)
             var animSetExports = new HashSet<ExportEntry>();
 
@@ -4286,9 +4288,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 foreach (var animSetRef in animSetRefs)
                 {
-                    if (animSetRef.Value > 0 && pkg.TryGetUExport(animSetRef.Value, out var localExp))
+                    if (ResolveToExport(pkg, animSetRef.Value, cache) is { ClassName: "BioDynamicAnimSet" } animSetExport)
                     {
-                        animSetExports.Add(localExp);
+                        animSetExports.Add(animSetExport);
                     }
                 }
             }

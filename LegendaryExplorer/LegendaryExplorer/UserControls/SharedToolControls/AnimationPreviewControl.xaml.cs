@@ -374,7 +374,8 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (_animPlayer is not AnimSequencePlayer animSeqPlayer)
                 _animPlayer = animSeqPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
 
-            animSeqPlayer.SetAnimation(animSequence);
+            animSeqPlayer.SetAnimation(animSequence, _packageCache);
+            _meshContext.ErrorText = null;
 
             IsTimeMode = false;
             AnimSliderMin = 0;
@@ -392,9 +393,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                 UpdateSkinningOneShot();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Animation might not be compatible with this skeleton
+            _meshContext.ErrorText = $"Error loading animation: {ex.Message}";
         }
     }
 
@@ -433,8 +434,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (_animPlayer is not AnimSequencePlayer animSeqPlayer)
                 _animPlayer = animSeqPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
 
-            animSeqPlayer.CrossfadeTo(animSequence, blendDuration);
+            animSeqPlayer.CrossfadeTo(animSequence, blendDuration, _packageCache);
             animSeqPlayer.IsLooping = false;
+            _meshContext.ErrorText = null;
 
             IsTimeMode = false;
             AnimSliderMin = 0;
@@ -448,9 +450,9 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
                 Play();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Animation might not be compatible with this skeleton
+            _meshContext.ErrorText = $"Error loading animation: {ex.Message}";
         }
     }
 

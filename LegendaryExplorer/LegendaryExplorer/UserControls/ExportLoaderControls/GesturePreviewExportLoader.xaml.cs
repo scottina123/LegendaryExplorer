@@ -34,6 +34,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
     }
 
     private readonly List<(string FileName, string ContentDir)> _databaseFiles = [];
+    private readonly PackageCache _packageCache = new();
     private CancellationTokenSource _databaseLoadCancellationTokenSource;
     private List<GestureAnimationItem> _animations = [];
     private Queue<GestureAnimationItem> _playbackQueue;
@@ -109,7 +110,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             .ToList();
     }
 
-    private static void AddStartingPose(ExportEntry track, IReadOnlyList<ExportEntry> dynamicAnimSets, ICollection<GestureAnimationItem> result)
+    private void AddStartingPose(ExportEntry track, IReadOnlyList<ExportEntry> dynamicAnimSets, ICollection<GestureAnimationItem> result)
     {
         var setName = track.GetProperty<NameProperty>("nmStartingPoseSet")?.Value ?? "None";
         var animationName = track.GetProperty<NameProperty>("nmStartingPoseAnim")?.Value ?? "None";
@@ -121,7 +122,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         result.Add(CreateAnimationItem(null, 0, -1, 0, "Starting Pose", setName, animationName, dynamicAnimSets));
     }
 
-    private static void AddAnimation(ICollection<GestureAnimationItem> result, int gestureIndex, float time, int slotOrder,
+    private void AddAnimation(ICollection<GestureAnimationItem> result, int gestureIndex, float time, int slotOrder,
         float blendDuration, string slotName, PropertyCollection properties, string setPropertyName, string animationPropertyName,
         IReadOnlyList<ExportEntry> dynamicAnimSets)
     {
@@ -133,7 +134,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         }
     }
 
-    private static GestureAnimationItem CreateAnimationItem(int? gestureIndex, float time, int slotOrder, float blendDuration,
+    private GestureAnimationItem CreateAnimationItem(int? gestureIndex, float time, int slotOrder, float blendDuration,
         string slotName, NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets)
     {
         return new GestureAnimationItem
@@ -149,7 +150,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         };
     }
 
-    private static ExportEntry ResolveAnimation(NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets)
+    private ExportEntry ResolveAnimation(NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets)
     {
         IEnumerable<ExportEntry> candidates = dynamicAnimSets;
         if (!IsNone(setName))
@@ -168,8 +169,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
             foreach (ObjectProperty sequenceReference in sequences)
             {
-                if (!animSet.FileRef.TryGetUExport(sequenceReference.Value, out ExportEntry sequence)
-                    || sequence.ClassName != "AnimSequence")
+                ExportEntry sequence = sequenceReference.ResolveToExport(animSet.FileRef, _packageCache);
+                if (sequence?.ClassName != "AnimSequence")
                 {
                     continue;
                 }
@@ -185,7 +186,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         return null;
     }
 
-    private static List<ExportEntry> FindSharedDynamicAnimSets(ExportEntry track)
+    private List<ExportEntry> FindSharedDynamicAnimSets(ExportEntry track)
     {
         IMEPackage package = track.FileRef;
         ExportEntry interpData = track.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry parentInterpData
@@ -201,7 +202,8 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         {
             foreach (ObjectProperty reference in references)
             {
-                if (package.TryGetUExport(reference.Value, out ExportEntry animSet) && animSet.ClassName == "BioDynamicAnimSet")
+                ExportEntry animSet = reference.ResolveToExport(package, _packageCache);
+                if (animSet?.ClassName == "BioDynamicAnimSet")
                 {
                     dynamicAnimSets.Add(animSet);
                 }
@@ -380,6 +382,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         PreviewMeshComboBox.ItemsSource = null;
         SelectedAnimation = null;
         AnimPreviewControl.Clear();
+        _packageCache.ReleasePackages();
         CurrentLoadedExport = null;
     }
 
@@ -403,5 +406,6 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         _databaseLoadCancellationTokenSource?.Dispose();
         AnimPreviewControl.AnimationCompleted -= AnimPreviewControl_AnimationCompleted;
         AnimPreviewControl.Dispose();
+        _packageCache.Dispose();
     }
 }
