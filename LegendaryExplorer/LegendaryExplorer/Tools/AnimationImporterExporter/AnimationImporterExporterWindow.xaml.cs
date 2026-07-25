@@ -169,7 +169,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     FileName = $"{sequenceName}.psa",
                     AddExtension = true,
                 };
-                if (dlg.ShowDialog(this) == true)
+                if (DirectoryMemory.ShowDialog(dlg, this) == true)
                 {
                     PSA.CreateFrom(animSequence).ToFile(dlg.FileName);
                     MessageBox.Show("Done!", "PSA Export", MessageBoxButton.OK);
@@ -243,7 +243,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 Title = "Select BVH file",
                 Multiselect = false,
             };
-            if (dlg.ShowDialog(this) != true) return;
+            if (DirectoryMemory.ShowDialog(dlg, this) != true) return;
 
             string chosenCoord = InputComboBoxDialog.GetValue(this,
                 "Select the coordinate system the BVH was exported with.",
@@ -286,7 +286,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 Title = "Select BVH file",
                 Multiselect = false,
             };
-            if (dlg.ShowDialog(this) != true) return;
+            if (DirectoryMemory.ShowDialog(dlg, this) != true) return;
 
             string chosenCoord = InputComboBoxDialog.GetValue(this,
                 "Select the coordinate system the BVH was exported with.",
@@ -373,7 +373,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 FileName = $"{sequenceName}.bvh",
                 AddExtension = true,
             };
-            if (dlg.ShowDialog(this) == true)
+            if (DirectoryMemory.ShowDialog(dlg, this) == true)
             {
                 BVH.ExportToBVH(animSequence, dlg.FileName, refSkeleton, coordinateSystem);
                 MessageBox.Show("Done!", "BVH Export", MessageBoxButton.OK);
@@ -396,7 +396,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 FileName = $"{sequenceName}.glb",
                 AddExtension = true,
             };
-            if (dlg.ShowDialog(this) != true)
+            if (DirectoryMemory.ShowDialog(dlg, this) != true)
                 return;
 
             IsBusy = true;
@@ -523,7 +523,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     Multiselect = false,
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (dlg.ShowDialog(this) == true)
+                if (DirectoryMemory.ShowDialog(dlg, this) == true)
                 {
                     var props = CurrentExport.GetProperties();
 
@@ -618,7 +618,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 Multiselect = false,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (dlg.ShowDialog(this) == true)
+            if (DirectoryMemory.ShowDialog(dlg, this) == true)
             {
                 PSA psa = PSA.FromFile(dlg.FileName);
                 List<AnimSequence> psaSeqs = psa.GetAnimSequences();
@@ -726,7 +726,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     Multiselect = false,
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (dlg.ShowDialog(this) == true)
+                if (DirectoryMemory.ShowDialog(dlg, this) == true)
                 {
                     using var upk = MEPackageHandler.OpenUDKPackage(dlg.FileName);
                     var animSets = upk.Exports.Where(exp => exp.ClassName == "AnimSet").ToList();
@@ -787,7 +787,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                 Multiselect = false,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (dlg.ShowDialog(this) == true)
+            if (DirectoryMemory.ShowDialog(dlg, this) == true)
             {
                 using var upk = MEPackageHandler.OpenUDKPackage(dlg.FileName);
                 var animSets = upk.Exports.Where(exp => exp.ClassName == "AnimSet").ToList();
@@ -876,7 +876,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
         {
             var dlg = AppDirectories.GetOpenPackageDialog();
             dlg.Title = "Select source package";
-            if (dlg.ShowDialog(this) != true)
+            if (DirectoryMemory.ShowDialog(dlg, this) != true)
             {
                 return null;
             }
@@ -939,7 +939,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
                     break;
             }
             var d = new SaveFileDialog { Filter = fileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done");
@@ -949,7 +949,7 @@ namespace LegendaryExplorer.Tools.AnimationImporterExporter
         private void OpenFile()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try

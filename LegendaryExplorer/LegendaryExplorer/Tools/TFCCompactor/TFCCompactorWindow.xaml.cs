@@ -146,7 +146,7 @@ namespace LegendaryExplorer.Tools.TFCCompactor
                 EnsurePathExists = true
             };
 
-            if (openFolder.ShowDialog() != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(openFolder, fallback: Settings.TFCCompactor_LastStagingPath) != CommonFileDialogResult.Ok)
             {
                 return;
             }
@@ -220,7 +220,7 @@ namespace LegendaryExplorer.Tools.TFCCompactor
         private void BeginReferencedTFCScan()
         {
             var dlg = new CommonOpenFileDialog("Select base folder to compact") { IsFolderPicker = true };
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok) { return; }
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok) { return; }
             BaseFolder = dlg.FileName;
             var dirName = Path.GetFileName(BaseFolder);
             if (dirName.StartsWith("DLC_MOD_"))

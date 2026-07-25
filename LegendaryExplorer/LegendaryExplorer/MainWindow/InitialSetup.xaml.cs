@@ -99,7 +99,7 @@ namespace LegendaryExplorer.MainWindow
             var exe = MEDirectories.ExecutableNames(game)[0];
             string filter = $"{exe}|{exe}";
             ofd.Filter = filter;
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 string result = Path.GetDirectoryName(Path.GetDirectoryName(ofd.FileName));
 
@@ -150,7 +150,7 @@ namespace LegendaryExplorer.MainWindow
                 string filter = $"{game}.exe|{game}.exe";
                 ofd.Filter = filter;
 
-                if (ofd.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(ofd) == true)
                 {
                     var fvi = FileVersionInfo.GetVersionInfo(ofd.FileName);
                     if (!allowedVersions.Contains(fvi.FileVersion))

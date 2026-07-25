@@ -909,7 +909,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             //lol just kidding
             //sorry in advance
             //-Mgamerz
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 var packageFolderPath = dlg.FileName;
                 var packageFiles =
@@ -1296,7 +1296,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show(this, "Done.");
@@ -1311,7 +1311,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private void OpenPackage()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -5863,7 +5863,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 Filter = "PNG Files (*.png)|*.png",
                 FileName = $"{CurrentFile}.{objectName}"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 PNode r = graphEditor.Root;
                 RectangleF rr = r.GlobalFullBounds;
@@ -7510,7 +7510,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     bool binaryOnly = actionName == "ExportBinaryData";
                     var d = new SaveFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin" };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         File.WriteAllBytes(d.FileName, binaryOnly ? export.GetBinaryData() : export.Data);
                         MessageBox.Show("Done.");
@@ -7526,7 +7526,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 {
                     bool binaryOnly = actionName == "ImportBinaryData";
                     var d = new OpenFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin" };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         byte[] data = File.ReadAllBytes(d.FileName);
                         if (binaryOnly)

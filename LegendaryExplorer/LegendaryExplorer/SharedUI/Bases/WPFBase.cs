@@ -127,6 +127,7 @@ namespace LegendaryExplorer.SharedUI.Bases
         {
             if (!string.IsNullOrWhiteSpace(CurrentPackageFilePath))
             {
+                DirectoryMemory.RememberExplorerLocation($"{GetType().Name}.OpenCurrentFileLocation", CurrentPackageFilePath);
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentPackageFilePath);
             }
         }

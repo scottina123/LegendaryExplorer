@@ -598,7 +598,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "Bik Movie File (*.bik) |*.bik",
                 FileName = $"{CurrentLoadedExport.ObjectName.Instanced}.bik"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 saved = ExportBikToFile(d.FileName);
             }
@@ -636,7 +636,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            if (dlg.ShowDialog() == true && File.Exists(dlg.FileName))
+            if (DirectoryMemory.ShowDialog(dlg) == true && File.Exists(dlg.FileName))
             {
                 success = ImportBiktoCache(dlg.FileName);
                 if (success)
@@ -897,7 +897,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
 
-                    if (adddlg.ShowDialog() ?? false)
+                    if (DirectoryMemory.ShowDialog(adddlg) ?? false)
                     {
                         string addedtfc = Path.GetFileNameWithoutExtension(adddlg.FileName);
                         if (!Directory.GetDirectories(MEDirectories.GetDefaultGamePath(Pcc.Game), "*", SearchOption.AllDirectories).ToList().Contains(Path.GetDirectoryName(adddlg.FileName)))
@@ -993,7 +993,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 EnsurePathExists = true,
                 Title = "Select folder to save tfc"
             };
-            if (m.ShowDialog(owner) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, owner) != CommonFileDialogResult.Ok)
             {
                 return null;
             }

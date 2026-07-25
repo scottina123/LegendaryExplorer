@@ -208,7 +208,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         private void LoadExternalFile()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {

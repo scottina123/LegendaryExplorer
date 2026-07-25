@@ -1636,7 +1636,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 break;
         }
         var d = new SaveFileDialog { Filter = fileFilter };
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
             IsBusy = true;
             BusyText = "Saving...";
@@ -1952,7 +1952,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private async void OpenFile()
     {
         var d = AppDirectories.GetOpenPackageDialog();
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
 
 #if !DEBUG
@@ -1973,7 +1973,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private async void AddFile()
     {
         var d = AppDirectories.GetOpenPackageDialog();
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
 
 #if !DEBUG

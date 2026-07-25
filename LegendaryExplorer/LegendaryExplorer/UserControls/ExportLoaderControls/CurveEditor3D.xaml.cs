@@ -1449,7 +1449,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private async void OpenLevel_Click(object sender, RoutedEventArgs e)
     {
         var dialog = AppDirectories.GetOpenPackageDialog();
-        if (dialog.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(dialog) == true)
         {
             await LoadLevelAsync(dialog.FileName, replace: true).ConfigureAwait(true);
         }
@@ -1458,7 +1458,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private async void AddLevel_Click(object sender, RoutedEventArgs e)
     {
         var dialog = AppDirectories.GetOpenPackageDialog();
-        if (dialog.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(dialog) == true)
         {
             await LoadLevelAsync(dialog.FileName, replace: false).ConfigureAwait(true);
         }

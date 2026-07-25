@@ -107,7 +107,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                     Description = "Select destination folder",
                     UseDescriptionForTitle = true
                 };
-                if (saveFolderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                if (DirectoryMemory.ShowDialog(saveFolderDialog) == System.Windows.Forms.DialogResult.OK)
                     saveFolder = saveFolderDialog.SelectedPath;
                 else
                     return;
@@ -124,7 +124,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                         Filter = "XML Files (*.xml)|*.xml"
                     };
 
-                    if (saveFileDialog.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(saveFileDialog) == true)
                         saveFile = saveFileDialog.FileName;
                     else
                         return;
@@ -173,7 +173,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                     Description = "Select source folder",
                     UseDescriptionForTitle = true
                 };
-                if (openFolderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                if (DirectoryMemory.ShowDialog(openFolderDialog) == System.Windows.Forms.DialogResult.OK)
                     openFolder = openFolderDialog.SelectedPath;
                 else
                     return;
@@ -212,7 +212,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
 
-                    if (openFileDialog.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(openFileDialog) == true)
                         openFile = openFileDialog.FileName;
                     else
                         return;

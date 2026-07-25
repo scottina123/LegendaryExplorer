@@ -411,7 +411,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             SaveFileDialog d = new () { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show(this, "Done.");
@@ -430,7 +430,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 Filter = GameFileFilters.ME3ME2SaveFileFilter,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try
@@ -1031,7 +1031,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 Filter = "PNG Files (*.png)|*.png",
                 FileName = $"{CurrentFile}.{objectName}"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 PNode r = graphEditor.Root;
                 RectangleF rr = r.GlobalFullBounds;

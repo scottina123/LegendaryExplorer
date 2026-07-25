@@ -1294,7 +1294,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor
             SavePendingChangesToCamPath();
             string extension = Path.GetExtension(camPathPackage.FilePath);
             SaveFileDialog d = new() { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 camPathPackage.Save(d.FileName);
             }

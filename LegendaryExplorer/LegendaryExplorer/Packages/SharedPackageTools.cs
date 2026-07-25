@@ -192,7 +192,7 @@ namespace LegendaryExplorer.Packages
             {
                 string extension = Path.GetExtension(wpfBase.Pcc.FilePath);
                 OpenFileDialog d = new OpenFileDialog { Filter = "*" + extension + "|*" + extension, Title = "Select package file to compare against", CustomPlaces = AppDirectories.GameCustomPlaces };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     if (wpfBase.Pcc.FilePath == d.FileName)
                     {
@@ -348,7 +348,7 @@ namespace LegendaryExplorer.Packages
             }
 
             var d = new SaveFileDialog { Filter = fileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 Func<List<EntryStringPair>> PortFunc = () => EntryExporter.ExportExportToFile(export, d.FileName, out _, customROP: customROP);
                 if (File.Exists(d.FileName))

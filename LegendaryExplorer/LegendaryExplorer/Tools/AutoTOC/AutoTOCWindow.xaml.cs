@@ -236,7 +236,7 @@ namespace LegendaryExplorer.Tools.AutoTOC
                 Filter = "PCConsoleTOC.bin|PCConsoleTOC.bin",
                 FileName = "PCConsoleTOC.bin"
             };
-            var result = d.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(d);
             if (result.HasValue && result.Value)
             {
                 string path = Path.GetDirectoryName(d.FileName) + "\\";

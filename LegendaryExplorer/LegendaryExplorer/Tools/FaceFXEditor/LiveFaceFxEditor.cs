@@ -49,7 +49,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
                 Title = $"Select {Game} file containing the FaceFXAnimSet you want to edit",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (dlg.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dlg) == true)
             {
                 SourcePcc = MEPackageHandler.OpenMEPackage(dlg.FileName);
                 if (SourcePcc.Game != Game)

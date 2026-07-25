@@ -61,7 +61,7 @@ namespace LegendaryExplorer.ToolsetDev
             {
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 LoadFile(d.FileName);
             }

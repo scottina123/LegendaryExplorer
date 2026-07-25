@@ -83,7 +83,7 @@ namespace LegendaryExplorer.Tools.CoalescedCompiler
 			dlg.Filters.Add(new CommonFileDialogFilter("XML Coalesced Files", "*.xml"));
             dlg.Filters.Add(new CommonFileDialogFilter("LE Coalesced Manifest Files", "*.extractedbin"));
 
-			if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
 			{
 				return;
 			}
@@ -136,7 +136,7 @@ namespace LegendaryExplorer.Tools.CoalescedCompiler
 						IsFolderPicker = true
 					};
 
-					if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+                    if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
 					{
 						return;
 					}
@@ -151,7 +151,7 @@ namespace LegendaryExplorer.Tools.CoalescedCompiler
 						var dlg = new CommonOpenFileDialog("Open File");
                         dlg.Filters.Add(new CommonFileDialogFilter("Binary Coalesced Files", "*.bin"));
 
-                        if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
 						{
 							return;
 						}

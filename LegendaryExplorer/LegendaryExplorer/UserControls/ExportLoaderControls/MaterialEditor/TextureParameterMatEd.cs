@@ -98,7 +98,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor
                 Filter = "All supported types|*.png;*.dds;*.tga|PNG files (*.png)|*.png|DDS files (*.dds)|*.dds|TGA files (*.tga)|*.tga",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            var result = selectDDS.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(selectDDS);
             if (result.HasValue && result.Value)
             {
                 Task.Run(() =>

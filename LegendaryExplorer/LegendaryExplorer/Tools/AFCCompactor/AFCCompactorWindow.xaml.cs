@@ -156,6 +156,7 @@ namespace LegendaryExplorer.Tools.AFCCompactorWindow
                     }).Select(x => getDlcDependencyForAFC(x.AFCName)).Distinct().ToList();
                 if (finalAfcPath != null && File.Exists(finalAfcPath))
                 {
+                    DirectoryMemory.RememberExplorerLocation("AFCCompactor.OpenCompactedFileLocation", finalAfcPath);
                     LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(finalAfcPath);
                 }
                 return (compactionResult, dependencyList);
@@ -448,7 +449,7 @@ namespace LegendaryExplorer.Tools.AFCCompactorWindow
                 IsFolderPicker = true
             };
 
-                if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 string[] pccFiles = Directory.GetFiles(dlg.FileName, "*.pcc", SearchOption.AllDirectories);
                 string[] mountFiles = Directory.GetFiles(dlg.FileName, "*.dlc", SearchOption.AllDirectories);

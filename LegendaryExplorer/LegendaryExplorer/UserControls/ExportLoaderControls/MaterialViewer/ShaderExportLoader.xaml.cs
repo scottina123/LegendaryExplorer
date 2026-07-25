@@ -483,7 +483,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Title = "Select compiled shader file"
             };
 
-            if (dlg.ShowDialog() != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg) != CommonFileDialogResult.Ok)
                 return;
 
             // Scoped using
@@ -555,7 +555,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 IsFolderPicker = true
             };
-            var dialogResult = dlg.ShowDialog();
+            var dialogResult = DirectoryMemory.ShowDialog(dlg);
             if (dialogResult != CommonFileDialogResult.Ok)
                 return;
 
@@ -619,7 +619,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 IsFolderPicker = true
             };
-            var dialogResult = dlg.ShowDialog();
+            var dialogResult = DirectoryMemory.ShowDialog(dlg);
 
             Task.Run(() =>
             {
@@ -701,7 +701,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 IsFolderPicker = true
             };
-            var dialogResult = dlg.ShowDialog();
+            var dialogResult = DirectoryMemory.ShowDialog(dlg);
 
             Task.Run(() =>
             {
@@ -830,7 +830,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "LE Global Shader Cache Files|*.bin",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try

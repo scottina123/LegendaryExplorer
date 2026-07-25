@@ -236,7 +236,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                 Filter = "Texture (DDS PNG BMP TGA)|*.dds;*.png;*.bmp;*.tga",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            var result = selectDDS.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(selectDDS);
             if (result.HasValue && result.Value)
             {
                 Image image;
@@ -511,7 +511,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                 InitialDirectory = SelectedFolder
             };
 
-            var result = sfd.ShowDialog(this);
+            var result = DirectoryMemory.ShowDialog(sfd, this);
             if (result.HasValue && result.Value)
             {
                 // filename must start with:
@@ -666,7 +666,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                     IsFolderPicker = true
                 };
 
-                if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
                 {
                     InitWorkspace(dlg.FileName);
                 }

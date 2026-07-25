@@ -217,7 +217,7 @@ namespace LegendaryExplorer.Tools.AudioLocalizer
                 EnsurePathExists = true,
                 Title = "Select Folder Containing Localized Files"
             };
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 LocalizedFilesPath = dlg.FileName;
                 localizedFilesPathTextBox.Text = LocalizedFilesPath;

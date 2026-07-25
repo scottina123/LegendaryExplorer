@@ -33,7 +33,7 @@ namespace LegendaryExplorer.GameInterop.InteropTargets
                 Title = "Select Mass Effect LE Launcher executable",
                 Filter = "MassEffectLauncher.exe|MassEffectLauncher.exe"
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 string gamePath = Path.GetDirectoryName(Path.GetDirectoryName(ofd.FileName));
 

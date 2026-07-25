@@ -99,7 +99,7 @@ namespace LegendaryExplorer.Tools.MountEditor
             };
 
             m.Filters.Add(new CommonFileDialogFilter("Mount files", "*.dlc"));
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 LoadFile(m.FileName);
             }
@@ -168,7 +168,7 @@ namespace LegendaryExplorer.Tools.MountEditor
                     InitialDirectory = (!string.IsNullOrEmpty(CurrentMountFileText) && File.Exists(CurrentMountFileText) ? Path.GetDirectoryName(CurrentMountFileText) : null)
                 };
                 m.Filters.Add(new CommonFileDialogFilter("Mount files", "*.dlc"));
-                if (m.ShowDialog() == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(m) == CommonFileDialogResult.Ok)
                 {
                     var mf = new MountFile() //We will write this to disk
                     {

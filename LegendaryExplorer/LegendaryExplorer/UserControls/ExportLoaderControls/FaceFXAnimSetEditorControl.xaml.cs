@@ -289,7 +289,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void BrowseFxAsset_Click(object sender, RoutedEventArgs e)
         {
             var ofd = AppDirectories.GetOpenPackageDialog();
-            if (ofd.ShowDialog() != true) return;
+            if (DirectoryMemory.ShowDialog(ofd) != true) return;
 
             using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
             var export = EntrySelector.GetEntry<ExportEntry>(
@@ -308,7 +308,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private void BrowseSkelMesh_Click(object sender, RoutedEventArgs e)
         {
             var ofd = AppDirectories.GetOpenPackageDialog();
-            if (ofd.ShowDialog() != true) return;
+            if (DirectoryMemory.ShowDialog(ofd) != true) return;
 
             using var pkg = MEPackageHandler.OpenMEPackage(ofd.FileName);
             var export = EntrySelector.GetEntry<ExportEntry>(
@@ -1599,7 +1599,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CheckFileExists = true,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 var lineSec = JsonConvert.DeserializeObject<LineSection>(File.ReadAllText(ofd.FileName));
                 var newPoints = new List<FaceFXControlPoint>();
@@ -1680,7 +1680,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "*.json|*.json",
                 AddExtension = true
             };
-            if (sfd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(sfd) == true)
             {
                 File.WriteAllText(sfd.FileName, output);
             }
@@ -1703,7 +1703,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 FileName = $"{SanitizeXmlFileName(lineName)}.xml",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (sfd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(sfd) == true)
             {
                 SaveFaceFXLinesToXml(sfd.FileName, [SelectedLineEntry.Line]);
             }
@@ -1726,7 +1726,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 FileName = $"{SanitizeXmlFileName(exportName)}_Lines.xml",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (sfd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(sfd) == true)
             {
                 SaveFaceFXLinesToXml(sfd.FileName, Lines.Select(entry => entry.Line));
             }
@@ -1857,7 +1857,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             };
             m.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
             var owner = Window.GetWindow(this);
-            if (m.ShowDialog(owner) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, owner) == CommonFileDialogResult.Ok)
             {
                 owner.RestoreAndBringToFront();
                 try
@@ -1886,7 +1886,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            if (oDlg.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(oDlg) != true)
                 return;
 
             var Workbook = new XLWorkbook(oDlg.FileName);
@@ -2202,7 +2202,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CheckFileExists = true,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 #region xml import
 
@@ -2384,7 +2384,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CheckFileExists = true,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(ofd) != true)
             {
                 return;
             }
@@ -2539,7 +2539,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CheckFileExists = true,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(ofd) != true)
             {
                 return;
             }

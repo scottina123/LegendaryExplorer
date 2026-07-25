@@ -40,7 +40,7 @@ namespace LegendaryExplorer.MainWindow
                 if (objChild is TextBox t)
                 {
                     var dlg = new CommonOpenFileDialog("Select folder") { IsFolderPicker = true };
-                    if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok) { return; }
+                    if (DirectoryMemory.ShowDialog(dlg, this, t.Text) != CommonFileDialogResult.Ok) { return; }
                     t.Text = dlg.FileName;
                 }
             }
@@ -61,7 +61,7 @@ namespace LegendaryExplorer.MainWindow
                 {
                     var dlg = new CommonOpenFileDialog("Select file")
                         {Filters = {new CommonFileDialogFilter("", browseButton.Tag.ToString() ?? "")}};
-                    if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok) { return; }
+                    if (DirectoryMemory.ShowDialog(dlg, this, t.Text) != CommonFileDialogResult.Ok) { return; }
                     t.Text = dlg.FileName;
                 }
             }

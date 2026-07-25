@@ -54,7 +54,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             string searchDir = MEDirectories.GetCookedPath(game);
 
             CommonOpenFileDialog d = new CommonOpenFileDialog { Title = "Select folder to search", IsFolderPicker = true, InitialDirectory = myBasePath };
-            if (d.ShowDialog() == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(d) == CommonFileDialogResult.Ok)
             {
                 searchDir = d.FileName;
             }
@@ -63,7 +63,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             Microsoft.Win32.OpenFileDialog outputFileDialog = new () { 
                 Title = "Select GlobalTlk file to output to (GlobalTlk exports will be completely overwritten)", 
                 Filter = filter };
-            bool? result = outputFileDialog.ShowDialog();
+            bool? result = DirectoryMemory.ShowDialog(outputFileDialog);
             if (!result.HasValue || !result.Value)
             {
                 Debug.WriteLine("No output file specified");
@@ -206,7 +206,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             Microsoft.Win32.OpenFileDialog outputFileDialog = new () { 
                 Title = "Select .XML file to import", 
                 Filter = "*.xml|*.xml" };
-            bool? result = outputFileDialog.ShowDialog();
+            bool? result = DirectoryMemory.ShowDialog(outputFileDialog);
             if (!result.HasValue || !result.Value)
             {
                 Debug.WriteLine("No output file specified");
@@ -247,7 +247,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             Microsoft.Win32.OpenFileDialog outputFileDialog = new () { 
                 Title = "Select TOC File", 
                 Filter = "*.bin|*.bin" };
-            bool? result = outputFileDialog.ShowDialog();
+            bool? result = DirectoryMemory.ShowDialog(outputFileDialog);
             if (!result.HasValue || !result.Value)
             {
                 Debug.WriteLine("No output file specified");
@@ -333,7 +333,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             var streams = pew.Pcc.Exports.Where(e => e.ClassName == "WwiseStream");
 
             var dlg = new CommonOpenFileDialog("Select folder containing converted files") { IsFolderPicker = true };
-            if (dlg.ShowDialog(pew) != CommonFileDialogResult.Ok) { return; }
+            if (DirectoryMemory.ShowDialog(dlg, pew) != CommonFileDialogResult.Ok) { return; }
 
             string[] filesToConvert = Directory.GetFiles(dlg.FileName, "*.wem");
 

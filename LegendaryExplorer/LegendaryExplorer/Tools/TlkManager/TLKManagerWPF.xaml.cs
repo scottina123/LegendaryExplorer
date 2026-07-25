@@ -275,7 +275,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                 Title = "Select TLK file to load",
             };
             m.Filters.Add(new CommonFileDialogFilter("Talk files", "*.tlk"));
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 return m.FileName;
             }
@@ -312,7 +312,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                 Title = "Select UPK containing TLK",
             };
             m.Filters.Add(new CommonFileDialogFilter("Unreal Package File (ME1)", "*.upk;*.sfm"));
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 using IMEPackage upk = MEPackageHandler.OpenME1Package(m.FileName);
                 foreach (ExportEntry exp in upk.Exports)
@@ -358,7 +358,7 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
                 Title = "Select PCC containing TLK",
             };
             m.Filters.Add(new CommonFileDialogFilter("Unreal Package File (LE1)", "*.pcc"));
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 using IMEPackage upk = MEPackageHandler.OpenMEPackage(m.FileName);
                 foreach (ExportEntry exp in upk.Exports)

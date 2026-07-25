@@ -178,7 +178,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "Excel spreadsheet|*.xlsx",
                 FileName = CurrentLoadedExport.ObjectName
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 Table2DA.Write2DAToExcel(d.FileName);
                 MessageBox.Show("Done");
@@ -205,7 +205,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            if (oDlg.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(oDlg) == true)
             {
                 if (MessageBox.Show("This will overwrite the existing 2DA table.", "WARNING", MessageBoxButton.OKCancel) == MessageBoxResult.OK)
                 {

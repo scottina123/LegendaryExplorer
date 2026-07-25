@@ -153,7 +153,7 @@ namespace LegendaryExplorer.Tools.CustomFilesManager
         private void AddStartupFile()
         {
             var ofd = AppDirectories.GetOpenPackageDialog();
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 if (!CustomStartupFiles.Any(x => x.FilePath.CaseInsensitiveEquals(ofd.FileName)))
                 {
@@ -187,7 +187,7 @@ namespace LegendaryExplorer.Tools.CustomFilesManager
             CommonOpenFileDialog ofd = new CommonOpenFileDialog();
             ofd.IsFolderPicker = true;
             ofd.EnsurePathExists = true;
-            var result = ofd.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(ofd);
             if (result == CommonFileDialogResult.Ok)
             {
                 if (!CustomClassDirectories.Contains(ofd.FileName))

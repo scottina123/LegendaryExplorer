@@ -54,7 +54,7 @@ namespace LegendaryExplorer.Dialogs
             var dlg = new CommonOpenFileDialog("Open File");
             dlg.Filters.Add(new CommonFileDialogFilter("Executable File", "*.exe"));
 
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
             {
                 return "";
             }

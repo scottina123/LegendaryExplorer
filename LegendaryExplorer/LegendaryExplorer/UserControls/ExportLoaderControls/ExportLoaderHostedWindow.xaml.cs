@@ -241,7 +241,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 string extension = Path.GetExtension(Pcc.FilePath);
                 var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     await Pcc.SaveAsync(d.FileName);
                     OnPropertyChanged(nameof(CurrentLastSavedText));
@@ -294,6 +294,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (!string.IsNullOrWhiteSpace(CurrentFilePath))
             {
+                DirectoryMemory.RememberExplorerLocation("ExportLoaderHostedWindow.OpenCurrentFileLocation", CurrentFilePath);
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
             }
         }

@@ -94,7 +94,7 @@ namespace LegendaryExplorer.Tools.PackageDumper
             dlg.Filters.Add(new CommonFileDialogFilter("Mass Effect 1 package files", "*.sfm;*.u;*.upk;*.xxx"));
             dlg.Filters.Add(new CommonFileDialogFilter("Mass Effect 2/3/LE package files", "*.pcc;*.xxx"));
 
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 CommonOpenFileDialog outputDlg = new()
                 {
@@ -102,7 +102,7 @@ namespace LegendaryExplorer.Tools.PackageDumper
                     EnsurePathExists = true,
                     Title = "Select output folder"
                 };
-                if (outputDlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(outputDlg, this) == CommonFileDialogResult.Ok)
                 {
                     string outputDir = outputDlg.FileName;
                     await DumpPackages(dlg.FileNames.ToList(), outputDir);
@@ -234,7 +234,7 @@ namespace LegendaryExplorer.Tools.PackageDumper
                 EnsurePathExists = true,
                 Title = "Select output folder"
             };
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 string outputDir = m.FileName;
                 await DumpPackages(MELoadedFiles.GetFilesLoadedInGame(game, true).Values.ToList(), outputDir);

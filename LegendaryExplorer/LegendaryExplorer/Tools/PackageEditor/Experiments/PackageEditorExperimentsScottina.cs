@@ -238,7 +238,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 EnsurePathExists = true,
                 Title = "Select folder containing PCC files"
             };
-            if (folderDialog.ShowDialog(pew) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(folderDialog, pew) != CommonFileDialogResult.Ok)
             {
                 return;
             }
@@ -989,7 +989,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 EnsurePathExists = true,
                 Title = "Select folder containing package files"
             };
-            if (dialog.ShowDialog(pew) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dialog, pew) != CommonFileDialogResult.Ok)
             {
                 return;
             }

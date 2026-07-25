@@ -44,7 +44,7 @@ namespace LegendaryExplorer.GameInterop.InteropTargets
                 Title = "Select Mass Effect 3 executable",
                 Filter = "MassEffect3.exe|MassEffect3.exe"
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 string gamePath = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(ofd.FileName)));
 

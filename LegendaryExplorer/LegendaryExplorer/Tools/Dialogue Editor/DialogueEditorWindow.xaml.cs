@@ -845,7 +845,7 @@ namespace LegendaryExplorer.DialogueEditor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             SaveFileDialog d = new() { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done.");
@@ -949,7 +949,7 @@ namespace LegendaryExplorer.DialogueEditor
         private void OpenPackage()
         {
             OpenFileDialog d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -2546,7 +2546,7 @@ namespace LegendaryExplorer.DialogueEditor
                     folderDialog.InitialDirectory = folderTextBox.Text;
                 }
 
-                if (folderDialog.ShowDialog(dialog) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(folderDialog, dialog, folderTextBox.Text) == CommonFileDialogResult.Ok)
                 {
                     folderTextBox.Text = folderDialog.FileName;
                 }
@@ -5629,7 +5629,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     bool binaryOnly = actionName == "ExportBinaryData";
                     var d = new SaveFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin" };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         File.WriteAllBytes(d.FileName, binaryOnly ? export.GetBinaryData() : export.Data);
                         MessageBox.Show("Done.");
@@ -5641,7 +5641,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     bool binaryOnly = actionName == "ImportBinaryData";
                     var d = new OpenFileDialog { Filter = "*.bin|*.bin", FileName = export.ObjectName.Instanced + ".bin", CustomPlaces = AppDirectories.GameCustomPlaces };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         byte[] data = File.ReadAllBytes(d.FileName);
                         if (binaryOnly)
@@ -11563,7 +11563,7 @@ namespace LegendaryExplorer.DialogueEditor
                 Filter = "PNG Files (*.png)|*.png",
                 FileName = $"{CurrentFile}.{objectName}"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 PNode r = graphEditor.Root;
                 RectangleF rr = r.GlobalFullBounds;
@@ -11926,7 +11926,7 @@ namespace LegendaryExplorer.DialogueEditor
                 ShowNewFolderButton = true
             };
 
-            if (folderDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            if (DirectoryMemory.ShowDialog(folderDialog) != System.Windows.Forms.DialogResult.OK)
                 return;
 
             try

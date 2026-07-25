@@ -100,7 +100,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 Filter = "All supported files|*.pcc;*.u;*.sfm;*.upk;*.isb;*.afc;*.xxx|Package files|*.pcc;*.u;*.sfm;*.upk;*.xxx|ISACT Sound Bank files|*.isb|Audio File Cache (AFC)|*.afc",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            bool? result = d.ShowDialog();
+            bool? result = DirectoryMemory.ShowDialog(d);
             if (result.HasValue && result.Value)
             {
                 try
@@ -398,7 +398,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
             {
                 Filter = $"*{extension}|*{extension}"
             };
-            bool? result = d.ShowDialog();
+            bool? result = DirectoryMemory.ShowDialog(d);
             if (result.HasValue && result.Value)
             {
                 await Pcc.SaveAsync(d.FileName);
@@ -512,7 +512,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                             IsFolderPicker = true
                         };
 
-                        if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+                        if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
                         {
                             return;
                         }
@@ -558,7 +558,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 FileName = spExport.Export.ObjectName + ".bnk",
                 Title = "Select save location for bank file"
             };
-            bool? res = d.ShowDialog();
+            bool? res = DirectoryMemory.ShowDialog(d);
             if (res.HasValue && res.Value)
             {
                 //File.WriteAllBytes(d.FileName, spExport.Export.getBinaryData());
@@ -596,7 +596,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                     Filter = "Wave PCM File|*.wav",
                     FileName = presetfilename
                 };
-                if (d.ShowDialog().Value)
+                if (DirectoryMemory.ShowDialog(d).Value)
                 {
                     location = d.FileName;
                 }
@@ -631,7 +631,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                         Filter = "Wave PCM|*.wav",
                         FileName = spExport.Export.ObjectName + ".wav"
                     };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         outputLocation = d.FileName;
                     }
@@ -677,7 +677,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                             Filter = "Wwise WEM|*.wem",
                             FileName = spExport.Export.ObjectName + ".wem"
                         };
-                        if (d.ShowDialog() == true)
+                        if (DirectoryMemory.ShowDialog(d) == true)
                         {
                             var w = spExport.Export.GetBinaryData<WwiseStream>();
                             if (w.ExtractRawFromSourceToFile(d.FileName))
@@ -700,7 +700,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                             Filter = "Wwise WEM|*.wem",
                             FileName = presetfilename
                         };
-                        if (d.ShowDialog() == true)
+                        if (DirectoryMemory.ShowDialog(d) == true)
                         {
                             if (AudioStreamHelper.ExtractRawFromSourceToFile(d.FileName, afcEntry.AFCPath, afcEntry.DataSize, afcEntry.Offset))
                             {
@@ -725,7 +725,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                     Filter = "Ogg Vorbis|*.ogg",
                     FileName = spExport.Export.ObjectName + ".ogg"
                 };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     WwiseStream w = spExport.Export.GetBinaryData<WwiseStream>();
                     string riffOutputFile = Path.Combine(Directory.GetParent(d.FileName).FullName, Path.GetFileNameWithoutExtension(d.FileName)) + ".dat";
@@ -760,7 +760,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                     Filter = "Ogg Vorbis|*.ogg",
                     FileName = presetfilename
                 };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     string riffOutputFile = Path.Combine(Directory.GetParent(d.FileName).FullName, Path.GetFileNameWithoutExtension(d.FileName)) + ".dat";
 
@@ -861,7 +861,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
             if (!pathCorrect) return;
 
             var dlg = new CommonOpenFileDialog("Select folder containing .wav files") { IsFolderPicker = true };
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok) { return; }
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok) { return; }
 
             string[] filesToConvert = Directory.GetFiles(dlg.FileName, "*.wav");
             if (!filesToConvert.Any())
@@ -898,7 +898,7 @@ namespace LegendaryExplorer.Tools.Soundplorer
                 IsFolderPicker = true
             };
 
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
             {
                 return;
             }

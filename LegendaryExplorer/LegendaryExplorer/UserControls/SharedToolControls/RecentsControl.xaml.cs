@@ -112,12 +112,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls
             path = Path.GetFullPath(path);
             if (Directory.Exists(path))
             {
+                DirectoryMemory.RememberExplorerLocation("RecentsControl.OpenRecentItemLocation", path);
                 Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
                 return;
             }
 
             if (File.Exists(path))
             {
+                DirectoryMemory.RememberExplorerLocation("RecentsControl.OpenRecentItemLocation", path);
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(path);
             }
         }

@@ -39,7 +39,7 @@ namespace LegendaryExplorer.UnrealExtensions.Classes
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
                     d.Filter = ws.Filename + ".afc|" + ws.Filename + ".afc";
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                         ws.ImportWwiseOgg(d.FileName, stream);
                 }
 
@@ -63,7 +63,7 @@ namespace LegendaryExplorer.UnrealExtensions.Classes
             {
                 OpenFileDialog d = new OpenFileDialog();
                 d.Filter = ws.Filename + ".afc|" + ws.Filename + ".afc";
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                     ws.ImportWwiseOgg(d.FileName, stream);
             }
         }

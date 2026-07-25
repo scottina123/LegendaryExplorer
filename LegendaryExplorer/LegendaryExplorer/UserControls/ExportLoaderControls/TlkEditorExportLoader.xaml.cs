@@ -1022,7 +1022,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "XML Files (*.xml)|*.xml",
                 FileName = fnameBase + ".xml"
             };
-            if (saveFileDialog.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(saveFileDialog) == true)
             {
                 if (CurrentLoadedExport != null)
                 {
@@ -1048,7 +1048,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "XML Files (*.xml)|*.xml",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (openFileDialog.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(openFileDialog) == true)
             {
                 if (CurrentLoadedExport is not null)
                 {
@@ -1207,7 +1207,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "ME2/ME3/LE2/LE3 Talk Files|*.tlk",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try
@@ -1447,7 +1447,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (CurrentLoadedExport != null)
             {
                 SaveFileDialog d = new() { Filter = $"*{Path.GetExtension(CurrentLoadedExport.FileRef.FilePath)}|*{Path.GetExtension(CurrentLoadedExport.FileRef.FilePath)}" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     if (FileModified)
                     {
@@ -1460,7 +1460,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             else if (_currentMe2Me3Me2Me3TalkFile is not null)
             {
                 SaveFileDialog d = new() { Filter = "ME2/ME3/LE2/LE3 talk files|*.tlk" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     // CurrentME2ME3TalkFile.
                     NormalizeLoadedStrings();

@@ -79,7 +79,7 @@ namespace LegendaryExplorer.Misc
                 EnsurePathExists = true,
                 Title = "Select output directory"
             };
-            if (dlg.ShowDialog(window) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, window) == CommonFileDialogResult.Ok)
             {
                 // 07/04/2023: Support alternate mesh formats that UEViewer supports
                 var prompt = new DropdownPromptDialog("Select a mesh output format. The default is PSK.",

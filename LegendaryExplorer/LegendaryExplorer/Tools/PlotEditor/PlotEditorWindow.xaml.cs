@@ -56,7 +56,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             var dlg = AppDirectories.GetOpenPackageDialog();
 
-            if (dlg.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(dlg) != true)
             {
                 return;
             }
@@ -307,7 +307,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
         {
             var dlg = new SaveFileDialog { Filter = "Support files|*.pcc;*.upk" };
 
-            if (dlg.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(dlg) != true)
             {
                 return;
             }

@@ -1246,7 +1246,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         Filter = "Wave PCM File|*.wav",
                         FileName = CurrentLoadedExport.ObjectName + ".wav"
                     };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         WwiseStream w = CurrentLoadedExport.GetBinaryData<WwiseStream>();
                         string wavPath = w.CreateWave();
@@ -1267,7 +1267,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         Filter = "Wave PCM|*.wav",
                         FileName = $"{CurrentLoadedExport.ObjectName}_0x{currentWEMItem.Id:X8}.wav"
                     };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         Stream ms = GetPCMStream();
                         ms.Seek(0, SeekOrigin.Begin);
@@ -1295,7 +1295,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         Filter = "Wave PCM File|*.wav",
                         FileName = CurrentLoadedExport.ObjectName.Instanced.GetPathWithoutInvalids() + ".wav"
                     };
-                    if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                     {
                         pcmStream.WriteToFile(d.FileName);
                         MessageBox.Show("Done.");
@@ -1310,7 +1310,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     Filter = "Wave PCM File|*.wav",
                     FileName = CurrentLoadedISACTEntry.TitleInfo.Value
                 };
-                if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     MemoryStream waveStream = AudioStreamHelper.GetWaveStreamFromISBEntry(CurrentLoadedISACTEntry);
                     waveStream.Seek(0, SeekOrigin.Begin);
@@ -1332,7 +1332,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     Filter = "Wave PCM File|*.wav",
                     FileName = presetfilename
                 };
-                if (d.ShowDialog() == true)
+                    if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     Stream s = AudioStreamHelper.CreateWaveStreamFromRaw(CurrentLoadedAFCFileEntry.AFCPath, CurrentLoadedAFCFileEntry.Offset, CurrentLoadedAFCFileEntry.DataSize, CurrentLoadedAFCFileEntry.ME2);
                     using (var fileStream = File.Create(d.FileName))
@@ -1432,7 +1432,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Filter = "Wave PCM|*.wav",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            bool? res = d.ShowDialog();
+            bool? res = DirectoryMemory.ShowDialog(d);
             if (!res.HasValue || !res.Value)
             {
                 return;
@@ -1522,7 +1522,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         Filter = "Wave PCM|*.wav",
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
-                    bool? res = d.ShowDialog();
+            bool? res = DirectoryMemory.ShowDialog(d);
                     if (res.HasValue && res.Value)
                     {
                         sourceFile = d.FileName;
@@ -1565,7 +1565,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     Filter = Pcc.Game is MEGame.ME3 ? "Wwise Encoded Ogg|*.ogg" : "Wwise Wem File|*.wem",
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                bool? res = d.ShowDialog();
+            bool? res = DirectoryMemory.ShowDialog(d);
                 if (res.HasValue && res.Value)
                 {
                     oggPath = d.FileName;
@@ -1622,7 +1622,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     Filter = "Wave PCM|*.wav",
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (correctPaths && d.ShowDialog() == true)
+            if (correctPaths && DirectoryMemory.ShowDialog(d) == true)
                 {
                     sourceFile = d.FileName;
                 }
@@ -1702,7 +1702,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         Filter = Pcc.Game is MEGame.ME3 ? "Wwise Encoded Ogg|*.ogg" : "Wwise Wem File|*.wem",
                         CustomPlaces = AppDirectories.GameCustomPlaces
                     };
-                    bool? res = d.ShowDialog();
+            bool? res = DirectoryMemory.ShowDialog(d);
                     if (res.HasValue && res.Value)
                     {
                         filePath = d.FileName;

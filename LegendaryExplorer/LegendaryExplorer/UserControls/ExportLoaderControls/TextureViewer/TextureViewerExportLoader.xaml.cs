@@ -495,7 +495,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 #endif
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            var result = selectDDS.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(selectDDS);
             if (result.HasValue && result.Value)
             {
                 if (HostingControl != null)
@@ -648,7 +648,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 #endif
                 FileName = CurrentLoadedExport.ObjectName.Instanced + ".png"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 LegendaryExplorerCore.Unreal.Classes.Texture2D t2d = new LegendaryExplorerCore.Unreal.Classes.Texture2D(CurrentLoadedExport);
 #if WINDOWS

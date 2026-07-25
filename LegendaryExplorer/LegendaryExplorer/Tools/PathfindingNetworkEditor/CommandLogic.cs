@@ -203,7 +203,7 @@ namespace LegendaryExplorer.Tools.PathfindingNetworkEditor
         private void OpenPackage()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try

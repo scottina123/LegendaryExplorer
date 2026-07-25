@@ -1261,7 +1261,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                 Title = "Select WAV file for codex page audio",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (wavDialog.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(wavDialog) != true)
             {
                 return;
             }
@@ -1352,7 +1352,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     CustomPlaces = AppDirectories.GameCustomPlaces,
                     Title = "Select replacement WAV file"
                 };
-                if (openFileDialog.ShowDialog() != true)
+                if (DirectoryMemory.ShowDialog(openFileDialog) != true)
                 {
                     return;
                 }
@@ -1466,7 +1466,7 @@ namespace LegendaryExplorer.Tools.PlotEditor
                     Filter = "Wave PCM File|*.wav",
                     FileName = wwiseStreamExport.ObjectNameString + ".wav"
                 };
-                if (saveFileDialog.ShowDialog() != true)
+                if (DirectoryMemory.ShowDialog(saveFileDialog) != true)
                 {
                     return;
                 }

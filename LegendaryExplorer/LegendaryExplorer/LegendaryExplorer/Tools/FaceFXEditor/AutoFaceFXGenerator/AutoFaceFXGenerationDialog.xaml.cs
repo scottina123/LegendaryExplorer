@@ -249,7 +249,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 CheckFileExists = true
             };
 
-            if (dialog.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dialog) == true)
             {
                 FxaFilePath = dialog.FileName;
             }
@@ -264,7 +264,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor.AutoFaceFXGenerator
                 CheckFileExists = true
             };
 
-            if (dialog.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dialog) == true)
             {
                 FxtFilePath = dialog.FileName;
             }

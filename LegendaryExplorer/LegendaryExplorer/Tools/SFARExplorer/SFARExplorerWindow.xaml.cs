@@ -70,7 +70,7 @@ namespace LegendaryExplorer.Tools.SFARExplorer
                 EnsurePathExists = true
             };
 
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 Task.Run(() =>
                 {
@@ -103,7 +103,7 @@ namespace LegendaryExplorer.Tools.SFARExplorer
                 {
                     FileName = recommendedName
                 };
-                var result = dlg.ShowDialog(this);
+                var result = DirectoryMemory.ShowDialog(dlg, this);
                 if (result.HasValue && result.Value)
                 {
                     var outpath = dlg.FileName;
@@ -171,7 +171,7 @@ namespace LegendaryExplorer.Tools.SFARExplorer
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            var result = ofd.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(ofd);
             if (result.HasValue && result.Value)
             {
                 LoadFile(ofd.FileName);

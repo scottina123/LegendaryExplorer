@@ -347,7 +347,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 {
                     // Unsaved new file
                     var d = new SaveFileDialog { Filter = CNDFileFilter };
-                    if (d.ShowDialog() == false) return;
+                    if (DirectoryMemory.ShowDialog(d) == false) return;
                     File.FilePath = d.FileName;
                     CurrentFileName = Path.GetFileName(d.FileName);
                     CurrentFilePath = d.FileName;
@@ -365,7 +365,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             if (Validate())
             {
                 var d = new SaveFileDialog { Filter = CNDFileFilter };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     SaveFile(d.FileName);
                     MessageBox.Show(this, "Done.");
@@ -419,7 +419,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 Title = "Open Conditionals file",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -547,6 +547,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         {
             if (!string.IsNullOrWhiteSpace(CurrentFilePath))
             {
+                DirectoryMemory.RememberExplorerLocation("ConditionalsEditor.OpenCurrentFileLocation", CurrentFilePath);
                 LegendaryExplorerCoreUtilities.OpenAndSelectFileInExplorer(CurrentFilePath);
             }
         }

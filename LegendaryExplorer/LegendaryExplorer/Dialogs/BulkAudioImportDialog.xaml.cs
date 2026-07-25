@@ -157,7 +157,7 @@ namespace LegendaryExplorer.Dialogs
                 Title = "Select WAV files to import"
             };
 
-            if (openFileDialog.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(openFileDialog) == true)
             {
                 foreach (var file in openFileDialog.FileNames)
                 {

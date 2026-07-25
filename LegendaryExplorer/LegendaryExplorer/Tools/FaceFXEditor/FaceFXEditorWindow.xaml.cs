@@ -104,7 +104,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 editorControl.SaveChanges();
                 await Pcc.SaveAsync(d.FileName);
@@ -121,7 +121,7 @@ namespace LegendaryExplorer.Tools.FaceFXEditor
         private void OpenPackage()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {

@@ -523,7 +523,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 EnsurePathExists = true,
                 Title = "Select Output Folder for Extracted Audio"
             };
-            if (dlg.ShowDialog(window as System.Windows.Window) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, window as System.Windows.Window) != CommonFileDialogResult.Ok)
             {
                 return;
             }

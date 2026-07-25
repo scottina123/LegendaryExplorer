@@ -493,7 +493,7 @@ return;
                 EnsurePathExists = true,
                 Title = "Select Folder Containing Localized Files"
             };
-            if (dlg.ShowDialog(pewpf) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, pewpf) == CommonFileDialogResult.Ok)
             {
                 foreach (var t2dx in sourcePackage.Exports.Where(x => x.IsTexture()))
                 {
@@ -516,7 +516,7 @@ return;
                 EnsurePathExists = true,
                 Title = "Select Folder Containing Package Files"
             };
-            if (dlg.ShowDialog(pewpf) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, pewpf) == CommonFileDialogResult.Ok)
             {
                 TFCTools.FindExternalizableTextures(dlg.FileName);
             }
@@ -1152,7 +1152,7 @@ return;
                     IsFolderPicker = true,
                     EnsurePathExists = true
                 };
-                if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(dlg) == CommonFileDialogResult.Ok)
                 {
                     packageEditorWpf.IsBusy = true;
                     Task.Run(() =>
@@ -1337,7 +1337,7 @@ return;
             MessageBox.Show(
                 "Generate New GUID for file process applies immediately and cannot be undone.\nEnsure the file you are going to regenerate is not open in Legendary Explorer in any tools.\nBe absolutely sure you know what you're doing before you use GetPEWindow()!");
             OpenFileDialog d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 using (IMEPackage sourceFile = MEPackageHandler.OpenMEPackage(d.FileName))
                 {
@@ -1379,7 +1379,7 @@ return;
                 EnsurePathExists = true,
                 Title = "Select folder to generate GUID cache on"
             };
-            if (m.ShowDialog(pew) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, pew) == CommonFileDialogResult.Ok)
             {
                 string dir = m.FileName;
                 string[] files = Directory.GetFiles(dir, "*.pcc");
@@ -1594,7 +1594,7 @@ return;
                 EnsurePathExists = true,
                 Title = "Select output folder"
             };
-            if (dlg.ShowDialog(pewpf) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, pewpf) == CommonFileDialogResult.Ok)
             {
                 var langFilter = PromptDialog.Prompt(pewpf,
                     "Enter the language suffix to filter, or blank to dump INT. For example, PLPC, DE, FR.",
@@ -2148,7 +2148,7 @@ return;
                 Title = "Select generated soundbank",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 var askResult = Xceed.Wpf.Toolkit.MessageBox.Show(pe,
                     "Are you using this for a dialogue import? If using this for a dialogue bank the streamed audio and events must be named correctly in the editor. \n" +
@@ -2723,7 +2723,7 @@ defaultproperties
                 EnsurePathExists = true,
                 Title = "Select folder(s) containing package files"
             };
-            if (dlg.ShowDialog(pe) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, pe) != CommonFileDialogResult.Ok)
             {
                 return;
             }
@@ -3899,7 +3899,7 @@ defaultproperties
             if (pe.TryGetSelectedExport(out var mexp))
             {
                 var d = new SaveFileDialog { Filter = GameFileFilters.LESaveFileFilter };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     var pfc = DecookedExporter.CookObjectToPackage(mexp);
                     if (pfc is ExportEntry { ClassName: "Material" } exp)
@@ -3963,7 +3963,7 @@ defaultproperties
                 Filter = "*.udk|*.udk",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 using var udkP = MEPackageHandler.OpenUDKPackage(d.FileName);
                 var udkTerrain = udkP.Exports.FirstOrDefault(x => x.ClassName == "Terrain");
@@ -4047,7 +4047,7 @@ defaultproperties
                     Filter = "*.udk|*.udk",
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (d.ShowDialog() != true)
+                if (DirectoryMemory.ShowDialog(d) != true)
                     return;
                 var udkDestFile = d.FileName;
                 using var udkP = MEPackageHandler.OpenUDKPackage(udkDestFile);
@@ -4058,7 +4058,7 @@ defaultproperties
                     Filter = GameFileFilters.OpenFileFilter,
                     CustomPlaces = AppDirectories.GameCustomPlaces
                 };
-                if (f.ShowDialog() != true)
+                if (DirectoryMemory.ShowDialog(f) != true)
                     return;
 
                 var sourcePackage = f.FileName;
@@ -4117,7 +4117,7 @@ defaultproperties
             var preselected = @"B:\SteamLibrary\steamapps\common\Mass Effect Legendary Edition\Game\ME1\BioGame\CookedPCConsole\BIOA_ICE20_08_ART.pcc";
 
             OpenFileDialog d = new OpenFileDialog { Title = "Select donor file with terrain", Filter = "*.pcc|*.pcc" };
-            if (preselected == null && d.ShowDialog() == false)
+            if (preselected == null && DirectoryMemory.ShowDialog(d) == false)
                 return;
             using var donorFile = MEPackageHandler.OpenMEPackage(preselected ?? d.FileName);
             var donorTerrain = donorFile.Exports.FirstOrDefault(x => x.ClassName == "Terrain");

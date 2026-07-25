@@ -878,7 +878,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 FileName = $"{Pcc.FileNameNoExtension}_Props.uc",
                 CheckFileExists = true
             };
-            if (d.ShowDialog() is not true) return;
+            if (DirectoryMemory.ShowDialog(d) is not true) return;
             var fileName = d.FileName;
             SetBusy("Applying property edits");
             Task.Run(() =>
@@ -932,7 +932,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 Filter = "unrealscript file|*.uc",
                                 FileName = $"{Pcc.FileNameNoExtension}_Props.uc"
                             };
-                            if (d.ShowDialog() == true)
+                            if (DirectoryMemory.ShowDialog(d) == true)
                             {
                                 File.WriteAllText(d.FileName, src);
                             }
@@ -1984,7 +1984,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     EnsurePathExists = true,
                     Title = "Select output folder"
                 };
-                if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
                 {
                     string dir = m.FileName;
                     Stopwatch stopwatch = Stopwatch.StartNew(); //creates and start the instance of Stopwatch
@@ -2018,7 +2018,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     EnsurePathExists = true,
                     Title = "Select folder of GFX/SWF files to import"
                 };
-                if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
                 {
                     var bw = new BackgroundWorker();
                     bw.RunWorkerAsync(m.FileName);
@@ -2205,7 +2205,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             var d = new SaveFileDialog { Filter = fileFilter, CustomPlaces = AppDirectories.GameCustomPlaces };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done");
@@ -2253,7 +2253,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private void OpenFile()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try
@@ -2290,7 +2290,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     },
                     CustomPlaces = AppDirectories.GameCustomPlaces,
                 };
-                if (dlg.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(dlg) == true)
                 {
                     MEPackageHandler.CreateAndSavePackage(dlg.FileName, game);
                     LoadFile(dlg.FileName);
@@ -2314,7 +2314,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 if (game == MEGame.ME1)
                     dlg.Filter = GameFileFilters.ME1SaveFileFilter;
 
-                if (dlg.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(dlg) == true)
                 {
                     string locFilePath = Path.Combine(
                         Path.GetDirectoryName(dlg.FileName)!,
@@ -4004,7 +4004,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                         FileName = exp.FullPath + ".swf",
                                         Filter = "*.swf|*.swf"
                                     };
-                                    if (d.ShowDialog() == true)
+                                    if (DirectoryMemory.ShowDialog(d) == true)
                                     {
                                         File.WriteAllBytes(d.FileName, data);
                                         MessageBox.Show("Done");
@@ -4031,7 +4031,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".xml",
                                 Filter = $"*{extension}|*{extension}"
                             };
-                            if (d.ShowDialog() == true)
+                            if (DirectoryMemory.ShowDialog(d) == true)
                             {
                                 var exportingTalk = new ME1TalkFile(exp);
                                 exportingTalk.SaveToXML(d.FileName);
@@ -4055,7 +4055,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 IsFolderPicker = true
                             };
 
-                            if (d.ShowDialog() == CommonFileDialogResult.Ok)
+                            if (DirectoryMemory.ShowDialog(d) == CommonFileDialogResult.Ok)
                             {
                                 // todo: Change to ISACTBankPair?
 
@@ -4103,7 +4103,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 Title = "Select output folder for ICB/Stripped ISB",
                                 IsFolderPicker = true
                             };
-                            if (d.ShowDialog() == CommonFileDialogResult.Ok)
+                            if (DirectoryMemory.ShowDialog(d) == CommonFileDialogResult.Ok)
                             {
                                 // ICB
                                 var outDir = d.FileName;
@@ -4137,7 +4137,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".fxa",
                                 Filter = "*.fxa|*.fxa"
                             };
-                            if (d.ShowDialog() == true)
+                            if (DirectoryMemory.ShowDialog(d) == true)
                             {
                                 var data = new MemoryStream(exp.GetBinaryData());
                                 data.Skip(0x4);
@@ -4156,7 +4156,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.FullPath + ".bnk",
                                 Filter = "*.bnk|*.bnk"
                             };
-                            if (wdiag.ShowDialog() == true)
+                            if (DirectoryMemory.ShowDialog(wdiag) == true)
                             {
                                 var data = new MemoryStream(exp.GetBinaryData());
                                 if (exp.Game.IsGame3())
@@ -4191,7 +4191,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                                 FileName = exp.InstancedFullPath + ".phys",
                                 Filter = "*.phys|*.phys"
                             };
-                            if (saveDiag.ShowDialog() == true)
+                            if (DirectoryMemory.ShowDialog(saveDiag) == true)
                             {
                                 File.WriteAllBytes(saveDiag.FileName, cachedConv.CachedPhysBrushData.CachedConvexElements[0].ConvexElementData);
                                 MessageBox.Show("Done");
@@ -4641,7 +4641,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 Title = "Select destination folder containing PCC files"
             };
 
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
                 return;
 
             string targetFolder = dlg.FileName;
@@ -5064,7 +5064,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 FileName = export.ObjectName.Instanced + ".bin",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 byte[] data = File.ReadAllBytes(d.FileName);
                 if (binaryOnly)
@@ -5096,7 +5096,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 Filter = "*.bin|*.bin",
                 FileName = export.ObjectName.Instanced + ".bin"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 File.WriteAllBytes(d.FileName, binaryOnly ? export.GetBinaryData() : export.Data);
                 MessageBox.Show("Done.");

@@ -218,7 +218,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
         {
             var dlg = new CommonOpenFileDialog("Open Coalesced File");
             dlg.Filters.Add(new CommonFileDialogFilter("Coalesced Files", "*.bin"));
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this, global::LegendaryExplorer.Misc.AppSettings.Settings.CoalescedEditor_SourcePath) != CommonFileDialogResult.Ok)
                 return;
 
             LoadCoalescedFile(dlg.FileName);
@@ -541,7 +541,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 InitialDirectory = Path.GetDirectoryName(SelectedFile.FilePath)
             };
 
-            if (dlg.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dlg) == true)
             {
                 SaveCoalescedFile(SelectedFile, dlg.FileName);
                 SelectedFile.FilePath = dlg.FileName;
@@ -596,7 +596,7 @@ namespace LegendaryExplorer.Tools.CoalescedEditor
                 IsFolderPicker = true
             };
 
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
                 return;
 
             try

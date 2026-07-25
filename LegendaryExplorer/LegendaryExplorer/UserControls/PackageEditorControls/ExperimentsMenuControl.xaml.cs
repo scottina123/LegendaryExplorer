@@ -941,7 +941,7 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
                 Title = "Export FaceFXAsset to XML"
             };
 
-            if (saveFileDialog.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(saveFileDialog) != true)
                 return;
 
             try

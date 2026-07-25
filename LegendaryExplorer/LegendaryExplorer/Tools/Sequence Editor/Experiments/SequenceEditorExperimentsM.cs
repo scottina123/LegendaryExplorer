@@ -66,7 +66,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor.Experiments
         {
             OpenFileDialog ofd = AppDirectories.GetOpenPackageDialog();
             bool reload = false;
-            var result = ofd.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(ofd);
             if (result.HasValue && result.Value)
             {
                 // Open package and have user select sequence to import
@@ -173,7 +173,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor.Experiments
         public static void LoadCustomClassesFromFile(SequenceEditorWPF seqEd)
         {
             OpenFileDialog ofd = AppDirectories.GetOpenPackageDialog();
-            var result = ofd.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(ofd);
             if (result.HasValue && result.Value)
             {
                 seqEd.LoadAndRememberCustomSequenceObjectSource(ofd.FileName);

@@ -2836,6 +2836,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             string filePath = GetFilePath(filename, contentDir);
             if (File.Exists(filePath))
             {
+                DirectoryMemory.RememberExplorerLocation("AssetDatabase.OpenUsageFileLocation", filePath);
                 string cmd = "explorer.exe";
                 string arg = "/select, " + filePath;
                 System.Diagnostics.Process.Start(cmd, arg);
@@ -3384,7 +3385,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 EnsurePathExists = true,
                 Title = "Select Output Folder for Filtered Audio"
             };
-            if (dlg.ShowDialog(this) != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) != CommonFileDialogResult.Ok)
             {
                 return;
             }
@@ -4051,7 +4052,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 dlg.InitialDirectory = rootPath;
             }
 
-            if (dlg.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dlg) == true)
             {
                 // Dispose previous master PCC if any
                 _ambPerfMasterPcc?.Dispose();
@@ -4737,7 +4738,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         FileName = $"{anim.SeqName}.psa",
                         AddExtension = true
                     };
-                    if (dlg.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(dlg) == true)
                     {
                         PSA.CreateFrom(animSequence).ToFile(dlg.FileName);
                         MessageBox.Show("Done!", "PSA Export", MessageBoxButton.OK);
@@ -5565,7 +5566,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 FileName = $"ADB_{CurrentGame}_*.txt",
                 AddExtension = true
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 TextWriter tw = new StreamWriter(d.FileName);
                 foreach (KeyValuePair<int, string> file in FileListFilter.CustomFileList)
@@ -5587,7 +5588,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 FileName = $"ADB_{CurrentGame}_*.txt",
                 AddExtension = true
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 TextReader tr = new StreamReader(d.FileName);
                 string name = "";

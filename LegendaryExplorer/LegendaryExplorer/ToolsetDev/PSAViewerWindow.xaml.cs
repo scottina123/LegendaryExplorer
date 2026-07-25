@@ -32,7 +32,7 @@ public partial class PSAViewerWindow : NotifyPropertyChangedWindowBase
             Filter = "*.psa|*.psa",
             CustomPlaces = AppDirectories.GameCustomPlaces
         };
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
             LoadFile(d.FileName);
         }

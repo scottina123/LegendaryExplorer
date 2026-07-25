@@ -47,7 +47,7 @@ namespace LegendaryExplorer.GameInterop.InteropTargets
                 Title = "Select Mass Effect 2 executable",
                 Filter = "MassEffect2.exe|MassEffect2.exe"
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 string gamePath = Path.GetDirectoryName(Path.GetDirectoryName(ofd.FileName));
 

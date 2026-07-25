@@ -269,7 +269,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             };
             m.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
             var owner = Window.GetWindow(this);
-            if (m.ShowDialog(owner) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, owner) == CommonFileDialogResult.Ok)
             {
                 owner.RestoreAndBringToFront();
                 try
@@ -306,7 +306,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            if (oDlg.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(oDlg) != true)
                 return;
 
             var Workbook = new XLWorkbook(oDlg.FileName);
@@ -489,7 +489,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             };
             m.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
             var owner = Window.GetWindow(this);
-            if (m.ShowDialog(owner) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, owner) == CommonFileDialogResult.Ok)
             {
                 owner.RestoreAndBringToFront();
                 try

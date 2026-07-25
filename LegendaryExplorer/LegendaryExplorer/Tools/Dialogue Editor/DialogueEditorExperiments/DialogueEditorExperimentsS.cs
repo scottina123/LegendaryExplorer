@@ -64,7 +64,7 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
                 Filter = "PCC files (*.pcc)|*.pcc",
                 FileName = "AmbientLE3.pcc"
             };
-            if (sfd.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(sfd) != true)
                 return;
 
             string outputPath = sfd.FileName;

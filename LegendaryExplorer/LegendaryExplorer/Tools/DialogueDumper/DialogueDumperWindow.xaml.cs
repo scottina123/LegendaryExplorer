@@ -119,7 +119,7 @@ namespace LegendaryExplorer.Tools.DialogueDumper
             dlg.Filters.Add(new CommonFileDialogFilter("Mass Effect package files", "*.sfm;*.u;*.upk"));
             dlg.Filters.Add(new CommonFileDialogFilter("Mass Effect 2/3/LE package files", "*.pcc"));
 
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this) == CommonFileDialogResult.Ok)
             {
                 CommonSaveFileDialog outputDlg = new()
                 {
@@ -129,7 +129,7 @@ namespace LegendaryExplorer.Tools.DialogueDumper
                 };
                 outputDlg.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
 
-                if (outputDlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+                if (DirectoryMemory.ShowDialog(outputDlg, this) == CommonFileDialogResult.Ok)
                 {
                     outputfile = outputDlg.FileName;
                     await DumpPackages(dlg.FileNames.ToList(), outputfile);
@@ -240,7 +240,7 @@ namespace LegendaryExplorer.Tools.DialogueDumper
             };
             m.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
 
-            if (m.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(m, this) == CommonFileDialogResult.Ok)
             {
                 outputfile = m.FileName;
                 this.RestoreAndBringToFront();
@@ -260,7 +260,7 @@ namespace LegendaryExplorer.Tools.DialogueDumper
             };
             outputDlg.Filters.Add(new CommonFileDialogFilter("Excel Files", "*.xlsx"));
 
-            if (outputDlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(outputDlg, this) == CommonFileDialogResult.Ok)
             {
                 outputfile = outputDlg.FileName;
             }

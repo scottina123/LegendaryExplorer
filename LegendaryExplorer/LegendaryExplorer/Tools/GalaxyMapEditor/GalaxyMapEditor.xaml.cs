@@ -1674,7 +1674,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
     private async void OpenFile()
     {
         var d = AppDirectories.GetOpenPackageDialog();
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
             await LoadFileAsync(d.FileName);
         }
@@ -1906,7 +1906,7 @@ public partial class GalaxyMapEditor : WPFBase, ISceneRenderContextConfigurable,
 
         string extension = Path.GetExtension(_filePath);
         var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-        if (d.ShowDialog() == true)
+        if (DirectoryMemory.ShowDialog(d) == true)
         {
             IsBusy = true;
             BusyText = "Saving...";

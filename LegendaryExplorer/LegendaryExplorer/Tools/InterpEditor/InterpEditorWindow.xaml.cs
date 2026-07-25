@@ -208,7 +208,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done.");
@@ -223,7 +223,7 @@ namespace LegendaryExplorer.Tools.InterpEditor
         private void OpenPackage()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {

@@ -900,7 +900,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         private void OpenPackage()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try
@@ -920,7 +920,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         {
             string extension = Path.GetExtension(Pcc.FilePath);
             var d = new SaveFileDialog { Filter = $"*{extension}|*{extension}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done.");
@@ -3713,7 +3713,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
         private void LoadOverlay()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try
@@ -3753,7 +3753,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 Filter = "Point Logger ASI file output (txt)|*txt",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 string pathfindingChainFile = d.FileName;
 
@@ -4261,7 +4261,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 FileName = $"{Pcc.Game}_{pccname}{tag}_group",
                 AddExtension = true
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 if (GroupTag == "Tag")
                 {
@@ -4294,7 +4294,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
                 AddExtension = true,
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 TextReader tr = new StreamReader(d.FileName);
 

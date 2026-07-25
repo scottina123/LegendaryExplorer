@@ -2211,7 +2211,7 @@ import java.util.*;"
                     IsFolderPicker = true,
                     EnsurePathExists = true
                 };
-                if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg) == CommonFileDialogResult.Ok)
                 {
                     pew.IsBusy = true;
 
@@ -2247,7 +2247,7 @@ import java.util.*;"
                 IsFolderPicker = true,
                 EnsurePathExists = true
             };
-            if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
+            //if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
             {
                 pew.IsBusy = true;
                 var shaderCache = ObjectBinary.From<ShaderCache>(shaderCacheExport);
@@ -2414,7 +2414,7 @@ import java.util.*;"
             {
                 var udkDlg = new CommonOpenFileDialog(@"Select your UDK\Custom folder");
                 udkDlg.IsFolderPicker = true;
-                var result = udkDlg.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(udkDlg);
 
                 if (result is not CommonFileDialogResult.Ok || string.IsNullOrWhiteSpace(udkDlg.FileName) || !Directory.Exists(udkDlg.FileName))
                     return;
@@ -2765,7 +2765,7 @@ import java.util.*;"
                     IsFolderPicker = true,
                     EnsurePathExists = true
                 };
-                if (dlg.ShowDialog() != CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg) != CommonFileDialogResult.Ok)
                 {
                     return;
                 }
@@ -3014,7 +3014,7 @@ import java.util.*;"
                 EnsurePathExists = true,
                 Title = "Select folder with .uc files"
             };
-            if (folderPicker.ShowDialog(pew) is not CommonFileDialogResult.Ok) return;
+            if (DirectoryMemory.ShowDialog(folderPicker, pew) is not CommonFileDialogResult.Ok) return;
             string classFolder = folderPicker.FileName;
 
             string gameString = InputComboBoxDialog.GetValue(pew, "Choose a game to compile for:",
@@ -3034,7 +3034,7 @@ import java.util.*;"
                 CustomPlaces = AppDirectories.GameCustomPlaces,
                 InitialDirectory = classFolder
             };
-            if (dlg.ShowDialog() != true) return;
+            if (DirectoryMemory.ShowDialog(dlg) != true) return;
             string packagePath = dlg.FileName;
 
             pew.SetBusy("Compiling loose classes");
@@ -3134,7 +3134,7 @@ import java.util.*;"
                 EnsurePathExists = true,
                 Title = "Select folder to dump .uc files"
             };
-            if (folderPicker.ShowDialog(pew) is not CommonFileDialogResult.Ok) return;
+            if (DirectoryMemory.ShowDialog(folderPicker, pew) is not CommonFileDialogResult.Ok) return;
             string folderPath = folderPicker.FileName;
             pew.SetBusy("Dumping source code");
             Task.Run(() =>
@@ -3209,7 +3209,7 @@ import java.util.*;"
                 EnsurePathExists = true,
                 Title = "Select folder with .t3d files"
             };
-            if (folderPicker.ShowDialog(pew) is not CommonFileDialogResult.Ok) return;
+            if (DirectoryMemory.ShowDialog(folderPicker, pew) is not CommonFileDialogResult.Ok) return;
             string classFolder = folderPicker.FileName;
 
             var pcc = pew.Pcc;

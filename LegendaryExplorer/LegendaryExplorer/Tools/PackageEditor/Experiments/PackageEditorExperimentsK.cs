@@ -58,7 +58,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             var d = new SaveFileDialog { Filter = fileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 string oldname = Path.GetFileNameWithoutExtension(pewpf.Pcc.FilePath).ToLower();
                 string newname = Path.GetFileNameWithoutExtension(d.FileName);
@@ -300,7 +300,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 {
                     dlg.Filter = GameFileFilters.LESaveFileFilter;
                 }
-                if (dlg.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(dlg) == true)
                 {
                     if (File.Exists(dlg.FileName))
                     {
@@ -908,7 +908,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 Title = "Select generated soundbank",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (ofd.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(ofd) == true)
             {
                 var askResult = Xceed.Wpf.Toolkit.MessageBox.Show(pe,
                     "Are you using this for a dialogue import? If using this for a dialogue bank the streamed audio and events must be named correctly in the editor.\n" +

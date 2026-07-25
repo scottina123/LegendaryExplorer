@@ -858,7 +858,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     Description = "Select destination folder",
                     UseDescriptionForTitle = true
                 };
-                if (saveFolderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                if (DirectoryMemory.ShowDialog(saveFolderDialog) == System.Windows.Forms.DialogResult.OK)
                 {
                     var saveFolder = saveFolderDialog.SelectedPath;
                     ExportMaterialTextures(materialExport, saveFolder);
@@ -955,7 +955,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (GetSelectedItem(pew, "AnimSequence", out var animSeqExport))
             {
                 var d = new SaveFileDialog { Filter = "PSA|*.psa" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     var psa = PSA.CreateFrom(animSeqExport.GetBinaryData<AnimSequence>());
 
@@ -969,7 +969,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             if (GetSelectedItem(pew, ["AnimSet", "BioDynamicAnimSet"], out var animSetExport))
             {
                 var d = new SaveFileDialog { Filter = "PSA|*.psa" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     var sequences = animSetExport.GetProperty<ArrayProperty<ObjectProperty>>("Sequences").Select(x => (x.ResolveToExport(pew.Pcc, new PackageCache())).GetBinaryData<AnimSequence>());
 
@@ -983,7 +983,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private static void ExportSkeletalMeshToPskx(PackageEditorWindow pew)
         {
             var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<SkeletalMesh>();
                 PSK.CreateFromSkeletalMesh(meshBin, 0, true).ToFile(d.FileName);
@@ -1015,7 +1015,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = $"{pew.SelectedItem.Entry.ObjectNameString}" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 var meshBin = ((ExportEntry)pew.SelectedItem.Entry).GetBinaryData<StaticMesh>();
                 PSK.CreateFromStaticMesh(meshBin, 0).ToFile(d.FileName);
@@ -1051,7 +1051,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = bmf.ObjectNameString };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 var baseHeadMesh = SharedMethods.ResolveEntryToExport(pew.Pcc.GetEntry(bmf.GetProperty<ObjectProperty>("m_oBaseHead").Value), new PackageCache());
                 var baseMeshBin = baseHeadMesh.GetBinaryData<SkeletalMesh>();
@@ -1300,7 +1300,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                 // get an output for this file
                 var d = new SaveFileDialog { Filter = "PSKX|*.pskx" };
-                if (d.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(d) != true)
                 {
                     return;
                 }
@@ -2374,7 +2374,7 @@ defaultproperties
                 Filter = "PSA|*.psa",
                 Title = "Select a psa file"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 psa = PSA.FromFile(d.FileName);
                 filePath = d.FileName;
@@ -2393,7 +2393,7 @@ defaultproperties
                 Filter = "PSK|*.psk;*.pskx",
                 Title = "Select a psk file"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 filePath = d.FileName;
                 var folder = Path.GetDirectoryName(filePath);
@@ -2428,7 +2428,7 @@ defaultproperties
                 Filter = "RON|*.ron",
                 Title = "Select a ron file"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 headmorph = HeadMorph.FromRonFile(d.FileName);
                 filePath = d.FileName;
@@ -2821,7 +2821,7 @@ defaultproperties
             }
 
             var d = new SaveFileDialog { Filter = "RON|*.ron" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 headMorph.ToRonFile(d.FileName);
             }
@@ -2963,7 +2963,7 @@ defaultproperties
             var targets = morphTargetSet.GetProperty<ArrayProperty<ObjectProperty>>("Targets");
 
             var d = new SaveFileDialog { Filter = "PSKX|*.pskx", FileName = morphTargetSet.ObjectNameString };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 void OutputLOD(int lod)
                 {

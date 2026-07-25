@@ -167,7 +167,7 @@ namespace LegendaryExplorer.Dialogs
                 dlg.InitialDirectory = BulkReplaceFolder;
             }
 
-            if (dlg.ShowDialog(this) == CommonFileDialogResult.Ok)
+            if (DirectoryMemory.ShowDialog(dlg, this, BulkReplaceFolder) == CommonFileDialogResult.Ok)
             {
                 BulkReplaceFolder = dlg.FileName;
             }

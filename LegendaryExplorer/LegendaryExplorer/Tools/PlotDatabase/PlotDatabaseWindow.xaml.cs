@@ -475,6 +475,7 @@ namespace LegendaryExplorer.Tools.PlotDatabase
             var path = Path.Combine(AppDirectories.AppDataFolder, mpc.LocalModFolderName);
             if (Directory.Exists(path))
             {
+                DirectoryMemory.RememberExplorerLocation("PlotDatabase.OpenModPlotFolder", path);
                 System.Diagnostics.Process.Start("explorer.exe", path);
             }
         }
@@ -1006,7 +1007,7 @@ namespace LegendaryExplorer.Tools.PlotDatabase
                 Filter = "*.json|*.json",
                 InitialDirectory = AppDirectories.AppDataFolder
             };
-            var result = jsonFileDialog.ShowDialog();
+            var result = DirectoryMemory.ShowDialog(jsonFileDialog);
             if (!result.HasValue || !result.Value) return;
             StreamReader sr = new StreamReader(jsonFileDialog.FileName);
             var db = JsonConvert.DeserializeObject<SerializedPlotDatabase>(sr.ReadToEnd(), new JsonSerializerSettings(){NullValueHandling = NullValueHandling.Ignore});
@@ -1137,7 +1138,7 @@ namespace LegendaryExplorer.Tools.PlotDatabase
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
 
-            if (oDlg.ShowDialog() != true)
+            if (DirectoryMemory.ShowDialog(oDlg) != true)
                 return;
 
             var Workbook = new XLWorkbook();
@@ -1574,7 +1575,7 @@ namespace LegendaryExplorer.Tools.PlotDatabase
             {
                 Filter = "Excel spreadsheet|*.xlsx"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 var msg = MessageBox.Show($"Do you want to write the current branch to\n{d.FileName}?", "Plot Database", MessageBoxButton.OKCancel);
                 if (msg == MessageBoxResult.Cancel)

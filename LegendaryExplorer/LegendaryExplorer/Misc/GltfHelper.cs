@@ -47,7 +47,7 @@ namespace LegendaryExplorer.Misc
                     return;
                 }
                 var d = new SaveFileDialog { Filter = "glTF binary|*.glb|glTF|*.glTF", FileName = $"{selectedEntry.ObjectName.Instanced}.glb" };
-                if (d.ShowDialog() == true)
+                if (DirectoryMemory.ShowDialog(d) == true)
                 {
                     Task.Run(() =>
                     {
@@ -200,7 +200,7 @@ namespace LegendaryExplorer.Misc
                 Filter = "gLTF|*.gltf;*.glb",
                 Title = "Select a gLTF or glb file"
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 filePath = d.FileName;
                 gltf = SharpGLTF.Schema2.ModelRoot.Load(filePath, SharpGLTF.Validation.ValidationMode.Skip);

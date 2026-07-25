@@ -723,7 +723,7 @@ public partial class ShaderComparisonWindow : NotifyPropertyChangedWindowBase
     private void LoadPackage(Side side)
     {
         var dlg = AppDirectories.GetOpenPackageDialog();
-        if (dlg.ShowDialog() != true)
+        if (DirectoryMemory.ShowDialog(dlg) != true)
             return;
 
         IsBusy = true;

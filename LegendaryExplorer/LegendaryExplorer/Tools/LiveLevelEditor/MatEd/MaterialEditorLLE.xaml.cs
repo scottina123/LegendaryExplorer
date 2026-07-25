@@ -447,7 +447,7 @@ namespace LegendaryExplorer.Tools.LiveLevelEditor.MatEd
             string extension = ".pcc";
             var fileFilter = $"*{extension}|*{extension}";
             var d = new SaveFileDialog { Filter = fileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 //EntryExporter.ExportExportToFile(MatInfo.MaterialExport, d.FileName, out var exp);
                 //PackageEditorWindow pw = new PackageEditorWindow();

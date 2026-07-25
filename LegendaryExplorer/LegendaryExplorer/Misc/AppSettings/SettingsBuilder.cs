@@ -457,6 +457,11 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _global_tlk_ismale;
             set => SetProperty(ref _global_tlk_ismale, value);
         }
+        private static Dictionary<string, string> _global_lastuseddirectories = new Dictionary<string, string>();
+        public static Dictionary<string, string> Global_LastUsedDirectories {
+            get => _global_lastuseddirectories;
+            set => SetProperty(ref _global_lastuseddirectories, value);
+        }
         private static List<string> _customstartupfiles = new List<string>();
         public static List<string> CustomStartupFiles {
             get => _customstartupfiles;
@@ -543,6 +548,15 @@ namespace LegendaryExplorer.Misc.AppSettings
         public static bool TryGetSetting(Dictionary<string, object> settings, string key, bool defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue && bool.TryParse(svalue, out var bvalue) ? bvalue : defaultValue;
         public static string TryGetSetting(Dictionary<string, object> settings, string key, string defaultValue) => settings.TryGetValue(key, out var value) && value is string svalue ? svalue : defaultValue;
         public static List<string> TryGetSetting(Dictionary<string, object> settings, string key, List<string> defaultValue) => settings.TryGetValue(key, out var value) && value is JArray listValue ? listValue.ToObject<List<string>>() : defaultValue;
+        public static Dictionary<string, string> TryGetSetting(Dictionary<string, object> settings, string key, Dictionary<string, string> defaultValue)
+        {
+            if (settings.TryGetValue(key, out var value) && value is JObject jObj)
+            {
+                try { return jObj.ToObject<Dictionary<string, string>>() ?? defaultValue; }
+                catch { return defaultValue; }
+            }
+            return defaultValue;
+        }
         public static Dictionary<string, ThemeData> TryGetSetting(Dictionary<string, object> settings, string key, Dictionary<string, ThemeData> defaultValue)
         {
             if (settings.TryGetValue(key, out var value) && value is JObject jObj)
@@ -654,6 +668,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             Global_UDKCustomDirectory = TryGetSetting(settingsJson, "global_udkcustomdirectory", "");
             Global_TLK_Language = TryGetSetting(settingsJson, "global_tlk_language", "INT");
             Global_TLK_IsMale = TryGetSetting(settingsJson, "global_tlk_ismale", true);
+            Global_LastUsedDirectories = TryGetSetting(settingsJson, "global_lastuseddirectories", new Dictionary<string, string>());
             CustomStartupFiles = TryGetSetting(settingsJson, "customstartupfiles", new List<string>());
             CustomAssetDirectories = TryGetSetting(settingsJson, "customassetdirectories", new List<string>());
             ScriptIDE_ActiveTheme = TryGetSetting(settingsJson, "scriptide_activetheme", "");
@@ -766,6 +781,7 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["global_udkcustomdirectory"] = Global_UDKCustomDirectory.ToString();
             settingsJson["global_tlk_language"] = Global_TLK_Language.ToString();
             settingsJson["global_tlk_ismale"] = Global_TLK_IsMale.ToString();
+            settingsJson["global_lastuseddirectories"] = Global_LastUsedDirectories;
             settingsJson["customstartupfiles"] = CustomStartupFiles;
             settingsJson["customassetdirectories"] = CustomAssetDirectories;
             settingsJson["scriptide_activetheme"] = ScriptIDE_ActiveTheme.ToString();

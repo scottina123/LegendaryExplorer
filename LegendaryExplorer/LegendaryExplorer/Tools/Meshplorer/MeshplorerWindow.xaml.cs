@@ -222,7 +222,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         private void ExportToPSK()
         {
             var d = new SaveFileDialog { Filter = "PSK|*.psk" };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -252,7 +252,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         private void ExportToUDK()
         {
             var d = new SaveFileDialog { Filter = GameFileFilters.UDKFileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -305,7 +305,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
                 Filter = GameFileFilters.UDKFileFilter, Title = "Select UDK package file",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -487,7 +487,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
                 Filter = GameFileFilters.UDKFileFilter, Title = "Select UDK package file",
                 CustomPlaces = AppDirectories.GameCustomPlaces
             };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 try
                 {
@@ -564,7 +564,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
                     break;
             }
             var d = new SaveFileDialog { Filter = fileFilter };
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
                 await Pcc.SaveAsync(d.FileName);
                 MessageBox.Show("Done");
@@ -574,7 +574,7 @@ namespace LegendaryExplorer.Tools.Meshplorer
         private void OpenFile()
         {
             var d = AppDirectories.GetOpenPackageDialog();
-            if (d.ShowDialog() == true)
+            if (DirectoryMemory.ShowDialog(d) == true)
             {
 #if !DEBUG
                 try

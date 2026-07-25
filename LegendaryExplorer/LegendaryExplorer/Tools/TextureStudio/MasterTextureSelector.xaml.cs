@@ -104,7 +104,7 @@ namespace LegendaryExplorer.Tools.TextureStudio
                     Title = "Select texture file",
                     Filter = "Texture (DDS PNG BMP TGA)|*.dds;*.png;*.bmp;*.tga"
                 };
-                var result = selectDDS.ShowDialog();
+                var result = DirectoryMemory.ShowDialog(selectDDS);
                 if (result.HasValue && result.Value)
                 {
                     Image image;
