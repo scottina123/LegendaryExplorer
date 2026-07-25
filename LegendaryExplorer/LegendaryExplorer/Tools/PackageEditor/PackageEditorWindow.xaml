@@ -778,6 +778,12 @@
                         </TabItem.Header>
                         <exportLoaderControls:ActorPreviewControl x:Name="ActorPreviewTab_ActorPreviewControl"/>
                     </TabItem>
+                    <TabItem Name="GesturePreview_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
+                        <TabItem.Header>
+                            <TextBlock Text="Gesture Preview" ToolTip="Preview animations referenced by BioEvtSysTrackGesture"/>
+                        </TabItem.Header>
+                        <exportLoaderControls:GesturePreviewExportLoader x:Name="GesturePreviewTab_GesturePreview"/>
+                    </TabItem>
                 </TabControl>
             </Grid>
         </DockPanel>

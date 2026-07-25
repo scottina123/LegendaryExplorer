@@ -5382,6 +5382,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             ExportLoaders[RADLauncherTab_BIKLauncher] = RADLaunch_Tab;
             ExportLoaders[AnimNodeTab_AnimNodeLoader] = AnimNode_Tab;
             ExportLoaders[ActorPreviewTab_ActorPreviewControl] = ActorPreview_Tab;
+            ExportLoaders[GesturePreviewTab_GesturePreview] = GesturePreview_Tab;
 
             InterpreterTab_Interpreter.SetParentNameList(NamesList); //reference to this control for name editor set
 
