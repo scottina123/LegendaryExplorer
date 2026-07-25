@@ -4204,7 +4204,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             node.ResetInlineEditorValues();
-            CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            WriteCurrentLoadedProperties();
             return true;
         }
 

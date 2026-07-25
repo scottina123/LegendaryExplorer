@@ -100,6 +100,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private bool _useSavedViews = true; // Should probably be a global setting
         private int suppressInterpreterUnloadDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
+        private DispatcherOperation pendingInterpDataEditorsReload;
 
         public bool UseSavedViews
         {
@@ -3060,9 +3061,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return; //nothing is loaded
             }
 
-            InterpData_MetadataEditor.LoadPccData(Pcc);
+            if (updates.Any(update => update.Change != PackageChange.ExportData))
+            {
+                InterpData_MetadataEditor.LoadPccData(Pcc);
+            }
 
-            IEnumerable<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export));
+            List<PackageUpdate> relevantUpdates = updates.Where(x => x.Change.Has(PackageChange.Export)).ToList();
             List<int> updatedExports = relevantUpdates.Select(x => x.Index).ToList();
 
             if (InterpDataTreeNodes.Count > 0)
@@ -3071,10 +3075,21 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     .SelectMany(root => root.FlattenTree())
                     .Select(node => node.UIndex)
                     .ToHashSet();
+                List<PackageUpdate> interpTreeUpdates = relevantUpdates
+                    .Where(update => interpTreeIndexes.Contains(update.Index))
+                    .ToList();
 
-                if (updatedExports.Any(interpTreeIndexes.Contains))
+                if (interpTreeUpdates.Any(update => update.Change != PackageChange.ExportData))
                 {
                     RefreshInterpDataTreePreserveState();
+                }
+                else if (GetSelectedInterpDataTreeExport() is ExportEntry selectedInterpExport
+                         && interpTreeUpdates.Any(update => update.Index == selectedInterpExport.UIndex))
+                {
+                    if (!InterpData_InterpreterWPF.ConsumePendingPropertyWrite(selectedInterpExport))
+                    {
+                        QueueInterpDataEditorsReload(selectedInterpExport.UIndex);
+                    }
                 }
             }
 
@@ -7055,6 +7070,20 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 InterpData_InterpreterWPF.UnloadExport();
                 InterpData_MetadataEditor.UnloadExport();
             }
+        }
+
+        private void QueueInterpDataEditorsReload(int exportUIndex)
+        {
+            pendingInterpDataEditorsReload?.Abort();
+            pendingInterpDataEditorsReload = Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+            {
+                pendingInterpDataEditorsReload = null;
+                if (GetSelectedInterpDataTreeExport() is ExportEntry selectedExport && selectedExport.UIndex == exportUIndex)
+                {
+                    InterpData_InterpreterWPF.LoadExport(selectedExport);
+                    InterpData_MetadataEditor.LoadExport(selectedExport);
+                }
+            }));
         }
 
         private void RefreshInterpDataTreePreserveState(int? preferredSelectedUIndex = null)
