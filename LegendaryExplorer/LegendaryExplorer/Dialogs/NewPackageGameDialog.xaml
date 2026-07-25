@@ -1,0 +1,44 @@
+<Window x:Class="LegendaryExplorer.Dialogs.NewPackageGameDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="WidthAndHeight"
+        MinWidth="440"
+        ResizeMode="NoResize"
+        WindowStyle="ToolWindow"
+        Title="{Binding TitleText}">
+    <StackPanel Margin="12">
+        <TextBlock Text="Choose a game to create the file for:"
+                   FontSize="14"
+                   FontWeight="Bold"
+                   Margin="0,0,0,10"/>
+        <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="1"
+                CornerRadius="2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="10">
+                    <TextBlock Text="Legendary Edition" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                    <Button Content="LE1" Tag="LE1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    <Button Content="LE2" Tag="LE2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    <Button Content="LE3" Tag="LE3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                </StackPanel>
+                <Border Grid.Column="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1,0,0,0">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="Original Trilogy" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                        <Button Content="ME1" Tag="ME1" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                        <Button Content="ME2" Tag="ME2" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                        <Button Content="ME3" Tag="ME3" Click="GameButton_Click" Padding="12,7" Margin="0,2"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+        <CheckBox x:Name="CreateLocFileCheckBox"
+                  Content="Create associated INT localization file"
+                  Margin="0,10,0,0"/>
+        <Button Content="Cancel" IsCancel="True" HorizontalAlignment="Right" Padding="12,5" Margin="0,10,0,0"/>
+    </StackPanel>
+</Window>

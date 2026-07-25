@@ -2275,15 +2275,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewFile()
         {
-            string gameString = InputComboBoxDialog.GetValue(this, "Choose a game to create a file for:",
-                "Create new package file", new[] { "LE3", "LE2", "LE1", "ME3", "ME2", "ME1", "UDK" }, "LE3");
-            if (Enum.TryParse(gameString, out MEGame game))
+            var gameDialog = new NewPackageGameDialog(this, "Create new package file", false);
+            if (gameDialog.ShowDialog() == true)
             {
+                MEGame game = gameDialog.SelectedGame;
                 var dlg = new SaveFileDialog
                 {
                     Filter = game switch
                     {
-                        MEGame.UDK => GameFileFilters.UDKFileFilter,
                         MEGame.ME1 => GameFileFilters.ME1SaveFileFilter,
                         MEGame.ME2 => GameFileFilters.ME3ME2SaveFileFilter,
                         MEGame.ME3 => GameFileFilters.ME3ME2SaveFileFilter,
@@ -2301,10 +2300,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void NewLevelFile()
         {
-            string gameString = InputComboBoxDialog.GetValue(this, "Choose game to create a level file for:",
-                                                          "Create new level file", new[] { "LE3", "LE2", "LE1", "ME3", "ME2", "ME1" }, "LE3");
-            if (Enum.TryParse(gameString, out MEGame game) && (game.IsLEGame() || game.IsOTGame()))
+            var gameDialog = new NewPackageGameDialog(this, "Create new level file", true);
+            if (gameDialog.ShowDialog() == true)
             {
+                MEGame game = gameDialog.SelectedGame;
                 var dlg = new SaveFileDialog
                 {
                     Filter = GameFileFilters.ME3ME2SaveFileFilter,
@@ -2317,12 +2316,35 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (dlg.ShowDialog() == true)
                 {
+                    string locFilePath = Path.Combine(
+                        Path.GetDirectoryName(dlg.FileName)!,
+                        $"{Path.GetFileNameWithoutExtension(dlg.FileName)}_LOC_INT{Path.GetExtension(dlg.FileName)}");
+                    if (gameDialog.CreateLocFile
+                        && File.Exists(locFilePath)
+                        && MessageBox.Show($"{Path.GetFileName(locFilePath)} already exists. Overwrite it?",
+                            "Create localization file", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    {
+                        return;
+                    }
+
                     if (File.Exists(dlg.FileName))
                     {
                         File.Delete(dlg.FileName);
                     }
 
                     MEPackageHandler.CreateEmptyLevel(dlg.FileName, game);
+
+                    if (gameDialog.CreateLocFile)
+                    {
+                        if (File.Exists(locFilePath))
+                        {
+                            File.Delete(locFilePath);
+                        }
+
+                        using IMEPackage locPackage = MEPackageHandler.CreateAndOpenPackage(locFilePath, game, forceLoadFromDisk: true);
+                        locPackage.CreateObjectReferencer();
+                        locPackage.Save();
+                    }
 
                     LoadFile(dlg.FileName);
                 }
