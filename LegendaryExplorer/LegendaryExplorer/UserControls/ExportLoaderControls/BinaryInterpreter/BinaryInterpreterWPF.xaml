@@ -148,18 +148,18 @@
                                         </b:Interaction.Triggers>
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal" Visibility="{Binding ShowTextInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <TextBox MinWidth="120" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown"/>
+                                        <TextBox x:Name="InlineScalarEditor" MinWidth="120" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                         <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue}"/>
-                                        <TextBox Width="70" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown"/>
+                                        <TextBox x:Name="InlineObjectIndexEditor" Width="70" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <ComboBox MinWidth="140" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" TextSearch.TextPath="Name"
+                                        <ComboBox x:Name="InlineNameEditor" MinWidth="140" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" TextSearch.TextPath="Name"
                                                   ItemsSource="{Binding InlineNameChoices}" Text="{Binding InlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  Tag="{Binding}" KeyDown="InlineEditor_KeyDown">
+                                                  Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded">
                                             <ComboBox.ItemsPanel>
                                                 <ItemsPanelTemplate>
                                                     <VirtualizingStackPanel />
@@ -167,7 +167,7 @@
                                             </ComboBox.ItemsPanel>
                                         </ComboBox>
                                         <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
-                                        <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown"/>
+                                        <TextBox x:Name="InlineNameIndexEditor" Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Loaded="InlineEditor_Loaded"/>
                                         <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
                                     </StackPanel>
                                 </StackPanel>

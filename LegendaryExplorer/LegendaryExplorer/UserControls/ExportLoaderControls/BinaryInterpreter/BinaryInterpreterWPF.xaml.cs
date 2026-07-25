@@ -444,6 +444,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private int PreviousLoadedUIndex = -1;
         private string PreviousSelectedTreePath;
         private readonly HashSet<string> PreviousExpandedTreePaths = [];
+        private string PendingInlineEditorPath;
+        private string PendingInlineEditorName;
+        private int PendingInlineEditorCaretIndex = -1;
 
         public override void LoadExport(ExportEntry exportEntry)
         {
@@ -772,7 +775,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             switch (e.Key)
             {
                 case Key.Enter:
-                    if (TryCommitInlineEditor(node))
+                    if (TryCommitInlineEditor(node, element))
                     {
                         e.Handled = true;
                     }
@@ -792,15 +795,63 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
-        private bool TryCommitInlineEditor(BinInterpNode node)
+        private bool TryCommitInlineEditor(BinInterpNode node, FrameworkElement sourceEditor = null)
         {
             if (node is null || CurrentLoadedExport is null)
             {
                 return false;
             }
 
+            PrepareInlineEditorRestore(node, sourceEditor);
             bool committed = TryWriteNodeValue(node, node.InlineEditorValue, node.InlineObjectIndexValue, node.InlineNameValue, node.InlineNameIndexValue);
+            if (!committed)
+            {
+                ClearPendingInlineEditorRestore();
+            }
             return committed;
+        }
+
+        private void PrepareInlineEditorRestore(BinInterpNode node, FrameworkElement sourceEditor)
+        {
+            PendingInlineEditorPath = GetTreePath(node);
+            PendingInlineEditorName = sourceEditor?.Name ?? node.Tag switch
+            {
+                NodeType.ArrayLeafObject or NodeType.StructLeafObject => "InlineObjectIndexEditor",
+                NodeType.ArrayLeafName or NodeType.ArrayLeafEnum or NodeType.StructLeafName or NodeType.StructLeafEnum => "InlineNameEditor",
+                _ => "InlineScalarEditor"
+            };
+            PendingInlineEditorCaretIndex = sourceEditor is TextBox textBox ? textBox.CaretIndex : -1;
+            PreviousSelectedTreePath = PendingInlineEditorPath ?? PreviousSelectedTreePath;
+            node.IsProgramaticallySelecting = false;
+            node.IsSelected = true;
+        }
+
+        private void InlineEditor_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: BinInterpNode node } editor || editor.Name != PendingInlineEditorName || GetTreePath(node) != PendingInlineEditorPath)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                editor.Focus();
+                Keyboard.Focus(editor);
+                if (editor is TextBox textBox)
+                {
+                    textBox.CaretIndex = PendingInlineEditorCaretIndex >= 0
+                        ? Math.Min(PendingInlineEditorCaretIndex, textBox.Text?.Length ?? 0)
+                        : textBox.Text?.Length ?? 0;
+                }
+                ClearPendingInlineEditorRestore();
+            }, DispatcherPriority.ApplicationIdle);
+        }
+
+        private void ClearPendingInlineEditorRestore()
+        {
+            PendingInlineEditorPath = null;
+            PendingInlineEditorName = null;
+            PendingInlineEditorCaretIndex = -1;
         }
 
         private bool TryWriteNodeValue(BinInterpNode node, string scalarValue, string objectIndexValue, string nameValue, string nameNumberValue)
