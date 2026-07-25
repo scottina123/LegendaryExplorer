@@ -131,6 +131,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private readonly List<FrameworkElement> EditorSetElements = new();
         public ObservableCollectionExtended<BinInterpNode> TreeViewItems { get; } = new();
         public ObservableCollectionExtended<IndexedName> ParentNameList { get; private set; }
+        private IReadOnlyList<IndexedName> InlineNameChoices;
         public enum InterpreterMode
         {
             Objects,
@@ -446,18 +447,27 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void LoadExport(ExportEntry exportEntry)
         {
-            PreviousSelectedTreePath = null;
+            if (CurrentLoadedExport?.FileRef != exportEntry.FileRef)
+            {
+                InlineNameChoices = null;
+            }
+            bool isReloadingCurrentExport = CurrentLoadedExport?.FileRef == exportEntry.FileRef && CurrentLoadedExport.UIndex == exportEntry.UIndex;
+            if (!isReloadingCurrentExport)
+            {
+                PreviousSelectedTreePath = null;
+            }
             PreviousExpandedTreePaths.Clear();
             LoadingNewData = true;
             ByteShift_UpDown.Value = 0;
             if (CurrentLoadedExport != null)
             {
                 PreviousLoadedUIndex = CurrentLoadedExport.UIndex;
-                if (CurrentLoadedExport.UIndex == exportEntry.UIndex)
+                if (isReloadingCurrentExport)
                 {
                     CaptureTreeState();
                 }
             }
+
             CurrentLoadedExport = exportEntry;
 
             OnDemand_Panel.Visibility = Visibility.Visible;
@@ -474,6 +484,38 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 OnDemand_Subtext_TextBlock.Text = "Large exports are not automatically parsed to improve performance";
             }
             LoadingNewData = false; //technically not true, since it's background thread. However, for the purposes of resetting controls, it is done loading.
+        }
+
+        private string GetTreePath(BinInterpNode target)
+        {
+            for (int i = 0; i < TreeViewItems.Count; i++)
+            {
+                if (TryGetTreePath(TreeViewItems[i], target, i.ToString(), out string path))
+                {
+                    return path;
+                }
+            }
+            return null;
+        }
+
+        private static bool TryGetTreePath(BinInterpNode node, BinInterpNode target, string path, out string result)
+        {
+            if (ReferenceEquals(node, target))
+            {
+                result = path;
+                return true;
+            }
+
+            for (int i = 0; i < node.Items.Count; i++)
+            {
+                if (node.Items[i] is BinInterpNode child && TryGetTreePath(child, target, $"{path}/{i}", out result))
+                {
+                    return true;
+                }
+            }
+
+            result = null;
+            return false;
         }
 
         #region static stuff
@@ -558,6 +600,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var result = prevTask.Result;
                     OnDemand_Panel.Visibility = Visibility.Collapsed;
                     LoadedContent_Panel.Visibility = Visibility.Visible;
+                    InitializeInlineEditors(result);
                     TreeViewItems.Replace(result);
                     if (PreviousLoadedUIndex == CurrentLoadedExport?.UIndex)
                     {
@@ -623,6 +666,252 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             return selectedNode;
+        }
+
+        private void BinaryNode_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2 || sender is not FrameworkElement { DataContext: BinInterpNode node } || !node.IsInlineEditable || CurrentLoadedExport is null)
+            {
+                return;
+            }
+
+            node.IsSelected = true;
+            BeginInlineEdit(node);
+            e.Handled = true;
+        }
+
+        private void InitializeInlineEditors(BinInterpNode node)
+        {
+            if (node.IsInlineEditable)
+            {
+                BeginInlineEdit(node);
+            }
+
+            foreach (BinInterpNode child in node.Items.OfType<BinInterpNode>())
+            {
+                InitializeInlineEditors(child);
+            }
+        }
+
+        private void BeginInlineEdit(BinInterpNode node)
+        {
+            int offset = node.GetPos();
+            var data = CurrentLoadedExport.DataReadOnly;
+            switch (node.Tag)
+            {
+                case NodeType.ArrayLeafInt:
+                case NodeType.StructLeafInt:
+                    node.InlineEditorValue = EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian).ToString();
+                    break;
+                case NodeType.ArrayLeafFloat:
+                case NodeType.StructLeafFloat:
+                    node.InlineEditorValue = EndianReader.ToSingle(data, offset, CurrentLoadedExport.FileRef.Endian).ToString();
+                    break;
+                case NodeType.ArrayLeafBool:
+                    node.InlineEditorValue = (data[offset] != 0).ToString();
+                    break;
+                case NodeType.StructLeafBool:
+                    node.InlineEditorValue = (EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian) != 0).ToString();
+                    break;
+                case NodeType.ArrayLeafByte:
+                case NodeType.StructLeafByte:
+                    node.InlineEditorValue = data[offset].ToString();
+                    break;
+                case NodeType.Guid:
+                    node.InlineEditorValue = EndianReader.ToGuid(data.Slice(offset, 16), CurrentLoadedExport.FileRef.Endian).ToString();
+                    break;
+                case NodeType.ArrayLeafObject:
+                case NodeType.StructLeafObject:
+                    int objectIndex = EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian);
+                    node.InlineObjectIndexValue = objectIndex.ToString();
+                    node.InlineObjectDisplayValue = GetInlineObjectDisplayText(objectIndex);
+                    break;
+                case NodeType.ArrayLeafName:
+                case NodeType.ArrayLeafEnum:
+                case NodeType.StructLeafName:
+                case NodeType.StructLeafEnum:
+                    int nameIndex = EndianReader.ToInt32(data, offset, CurrentLoadedExport.FileRef.Endian);
+                    int nameNumber = EndianReader.ToInt32(data, offset + 4, CurrentLoadedExport.FileRef.Endian);
+                    node.InlineNameChoices = ParentNameList is not null
+                        ? ParentNameList
+                        : InlineNameChoices ??= CurrentLoadedExport.FileRef.Names.Select((name, index) => new IndexedName(index, name)).ToList();
+                    node.InlineNameValue = CurrentLoadedExport.FileRef.GetNameEntry(nameIndex);
+                    node.InlineNameIndexValue = nameNumber.ToString();
+                    break;
+            }
+
+            node.IsInlineEditing = true;
+        }
+
+        private string GetInlineObjectDisplayText(int objectIndex)
+        {
+            return objectIndex == 0 ? "None" : CurrentLoadedExport.FileRef.GetEntryString(objectIndex);
+        }
+
+        private void InlineObjectIndex_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: BinInterpNode node } && int.TryParse(node.InlineObjectIndexValue, out int objectIndex))
+            {
+                node.InlineObjectDisplayValue = GetInlineObjectDisplayText(objectIndex);
+            }
+        }
+
+        private void InlineEditor_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is not FrameworkElement element)
+            {
+                return;
+            }
+
+            BinInterpNode node = element.Tag as BinInterpNode ?? element.DataContext as BinInterpNode;
+            if (node is null)
+            {
+                return;
+            }
+
+            switch (e.Key)
+            {
+                case Key.Enter:
+                    if (TryCommitInlineEditor(node))
+                    {
+                        e.Handled = true;
+                    }
+                    break;
+                case Key.Escape:
+                    BeginInlineEdit(node);
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void InlineEditorConfirmButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: BinInterpNode node })
+            {
+                TryCommitInlineEditor(node);
+            }
+        }
+
+        private bool TryCommitInlineEditor(BinInterpNode node)
+        {
+            if (node is null || CurrentLoadedExport is null)
+            {
+                return false;
+            }
+
+            bool committed = TryWriteNodeValue(node, node.InlineEditorValue, node.InlineObjectIndexValue, node.InlineNameValue, node.InlineNameIndexValue);
+            return committed;
+        }
+
+        private bool TryWriteNodeValue(BinInterpNode node, string scalarValue, string objectIndexValue, string nameValue, string nameNumberValue)
+        {
+            int offset = node.GetPos();
+            byte[] data = CurrentLoadedExport.Data;
+            var endian = CurrentLoadedExport.FileRef.Endian;
+
+            switch (node.Tag)
+            {
+                case NodeType.ArrayLeafInt:
+                case NodeType.StructLeafInt:
+                    if (!int.TryParse(scalarValue, out int intValue))
+                    {
+                        return ShowInvalidInlineValue("Enter a valid 32-bit integer.");
+                    }
+                    data.OverwriteRange(offset, EndianBitConverter.GetBytes(intValue, endian));
+                    break;
+                case NodeType.ArrayLeafFloat:
+                case NodeType.StructLeafFloat:
+                    if (!float.TryParse(scalarValue, out float floatValue))
+                    {
+                        return ShowInvalidInlineValue("Enter a valid floating-point value.");
+                    }
+                    data.OverwriteRange(offset, EndianBitConverter.GetBytes(BitConverter.SingleToInt32Bits(floatValue), endian));
+                    break;
+                case NodeType.ArrayLeafBool:
+                    if (!bool.TryParse(scalarValue, out bool arrayBoolValue))
+                    {
+                        return ShowInvalidInlineValue("Enter True or False.");
+                    }
+                    data[offset] = arrayBoolValue ? (byte)1 : (byte)0;
+                    break;
+                case NodeType.StructLeafBool:
+                    if (!bool.TryParse(scalarValue, out bool boolValue))
+                    {
+                        return ShowInvalidInlineValue("Enter True or False.");
+                    }
+                    data.OverwriteRange(offset, EndianBitConverter.GetBytes(boolValue ? 1 : 0, endian));
+                    break;
+                case NodeType.ArrayLeafByte:
+                case NodeType.StructLeafByte:
+                    if (!byte.TryParse(scalarValue, out byte byteValue))
+                    {
+                        return ShowInvalidInlineValue("Enter an integer from 0 through 255.");
+                    }
+                    data[offset] = byteValue;
+                    break;
+                case NodeType.ArrayLeafObject:
+                case NodeType.StructLeafObject:
+                    string objectValue = objectIndexValue ?? scalarValue;
+                    if (!int.TryParse(objectValue, out int objectIndex) || objectIndex != 0 && !CurrentLoadedExport.FileRef.IsEntry(objectIndex))
+                    {
+                        return ShowInvalidInlineValue("Enter 0 or a valid entry index from this package.");
+                    }
+                    data.OverwriteRange(offset, EndianBitConverter.GetBytes(objectIndex, endian));
+                    break;
+                case NodeType.ArrayLeafName:
+                case NodeType.ArrayLeafEnum:
+                case NodeType.StructLeafName:
+                case NodeType.StructLeafEnum:
+                    if (!TryResolveInlineName(nameValue, out int nameIndex) || !int.TryParse(nameNumberValue, out int nameNumber) || nameNumber < 0)
+                    {
+                        return ShowInvalidInlineValue("Select a valid package name and enter a non-negative instance number.");
+                    }
+                    data.OverwriteRange(offset, EndianBitConverter.GetBytes(nameIndex, endian));
+                    data.OverwriteRange(offset + 4, EndianBitConverter.GetBytes(nameNumber, endian));
+                    break;
+                case NodeType.Guid:
+                    if (!Guid.TryParse(scalarValue, out Guid guidValue))
+                    {
+                        return ShowInvalidInlineValue("Enter a valid GUID.");
+                    }
+                    using (var stream = new MemoryStream(data))
+                    using (var writer = new EndianWriter(stream) { Endian = endian })
+                    {
+                        writer.BaseStream.JumpTo(offset);
+                        writer.WriteGuid(guidValue);
+                    }
+                    break;
+                default:
+                    return false;
+            }
+
+            CurrentLoadedExport.Data = data;
+            return true;
+        }
+
+        private bool TryResolveInlineName(string name, out int nameIndex)
+        {
+            nameIndex = string.IsNullOrWhiteSpace(name) ? -1 : CurrentLoadedExport.FileRef.findName(name);
+            if (nameIndex >= 0)
+            {
+                return true;
+            }
+
+            string input = $"The name \"{name}\" does not exist in the current loaded package.\nIf you'd like to add this name, press enter below, or change the name to what you would like it to be.";
+            string result = PromptDialog.Prompt(Window.GetWindow(this), input, "Enter new name", name);
+            if (string.IsNullOrWhiteSpace(result))
+            {
+                return false;
+            }
+
+            nameIndex = CurrentLoadedExport.FileRef.FindNameOrAdd(result);
+            return true;
+        }
+
+        private static bool ShowInvalidInlineValue(string message)
+        {
+            MessageBox.Show(message, "Invalid value", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
 
         public static bool IsNativePropertyType(string classname)
@@ -1035,6 +1324,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             switch (BinaryInterpreter_TreeView.SelectedItem)
             {
                 case BinInterpNode bitve:
+                    PreviousSelectedTreePath = GetTreePath(bitve) ?? PreviousSelectedTreePath;
                     int dataOffset = bitve.Offset;
                     if (dataOffset >= 0)
                     {
@@ -1298,81 +1588,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             switch (BinaryInterpreter_TreeView.SelectedItem)
             {
                 case BinInterpNode bitve:
-                    var dataOffset = (int)bitve.GetPos();
-                    bool parsedValueSucceeded = int.TryParse(Value_TextBox.Text, out int parsedValue);
-                    bool parsedFloatSucceeded = float.TryParse(Value_TextBox.Text, out float parsedFloatValue);
-
-                    switch (bitve.Tag)
-                    {
-                        case NodeType.ArrayLeafObject:
-                        case NodeType.StructLeafInt:
-                        case NodeType.StructLeafObject:
-                            if (dataOffset != 0 && parsedValueSucceeded)
-                            {
-                                byte[] data = CurrentLoadedExport.Data;
-                                data.OverwriteRange(dataOffset, BitConverter.GetBytes(parsedValue));
-                                CurrentLoadedExport.Data = data;
-                            }
-                            break;
-                        case NodeType.StructLeafFloat:
-                            if (dataOffset != 0 && parsedFloatSucceeded)
-                            {
-                                byte[] data = CurrentLoadedExport.Data;
-                                data.OverwriteRange(dataOffset, BitConverter.GetBytes(parsedFloatValue));
-                                CurrentLoadedExport.Data = data;
-                            }
-                            break;
-                        case NodeType.StructLeafName:
-                            var item = Value_ComboBox.SelectedItem as IndexedName;
-                            if (item == null)
-                            {
-                                var text = Value_ComboBox.Text;
-                                if (!string.IsNullOrEmpty(text))
-                                {
-                                    int index = CurrentLoadedExport.FileRef.findName(text);
-                                    if (index < 0)
-                                    {
-                                        string input = $"The name \"{text}\" does not exist in the current loaded package.\nIf you'd like to add this name, press enter below, or change the name to what you would like it to be.";
-                                        string result = PromptDialog.Prompt(Window.GetWindow(this), input, "Enter new name", text);
-                                        if (!string.IsNullOrEmpty(result))
-                                        {
-                                            int idx = CurrentLoadedExport.FileRef.FindNameOrAdd(result);
-                                            if (idx != CurrentLoadedExport.FileRef.Names.Count - 1)
-                                            {
-                                                //not the last
-                                                MessageBox.Show($"{result} already exists in this package file.\nName index: {idx} (0x{idx:X8})", "Name already exists");
-                                            }
-                                            else
-                                            {
-                                                item = new IndexedName(idx, result);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            bool nameindexok = int.TryParse(NameIndex_TextBox.Text, out int nameIndex);
-                            nameindexok &= nameIndex >= 0;
-                            if (item != null && dataOffset != 0 && nameindexok)
-                            {
-                                byte[] data = CurrentLoadedExport.Data;
-                                data.OverwriteRange(dataOffset, BitConverter.GetBytes(CurrentLoadedExport.FileRef.findName(item.Name)));
-                                data.OverwriteRange(dataOffset + 4, BitConverter.GetBytes(nameIndex));
-                                CurrentLoadedExport.Data = data;
-                                Debug.WriteLine("Set data");
-                            }
-                            break;
-                        case NodeType.Guid:
-                            bool parsedGuidSucceeded = Guid.TryParse(Value_TextBox.Text, out var parsedGuidVal);
-                            if (dataOffset != 0 && parsedGuidSucceeded)
-                            {
-                                byte[] data = CurrentLoadedExport.Data;
-                                var ms = new MemoryStream(data);
-                                ms.Seek(dataOffset, SeekOrigin.Begin);
-                                ms.WriteGuid(parsedGuidVal);
-                                CurrentLoadedExport.Data = ms.ToArray();
-                            }
-                            break;
-                    }
+                    TryWriteNodeValue(bitve, Value_TextBox.Text, Value_TextBox.Text, Value_ComboBox.Text, NameIndex_TextBox.Text);
                     break;
                 case UPropertyTreeViewEntry uptve:
                     if (uptve.Property != null)

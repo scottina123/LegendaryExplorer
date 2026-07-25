@@ -139,14 +139,38 @@
                               VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.IsVirtualizing="True" ItemsSource="{Binding TreeViewItems}">
                         <TreeView.Resources>
                             <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:BinInterpNode}" ItemsSource="{Binding Items}">
-                                <TextBlock Text="{Binding Path=Header}" >
-                                <b:Interaction.Triggers>
-                                    <b:EventTrigger EventName="PreviewMouseRightButtonDown">
-                                        <b:ChangePropertyAction PropertyName="IsSelected" Value="true" TargetObject="{Binding}"/>
-                                    </b:EventTrigger>
-                                </b:Interaction.Triggers>
-                                </TextBlock>
-
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding InlineLabel}" Visibility="{Binding ShowHeader, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <b:Interaction.Triggers>
+                                            <b:EventTrigger EventName="PreviewMouseRightButtonDown">
+                                                <b:ChangePropertyAction PropertyName="IsSelected" Value="true" TargetObject="{Binding}"/>
+                                            </b:EventTrigger>
+                                        </b:Interaction.Triggers>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal" Visibility="{Binding ShowTextInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBox MinWidth="120" Text="{Binding InlineEditorValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown"/>
+                                        <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue}"/>
+                                        <TextBox Width="70" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown"/>
+                                        <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <ComboBox MinWidth="140" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" TextSearch.TextPath="Name"
+                                                  ItemsSource="{Binding InlineNameChoices}" Text="{Binding InlineNameValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Tag="{Binding}" KeyDown="InlineEditor_KeyDown">
+                                            <ComboBox.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <VirtualizingStackPanel />
+                                                </ItemsPanelTemplate>
+                                            </ComboBox.ItemsPanel>
+                                        </ComboBox>
+                                        <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                                        <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown"/>
+                                        <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </HierarchicalDataTemplate>
                             <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:UPropertyTreeViewEntry}" ItemsSource="{Binding ChildrenProperties}">
                                 <StackPanel x:Name="PropertyItem_Container" Orientation="Horizontal" HorizontalAlignment="Stretch" Margin="1">

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorerCore.Gammtek.IO;
@@ -45,6 +46,121 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public int Length { get; set; }
         public BinaryInterpreterWPF.NodeType Tag { get; set; }
         public ArrayPropertyChildAddAlgorithm ArrayAddAlgorithm;
+
+        private bool _isInlineEditing;
+        public bool IsInlineEditing
+        {
+            get => _isInlineEditing;
+            set
+            {
+                if (SetProperty(ref _isInlineEditing, value))
+                {
+                    OnPropertyChanged(nameof(ShowHeader));
+                    OnPropertyChanged(nameof(ShowTextInlineEditor));
+                    OnPropertyChanged(nameof(ShowObjectInlineEditor));
+                    OnPropertyChanged(nameof(ShowNameInlineEditor));
+                }
+            }
+        }
+
+        public bool IsInlineEditable => Tag is BinaryInterpreterWPF.NodeType.ArrayLeafObject
+            or BinaryInterpreterWPF.NodeType.ArrayLeafName
+            or BinaryInterpreterWPF.NodeType.ArrayLeafEnum
+            or BinaryInterpreterWPF.NodeType.ArrayLeafBool
+            or BinaryInterpreterWPF.NodeType.ArrayLeafFloat
+            or BinaryInterpreterWPF.NodeType.ArrayLeafInt
+            or BinaryInterpreterWPF.NodeType.ArrayLeafByte
+            or BinaryInterpreterWPF.NodeType.StructLeafInt
+            or BinaryInterpreterWPF.NodeType.StructLeafFloat
+            or BinaryInterpreterWPF.NodeType.StructLeafObject
+            or BinaryInterpreterWPF.NodeType.StructLeafName
+            or BinaryInterpreterWPF.NodeType.StructLeafBool
+            or BinaryInterpreterWPF.NodeType.StructLeafByte
+            or BinaryInterpreterWPF.NodeType.StructLeafEnum
+            or BinaryInterpreterWPF.NodeType.Guid;
+
+        public bool ShowHeader => true;
+        public string InlineLabel
+        {
+            get
+            {
+                if (!IsInlineEditable || string.IsNullOrEmpty(Header))
+                {
+                    return Header;
+                }
+
+                int valueSeparator = Header.LastIndexOf(": ", StringComparison.Ordinal);
+                return valueSeparator >= 0 ? Header[..(valueSeparator + 2)] : Header;
+            }
+        }
+        public bool ShowTextInlineEditor => Tag is BinaryInterpreterWPF.NodeType.StructLeafInt
+            or BinaryInterpreterWPF.NodeType.ArrayLeafInt
+            or BinaryInterpreterWPF.NodeType.StructLeafFloat
+            or BinaryInterpreterWPF.NodeType.ArrayLeafFloat
+            or BinaryInterpreterWPF.NodeType.StructLeafBool
+            or BinaryInterpreterWPF.NodeType.ArrayLeafBool
+            or BinaryInterpreterWPF.NodeType.StructLeafByte
+            or BinaryInterpreterWPF.NodeType.ArrayLeafByte
+            or BinaryInterpreterWPF.NodeType.Guid;
+        public bool ShowObjectInlineEditor => Tag is BinaryInterpreterWPF.NodeType.ArrayLeafObject
+            or BinaryInterpreterWPF.NodeType.StructLeafObject;
+        public bool ShowNameInlineEditor => Tag is BinaryInterpreterWPF.NodeType.StructLeafName
+            or BinaryInterpreterWPF.NodeType.StructLeafEnum
+            or BinaryInterpreterWPF.NodeType.ArrayLeafName
+            or BinaryInterpreterWPF.NodeType.ArrayLeafEnum;
+
+        private string _inlineEditorValue;
+        public string InlineEditorValue
+        {
+            get => _inlineEditorValue;
+            set => SetProperty(ref _inlineEditorValue, value);
+        }
+
+        private string _inlineObjectDisplayValue;
+        public string InlineObjectDisplayValue
+        {
+            get => _inlineObjectDisplayValue;
+            set => SetProperty(ref _inlineObjectDisplayValue, value);
+        }
+
+        private string _inlineObjectIndexValue;
+        public string InlineObjectIndexValue
+        {
+            get => _inlineObjectIndexValue;
+            set => SetProperty(ref _inlineObjectIndexValue, value);
+        }
+
+        private IReadOnlyList<IndexedName> _inlineNameChoices;
+        public IReadOnlyList<IndexedName> InlineNameChoices
+        {
+            get => _inlineNameChoices;
+            set => SetProperty(ref _inlineNameChoices, value);
+        }
+
+        private string _inlineNameValue;
+        public string InlineNameValue
+        {
+            get => _inlineNameValue;
+            set => SetProperty(ref _inlineNameValue, value);
+        }
+
+        private string _inlineNameIndexValue;
+        public string InlineNameIndexValue
+        {
+            get => _inlineNameIndexValue;
+            set => SetProperty(ref _inlineNameIndexValue, value);
+        }
+
+        public void CancelInlineEdit()
+        {
+            IsInlineEditing = false;
+            InlineEditorValue = null;
+            InlineObjectDisplayValue = null;
+            InlineObjectIndexValue = null;
+            InlineNameChoices = null;
+            InlineNameValue = null;
+            InlineNameIndexValue = null;
+        }
 
         private Brush _diffBackground;
         /// <summary>
