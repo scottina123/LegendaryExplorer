@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
@@ -469,6 +470,26 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             AnimationListBox.SelectedItem = activeItem;
             AnimationListBox.ScrollIntoView(activeItem);
         }
+    }
+
+    private void AnimationListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (AnimationListBox.SelectedItem is not GestureAnimationItem item || item.AnimationExport == null)
+        {
+            return;
+        }
+
+        List<GestureAnimationItem> animations = _animations.Where(animation => animation.AnimationExport != null).ToList();
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(animations);
+        if (timeline.Count == 0)
+        {
+            return;
+        }
+
+        AnimPreviewControl.LoadAnimSequenceTimeline(timeline);
+        AnimPreviewControl.AnimSliderValue = item.Time;
+        SelectedAnimation = item;
+        StatusText = $"Moved to {item.DisplayName} at {item.Time:F2}s.";
     }
 
     private static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimeline(List<GestureAnimationItem> animations)

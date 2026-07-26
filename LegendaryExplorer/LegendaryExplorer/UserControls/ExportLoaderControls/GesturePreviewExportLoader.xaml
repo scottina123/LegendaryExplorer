@@ -46,7 +46,8 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <ListBox x:Name="AnimationListBox"
-                     SelectedItem="{Binding SelectedAnimation}">
+                     SelectedItem="{Binding SelectedAnimation}"
+                     MouseDoubleClick="AnimationListBox_MouseDoubleClick">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="2">
