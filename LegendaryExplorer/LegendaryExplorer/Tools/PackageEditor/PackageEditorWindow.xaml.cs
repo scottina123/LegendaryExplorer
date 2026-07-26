@@ -4790,6 +4790,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         }
 
                         rop.CrossPackageMap.Clear();
+                        MapParentSequenceToDestination(sourceEntry, parentInDest, rop);
                         var relinkResults = EntryImporter.ImportAndRelinkEntries(
                             EntryImporter.PortingOption.CloneTreeAsChild,
                             sourceEntry,
@@ -4889,6 +4890,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 TryAddToStreamingLevelsList(clonedEntries);
                 GoToNumber(lastClonedUIndex);
             }
+        }
+
+        private static void MapParentSequenceToDestination(IEntry sourceEntry, IEntry destinationEntry, RelinkerOptionsPackage rop)
+        {
+            if (sourceEntry is not ExportEntry sourceExport
+                || !sourceExport.IsA("SequenceObject")
+                || sourceExport.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(sourceExport.FileRef) is not ExportEntry sourceParentSequence
+                || destinationEntry is not ExportEntry destinationExport)
+            {
+                return;
+            }
+
+            ExportEntry destinationSequence = destinationExport.IsA("Sequence")
+                ? destinationExport
+                : destinationExport.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(destinationExport.FileRef) as ExportEntry;
+            if (destinationSequence == null)
+            {
+                return;
+            }
+
+            rop.CrossPackageMap[sourceParentSequence] = destinationSequence;
+            rop.RelinkMapEntriesToSkip.Add(sourceParentSequence);
         }
 
         /// <summary>
@@ -6861,6 +6884,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     PortImportsMemorySafe = portingOption.PortExportsMemorySafe,
                     PortExportsAsImportsWhenPossible = portingOption.PortExportsAsImportsWhenPossible,
                 };
+
+                if (portingOption.PortingOptionChosen is not EntryImporter.PortingOption.ReplaceSingular
+                    and not EntryImporter.PortingOption.ReplaceSingularWithRelink)
+                {
+                    MapParentSequenceToDestination(sourceEntry, targetLinkEntry, rop);
+                }
 
                 var relinkResults = EntryImporter.ImportAndRelinkEntries(portingOption.PortingOptionChosen, sourceEntry, Pcc,
                     targetLinkEntry, true, rop, out IEntry newEntry);
