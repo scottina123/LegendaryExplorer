@@ -165,6 +165,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         private bool SyncingObjectPropertyEditor;
         private int pendingPropertyWriteExportUIndex;
         private long propertyTreeInputVersion;
+        private DispatcherOperation pendingPropertyDataReload;
         private DispatcherOperation pendingPropertyTreeSelectionRestore;
         private DispatcherOperation pendingPropertyTreeScrollRestore;
         private TextBox ObjectValueIndexTextBox => (TextBox)FindName("Value_ObjectIndex_TextBox");
@@ -1649,6 +1650,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// </summary>
         public override void UnloadExport()
         {
+            pendingPropertyDataReload?.Abort();
+            pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
             CurrentLoadedExport = null;
             OverrideLoadedProperties = null;
@@ -1681,6 +1684,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void LoadExportInternal(ExportEntry export, PropertyCollection overrideProperties)
         {
+            pendingPropertyDataReload?.Abort();
+            pendingPropertyDataReload = null;
             CancelPendingPropertyTreeRestores();
             EditorSetElements.ForEach(x => x.Visibility = Visibility.Collapsed);
             Set_Button.Visibility = Visibility.Collapsed;
@@ -2682,7 +2687,21 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             pendingPropertyWriteExportUIndex = CurrentLoadedExport.UIndex;
+            QueuePropertyDataReload(CurrentLoadedExport);
             CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+        }
+
+        private void QueuePropertyDataReload(ExportEntry export)
+        {
+            pendingPropertyDataReload?.Abort();
+            pendingPropertyDataReload = Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+            {
+                pendingPropertyDataReload = null;
+                if (CurrentLoadedExport?.FileRef == export.FileRef && CurrentLoadedExport.UIndex == export.UIndex)
+                {
+                    LoadExport(export);
+                }
+            }));
         }
 
         /// <summary>
