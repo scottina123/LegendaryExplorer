@@ -12,6 +12,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 public sealed class CurveEditor3DModel
 {
     private const float KeyTimeTolerance = 0.0001f;
+    private readonly Dictionary<InterpCurvePoint<Vector3>, StructProperty> lookupPointsByPositionPoint = [];
+    private StructProperty lookupTrack;
+    private ArrayProperty<StructProperty> lookupPoints;
 
     public ExportEntry Export { get; private set; }
 
@@ -30,6 +33,11 @@ public sealed class CurveEditor3DModel
         var emptyCurve = new StructProperty("InterpCurveVector", false);
         PositionTrack = InterpCurveVector.FromStructProperty(properties.GetProp<StructProperty>("PosTrack") ?? emptyCurve, export.Game);
         RotationTrack = InterpCurveVector.FromStructProperty(properties.GetProp<StructProperty>("EulerTrack") ?? emptyCurve, export.Game);
+        lookupTrack = properties.GetProp<StructProperty>("LookupTrack") ?? new StructProperty("InterpLookupTrack", new PropertyCollection
+        {
+            new ArrayProperty<StructProperty>("Points")
+        }, "LookupTrack");
+        lookupPoints = lookupTrack.GetProp<ArrayProperty<StructProperty>>("Points");
         RebuildKeyframes();
     }
 
@@ -38,6 +46,9 @@ public sealed class CurveEditor3DModel
         Export = null;
         PositionTrack = null;
         RotationTrack = null;
+        lookupTrack = null;
+        lookupPoints = null;
+        lookupPointsByPositionPoint.Clear();
         Keyframes.Clear();
     }
 
@@ -83,6 +94,7 @@ public sealed class CurveEditor3DModel
         Vector3 newRotation = selectedKeyframe.Rotation;
         InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, time, newLocation, selectedKeyframe.PosTrackInterpMode);
         InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, time, newRotation, selectedKeyframe.EulerTrackInterpMode);
+        AddLookupPoint(positionPoint, time);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);
@@ -100,6 +112,7 @@ public sealed class CurveEditor3DModel
         Vector3 newRotation = lastKeyframe.Rotation;
         InterpCurvePoint<Vector3> positionPoint = AddPoint(PositionTrack, time, location, lastKeyframe.PosTrackInterpMode);
         InterpCurvePoint<Vector3> rotationPoint = AddPoint(RotationTrack, time, newRotation, lastKeyframe.EulerTrackInterpMode);
+        AddLookupPoint(positionPoint, time);
         var keyframe = new CurveEditor3DKeyframe(positionPoint, rotationPoint, newRotation, CommitKeyframe);
         Keyframes.Add(keyframe);
         CommitKeyframe(keyframe, null);
@@ -123,6 +136,10 @@ public sealed class CurveEditor3DModel
         if (keyframe.RotationPoint is not null)
         {
             RotationTrack.Points.Remove(keyframe.RotationPoint);
+        }
+        if (lookupPointsByPositionPoint.Remove(keyframe.PositionPoint, out StructProperty lookupPoint))
+        {
+            lookupPoints.Remove(lookupPoint);
         }
         Keyframes.RemoveAt(index);
         PositionTrack.ReCalculateTangents();
@@ -185,6 +202,12 @@ public sealed class CurveEditor3DModel
     private void RebuildKeyframes()
     {
         Keyframes.Clear();
+        lookupPointsByPositionPoint.Clear();
+        for (int index = 0; index < Math.Min(PositionTrack.Points.Count, lookupPoints.Count); index++)
+        {
+            lookupPointsByPositionPoint[PositionTrack.Points[index]] = lookupPoints[index];
+        }
+
         foreach (InterpCurvePoint<Vector3> positionPoint in PositionTrack.Points.OrderBy(point => point.InVal))
         {
             float time = positionPoint.InVal;
@@ -214,11 +237,22 @@ public sealed class CurveEditor3DModel
         positionPoint.InVal = keyframe.Time;
         positionPoint.OutVal = keyframe.Location;
         positionPoint.InterpMode = keyframe.PosTrackInterpMode;
+        if (!lookupPointsByPositionPoint.TryGetValue(positionPoint, out StructProperty lookupPoint))
+        {
+            lookupPoint = AddLookupPoint(positionPoint, keyframe.Time);
+        }
+        lookupPoint.GetProp<FloatProperty>("Time").Value = keyframe.Time;
         rotationPoint.InVal = keyframe.Time;
         rotationPoint.OutVal = keyframe.Rotation;
         rotationPoint.InterpMode = keyframe.EulerTrackInterpMode;
         PositionTrack.Points.Sort((left, right) => left.InVal.CompareTo(right.InVal));
         RotationTrack.Points.Sort((left, right) => left.InVal.CompareTo(right.InVal));
+        List<StructProperty> sortedLookupPoints = lookupPoints.OrderBy(point => point.GetProp<FloatProperty>("Time").Value).ToList();
+        lookupPoints.Clear();
+        foreach (StructProperty sortedLookupPoint in sortedLookupPoints)
+        {
+            lookupPoints.Add(sortedLookupPoint);
+        }
         Keyframes.Sort((left, right) => left.Time.CompareTo(right.Time));
         PositionTrack.ReCalculateTangents();
         RotationTrack.ReCalculateTangents();
@@ -231,7 +265,18 @@ public sealed class CurveEditor3DModel
         PropertyCollection properties = Export.GetProperties();
         properties.AddOrReplaceProp(PositionTrack.ToStructProperty(Export.Game, "PosTrack"));
         properties.AddOrReplaceProp(RotationTrack.ToStructProperty(Export.Game, "EulerTrack"));
+        properties.AddOrReplaceProp(lookupTrack);
         Export.WriteProperties(properties);
+    }
+
+    private StructProperty AddLookupPoint(InterpCurvePoint<Vector3> positionPoint, float time)
+    {
+        var lookupPoint = new StructProperty("InterpLookupPoint", false,
+            new NameProperty("None", "GroupName"),
+            new FloatProperty(time, "Time"));
+        lookupPoints.Add(lookupPoint);
+        lookupPointsByPositionPoint[positionPoint] = lookupPoint;
+        return lookupPoint;
     }
 
     private static InterpCurvePoint<Vector3> FindPoint(InterpCurveVector track, float time)
