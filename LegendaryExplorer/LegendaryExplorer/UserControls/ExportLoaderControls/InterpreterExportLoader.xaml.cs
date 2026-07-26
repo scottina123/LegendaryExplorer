@@ -357,8 +357,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand ToggleHexBoxCommand { get; set; }
         public ICommand ToggleTopSelectorCommand { get; set; }
         public ICommand AddArrayElementCommand { get; set; }
+        public ICommand AddArrayElementAboveCommand { get; set; }
+        public ICommand AddArrayElementBelowCommand { get; set; }
         public ICommand AddMultipleArrayElementsCommand { get; set; }
         public ICommand RemoveArrayElementCommand { get; set; }
+        public ICommand DeleteSelectedArrayElementCommand { get; set; }
         public ICommand CloneArrayElementCommand { get; set; }
         public ICommand MultiCloneArrayElementCommand { get; set; }
         public ICommand DeleteArrayElementCommand { get; set; }
@@ -398,8 +401,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ToggleHexBoxCommand = new GenericCommand(ToggleHexbox);
             ToggleTopSelectorCommand = new GenericCommand(ToggleTopSelector);
             AddArrayElementCommand = new GenericCommand(AddArrayElement, CanAddArrayElement);
+            AddArrayElementAboveCommand = new GenericCommand(AddArrayElementAbove, CanAddArrayElementRelativeToSelection);
+            AddArrayElementBelowCommand = new GenericCommand(AddArrayElementBelow, CanAddArrayElementRelativeToSelection);
             AddMultipleArrayElementsCommand = new GenericCommand(AddMultipleArrayElements, CanAddArrayElement);
             RemoveArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
+            DeleteSelectedArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
             CloneArrayElementCommand = new GenericCommand(CloneArrayElement, ArrayElementIsSelected);
             MultiCloneArrayElementCommand = new GenericCommand(MultiCloneArrayElements, ArrayElementIsSelected);
             DeleteArrayElementCommand = new GenericCommand(RemoveArrayElement, ArrayElementIsSelected);
@@ -1053,6 +1059,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             return SelectedItem != null && !SelectedItem.HasTooManyChildrenToDisplay
                 && (ArrayPropertyIsSelected() || ArrayElementIsSelected());
+        }
+
+        private bool CanAddArrayElementRelativeToSelection()
+        {
+            return SelectedItem != null && !SelectedItem.HasTooManyChildrenToDisplay && ArrayElementIsSelected();
         }
 
         private void ClearArray()
@@ -4232,6 +4243,43 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddArrayElementsInternal(1);
         }
 
+        private void AddArrayElementAbove()
+        {
+            AddArrayElementsInternal(1, insertAboveSelectedElement: true);
+        }
+
+        private void AddArrayElementBelow()
+        {
+            AddArrayElementsInternal(1);
+        }
+
+        private void InlineAddArrayElementAboveButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                AddArrayElementsInternal(1, insertAboveSelectedElement: true, targetItem: node);
+            }
+        }
+
+        private void InlineAddArrayElementBelowButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                AddArrayElementsInternal(1, targetItem: node);
+            }
+        }
+
+        private void InlineDeleteArrayElementButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                RemoveArrayElement(node);
+            }
+        }
+
         private void CloneArrayElement()
         {
             AddArrayElementsInternal(1, cloneSelectedElement: true);
@@ -4267,9 +4315,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return result != null && int.TryParse(result, out count) && count > 0;
         }
 
-        private void AddArrayElementsInternal(int count, bool cloneSelectedElement = false)
+        private void AddArrayElementsInternal(int count, bool cloneSelectedElement = false, bool insertAboveSelectedElement = false, UPropertyTreeViewEntry targetItem = null)
         {
-            if (Interpreter_TreeView.SelectedItem is UPropertyTreeViewEntry tvi && tvi.Property != null)
+            if ((targetItem ?? Interpreter_TreeView.SelectedItem) is UPropertyTreeViewEntry tvi && tvi.Property != null)
             {
                 string containingType = CurrentLoadedExport.ClassName;
                 ArrayPropertyBase propertyToAddItemTo;
@@ -4287,7 +4335,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 else if (tvi.UPParent?.Property is ArrayPropertyBase parentArray)
                 {
                     propertyToAddItemTo = parentArray;
-                    insertIndex = tvi.UPParent.ChildrenProperties.IndexOf(tvi) + 1;
+                    insertIndex = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
+                    if (!insertAboveSelectedElement)
+                    {
+                        insertIndex++;
+                    }
                     ForcedRescanOffset = (int)tvi.Property.StartOffset;
                     if (tvi.UPParent.UPParent?.Property is StructProperty structProp)
                     {
@@ -4735,7 +4787,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void RemoveArrayElement()
         {
-            if (SelectedItem is UPropertyTreeViewEntry tvi
+            RemoveArrayElement(SelectedItem);
+        }
+
+        private void RemoveArrayElement(UPropertyTreeViewEntry node)
+        {
+            if (node is UPropertyTreeViewEntry tvi
              && tvi.UPParent?.Property is ArrayPropertyBase arrayProperty)
             {
                 int index = tvi.UPParent.ChildrenProperties.IndexOf(tvi);
@@ -5634,6 +5691,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool IsStringRefProperty => InterpreterExportLoader.IsTlkStringRefProperty(Property, UPParent?.Property);
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
+        public bool IsArrayElement => UPParent?.Property is ArrayPropertyBase;
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);

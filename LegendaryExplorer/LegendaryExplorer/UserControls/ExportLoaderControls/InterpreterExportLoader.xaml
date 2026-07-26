@@ -276,12 +276,18 @@
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="Find text..." ToolTip="Find this StringRef by its text in the loaded TLKs" Tag="{Binding}"
                                                     Click="StringRefTextLookupButton_Click" Visibility="{Binding IsStringRefProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_ObjectInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowObjectInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <TextBox MinWidth="180" IsReadOnly="True" Text="{Binding InlineObjectDisplayValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" MouseDoubleClick="InlineObjectDisplay_MouseDoubleClick" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <TextBox Width="60" Margin="5,0,0,0" Text="{Binding InlineObjectIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" TextChanged="InlineObjectIndex_TextChanged" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </StackPanel>
                                         <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -306,6 +312,9 @@
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         </StackPanel>
                                          <StackPanel x:Name="PropertyItem_EnumInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                      Visibility="{Binding ShowEnumInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -326,6 +335,9 @@
                                                  </ComboBox.ItemsPanel>
                                              </ComboBox>
                                              <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                             <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                          </StackPanel>
                                         <TextBlock x:Name="PropertyItem_ParsedValue" Margin="5,0,0,0" Text="{Binding ParsedValue, Mode=OneTime}" VerticalAlignment="Center" FontStyle="Italic"
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
