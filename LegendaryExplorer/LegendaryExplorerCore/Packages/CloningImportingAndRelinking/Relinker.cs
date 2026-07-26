@@ -34,6 +34,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         public ListenableDictionary<IEntry, IEntry> CrossPackageMap = [];
 
         /// <summary>
+        /// Source entries that may be used as relink targets but whose data must not be copied into the mapped destination entry.
+        /// </summary>
+        public HashSet<IEntry> RelinkMapEntriesToSkip { get; } = [];
+
+        /// <summary>
         /// Whether objects an export depends on should be imported during a relink.
         /// This will cause all dependencies of dependencies to also be ported in, as well as the parents of those dependencies so they can be fully qualified paths.
         /// </summary>
@@ -111,6 +116,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// Invoked when an error occurs during porting. Can be null.
         /// </summary>
         public Action<string> ErrorOccurredCallback;
+
+        /// <summary>
+        /// Optionally modifies a source export's properties after loading and before references are relinked and written to the destination export.
+        /// </summary>
+        public Action<ExportEntry, PropertyCollection> RelinkPropertyMutator { get; set; }
 
         /// <summary>
         /// Blank constructor (left here for breakpoints)
@@ -211,7 +221,9 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             while (i < mappingList.Count)
             {
                 var entryMap = mappingList[i];
-                if (entryMap.Key is ExportEntry sourceExport && entryMap.Value is ExportEntry relinkingExport)
+                if (entryMap.Key is ExportEntry sourceExport
+                    && entryMap.Value is ExportEntry relinkingExport
+                    && !rop.RelinkMapEntriesToSkip.Contains(sourceExport))
                 {
                     Relink(sourceExport, relinkingExport, rop);
                 }
@@ -400,6 +412,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 }
             }
 
+            rop.RelinkPropertyMutator?.Invoke(sourceExport, props);
             relinkPropertiesRecursive(sourcePcc, relinkingExport, props, "", rop);
 
             //Relink Binary
@@ -1087,7 +1100,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// <returns></returns>
         private static IEntry FindExistingEntry(string instancedFullPath, ExportEntry relinkingExport, ExportEntry sourceExport, RelinkerOptionsPackage rop)
         {
-            IEntry existingEntry = relinkingExport.FileRef.FindEntry(instancedFullPath);
+            IEntry existingEntry = FindNonTrashEntry(relinkingExport.FileRef, instancedFullPath);
 
             // 01/09/2025 - Find ForcedExport/NonForced export version ===
             if (existingEntry == null)
@@ -1097,7 +1110,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                     && sourceExport.HasParent) // HasParent ensures it has a . in the name
                 {
                     // Forced Export -> Non Forced Export (maybe building new package? or merging a package with edits)
-                    existingEntry = relinkingExport.FileRef.FindEntry(instancedFullPath.Substring(instancedFullPath.IndexOf('.') + 1));
+                    existingEntry = FindNonTrashEntry(relinkingExport.FileRef, instancedFullPath.Substring(instancedFullPath.IndexOf('.') + 1));
                 }
             }
 
@@ -1106,7 +1119,7 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 // If it is not forced export, look for forced export object in package
                 if (!sourceExport.IsForcedExport)
                 {
-                    existingEntry = relinkingExport.FileRef.FindEntry(sourceExport.GetLinker() + '.' + instancedFullPath);
+                    existingEntry = FindNonTrashEntry(relinkingExport.FileRef, sourceExport.GetLinker() + '.' + instancedFullPath);
                 }
             }
             // End 01/09/2025 ====
@@ -1135,6 +1148,24 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 }
             }
             return existingEntry;
+        }
+
+        private static IEntry FindNonTrashEntry(IMEPackage package, string instancedFullPath)
+        {
+            IEntry entry = package.FindEntry(instancedFullPath);
+            if (entry != null && IsTrashEntry(entry))
+            {
+                package.InvalidateLookupTable();
+                entry = package.FindEntry(instancedFullPath);
+            }
+
+            return entry != null && !IsTrashEntry(entry) ? entry : null;
+        }
+
+        private static bool IsTrashEntry(IEntry entry)
+        {
+            return entry.InstancedFullPath.CaseInsensitiveEquals(UnrealPackageFile.TrashPackageName)
+                   || entry.InstancedFullPath.StartsWith(UnrealPackageFile.TrashPackageName + '.', StringComparison.OrdinalIgnoreCase);
         }
 
         private static void RelinkUnhoodEntryReference(IEntry entry, long position, byte[] script, ExportEntry sourceExport, ExportEntry destinationExport, RelinkerOptionsPackage rop)

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using LegendaryExplorer.Tools.SequenceObjects;
+using LegendaryExplorerCore.Packages;
 using Piccolo;
 using Piccolo.Event;
 
@@ -14,6 +16,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
     /// </summary>
     public sealed class SequenceGraphEditor : PCanvas
     {
+        internal sealed record SequenceObjectDragData(IReadOnlyList<ExportEntry> Exports);
+
         /// <summary>
         /// Required designer variable.
         /// </summary>
@@ -210,6 +214,17 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                if (e.Shift && e.PickedNode is SObj draggedObject && e.Canvas is SequenceGraphEditor graph)
+                {
+                    IReadOnlyList<ExportEntry> exports = draggedObject.IsSelected
+                        ? graph.nodeLayer.OfType<SObj>().Where(obj => obj.IsSelected).Select(obj => obj.Export).ToList()
+                        : [draggedObject.Export];
+
+                    e.Handled = true;
+                    graph.DoDragDrop(new SequenceObjectDragData(exports), DragDropEffects.Copy);
+                    return;
+                }
+
                 base.OnStartDrag(sender, e);
                 e.Handled = true;
                 e.PickedNode.MoveToFront();

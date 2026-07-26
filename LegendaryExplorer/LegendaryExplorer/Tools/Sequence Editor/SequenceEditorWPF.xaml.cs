@@ -2886,7 +2886,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void SequenceEditor_DragEnter(object sender, System.Windows.Forms.DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop))
+            if (e.Data.GetData(typeof(SequenceGraphEditor.SequenceObjectDragData)) is SequenceGraphEditor.SequenceObjectDragData dragData)
+            {
+                e.Effect = CanAcceptSequenceObjectDrop(dragData)
+                    ? System.Windows.Forms.DragDropEffects.Copy
+                    : System.Windows.Forms.DragDropEffects.None;
+            }
+            else if (e.Data.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop))
                 e.Effect = System.Windows.Forms.DragDropEffects.All;
             else
                 e.Effect = System.Windows.Forms.DragDropEffects.None;
@@ -2894,12 +2900,140 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void SequenceEditor_DragDrop(object sender, System.Windows.Forms.DragEventArgs e)
         {
-            if (e.Data.GetData(System.Windows.Forms.DataFormats.FileDrop) is string[] DroppedFiles)
+            if (e.Data.GetData(typeof(SequenceGraphEditor.SequenceObjectDragData)) is SequenceGraphEditor.SequenceObjectDragData dragData)
+            {
+                CloneDroppedSequenceObjects(dragData);
+            }
+            else if (e.Data.GetData(System.Windows.Forms.DataFormats.FileDrop) is string[] DroppedFiles)
             {
                 if (DroppedFiles.Any())
                 {
                     LoadFile(DroppedFiles[0]);
                 }
+            }
+        }
+
+        private bool CanAcceptSequenceObjectDrop(SequenceGraphEditor.SequenceObjectDragData dragData)
+        {
+            return Pcc != null
+                   && SelectedSequence != null
+                   && dragData.Exports.Count > 0
+                   && dragData.Exports.All(export => export.FileRef == dragData.Exports[0].FileRef)
+                   && dragData.Exports[0].FileRef != Pcc;
+        }
+
+        private void CloneDroppedSequenceObjects(SequenceGraphEditor.SequenceObjectDragData dragData)
+        {
+            if (!CanAcceptSequenceObjectDrop(dragData))
+            {
+                return;
+            }
+
+            ExportEntry sourceObject = dragData.Exports[0];
+            if (SelectedSequence.Game.IsLEGame() != sourceObject.Game.IsLEGame() && !App.IsDebug && sourceObject.Game != MEGame.UDK)
+            {
+                MessageBox.Show(
+                    "Cannot port sequence objects between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot port sequence objects",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            MessageBoxResult cloneChoice = MessageBox.Show(
+                $"Clone {dragData.Exports.Count} sequence object(s) with all referenced output, variable, and event links?\n\n" +
+                "Yes: Clone the objects and all referenced links.\n" +
+                "No: Clone the selected objects and their property references, but remove graph connections.",
+                "Clone sequence objects",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question,
+                MessageBoxResult.Cancel);
+            if (cloneChoice == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            bool cloneAllLinks = cloneChoice == MessageBoxResult.Yes;
+            var rop = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceObject.Game != Pcc.Game && sourceObject.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                ImportExportDependencies = true,
+                GenerateImportsForGlobalFiles = true,
+                PortImportsMemorySafe = Settings.PackageEditor_DefaultMemorySafeImportPorting,
+                RelinkPropertyMutator = cloneAllLinks
+                    ? null
+                    : (sourceExport, props) =>
+                    {
+                        if (dragData.Exports.Contains(sourceExport))
+                        {
+                            KismetHelper.RemoveAllLinks(props);
+                        }
+                    },
+            };
+
+            var sourceParentSequences = dragData.Exports
+                .Select(export => export.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(export.FileRef) as ExportEntry)
+                .Where(sequence => sequence != null)
+                .Distinct()
+                .ToList();
+            foreach (ExportEntry sourceParentSequence in sourceParentSequences)
+            {
+                rop.CrossPackageMap[sourceParentSequence] = SelectedSequence;
+                rop.RelinkMapEntriesToSkip.Add(sourceParentSequence);
+            }
+
+            foreach (ExportEntry export in dragData.Exports)
+            {
+                int originalIndex = export.indexValue;
+                bool hadChanges = export.EntryHasPendingChanges;
+                bool hadHeaderChanges = export.HeaderChanged;
+                try
+                {
+                    if (Pcc.FindEntry(export.InstancedFullPath) != null)
+                    {
+                        export.indexValue = Pcc.GetNextIndexedName(export.ObjectName).Number;
+                    }
+
+                    EntryImporter.ImportAndRelinkEntries(
+                        EntryImporter.PortingOption.AddSingularAsChild,
+                        export,
+                        Pcc,
+                        SelectedSequence,
+                        false,
+                        rop,
+                        out _);
+                }
+                finally
+                {
+                    export.indexValue = originalIndex;
+                    export.HeaderChanged = hadHeaderChanges;
+                    export.EntryHasPendingChanges = hadChanges;
+                }
+            }
+
+            Relinker.RelinkAll(rop);
+
+            var importedSequenceObjects = rop.CrossPackageMap
+                .Where(pair => pair.Key is ExportEntry sourceExport
+                               && pair.Value is ExportEntry
+                               && (dragData.Exports.Contains(sourceExport)
+                                   || sourceParentSequences.Contains(sourceExport.GetProperty<ObjectProperty>("ParentSequence")?.ResolveToEntry(sourceExport.FileRef) as ExportEntry)))
+                .Select(pair => (ExportEntry)pair.Value)
+                .Where(export => export != SelectedSequence)
+                .Distinct()
+                .ToList();
+
+            foreach (ExportEntry importedObject in importedSequenceObjects)
+            {
+                KismetHelper.AddObjectToSequence(importedObject, SelectedSequence, keepPositioning: true);
+            }
+
+            RefreshView();
+            if (rop.RelinkReport.Count > 0)
+            {
+                new ListDialog(rop.RelinkReport, "Relink report",
+                    "The following items reported relinking issues.", this).Show();
             }
         }
 

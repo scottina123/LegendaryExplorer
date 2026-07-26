@@ -466,6 +466,15 @@ namespace LegendaryExplorerCore.Kismet
         public static void RemoveAllLinks(ExportEntry export, bool outlinks = true, bool variablelinks = true, bool eventlinks = true)
         {
             var props = export.GetProperties();
+            RemoveAllLinks(props, outlinks, variablelinks, eventlinks);
+            export.WriteProperties(props);
+        }
+
+        /// <summary>
+        /// Removes all links to other sequence objects from a property collection without writing it to an export.
+        /// </summary>
+        public static void RemoveAllLinks(PropertyCollection props, bool outlinks = true, bool variablelinks = true, bool eventlinks = true)
+        {
             if (outlinks)
             {
                 var outLinksProp = props.GetProp<ArrayProperty<StructProperty>>("OutputLinks");
@@ -473,7 +482,7 @@ namespace LegendaryExplorerCore.Kismet
                 {
                     foreach (var prop in outLinksProp)
                     {
-                        prop.GetProp<ArrayProperty<StructProperty>>("Links").Clear();
+                        prop.GetProp<ArrayProperty<StructProperty>>("Links")?.Clear();
                     }
                 }
             }
@@ -485,7 +494,7 @@ namespace LegendaryExplorerCore.Kismet
                 {
                     foreach (var prop in varLinksProp)
                     {
-                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables").Clear();
+                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedVariables")?.Clear();
                     }
                 }
             }
@@ -497,12 +506,10 @@ namespace LegendaryExplorerCore.Kismet
                 {
                     foreach (var prop in eventLinksProp)
                     {
-                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents").Clear();
+                        prop.GetProp<ArrayProperty<ObjectProperty>>("LinkedEvents")?.Clear();
                     }
                 }
             }
-
-            export.WriteProperties(props);
         }
 
 
