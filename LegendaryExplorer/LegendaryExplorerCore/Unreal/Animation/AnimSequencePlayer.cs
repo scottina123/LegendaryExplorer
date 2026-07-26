@@ -16,6 +16,26 @@ namespace LegendaryExplorerCore.Unreal.Animation;
 /// </remarks>
 public class AnimSequencePlayer : AnimPlayer
 {
+    public sealed class ScheduledAnimationClip
+    {
+        public AnimSequence Animation { get; init; }
+        public float StartTime { get; init; }
+        public float EndTime { get; init; }
+        public float AnimationStartTime { get; init; }
+        public float AnimationEndTime { get; init; }
+        public float PlayRate { get; init; } = 1f;
+        public float BlendInDuration { get; init; }
+        public float BlendOutDuration { get; init; }
+        public float Weight { get; init; } = 1f;
+        public bool Loop { get; init; }
+    }
+
+    private sealed class ScheduledAnimationClipState
+    {
+        public required ScheduledAnimationClip Clip { get; init; }
+        public required AnimSequencePlayer Player { get; init; }
+    }
+
     // Animation state
     private AnimSequence _animSequence;
     private int[] _skelToAnimMap; // skeleton bone index -> animTrack[i] or -1 if no track
@@ -26,6 +46,9 @@ public class AnimSequencePlayer : AnimPlayer
     // Crossfade blend state
     private Matrix4x4[] _blendFromComponentSpace;
     private float _crossfadeDuration;
+    private List<ScheduledAnimationClipState> _scheduledClips;
+    private float _scheduledStartTime;
+    private float _scheduledEndTime;
 
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
     {
@@ -34,13 +57,13 @@ public class AnimSequencePlayer : AnimPlayer
 
     public NameReference AnimName => _animSequence?.Name ?? "None";
     public int TotalFrames => _animSequence?.NumFrames ?? 0;
-    public override float Duration => _animSequence?.SequenceLength ?? 0f;
+    public override float Duration => _scheduledClips != null ? _scheduledEndTime - _scheduledStartTime : _animSequence?.SequenceLength ?? 0f;
 
-    public override float StartTime => 0;
+    public override float StartTime => _scheduledClips != null ? _scheduledStartTime : 0;
 
-    public override float EndTime => Duration;
+    public override float EndTime => _scheduledClips != null ? _scheduledEndTime : Duration;
 
-    public override bool HasAnimation => _animSequence != null;
+    public override bool HasAnimation => _scheduledClips is { Count: > 0 } || _animSequence != null;
 
     public int CurrentFrame
     {
@@ -69,6 +92,9 @@ public class AnimSequencePlayer : AnimPlayer
     /// </summary>
     public void SetAnimation(AnimSequence animSequence, PackageCache packageCache = null)
     {
+        _scheduledClips = null;
+        _scheduledStartTime = 0;
+        _scheduledEndTime = 0;
         _animSequence = animSequence;
         CurrentTime = 0;
         _skelToAnimMap.AsSpan().Fill(-1);
@@ -129,6 +155,40 @@ public class AnimSequencePlayer : AnimPlayer
 
     }
 
+    public void SetAnimationTimeline(IEnumerable<ScheduledAnimationClip> clips, PackageCache packageCache = null)
+    {
+        _animSequence = null;
+        _blendFromComponentSpace = null;
+        _crossfadeDuration = 0;
+        _scheduledClips = [];
+
+        foreach (ScheduledAnimationClip clip in clips.Where(clip =>
+                     clip.Animation != null && clip.EndTime > clip.StartTime && clip.AnimationEndTime > clip.AnimationStartTime))
+        {
+            clip.Animation.DecompressAnimationData();
+            var player = new AnimSequencePlayer(new SkeletalMesh { RefSkeleton = _bones })
+            {
+                IsLooping = false,
+            };
+            player.SetAnimation(clip.Animation, packageCache);
+            _scheduledClips.Add(new ScheduledAnimationClipState { Clip = clip, Player = player });
+        }
+
+        if (_scheduledClips.Count == 0)
+        {
+            _scheduledClips = null;
+            _scheduledStartTime = 0;
+            _scheduledEndTime = 0;
+            CurrentTime = 0;
+        }
+        else
+        {
+            _scheduledStartTime = _scheduledClips.Min(state => state.Clip.StartTime);
+            _scheduledEndTime = _scheduledClips.Max(state => state.Clip.EndTime);
+            CurrentTime = _scheduledStartTime;
+        }
+    }
+
     private static ExportEntry GetAnimSetData(AnimSequence animSequence, PackageCache packageCache)
     {
         ObjectProperty animSetDataReference = animSequence?.Export.GetProperty<ObjectProperty>("m_pBioAnimSetData");
@@ -154,12 +214,12 @@ public class AnimSequencePlayer : AnimPlayer
 
     public override void SetCurrentTime(float time)
     {
-        if (_animSequence == null || Duration <= 0)
+        if (!HasAnimation || Duration <= 0)
         {
             CurrentTime = 0;
             return;
         }
-        CurrentTime = Math.Clamp(time, 0, Duration);
+        CurrentTime = Math.Clamp(time, StartTime, EndTime);
     }
 
     /// <summary>
@@ -206,6 +266,11 @@ public class AnimSequencePlayer : AnimPlayer
     public override Matrix4x4[] ComputeSkinningMatrices()
     {
         if (_bones == null || _skinningMatrices == null) return null;
+
+        if (_scheduledClips != null)
+        {
+            return ComputeScheduledSkinningMatrices();
+        }
 
         int numBones = _bones.Length;
 
@@ -283,6 +348,79 @@ public class AnimSequencePlayer : AnimPlayer
                     _skinningMatrices[i] = _inverseBindPose[i] * _boneComponentSpace[i];
                 }
             }
+        }
+
+        return _skinningMatrices;
+    }
+
+    private Matrix4x4[] ComputeScheduledSkinningMatrices()
+    {
+        List<(ScheduledAnimationClipState State, float Weight)> activeClips = [];
+        foreach (ScheduledAnimationClipState state in _scheduledClips)
+        {
+            ScheduledAnimationClip clip = state.Clip;
+            if (CurrentTime < clip.StartTime || CurrentTime > clip.EndTime)
+            {
+                continue;
+            }
+
+            float clipTime = Math.Max(0, CurrentTime - clip.StartTime);
+            float animationDuration = clip.AnimationEndTime - clip.AnimationStartTime;
+            float animationTime = clip.AnimationStartTime + clipTime * Math.Max(0.0001f, clip.PlayRate);
+            if (clip.Loop && animationDuration > 0)
+            {
+                animationTime = clip.AnimationStartTime + (animationTime - clip.AnimationStartTime) % animationDuration;
+            }
+            else
+            {
+                animationTime = Math.Clamp(animationTime, clip.AnimationStartTime, clip.AnimationEndTime);
+            }
+
+            state.Player.CurrentTime = animationTime;
+            state.Player.ComputeSkinningMatrices();
+
+            float weight = Math.Max(0, clip.Weight);
+            if (clip.BlendInDuration > 0)
+            {
+                weight *= Math.Clamp(clipTime / clip.BlendInDuration, 0, 1);
+            }
+            if (clip.BlendOutDuration > 0)
+            {
+                weight *= Math.Clamp((clip.EndTime - CurrentTime) / clip.BlendOutDuration, 0, 1);
+            }
+            if (weight > 0)
+            {
+                activeClips.Add((state, weight));
+            }
+        }
+
+        if (activeClips.Count == 0)
+        {
+            return _skinningMatrices;
+        }
+
+        ScheduledAnimationClipState first = activeClips[0].State;
+        Array.Copy(first.Player._boneComponentSpace, _boneComponentSpace, _boneComponentSpace.Length);
+
+        for (int clipIndex = 1; clipIndex < activeClips.Count; clipIndex++)
+        {
+            (ScheduledAnimationClipState state, float weight) = activeClips[clipIndex];
+            float alpha = Math.Clamp(weight, 0, 1);
+            for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+            {
+                if (Matrix4x4.Decompose(_boneComponentSpace[boneIndex], out _, out Quaternion currentRotation, out Vector3 currentPosition)
+                    && Matrix4x4.Decompose(state.Player._boneComponentSpace[boneIndex], out _, out Quaternion nextRotation, out Vector3 nextPosition))
+                {
+                    Quaternion rotation = Quaternion.Slerp(currentRotation, nextRotation, alpha);
+                    Vector3 position = Vector3.Lerp(currentPosition, nextPosition, alpha);
+                    _boneComponentSpace[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
+                }
+            }
+        }
+
+        for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+        {
+            _skinningMatrices[boneIndex] = _inverseBindPose[boneIndex] * _boneComponentSpace[boneIndex];
         }
 
         return _skinningMatrices;

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -17,6 +18,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 public partial class GesturePreviewExportLoader : ExportLoaderControl
 {
+    public sealed class GesturePlaybackSettings
+    {
+        public float PlayRate { get; init; } = 1f;
+        public float StartOffset { get; init; }
+        public float EndOffset { get; init; }
+        public float StartBlendDuration { get; init; }
+        public float EndBlendDuration { get; init; }
+        public float Weight { get; init; } = 1f;
+        public float TransitionBlendTime { get; init; }
+        public bool InvalidData { get; init; }
+        public bool OneShotAnimation { get; init; }
+        public bool ChainToPrevious { get; init; }
+        public bool PlayUntilNext { get; init; }
+        public bool TerminateAllGestures { get; init; }
+        public bool UseDynamicAnimationSets { get; init; }
+        public bool SnapToPose { get; init; }
+        public string PoseFilter { get; init; }
+        public string Pose { get; init; }
+        public string GestureFilter { get; init; }
+        public string Gesture { get; init; }
+        public string ChainedGestures { get; init; }
+
+        public string TimingText => $"Rate {PlayRate:F2}x | Cutoffs {StartOffset:F2}s / {EndOffset:F2}s | Blends {StartBlendDuration:F2}s / {EndBlendDuration:F2}s | Weight {Weight:F2} | Transition blend {TransitionBlendTime:F2}s";
+        public string FlagsText => $"One-shot: {OneShotAnimation} | Chain previous: {ChainToPrevious} | Until next: {PlayUntilNext} | Terminate all: {TerminateAllGestures} | Snap: {SnapToPose} | Dynamic sets: {UseDynamicAnimationSets} | Invalid: {InvalidData}";
+        public string FiltersText => $"Pose: {PoseFilter}/{Pose} | Gesture: {GestureFilter}/{Gesture} | Chained: {ChainedGestures}";
+    }
+
     public sealed class GestureAnimationItem
     {
         public int? GestureIndex { get; init; }
@@ -27,24 +55,35 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         public NameReference SetName { get; init; }
         public NameReference AnimationName { get; init; }
         public ExportEntry AnimationExport { get; set; }
+        public GesturePlaybackSettings Settings { get; init; }
+        public float AnimationDuration => AnimationExport?.GetProperty<FloatProperty>("SequenceLength")?.Value ?? 0;
         public string DisplayName => GestureIndex is int index ? $"Gesture {index}: {SlotName}" : SlotName;
         public string TimelineText => GestureIndex is int ? $"Track time: {Time:F2}s" : "Track start";
         public string ReferenceText => $"{SetName.Instanced}.{AnimationName.Instanced}";
         public string ResolutionText => AnimationExport == null ? "Animation not found in shared animation sets" : $"Export {AnimationExport.UIndex}";
+        public string TimingText => Settings?.TimingText ?? $"Starting pose offset: {Time:F2}s";
+        public string FlagsText => Settings?.FlagsText;
+        public string FiltersText => Settings?.FiltersText;
     }
 
     private readonly List<(string FileName, string ContentDir)> _databaseFiles = [];
     private readonly PackageCache _packageCache = new();
     private CancellationTokenSource _databaseLoadCancellationTokenSource;
     private List<GestureAnimationItem> _animations = [];
-    private Queue<GestureAnimationItem> _playbackQueue;
     private GestureAnimationItem _selectedAnimation;
     private string _statusText = "Load a preview mesh to play the gesture track.";
+    private string _trackPropertiesText;
 
     public GestureAnimationItem SelectedAnimation
     {
         get => _selectedAnimation;
         set => SetProperty(ref _selectedAnimation, value);
+    }
+
+    public string TrackPropertiesText
+    {
+        get => _trackPropertiesText;
+        private set => SetProperty(ref _trackPropertiesText, value);
     }
 
     public string StatusText
@@ -58,6 +97,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         DataContext = this;
         InitializeComponent();
         AnimPreviewControl.AnimationCompleted += AnimPreviewControl_AnimationCompleted;
+        AnimPreviewControl.AnimTimeChanged += AnimPreviewControl_AnimTimeChanged;
     }
 
     public override bool CanParse(ExportEntry exportEntry) =>
@@ -68,6 +108,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         UnloadExport();
         CurrentLoadedExport = exportEntry;
         _animations = BuildAnimationTimeline(exportEntry);
+        TrackPropertiesText = DescribeTrackProperties(exportEntry);
         AnimationListBox.ItemsSource = _animations;
         SelectedAnimation = _animations.FirstOrDefault();
         StatusText = _animations.Count == 0
@@ -97,10 +138,11 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 : 0;
             float startBlendDuration = properties.GetProp<FloatProperty>("fStartBlendDuration")?.Value ?? 0;
             float endBlendDuration = properties.GetProp<FloatProperty>("fEndBlendDuration")?.Value ?? 0;
+            GesturePlaybackSettings settings = ReadPlaybackSettings(properties, startBlendDuration, endBlendDuration);
 
-            AddAnimation(result, index, time, 0, startBlendDuration, "Pose", properties, "nmPoseSet", "nmPoseAnim", dynamicAnimSets);
-            AddAnimation(result, index, time, 1, startBlendDuration, "Gesture", properties, "nmGestureSet", "nmGestureAnim", dynamicAnimSets);
-            AddAnimation(result, index, time, 2, endBlendDuration, "Transition", properties, "nmTransitionSet", "nmTransitionAnim", dynamicAnimSets);
+            AddAnimation(result, index, time, 0, startBlendDuration, "Pose", properties, "nmPoseSet", "nmPoseAnim", settings, dynamicAnimSets);
+            AddAnimation(result, index, time, 1, startBlendDuration, "Gesture", properties, "nmGestureSet", "nmGestureAnim", settings, dynamicAnimSets);
+            AddAnimation(result, index, time, 2, endBlendDuration, "Transition", properties, "nmTransitionSet", "nmTransitionAnim", settings, dynamicAnimSets);
         }
 
         return result.OrderBy(item => item.GestureIndex.HasValue)
@@ -119,23 +161,28 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             return;
         }
 
-        result.Add(CreateAnimationItem(null, 0, -1, 0, "Starting Pose", setName, animationName, dynamicAnimSets));
+        var settings = new GesturePlaybackSettings
+        {
+            StartOffset = Math.Max(0, track.GetProperty<FloatProperty>("m_fStartPoseOffset")?.Value ?? 0),
+        };
+        result.Add(CreateAnimationItem(null, 0, -1, 0, "Starting Pose", setName, animationName, dynamicAnimSets, settings));
     }
 
     private void AddAnimation(ICollection<GestureAnimationItem> result, int gestureIndex, float time, int slotOrder,
         float blendDuration, string slotName, PropertyCollection properties, string setPropertyName, string animationPropertyName,
-        IReadOnlyList<ExportEntry> dynamicAnimSets)
+        GesturePlaybackSettings settings, IReadOnlyList<ExportEntry> dynamicAnimSets)
     {
         var setName = properties.GetProp<NameProperty>(setPropertyName)?.Value ?? "None";
         var animationName = properties.GetProp<NameProperty>(animationPropertyName)?.Value ?? "None";
         if (!IsNone(animationName))
         {
-            result.Add(CreateAnimationItem(gestureIndex, time, slotOrder, blendDuration, slotName, setName, animationName, dynamicAnimSets));
+            result.Add(CreateAnimationItem(gestureIndex, time, slotOrder, blendDuration, slotName, setName, animationName, dynamicAnimSets, settings));
         }
     }
 
     private GestureAnimationItem CreateAnimationItem(int? gestureIndex, float time, int slotOrder, float blendDuration,
-        string slotName, NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets)
+        string slotName, NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets,
+        GesturePlaybackSettings settings = null)
     {
         return new GestureAnimationItem
         {
@@ -147,7 +194,49 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             SetName = setName,
             AnimationName = animationName,
             AnimationExport = ResolveAnimation(setName, animationName, dynamicAnimSets),
+            Settings = settings,
         };
+    }
+
+    private static GesturePlaybackSettings ReadPlaybackSettings(PropertyCollection properties, float startBlendDuration, float endBlendDuration)
+    {
+        string EnumValue(string propertyName) => properties.GetProp<EnumProperty>(propertyName)?.Value.Instanced ?? "None";
+        var chainedGestures = properties.GetProp<ArrayProperty<IntProperty>>("aChainedGestures");
+        return new GesturePlaybackSettings
+        {
+            PlayRate = Math.Max(0.0001f, properties.GetProp<FloatProperty>("fPlayRate")?.Value ?? 1f),
+            StartOffset = Math.Max(0, properties.GetProp<FloatProperty>("fStartOffset")?.Value ?? 0),
+            EndOffset = Math.Max(0, properties.GetProp<FloatProperty>("fEndOffset")?.Value ?? 0),
+            StartBlendDuration = Math.Max(0, startBlendDuration),
+            EndBlendDuration = Math.Max(0, endBlendDuration),
+            Weight = Math.Max(0, properties.GetProp<FloatProperty>("fWeight")?.Value ?? 1f),
+            TransitionBlendTime = Math.Max(0, properties.GetProp<FloatProperty>("fTransBlendTime")?.Value ?? 0),
+            InvalidData = properties.GetProp<BoolProperty>("bInvalidData")?.Value ?? false,
+            OneShotAnimation = properties.GetProp<BoolProperty>("bOneShotAnim")?.Value ?? false,
+            ChainToPrevious = properties.GetProp<BoolProperty>("bChainToPrevious")?.Value ?? false,
+            PlayUntilNext = properties.GetProp<BoolProperty>("bPlayUntilNext")?.Value ?? false,
+            TerminateAllGestures = properties.GetProp<BoolProperty>("bTerminateAllGestures")?.Value ?? false,
+            UseDynamicAnimationSets = properties.GetProp<BoolProperty>("bUseDynAnimSets")?.Value ?? false,
+            SnapToPose = properties.GetProp<BoolProperty>("bSnapToPose")?.Value ?? false,
+            PoseFilter = EnumValue("ePoseFilter"),
+            Pose = EnumValue("ePose"),
+            GestureFilter = EnumValue("eGestureFiler"),
+            Gesture = EnumValue("eGesture"),
+            ChainedGestures = chainedGestures is { Count: > 0 }
+                ? string.Join(", ", chainedGestures.Select(property => property.Value))
+                : "None",
+        };
+    }
+
+    private static string DescribeTrackProperties(ExportEntry track)
+    {
+        string startingPose = track.GetProperty<EnumProperty>("eStartingPose")?.Value.Instanced ?? "None";
+        string poseFilter = track.GetProperty<EnumProperty>("ePoseFilter")?.Value.Instanced ?? "None";
+        float startingPoseOffset = track.GetProperty<FloatProperty>("m_fStartPoseOffset")?.Value ?? 0;
+        bool useDynamicSets = track.GetProperty<BoolProperty>("m_bUseDynamicAnimSets")?.Value ?? false;
+        string actor = track.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced ?? "None";
+        string title = track.GetProperty<StrProperty>("TrackTitle")?.Value ?? track.ObjectName.Instanced;
+        return $"{title} | Actor: {actor} | Starting pose: {startingPose} | Pose filter: {poseFilter} | Starting offset: {startingPoseOffset:F2}s | Dynamic sets: {useDynamicSets}";
     }
 
     private ExportEntry ResolveAnimation(NameReference setName, NameReference animationName, IReadOnlyList<ExportEntry> dynamicAnimSets)
@@ -347,40 +436,163 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             return;
         }
 
-        GestureAnimationItem first = animations[0];
-        SelectedAnimation = first;
-        AnimationListBox.SelectedItem = first;
-        _playbackQueue = new Queue<GestureAnimationItem>(animations.Skip(1));
-        AnimPreviewControl.LoadAnimSequenceNonLooping(first.AnimationExport);
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(animations);
+        if (timeline.Count == 0)
+        {
+            AnimPreviewControl.ClearAnimation();
+            StatusText = "This gesture track has no valid animation time ranges to play.";
+            return;
+        }
+
+        SelectedAnimation = animations[0];
+        AnimationListBox.SelectedItem = SelectedAnimation;
+        AnimPreviewControl.LoadAnimSequenceTimeline(timeline);
         AnimPreviewControl.Play();
-        StatusText = $"Playing all {animations.Count} resolved animations in chronological order.";
+        StatusText = $"Playing {animations.Count} resolved animations as one blended gesture timeline.";
     }
 
     private void AnimPreviewControl_AnimationCompleted()
     {
-        if (_playbackQueue is not { Count: > 0 })
+        StatusText = "Finished playing the gesture track.";
+    }
+
+    private void AnimPreviewControl_AnimTimeChanged(float time)
+    {
+        GestureAnimationItem activeItem = _animations
+            .Where(item => item.GestureIndex.HasValue && item.Time <= time)
+            .OrderByDescending(item => item.Time)
+            .ThenBy(item => item.SlotOrder)
+            .FirstOrDefault() ?? _animations.FirstOrDefault();
+        if (activeItem != null && activeItem != SelectedAnimation)
         {
-            _playbackQueue = null;
-            StatusText = "Finished playing the gesture track.";
+            SelectedAnimation = activeItem;
+            AnimationListBox.SelectedItem = activeItem;
+            AnimationListBox.ScrollIntoView(activeItem);
+        }
+    }
+
+    private static List<AnimationPreviewControl.AnimationTimelineClip> BuildPlaybackTimeline(List<GestureAnimationItem> animations)
+    {
+        var timeline = new List<AnimationPreviewControl.AnimationTimelineClip>();
+        List<IGrouping<int?, GestureAnimationItem>> gestureGroups = animations
+            .Where(item => item.GestureIndex.HasValue && item.Settings is { InvalidData: false })
+            .GroupBy(item => item.GestureIndex)
+            .OrderBy(group => group.First().Time)
+            .ToList();
+
+        for (int groupIndex = 0; groupIndex < gestureGroups.Count; groupIndex++)
+        {
+            IGrouping<int?, GestureAnimationItem> group = gestureGroups[groupIndex];
+            List<GestureAnimationItem> items = group.OrderBy(item => item.SlotOrder).ToList();
+            GesturePlaybackSettings settings = items[0].Settings;
+            float keyTime = items[0].Time;
+            IGrouping<int?, GestureAnimationItem> nextTimeGroup = gestureGroups
+                .Skip(groupIndex + 1)
+                .FirstOrDefault(nextGroup => nextGroup.First().Time > keyTime);
+            float? nextKeyTime = nextTimeGroup?.First().Time;
+            bool chainIntoNext = nextTimeGroup?.First().Settings.ChainToPrevious ?? false;
+
+            GestureAnimationItem pose = items.FirstOrDefault(item => item.SlotName == "Pose");
+            GestureAnimationItem gesture = items.FirstOrDefault(item => item.SlotName == "Gesture");
+            GestureAnimationItem transition = items.FirstOrDefault(item => item.SlotName == "Transition");
+            float primaryDuration = GetPlaybackDuration(gesture ?? pose, settings);
+            float primaryEnd = keyTime + primaryDuration;
+            if (nextKeyTime is float cutoff && !chainIntoNext)
+            {
+                primaryEnd = Math.Min(primaryEnd, cutoff);
+            }
+            if (settings.PlayUntilNext && nextKeyTime is float next)
+            {
+                primaryEnd = next;
+            }
+
+            AddTimelineClip(timeline, pose, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
+                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
+            AddTimelineClip(timeline, gesture, keyTime, primaryEnd, settings, settings.SnapToPose ? 0 : settings.StartBlendDuration,
+                settings.EndBlendDuration, settings.PlayUntilNext && !settings.OneShotAnimation);
+
+            if (transition != null)
+            {
+                float transitionBlend = settings.TransitionBlendTime > 0 ? settings.TransitionBlendTime : settings.EndBlendDuration;
+                float transitionStart = keyTime;
+                float transitionEnd = transitionStart + GetPlaybackDuration(transition, settings);
+                if (nextKeyTime is float transitionCutoff && !chainIntoNext)
+                {
+                    transitionEnd = Math.Min(transitionEnd, transitionCutoff);
+                }
+                AddTimelineClip(timeline, transition, transitionStart, transitionEnd, settings, transitionBlend, 0, false);
+            }
+        }
+
+        float timelineStart = timeline.Count == 0 ? 0 : timeline.Min(clip => clip.StartTime);
+        float timelineEnd = timeline.Count == 0 ? 0 : timeline.Max(clip => clip.EndTime);
+        GestureAnimationItem startingPose = animations.FirstOrDefault(item => !item.GestureIndex.HasValue);
+        if (startingPose != null && timeline.Count > 0)
+        {
+            AddTimelineClip(timeline, startingPose, timelineStart, timelineEnd, startingPose.Settings, 0, 0, true, insertAtStart: true);
+        }
+
+        return timeline;
+    }
+
+    private static float GetPlaybackDuration(GestureAnimationItem item, GesturePlaybackSettings settings)
+    {
+        if (item == null)
+        {
+            return 0;
+        }
+
+        float sourceDuration = Math.Max(0, item.AnimationDuration - settings.StartOffset - settings.EndOffset);
+        return sourceDuration / Math.Max(0.0001f, settings.PlayRate);
+    }
+
+    private static void AddTimelineClip(IList<AnimationPreviewControl.AnimationTimelineClip> timeline, GestureAnimationItem item,
+        float startTime, float endTime, GesturePlaybackSettings settings, float blendIn, float blendOut, bool loop,
+        bool insertAtStart = false)
+    {
+        if (item?.AnimationExport == null || endTime <= startTime)
+        {
             return;
         }
 
-        GestureAnimationItem next = _playbackQueue.Dequeue();
-        SelectedAnimation = next;
-        AnimationListBox.SelectedItem = next;
-        AnimationListBox.ScrollIntoView(next);
-        AnimPreviewControl.CrossfadeToAnimSequence(next.AnimationExport, next.BlendDuration);
-        AnimPreviewControl.Play();
+        float animationStart = Math.Min(settings.StartOffset, item.AnimationDuration);
+        float animationEnd = Math.Max(animationStart, item.AnimationDuration - settings.EndOffset);
+        if (animationEnd <= animationStart)
+        {
+            return;
+        }
+
+        var clip = new AnimationPreviewControl.AnimationTimelineClip
+        {
+            AnimationExport = item.AnimationExport,
+            StartTime = startTime,
+            EndTime = endTime,
+            AnimationStartTime = animationStart,
+            AnimationEndTime = animationEnd,
+            PlayRate = settings.PlayRate,
+            BlendInDuration = blendIn,
+            BlendOutDuration = blendOut,
+            Weight = settings.Weight,
+            Loop = loop,
+        };
+        if (insertAtStart)
+        {
+            timeline.Insert(0, clip);
+        }
+        else
+        {
+            timeline.Add(clip);
+        }
     }
 
     public override void UnloadExport()
     {
         _databaseLoadCancellationTokenSource?.Cancel();
-        _playbackQueue = null;
         _animations = [];
         AnimationListBox.ItemsSource = null;
         PreviewMeshComboBox.ItemsSource = null;
         SelectedAnimation = null;
+        TrackPropertiesText = null;
         AnimPreviewControl.Clear();
         _packageCache.ReleasePackages();
         CurrentLoadedExport = null;
@@ -405,6 +617,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         _databaseLoadCancellationTokenSource?.Cancel();
         _databaseLoadCancellationTokenSource?.Dispose();
         AnimPreviewControl.AnimationCompleted -= AnimPreviewControl_AnimationCompleted;
+        AnimPreviewControl.AnimTimeChanged -= AnimPreviewControl_AnimTimeChanged;
         AnimPreviewControl.Dispose();
         _packageCache.Dispose();
     }

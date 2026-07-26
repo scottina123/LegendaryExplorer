@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Numerics;
 using System.Windows;
@@ -25,6 +26,20 @@ namespace LegendaryExplorer.UserControls.SharedToolControls;
 /// </summary>
 public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase, ISceneRenderContextConfigurable
 {
+    public sealed class AnimationTimelineClip
+    {
+        public ExportEntry AnimationExport { get; init; }
+        public float StartTime { get; init; }
+        public float EndTime { get; init; }
+        public float AnimationStartTime { get; init; }
+        public float AnimationEndTime { get; init; }
+        public float PlayRate { get; init; } = 1f;
+        public float BlendInDuration { get; init; }
+        public float BlendOutDuration { get; init; }
+        public float Weight { get; init; } = 1f;
+        public bool Loop { get; init; }
+    }
+
     private readonly PackageCache _packageCache = new();
     private LegacyScene3D.MeshRenderContext _meshContext;
     private LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex> _meshPreview;
@@ -396,6 +411,69 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         catch (Exception ex)
         {
             _meshContext.ErrorText = $"Error loading animation: {ex.Message}";
+        }
+    }
+
+    public void LoadAnimSequenceTimeline(IEnumerable<AnimationTimelineClip> clips)
+    {
+        if (_animPlayer?.IsPlaying is true)
+        {
+            Pause();
+        }
+        _lastAnimExport = null;
+        _lastFxActor = null;
+        _lastFxAnimSet = null;
+        _lastFxLine = null;
+        _animEndFired = false;
+        if (_skm == null) return;
+
+        try
+        {
+            if (_animPlayer is not AnimSequencePlayer animSeqPlayer)
+            {
+                _animPlayer = animSeqPlayer = new AnimSequencePlayer(_skm) { PlaybackSpeed = (float)PlaybackSpeed };
+            }
+
+            var scheduledClips = new List<AnimSequencePlayer.ScheduledAnimationClip>();
+            foreach (AnimationTimelineClip clip in clips)
+            {
+                if (clip.AnimationExport == null)
+                {
+                    continue;
+                }
+
+                var animation = ObjectBinary.From<AnimSequence>(clip.AnimationExport);
+                animation.DecompressAnimationData();
+                scheduledClips.Add(new AnimSequencePlayer.ScheduledAnimationClip
+                {
+                    Animation = animation,
+                    StartTime = clip.StartTime,
+                    EndTime = clip.EndTime,
+                    AnimationStartTime = clip.AnimationStartTime,
+                    AnimationEndTime = clip.AnimationEndTime,
+                    PlayRate = clip.PlayRate,
+                    BlendInDuration = clip.BlendInDuration,
+                    BlendOutDuration = clip.BlendOutDuration,
+                    Weight = clip.Weight,
+                    Loop = clip.Loop,
+                });
+            }
+
+            animSeqPlayer.SetAnimationTimeline(scheduledClips, _packageCache);
+            animSeqPlayer.IsLooping = false;
+            _meshContext.ErrorText = null;
+
+            IsTimeMode = true;
+            AnimSliderMin = animSeqPlayer.StartTime;
+            AnimSliderMax = animSeqPlayer.EndTime;
+            _animSliderValue = animSeqPlayer.StartTime;
+            OnPropertyChanged(nameof(AnimSliderValue));
+            OnPropertyChanged(nameof(AnimPositionText));
+            UpdateSkinningOneShot();
+        }
+        catch (Exception ex)
+        {
+            _meshContext.ErrorText = $"Error loading animation timeline: {ex.Message}";
         }
     }
 
