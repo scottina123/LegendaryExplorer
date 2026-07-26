@@ -343,6 +343,7 @@
                                                    Visibility="{Binding ShowParsedValue, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                         <xctk:ColorPicker Margin="5,0,0,0" Visibility="{Binding Property, Converter={StaticResource UPropertyColorPickerVisibilityConverter}, Mode=OneTime}" 
                                                           SelectedColor="{Binding ColorStructCode,Converter={StaticResource ColorCodeConverter}}" Width="60" Closed="ColorPicker_Closed"/>
+                                        <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Remove this property from the export" Tag="{Binding}" Click="InlineRemovePropertyButton_Click" Visibility="{Binding IsRemovableProperty, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Grid.Row="1" x:Name="PropertyItem_DisplayType" FontSize="10" Text="{Binding PropertyType, Mode=OneTime}" VerticalAlignment="Center" Margin="5,0,0,0"

@@ -1414,7 +1414,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void RemoveProperty()
         {
-            if (Interpreter_TreeView.SelectedItem is UPropertyTreeViewEntry tvi && tvi.UPParent != null && tvi.Property != null)
+            RemoveProperty(Interpreter_TreeView.SelectedItem as UPropertyTreeViewEntry);
+        }
+
+        private void RemoveProperty(UPropertyTreeViewEntry tvi)
+        {
+            if (CanRemoveProperty(tvi))
             {
                 if (tvi.UPParent.UPParent == null)
                 {
@@ -1444,6 +1449,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     sp.Properties.Remove(tvi.Property);
                 }
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            }
+        }
+
+        private void InlineRemovePropertyButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { Tag: UPropertyTreeViewEntry node })
+            {
+                ApplySelectedTreeItem(node);
+                RemoveProperty(node);
             }
         }
 
@@ -1570,13 +1584,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private bool CanRemoveProperty()
         {
-            if (Interpreter_TreeView?.SelectedItem is UPropertyTreeViewEntry tvi)
-            {
-                return tvi.UPParent != null && tvi.Property is not NoneProperty &&
-                       (tvi.UPParent.UPParent == null //items with a single parent (root nodes)
-                     || tvi.UPParent.Property is StructProperty { IsImmutable: false }); //properties that are part of a non-immutable StructProperty
-            }
-            return false;
+            return CanRemoveProperty(Interpreter_TreeView?.SelectedItem as UPropertyTreeViewEntry);
+        }
+
+        private static bool CanRemoveProperty(UPropertyTreeViewEntry tvi)
+        {
+            return tvi?.UPParent != null && tvi.Property is not null and not NoneProperty &&
+                   (tvi.UPParent.UPParent == null //items with a single parent (root nodes)
+                 || tvi.UPParent.Property is StructProperty { IsImmutable: false }); //properties that are part of a non-immutable StructProperty
         }
 
         private void AddPropertiesToStruct()
@@ -5692,6 +5707,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public bool IsInlineEditable => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty or NameProperty or EnumProperty;
         public bool IsArrayElement => UPParent?.Property is ArrayPropertyBase;
+        public bool IsRemovableProperty => UPParent != null && Property is not null and not NoneProperty &&
+                                           (UPParent.UPParent == null || UPParent.Property is StructProperty { IsImmutable: false });
         public bool ShowNumericInlineEditor => Property is FloatProperty or IntProperty or StringRefProperty or StrProperty;
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
