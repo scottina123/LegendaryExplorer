@@ -15,6 +15,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -189,8 +190,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 case ExportEntry exportEntry:
                     if (oldParent != exportEntry.Parent)
                     {
-                        MatineeHelper.RemoveFromParentInterpList(exportEntry, oldParent);
-                        MatineeHelper.AddToParentInterpList(exportEntry);
+                        foreach (ExportEntry movedExport in KismetHelper.MoveConnectedSequenceObjects(exportEntry, oldParent, exportEntry.Parent as ExportEntry))
+                        {
+                            MatineeHelper.RemoveFromParentInterpList(movedExport, oldParent);
+                            MatineeHelper.AddToParentInterpList(movedExport);
+                        }
                     }
 
                     LoadExport(exportEntry);

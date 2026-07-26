@@ -34,6 +34,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions.Collections.Generic;
 using LegendaryExplorerCore.Gammtek.IO;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
@@ -672,7 +673,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             }
                             var results = EntryImporter.ImportAndRelinkEntries(
                                 EntryImporter.PortingOption.CloneAllDependencies,
-                                sourceExport, targetPcc, targetLink, true, rop, out _);
+                                sourceExport, targetPcc, targetLink, true, rop, out IEntry importedEntry);
+                            SynchronizeImportedSequenceObjects(sourceExport, targetLink, importedEntry, rop);
                             if (results is not null)
                                 allRelinkIssues.AddRange(results);
                         }
@@ -4798,7 +4800,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
                             parentInDest,
                             true,
                             rop,
-                            out _);
+                            out IEntry clonedEntry);
+
+                        SynchronizeImportedSequenceObjects(sourceEntry, parentInDest, clonedEntry, rop);
 
                         if (relinkResults.Any())
                         {
@@ -4878,6 +4882,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     IEntry newEntry = EntryCloner.CloneEntry(entry);
                     clonedEntries.Add(newEntry);
+                    if (newEntry is ExportEntry clonedExport)
+                    {
+                        KismetHelper.SynchronizeSequenceObjectMembership(clonedExport, null, clonedExport.Parent as ExportEntry);
+                    }
                     TryAddToPersistentLevel(newEntry);
                     TryAddToStaticCollectionActor(newEntry, entry);
                     addToInterpList ??= ShouldAddToInterpList(entry);
@@ -4912,6 +4920,48 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             rop.CrossPackageMap[sourceParentSequence] = destinationSequence;
             rop.RelinkMapEntriesToSkip.Add(sourceParentSequence);
+        }
+
+        private static void SynchronizeImportedSequenceObjects(IEntry sourceEntry, IEntry destinationEntry, IEntry importedEntry, RelinkerOptionsPackage rop)
+        {
+            if (sourceEntry is not ExportEntry sourceExport || !sourceExport.IsA("SequenceObject"))
+            {
+                return;
+            }
+
+            ExportEntry sourceSequence = KismetHelper.GetParentSequence(sourceExport);
+            if (sourceSequence is null)
+            {
+                return;
+            }
+
+            ExportEntry destinationSequence = destinationEntry as ExportEntry;
+            if (destinationSequence is not null && !destinationSequence.IsA("Sequence"))
+            {
+                destinationSequence = KismetHelper.GetParentSequence(destinationSequence);
+            }
+
+            destinationSequence ??= (importedEntry as ExportEntry)?.Parent as ExportEntry;
+            if (destinationSequence is null || !destinationSequence.IsA("Sequence"))
+            {
+                return;
+            }
+
+            var importedSequenceObjects = rop.CrossPackageMap
+                .Where(pair => pair.Key is ExportEntry mappedSource
+                               && mappedSource.IsA("SequenceObject")
+                               && KismetHelper.GetParentSequence(mappedSource) == sourceSequence
+                               && pair.Value is ExportEntry)
+                .Select(pair => (ExportEntry)pair.Value)
+                .Append(importedEntry as ExportEntry)
+                .Where(export => export?.IsA("SequenceObject") == true)
+                .Distinct();
+
+            foreach (ExportEntry importedSequenceObject in importedSequenceObjects)
+            {
+                importedSequenceObject.idxLink = destinationSequence.UIndex;
+                KismetHelper.SynchronizeSequenceObjectMembership(importedSequenceObject, null, destinationSequence);
+            }
         }
 
         /// <summary>
@@ -5196,11 +5246,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             ExportEntry oldParent = exportEntry.Parent as ExportEntry;
-            exportEntry.idxLink = newLink;
-            if (!ReferenceEquals(oldParent, exportEntry.Parent))
+            ExportEntry newParent = newLink == 0 ? null : exportEntry.FileRef.GetEntry(newLink) as ExportEntry;
+            if (!ReferenceEquals(oldParent, newParent))
             {
-                MatineeHelper.RemoveFromParentInterpList(exportEntry, oldParent);
-                MatineeHelper.AddToParentInterpList(exportEntry);
+                foreach (ExportEntry movedExport in KismetHelper.MoveConnectedSequenceObjects(exportEntry, oldParent, newParent))
+                {
+                    MatineeHelper.RemoveFromParentInterpList(movedExport, oldParent);
+                    MatineeHelper.AddToParentInterpList(movedExport);
+                }
             }
         }
 
@@ -6893,6 +6946,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 var relinkResults = EntryImporter.ImportAndRelinkEntries(portingOption.PortingOptionChosen, sourceEntry, Pcc,
                     targetLinkEntry, true, rop, out IEntry newEntry);
+
+                if (newEntry is ExportEntry importedExport
+                    && portingOption.PortingOptionChosen is not EntryImporter.PortingOption.ReplaceSingular
+                        and not EntryImporter.PortingOption.ReplaceSingularWithRelink)
+                {
+                    SynchronizeImportedSequenceObjects(sourceEntry, targetLinkEntry, importedExport, rop);
+                }
 
                 if (sourceEntry is ExportEntry { ClassName: "BioEvtSysTrackGesture" } sourceGestureTrack
                     && newEntry is ExportEntry destinationGestureTrack)

@@ -599,6 +599,192 @@ namespace LegendaryExplorerCore.Kismet
         }
 
         /// <summary>
+        /// Synchronizes a sequence object's ParentSequence property and the SequenceObjects arrays of its old and new parents.
+        /// </summary>
+        /// <param name="sequenceObject">Sequence object whose ownership changed</param>
+        /// <param name="oldParent">Previous package parent</param>
+        /// <param name="newParent">Current package parent</param>
+        public static void SynchronizeSequenceObjectMembership(ExportEntry sequenceObject, ExportEntry oldParent, ExportEntry newParent)
+        {
+            if (!sequenceObject.IsA("SequenceObject"))
+            {
+                return;
+            }
+
+            ExportEntry oldSequence = oldParent is { ClassName: not "SequenceReference" } && oldParent.IsA("Sequence") ? oldParent : null;
+            ExportEntry newSequence = newParent is { ClassName: not "SequenceReference" } && newParent.IsA("Sequence") ? newParent : null;
+
+            if (oldSequence != null && oldSequence != newSequence
+                && oldSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects") is { } oldSequenceObjects
+                && oldSequenceObjects.RemoveAll(objectProperty => objectProperty.Value == sequenceObject.UIndex))
+            {
+                oldSequence.WriteProperty(oldSequenceObjects);
+            }
+
+            if (newSequence != null)
+            {
+                ArrayProperty<ObjectProperty> newSequenceObjects = newSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")
+                                                                           ?? new ArrayProperty<ObjectProperty>("SequenceObjects");
+                if (newSequenceObjects.All(objectProperty => objectProperty.Value != sequenceObject.UIndex))
+                {
+                    newSequenceObjects.Add(new ObjectProperty(sequenceObject));
+                    newSequence.WriteProperty(newSequenceObjects);
+                }
+            }
+
+            PropertyCollection sequenceObjectProperties = sequenceObject.GetProperties();
+            if (newSequence != null)
+            {
+                sequenceObjectProperties.AddOrReplaceProp(new ObjectProperty(newSequence, "ParentSequence"));
+            }
+            else
+            {
+                sequenceObjectProperties.RemoveNamedProperty("ParentSequence");
+            }
+
+            sequenceObject.WriteProperties(sequenceObjectProperties);
+        }
+
+        /// <summary>
+        /// Gets a sequence object and all sequence objects recursively referenced by its output, variable, and event links.
+        /// </summary>
+        /// <param name="rootObject">Root sequence object</param>
+        /// <param name="owningSequence">When supplied, only linked objects owned by this sequence are included</param>
+        /// <param name="includeIncomingLinks">When true, objects linking to the connected component are also included</param>
+        public static List<ExportEntry> GetConnectedSequenceObjects(ExportEntry rootObject, ExportEntry owningSequence = null, bool includeIncomingLinks = false)
+        {
+            var connectedObjects = new List<ExportEntry>();
+            var pendingObjects = new Queue<ExportEntry>();
+            var visitedUIndexes = new HashSet<int>();
+            Dictionary<int, List<ExportEntry>> incomingLinksByTarget = null;
+
+            if (includeIncomingLinks && owningSequence != null)
+            {
+                List<ExportEntry> sequenceObjects = GetAllSequenceElements(owningSequence)?.OfType<ExportEntry>().ToList() ?? [];
+                var sequenceObjectUIndexes = sequenceObjects.Select(sequenceObject => sequenceObject.UIndex).ToHashSet();
+                incomingLinksByTarget = [];
+
+                foreach (ExportEntry sequenceObject in sequenceObjects)
+                {
+                    foreach (ExportEntry linkedObject in GetLinkedSequenceObjects(sequenceObject.GetProperties(), sequenceObject.FileRef))
+                    {
+                        if (!sequenceObjectUIndexes.Contains(linkedObject.UIndex))
+                        {
+                            continue;
+                        }
+
+                        if (!incomingLinksByTarget.TryGetValue(linkedObject.UIndex, out List<ExportEntry> incomingObjects))
+                        {
+                            incomingObjects = [];
+                            incomingLinksByTarget[linkedObject.UIndex] = incomingObjects;
+                        }
+
+                        incomingObjects.Add(sequenceObject);
+                    }
+                }
+            }
+
+            pendingObjects.Enqueue(rootObject);
+
+            while (pendingObjects.TryDequeue(out ExportEntry currentObject))
+            {
+                if (!visitedUIndexes.Add(currentObject.UIndex) || !currentObject.IsA("SequenceObject"))
+                {
+                    continue;
+                }
+
+                connectedObjects.Add(currentObject);
+                PropertyCollection properties = currentObject.GetProperties();
+                foreach (ExportEntry linkedObject in GetLinkedSequenceObjects(properties, currentObject.FileRef))
+                {
+                    if (owningSequence == null || GetParentSequence(linkedObject) == owningSequence)
+                    {
+                        pendingObjects.Enqueue(linkedObject);
+                    }
+                }
+
+                if (incomingLinksByTarget?.TryGetValue(currentObject.UIndex, out List<ExportEntry> incomingObjects) == true)
+                {
+                    foreach (ExportEntry incomingObject in incomingObjects)
+                    {
+                        pendingObjects.Enqueue(incomingObject);
+                    }
+                }
+            }
+
+            return connectedObjects;
+        }
+
+        /// <summary>
+        /// Reparents a sequence object and its recursively connected objects, then synchronizes sequence ownership properties.
+        /// </summary>
+        /// <param name="rootObject">Root sequence object being moved</param>
+        /// <param name="oldParent">Previous package parent of the root object</param>
+        /// <param name="newParent">Destination package parent</param>
+        public static List<ExportEntry> MoveConnectedSequenceObjects(ExportEntry rootObject, ExportEntry oldParent, ExportEntry newParent)
+        {
+            ExportEntry oldSequence = oldParent is { ClassName: not "SequenceReference" } && oldParent.IsA("Sequence") ? oldParent : null;
+            List<ExportEntry> connectedObjects = oldSequence != null
+                ? GetConnectedSequenceObjects(rootObject, oldSequence, includeIncomingLinks: true)
+                : [rootObject];
+
+            foreach (ExportEntry connectedObject in connectedObjects)
+            {
+                connectedObject.idxLink = newParent?.UIndex ?? 0;
+                SynchronizeSequenceObjectMembership(connectedObject, oldSequence, newParent);
+            }
+
+            return connectedObjects;
+        }
+
+        private static IEnumerable<ExportEntry> GetLinkedSequenceObjects(PropertyCollection properties, IMEPackage package)
+        {
+            if (properties.GetProp<ArrayProperty<StructProperty>>("OutputLinks") is { } outputLinks)
+            {
+                foreach (StructProperty outputLink in outputLinks)
+                {
+                    if (outputLink.GetProp<ArrayProperty<StructProperty>>("Links") is not { } links)
+                    {
+                        continue;
+                    }
+
+                    foreach (StructProperty link in links)
+                    {
+                        if (link.GetProp<ObjectProperty>("LinkedOp")?.ResolveToEntry(package) is ExportEntry linkedObject)
+                        {
+                            yield return linkedObject;
+                        }
+                    }
+                }
+            }
+
+            foreach (string linkedPropertyName in new[] { "LinkedVariables", "LinkedEvents" })
+            {
+                string linkArrayName = linkedPropertyName == "LinkedVariables" ? "VariableLinks" : "EventLinks";
+                if (properties.GetProp<ArrayProperty<StructProperty>>(linkArrayName) is not { } linkArray)
+                {
+                    continue;
+                }
+
+                foreach (StructProperty link in linkArray)
+                {
+                    if (link.GetProp<ArrayProperty<ObjectProperty>>(linkedPropertyName) is not { } linkedObjects)
+                    {
+                        continue;
+                    }
+
+                    foreach (ObjectProperty linkedObjectProperty in linkedObjects)
+                    {
+                        if (linkedObjectProperty.ResolveToEntry(package) is ExportEntry linkedObject)
+                        {
+                            yield return linkedObject;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Adds multiple sequence objects to the given sequence.
         /// </summary>
         /// <remarks>Handles the ParentSequence and SequenceObjects properties, and sets the parent of all added objects.</remarks>
