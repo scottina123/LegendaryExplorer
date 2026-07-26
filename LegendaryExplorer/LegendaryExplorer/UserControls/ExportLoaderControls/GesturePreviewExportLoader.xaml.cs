@@ -490,14 +490,14 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 .Skip(groupIndex + 1)
                 .FirstOrDefault(nextGroup => nextGroup.First().Time > keyTime);
             float? nextKeyTime = nextTimeGroup?.First().Time;
-            bool chainIntoNext = nextTimeGroup?.First().Settings.ChainToPrevious ?? false;
+            bool nextTerminatesGestures = nextTimeGroup?.Any(item => item.Settings.TerminateAllGestures) ?? false;
 
             GestureAnimationItem pose = items.FirstOrDefault(item => item.SlotName == "Pose");
             GestureAnimationItem gesture = items.FirstOrDefault(item => item.SlotName == "Gesture");
             GestureAnimationItem transition = items.FirstOrDefault(item => item.SlotName == "Transition");
             float primaryDuration = GetPlaybackDuration(gesture ?? pose, settings);
             float primaryEnd = keyTime + primaryDuration;
-            if (nextKeyTime is float cutoff && !chainIntoNext)
+            if (nextKeyTime is float cutoff && nextTerminatesGestures)
             {
                 primaryEnd = Math.Min(primaryEnd, cutoff);
             }
@@ -516,7 +516,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 float transitionBlend = settings.TransitionBlendTime > 0 ? settings.TransitionBlendTime : settings.EndBlendDuration;
                 float transitionStart = keyTime;
                 float transitionEnd = transitionStart + GetPlaybackDuration(transition, settings);
-                if (nextKeyTime is float transitionCutoff && !chainIntoNext)
+                if (nextKeyTime is float transitionCutoff && nextTerminatesGestures)
                 {
                     transitionEnd = Math.Min(transitionEnd, transitionCutoff);
                 }

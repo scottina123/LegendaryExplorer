@@ -401,11 +401,12 @@ public class AnimSequencePlayer : AnimPlayer
 
         ScheduledAnimationClipState first = activeClips[0].State;
         Array.Copy(first.Player._boneComponentSpace, _boneComponentSpace, _boneComponentSpace.Length);
+        float accumulatedWeight = activeClips[0].Weight;
 
         for (int clipIndex = 1; clipIndex < activeClips.Count; clipIndex++)
         {
             (ScheduledAnimationClipState state, float weight) = activeClips[clipIndex];
-            float alpha = Math.Clamp(weight, 0, 1);
+            float alpha = Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
             {
                 if (Matrix4x4.Decompose(_boneComponentSpace[boneIndex], out _, out Quaternion currentRotation, out Vector3 currentPosition)
@@ -416,6 +417,7 @@ public class AnimSequencePlayer : AnimPlayer
                     _boneComponentSpace[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
                 }
             }
+            accumulatedWeight += weight;
         }
 
         for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
