@@ -127,14 +127,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         private sealed class BlankBioConversationDialog : Window
         {
             private readonly TextBox _topPackageTextBox = new() { MinWidth = 320 };
-            private readonly TextBox _conversationNameTextBox = new() { MinWidth = 320, Text = "Yournamehere" };
+            private readonly TextBox _conversationNameTextBox = new() { MinWidth = 320 };
             private readonly TextBlock _validationText = new() { TextWrapping = TextWrapping.Wrap };
             private readonly Button _okButton = new() { Content = "_Create", IsDefault = true, MinWidth = 70 };
 
             public string TopPackageName => _topPackageTextBox.Text.Trim();
             public string ConversationName => _conversationNameTextBox.Text.Trim();
 
-            public BlankBioConversationDialog(Window owner)
+            public BlankBioConversationDialog(Window owner, string defaultTopPackageName, string defaultConversationName)
             {
                 CustomWindowChrome.ApplyCustomChrome(this);
                 Title = "Generate blank BioConversation";
@@ -142,6 +142,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
                 SizeToContent = SizeToContent.WidthAndHeight;
                 ResizeMode = ResizeMode.NoResize;
+                _topPackageTextBox.Text = defaultTopPackageName;
+                _conversationNameTextBox.Text = defaultConversationName;
 
                 var content = new StackPanel { Margin = new Thickness(12) };
                 content.Children.Add(new TextBlock { Text = "Top-level package name:" });
@@ -876,16 +878,14 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return;
             }
 
-            var dialog = new BlankBioConversationDialog(pew);
-            if (dialog.ShowDialog() != true)
+            (string TopPackageName, string ConversationName)? names = PromptForBlankBioConversationNames(pew);
+            if (names == null)
             {
                 return;
             }
 
-            string topPackageName = dialog.TopPackageName;
-            string conversationName = dialog.ConversationName.EndsWith("_dlg", StringComparison.OrdinalIgnoreCase)
-                ? dialog.ConversationName[..^4]
-                : dialog.ConversationName;
+            string topPackageName = names.Value.TopPackageName;
+            string conversationName = names.Value.ConversationName;
 
             if (pew.Pcc.FindExport(topPackageName, "Package") != null)
             {
@@ -899,69 +899,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
             try
             {
-                IMEPackage package = pew.Pcc;
-                ExportEntry topPackage = ExportCreator.CreatePackageExport(package, topPackageName);
-
-                ExportEntry bioConversation = ExportCreator.CreateExport(package, $"{conversationName}_dlg",
-                    "BioConversation", topPackage, indexed: false);
-                ExportEntry nonSpeakerFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_NonSpkr");
-                ExportEntry ownerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_F");
-                ExportEntry ownerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_M");
-                ExportEntry playerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_F");
-                ExportEntry playerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_M");
-
-                ExportEntry sequence = SequenceObjectCreator.CreateSequenceObject(package, "Sequence");
-                sequence.idxLink = topPackage.UIndex;
-                sequence.ObjectName = new NameReference("Node_Data_Sequence");
-                sequence.WriteProperty(new StrProperty("Node_Data_Sequence", "ObjName"));
-
-                var startingList = new ArrayProperty<IntProperty>("m_StartingList");
-                startingList.Add(0);
-
-                PropertyCollection entryProperties = GlobalUnrealObjectInfo.getDefaultStructValue(
-                    package.Game, "BioDialogEntryNode", true, package);
-                entryProperties.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", package.Game, "eGUIStyle"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nSpeakerIndex"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-2, "nListenerIndex"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nScriptIndex"));
-                entryProperties.AddOrReplaceProp(new StringRefProperty(599754, "srText"));
-                entryProperties.AddOrReplaceProp(new BoolProperty(true, "bFireConditional"));
-                entryProperties.AddOrReplaceProp(new BoolProperty(true, "bSkippable"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalFunc"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalParam"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransition"));
-                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransitionParam"));
-                entryProperties.AddOrReplaceProp(new IntProperty(1, "nCameraIntimacy"));
-
-                var entryList = new ArrayProperty<StructProperty>("m_EntryList");
-                entryList.Add(new StructProperty("BioDialogEntryNode", entryProperties));
-
-                var maleFaceSets = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets")
-                {
-                    new(playerMaleFaceFx.UIndex),
-                    new(ownerMaleFaceFx.UIndex)
-                };
-                var femaleFaceSets = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets")
-                {
-                    new(playerFemaleFaceFx.UIndex),
-                    new(ownerFemaleFaceFx.UIndex)
-                };
-
-                var conversationProperties = new PropertyCollection
-                {
-                    startingList,
-                    entryList,
-                    maleFaceSets,
-                    femaleFaceSets,
-                    new ObjectProperty(sequence.UIndex, "MatineeSequence"),
-                    new ObjectProperty(nonSpeakerFaceFx.UIndex, "m_pNonSpeakerFaceFXSet"),
-                    new IntProperty(GenerateConversationResourceId(package), "m_nResRefID"),
-                    new ArrayProperty<NameProperty>("m_aSpeakerList")
-                };
-                bioConversation.WriteProperties(conversationProperties);
-
-                ExportCreator.CreatePackageExport(package, "Int",
-                    ExportCreator.CreatePackageExport(package, "Audio", topPackage));
+                (ExportEntry bioConversation, _) = GenerateBlankBioConversationAssets(
+                    pew.Pcc, topPackageName, conversationName);
 
                 MessageBox.Show(pew,
                     $"Created '{bioConversation.InstancedFullPath}' with blank player, owner, and non-speaker FaceFX assets.",
@@ -977,6 +916,98 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
+        }
+
+        public static (string TopPackageName, string ConversationName)? PromptForBlankBioConversationNames(
+            Window owner, string defaultTopPackageName = "", string defaultConversationName = "Yournamehere")
+        {
+            var dialog = new BlankBioConversationDialog(owner, defaultTopPackageName, defaultConversationName);
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            string conversationName = dialog.ConversationName.EndsWith("_dlg", StringComparison.OrdinalIgnoreCase)
+                ? dialog.ConversationName[..^4]
+                : dialog.ConversationName;
+            return (dialog.TopPackageName, conversationName);
+        }
+
+        public static (ExportEntry BioConversation, List<ExportEntry> ReferencedExports) GenerateBlankBioConversationAssets(
+            IMEPackage package, string topPackageName, string conversationName)
+        {
+            ExportEntry topPackage = ExportCreator.CreatePackageExport(package, topPackageName);
+
+            ExportEntry bioConversation = ExportCreator.CreateExport(package, $"{conversationName}_dlg",
+                "BioConversation", topPackage, indexed: false);
+            ExportEntry nonSpeakerFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_NonSpkr");
+            ExportEntry ownerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_F");
+            ExportEntry ownerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_M");
+            ExportEntry playerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_F");
+            ExportEntry playerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_M");
+
+            ExportEntry sequence = SequenceObjectCreator.CreateSequenceObject(package, "Sequence");
+            sequence.idxLink = topPackage.UIndex;
+            sequence.ObjectName = new NameReference("Node_Data_Sequence");
+            sequence.WriteProperty(new StrProperty("Node_Data_Sequence", "ObjName"));
+
+            var startingList = new ArrayProperty<IntProperty>("m_StartingList");
+            startingList.Add(0);
+
+            PropertyCollection entryProperties = GlobalUnrealObjectInfo.getDefaultStructValue(
+                package.Game, "BioDialogEntryNode", true, package);
+            entryProperties.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", package.Game, "eGUIStyle"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nSpeakerIndex"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-2, "nListenerIndex"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nScriptIndex"));
+            entryProperties.AddOrReplaceProp(new StringRefProperty(599754, "srText"));
+            entryProperties.AddOrReplaceProp(new BoolProperty(true, "bFireConditional"));
+            entryProperties.AddOrReplaceProp(new BoolProperty(true, "bSkippable"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalFunc"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalParam"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransition"));
+            entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransitionParam"));
+            entryProperties.AddOrReplaceProp(new IntProperty(1, "nCameraIntimacy"));
+
+            var entryList = new ArrayProperty<StructProperty>("m_EntryList");
+            entryList.Add(new StructProperty("BioDialogEntryNode", entryProperties));
+
+            var maleFaceSets = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets")
+            {
+                new(playerMaleFaceFx.UIndex),
+                new(ownerMaleFaceFx.UIndex)
+            };
+            var femaleFaceSets = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets")
+            {
+                new(playerFemaleFaceFx.UIndex),
+                new(ownerFemaleFaceFx.UIndex)
+            };
+
+            bioConversation.WriteProperties(new PropertyCollection
+            {
+                startingList,
+                entryList,
+                maleFaceSets,
+                femaleFaceSets,
+                new ObjectProperty(sequence.UIndex, "MatineeSequence"),
+                new ObjectProperty(nonSpeakerFaceFx.UIndex, "m_pNonSpeakerFaceFXSet"),
+                new IntProperty(GenerateConversationResourceId(package), "m_nResRefID"),
+                new ArrayProperty<NameProperty>("m_aSpeakerList")
+            });
+
+            ExportCreator.CreatePackageExport(package, "Int",
+                ExportCreator.CreatePackageExport(package, "Audio", topPackage));
+
+            return (bioConversation,
+            [
+                bioConversation,
+                nonSpeakerFaceFx,
+                ownerFemaleFaceFx,
+                ownerMaleFaceFx,
+                playerFemaleFaceFx,
+                playerMaleFaceFx,
+                sequence
+            ]);
         }
 
         private static ExportEntry CreateBlankFaceFx(IMEPackage package, IEntry parent, string name)

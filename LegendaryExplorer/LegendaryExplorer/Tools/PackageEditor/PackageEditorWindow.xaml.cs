@@ -2316,6 +2316,18 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 if (DirectoryMemory.ShowDialog(dlg) == true)
                 {
+                    (string TopPackageName, string ConversationName)? blankConversationNames = null;
+                    if (gameDialog.CreateBlankConversation)
+                    {
+                        string defaultConversationName = Path.GetFileNameWithoutExtension(dlg.FileName);
+                        blankConversationNames = PackageEditorExperimentsScottina.PromptForBlankBioConversationNames(
+                            this, defaultConversationName, defaultConversationName);
+                        if (blankConversationNames == null)
+                        {
+                            return;
+                        }
+                    }
+
                     string locFilePath = Path.Combine(
                         Path.GetDirectoryName(dlg.FileName)!,
                         $"{Path.GetFileNameWithoutExtension(dlg.FileName)}_LOC_INT{Path.GetExtension(dlg.FileName)}");
@@ -2343,6 +2355,22 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                         using IMEPackage locPackage = MEPackageHandler.CreateAndOpenPackage(locFilePath, game, forceLoadFromDisk: true);
                         locPackage.CreateObjectReferencer();
+                        if (gameDialog.CreateBlankConversation)
+                        {
+                            (ExportEntry bioConversation, List<ExportEntry> referencedExports) = PackageEditorExperimentsScottina.GenerateBlankBioConversationAssets(
+                                locPackage, blankConversationNames.Value.TopPackageName, blankConversationNames.Value.ConversationName);
+                            locPackage.AddObjectsToReferencer(referencedExports);
+
+                            using IMEPackage levelPackage = MEPackageHandler.OpenMEPackage(
+                                dlg.FileName, forceLoadFromDisk: true);
+                            var topPackageImport = new ImportEntry(
+                                (ExportEntry)bioConversation.Parent, 0, levelPackage);
+                            levelPackage.AddImport(topPackageImport);
+                            var conversationImport = new ImportEntry(
+                                bioConversation, topPackageImport.UIndex, levelPackage);
+                            levelPackage.AddImport(conversationImport);
+                            levelPackage.Save();
+                        }
                         locPackage.Save();
                     }
 

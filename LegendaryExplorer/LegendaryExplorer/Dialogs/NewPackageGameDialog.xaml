@@ -40,6 +40,7 @@
         <CheckBox x:Name="CreateLocFileCheckBox"
                   Content="Create associated INT localization file"
                   Margin="0,10,0,0"/>
+        <CheckBox x:Name="CreateBlankConversationCheckBox" Content="Generate blank BioConversation in localization file (ME3/LE3)" IsEnabled="{Binding IsChecked, ElementName=CreateLocFileCheckBox}" Margin="20,6,0,0"/>
         <Button Content="Cancel" IsCancel="True" HorizontalAlignment="Right" Padding="12,5" Margin="0,10,0,0"/>
     </StackPanel>
 </misc:NotifyPropertyChangedWindowBase>
