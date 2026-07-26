@@ -3072,6 +3072,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     bool removedFromLevel = includeSelectedEntry && selected.Entry is ExportEntry { ParentName: "PersistentLevel" } exp && exp.IsA("Actor") && Pcc.RemoveFromLevelActors(exp);
                     RemoveFromStaticCollectionActors(itemsToTrash);
 
+                    foreach (ExportEntry sequenceObject in itemsToTrash.OfType<ExportEntry>().Where(export => export.IsA("SequenceObject")))
+                    {
+                        ExportEntry parentSequence = KismetHelper.GetParentSequence(sequenceObject)
+                                                     ?? sequenceObject.Parent as ExportEntry;
+                        KismetHelper.SynchronizeSequenceObjectMembership(sequenceObject, parentSequence, null);
+                    }
+
                     EntryPruner.TrashEntries(Pcc, itemsToTrash);
 
                     RestoreTreeViewViewport(treeViewScrollState);
@@ -4627,6 +4634,16 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     IEntry newTreeRoot = EntryCloner.CloneTree(entry);
                     clonedTreeRoots.Add(newTreeRoot);
+                    foreach (ExportEntry clonedSequenceObject in newTreeRoot.GetAllDescendants()
+                                 .Prepend(newTreeRoot)
+                                 .OfType<ExportEntry>()
+                                 .Where(export => export.IsA("SequenceObject")))
+                    {
+                        KismetHelper.SynchronizeSequenceObjectMembership(
+                            clonedSequenceObject,
+                            null,
+                            clonedSequenceObject.Parent as ExportEntry);
+                    }
                     TryAddToPersistentLevel(newTreeRoot);
                     TryAddToStaticCollectionActor(newTreeRoot, entry);
                     addToInterpList ??= ShouldAddToInterpList(entry);
