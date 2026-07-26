@@ -95,6 +95,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         private Point? _conditionalsDragStartPoint;
         private CondListEntry _draggedConditional;
         private bool _isDisplayingCondition;
+        private bool _isInitializingGraphView;
 
         public ObservableCollectionExtended<CondListEntry> Conditionals { get; } = new();
 
@@ -590,8 +591,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 entry.IsModified = true;
             }
 
-            entry.GraphViewModel = graphRoot;
-            entry.PreserveGraphView = graphRoot is not null;
+            entry.SetGraphViewModel(graphRoot, graphRoot is not null);
             entry.ClearDraft();
         }
 
@@ -1000,11 +1000,32 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
             public bool PreserveGraphView { get; set; }
 
+            public string GraphViewBaselineText { get; private set; }
+
             public CondListEntry(CNDFile.ConditionalEntry conditional)
             {
                 Conditional = conditional;
                 _iD = conditional.ID;
                 PlotPath = PlotDatabases.FindPlotConditionalByID(conditional.ID, MEGame.LE3)?.Path;
+            }
+
+            public void SetGraphViewModel(ConditionGraphRootViewModel graphRoot, bool preserveGraphView)
+            {
+                GraphViewModel = graphRoot;
+                PreserveGraphView = preserveGraphView;
+                GraphViewBaselineText = graphRoot?.Serialize();
+            }
+
+            public void EnsureGraphViewBaseline(ConditionGraphRootViewModel graphRoot)
+            {
+                GraphViewBaselineText ??= graphRoot?.Serialize();
+            }
+
+            public bool HasGraphViewChanges(ConditionGraphRootViewModel graphRoot)
+            {
+                EnsureGraphViewBaseline(graphRoot);
+                string currentText = graphRoot?.Serialize();
+                return !string.Equals(currentText, GraphViewBaselineText, StringComparison.Ordinal);
             }
 
             public string TryCompileText(string text, out bool error, out byte[] compiledData)
@@ -1092,20 +1113,22 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
             try
             {
+                _isInitializingGraphView = true;
                 if (SelectedCond.DraftGraphViewModel != null)
                 {
+                    SelectedCond.EnsureGraphViewBaseline(SelectedCond.DraftGraphViewModel);
                     GraphViewControl.DataContext = SelectedCond.DraftGraphViewModel;
                 }
                 else if (SelectedCond.PreserveGraphView && SelectedCond.GraphViewModel != null)
                 {
+                    SelectedCond.EnsureGraphViewBaseline(SelectedCond.GraphViewModel);
                     GraphViewControl.DataContext = SelectedCond.GraphViewModel;
                 }
                 else
                 {
                     string text = GetConditionText(SelectedCond);
                     var graphRoot = ConditionGraphRootViewModel.FromDecompiledText(text);
-                    SelectedCond.GraphViewModel = graphRoot;
-                    SelectedCond.PreserveGraphView = false;
+                    SelectedCond.SetGraphViewModel(graphRoot, preserveGraphView: false);
                     GraphViewControl.DataContext = graphRoot;
                 }
                 TextViewPanel.Visibility = Visibility.Collapsed;
@@ -1115,6 +1138,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             {
                 compilationMsgBox.Text = $"Failed to parse conditional for graph view: {ex.Message}";
                 GraphViewToggle.IsChecked = false;
+            }
+            finally
+            {
+                _isInitializingGraphView = false;
             }
         }
 
@@ -1145,8 +1172,13 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void GraphView_OnEdited(object sender, RoutedEventArgs e)
         {
-            if (!_isDisplayingCondition && _isGraphViewActive && SelectedCond is not null && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
+            if (!_isDisplayingCondition && !_isInitializingGraphView && _isGraphViewActive && SelectedCond is not null && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
             {
+                if (!SelectedCond.HasDraft && !SelectedCond.HasGraphViewChanges(graphRoot))
+                {
+                    return;
+                }
+
                 SelectedCond.SetDraftGraph(graphRoot);
             }
         }
