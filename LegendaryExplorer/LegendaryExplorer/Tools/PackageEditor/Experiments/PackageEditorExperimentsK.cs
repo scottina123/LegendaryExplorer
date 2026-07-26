@@ -351,7 +351,12 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
             var seekfreeClasses = new List<string>
             {
+                "BioCodexMap",
+                "BioConsequenceMap",
                 "BioConversation",
+                "BioOutcomeMap",
+                "BioQuestMap",
+                "BioStateEventMap",
                 "FaceFXAnimSet",
                 "Material",
                 "MaterialInstanceConstant",
@@ -361,8 +366,8 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 "SkeletalMeshSocket",
                 "Texture2D",
                 "WwiseBank",
-                "WwiseStream",
-                "WwiseEvent"
+                "WwiseEvent",
+                "WwiseStream"
             };
             var seekfreeAssets = new List<ObjectProperty>();
             foreach (var x in pewpf.Pcc.Exports)
