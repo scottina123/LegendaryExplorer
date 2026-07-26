@@ -545,11 +545,16 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             }
         }
 
-        float timelineStart = timeline.Count == 0 ? 0 : timeline.Min(clip => clip.StartTime);
-        float timelineEnd = timeline.Count == 0 ? 0 : timeline.Max(clip => clip.EndTime);
         GestureAnimationItem startingPose = animations.FirstOrDefault(item => !item.GestureIndex.HasValue);
-        if (startingPose != null && timeline.Count > 0)
+        if (startingPose != null && timeline.Count == 0)
         {
+            float startingPoseDuration = Math.Max(0.001f, GetPlaybackDuration(startingPose, startingPose.Settings));
+            AddTimelineClip(timeline, startingPose, 0, startingPoseDuration, startingPose.Settings, 0, 0, true, insertAtStart: true);
+        }
+        else if (startingPose != null)
+        {
+            float timelineStart = timeline.Min(clip => clip.StartTime);
+            float timelineEnd = timeline.Max(clip => clip.EndTime);
             AddTimelineClip(timeline, startingPose, timelineStart, timelineEnd, startingPose.Settings, 0, 0, true, insertAtStart: true);
         }
 
