@@ -94,6 +94,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         private readonly Guid _windowInstanceId = Guid.NewGuid();
         private Point? _conditionalsDragStartPoint;
         private CondListEntry _draggedConditional;
+        private bool _isDisplayingCondition;
 
         public ObservableCollectionExtended<CondListEntry> Conditionals { get; } = new();
 
@@ -103,13 +104,17 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             get => _selectedCond;
             set
             {
+                CaptureActiveDraft();
                 if (SetProperty(ref _selectedCond, value))
                 {
                     if (_selectedCond is null)
                     {
+                        _isDisplayingCondition = true;
                         ConditionalTextBox.Text = "";
+                        _isDisplayingCondition = false;
                         hexBox.ByteProvider = new ReadOptimizedByteProvider();
                         GraphViewControl.DataContext = null;
+                        compilationMsgBox.Clear();
                     }
                     else
                     {
@@ -118,8 +123,8 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                             SwitchToGraphView();
                         }
                         DisplayCondition();
+                        compilationMsgBox.Text = _selectedCond.CompilationErrors ?? string.Empty;
                     }
-                    compilationMsgBox.Clear();
                 }
             }
         }
@@ -184,6 +189,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
             hexBox.InsertActiveChanged += HexBox_InsertActiveChanged;
 
+            GraphViewControl.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(GraphView_OnEdited));
+            GraphViewControl.AddHandler(ComboBox.SelectionChangedEvent, new SelectionChangedEventHandler(GraphView_OnEdited));
+            GraphViewControl.AddHandler(Button.ClickEvent, new RoutedEventHandler(GraphView_OnEdited));
+
             GraphViewToggle.IsChecked = Settings.ConditionalsEditor_DefaultGraphView;
         }
 
@@ -202,6 +211,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         public ICommand SaveCommand { get; set; }
         public ICommand SaveAsCommand { get; set; }
         public ICommand CompileCommand { get; set; }
+        public ICommand CompileAllModifiedCommand { get; set; }
         public ICommand CloneCommand { get; set; }
         public ICommand ChangeIDCommand { get; set; }
         public ICommand DeleteCommand { get; set; }
@@ -220,6 +230,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             SaveCommand = new GenericCommand(Save, FileIsLoaded);
             SaveAsCommand = new GenericCommand(SaveAs, FileIsLoaded);
             CompileCommand = new GenericCommand(Compile, CanCompile);
+            CompileAllModifiedCommand = new GenericCommand(CompileAllModified, HasModifiedDrafts);
             CloneCommand = new GenericCommand(CloneEntry, EntryIsSelected);
             ChangeIDCommand = new GenericCommand(ChangeID, EntryIsSelected);
             DeleteCommand = new GenericCommand(DeleteEntry, EntryIsSelected);
@@ -341,7 +352,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void Save()
         {
-            if (Validate())
+            if (PrepareDraftsForSave() && Validate())
             {
                 if (File.FilePath is null)
                 {
@@ -362,7 +373,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void SaveAs()
         {
-            if (Validate())
+            if (PrepareDraftsForSave() && Validate())
             {
                 var d = new SaveFileDialog { Filter = CNDFileFilter };
                 if (DirectoryMemory.ShowDialog(d) == true)
@@ -436,40 +447,165 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         {
             if (SelectedCond is not null)
             {
-                bool error = true;
-                string textToCompile;
-                if (_isGraphViewActive && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
+                CaptureActiveDraft();
+                CompileEntry(SelectedCond, true);
+            }
+        }
+
+        private void CompileAllModified()
+        {
+            CaptureActiveDraft();
+            var failures = new List<CondListEntry>();
+            foreach (CondListEntry entry in Conditionals.Where(c => c.HasDraft).ToList())
+            {
+                if (!CompileEntry(entry, entry == SelectedCond))
                 {
-                    if (!graphRoot.IsFullyParsed)
-                    {
-                        compilationMsgBox.Text = "This expression is too complex for the graph editor. Switch to text view to edit it.";
-                        return;
-                    }
-                    if (!graphRoot.TryValidate(out var validationMessage))
-                    {
-                        compilationMsgBox.Text = validationMessage;
-                        return;
-                    }
-                    textToCompile = graphRoot.Serialize();
-                    SelectedCond.GraphViewModel = graphRoot;
-                    SelectedCond.PreserveGraphView = true;
-                }
-                else
-                {
-                    textToCompile = ConditionalTextBox.Text;
-                    SelectedCond.GraphViewModel = null;
-                    SelectedCond.PreserveGraphView = false;
-                }
-                compilationMsgBox.Text = SelectedCond?.Compile(textToCompile, out error);
-                if (!error)
-                {
-                    // Don't re-parse the graph after compile. The graph is the user's
-                    // source of truth while in graph view. Re-parsing from the compiled
-                    // data would lose sub-groups with a single child because the bytecode
-                    // format cannot represent single-operand &&/|| groups.
-                    DisplayCondition();
+                    failures.Add(entry);
                 }
             }
+
+            if (failures.Count > 0)
+            {
+                NavigateToCompileFailure(failures[0]);
+                var failedIds = failures.Select(f => $"{f.ID}: {f.CompilationErrors}").ToList();
+                new ListDialog(failedIds, "Compilation Errors", "These modified conditionals failed to compile:", this).Show();
+            }
+            else
+            {
+                compilationMsgBox.Text = "All modified conditionals compiled!";
+            }
+        }
+
+        private bool PrepareDraftsForSave()
+        {
+            CaptureActiveDraft();
+            var compiledDrafts = new Dictionary<CondListEntry, (byte[] Data, ConditionGraphRootViewModel GraphRoot)>();
+            var failures = new List<CondListEntry>();
+
+            foreach (CondListEntry entry in Conditionals.Where(c => c.HasDraft).ToList())
+            {
+                if (!TryGetCompileText(entry, out string textToCompile, out ConditionGraphRootViewModel graphRoot, out string validationError))
+                {
+                    SetCompilationError(entry, validationError);
+                    failures.Add(entry);
+                    continue;
+                }
+
+                string message = entry.TryCompileText(textToCompile, out bool error, out byte[] compiledData);
+                if (error)
+                {
+                    SetCompilationError(entry, message);
+                    failures.Add(entry);
+                    continue;
+                }
+
+                entry.HasDraftErrors = false;
+                entry.CompilationErrors = null;
+                compiledDrafts[entry] = (compiledData, graphRoot);
+            }
+
+            if (failures.Count > 0)
+            {
+                NavigateToCompileFailure(failures[0]);
+                return false;
+            }
+
+            foreach ((CondListEntry entry, (byte[] data, ConditionGraphRootViewModel graphRoot)) in compiledDrafts)
+            {
+                ApplyCompiledDraft(entry, data, graphRoot);
+            }
+
+            return true;
+        }
+
+        private bool CompileEntry(CondListEntry entry, bool updateEditor)
+        {
+            if (!TryGetCompileText(entry, out string textToCompile, out ConditionGraphRootViewModel graphRoot, out string validationError))
+            {
+                SetCompilationError(entry, validationError);
+                if (updateEditor)
+                {
+                    compilationMsgBox.Text = validationError;
+                }
+                return false;
+            }
+
+            string message = entry.TryCompileText(textToCompile, out bool error, out byte[] compiledData);
+            if (error)
+            {
+                SetCompilationError(entry, message);
+                if (updateEditor)
+                {
+                    compilationMsgBox.Text = message;
+                }
+                return false;
+            }
+
+            ApplyCompiledDraft(entry, compiledData, graphRoot);
+            if (updateEditor)
+            {
+                compilationMsgBox.Text = message;
+                // Don't re-parse the graph after compile. The graph is the user's
+                // source of truth while in graph view. Re-parsing from the compiled
+                // data would lose sub-groups with a single child because the bytecode
+                // format cannot represent single-operand &&/|| groups.
+                DisplayCondition();
+            }
+            return true;
+        }
+
+        private bool TryGetCompileText(CondListEntry entry, out string textToCompile, out ConditionGraphRootViewModel graphRoot, out string validationError)
+        {
+            graphRoot = entry.DraftGraphViewModel;
+            if (graphRoot is not null)
+            {
+                if (!graphRoot.IsFullyParsed)
+                {
+                    textToCompile = null;
+                    validationError = "This expression is too complex for the graph editor. Switch to text view to edit it.";
+                    return false;
+                }
+                if (!graphRoot.TryValidate(out validationError))
+                {
+                    textToCompile = null;
+                    return false;
+                }
+
+                textToCompile = graphRoot.Serialize();
+                validationError = null;
+                return true;
+            }
+
+            textToCompile = entry.DraftText ?? entry.Conditional.Decompile();
+            validationError = null;
+            return true;
+        }
+
+        private void ApplyCompiledDraft(CondListEntry entry, byte[] compiledData, ConditionGraphRootViewModel graphRoot)
+        {
+            byte[] original = entry.Conditional.Data;
+            entry.Conditional.Data = compiledData;
+            if (!original.AsSpan().SequenceEqual(compiledData))
+            {
+                entry.IsModified = true;
+            }
+
+            entry.GraphViewModel = graphRoot;
+            entry.PreserveGraphView = graphRoot is not null;
+            entry.ClearDraft();
+        }
+
+        private void SetCompilationError(CondListEntry entry, string message)
+        {
+            entry.HasDraftErrors = true;
+            entry.CompilationErrors = message;
+        }
+
+        private void NavigateToCompileFailure(CondListEntry entry)
+        {
+            SelectedCond = entry;
+            ConditionalsListBox.ScrollIntoView(entry);
+            compilationMsgBox.Text = entry.CompilationErrors ?? string.Empty;
         }
 
         private void DisplayCondition()
@@ -477,18 +613,41 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             try
             {
                 hexBox.ByteProvider = new ReadOptimizedByteProvider(_selectedCond.Conditional.Data);
-                ConditionalTextBox.Text = _selectedCond.Conditional.Decompile();
+                _isDisplayingCondition = true;
+                ConditionalTextBox.Text = GetConditionText(_selectedCond);
             }
             catch (Exception e)
             {
+                _isDisplayingCondition = true;
                 ConditionalTextBox.Text = $"ERROR! COULD NOT DECOMPILE!\n{e.FlattenException()}";
             }
+            finally
+            {
+                _isDisplayingCondition = false;
+            }
+        }
+
+        private static string GetConditionText(CondListEntry entry)
+        {
+            if (entry.DraftText is not null)
+            {
+                return entry.DraftText;
+            }
+
+            if (entry.DraftGraphViewModel is not null)
+            {
+                return entry.DraftGraphViewModel.Serialize();
+            }
+
+            return entry.Conditional.Decompile();
         }
 
         private bool CanCompile()
         {
             return SelectedCond is not null && !string.IsNullOrWhiteSpace(ConditionalTextBox.Text);
         }
+
+        private bool HasModifiedDrafts() => Conditionals.Any(c => c.HasDraft);
 
         public void LoadFile(string filePath, int cndId)
         {
@@ -607,7 +766,7 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
         {
             if (e.Cancel)
                 return;
-            if (Conditionals.Any(c => c.IsModified) &&
+            if (Conditionals.Any(c => c.HasUnsavedChanges) &&
                 MessageBoxResult.No == MessageBox.Show($"{Path.GetFileName(File.FilePath) ?? "Untitled file"} has unsaved changes. Do you really want to close Conditionals Editor?",
                                                        "Unsaved changes", MessageBoxButton.YesNo))
             {
@@ -621,7 +780,10 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void ConditionalTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
         {
-            compilationMsgBox.Clear();
+            if (!_isDisplayingCondition && SelectedCond is not null)
+            {
+                SelectedCond.SetDraftText(ConditionalTextBox.Text);
+            }
         }
 
         private void ConditionalsListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -740,7 +902,73 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             public bool IsModified
             {
                 get => _isModified;
-                set => SetProperty(ref _isModified, value);
+                set
+                {
+                    if (SetProperty(ref _isModified, value))
+                    {
+                        OnPropertyChanged(nameof(HasUnsavedChanges));
+                    }
+                }
+            }
+
+            public bool HasUnsavedChanges => IsModified || HasDraft;
+
+            private string _draftText;
+            public string DraftText
+            {
+                get => _draftText;
+                set
+                {
+                    if (SetProperty(ref _draftText, value))
+                    {
+                        OnPropertyChanged(nameof(HasDraft));
+                        OnPropertyChanged(nameof(HasUnsavedChanges));
+                    }
+                }
+            }
+
+            public bool HasDraft => DraftText is not null || DraftGraphViewModel is not null;
+
+            public ConditionGraphRootViewModel DraftGraphViewModel { get; private set; }
+
+            private bool _hasDraftErrors;
+            public bool HasDraftErrors
+            {
+                get => _hasDraftErrors;
+                set => SetProperty(ref _hasDraftErrors, value);
+            }
+
+            private string _compilationErrors;
+            public string CompilationErrors
+            {
+                get => _compilationErrors;
+                set => SetProperty(ref _compilationErrors, value);
+            }
+
+            public void SetDraftText(string text)
+            {
+                DraftGraphViewModel = null;
+                DraftText = text;
+                OnPropertyChanged(nameof(HasDraft));
+                OnPropertyChanged(nameof(HasUnsavedChanges));
+            }
+
+            public void SetDraftGraph(ConditionGraphRootViewModel graphRoot)
+            {
+                DraftGraphViewModel = graphRoot;
+                DraftText = null;
+                OnPropertyChanged(nameof(HasDraft));
+                OnPropertyChanged(nameof(HasUnsavedChanges));
+            }
+
+            public void ClearDraft()
+            {
+                DraftGraphViewModel = null;
+                DraftText = null;
+                HasDraftErrors = false;
+                CompilationErrors = null;
+                OnPropertyChanged(nameof(HasDraft));
+                OnPropertyChanged(nameof(HasUnsavedChanges));
             }
 
             private int _iD;
@@ -777,6 +1005,26 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
                 Conditional = conditional;
                 _iD = conditional.ID;
                 PlotPath = PlotDatabases.FindPlotConditionalByID(conditional.ID, MEGame.LE3)?.Path;
+            }
+
+            public string TryCompileText(string text, out bool error, out byte[] compiledData)
+            {
+                compiledData = null;
+                try
+                {
+                    compiledData = ME3ConditionalsCompiler.Compile(text);
+                    //the compiler is somewhat... lacking, in proper validation, so we use decompiler to see if compilation
+                    //produced something useful (it should throw if there's an error)
+                    new CNDFile.ConditionalEntry { Data = compiledData }.Decompile();
+                }
+                catch (Exception e)
+                {
+                    error = true;
+                    return $"Compilation Error!\n{e.GetType().Name}: {e.Message}";
+                }
+
+                error = false;
+                return "Compiled!";
             }
 
             public string Compile(string text, out bool error)
@@ -844,13 +1092,17 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
             try
             {
-                if (SelectedCond.PreserveGraphView && SelectedCond.GraphViewModel != null)
+                if (SelectedCond.DraftGraphViewModel != null)
+                {
+                    GraphViewControl.DataContext = SelectedCond.DraftGraphViewModel;
+                }
+                else if (SelectedCond.PreserveGraphView && SelectedCond.GraphViewModel != null)
                 {
                     GraphViewControl.DataContext = SelectedCond.GraphViewModel;
                 }
                 else
                 {
-                    string text = SelectedCond.Conditional.Decompile();
+                    string text = GetConditionText(SelectedCond);
                     var graphRoot = ConditionGraphRootViewModel.FromDecompiledText(text);
                     SelectedCond.GraphViewModel = graphRoot;
                     SelectedCond.PreserveGraphView = false;
@@ -868,12 +1120,34 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void SwitchToTextView()
         {
+            CaptureActiveDraft();
             TextViewPanel.Visibility = Visibility.Visible;
             GraphViewControl.Visibility = Visibility.Collapsed;
 
             if (SelectedCond != null)
             {
                 DisplayCondition();
+            }
+        }
+
+        private void CaptureActiveDraft()
+        {
+            if (SelectedCond is null)
+            {
+                return;
+            }
+
+            if (_isGraphViewActive && SelectedCond.HasDraft && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
+            {
+                SelectedCond.SetDraftGraph(graphRoot);
+            }
+        }
+
+        private void GraphView_OnEdited(object sender, RoutedEventArgs e)
+        {
+            if (!_isDisplayingCondition && _isGraphViewActive && SelectedCond is not null && GraphViewControl.DataContext is ConditionGraphRootViewModel graphRoot)
+            {
+                SelectedCond.SetDraftGraph(graphRoot);
             }
         }
 

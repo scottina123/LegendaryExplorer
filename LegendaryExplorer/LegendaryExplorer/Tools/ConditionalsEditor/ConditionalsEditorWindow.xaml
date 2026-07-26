@@ -69,6 +69,9 @@
                 </MenuItem>
                 <MenuItem Header="Options" Padding="4">
                     <MenuItem Header="Toggle HexBox" Command="{Binding ToggleHexBoxCommand}" />
+                    <Separator />
+                    <MenuItem Header="Compile Selected" Command="{Binding CompileCommand}" />
+                    <MenuItem Header="Compile All Modified" Command="{Binding CompileAllModifiedCommand}" />
                     <MenuItem Header="DEBUG: Recompile All"
                               Visibility="{x:Static global:App.IsDebugVisibility}" Click="RecompileAll_Click" />
                 </MenuItem>
@@ -112,7 +115,31 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid>
-                            <StackPanel>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Width="14" Margin="0,0,4,0" FontWeight="Bold" VerticalAlignment="Top">
+                                <TextBlock.Style>
+                                    <Style TargetType="{x:Type TextBlock}">
+                                        <Setter Property="Text" Value="" />
+                                        <Setter Property="Foreground" Value="Transparent" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Path=HasDraft}" Value="true">
+                                                <Setter Property="Text" Value="●" />
+                                                <Setter Property="Foreground" Value="#D4A020" />
+                                                <Setter Property="ToolTip" Value="This conditional has an uncompiled draft" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Path=HasDraftErrors}" Value="true">
+                                                <Setter Property="Text" Value="!" />
+                                                <Setter Property="Foreground" Value="#D05050" />
+                                                <Setter Property="ToolTip" Value="This conditional has draft compilation errors" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Grid.Column="1">
                                 <TextBlock Text="{Binding ID}" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding PlotPath}" FontSize="10" Visibility="{Binding PlotPath, Converter={StaticResource NullVisibilityConverter}}"/>
                                 <StackPanel.ContextMenu>
@@ -132,6 +159,14 @@
                                         <DataTrigger Binding="{Binding Path=IsModified}" Value="true">
                                             <Setter Property="Background" Value="#50D4A020" />
                                             <Setter Property="ToolTip" Value="This conditional has been modified but the file has not yet been saved" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Path=HasDraft}" Value="true">
+                                            <Setter Property="Background" Value="#50D4A020" />
+                                            <Setter Property="ToolTip" Value="This conditional has an uncompiled draft" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Path=HasDraftErrors}" Value="true">
+                                            <Setter Property="Background" Value="#50D05050" />
+                                            <Setter Property="ToolTip" Value="This conditional has draft compilation errors" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -203,7 +238,10 @@
                 </Grid>
                 <!-- Graph View -->
                 <graphView:ConditionGraphView Grid.Row="1" x:Name="GraphViewControl" Visibility="Collapsed" />
-                <Button Grid.Row="2" Content="Compile and Replace" Command="{Binding CompileCommand}"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <Button Content="Compile Selected" Command="{Binding CompileCommand}"/>
+                    <Button Content="Compile All Modified" Command="{Binding CompileAllModifiedCommand}" Margin="4,0,0,0"/>
+                </StackPanel>
                 <TextBox Name="compilationMsgBox" Grid.Row="3" TextWrapping="Wrap" IsReadOnly="True"/>
             </Grid>
         </Grid>
