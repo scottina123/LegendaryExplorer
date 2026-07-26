@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -19,6 +20,7 @@ using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -121,6 +123,62 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int SkippedLineCount,
             int ErrorCount,
             List<string> Messages);
+
+        private sealed class BlankBioConversationDialog : Window
+        {
+            private readonly TextBox _topPackageTextBox = new() { MinWidth = 320 };
+            private readonly TextBox _conversationNameTextBox = new() { MinWidth = 320, Text = "Yournamehere" };
+            private readonly TextBlock _validationText = new() { TextWrapping = TextWrapping.Wrap };
+            private readonly Button _okButton = new() { Content = "_Create", IsDefault = true, MinWidth = 70 };
+
+            public string TopPackageName => _topPackageTextBox.Text.Trim();
+            public string ConversationName => _conversationNameTextBox.Text.Trim();
+
+            public BlankBioConversationDialog(Window owner)
+            {
+                CustomWindowChrome.ApplyCustomChrome(this);
+                Title = "Generate blank BioConversation";
+                Owner = owner;
+                WindowStartupLocation = WindowStartupLocation.CenterOwner;
+                SizeToContent = SizeToContent.WidthAndHeight;
+                ResizeMode = ResizeMode.NoResize;
+
+                var content = new StackPanel { Margin = new Thickness(12) };
+                content.Children.Add(new TextBlock { Text = "Top-level package name:" });
+                content.Children.Add(_topPackageTextBox);
+                content.Children.Add(new TextBlock { Text = "Conversation base name:", Margin = new Thickness(0, 10, 0, 0) });
+                content.Children.Add(_conversationNameTextBox);
+                content.Children.Add(_validationText);
+
+                var buttons = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 12, 0, 0)
+                };
+                _okButton.Click += (_, _) => DialogResult = true;
+                buttons.Children.Add(_okButton);
+                var cancelButton = new Button { Content = "_Cancel", IsCancel = true, MinWidth = 70, Margin = new Thickness(8, 0, 0, 0) };
+                buttons.Children.Add(cancelButton);
+                content.Children.Add(buttons);
+                Content = content;
+
+                _topPackageTextBox.TextChanged += (_, _) => ValidateInput();
+                _conversationNameTextBox.TextChanged += (_, _) => ValidateInput();
+                Loaded += (_, _) => _topPackageTextBox.Focus();
+                ValidateInput();
+            }
+
+            private void ValidateInput()
+            {
+                bool topPackageValid = IsValidPackageObjectName(TopPackageName);
+                bool conversationNameValid = IsValidPackageObjectName(ConversationName);
+                _okButton.IsEnabled = topPackageValid && conversationNameValid;
+                _validationText.Text = _okButton.IsEnabled
+                    ? string.Empty
+                    : "Names must start with a letter or underscore and contain only letters, numbers, or underscores.";
+            }
+        }
 
         private sealed class FaceFxAnimSetBinary(FaceFXAnimSet animSet) : FaceFXAnimSetEditorControl.IFaceFXBinary
         {
@@ -799,6 +857,158 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
         public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
         {
             DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
+        }
+
+        public static void GenerateBlankBioConversation(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            if (pew.Pcc.Game is not (MEGame.ME3 or MEGame.LE3))
+            {
+                MessageBox.Show(pew,
+                    "Blank BioConversation generation is available only for ME3 and LE3 packages.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new BlankBioConversationDialog(pew);
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            string topPackageName = dialog.TopPackageName;
+            string conversationName = dialog.ConversationName.EndsWith("_dlg", StringComparison.OrdinalIgnoreCase)
+                ? dialog.ConversationName[..^4]
+                : dialog.ConversationName;
+
+            if (pew.Pcc.FindExport(topPackageName, "Package") != null)
+            {
+                MessageBox.Show(pew,
+                    $"A top-level package named '{topPackageName}' already exists. Choose a new name to avoid modifying existing assets.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                IMEPackage package = pew.Pcc;
+                ExportEntry topPackage = ExportCreator.CreatePackageExport(package, topPackageName);
+
+                ExportEntry bioConversation = ExportCreator.CreateExport(package, $"{conversationName}_dlg",
+                    "BioConversation", topPackage, indexed: false);
+                ExportEntry nonSpeakerFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_NonSpkr");
+                ExportEntry ownerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_F");
+                ExportEntry ownerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Owner_M");
+                ExportEntry playerFemaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_F");
+                ExportEntry playerMaleFaceFx = CreateBlankFaceFx(package, topPackage, $"FXA_{conversationName}_Player_M");
+
+                ExportEntry sequence = SequenceObjectCreator.CreateSequenceObject(package, "Sequence");
+                sequence.idxLink = topPackage.UIndex;
+                sequence.ObjectName = new NameReference("Node_Data_Sequence");
+                sequence.WriteProperty(new StrProperty("Node_Data_Sequence", "ObjName"));
+
+                var startingList = new ArrayProperty<IntProperty>("m_StartingList");
+                startingList.Add(0);
+
+                PropertyCollection entryProperties = GlobalUnrealObjectInfo.getDefaultStructValue(
+                    package.Game, "BioDialogEntryNode", true, package);
+                entryProperties.AddOrReplaceProp(new EnumProperty("GUI_STYLE_NONE", "EConvGUIStyles", package.Game, "eGUIStyle"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nSpeakerIndex"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-2, "nListenerIndex"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nScriptIndex"));
+                entryProperties.AddOrReplaceProp(new StringRefProperty(599754, "srText"));
+                entryProperties.AddOrReplaceProp(new BoolProperty(true, "bFireConditional"));
+                entryProperties.AddOrReplaceProp(new BoolProperty(true, "bSkippable"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalFunc"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nConditionalParam"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransition"));
+                entryProperties.AddOrReplaceProp(new IntProperty(-1, "nStateTransitionParam"));
+                entryProperties.AddOrReplaceProp(new IntProperty(1, "nCameraIntimacy"));
+
+                var entryList = new ArrayProperty<StructProperty>("m_EntryList");
+                entryList.Add(new StructProperty("BioDialogEntryNode", entryProperties));
+
+                var maleFaceSets = new ArrayProperty<ObjectProperty>("m_aMaleFaceSets")
+                {
+                    new(playerMaleFaceFx.UIndex),
+                    new(ownerMaleFaceFx.UIndex)
+                };
+                var femaleFaceSets = new ArrayProperty<ObjectProperty>("m_aFemaleFaceSets")
+                {
+                    new(playerFemaleFaceFx.UIndex),
+                    new(ownerFemaleFaceFx.UIndex)
+                };
+
+                var conversationProperties = new PropertyCollection
+                {
+                    startingList,
+                    entryList,
+                    maleFaceSets,
+                    femaleFaceSets,
+                    new ObjectProperty(sequence.UIndex, "MatineeSequence"),
+                    new ObjectProperty(nonSpeakerFaceFx.UIndex, "m_pNonSpeakerFaceFXSet"),
+                    new IntProperty(GenerateConversationResourceId(package), "m_nResRefID"),
+                    new ArrayProperty<NameProperty>("m_aSpeakerList")
+                };
+                bioConversation.WriteProperties(conversationProperties);
+
+                ExportCreator.CreatePackageExport(package, "Int",
+                    ExportCreator.CreatePackageExport(package, "Audio", topPackage));
+
+                MessageBox.Show(pew,
+                    $"Created '{bioConversation.InstancedFullPath}' with blank player, owner, and non-speaker FaceFX assets.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(pew,
+                    ex.FlattenException(),
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private static ExportEntry CreateBlankFaceFx(IMEPackage package, IEntry parent, string name)
+        {
+            ExportEntry faceFx = ExportCreator.CreateExport(package, name, "FaceFXAnimSet", parent, indexed: false);
+            faceFx.WritePropertiesAndBinary(new PropertyCollection(), FaceFXAnimSet.Create(package.Game));
+            return faceFx;
+        }
+
+        private static int GenerateConversationResourceId(IMEPackage package)
+        {
+            var usedIds = package.Exports
+                .Where(export => export.ClassName == "BioConversation")
+                .Select(export => export.GetProperty<IntProperty>("m_nResRefID")?.Value)
+                .Where(id => id.HasValue)
+                .Select(id => id.Value)
+                .ToHashSet();
+
+            int resourceId;
+            do
+            {
+                resourceId = Random.Shared.Next(1_500_000_000, int.MaxValue);
+            } while (usedIds.Contains(resourceId));
+
+            return resourceId;
+        }
+
+        private static bool IsValidPackageObjectName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                   && (char.IsLetter(name[0]) || name[0] == '_')
+                   && name.All(character => char.IsLetterOrDigit(character) || character == '_');
         }
 
         public static void ReindexAllDuplicateIndicesInPackage(PackageEditorWindow pew)

@@ -892,6 +892,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.AddSpeakerWithSharedFXAToAllDialogues(GetPEWindow());
         }
 
+        private void GenerateBlankBioConversation_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.GenerateBlankBioConversation(GetPEWindow());
+        }
+
         private void BulkAddPropertiesToClass_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsScottina.BulkAddPropertiesToClass(GetPEWindow());
