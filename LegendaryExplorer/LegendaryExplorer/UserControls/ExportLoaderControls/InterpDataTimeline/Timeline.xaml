@@ -424,6 +424,7 @@
                         <MenuItem Header="Adjust Selected Time Offsets..." Command="{Binding AdjustSelectedTimeOffsetsCommand}" sharedUi:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Adjust All InterpData Time Offsets..." Command="{Binding AdjustInterpDataTimeOffsetsCommand}" sharedUi:Bindings.VisibilityToEnabled="True"/>
                         <MenuItem Header="Insert Key at Time..." Command="{Binding InsertKeyCmd}" sharedUi:Bindings.VisibilityToEnabled="True"/>
+                        <MenuItem Header="Generate Camera Presets..." Command="{Binding GenerateCameraPresetsCmd}" sharedUi:Bindings.VisibilityToEnabled="True"/>
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>

@@ -525,6 +525,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         public ICommand OpenGestureImporterCommand { get; set; }
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
+        public ICommand GenerateCameraPresetsCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInInterpDataCommand { get; set; }
         public ICommand ShiftLevelActorsCommand { get; set; }
@@ -600,6 +601,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
             OpenGestureImporterCommand = new GenericCommand(OpenGestureImporter, CanOpenGestureImporter);
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
+            GenerateCameraPresetsCommand = new GenericCommand(GenerateCameraPresets, CanShiftInterpTrackMove);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
             ShiftLevelActorsCommand = new GenericCommand(ShiftSelectedLevelActors, CanShiftSelectedLevelActors);
@@ -1771,6 +1773,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 {
                     PackageEditorExperimentsM.ShiftInterpTrackMove(exp, dialog.Parameters);
                 }
+            }
+        }
+
+        private void GenerateCameraPresets()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove")
+            {
+                CameraPresetDialog.GenerateForTrack(this, exp);
             }
         }
 

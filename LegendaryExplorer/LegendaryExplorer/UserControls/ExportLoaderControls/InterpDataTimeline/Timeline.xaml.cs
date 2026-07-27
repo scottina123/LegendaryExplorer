@@ -101,11 +101,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public ICommand AddTrackCmd { get; set; }
         public ICommand RenameTrackCommand { get; set; }
         public ICommand InsertKeyCmd { get; set; }
+        public ICommand GenerateCameraPresetsCmd { get; set; }
         public ICommand AdjustSelectedTimeOffsetsCommand { get; set; }
         public ICommand AdjustInterpDataTimeOffsetsCommand { get; set; }
         public ICommand SetGroupActorCmd { get; set; }
 
         public event Action<InterpGroup> SetGroupActorRequested;
+        public Func<CameraOrigin?> ViewportCameraOriginProvider { get; set; }
+        public Action<GeneratedCameraKey> CameraPreviewRequested { get; set; }
 
         private bool _isLevelEditorConnected;
         public bool IsLevelEditorConnected
@@ -122,9 +125,29 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddTrackCmd = new GenericCommand(AddTrack, CanAddTrack);
             RenameTrackCommand = new GenericCommand(RenameTrack, CanRenameTrack);
             InsertKeyCmd = new GenericCommand(InsertKeyAtTime, () => MatineeTree.SelectedItem is InterpTrack);
+            GenerateCameraPresetsCmd = new GenericCommand(GenerateCameraPresets, () => MatineeTree.SelectedItem is InterpTrackMove);
             AdjustSelectedTimeOffsetsCommand = new GenericCommand(AdjustSelectedTimeOffsets, CanAdjustSelectedTimeOffsets);
             AdjustInterpDataTimeOffsetsCommand = new GenericCommand(AdjustInterpDataTimeOffsets, () => HasData(null));
             SetGroupActorCmd = new RelayCommand(obj => { if (obj is InterpGroup g) SetGroupActorRequested?.Invoke(g); });
+        }
+
+        private void GenerateCameraPresets()
+        {
+            if (MatineeTree.SelectedItem is not InterpTrackMove track)
+            {
+                return;
+            }
+
+            float currentTime = (Window.GetWindow(this) as InterpEditorWindow)?.CurrentTime ?? 0;
+            if (CameraPresetDialog.GenerateForTrack(
+                Window.GetWindow(this),
+                track.Export,
+                currentTime,
+                () => ViewportCameraOriginProvider?.Invoke(),
+                CameraPreviewRequested))
+            {
+                track.LoadTrack();
+            }
         }
 
         private void AdjustSelectedTimeOffsets()

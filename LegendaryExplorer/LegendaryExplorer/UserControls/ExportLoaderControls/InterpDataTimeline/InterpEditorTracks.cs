@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -12,6 +13,7 @@ using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Color = System.Windows.Media.Color;
 
@@ -1166,6 +1168,83 @@ namespace LegendaryExplorer.Tools.InterpEditor
             Export.WriteProperties(props);
             LoadTrack();
         }
+
+        public CameraOrigin? GetCameraOriginNearestTime(float time)
+        {
+            var props = Export.GetProperties();
+            var lookupPoints = props.GetProp<StructProperty>("LookupTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var posPoints = props.GetProp<StructProperty>("PosTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var eulerPoints = props.GetProp<StructProperty>("EulerTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            int count = Math.Min(lookupPoints?.Count ?? 0, Math.Min(posPoints?.Count ?? 0, eulerPoints?.Count ?? 0));
+            if (count == 0)
+            {
+                return null;
+            }
+
+            int nearestIndex = 0;
+            float nearestDistance = Math.Abs(lookupPoints[0].GetProp<FloatProperty>("Time").Value - time);
+            for (int i = 1; i < count; i++)
+            {
+                float distance = Math.Abs(lookupPoints[i].GetProp<FloatProperty>("Time").Value - time);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            Vector3 location = CommonStructs.GetVector3(posPoints[nearestIndex].GetProp<StructProperty>("OutVal"));
+            Vector3 rotation = CommonStructs.GetVector3(eulerPoints[nearestIndex].GetProp<StructProperty>("OutVal"));
+            return new CameraOrigin(location, rotation);
+        }
+
+        public void InsertCameraPresetKeys(float startTime, IReadOnlyList<GeneratedCameraKey> generatedKeys)
+        {
+            if (generatedKeys is null || generatedKeys.Count == 0)
+            {
+                return;
+            }
+
+            var props = Export.GetProperties();
+            var lookupPoints = props.GetProp<StructProperty>("LookupTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var posPoints = props.GetProp<StructProperty>("PosTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            var eulerPoints = props.GetProp<StructProperty>("EulerTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+            if (lookupPoints is null || posPoints is null || eulerPoints is null)
+            {
+                return;
+            }
+
+            lookupPoints.Clear();
+            posPoints.Clear();
+            eulerPoints.Clear();
+
+            foreach (GeneratedCameraKey key in generatedKeys)
+            {
+                float time = startTime + key.TimeOffset;
+                lookupPoints.Add(new StructProperty("InterpLookupPoint", false,
+                    new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
+
+                EInterpCurveMode interpMode = GetInterpCurveMode(key.Interpolation, Export.Game);
+                var posPoint = new InterpCurvePoint<Vector3>(time, key.Location, Vector3.Zero, Vector3.Zero, interpMode);
+                var eulerPoint = new InterpCurvePoint<Vector3>(time, key.Rotation, Vector3.Zero, Vector3.Zero, interpMode);
+                posPoints.Add(posPoint.ToStructProperty(Export.Game));
+                eulerPoints.Add(eulerPoint.ToStructProperty(Export.Game));
+            }
+
+            Export.WriteProperties(props);
+            LoadTrack();
+        }
+
+        private static EInterpCurveMode GetInterpCurveMode(CameraKeyInterpolation interpolation, MEGame game) =>
+            interpolation switch
+            {
+                CameraKeyInterpolation.Constant => EInterpCurveMode.CIM_Constant,
+                CameraKeyInterpolation.Linear => EInterpCurveMode.CIM_Linear,
+                CameraKeyInterpolation.Smooth => EInterpCurveMode.CIM_CurveAuto,
+                CameraKeyInterpolation.SmoothClamped when game is MEGame.ME1 or MEGame.ME2 => EInterpCurveMode.CIM_CurveAuto,
+                CameraKeyInterpolation.SmoothClamped => EInterpCurveMode.CIM_CurveAutoClamped,
+                _ => EInterpCurveMode.CIM_Linear
+            };
 
         public override void InsertKey(float time)
         {

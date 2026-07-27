@@ -36,6 +36,8 @@ namespace LegendaryExplorer.Tools.InterpEditor
 
             TimelineControl.SelectionChanged += TimelineControlOnSelectionChanged;
             TimelineControl.SetGroupActorRequested += OnSetGroupActorRequested;
+            TimelineControl.ViewportCameraOriginProvider = GetViewportCameraOrigin;
+            TimelineControl.CameraPreviewRequested = PreviewCamera;
         }
 
         private void TimelineControlOnSelectionChanged(ExportEntry export)
@@ -371,6 +373,34 @@ namespace LegendaryExplorer.Tools.InterpEditor
         }
 
         private void OnLevelEditorClosed(object sender, EventArgs e) => DisconnectLevelEditor();
+
+        private CameraOrigin? GetViewportCameraOrigin()
+        {
+            if (_connectedLevelEditor is null)
+            {
+                return null;
+            }
+
+            var camera = _connectedLevelEditor.RenderContext.Camera;
+            const float radiansToDegrees = 180f / MathF.PI;
+            return new CameraOrigin(camera.Position,
+                new System.Numerics.Vector3(camera.Roll * radiansToDegrees, camera.Pitch * radiansToDegrees, camera.Yaw * radiansToDegrees));
+        }
+
+        private void PreviewCamera(GeneratedCameraKey key)
+        {
+            if (_connectedLevelEditor is null)
+            {
+                return;
+            }
+
+            var camera = _connectedLevelEditor.RenderContext.Camera;
+            const float degreesToRadians = MathF.PI / 180f;
+            camera.Position = key.Location;
+            camera.Roll = key.Rotation.X * degreesToRadians;
+            camera.Pitch = key.Rotation.Y * degreesToRadians;
+            camera.Yaw = key.Rotation.Z * degreesToRadians;
+        }
 
         private void OnSetGroupActorRequested(InterpGroup group)
         {

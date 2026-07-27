@@ -7344,6 +7344,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
             SetInterpDataContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
             SetInterpDataContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
+            SetInterpDataContextMenuItemVisibility(menu, "GenerateCameraPresets", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
             SetInterpDataContextMenuItemVisibility(menu, "OpenGestureAnimationImporter", isGestureTrack ? Visibility.Visible : Visibility.Collapsed);
         }
 
@@ -7485,6 +7486,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                             PackageEditorExperimentsM.ShiftInterpTrackMove(export, dialog.Parameters);
                             RefreshInterpDataTreePreserveState(export.UIndex);
                         }
+                    }
+                    break;
+                case "GenerateCameraPresets":
+                    if (export.ClassName == "InterpTrackMove" && CameraPresetDialog.GenerateForTrack(this, export))
+                    {
+                        RefreshInterpDataTreePreserveState(export.UIndex);
                     }
                     break;
                 case "OpenGestureAnimationImporter":

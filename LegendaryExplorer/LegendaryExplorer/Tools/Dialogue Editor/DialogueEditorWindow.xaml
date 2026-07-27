@@ -183,6 +183,7 @@
             <MenuItem Header="Bulk Edit InterpGroups" Command="{Binding BulkEditInterpGroupsCommand}" />
             <MenuItem Header="Shift All InterpTrackMoves in InterpData" Tag="ShiftInterpTrackMovesInInterpData" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Shift currently selected InterpTrackMove" Tag="ShiftSelectedInterpTrackMove" Click="InterpDataTree_PackageEditorAction_Click" />
+            <MenuItem Header="Generate Camera Presets..." Tag="GenerateCameraPresets" Click="InterpDataTree_PackageEditorAction_Click" Visibility="Collapsed" />
             <Separator />
             <MenuItem Header="Find references" Tag="FindReferences" Click="InterpDataTree_PackageEditorAction_Click" />
             <MenuItem Header="Reindex objects with this name" Tag="Reindex" Click="InterpDataTree_PackageEditorAction_Click" />
