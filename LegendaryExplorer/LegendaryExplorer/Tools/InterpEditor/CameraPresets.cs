@@ -207,6 +207,8 @@ public static class CameraPresetCatalog
 
 public static class CameraPresetGenerator
 {
+    private const int PathMeasurementSegments = 256;
+
     public static int GetKeyCount(CameraPreset preset)
     {
         if (preset.Category != CameraPresetCategory.DynamicShots || preset.Duration <= 0)
@@ -218,25 +220,89 @@ public static class CameraPresetGenerator
         return Math.Max(2, (int)MathF.Ceiling(preset.Duration * intervalsPerSecond) + 1);
     }
 
-    public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin, int? sampleCount = null)
+    public static float GetPathLength(CameraPreset preset, CameraOrigin origin) => BuildMeasuredPath(preset, origin).TotalLength;
+
+    public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin, int? sampleCount = null,
+        float pathFraction = 1f)
     {
         int count = sampleCount is > 0 ? sampleCount.Value : GetKeyCount(preset);
+        pathFraction = Math.Clamp(pathFraction, 0f, 1f);
 
         BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        MeasuredPath measuredPath = BuildMeasuredPath(preset, origin);
         var keys = new List<GeneratedCameraKey>(count);
         for (int i = 0; i < count; i++)
         {
-            float t = count == 1 ? 0 : i / (float)(count - 1);
+            float elapsedFraction = count == 1 ? 0 : i / (float)(count - 1);
+            float normalizedDistance = elapsedFraction * pathFraction;
+            float t = measuredPath.GetPathProgress(normalizedDistance);
             GetLocalPosition(preset, t, out float distance, out float side, out float height);
             Vector3 location = origin.Location - forward * distance + right * side + up * height;
             Vector3 target = origin.Location + up * preset.LookAtHeight;
             Vector3 rotation = LookAtRotation(location, target, origin.Rotation.X + preset.LocalRoll);
             rotation.Y += preset.LocalPitch;
             rotation.Z += preset.LocalYaw;
-            keys.Add(new GeneratedCameraKey(preset.Duration * t, location, rotation, GetInterpolation(preset, t)));
+            keys.Add(new GeneratedCameraKey(preset.Duration * elapsedFraction, location, rotation, GetInterpolation(preset, t)));
         }
 
         return keys;
+    }
+
+    private static MeasuredPath BuildMeasuredPath(CameraPreset preset, CameraOrigin origin)
+    {
+        BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        var progress = new float[PathMeasurementSegments + 1];
+        var cumulativeDistance = new float[PathMeasurementSegments + 1];
+        Vector3 previous = GetWorldPosition(preset, origin.Location, forward, right, up, 0);
+        for (int i = 1; i <= PathMeasurementSegments; i++)
+        {
+            float t = i / (float)PathMeasurementSegments;
+            Vector3 current = GetWorldPosition(preset, origin.Location, forward, right, up, t);
+            progress[i] = t;
+            cumulativeDistance[i] = cumulativeDistance[i - 1] + Vector3.Distance(previous, current);
+            previous = current;
+        }
+
+        return new MeasuredPath(progress, cumulativeDistance);
+    }
+
+    private static Vector3 GetWorldPosition(CameraPreset preset, Vector3 origin, Vector3 forward, Vector3 right, Vector3 up, float t)
+    {
+        GetLocalPosition(preset, t, out float distance, out float side, out float height);
+        return origin - forward * distance + right * side + up * height;
+    }
+
+    private sealed class MeasuredPath(float[] progress, float[] cumulativeDistance)
+    {
+        internal float TotalLength => cumulativeDistance[^1];
+
+        internal float GetPathProgress(float normalizedDistance)
+        {
+            if (TotalLength <= float.Epsilon || normalizedDistance <= 0)
+            {
+                return 0;
+            }
+
+            if (normalizedDistance >= 1)
+            {
+                return 1;
+            }
+
+            float targetDistance = normalizedDistance * TotalLength;
+            int upperIndex = Array.BinarySearch(cumulativeDistance, targetDistance);
+            if (upperIndex >= 0)
+            {
+                return progress[upperIndex];
+            }
+
+            upperIndex = ~upperIndex;
+            int lowerIndex = upperIndex - 1;
+            float segmentLength = cumulativeDistance[upperIndex] - cumulativeDistance[lowerIndex];
+            float segmentProgress = segmentLength > float.Epsilon
+                ? (targetDistance - cumulativeDistance[lowerIndex]) / segmentLength
+                : 0;
+            return progress[lowerIndex] + (progress[upperIndex] - progress[lowerIndex]) * segmentProgress;
+        }
     }
 
     private static bool RequiresDetailedSampling(CameraPathKind pathKind) => pathKind is

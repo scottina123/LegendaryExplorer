@@ -300,12 +300,24 @@ public partial class CameraPresetDialog : Window
             MovementAmount = movement
         };
         int sampleCount = CameraPresetGenerator.GetKeyCount(samplingPreset);
-        var configured = samplingPreset with
+        float pathFraction = 1f;
+        float generatedDuration = duration;
+        float movementRate = 0;
+        if (samplingPreset.Category == CameraPresetCategory.DynamicShots)
         {
-            Duration = samplingPreset.Category == CameraPresetCategory.DynamicShots ? duration / cameraSpeed : duration
-        };
+            float pathLength = CameraPresetGenerator.GetPathLength(samplingPreset, origin);
+            if (duration <= float.Epsilon && pathLength > float.Epsilon)
+            {
+                MessageBox.Show("Dynamic camera movement duration must be greater than zero.",
+                    "Invalid Preset Parameters", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
 
-        if (configured.Category == CameraPresetCategory.DynamicShots && _maximumEndTime is float maximumEndTime)
+            movementRate = pathLength <= float.Epsilon ? 0 : pathLength / duration * cameraSpeed;
+            generatedDuration = movementRate <= float.Epsilon ? duration : pathLength / movementRate;
+        }
+
+        if (samplingPreset.Category == CameraPresetCategory.DynamicShots && _maximumEndTime is float maximumEndTime)
         {
             float remainingDuration = maximumEndTime - startTime;
             if (remainingDuration <= 0)
@@ -315,16 +327,18 @@ public partial class CameraPresetDialog : Window
                 return false;
             }
 
-            if (configured.Duration > remainingDuration)
+            if (generatedDuration > remainingDuration)
             {
-                configured = configured with { Duration = remainingDuration };
-                StatusTextBlock.Text = $"Duration limited to {remainingDuration:0.###} seconds to fit the InterpData length.";
+                pathFraction = generatedDuration > float.Epsilon ? remainingDuration / generatedDuration : 1f;
+                generatedDuration = remainingDuration;
+                StatusTextBlock.Text = $"Timeline fits {pathFraction:P0} of the path at {movementRate:0.##} units/second; movement will stop at the InterpData end.";
             }
         }
 
+        var configured = samplingPreset with { Duration = generatedDuration };
         KeyCountTextBox.Text = sampleCount.ToString(CultureInfo.InvariantCulture);
         GeneratedStartTime = startTime;
-        keys = CameraPresetGenerator.Generate(configured, origin, sampleCount);
+        keys = CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction);
         return true;
     }
 
