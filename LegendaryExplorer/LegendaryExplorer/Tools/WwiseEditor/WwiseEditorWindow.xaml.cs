@@ -29,11 +29,13 @@ using LegendaryExplorerCore.Misc;
 using Piccolo;
 using Piccolo.Event;
 using Piccolo.Nodes;
+using BinarySerialization;
 using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
-using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
+using WwiserHircItemContainer = ME3Tweaks.Wwiser.Model.Hierarchy.HircItemContainer;
+using WwiserIHasNode = ME3Tweaks.Wwiser.Model.Hierarchy.IHasNode;
 using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using Brushes = System.Drawing.Brushes;
 using Color = System.Drawing.Color;
@@ -50,6 +52,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     public partial class WwiseEditorWindow : WPFBase, IRecents
     {
         private const uint DualFiltersRadioCommId = 2952825346;
+        private const uint RadioEffectBankVersion = 134;
+        private const string DualFiltersRadioCommHirc =
+            "EEsAAAACigCwAwBpADgAAAABAAAAAAAAAAAASEQAAIA/AQYAAAAAAJBBAIA7RQAAgD8BAAAAAAAAAAAAoJFFAACAPwEAAEDBAQAAAAAAAAA=";
 
         private struct SaveData
         {
@@ -470,15 +475,24 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 var rawBank = CurrentExport.GetBinaryData<CoreWwiseBank>();
                 using var input = new MemoryStream(rawBank.BnkFile, false);
                 var bank = WwiseBankParser.Deserialize(input);
-                var rootMixers = bank.HIRC?.Items
-                    .Select(item => item.Item)
-                    .OfType<WwiserActorMixer>()
-                    .Where(mixer => mixer.NodeBaseParameters.DirectParentId == 0)
+                var parameterNodes = bank.HIRC?.Items
+                    .Where(item => item.Item is WwiserIHasNode)
+                    .Select(item => (item.Item.Id, Node: (WwiserIHasNode)item.Item))
                     .ToList() ?? [];
-
-                if (rootMixers.Count == 0)
+                var parameterNodeIds = parameterNodes.Select(item => item.Id).ToHashSet();
+                var rootNodes = parameterNodes
+                    .Where(item => item.Node.NodeBaseParameters.DirectParentId == 0 ||
+                                   !parameterNodeIds.Contains(item.Node.NodeBaseParameters.DirectParentId))
+                    .Select(item => item.Node)
+                    .ToList();
+                if (rootNodes.Count == 0)
                 {
-                    MessageBox.Show(this, "No root ActorMixer was found in this bank.", "Volume not adjusted",
+                    rootNodes.AddRange(parameterNodes.Select(item => item.Node));
+                }
+
+                if (rootNodes.Count == 0)
+                {
+                    MessageBox.Show(this, "No editable audio nodes were found in this bank.", "Settings not adjusted",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -488,10 +502,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     .OfType<WwiserSound>()
                     .ToList() ?? [];
                 bool? loopAudio = GetLoopAudioState(sounds);
-                bool radioEffect = rootMixers.Any(HasRadioEffect);
-                bool canApplyRadioEffect = bank.HIRC?.Items.Any(item =>
-                    item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId }) == true;
-                float currentVolume = GetActorMixerVolume(rootMixers[0]);
+                bool radioEffect = rootNodes.All(HasRadioEffect);
+                bool canApplyRadioEffect = CanApplyRadioEffect(bank);
+                float currentVolume = GetNodeVolume(rootNodes[0]);
                 var settingsDialog = new WwiseBankVolumeDialog(currentVolume, loopAudio, radioEffect, canApplyRadioEffect)
                 {
                     Owner = this
@@ -509,17 +522,25 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     return;
                 }
 
-                foreach (var mixer in rootMixers)
+                if (settingsDialog.RadioEffect && !EnsureRadioEffectData(bank))
+                {
+                    MessageBox.Show(this,
+                        "The Dual_Filters_Radio_Comm data could not be added to this bank version.",
+                        "Radio effect unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                foreach (var node in rootNodes)
                 {
                     if (volumeChanged)
                     {
-                        SetInitialParameter(mixer.NodeBaseParameters.InitialParams62, PropId.Volume,
+                        SetInitialParameter(node.NodeBaseParameters.InitialParams62, PropId.Volume,
                             settingsDialog.SelectedVolume, true);
                     }
 
                     if (radioChanged)
                     {
-                        SetRadioEffect(mixer, settingsDialog.RadioEffect);
+                        SetRadioEffect(node, settingsDialog.RadioEffect);
                     }
                 }
 
@@ -558,9 +579,9 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             CurrentExport = bankExport;
         }
 
-        private static float GetActorMixerVolume(WwiserActorMixer mixer)
+        private static float GetNodeVolume(WwiserIHasNode node)
         {
-            var parameters = mixer.NodeBaseParameters.InitialParams62;
+            var parameters = node.NodeBaseParameters.InitialParams62;
             int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
             return volumeIndex >= 0 ? parameters.ParameterValues[volumeIndex].Value : 0;
         }
@@ -597,12 +618,51 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
-        private static bool HasRadioEffect(WwiserActorMixer mixer) =>
-            mixer.NodeBaseParameters.FxParams.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId);
+        private static bool HasRadioEffect(WwiserIHasNode node) =>
+            node.NodeBaseParameters.FxParams.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId);
 
-        private static void SetRadioEffect(WwiserActorMixer mixer, bool enabled)
+        private static bool CanApplyRadioEffect(ME3Tweaks.Wwiser.WwiseBank bank)
         {
-            var effects = mixer.NodeBaseParameters.FxParams;
+            if (bank.HIRC == null)
+            {
+                return false;
+            }
+
+            bool containsRadioData = bank.HIRC.Items.Any(item =>
+                item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId });
+            bool idIsAvailable = bank.HIRC.Items.All(item => item.Item.Id != DualFiltersRadioCommId);
+            return containsRadioData || bank.BKHD.BankGeneratorVersion == RadioEffectBankVersion && idIsAvailable;
+        }
+
+        private static bool EnsureRadioEffectData(ME3Tweaks.Wwiser.WwiseBank bank)
+        {
+            if (bank.HIRC == null)
+            {
+                return false;
+            }
+
+            if (bank.HIRC.Items.Any(item => item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId }))
+            {
+                return true;
+            }
+
+            if (bank.BKHD.BankGeneratorVersion != RadioEffectBankVersion ||
+                bank.HIRC.Items.Any(item => item.Item.Id == DualFiltersRadioCommId))
+            {
+                return false;
+            }
+
+            var serializer = new BinarySerialization.BinarySerializer();
+            var radioEffect = serializer.Deserialize<WwiserHircItemContainer>(
+                Convert.FromBase64String(DualFiltersRadioCommHirc), BankSerializationContext.FromBank(bank));
+            bank.HIRC.Items.Add(radioEffect);
+            bank.HIRC.ItemCount = checked((uint)bank.HIRC.Items.Count);
+            return true;
+        }
+
+        private static void SetRadioEffect(WwiserIHasNode node, bool enabled)
+        {
+            var effects = node.NodeBaseParameters.FxParams;
             if (enabled && !effects.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId))
             {
                 byte effectIndex = effects.FxChunks.Count == 0
