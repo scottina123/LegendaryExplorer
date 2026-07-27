@@ -218,9 +218,9 @@ public static class CameraPresetGenerator
         return Math.Max(2, (int)MathF.Ceiling(preset.Duration * intervalsPerSecond) + 1);
     }
 
-    public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin)
+    public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin, int? sampleCount = null)
     {
-        int count = GetKeyCount(preset);
+        int count = sampleCount is > 0 ? sampleCount.Value : GetKeyCount(preset);
 
         BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
         var keys = new List<GeneratedCameraKey>(count);

@@ -83,7 +83,7 @@
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <TextBlock Text="Forward distance" Margin="3,6"/>
                         <TextBox x:Name="ForwardDistanceTextBox" Grid.Column="1" Margin="3" Padding="4"/>
@@ -101,12 +101,28 @@
                         <TextBox x:Name="LocalYawTextBox" Grid.Row="6" Grid.Column="1" Margin="3" Padding="4"/>
                         <TextBlock Grid.Row="7" Text="Duration (seconds)" Margin="3,6"/>
                         <TextBox x:Name="DurationTextBox" Grid.Row="7" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="8" Text="Generated key count" Margin="3,6"/>
-                        <TextBox x:Name="KeyCountTextBox" Grid.Row="8" Grid.Column="1" Margin="3" Padding="4" IsReadOnly="True"/>
-                        <TextBlock Grid.Row="9" Text="Movement amount" Margin="3,6"/>
-                        <TextBox x:Name="MovementAmountTextBox" Grid.Row="9" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="10" Text="Start time (seconds)" Margin="3,6"/>
-                        <TextBox x:Name="StartTimeTextBox" Grid.Row="10" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="8" Text="Movement speed" Margin="3,6"/>
+                        <Grid Grid.Row="8" Grid.Column="1" Margin="3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="CameraSpeedSlider" Minimum="0.1" Maximum="2" Value="1"
+                                    TickFrequency="0.1" SmallChange="0.1" LargeChange="0.5"
+                                    VerticalAlignment="Center" ValueChanged="CameraSpeedSlider_ValueChanged"
+                                    ToolTip="Lower values slow the movement by extending its duration"/>
+                            <TextBox x:Name="CameraSpeedTextBox" Grid.Column="1" Text="1" Margin="8,0,4,0" Padding="4"
+                                     HorizontalContentAlignment="Right" TextChanged="CameraSpeedTextBox_TextChanged"
+                                     ToolTip="Enter a speed multiplier from 0.1 to 2.0"/>
+                            <TextBlock Grid.Column="2" Text="x" VerticalAlignment="Center"/>
+                        </Grid>
+                        <TextBlock Grid.Row="9" Text="Generated key count" Margin="3,6"/>
+                        <TextBox x:Name="KeyCountTextBox" Grid.Row="9" Grid.Column="1" Margin="3" Padding="4" IsReadOnly="True"/>
+                        <TextBlock Grid.Row="10" Text="Movement amount" Margin="3,6"/>
+                        <TextBox x:Name="MovementAmountTextBox" Grid.Row="10" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="11" Text="Start time (seconds)" Margin="3,6"/>
+                        <TextBox x:Name="StartTimeTextBox" Grid.Row="11" Grid.Column="1" Margin="3" Padding="4"/>
                     </Grid>
                 </ScrollViewer>
             </GroupBox>

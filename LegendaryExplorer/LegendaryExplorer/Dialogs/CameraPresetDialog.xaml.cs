@@ -24,6 +24,7 @@ public partial class CameraPresetDialog : Window
     private readonly Action<GeneratedCameraKey> _previewCamera;
     private readonly float? _maximumEndTime;
     private CameraPreset _selectedPreset;
+    private bool _updatingCameraSpeed;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -123,6 +124,45 @@ public partial class CameraPresetDialog : Window
         DurationTextBox.Text = Format(preset.Duration);
         KeyCountTextBox.Text = CameraPresetGenerator.GetKeyCount(preset).ToString(CultureInfo.InvariantCulture);
         MovementAmountTextBox.Text = Format(preset.MovementAmount);
+        bool isDynamic = preset.Category == CameraPresetCategory.DynamicShots;
+        CameraSpeedSlider.IsEnabled = isDynamic;
+        CameraSpeedTextBox.IsEnabled = isDynamic;
+        SetCameraSpeed(1);
+    }
+
+    private void CameraSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_updatingCameraSpeed || CameraSpeedTextBox is null)
+        {
+            return;
+        }
+
+        _updatingCameraSpeed = true;
+        CameraSpeedTextBox.Text = e.NewValue.ToString("0.##", CultureInfo.InvariantCulture);
+        CameraSpeedTextBox.CaretIndex = CameraSpeedTextBox.Text.Length;
+        _updatingCameraSpeed = false;
+    }
+
+    private void CameraSpeedTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingCameraSpeed || CameraSpeedSlider is null
+            || !double.TryParse(CameraSpeedTextBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double speed)
+            || speed < CameraSpeedSlider.Minimum || speed > CameraSpeedSlider.Maximum)
+        {
+            return;
+        }
+
+        _updatingCameraSpeed = true;
+        CameraSpeedSlider.Value = speed;
+        _updatingCameraSpeed = false;
+    }
+
+    private void SetCameraSpeed(double speed)
+    {
+        _updatingCameraSpeed = true;
+        CameraSpeedSlider.Value = speed;
+        CameraSpeedTextBox.Text = speed.ToString("0.##", CultureInfo.InvariantCulture);
+        _updatingCameraSpeed = false;
     }
 
     private void EnterManually_Click(object sender, RoutedEventArgs e)
@@ -235,16 +275,19 @@ public partial class CameraPresetDialog : Window
             || !TryReadFloat(LocalPitchTextBox, out float pitch)
             || !TryReadFloat(LocalYawTextBox, out float yaw)
             || !TryReadFloat(DurationTextBox, out float duration)
+            || !TryReadFloat(CameraSpeedTextBox, out float cameraSpeed)
             || !TryReadFloat(MovementAmountTextBox, out float movement)
             || !TryReadFloat(StartTimeTextBox, out float startTime)
-            || duration < 0)
+            || duration < 0
+            || cameraSpeed < CameraSpeedSlider.Minimum
+            || cameraSpeed > CameraSpeedSlider.Maximum)
         {
-            MessageBox.Show("All composition fields must contain valid numbers. Duration cannot be negative.",
+            MessageBox.Show($"All composition fields must contain valid numbers. Duration cannot be negative and movement speed must be between {CameraSpeedSlider.Minimum:0.##}x and {CameraSpeedSlider.Maximum:0.##}x.",
                 "Invalid Preset Parameters", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
 
-        var configured = _selectedPreset with
+        var samplingPreset = _selectedPreset with
         {
             ForwardDistance = distance,
             SideOffset = side,
@@ -255,6 +298,11 @@ public partial class CameraPresetDialog : Window
             LocalRoll = roll,
             Duration = duration,
             MovementAmount = movement
+        };
+        int sampleCount = CameraPresetGenerator.GetKeyCount(samplingPreset);
+        var configured = samplingPreset with
+        {
+            Duration = samplingPreset.Category == CameraPresetCategory.DynamicShots ? duration / cameraSpeed : duration
         };
 
         if (configured.Category == CameraPresetCategory.DynamicShots && _maximumEndTime is float maximumEndTime)
@@ -270,14 +318,13 @@ public partial class CameraPresetDialog : Window
             if (configured.Duration > remainingDuration)
             {
                 configured = configured with { Duration = remainingDuration };
-                DurationTextBox.Text = Format(remainingDuration);
                 StatusTextBlock.Text = $"Duration limited to {remainingDuration:0.###} seconds to fit the InterpData length.";
             }
         }
 
-        KeyCountTextBox.Text = CameraPresetGenerator.GetKeyCount(configured).ToString(CultureInfo.InvariantCulture);
+        KeyCountTextBox.Text = sampleCount.ToString(CultureInfo.InvariantCulture);
         GeneratedStartTime = startTime;
-        keys = CameraPresetGenerator.Generate(configured, origin);
+        keys = CameraPresetGenerator.Generate(configured, origin, sampleCount);
         return true;
     }
 
