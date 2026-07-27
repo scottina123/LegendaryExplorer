@@ -56,6 +56,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<ActorRecord> Actors { get; set; } = new();
 
+        public List<GestureTrackRecord> GestureTracks { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -93,6 +95,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SequenceEvents.Clear();
             TlkStrings.Clear();
             Actors.Clear();
+            GestureTracks.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -111,6 +114,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SequenceEvents.AddRange(from.SequenceEvents);
             TlkStrings.AddRange(from.TlkStrings);
             Actors.AddRange(from.Actors);
+            GestureTracks.AddRange(from.GestureTracks);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -868,5 +872,67 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     public sealed record ActorUsage(int FileKey, int UIndex, bool IsInMod) : IAssetUsage
     {
         public ActorUsage() : this(default, default, default) { }
+    }
+
+    public class GestureTrackRecord : IAssetRecord
+    {
+        public string TrackName { get; set; }
+
+        public string StartingPoseSet { get; set; }
+
+        public string StartingPoseAnim { get; set; }
+
+        public List<GestureDataRecord> Gestures { get; set; } = new();
+
+        public bool IsModOnly { get; set; }
+
+        [IgnoredMember] public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        public List<GestureTrackUsage> Usages { get; set; } = new();
+
+        public GestureTrackRecord(string trackName, string startingPoseSet, string startingPoseAnim, IEnumerable<GestureDataRecord> gestures, bool isModOnly)
+        {
+            TrackName = trackName;
+            StartingPoseSet = startingPoseSet;
+            StartingPoseAnim = startingPoseAnim;
+            Gestures.AddRange(gestures);
+            IsModOnly = isModOnly;
+        }
+
+        public GestureTrackRecord()
+        { }
+    }
+
+    public class GestureDataRecord
+    {
+        public string PoseSet { get; set; }
+
+        public string PoseAnim { get; set; }
+
+        public string GestureSet { get; set; }
+
+        public string GestureAnim { get; set; }
+
+        public string TransitionSet { get; set; }
+
+        public string TransitionAnim { get; set; }
+
+        public GestureDataRecord(string poseSet, string poseAnim, string gestureSet, string gestureAnim, string transitionSet, string transitionAnim)
+        {
+            PoseSet = poseSet;
+            PoseAnim = poseAnim;
+            GestureSet = gestureSet;
+            GestureAnim = gestureAnim;
+            TransitionSet = transitionSet;
+            TransitionAnim = transitionAnim;
+        }
+
+        public GestureDataRecord()
+        { }
+    }
+
+    public sealed record GestureTrackUsage(int FileKey, int UIndex, bool IsInMod) : IAssetUsage
+    {
+        public GestureTrackUsage() : this(default, default, default) { }
     }
 }

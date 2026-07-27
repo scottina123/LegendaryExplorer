@@ -189,9 +189,87 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        public sealed class GestureFilterCriterion : INotifyPropertyChanged
+        {
+            private string _groupLabel = "Gesture 1:";
+            private string _poseSet;
+            private string _poseAnim;
+            private string _gestureSet;
+            private string _gestureAnim;
+            private string _transitionSet;
+            private string _transitionAnim;
+            private bool _canRemove;
+
+            public event PropertyChangedEventHandler PropertyChanged;
+
+            public string GroupLabel
+            {
+                get => _groupLabel;
+                set => SetField(ref _groupLabel, value, nameof(GroupLabel));
+            }
+
+            public string PoseSet
+            {
+                get => _poseSet;
+                set => SetField(ref _poseSet, value, nameof(PoseSet));
+            }
+
+            public string PoseAnim
+            {
+                get => _poseAnim;
+                set => SetField(ref _poseAnim, value, nameof(PoseAnim));
+            }
+
+            public string GestureSet
+            {
+                get => _gestureSet;
+                set => SetField(ref _gestureSet, value, nameof(GestureSet));
+            }
+
+            public string GestureAnim
+            {
+                get => _gestureAnim;
+                set => SetField(ref _gestureAnim, value, nameof(GestureAnim));
+            }
+
+            public string TransitionSet
+            {
+                get => _transitionSet;
+                set => SetField(ref _transitionSet, value, nameof(TransitionSet));
+            }
+
+            public string TransitionAnim
+            {
+                get => _transitionAnim;
+                set => SetField(ref _transitionAnim, value, nameof(TransitionAnim));
+            }
+
+            public bool CanRemove
+            {
+                get => _canRemove;
+                set => SetField(ref _canRemove, value, nameof(CanRemove));
+            }
+
+            public bool HasValues => !string.IsNullOrWhiteSpace(PoseSet)
+                                     || !string.IsNullOrWhiteSpace(PoseAnim)
+                                     || !string.IsNullOrWhiteSpace(GestureSet)
+                                     || !string.IsNullOrWhiteSpace(GestureAnim)
+                                     || !string.IsNullOrWhiteSpace(TransitionSet)
+                                     || !string.IsNullOrWhiteSpace(TransitionAnim);
+
+            private void SetField<T>(ref T field, T value, string propertyName)
+            {
+                if (!EqualityComparer<T>.Default.Equals(field, value))
+                {
+                    field = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+                }
+            }
+        }
+
         #region Declarations
-        // v9.9: Persist owner-friendly conversation speaker names during scan to avoid live package resolution.
-        public const string dbCurrentBuild = "9.9";
+        // v10.0: Index BioEvtSysTrackGesture starting poses and BioGestureData entries.
+        public const string dbCurrentBuild = "10.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -370,6 +448,33 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             PawnFilterOption,
             PointOfInterestFilterOption
         };
+        public ObservableCollectionExtended<GestureFilterCriterion> GestureCriteria { get; } = new();
+
+        private string _gestureStartingPoseSet;
+        public string GestureStartingPoseSet
+        {
+            get => _gestureStartingPoseSet;
+            set
+            {
+                if (SetProperty(ref _gestureStartingPoseSet, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _gestureStartingPoseAnim;
+        public string GestureStartingPoseAnim
+        {
+            get => _gestureStartingPoseAnim;
+            set
+            {
+                if (SetProperty(ref _gestureStartingPoseAnim, value))
+                {
+                    Filter();
+                }
+            }
+        }
 
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
@@ -799,6 +904,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 || (currentView == 10 && sequenceEventsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 11 && tlkUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 12 && actorsUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 13 && gestureTracksUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
@@ -873,6 +979,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             ImportQueue.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasImportQueueItems));
             EnsureMaterialTextureCriteria();
+            EnsureGestureCriteria();
             InitializeComponent();
         }
 
@@ -1156,7 +1263,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -1754,6 +1861,66 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             RemoveMaterialTextureCriterion((sender as FrameworkElement)?.Tag as MaterialTextureFilterCriterion);
         }
 
+        private void EnsureGestureCriteria()
+        {
+            if (GestureCriteria.Count == 0)
+            {
+                AddGestureCriterion();
+            }
+            else
+            {
+                UpdateGestureCriteriaMetadata();
+            }
+        }
+
+        private void AddGestureCriterion()
+        {
+            var criterion = new GestureFilterCriterion();
+            criterion.PropertyChanged += GestureCriterion_PropertyChanged;
+            GestureCriteria.Add(criterion);
+            UpdateGestureCriteriaMetadata();
+        }
+
+        private void RemoveGestureCriterion(GestureFilterCriterion criterion)
+        {
+            if (criterion is null)
+            {
+                return;
+            }
+
+            criterion.PropertyChanged -= GestureCriterion_PropertyChanged;
+            GestureCriteria.Remove(criterion);
+            EnsureGestureCriteria();
+            Filter();
+        }
+
+        private void UpdateGestureCriteriaMetadata()
+        {
+            for (int i = 0; i < GestureCriteria.Count; i++)
+            {
+                GestureCriteria[i].GroupLabel = $"Gesture {i + 1}:";
+                GestureCriteria[i].CanRemove = GestureCriteria.Count > 1;
+            }
+        }
+
+        private void GestureCriterion_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is not nameof(GestureFilterCriterion.GroupLabel) and not nameof(GestureFilterCriterion.CanRemove))
+            {
+                Filter();
+            }
+        }
+
+        private void AddGestureCriterion_Click(object sender, RoutedEventArgs e)
+        {
+            AddGestureCriterion();
+        }
+
+        private void RemoveGestureCriterion_Click(object sender, RoutedEventArgs e)
+        {
+            RemoveGestureCriterion((sender as FrameworkElement)?.Tag as GestureFilterCriterion);
+        }
+
         private static int GetMaterialTextureCountForFilter(MaterialRecord material, string textureTypeFilter)
         {
             if (string.Equals(textureTypeFilter, AllMaterialTextureTypeFilterOption, StringComparison.OrdinalIgnoreCase))
@@ -2264,7 +2431,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         CurrentOverallOperationText = $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} " +
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
-                                                      $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count}";
+                                                      $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} " +
+                                                      $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
@@ -2997,7 +3165,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 FilterText = string.Empty;
                 UsageFilterText = string.Empty;
-                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11 or 12;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11 or 12 or 13;
                 Filter();
                 switch (currentView)
                 {
@@ -3022,6 +3190,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         break;
                     case 12:
                         FilterWatermark = "Search (by export name, tag, or game name)";
+                        break;
+                    case 13:
+                        FilterWatermark = "Search (by track, pose, gesture, or transition name)";
                         break;
                     default:
                         FilterWatermark = "Search";
@@ -5010,6 +5181,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             sequenceEventsUsagesPanel?.RefreshFilter();
             tlkUsagesPanel?.RefreshFilter();
             actorsUsagesPanel?.RefreshFilter();
+            gestureTracksUsagesPanel?.RefreshFilter();
 
             RefreshUsageView(lstbx_Usages);
             RefreshUsageView(lstbx_PlotUsages);
@@ -5326,6 +5498,62 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return false;
         }
 
+        private bool GestureTrackTabFilter(object obj)
+        {
+            if (obj is not GestureTrackRecord track
+                || !MatchesGestureValue(track.StartingPoseSet, GestureStartingPoseSet)
+                || !MatchesGestureValue(track.StartingPoseAnim, GestureStartingPoseAnim))
+            {
+                return false;
+            }
+
+            foreach (var criterion in GestureCriteria.Where(criterion => criterion.HasValues))
+            {
+                if (!track.Gestures.Any(gesture => MatchesGestureCriterion(gesture, criterion)))
+                {
+                    return false;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(FilterText))
+            {
+                return true;
+            }
+
+            return ContainsText(track.TrackName, FilterText)
+                   || ContainsText(track.StartingPoseSet, FilterText)
+                   || ContainsText(track.StartingPoseAnim, FilterText)
+                   || track.Gestures.Any(gesture => ContainsText(gesture.PoseSet, FilterText)
+                                                    || ContainsText(gesture.PoseAnim, FilterText)
+                                                    || ContainsText(gesture.GestureSet, FilterText)
+                                                    || ContainsText(gesture.GestureAnim, FilterText)
+                                                    || ContainsText(gesture.TransitionSet, FilterText)
+                                                    || ContainsText(gesture.TransitionAnim, FilterText));
+        }
+
+        private bool MatchesGestureCriterion(GestureDataRecord gesture, GestureFilterCriterion criterion)
+        {
+            return MatchesGestureValue(gesture.PoseSet, criterion.PoseSet)
+                   && MatchesGestureValue(gesture.PoseAnim, criterion.PoseAnim)
+                   && MatchesGestureValue(gesture.GestureSet, criterion.GestureSet)
+                   && MatchesGestureValue(gesture.GestureAnim, criterion.GestureAnim)
+                   && MatchesGestureValue(gesture.TransitionSet, criterion.TransitionSet)
+                   && MatchesGestureValue(gesture.TransitionAnim, criterion.TransitionAnim);
+        }
+
+        private bool MatchesGestureValue(string value, string filter)
+        {
+            if (string.IsNullOrWhiteSpace(filter))
+            {
+                return true;
+            }
+
+            string trimmedFilter = filter.Trim();
+            return string.Equals(trimmedFilter, "None", StringComparison.OrdinalIgnoreCase)
+                ? string.Equals(value, "None", StringComparison.OrdinalIgnoreCase)
+                : ContainsText(value, trimmedFilter);
+        }
+
         private void Filter()
         {
             AssetFilters.SetSearch(FilterText);
@@ -5410,6 +5638,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewAct = CollectionViewSource.GetDefaultView(CurrentDataBase.Actors);
                     viewAct.Filter = ActorTabFilter;
                     lstbx_Actors.ItemsSource = viewAct;
+                    break;
+                case 13: // Gesture Tracks
+                    ICollectionView viewGT = CollectionViewSource.GetDefaultView(CurrentDataBase.GestureTracks);
+                    viewGT.Filter = GestureTrackTabFilter;
+                    lstbx_GestureTracks.ItemsSource = viewGT;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -6046,6 +6279,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 7 => guiUsagesPanel.SelectedItem as IAssetUsage,
                 10 => sequenceEventsUsagesPanel.SelectedItem as IAssetUsage,
                 12 => actorsUsagesPanel.SelectedItem as IAssetUsage,
+                13 => gestureTracksUsagesPanel.SelectedItem as IAssetUsage,
                 _ => null
             };
         }

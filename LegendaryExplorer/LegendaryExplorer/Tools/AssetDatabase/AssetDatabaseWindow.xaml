@@ -1808,6 +1808,111 @@
                             </assetDatabase:AssetUsagesPanel>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="Gesture Tracks" TabIndex="13">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Gesture Tracks" Style="{StaticResource ColumnHeaderStyle}" ToolTip="BioEvtSysTrackGesture exports and their BioGestureData entries." Grid.Row="0" Grid.Column="0"/>
+                            <ScrollViewer Grid.Row="1" Grid.ColumnSpan="3" MaxHeight="190" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="4,2">
+                                    <WrapPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Starting Pose Set:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <xctk:WatermarkTextBox Width="180" Margin="0,0,12,0"
+                                                               Watermark="Any value"
+                                                               Text="{Binding GestureStartingPoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <TextBlock Text="Starting Pose Anim:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <xctk:WatermarkTextBox Width="180" Margin="0,0,12,0"
+                                                               Watermark="Any value"
+                                                               Text="{Binding GestureStartingPoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <Button Content="Add Gesture Group" Padding="8,2" Click="AddGestureCriterion_Click"
+                                                ToolTip="Require another BioGestureData entry to match."/>
+                                    </WrapPanel>
+                                    <ItemsControl ItemsSource="{Binding GestureCriteria}" Margin="0,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <WrapPanel VerticalAlignment="Center" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding GroupLabel}" FontWeight="SemiBold" Width="72" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Pose Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding PoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Pose Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding PoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Gesture Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding GestureSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Gesture Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding GestureAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Transition Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding TransitionSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Transition Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding TransitionAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="Remove" Padding="8,2" Tag="{Binding}" Click="RemoveGestureCriterion_Click"
+                                                            Visibility="{Binding CanRemove, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                </WrapPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                            <controls:ListBoxScroll x:Name="lstbx_GestureTracks" MinWidth="300" Grid.Row="2" Grid.Column="0">
+                                <controls:ListBoxScroll.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding TrackName}"/>
+                                            <TextBlock FontSize="10" Text=" (" VerticalAlignment="Center"/>
+                                            <TextBlock FontSize="10" Text="{Binding Gestures.Count}" VerticalAlignment="Center"/>
+                                            <TextBlock FontSize="10" Text=" gestures)" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </controls:ListBoxScroll.ItemTemplate>
+                                <controls:ListBoxScroll.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource ModHighlightItemStyle}"/>
+                                </controls:ListBoxScroll.ItemContainerStyle>
+                            </controls:ListBoxScroll>
+                            <TextBlock Text="Gesture Data" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Starting pose and BioGestureData values." Grid.Row="0" Grid.Column="1"/>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="2" Grid.Column="1">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="5">
+                                        <TextBlock Text="Starting Pose" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding SelectedItem.StartingPoseSet, ElementName=lstbx_GestureTracks, StringFormat=Set: {0}}"/>
+                                        <TextBlock Text="{Binding SelectedItem.StartingPoseAnim, ElementName=lstbx_GestureTracks, StringFormat=Anim: {0}}" Margin="0,0,0,8"/>
+                                        <ItemsControl ItemsSource="{Binding SelectedItem.Gestures, ElementName=lstbx_GestureTracks}" AlternationCount="10000">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,0,0,10">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding RelativeSource={RelativeSource AncestorType=ContentPresenter}, Path=(ItemsControl.AlternationIndex), StringFormat=Gesture {0}}"/>
+                                                        <TextBlock Text="{Binding PoseSet, StringFormat=Pose Set: {0}}"/>
+                                                        <TextBlock Text="{Binding PoseAnim, StringFormat=Pose Anim: {0}}"/>
+                                                        <TextBlock Text="{Binding GestureSet, StringFormat=Gesture Set: {0}}"/>
+                                                        <TextBlock Text="{Binding GestureAnim, StringFormat=Gesture Anim: {0}}"/>
+                                                        <TextBlock Text="{Binding TransitionSet, StringFormat=Transition Set: {0}}"/>
+                                                        <TextBlock Text="{Binding TransitionAnim, StringFormat=Transition Anim: {0}}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                            <assetDatabase:AssetUsagesPanel x:Name="gestureTracksUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_GestureTracks}"
+                                                           HeaderToolTip="The package containing this gesture track&#x0a;Right click to open in Package Editor">
+                                <assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this gesture track in Package Editor."/>
+                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
+                                    </ContextMenu>
+                                </assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                            </assetDatabase:AssetUsagesPanel>
+                        </Grid>
+                    </TabItem>
                 </TabControl>
             </DockPanel>
         </DockPanel>

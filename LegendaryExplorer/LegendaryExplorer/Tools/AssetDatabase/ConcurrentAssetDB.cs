@@ -84,6 +84,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, ActorRecord> GeneratedActors = new();
         /// <summary>
+        /// Dictionary that stores generated gesture track records
+        /// </summary>
+        public ConcurrentDictionary<string, GestureTrackRecord> GeneratedGestureTracks = new();
+        /// <summary>
         /// Used to do per-class locking during generation
         /// </summary>
         public ConcurrentDictionary<string, Lock> ClassLocks = new();
@@ -108,6 +112,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedTransitionRecords.Clear();
             GeneratedMaterialSpecifications.Clear();
             GeneratedActors.Clear();
+            GeneratedGestureTracks.Clear();
         }
 
         public string GetProgressString()
@@ -122,6 +127,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Lines: {GeneratedLines.Count}\n" +
                    $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
                    $"Actors: {GeneratedActors.Count}\n" +
+                   $"Gesture Tracks: {GeneratedGestureTracks.Count}\n" +
                    $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
@@ -204,6 +210,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 actor.IsModOnly = actor.Usages.All(u => u.IsInMod);
             }
             pdb.Actors.AddRange(actorsSorted);
+
+            var gestureTracksSorted = GeneratedGestureTracks.Values
+                .OrderBy(x => x.TrackName, System.StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            pdb.GestureTracks.AddRange(gestureTracksSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);
