@@ -33,6 +33,8 @@ using ME3Tweaks.Wwiser;
 using ME3Tweaks.Wwiser.Formats;
 using ME3Tweaks.Wwiser.Model.ParameterNode;
 using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
+using WwiserFxShareSet = ME3Tweaks.Wwiser.Model.Hierarchy.FxShareSet;
+using WwiserSound = ME3Tweaks.Wwiser.Model.Hierarchy.Sound;
 using Brushes = System.Drawing.Brushes;
 using Color = System.Drawing.Color;
 using Image = System.Drawing.Image;
@@ -47,6 +49,8 @@ namespace LegendaryExplorer.Tools.WwiseEditor
     /// </summary>
     public partial class WwiseEditorWindow : WPFBase, IRecents
     {
+        private const uint DualFiltersRadioCommId = 2952825346;
+
         private struct SaveData
         {
             public uint ID;
@@ -454,7 +458,7 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             }
         }
 
-        private void AdjustBankVolume_Click(object sender, RoutedEventArgs e)
+        private void AdjustBankSettings_Click(object sender, RoutedEventArgs e)
         {
             if (CurrentExport == null)
             {
@@ -479,33 +483,51 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                     return;
                 }
 
+                var sounds = bank.HIRC?.Items
+                    .Select(item => item.Item)
+                    .OfType<WwiserSound>()
+                    .ToList() ?? [];
+                bool? loopAudio = GetLoopAudioState(sounds);
+                bool radioEffect = rootMixers.Any(HasRadioEffect);
+                bool canApplyRadioEffect = bank.HIRC?.Items.Any(item =>
+                    item.Item is WwiserFxShareSet { Id: DualFiltersRadioCommId }) == true;
                 float currentVolume = GetActorMixerVolume(rootMixers[0]);
-                var volumeDialog = new WwiseBankVolumeDialog(currentVolume) { Owner = this };
-                if (volumeDialog.ShowDialog() != true || volumeDialog.SelectedVolume == currentVolume)
+                var settingsDialog = new WwiseBankVolumeDialog(currentVolume, loopAudio, radioEffect, canApplyRadioEffect)
+                {
+                    Owner = this
+                };
+                if (settingsDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
+                bool volumeChanged = settingsDialog.SelectedVolume != currentVolume;
+                bool loopChanged = settingsDialog.LoopAudio.HasValue && settingsDialog.LoopAudio != loopAudio;
+                bool radioChanged = settingsDialog.RadioEffect != radioEffect;
+                if (!volumeChanged && !loopChanged && !radioChanged)
                 {
                     return;
                 }
 
                 foreach (var mixer in rootMixers)
                 {
-                    var parameters = mixer.NodeBaseParameters.InitialParams62;
-                    int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
-                    if (volumeIndex >= 0)
+                    if (volumeChanged)
                     {
-                        var volume = parameters.ParameterValues[volumeIndex];
-                        volume.Float = volumeDialog.SelectedVolume;
-                        volume.Integer = 0;
-                        volume.StoredAsFloat = true;
+                        SetInitialParameter(mixer.NodeBaseParameters.InitialParams62, PropId.Volume,
+                            settingsDialog.SelectedVolume, true);
                     }
-                    else
+
+                    if (radioChanged)
                     {
-                        var volume = new InitialParamsV62.ParameterValue
-                        {
-                            Float = volumeDialog.SelectedVolume,
-                            StoredAsFloat = true
-                        };
-                        parameters.AddParameter(PropId.Volume, volume);
-                        parameters.ParamLength = checked((byte)parameters.ParameterIds.Count);
+                        SetRadioEffect(mixer, settingsDialog.RadioEffect);
+                    }
+                }
+
+                if (loopChanged)
+                {
+                    foreach (var sound in sounds)
+                    {
+                        SetLoopAudio(sound, settingsDialog.LoopAudio == true);
                     }
                 }
 
@@ -513,13 +535,27 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 WwiseBankParser.Serialize(bank, output);
                 CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
                 RefreshView();
-                StatusBar_LeftMostText.Text = $"Set {CurrentExport.ObjectName} volume to {volumeDialog.SelectedVolume:0.##} dB";
+                StatusBar_LeftMostText.Text = $"Updated settings for {CurrentExport.ObjectName}";
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Unable to adjust bank volume:\n{ex.Message}", "Volume adjustment failed",
+                MessageBox.Show(this, $"Unable to adjust bank settings:\n{ex.Message}", "Bank settings failed",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void WwiseBanks_ListBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not ListBox listBox ||
+                ItemsControl.ContainerFromElement(listBox, e.OriginalSource as DependencyObject) is not ListBoxItem item ||
+                item.DataContext is not ExportEntry bankExport)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            item.IsSelected = true;
+            CurrentExport = bankExport;
         }
 
         private static float GetActorMixerVolume(WwiserActorMixer mixer)
@@ -527,6 +563,95 @@ namespace LegendaryExplorer.Tools.WwiseEditor
             var parameters = mixer.NodeBaseParameters.InitialParams62;
             int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
             return volumeIndex >= 0 ? parameters.ParameterValues[volumeIndex].Value : 0;
+        }
+
+        private static bool? GetLoopAudioState(List<WwiserSound> sounds)
+        {
+            if (sounds.Count == 0)
+            {
+                return false;
+            }
+
+            int loopingSounds = sounds.Count(IsLooping);
+            return loopingSounds switch
+            {
+                0 => false,
+                var count when count == sounds.Count => true,
+                _ => null
+            };
+        }
+
+        private static bool IsLooping(WwiserSound sound) =>
+            sound.NodeBaseParameters.InitialParams62.ParameterIds.Any(id => id.PropValue == PropId.Loop);
+
+        private static void SetLoopAudio(WwiserSound sound, bool enabled)
+        {
+            var parameters = sound.NodeBaseParameters.InitialParams62;
+            if (enabled)
+            {
+                SetInitialParameter(parameters, PropId.Loop, 0, false);
+            }
+            else
+            {
+                RemoveInitialParameter(parameters, PropId.Loop);
+            }
+        }
+
+        private static bool HasRadioEffect(WwiserActorMixer mixer) =>
+            mixer.NodeBaseParameters.FxParams.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId);
+
+        private static void SetRadioEffect(WwiserActorMixer mixer, bool enabled)
+        {
+            var effects = mixer.NodeBaseParameters.FxParams;
+            if (enabled && !effects.FxChunks.Any(effect => effect.Id == DualFiltersRadioCommId))
+            {
+                byte effectIndex = effects.FxChunks.Count == 0
+                    ? (byte)0
+                    : checked((byte)(effects.FxChunks.Max(effect => effect.FxIndex) + 1));
+                effects.FxChunks.Add(new FxChunk
+                {
+                    FxIndex = effectIndex,
+                    Id = DualFiltersRadioCommId,
+                    IsShareSet = true
+                });
+            }
+            else if (!enabled)
+            {
+                effects.FxChunks.RemoveAll(effect => effect.Id == DualFiltersRadioCommId);
+            }
+
+            effects.NumFx = checked((byte)effects.FxChunks.Count);
+            effects.IsOverrideParentFx = effects.NumFx > 0;
+        }
+
+        private static void SetInitialParameter(InitialParamsV62 parameters, PropId id, float value, bool storedAsFloat)
+        {
+            int parameterIndex = parameters.ParameterIds.FindIndex(parameter => parameter.PropValue == id);
+            var parameterValue = parameterIndex >= 0
+                ? parameters.ParameterValues[parameterIndex]
+                : new InitialParamsV62.ParameterValue();
+            parameterValue.Float = storedAsFloat ? value : 0;
+            parameterValue.Integer = storedAsFloat ? 0 : (uint)value;
+            parameterValue.StoredAsFloat = storedAsFloat;
+
+            if (parameterIndex < 0)
+            {
+                parameters.AddParameter(id, parameterValue);
+                parameters.ParamLength = checked((byte)parameters.ParameterIds.Count);
+            }
+        }
+
+        private static void RemoveInitialParameter(InitialParamsV62 parameters, PropId id)
+        {
+            int parameterIndex = parameters.ParameterIds.FindIndex(parameter => parameter.PropValue == id);
+            if (parameterIndex < 0)
+            {
+                return;
+            }
+
+            parameters.ParameterIds.RemoveAt(parameterIndex);
+            parameters.ParameterValues.RemoveAt(parameterIndex);
+            parameters.ParamLength = checked((byte)parameters.ParameterIds.Count);
         }
 
         public void LoadFile(string s, int goToIndex = 0)

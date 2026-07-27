@@ -11,8 +11,10 @@ namespace LegendaryExplorer.Dialogs
         private bool _updatingVolume;
 
         public float SelectedVolume => (float)VolumeSlider.Value;
+        public bool? LoopAudio => LoopAudioCheckBox.IsChecked;
+        public bool RadioEffect => RadioEffectCheckBox.IsChecked == true;
 
-        public WwiseBankVolumeDialog(float currentVolume)
+        public WwiseBankVolumeDialog(float currentVolume, bool? loopAudio, bool radioEffect, bool canApplyRadioEffect)
         {
             InitializeComponent();
             CustomWindowChrome.ApplyCustomChrome(this);
@@ -24,6 +26,12 @@ namespace LegendaryExplorer.Dialogs
             VolumeTextBox.Text = currentVolume.ToString("0.##", CultureInfo.InvariantCulture);
             _updatingVolume = false;
             CurrentVolumeRun.Text = $"{currentVolume.ToString("0.0", CultureInfo.InvariantCulture)} dB";
+            LoopAudioCheckBox.IsChecked = loopAudio;
+            RadioEffectCheckBox.IsChecked = radioEffect;
+            RadioEffectCheckBox.IsEnabled = canApplyRadioEffect || radioEffect;
+            RadioEffectUnavailableText.Visibility = canApplyRadioEffect || radioEffect
+                ? Visibility.Collapsed
+                : Visibility.Visible;
         }
 
         private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

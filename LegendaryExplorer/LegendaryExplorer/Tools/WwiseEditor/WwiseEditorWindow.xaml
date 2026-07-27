@@ -59,9 +59,9 @@
                     <MenuItem Header="Save View" Command="{Binding SaveViewCommand}" ToolTip="Save the node layout" />
                     <MenuItem Header="Save Image" Command="{Binding SaveImageCommand}" ToolTip="Save image of full Sequence" />
                     <Separator />
-                    <MenuItem Header="Adjust Bank Volume..." Click="AdjustBankVolume_Click"
+                    <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"
                               IsEnabled="{Binding CurrentExport, Converter={StaticResource NullEnabledConverter}}"
-                              ToolTip="View and set the volume of this bank and all audio it contains" />
+                              ToolTip="View and set volume, looping, and effects for this bank" />
                 </MenuItem>
 
                 <MenuItem Header="View Options" Padding="4">
@@ -154,7 +154,13 @@
                              SelectedItem="{Binding CurrentExport}"
                              HorizontalContentAlignment="Stretch"
                              SelectionMode="Extended"
+                              ContextMenuOpening="WwiseBanks_ListBox_ContextMenuOpening"
                              Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Adjust Bank Settings..." Click="AdjustBankSettings_Click"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type packages:ExportEntry}">
                                 <Grid Margin="0,0,5,0">

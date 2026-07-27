@@ -1,7 +1,7 @@
 <Window x:Class="LegendaryExplorer.Dialogs.WwiseBankVolumeDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Adjust Bank Volume" Width="480" Height="240"
+        Title="Adjust Bank Settings" Width="500" Height="330"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -12,7 +12,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Set the volume applied to this bank and all audio it contains."
+        <TextBlock Text="Set the volume and audio processing applied to this bank."
                    TextWrapping="Wrap" Margin="0,0,0,10"/>
         <TextBlock Grid.Row="1" Margin="0,0,0,4">
             <Run Text="Current volume: "/>
@@ -32,8 +32,19 @@
                      TextChanged="VolumeTextBox_TextChanged" ToolTip="Enter the bank volume manually"/>
             <TextBlock Grid.Column="2" Text="dB" VerticalAlignment="Center"/>
         </Grid>
-        <TextBlock x:Name="ValidationText" Grid.Row="3" Foreground="Red" Margin="0,4,0,0"
-                   Visibility="Collapsed"/>
+        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+            <CheckBox x:Name="LoopAudioCheckBox" Margin="0,4"
+                      Content="Loop imported audio infinitely" IsThreeState="True"
+                      ToolTip="Checked applies infinite looping to all sounds. An indeterminate value preserves mixed loop settings."/>
+            <CheckBox x:Name="RadioEffectCheckBox" Margin="0,4"
+                      Content="Apply Dual_Filters_Radio_Comm effect"
+                      ToolTip="Applies the imported Wwise Parametric EQ radio communication filter to the root ActorMixer."/>
+            <TextBlock x:Name="RadioEffectUnavailableText" Margin="24,0,0,0" Opacity="0.7"
+                       Text="This bank does not contain the imported radio effect data, so the effect cannot be enabled."
+                       TextWrapping="Wrap" Visibility="Collapsed"/>
+            <TextBlock x:Name="ValidationText" Foreground="Red" Margin="0,4,0,0"
+                       Visibility="Collapsed"/>
+        </StackPanel>
         <Grid Grid.Row="4" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>

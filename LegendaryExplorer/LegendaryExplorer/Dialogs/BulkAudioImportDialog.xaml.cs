@@ -363,17 +363,13 @@ namespace LegendaryExplorer.Dialogs
                     masterMixerDoc.Save(masterMixerPath);
                 }
 
-                // 3b. Create ShareSets work unit for the radio effect if needed
-                string effectWuId = null;
-                if (applyRadioEffect)
-                {
-                    effectWuId = "{E8613F7D-BAD3-45CD-A3ED-505576F31277}";
-                    string shareSetsDir = Path.Combine(projectDir, "ShareSets");
-                    Directory.CreateDirectory(shareSetsDir);
-                    string shareSetsPath = Path.Combine(shareSetsDir, "Default Work Unit.wwu");
-                    var shareSetsXml = BuildShareSetsWorkUnitXml(effectWuId);
-                    File.WriteAllText(shareSetsPath, shareSetsXml);
-                }
+                // 3b. Always include the radio ShareSet so Wwise Editor can apply or remove it later
+                const string effectWuId = "{E8613F7D-BAD3-45CD-A3ED-505576F31277}";
+                string shareSetsDir = Path.Combine(projectDir, "ShareSets");
+                Directory.CreateDirectory(shareSetsDir);
+                string shareSetsPath = Path.Combine(shareSetsDir, "Default Work Unit.wwu");
+                var shareSetsXml = BuildShareSetsWorkUnitXml(effectWuId);
+                File.WriteAllText(shareSetsPath, shareSetsXml);
 
                 // 4. Build Actor-Mixer Hierarchy XML
                 var actorMixerId = $"{{{Guid.NewGuid()}}}";
@@ -388,7 +384,7 @@ namespace LegendaryExplorer.Dialogs
 
                 // 6. Build SoundBanks XML
                 var soundBanksXml = BuildSoundBanksXml(soundBanksDoc.Root.Attribute("ID")?.Value,
-                    bankName, actorMixerWuId, eventsWuId);
+                    bankName, actorMixerWuId, eventsWuId, effectWuId);
                 File.WriteAllText(soundBanksPath, soundBanksXml);
 
                 Dispatcher.Invoke(() => StatusTextBlock.Text = "Running WwiseCLI to generate soundbank...");
@@ -775,7 +771,7 @@ namespace LegendaryExplorer.Dialogs
         /// Builds the SoundBanks XML with a single bank that includes both the Actor-Mixer and Events work units.
         /// </summary>
         private static string BuildSoundBanksXml(string workUnitId, string bankName,
-            string actorMixerWuId, string eventsWuId)
+            string actorMixerWuId, string eventsWuId, string effectWuId)
         {
             var soundBankId = $"{{{Guid.NewGuid()}}}";
 
@@ -789,6 +785,7 @@ namespace LegendaryExplorer.Dialogs
             xml.AppendLine("\t\t\t\t\t<ObjectInclusionList>");
             xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{actorMixerWuId}\" WorkUnitID=\"{actorMixerWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
             xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{eventsWuId}\" WorkUnitID=\"{eventsWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
+            xml.AppendLine($"\t\t\t\t\t\t<ObjectRef Name=\"Default Work Unit\" ID=\"{effectWuId}\" WorkUnitID=\"{effectWuId}\" Filter=\"7\" Origin=\"Manual\"/>");
             xml.AppendLine("\t\t\t\t\t</ObjectInclusionList>");
             xml.AppendLine("\t\t\t\t\t<ObjectExclusionList/>");
             xml.AppendLine("\t\t\t\t\t<GameSyncExclusionList/>");
