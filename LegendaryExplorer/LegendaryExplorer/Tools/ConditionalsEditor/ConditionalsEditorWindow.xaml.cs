@@ -21,6 +21,7 @@ using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.PlotDatabase;
@@ -89,6 +90,16 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         public const string CNDFileFilter = "ME3/LE3 conditional file|*.cnd";
         private const string ConditionalsDragFormat = "LegendaryExplorer.ConditionalsEditor.Conditional";
+        private static readonly string[] VanillaConditionalFiles =
+        [
+            "Conditionals.cnd",
+            "ConditionalsDLC_EXP_Pack001.cnd",
+            "ConditionalsDLC_EXP_Pack002.cnd",
+            "ConditionalsDLC_EXP_Pack003.cnd",
+            "ConditionalsDLC_CON_END.cnd",
+            "ConditionalsDLC_HEN_PR.cnd",
+            "ConditionalsDLC_Shared.cnd"
+        ];
 
         private HexBox hexBox;
         private readonly Guid _windowInstanceId = Guid.NewGuid();
@@ -175,7 +186,62 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
             LoadCommands();
             InitializeComponent();
             HideHexBox = true;
+            PopulateVanillaConditionalsMenu();
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
+        }
+
+        private void PopulateVanillaConditionalsMenu()
+        {
+            foreach (string fileName in VanillaConditionalFiles)
+            {
+                var menuItem = new MenuItem
+                {
+                    Header = fileName,
+                    Tag = fileName
+                };
+                menuItem.Click += VanillaConditionalMenuItem_Click;
+                VanillaConditionals_MenuItem.Items.Add(menuItem);
+            }
+        }
+
+        private static bool TryFindVanillaConditionalFile(string fileName, out string filePath)
+        {
+            var loadedFiles = MELoadedFiles.GetFilesLoadedInGame(
+                MEGame.LE3,
+                forceReload: true,
+                additionalExtensions: [".cnd"],
+                includeModDLC: false);
+            return loadedFiles.TryGetValue(fileName, out filePath);
+        }
+
+        private void VanillaConditionalMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Tag: string fileName })
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(MEDirectories.GetDefaultGamePath(MEGame.LE3)))
+            {
+                MessageBox.Show(this,
+                    "Vanilla conditional files require a configured Mass Effect Legendary Edition 3 install path.",
+                    "Conditionals Editor",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (!TryFindVanillaConditionalFile(fileName, out string filePath))
+            {
+                MessageBox.Show(this,
+                    $"Could not locate '{fileName}' in the configured Mass Effect Legendary Edition 3 installation.",
+                    "Conditionals Editor",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            LoadFile(filePath);
         }
 
         private void ConditionalsEditorWindow_OnLoaded(object sender, RoutedEventArgs e)
@@ -726,7 +792,8 @@ namespace LegendaryExplorer.Tools.ConditionalsEditor
 
         private void AddBlankConditional()
         {
-            if (PromptDialog.Prompt(this, "Enter ID for new entry", selectText: true) is string txt)
+            int? nextId = Conditionals.LastOrDefault()?.ID + 1;
+            if (PromptDialog.Prompt(this, "Enter ID for new entry", defaultValue: nextId?.ToString(), selectText: true) is string txt)
             {
                 if (int.TryParse(txt, out int newID) && newID > 0)
                 {

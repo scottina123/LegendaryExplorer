@@ -52,6 +52,7 @@
                 <MenuItem Header="File" Padding="4">
                     <MenuItem Header="_Open" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O"
                                     ToolTip="Open a conditionals file" />
+                    <MenuItem x:Name="VanillaConditionals_MenuItem" Header="Open vanilla conditional file" />
                     <MenuItem Header="_New" Command="{Binding NewFileCommand}" InputGestureText="Ctrl+N"
                               ToolTip="Create a new conditionals file" />
                     <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S"
@@ -112,6 +113,12 @@
                       MouseMove="ConditionalsListBox_MouseMove"
                       DragOver="ConditionalsListBox_DragOver"
                       Drop="ConditionalsListBox_Drop">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Add new conditional"
+                                  Command="{Binding AddBlankCommand}" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid>
@@ -144,6 +151,9 @@
                                 <TextBlock Text="{Binding PlotPath}" FontSize="10" Visibility="{Binding PlotPath, Converter={StaticResource NullVisibilityConverter}}"/>
                                 <StackPanel.ContextMenu>
                                     <ContextMenu>
+                                         <MenuItem Header="Add new conditional"
+                                                   Command="{Binding Source={StaticResource bindingProxy}, Path=Data.AddBlankCommand}" />
+                                         <Separator />
                                         <MenuItem Header="Change Id"
                                                   Command="{Binding Source={StaticResource bindingProxy}, Path=Data.ChangeIDCommand}" />
                                         <MenuItem Header="Clone"
@@ -234,7 +244,9 @@
                         BorderThickness="5,0"
                         BorderBrush="Transparent"
                         Panel.ZIndex="60"/>
-                    <TextBox Grid.Column="2" x:Name="ConditionalTextBox" TextWrapping="Wrap" TextChanged="ConditionalTextBox_OnTextChanged" />
+                    <TextBox Grid.Column="2" x:Name="ConditionalTextBox" TextWrapping="Wrap"
+                             ContextMenu="{DynamicResource DarkTextBoxContextMenu}"
+                             TextChanged="ConditionalTextBox_OnTextChanged" />
                 </Grid>
                 <!-- Graph View -->
                 <graphView:ConditionGraphView Grid.Row="1" x:Name="GraphViewControl" Visibility="Collapsed" />
