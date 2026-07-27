@@ -20,6 +20,7 @@ public partial class CameraPresetDialog : Window
     private sealed record PresetSearchResult(CameraPreset Preset, string Name, string CategoryDisplay);
 
     private static string SavedOriginPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetOriginV2.txt");
+    private static string SavedPresetPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetSelection.txt");
 
     private readonly Func<CameraOrigin?> _getTrackKeyOrigin;
     private readonly Func<CameraOrigin?> _getViewportOrigin;
@@ -67,7 +68,7 @@ public partial class CameraPresetDialog : Window
         {
             textBox.TextChanged += PreviewParameter_TextChanged;
         }
-        StaticPresetList.SelectedIndex = 0;
+        SelectSavedPreset();
     }
 
     protected override void OnClosed(EventArgs e)
@@ -75,6 +76,10 @@ public partial class CameraPresetDialog : Window
         if (TryReadOrigin(out CameraOrigin origin))
         {
             SaveOrigin(origin);
+        }
+        if (_selectedPreset is not null)
+        {
+            SavePreset(_selectedPreset);
         }
 
         CameraPreviewControl.Dispose();
@@ -177,6 +182,21 @@ public partial class CameraPresetDialog : Window
         _selectedPreset = preset;
         SetPresetFields(preset);
         RefreshLivePreview();
+    }
+
+    private void SelectSavedPreset()
+    {
+        CameraPreset preset = LoadSavedPreset() ?? CameraPresetCatalog.All[0];
+        (ListBox list, int tabIndex) = preset.Category switch
+        {
+            CameraPresetCategory.DynamicShots => (DynamicPresetList, 1),
+            CameraPresetCategory.ReactionShots => (ReactionPresetList, 2),
+            _ => (StaticPresetList, 0)
+        };
+        PresetTabs.SelectedIndex = tabIndex;
+        list.SelectedItem = preset;
+        list.Dispatcher.BeginInvoke(() => list.ScrollIntoView(preset),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private static string GetCategoryDisplay(CameraPresetCategory category) => category switch
@@ -571,6 +591,31 @@ public partial class CameraPresetDialog : Window
         return new CameraOrigin(Vector3.Zero, Vector3.Zero);
     }
 
+    private static CameraPreset LoadSavedPreset()
+    {
+        try
+        {
+            if (File.Exists(SavedPresetPath))
+            {
+                string[] values = File.ReadAllLines(SavedPresetPath);
+                if (values.Length == 2
+                    && Enum.TryParse(values[0], out CameraPresetCategory category))
+                {
+                    return CameraPresetCatalog.All.FirstOrDefault(preset =>
+                        preset.Category == category && preset.Name == values[1]);
+                }
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return null;
+    }
+
     private static void SaveOrigin(CameraOrigin origin)
     {
         try
@@ -580,6 +625,20 @@ public partial class CameraPresetDialog : Window
                 origin.Location.X, origin.Location.Y, origin.Location.Z,
                 origin.Rotation.X, origin.Rotation.Y, origin.Rotation.Z
             }.Select(Format)));
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void SavePreset(CameraPreset preset)
+    {
+        try
+        {
+            File.WriteAllLines(SavedPresetPath, new[] { preset.Category.ToString(), preset.Name });
         }
         catch (IOException)
         {
