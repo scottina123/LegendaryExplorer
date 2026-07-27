@@ -1218,15 +1218,19 @@ namespace LegendaryExplorer.Tools.InterpEditor
             posPoints.Clear();
             eulerPoints.Clear();
 
-            foreach (GeneratedCameraKey key in generatedKeys)
+            var rotations = UnwrapRotations(generatedKeys);
+            for (int i = 0; i < generatedKeys.Count; i++)
             {
+                GeneratedCameraKey key = generatedKeys[i];
                 float time = startTime + key.TimeOffset;
                 lookupPoints.Add(new StructProperty("InterpLookupPoint", false,
                     new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
 
                 EInterpCurveMode interpMode = GetInterpCurveMode(key.Interpolation, Export.Game);
-                var posPoint = new InterpCurvePoint<Vector3>(time, key.Location, Vector3.Zero, Vector3.Zero, interpMode);
-                var eulerPoint = new InterpCurvePoint<Vector3>(time, key.Rotation, Vector3.Zero, Vector3.Zero, interpMode);
+                Vector3 positionTangent = GetContinuousTangent(generatedKeys, i, static key => key.Location);
+                Vector3 rotationTangent = GetContinuousTangent(generatedKeys, rotations, i);
+                var posPoint = new InterpCurvePoint<Vector3>(time, key.Location, positionTangent, positionTangent, interpMode);
+                var eulerPoint = new InterpCurvePoint<Vector3>(time, rotations[i], rotationTangent, rotationTangent, interpMode);
                 posPoints.Add(posPoint.ToStructProperty(Export.Game));
                 eulerPoints.Add(eulerPoint.ToStructProperty(Export.Game));
             }
@@ -1235,14 +1239,81 @@ namespace LegendaryExplorer.Tools.InterpEditor
             LoadTrack();
         }
 
+        private static List<Vector3> UnwrapRotations(IReadOnlyList<GeneratedCameraKey> keys)
+        {
+            var rotations = new List<Vector3>(keys.Count);
+            if (keys.Count == 0)
+            {
+                return rotations;
+            }
+
+            rotations.Add(keys[0].Rotation);
+            for (int i = 1; i < keys.Count; i++)
+            {
+                Vector3 previous = rotations[i - 1];
+                Vector3 current = keys[i].Rotation;
+                rotations.Add(new Vector3(
+                    UnwrapAngle(previous.X, current.X),
+                    UnwrapAngle(previous.Y, current.Y),
+                    UnwrapAngle(previous.Z, current.Z)));
+            }
+
+            return rotations;
+        }
+
+        private static float UnwrapAngle(float previous, float current)
+        {
+            while (current - previous > 180f)
+            {
+                current -= 360f;
+            }
+
+            while (current - previous < -180f)
+            {
+                current += 360f;
+            }
+
+            return current;
+        }
+
+        private static Vector3 GetContinuousTangent(IReadOnlyList<GeneratedCameraKey> keys, int index,
+            Func<GeneratedCameraKey, Vector3> getValue)
+        {
+            if (keys.Count < 2 || keys[index].Interpolation is CameraKeyInterpolation.Constant or CameraKeyInterpolation.Linear)
+            {
+                return Vector3.Zero;
+            }
+
+            int previousIndex = Math.Max(0, index - 1);
+            int nextIndex = Math.Min(keys.Count - 1, index + 1);
+            float timeDelta = keys[nextIndex].TimeOffset - keys[previousIndex].TimeOffset;
+            return timeDelta > float.Epsilon
+                ? (getValue(keys[nextIndex]) - getValue(keys[previousIndex])) / timeDelta
+                : Vector3.Zero;
+        }
+
+        private static Vector3 GetContinuousTangent(IReadOnlyList<GeneratedCameraKey> keys, IReadOnlyList<Vector3> values, int index)
+        {
+            if (keys.Count < 2 || keys[index].Interpolation is CameraKeyInterpolation.Constant or CameraKeyInterpolation.Linear)
+            {
+                return Vector3.Zero;
+            }
+
+            int previousIndex = Math.Max(0, index - 1);
+            int nextIndex = Math.Min(keys.Count - 1, index + 1);
+            float timeDelta = keys[nextIndex].TimeOffset - keys[previousIndex].TimeOffset;
+            return timeDelta > float.Epsilon
+                ? (values[nextIndex] - values[previousIndex]) / timeDelta
+                : Vector3.Zero;
+        }
+
         private static EInterpCurveMode GetInterpCurveMode(CameraKeyInterpolation interpolation, MEGame game) =>
             interpolation switch
             {
                 CameraKeyInterpolation.Constant => EInterpCurveMode.CIM_Constant,
                 CameraKeyInterpolation.Linear => EInterpCurveMode.CIM_Linear,
-                CameraKeyInterpolation.Smooth => EInterpCurveMode.CIM_CurveAuto,
-                CameraKeyInterpolation.SmoothClamped when game is MEGame.ME1 or MEGame.ME2 => EInterpCurveMode.CIM_CurveAuto,
-                CameraKeyInterpolation.SmoothClamped => EInterpCurveMode.CIM_CurveAutoClamped,
+                CameraKeyInterpolation.Smooth => EInterpCurveMode.CIM_CurveUser,
+                CameraKeyInterpolation.SmoothClamped => EInterpCurveMode.CIM_CurveUser,
                 _ => EInterpCurveMode.CIM_Linear
             };
 
