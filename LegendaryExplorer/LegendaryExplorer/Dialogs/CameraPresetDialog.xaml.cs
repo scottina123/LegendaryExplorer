@@ -17,6 +17,8 @@ namespace LegendaryExplorer.Dialogs;
 
 public partial class CameraPresetDialog : Window
 {
+    private sealed record PresetSearchResult(CameraPreset Preset, string Name, string CategoryDisplay);
+
     private static string SavedOriginPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetOriginV2.txt");
 
     private readonly Func<CameraOrigin?> _getTrackKeyOrigin;
@@ -25,6 +27,7 @@ public partial class CameraPresetDialog : Window
     private readonly float? _maximumEndTime;
     private CameraPreset _selectedPreset;
     private bool _updatingCameraSpeed;
+    private bool _updatingPresetSelection;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -51,6 +54,15 @@ public partial class CameraPresetDialog : Window
         StatusTextBlock.Text = hasViewport ? "Preview uses the connected Level Editor viewport." : "Connect a Level Editor to enable viewport actions and preview.";
         StartTimeTextBox.Text = Format(initialStartTime);
         SetOrigin(LoadSavedOrigin());
+        foreach (TextBox textBox in new[]
+        {
+            OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
+            ForwardDistanceTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
+            LocalRollTextBox, LocalPitchTextBox, LocalYawTextBox, DurationTextBox, MovementAmountTextBox
+        })
+        {
+            textBox.TextChanged += PreviewParameter_TextChanged;
+        }
         StaticPresetList.SelectedIndex = 0;
     }
 
@@ -61,6 +73,7 @@ public partial class CameraPresetDialog : Window
             SaveOrigin(origin);
         }
 
+        CameraPreviewControl.Dispose();
         base.OnClosed(e);
     }
 
@@ -95,11 +108,12 @@ public partial class CameraPresetDialog : Window
 
     private void PresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ListBox { SelectedItem: CameraPreset preset })
+        if (_updatingPresetSelection || sender is not ListBox { SelectedItem: CameraPreset preset })
         {
             return;
         }
 
+        _updatingPresetSelection = true;
         foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList })
         {
             if (list != sender)
@@ -107,10 +121,66 @@ public partial class CameraPresetDialog : Window
                 list.SelectedItem = null;
             }
         }
+        PresetSearchResultsList.SelectedItem = null;
+        _updatingPresetSelection = false;
 
+        SelectPreset(preset);
+    }
+
+    private void PresetSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (PresetTabs is null || PresetSearchResultsList is null)
+        {
+            return;
+        }
+
+        string search = PresetSearchTextBox.Text.Trim();
+        bool isSearching = search.Length > 0;
+        PresetTabs.Visibility = isSearching ? Visibility.Collapsed : Visibility.Visible;
+        PresetSearchResultsList.Visibility = isSearching ? Visibility.Visible : Visibility.Collapsed;
+        if (!isSearching)
+        {
+            PresetSearchResultsList.ItemsSource = null;
+            return;
+        }
+
+        PresetSearchResultsList.ItemsSource = CameraPresetCatalog.All
+            .Where(preset => preset.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || GetCategoryDisplay(preset.Category).Contains(search, StringComparison.OrdinalIgnoreCase))
+            .Select(preset => new PresetSearchResult(preset, preset.Name, GetCategoryDisplay(preset.Category)))
+            .ToList();
+    }
+
+    private void PresetSearchResultsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingPresetSelection || PresetSearchResultsList.SelectedItem is not PresetSearchResult result)
+        {
+            return;
+        }
+
+        _updatingPresetSelection = true;
+        foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList })
+        {
+            list.SelectedItem = null;
+        }
+        _updatingPresetSelection = false;
+        SelectPreset(result.Preset);
+    }
+
+    private void SelectPreset(CameraPreset preset)
+    {
         _selectedPreset = preset;
         SetPresetFields(preset);
+        RefreshLivePreview();
     }
+
+    private static string GetCategoryDisplay(CameraPresetCategory category) => category switch
+    {
+        CameraPresetCategory.StaticShots => "Static Shot",
+        CameraPresetCategory.DynamicShots => "Dynamic Shot",
+        CameraPresetCategory.ReactionShots => "Reaction Shot",
+        _ => category.ToString()
+    };
 
     private void SetPresetFields(CameraPreset preset)
     {
@@ -130,6 +200,81 @@ public partial class CameraPresetDialog : Window
         SetCameraSpeed(1);
     }
 
+    private void TogglePreviewButton_Checked(object sender, RoutedEventArgs e)
+    {
+        PreviewColumn.Width = new GridLength(520);
+        PreviewPanel.Visibility = Visibility.Visible;
+        Width = Math.Max(Width, 1360);
+        RefreshLivePreview();
+    }
+
+    private void TogglePreviewButton_Unchecked(object sender, RoutedEventArgs e)
+    {
+        PreviewPanel.Visibility = Visibility.Collapsed;
+        PreviewColumn.Width = new GridLength(0);
+        CameraPreviewControl.Visibility = Visibility.Collapsed;
+        Width = 820;
+    }
+
+    private void PreviewParameter_TextChanged(object sender, TextChangedEventArgs e) => RefreshLivePreview();
+
+    private void RefreshLivePreview()
+    {
+        if (TogglePreviewButton is not { IsChecked: true }
+            || CameraPreviewControl is null
+            || _selectedPreset is null
+            || !TryReadOrigin(out CameraOrigin origin)
+            || !TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction))
+        {
+            return;
+        }
+
+        CameraPreviewControl.Visibility = Visibility.Visible;
+        CameraPreviewControl.SetPreview(_selectedPreset, origin,
+            CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction));
+    }
+
+    private bool TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction)
+    {
+        configured = null;
+        sampleCount = 0;
+        pathFraction = 1;
+        if (!TryReadOrigin(out CameraOrigin origin)
+            || !TryReadFloat(ForwardDistanceTextBox, out float distance)
+            || !TryReadFloat(SideOffsetTextBox, out float side)
+            || !TryReadFloat(HeightOffsetTextBox, out float height)
+            || !TryReadFloat(LookAtHeightTextBox, out float lookHeight)
+            || !TryReadFloat(LocalRollTextBox, out float roll)
+            || !TryReadFloat(LocalPitchTextBox, out float pitch)
+            || !TryReadFloat(LocalYawTextBox, out float yaw)
+            || !TryReadFloat(DurationTextBox, out float duration)
+            || !TryReadFloat(CameraSpeedTextBox, out float cameraSpeed)
+            || !TryReadFloat(MovementAmountTextBox, out float movement)
+            || duration < 0 || cameraSpeed <= 0)
+        {
+            return false;
+        }
+
+        var samplingPreset = _selectedPreset with
+        {
+            ForwardDistance = distance,
+            SideOffset = side,
+            HeightOffset = height,
+            LookAtHeight = lookHeight,
+            LocalYaw = yaw,
+            LocalPitch = pitch,
+            LocalRoll = roll,
+            Duration = duration,
+            MovementAmount = movement
+        };
+        sampleCount = CameraPresetGenerator.GetKeyCount(samplingPreset);
+        float generatedDuration = samplingPreset.Category == CameraPresetCategory.DynamicShots
+            ? duration / cameraSpeed
+            : duration;
+        configured = samplingPreset with { Duration = generatedDuration };
+        return true;
+    }
+
     private void CameraSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_updatingCameraSpeed || CameraSpeedTextBox is null)
@@ -141,6 +286,7 @@ public partial class CameraPresetDialog : Window
         CameraSpeedTextBox.Text = e.NewValue.ToString("0.##", CultureInfo.InvariantCulture);
         CameraSpeedTextBox.CaretIndex = CameraSpeedTextBox.Text.Length;
         _updatingCameraSpeed = false;
+        RefreshLivePreview();
     }
 
     private void CameraSpeedTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -155,6 +301,7 @@ public partial class CameraPresetDialog : Window
         _updatingCameraSpeed = true;
         CameraSpeedSlider.Value = speed;
         _updatingCameraSpeed = false;
+        RefreshLivePreview();
     }
 
     private void SetCameraSpeed(double speed)

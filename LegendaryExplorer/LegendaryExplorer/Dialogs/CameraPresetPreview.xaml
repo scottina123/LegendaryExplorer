@@ -1,0 +1,11 @@
+<UserControl x:Class="LegendaryExplorer.Dialogs.CameraPresetPreview"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:scene3D="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D">
+    <Grid Background="#181818">
+        <scene3D:SceneRenderControl x:Name="SceneViewer"/>
+        <Border VerticalAlignment="Bottom" Background="#A0000000" Padding="8">
+            <TextBlock x:Name="PreviewStatusTextBlock" Foreground="White" TextWrapping="Wrap"/>
+        </Border>
+    </Grid>
+</UserControl>
