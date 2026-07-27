@@ -25,6 +25,7 @@ public partial class CameraPresetDialog : Window
     private readonly Func<CameraOrigin?> _getViewportOrigin;
     private readonly Action<GeneratedCameraKey> _previewCamera;
     private readonly float? _maximumEndTime;
+    private readonly IMEPackage _package;
     private CameraPreset _selectedPreset;
     private bool _updatingCameraSpeed;
     private bool _updatingPresetSelection;
@@ -33,12 +34,14 @@ public partial class CameraPresetDialog : Window
     public float GeneratedStartTime { get; private set; }
 
     public CameraPresetDialog(Func<CameraOrigin?> getTrackKeyOrigin, Func<CameraOrigin?> getViewportOrigin,
-        Action<GeneratedCameraKey> previewCamera, float initialStartTime = 0, float? maximumEndTime = null)
+        Action<GeneratedCameraKey> previewCamera, float initialStartTime = 0, float? maximumEndTime = null,
+        IMEPackage package = null)
     {
         _getTrackKeyOrigin = getTrackKeyOrigin;
         _getViewportOrigin = getViewportOrigin;
         _previewCamera = previewCamera;
         _maximumEndTime = maximumEndTime;
+        _package = package;
 
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
@@ -47,6 +50,7 @@ public partial class CameraPresetDialog : Window
         DynamicPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.DynamicShots);
         ReactionPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.ReactionShots);
         UseTrackKeyButton.IsEnabled = _getTrackKeyOrigin?.Invoke() is not null;
+        UseOtherTrackKeyButton.IsEnabled = _package is not null;
         bool hasViewport = _getViewportOrigin?.Invoke() is not null;
         UseViewportLocationButton.IsEnabled = hasViewport;
         UseViewportTransformButton.IsEnabled = hasViewport;
@@ -92,7 +96,8 @@ public partial class CameraPresetDialog : Window
             getViewportOrigin,
             previewCamera,
             initialStartTime,
-            maximumEndTime)
+            maximumEndTime,
+            export.FileRef)
         {
             Owner = owner
         };
@@ -323,6 +328,24 @@ public partial class CameraPresetDialog : Window
         if (_getTrackKeyOrigin?.Invoke() is { } origin)
         {
             SetOrigin(origin);
+        }
+    }
+
+    private void UseOtherTrackKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (_package is null)
+        {
+            return;
+        }
+
+        var picker = new TrackMoveOriginPicker(_package)
+        {
+            Owner = this
+        };
+        if (picker.ShowDialog() == true)
+        {
+            SetOrigin(picker.SelectedOrigin);
+            StatusTextBlock.Text = "Origin loaded from the selected PCC TrackMove key.";
         }
     }
 

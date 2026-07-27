@@ -1,0 +1,73 @@
+<Window x:Class="LegendaryExplorer.Dialogs.TrackMoveOriginPicker"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Select TrackMove Origin Key" Width="960" Height="600"
+        MinWidth="760" MinHeight="450" WindowStartupLocation="CenterOwner">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="Select an InterpTrackMove from the current PCC, then select the key whose position and rotation should be used as the origin."
+                   TextWrapping="Wrap" Margin="0,0,0,10"/>
+        <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Export number:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="ExportSearchTextBox" Grid.Column="1" Padding="6,4"
+                     TextChanged="ExportSearchTextBox_TextChanged"
+                     ToolTip="Enter an export number, such as 461 or #461"/>
+        </Grid>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+            <GroupBox Header="InterpTrackMove exports" Padding="6" Margin="0,0,8,0">
+                <ListBox x:Name="TrackListBox" SelectionChanged="TrackListBox_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="2">
+                                <TextBlock Text="{Binding DisplayName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding ExportPath, Mode=OneWay}" Opacity="0.7" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </GroupBox>
+            <GroupBox Grid.Column="1" Header="Synchronized movement keys" Padding="6">
+                <ListBox x:Name="KeyListBox" SelectionChanged="KeyListBox_SelectionChanged" MouseDoubleClick="KeyListBox_MouseDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock FontWeight="SemiBold">
+                                    <Run Text="Key "/><Run Text="{Binding KeyNumber, Mode=OneWay}"/><Run Text=" — "/><Run Text="{Binding TimeDisplay, Mode=OneWay}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Row="1" Text="{Binding LocationDisplay, Mode=OneWay}" FontFamily="Consolas" FontSize="11"/>
+                                <TextBlock Grid.Row="2" Text="{Binding RotationDisplay, Mode=OneWay}" FontFamily="Consolas" FontSize="11"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </GroupBox>
+        </Grid>
+        <DockPanel Grid.Row="3" Margin="0,10,0,0">
+            <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" Opacity="0.75"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="UseKeyButton" Content="Use Selected Key" Click="UseKeyButton_Click" IsDefault="True"
+                        IsEnabled="False" Width="130" Height="30" Margin="4"/>
+                <Button Content="Cancel" IsCancel="True" Width="90" Height="30" Margin="4"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

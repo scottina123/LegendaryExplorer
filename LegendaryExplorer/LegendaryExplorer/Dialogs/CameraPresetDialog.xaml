@@ -47,6 +47,7 @@
                 <WrapPanel>
                     <Button Content="Enter Coordinates Manually" Click="EnterManually_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseTrackKeyButton" Content="Use Selected TrackMove Key" Click="UseTrackKey_Click" Margin="3" Padding="8,4"/>
+                    <Button x:Name="UseOtherTrackKeyButton" Content="Choose TrackMove Key from PCC" Click="UseOtherTrackKey_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseViewportLocationButton" Content="Use Current Viewport Camera Location" Click="UseViewportLocation_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseViewportTransformButton" Content="Use Current Viewport Camera Location and Rotation" Click="UseViewportTransform_Click" Margin="3" Padding="8,4"/>
                     <Button Content="Copy Origin" Click="CopyOrigin_Click" Margin="3" Padding="8,4"/>
