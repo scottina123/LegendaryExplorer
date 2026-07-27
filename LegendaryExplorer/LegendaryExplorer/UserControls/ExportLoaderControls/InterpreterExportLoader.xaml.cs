@@ -59,6 +59,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly string[] IntToStringConverters = [ "WwiseEvent", "WwiseBank", "WwiseStream", "BioSeqAct_PMExecuteTransition", "BioSeqAct_PMExecuteConsequence", "BioSeqAct_PMCheckState", "BioSeqAct_PMCheckConditional", "BioSeqVar_StoryManagerInt",
                                                                 "BioSeqVar_StoryManagerFloat", "BioSeqVar_StoryManagerBool", "BioSeqVar_StoryManagerStateId", "SFXSceneShopNodePlotCheck", "BioWorldInfo", "CoverLink" ];
         public ObservableCollectionExtended<IndexedName> ParentNameList { get; private set; }
+        private MEGame _cachedPropActionGame = MEGame.Unknown;
+        private IReadOnlyDictionary<string, IReadOnlyList<string>> _cachedPropActions;
 
         public bool SubstituteImageForHexBox
         {
@@ -1768,6 +1770,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         GenerateUPropertyTreeForProperty(prop, topLevelTree, CurrentLoadedExport, UseAssetDatabaseOwnerFriendlyNames, PropertyChangedHandler: OnUPropertyTreeViewEntry_PropertyChanged, PropertyUpdatedHandler: OnUPropertyTreeViewEntry_PropertyUpdated);
                     }
+                    ApplyBioEvtSysTrackPropActionChoices(topLevelTree);
                     MergeLinkedTrackRows(topLevelTree);
                     RestoreExpandedNodePaths(topLevelTree);
                 }
@@ -1824,6 +1827,118 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     SelectedNodePath = null;
                     PendingAddedArrayNodePath = null;
                     PendingAddedArrayElementIndex = -1;
+                }
+            }
+        }
+
+        private void ApplyBioEvtSysTrackPropActionChoices(UPropertyTreeViewEntry topLevelTree)
+        {
+            if (!CurrentLoadedExport.IsA("BioEvtSysTrackProp"))
+            {
+                return;
+            }
+
+            IReadOnlyDictionary<string, IReadOnlyList<string>> actionsByProp = GetBioEvtSysTrackPropActions();
+            foreach (UPropertyTreeViewEntry actionNode in topLevelTree.FlattenTree().Where(node =>
+                         node.Property is NameProperty { Name.Name: "nmAction" }
+                         && node.UPParent?.Property is StructProperty
+                         && node.UPParent.UPParent?.Property is ArrayPropertyBase { Name.Name: "m_aPropKeys" }))
+            {
+                NameProperty propProperty = actionNode.UPParent.ChildrenProperties
+                    .Select(node => node.Property)
+                    .OfType<NameProperty>()
+                    .FirstOrDefault(property => property.Name.Name == "nmProp");
+                if (propProperty is null || !actionsByProp.TryGetValue(propProperty.Value.Name, out IReadOnlyList<string> actionNames))
+                {
+                    continue;
+                }
+
+                actionNode.InlineNameChoicesOverride = actionNames
+                    .Select(actionName => new IndexedName(Pcc.findName(actionName), actionName))
+                    .ToList();
+            }
+        }
+
+        private IReadOnlyDictionary<string, IReadOnlyList<string>> GetBioEvtSysTrackPropActions()
+        {
+            if (_cachedPropActions is null || _cachedPropActionGame != Pcc.Game)
+            {
+                _cachedPropActionGame = Pcc.Game;
+                _cachedPropActions = LoadInstalledGamePropActions(Pcc.Game);
+            }
+
+            var combinedActions = _cachedPropActions.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToList(),
+                StringComparer.OrdinalIgnoreCase);
+            AddPropActionsFromPackage(Pcc, combinedActions);
+            return combinedActions.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<string>> LoadInstalledGamePropActions(MEGame game)
+        {
+            var actionsByProp = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            if (game.IsGame1())
+            {
+                return actionsByProp.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value, StringComparer.OrdinalIgnoreCase);
+            }
+
+            try
+            {
+                var loadedFiles = MELoadedFiles.GetFilesLoadedInGame(game, forceUseCached: true);
+                foreach (string fileName in new[] { "GesturesConfigDLC.pcc", "GesturesConfig.pcc" })
+                {
+                    if (!loadedFiles.TryGetValue(fileName, out string filePath))
+                    {
+                        continue;
+                    }
+
+                    using IMEPackage package = MEPackageHandler.UnsafePartialLoad(
+                        filePath,
+                        export => !export.IsDefaultObject && export.ClassName == "BioGestureRuntimeData");
+                    AddPropActionsFromPackage(package, actionsByProp);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Could not load BioEvtSysTrackProp action choices: {exception.Message}");
+            }
+
+            return actionsByProp.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static void AddPropActionsFromPackage(IMEPackage package, Dictionary<string, List<string>> actionsByProp)
+        {
+            foreach (ExportEntry export in package.Exports.Where(export => !export.IsDefaultObject && export.ClassName == "BioGestureRuntimeData" && export.IsDataLoaded()))
+            {
+                BioGestureRuntimeData runtimeData = export.GetBinaryData<BioGestureRuntimeData>();
+                foreach ((NameReference propKey, BioGestureRuntimeData.BioMeshPropData propData) in runtimeData.m_mapMeshProps)
+                {
+                    string[] propNames = [propKey.Name, propData.nmPropName.Name];
+                    string[] actionNames = propData.mapActions
+                        .SelectMany(action => new[] { action.Key.Name, action.Value.nmActionName.Name })
+                        .Where(name => !string.IsNullOrWhiteSpace(name) && name != NameReference.None.Name)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+
+                    foreach (string propName in propNames.Where(name => !string.IsNullOrWhiteSpace(name) && name != NameReference.None.Name).Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        if (!actionsByProp.TryGetValue(propName, out List<string> actions))
+                        {
+                            actionsByProp[propName] = actions = [];
+                        }
+
+                        foreach (string actionName in actionNames.Where(actionName => !actions.Contains(actionName, StringComparer.OrdinalIgnoreCase)))
+                        {
+                            actions.Add(actionName);
+                        }
+                    }
                 }
             }
         }
@@ -5809,7 +5924,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         private IReadOnlyList<IndexedName> _inlineNameChoices;
-        public IReadOnlyList<IndexedName> InlineNameChoices => _inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList();
+        public IReadOnlyList<IndexedName> InlineNameChoicesOverride { get; set; }
+        public IReadOnlyList<IndexedName> InlineNameChoices => InlineNameChoicesOverride ?? (_inlineNameChoices ??= AttachedExport?.FileRef?.Names?.Select((nr, i) => new IndexedName(i, nr)).ToList());
 
         private IReadOnlyList<NameReference> _inlineEnumChoices;
         public IReadOnlyList<NameReference> InlineEnumChoices => _inlineEnumChoices ??= Property is EnumProperty enumProperty && AttachedExport is not null
