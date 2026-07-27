@@ -2794,7 +2794,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             return true;
         }
 
-        private void WriteCurrentLoadedProperties()
+        private void WriteCurrentLoadedProperties(bool reloadPropertyData = true)
         {
             if (CurrentLoadedExport is null)
             {
@@ -2802,7 +2802,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
 
             pendingPropertyWriteExportUIndex = CurrentLoadedExport.UIndex;
-            QueuePropertyDataReload(CurrentLoadedExport);
+            if (reloadPropertyData)
+            {
+                QueuePropertyDataReload(CurrentLoadedExport);
+            }
             CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
         }
 
@@ -3298,7 +3301,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     {
                         ApplySelectedTreeItem(node);
                     }
-                    WriteCurrentLoadedProperties();
+                    WriteCurrentLoadedProperties(reloadPropertyData: false);
                     e.Handled = true;
                     break;
                 case StrProperty when node.ShowEditableTextBlock && node.EditableType:
@@ -4155,7 +4158,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (updated)
                 {
                     //will cause a refresh from packageeditor
-                    WriteCurrentLoadedProperties();
+                    WriteCurrentLoadedProperties(reloadPropertyData: property is not BoolProperty);
                 }
                 //StartScan();
             }
