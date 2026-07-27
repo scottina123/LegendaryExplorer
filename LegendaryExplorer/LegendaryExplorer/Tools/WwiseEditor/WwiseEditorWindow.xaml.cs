@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.ToolsetDev.MemoryAnalyzer;
 using LegendaryExplorer.SharedUI.Bases;
@@ -28,11 +29,16 @@ using LegendaryExplorerCore.Misc;
 using Piccolo;
 using Piccolo.Event;
 using Piccolo.Nodes;
+using ME3Tweaks.Wwiser;
+using ME3Tweaks.Wwiser.Formats;
+using ME3Tweaks.Wwiser.Model.ParameterNode;
+using WwiserActorMixer = ME3Tweaks.Wwiser.Model.Hierarchy.ActorMixer;
 using Brushes = System.Drawing.Brushes;
 using Color = System.Drawing.Color;
 using Image = System.Drawing.Image;
 using Path = System.IO.Path;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using CoreWwiseBank = LegendaryExplorerCore.Unreal.BinaryConverters.WwiseBank;
 
 namespace LegendaryExplorer.Tools.WwiseEditor
 {
@@ -446,6 +452,81 @@ namespace LegendaryExplorer.Tools.WwiseEditor
                 }
 #endif
             }
+        }
+
+        private void AdjustBankVolume_Click(object sender, RoutedEventArgs e)
+        {
+            if (CurrentExport == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var rawBank = CurrentExport.GetBinaryData<CoreWwiseBank>();
+                using var input = new MemoryStream(rawBank.BnkFile, false);
+                var bank = WwiseBankParser.Deserialize(input);
+                var rootMixers = bank.HIRC?.Items
+                    .Select(item => item.Item)
+                    .OfType<WwiserActorMixer>()
+                    .Where(mixer => mixer.NodeBaseParameters.DirectParentId == 0)
+                    .ToList() ?? [];
+
+                if (rootMixers.Count == 0)
+                {
+                    MessageBox.Show(this, "No root ActorMixer was found in this bank.", "Volume not adjusted",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                float currentVolume = GetActorMixerVolume(rootMixers[0]);
+                var volumeDialog = new WwiseBankVolumeDialog(currentVolume) { Owner = this };
+                if (volumeDialog.ShowDialog() != true || volumeDialog.SelectedVolume == currentVolume)
+                {
+                    return;
+                }
+
+                foreach (var mixer in rootMixers)
+                {
+                    var parameters = mixer.NodeBaseParameters.InitialParams62;
+                    int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
+                    if (volumeIndex >= 0)
+                    {
+                        var volume = parameters.ParameterValues[volumeIndex];
+                        volume.Float = volumeDialog.SelectedVolume;
+                        volume.Integer = 0;
+                        volume.StoredAsFloat = true;
+                    }
+                    else
+                    {
+                        var volume = new InitialParamsV62.ParameterValue
+                        {
+                            Float = volumeDialog.SelectedVolume,
+                            StoredAsFloat = true
+                        };
+                        parameters.AddParameter(PropId.Volume, volume);
+                        parameters.ParamLength = checked((byte)parameters.ParameterIds.Count);
+                    }
+                }
+
+                using var output = new MemoryStream();
+                WwiseBankParser.Serialize(bank, output);
+                CoreWwiseBank.WriteBankRaw(output.ToArray(), CurrentExport);
+                RefreshView();
+                StatusBar_LeftMostText.Text = $"Set {CurrentExport.ObjectName} volume to {volumeDialog.SelectedVolume:0.##} dB";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Unable to adjust bank volume:\n{ex.Message}", "Volume adjustment failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static float GetActorMixerVolume(WwiserActorMixer mixer)
+        {
+            var parameters = mixer.NodeBaseParameters.InitialParams62;
+            int volumeIndex = parameters.ParameterIds.FindIndex(id => id.PropValue == PropId.Volume);
+            return volumeIndex >= 0 ? parameters.ParameterValues[volumeIndex].Value : 0;
         }
 
         public void LoadFile(string s, int goToIndex = 0)

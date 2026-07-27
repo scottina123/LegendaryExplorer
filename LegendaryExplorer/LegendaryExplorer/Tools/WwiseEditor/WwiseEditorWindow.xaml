@@ -58,6 +58,10 @@
                 <MenuItem Header="Tools" Padding="4">
                     <MenuItem Header="Save View" Command="{Binding SaveViewCommand}" ToolTip="Save the node layout" />
                     <MenuItem Header="Save Image" Command="{Binding SaveImageCommand}" ToolTip="Save image of full Sequence" />
+                    <Separator />
+                    <MenuItem Header="Adjust Bank Volume..." Click="AdjustBankVolume_Click"
+                              IsEnabled="{Binding CurrentExport, Converter={StaticResource NullEnabledConverter}}"
+                              ToolTip="View and set the volume of this bank and all audio it contains" />
                 </MenuItem>
 
                 <MenuItem Header="View Options" Padding="4">
