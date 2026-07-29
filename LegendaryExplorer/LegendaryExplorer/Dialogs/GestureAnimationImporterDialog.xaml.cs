@@ -15,6 +15,7 @@ using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions;
 using LegendaryExplorerCore.Helpers;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
@@ -2274,6 +2275,9 @@ namespace LegendaryExplorer.Dialogs
             {
                 throw new InvalidOperationException("The relinker did not replace the destination gesture track in place.");
             }
+
+            relinkReport.AddRange(MatineeHelper.CloneGestureTrackAnimSets(sourceTrack, _gestureTrackExport, relinkerOptions));
+            _gestureTrackExport.WriteProperty(new BoolProperty(true, "m_bUseDynamicAnimSets"));
 
             foreach (Property property in protectedProperties)
             {
