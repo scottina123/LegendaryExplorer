@@ -125,7 +125,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             AddTrackCmd = new GenericCommand(AddTrack, CanAddTrack);
             RenameTrackCommand = new GenericCommand(RenameTrack, CanRenameTrack);
             InsertKeyCmd = new GenericCommand(InsertKeyAtTime, () => MatineeTree.SelectedItem is InterpTrack);
-            GenerateCameraPresetsCmd = new GenericCommand(GenerateCameraPresets, () => MatineeTree.SelectedItem is InterpTrackMove);
+            GenerateCameraPresetsCmd = new GenericCommand(GenerateCameraPresets,
+                () => MatineeTree.SelectedItem is InterpTrackMove or InterpTrackDirector);
             AdjustSelectedTimeOffsetsCommand = new GenericCommand(AdjustSelectedTimeOffsets, CanAdjustSelectedTimeOffsets);
             AdjustInterpDataTimeOffsetsCommand = new GenericCommand(AdjustInterpDataTimeOffsets, () => HasData(null));
             SetGroupActorCmd = new RelayCommand(obj => { if (obj is InterpGroup g) SetGroupActorRequested?.Invoke(g); });
@@ -133,6 +134,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void GenerateCameraPresets()
         {
+            if (MatineeTree.SelectedItem is InterpTrackDirector directorTrack)
+            {
+                if (CameraPresetDialog.GenerateForDirector(
+                        Window.GetWindow(this),
+                        directorTrack.Export,
+                        () => ViewportCameraOriginProvider?.Invoke(),
+                        CameraPreviewRequested))
+                {
+                    LoadGroups();
+                }
+                return;
+            }
+
             if (MatineeTree.SelectedItem is not InterpTrackMove track)
             {
                 return;

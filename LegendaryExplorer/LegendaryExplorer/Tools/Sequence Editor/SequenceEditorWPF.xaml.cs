@@ -7192,6 +7192,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             return InterpDataTreeView?.SelectedItem is TreeViewEntry { Entry: ExportEntry export } ? export : null;
         }
 
+        private ExportEntry _interpDataContextExport;
+
         private void InterpDataTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             if (e.NewValue is TreeViewEntry { Entry: ExportEntry export })
@@ -7289,6 +7291,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             {
                 item.IsSelected = true;
                 item.Focus();
+                _interpDataContextExport = item.DataContext is TreeViewEntry { Entry: ExportEntry export } ? export : null;
             }
         }
 
@@ -7337,14 +7340,15 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
-            var selectedExport = GetSelectedInterpDataTreeExport();
+            var selectedExport = _interpDataContextExport ?? GetSelectedInterpDataTreeExport();
             bool isInterpData = selectedExport?.ClassName == "InterpData";
             bool isInterpTrackMove = selectedExport?.ClassName == "InterpTrackMove";
+            bool isInterpTrackDirector = selectedExport?.ClassName == "InterpTrackDirector";
             bool isGestureTrack = selectedExport?.ClassName == "BioEvtSysTrackGesture";
 
             SetInterpDataContextMenuItemVisibility(menu, "ShiftInterpTrackMovesInInterpData", isInterpData ? Visibility.Visible : Visibility.Collapsed);
             SetInterpDataContextMenuItemVisibility(menu, "ShiftSelectedInterpTrackMove", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
-            SetInterpDataContextMenuItemVisibility(menu, "GenerateCameraPresets", isInterpTrackMove ? Visibility.Visible : Visibility.Collapsed);
+            SetInterpDataContextMenuItemVisibility(menu, "GenerateCameraPresets", isInterpTrackMove || isInterpTrackDirector ? Visibility.Visible : Visibility.Collapsed);
             SetInterpDataContextMenuItemVisibility(menu, "OpenGestureAnimationImporter", isGestureTrack ? Visibility.Visible : Visibility.Collapsed);
         }
 
@@ -7416,11 +7420,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 return;
             }
 
-            if (GetSelectedInterpDataTreeExport() is not ExportEntry export)
+            if ((_interpDataContextExport ?? GetSelectedInterpDataTreeExport()) is not ExportEntry export)
             {
                 return;
             }
 
+            _interpDataContextExport = null;
             ExecuteInterpDataTreeAction(actionName, export);
         }
 
@@ -7489,7 +7494,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                     break;
                 case "GenerateCameraPresets":
-                    if (export.ClassName == "InterpTrackMove" && CameraPresetDialog.GenerateForTrack(this, export))
+                    bool cameraPresetApplied = export.ClassName switch
+                    {
+                        "InterpTrackMove" => CameraPresetDialog.GenerateForTrack(this, export),
+                        "InterpTrackDirector" => CameraPresetDialog.GenerateForDirector(this, export),
+                        _ => false
+                    };
+                    if (cameraPresetApplied)
                     {
                         RefreshInterpDataTreePreserveState(export.UIndex);
                     }

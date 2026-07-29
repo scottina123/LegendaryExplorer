@@ -1199,6 +1199,9 @@ namespace LegendaryExplorer.Tools.InterpEditor
         }
 
         public void InsertCameraPresetKeys(float startTime, IReadOnlyList<GeneratedCameraKey> generatedKeys)
+            => ReplaceCameraPresetKeys(startTime, generatedKeys);
+
+        public void ReplaceCameraPresetKeys(float startTime, IReadOnlyList<GeneratedCameraKey> generatedKeys)
         {
             if (generatedKeys is null || generatedKeys.Count == 0)
             {
@@ -1468,6 +1471,24 @@ namespace LegendaryExplorer.Tools.InterpEditor
 
         public override void InsertKey(float time) =>
             InsertKeyInArray("CutTrack", time, "Time", Export.ClassName);
+
+        public void ReplaceCuts(IReadOnlyList<MulticamDirectorKey> cuts)
+        {
+            PropertyInfo cutTrackInfo = GlobalUnrealObjectInfo.GetPropertyInfo(Export.Game, "CutTrack", "InterpTrackDirector");
+            var cutTrack = new ArrayProperty<StructProperty>("CutTrack");
+            foreach (MulticamDirectorKey cut in cuts.OrderBy(cut => cut.TimeOffset))
+            {
+                PropertyCollection properties = GlobalUnrealObjectInfo.getDefaultStructValue(Export.Game,
+                    cutTrackInfo.Reference, true, Export.FileRef);
+                properties.AddOrReplaceProp(new NameProperty(cut.GroupName, "TargetCamGroup"));
+                properties.AddOrReplaceProp(new FloatProperty(cut.TimeOffset, "Time"));
+                cutTrack.Add(new StructProperty(cutTrackInfo.Reference, properties,
+                    isImmutable: GlobalUnrealObjectInfo.IsImmutable(cutTrackInfo.Reference, Export.Game)));
+            }
+
+            Export.WriteProperty(cutTrack);
+            LoadTrack();
+        }
     }
 
     public class BioEvtSysTrackDOF : BioInterpTrack

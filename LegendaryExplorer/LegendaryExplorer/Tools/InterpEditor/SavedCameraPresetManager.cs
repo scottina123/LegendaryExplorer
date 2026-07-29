@@ -52,15 +52,8 @@ public static class SavedCameraPresetManager
         foreach (CameraPreset importedPreset in importedPresets)
         {
             ValidatePreset(importedPreset);
-            int existingIndex = -1;
-            for (int i = 0; i < Presets.Count; i++)
-            {
-                if (string.Equals(Presets[i].Name, importedPreset.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    existingIndex = i;
-                    break;
-                }
-            }
+            int existingIndex = Presets.ToList().FindIndex(existing =>
+                string.Equals(existing.Name, importedPreset.Name, StringComparison.OrdinalIgnoreCase));
             if (existingIndex < 0)
             {
                 Presets.Add(importedPreset);
@@ -156,5 +149,170 @@ public static class SavedCameraPresetManager
     {
         public int Version { get; set; }
         public List<CameraPreset> Presets { get; set; } = [];
+    }
+}
+
+public static class SavedMulticamCameraPresetManager
+{
+    private const int CurrentVersion = 1;
+    private static string StoragePath => Path.Combine(AppDirectories.AppDataFolder, "MulticamDirectorPresets.json");
+
+    public static ObservableCollectionExtended<MulticamCameraPreset> Presets { get; } = [];
+
+    static SavedMulticamCameraPresetManager()
+    {
+        Presets.ReplaceAll(ReadCollection(StoragePath));
+    }
+
+    public static bool ContainsName(string name) =>
+        Presets.Any(preset => string.Equals(preset.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    public static void Add(MulticamCameraPreset preset)
+    {
+        ValidatePreset(preset);
+        if (ContainsName(preset.Name))
+        {
+            throw new InvalidOperationException($"A saved multicam preset named '{preset.Name}' already exists.");
+        }
+
+        Presets.Add(preset with { IsBuiltIn = false });
+        Save();
+    }
+
+    public static void Delete(MulticamCameraPreset preset)
+    {
+        if (preset is not null && Presets.Remove(preset))
+        {
+            Save();
+        }
+    }
+
+    public static (int Added, int Replaced, int Skipped) Merge(IEnumerable<MulticamCameraPreset> importedPresets,
+        bool replaceDuplicates)
+    {
+        int added = 0;
+        int replaced = 0;
+        int skipped = 0;
+        foreach (MulticamCameraPreset importedPreset in importedPresets)
+        {
+            ValidatePreset(importedPreset);
+            MulticamCameraPreset preset = importedPreset with { IsBuiltIn = false };
+            int existingIndex = Presets.ToList().FindIndex(existing =>
+                string.Equals(existing.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex < 0)
+            {
+                Presets.Add(preset);
+                added++;
+            }
+            else if (replaceDuplicates)
+            {
+                Presets[existingIndex] = preset;
+                replaced++;
+            }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        Save();
+        return (added, replaced, skipped);
+    }
+
+    public static IReadOnlyList<MulticamCameraPreset> ReadCollection(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return [];
+            }
+
+            var file = JsonConvert.DeserializeObject<SavedMulticamCameraPresetFile>(File.ReadAllText(path));
+            if (file is null || file.Version != CurrentVersion)
+            {
+                return [];
+            }
+
+            return file.Presets.Where(IsValidPreset)
+                .GroupBy(preset => preset.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last() with { IsBuiltIn = false })
+                .ToArray();
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    public static void Export(string path) => WriteCollection(path, Presets);
+
+    private static void Save() => WriteCollection(StoragePath, Presets);
+
+    private static void WriteCollection(string path, IEnumerable<MulticamCameraPreset> presets)
+    {
+        string directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var file = new SavedMulticamCameraPresetFile
+        {
+            Version = CurrentVersion,
+            Presets = presets.Select(preset => preset with { IsBuiltIn = false }).ToList()
+        };
+        File.WriteAllText(path, JsonConvert.SerializeObject(file, Formatting.Indented));
+    }
+
+    private static void ValidatePreset(MulticamCameraPreset preset)
+    {
+        if (!IsValidPreset(preset))
+        {
+            throw new InvalidDataException("Multicam presets require a name, a positive duration, at least two camera groups, and valid Director and camera keys.");
+        }
+    }
+
+    private static bool IsValidPreset(MulticamCameraPreset preset)
+    {
+        if (preset is null || string.IsNullOrWhiteSpace(preset.Name) || !float.IsFinite(preset.Duration)
+            || preset.Duration <= 0 || preset.CameraGroups is not { Count: >= 2 }
+            || preset.DirectorKeys is not { Count: >= 2 })
+        {
+            return false;
+        }
+
+        var groupNames = preset.CameraGroups
+            .Where(group => !string.IsNullOrWhiteSpace(group.GroupName))
+            .Select(group => group.GroupName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return groupNames.Count >= 2
+            && preset.DirectorKeys.All(key => IsValidTime(key.TimeOffset, preset.Duration)
+                && groupNames.Contains(key.GroupName))
+            && preset.CameraGroups.All(group => group.TrackMoveKeys is { Count: > 0 }
+                && group.TrackMoveKeys.All(key => IsValidTime(key.TimeOffset, preset.Duration)
+                    && IsFinite(key.LocalPosition) && IsFinite(key.LocalRotation))
+                && (group.FovKeys is null || group.FovKeys.All(key => IsValidTime(key.TimeOffset, preset.Duration)
+                    && float.IsFinite(key.Value) && float.IsFinite(key.ArriveTangent) && float.IsFinite(key.LeaveTangent))));
+    }
+
+    private static bool IsValidTime(float time, float duration) =>
+        float.IsFinite(time) && time >= 0 && time <= duration + 0.001f;
+
+    private static bool IsFinite(System.Numerics.Vector3 value) =>
+        float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+
+    private sealed class SavedMulticamCameraPresetFile
+    {
+        public int Version { get; set; }
+        public List<MulticamCameraPreset> Presets { get; set; } = [];
     }
 }

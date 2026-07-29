@@ -601,7 +601,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
             OpenGestureImporterCommand = new GenericCommand(OpenGestureImporter, CanOpenGestureImporter);
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
-            GenerateCameraPresetsCommand = new GenericCommand(GenerateCameraPresets, CanShiftInterpTrackMove);
+            GenerateCameraPresetsCommand = new GenericCommand(GenerateCameraPresets, CanGenerateCameraPresets);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
             ShiftInterpTrackMovesInInterpDataCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedInterpData, CanBulkEditInterpGroups);
             ShiftLevelActorsCommand = new GenericCommand(ShiftSelectedLevelActors, CanShiftSelectedLevelActors);
@@ -1751,6 +1751,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool CanShiftInterpTrackMove() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove";
 
+        private bool CanGenerateCameraPresets() => TryGetSelectedExport(out ExportEntry exp)
+                                                   && exp.ClassName is "InterpTrackMove" or "InterpTrackDirector";
+
         private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance";
 
         private bool CanShiftSelectedLevelActors() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "Level";
@@ -1778,9 +1781,19 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void GenerateCameraPresets()
         {
-            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "InterpTrackMove")
+            if (!TryGetSelectedExport(out ExportEntry exp))
             {
-                CameraPresetDialog.GenerateForTrack(this, exp);
+                return;
+            }
+
+            switch (exp.ClassName)
+            {
+                case "InterpTrackMove":
+                    CameraPresetDialog.GenerateForTrack(this, exp);
+                    break;
+                case "InterpTrackDirector":
+                    CameraPresetDialog.GenerateForDirector(this, exp);
+                    break;
             }
         }
 

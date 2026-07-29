@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -14,6 +15,374 @@ public enum CameraPresetCategory
     DynamicShots,
     ReactionShots,
     SavedTrackMoves
+}
+
+public static class MulticamCameraPresetApplicator
+{
+    public static bool TryApply(MulticamCameraPreset preset, ExportEntry directorTrack, ExportEntry interpData,
+        CameraOrigin origin, float destinationDuration, out string error)
+    {
+        error = null;
+        if (preset is null || directorTrack?.ClassName != "InterpTrackDirector" || interpData?.ClassName != "InterpData")
+        {
+            error = "Select a valid multicam preset and destination Director track.";
+            return false;
+        }
+        if (preset.Duration <= 0 || destinationDuration <= 0 || preset.CameraGroups is not { Count: >= 2 }
+            || preset.DirectorKeys is not { Count: >= 2 })
+        {
+            error = "The multicam preset and destination must have positive durations and at least two cameras and cuts.";
+            return false;
+        }
+
+        float timeScale = destinationDuration / preset.Duration;
+        var destinationGroups = new Dictionary<string, ExportEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (MulticamCameraGroup cameraGroup in preset.CameraGroups)
+        {
+            if (string.IsNullOrWhiteSpace(cameraGroup.GroupName) || cameraGroup.TrackMoveKeys is not { Count: > 0 })
+            {
+                error = "Every multicam camera requires a name and TrackMove keys.";
+                return false;
+            }
+
+            ExportEntry destinationGroup = FindMatchingGroup(interpData, cameraGroup.GroupName)
+                ?? MatineeHelper.AddPreset("Camera", interpData, interpData.Game, cameraGroup.GroupName);
+            if (destinationGroup is null)
+            {
+                error = $"Unable to create camera group '{cameraGroup.GroupName}'.";
+                return false;
+            }
+
+            var groupProperties = destinationGroup.GetProperties();
+            groupProperties.AddOrReplaceProp(new NameProperty(cameraGroup.GroupName, "GroupName"));
+            if (!string.IsNullOrWhiteSpace(cameraGroup.FindActorName))
+            {
+                groupProperties.AddOrReplaceProp(new NameProperty(cameraGroup.FindActorName, "m_nmSFXFindActor"));
+            }
+            destinationGroup.WriteProperties(groupProperties);
+
+            ExportEntry trackMove = FindTrack(destinationGroup, "InterpTrackMove")
+                ?? CreateTrack(destinationGroup, "InterpTrackMove");
+            WriteTrackMove(trackMove, cameraGroup.TrackMoveKeys, origin, timeScale, destinationDuration);
+
+            if (cameraGroup.FovKeys is { Count: > 0 })
+            {
+                ExportEntry fovTrack = FindFovTrack(destinationGroup) ?? CreateFovTrack(destinationGroup);
+                WriteFovTrack(fovTrack, cameraGroup.FovKeys, timeScale, destinationDuration);
+            }
+            destinationGroups[cameraGroup.GroupName] = destinationGroup;
+        }
+
+        if (preset.DirectorKeys.Any(key => !destinationGroups.ContainsKey(key.GroupName)))
+        {
+            error = "A Director key references a camera group that is not included in the preset.";
+            return false;
+        }
+
+        WriteDirectorTrack(directorTrack, preset.DirectorKeys, destinationGroups, timeScale, destinationDuration);
+        return true;
+    }
+
+    private static ExportEntry FindMatchingGroup(ExportEntry interpData, string groupName)
+    {
+        ArrayProperty<ObjectProperty> groupRefs = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+        return groupRefs?.Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+            .Where(group => group?.ClassName == "InterpGroup")
+            .FirstOrDefault(group => string.Equals(group.GetProperty<NameProperty>("GroupName")?.Value.Instanced,
+                groupName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<ExportEntry> GetTracks(ExportEntry group) =>
+        group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+            .Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .Where(track => track is not null) ?? [];
+
+    private static ExportEntry FindTrack(ExportEntry group, string className) =>
+        GetTracks(group).FirstOrDefault(track => track.ClassName == className);
+
+    private static ExportEntry FindFovTrack(ExportEntry group) =>
+        GetTracks(group).FirstOrDefault(track => track.ClassName == "InterpTrackFloatProp"
+            && (string.Equals(track.GetProperty<NameProperty>("PropertyName")?.Value.Instanced, "FOVAngle", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(track.GetProperty<StrProperty>("TrackTitle")?.Value, "FOVAngle", StringComparison.OrdinalIgnoreCase)));
+
+    private static ExportEntry CreateTrack(ExportEntry group, string className)
+    {
+        ExportEntry track = MatineeHelper.AddNewTrackToGroup(group, className);
+        MatineeHelper.AddDefaultPropertiesToTrack(track);
+        return track;
+    }
+
+    private static ExportEntry CreateFovTrack(ExportEntry group)
+    {
+        ExportEntry track = CreateTrack(group, "InterpTrackFloatProp");
+        track.WriteProperty(new StrProperty("FOVAngle", "TrackTitle"));
+        track.WriteProperty(new NameProperty("FOVAngle", "PropertyName"));
+        return track;
+    }
+
+    private static void WriteTrackMove(ExportEntry trackMove, IReadOnlyList<CameraPresetLocalKey> keys,
+        CameraOrigin origin, float timeScale, float destinationDuration)
+    {
+        var properties = trackMove.GetProperties();
+        StructProperty lookupTrack = properties.GetProp<StructProperty>("LookupTrack");
+        StructProperty positionTrack = properties.GetProp<StructProperty>("PosTrack");
+        StructProperty rotationTrack = properties.GetProp<StructProperty>("EulerTrack");
+        if (lookupTrack is null || positionTrack is null || rotationTrack is null)
+        {
+            MatineeHelper.AddDefaultPropertiesToTrack(trackMove);
+            properties = trackMove.GetProperties();
+            lookupTrack = properties.GetProp<StructProperty>("LookupTrack");
+            positionTrack = properties.GetProp<StructProperty>("PosTrack");
+            rotationTrack = properties.GetProp<StructProperty>("EulerTrack");
+        }
+
+        ArrayProperty<StructProperty> lookupPoints = lookupTrack.GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> positionPoints = positionTrack.GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> rotationPoints = rotationTrack.GetProp<ArrayProperty<StructProperty>>("Points");
+        lookupPoints.Clear();
+        positionPoints.Clear();
+        rotationPoints.Clear();
+
+        CameraPresetGenerator.BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        foreach (CameraPresetLocalKey key in keys.OrderBy(key => key.TimeOffset))
+        {
+            float time = Math.Clamp(key.TimeOffset * timeScale, 0, destinationDuration);
+            Vector3 position = origin.Location + ToWorldVector(key.LocalPosition, forward, right, up);
+            Vector3 rotation = CameraPresetGenerator.LocalRotationToWorld(key.LocalRotation, origin.Rotation);
+            EInterpCurveMode mode = MapInterpolation(key.Interpolation, trackMove.Game);
+            lookupPoints.Add(new StructProperty("InterpLookupPoint", false,
+                new NameProperty("None", "GroupName"), new FloatProperty(time, "Time")));
+            positionPoints.Add(new InterpCurvePoint<Vector3>(time, position,
+                ToWorldVector(key.PositionArriveTangent, forward, right, up) / Math.Max(timeScale, float.Epsilon),
+                ToWorldVector(key.PositionLeaveTangent, forward, right, up) / Math.Max(timeScale, float.Epsilon), mode)
+                .ToStructProperty(trackMove.Game));
+            rotationPoints.Add(new InterpCurvePoint<Vector3>(time, rotation,
+                key.RotationArriveTangent / Math.Max(timeScale, float.Epsilon),
+                key.RotationLeaveTangent / Math.Max(timeScale, float.Epsilon), mode)
+                .ToStructProperty(trackMove.Game));
+        }
+        trackMove.WriteProperties(properties);
+    }
+
+    private static void WriteFovTrack(ExportEntry fovTrack, IReadOnlyList<MulticamFovKey> keys,
+        float timeScale, float destinationDuration)
+    {
+        StructProperty floatTrack = fovTrack.GetProperty<StructProperty>("FloatTrack");
+        if (floatTrack is null)
+        {
+            floatTrack = new InterpCurve<float>().ToStructProperty(fovTrack.Game, "FloatTrack");
+        }
+        ArrayProperty<StructProperty> points = floatTrack.GetProp<ArrayProperty<StructProperty>>("Points");
+        points.Clear();
+        foreach (MulticamFovKey key in keys.OrderBy(key => key.TimeOffset))
+        {
+            float time = Math.Clamp(key.TimeOffset * timeScale, 0, destinationDuration);
+            points.Add(new InterpCurvePoint<float>(time, key.Value,
+                key.ArriveTangent / Math.Max(timeScale, float.Epsilon),
+                key.LeaveTangent / Math.Max(timeScale, float.Epsilon), MapInterpolation(key.Interpolation, fovTrack.Game))
+                .ToStructProperty(fovTrack.Game));
+        }
+        fovTrack.WriteProperty(floatTrack);
+    }
+
+    private static void WriteDirectorTrack(ExportEntry directorTrack, IReadOnlyList<MulticamDirectorKey> keys,
+        IReadOnlyDictionary<string, ExportEntry> destinationGroups, float timeScale, float destinationDuration)
+    {
+        MulticamDirectorKey[] cuts = keys.Select(key =>
+        {
+            ExportEntry destinationGroup = destinationGroups[key.GroupName];
+            string actualGroupName = destinationGroup.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? key.GroupName;
+            return new MulticamDirectorKey(Math.Clamp(key.TimeOffset * timeScale, 0, destinationDuration), actualGroupName);
+        }).ToArray();
+        new InterpTrackDirector(directorTrack).ReplaceCuts(cuts);
+    }
+
+    private static Vector3 ToWorldVector(Vector3 local, Vector3 forward, Vector3 right, Vector3 up) =>
+        forward * local.X + right * local.Y + up * local.Z;
+
+    private static EInterpCurveMode MapInterpolation(CameraKeyInterpolation interpolation, MEGame game) => interpolation switch
+    {
+        CameraKeyInterpolation.Constant => EInterpCurveMode.CIM_Constant,
+        CameraKeyInterpolation.Linear => EInterpCurveMode.CIM_Linear,
+        CameraKeyInterpolation.SmoothClamped when game.IsGame3() => EInterpCurveMode.CIM_CurveAutoClamped,
+        _ => EInterpCurveMode.CIM_CurveAuto
+    };
+}
+
+public static class MulticamCameraPresetCapture
+{
+    public static bool TryCapture(ExportEntry directorTrack, ExportEntry interpData, CameraOrigin origin,
+        string name, string description, MulticamPresetType? typeOverride,
+        out MulticamCameraPreset preset, out string error)
+    {
+        preset = null;
+        error = null;
+        if (directorTrack?.ClassName != "InterpTrackDirector" || interpData?.ClassName != "InterpData")
+        {
+            error = "Select a Director track that belongs to an InterpData.";
+            return false;
+        }
+
+        ArrayProperty<StructProperty> cutTrack = directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack");
+        if (cutTrack is not { Count: >= 2 })
+        {
+            error = "The selected Director must contain at least two camera cuts.";
+            return false;
+        }
+
+        float firstTime = cutTrack.Min(cut => cut.GetProp<FloatProperty>("Time")?.Value ?? 0);
+        var directorKeys = cutTrack
+            .Select(cut => new MulticamDirectorKey(
+                (cut.GetProp<FloatProperty>("Time")?.Value ?? firstTime) - firstTime,
+                cut.GetProp<NameProperty>("TargetCamGroup")?.Value.Instanced))
+            .OrderBy(key => key.TimeOffset)
+            .ToArray();
+        if (directorKeys.Any(key => string.IsNullOrWhiteSpace(key.GroupName)))
+        {
+            error = "Every Director key must reference a named camera group.";
+            return false;
+        }
+
+        var groups = new List<MulticamCameraGroup>();
+        foreach (string groupName in directorKeys.Select(key => key.GroupName).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ExportEntry group = FindReferencedGroup(interpData, groupName);
+            if (group is null)
+            {
+                error = $"The Director references camera group '{groupName}', but that group was not found.";
+                return false;
+            }
+
+            ExportEntry trackMove = FindTrack(group, "InterpTrackMove");
+            if (trackMove is null || !TryCaptureTrackMove(trackMove, origin, firstTime, out IReadOnlyList<CameraPresetLocalKey> keys))
+            {
+                error = $"Camera group '{groupName}' does not contain a valid synchronized TrackMove.";
+                return false;
+            }
+
+            IReadOnlyList<MulticamFovKey> fovKeys = CaptureFovKeys(group, firstTime);
+            bool isStatic = IsStatic(keys, fovKeys);
+            string findActorName = group.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced ?? groupName;
+            string movementName = isStatic ? "Static" : GetMovementName(group, trackMove);
+            groups.Add(new MulticamCameraGroup(groupName, findActorName, isStatic, movementName, keys, fovKeys));
+        }
+
+        float capturedEnd = Math.Max(directorKeys.Max(key => key.TimeOffset), groups
+            .SelectMany(group => group.TrackMoveKeys.Select(key => key.TimeOffset))
+            .Concat(groups.SelectMany(group => group.FovKeys ?? []).Select(key => key.TimeOffset))
+            .DefaultIfEmpty(0).Max());
+        float interpLength = interpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? 0;
+        float duration = Math.Max(capturedEnd, interpLength - firstTime);
+        if (duration <= float.Epsilon)
+        {
+            error = "The Director sequence has no positive duration.";
+            return false;
+        }
+
+        MulticamCameraGroup firstGroup = groups.First(group =>
+            string.Equals(group.GroupName, directorKeys[0].GroupName, StringComparison.OrdinalIgnoreCase));
+        MulticamCameraGroup lastGroup = groups.First(group =>
+            string.Equals(group.GroupName, directorKeys[^1].GroupName, StringComparison.OrdinalIgnoreCase));
+        MulticamPresetType inferredType = firstGroup.IsStatic && !lastGroup.IsStatic
+            ? MulticamPresetType.StaticToDynamic
+            : MulticamPresetType.DynamicToStatic;
+        preset = new MulticamCameraPreset(name.Trim(), typeOverride ?? inferredType, duration,
+            directorKeys, groups, description?.Trim(),
+            groups.Select(group => group.MovementName).Concat(groups.Select(group => group.GroupName)).Distinct().ToArray());
+        return true;
+    }
+
+    private static ExportEntry FindReferencedGroup(ExportEntry interpData, string groupName)
+    {
+        ArrayProperty<ObjectProperty> groupRefs = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+        return groupRefs?.Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+            .Where(group => group?.ClassName == "InterpGroup")
+            .FirstOrDefault(group => string.Equals(group.GetProperty<NameProperty>("GroupName")?.Value.Instanced,
+                groupName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ExportEntry FindTrack(ExportEntry group, string className)
+    {
+        ArrayProperty<ObjectProperty> trackRefs = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+        return trackRefs?.Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .FirstOrDefault(track => track?.ClassName == className);
+    }
+
+    private static bool TryCaptureTrackMove(ExportEntry trackMove, CameraOrigin origin, float sequenceStart,
+        out IReadOnlyList<CameraPresetLocalKey> keys)
+    {
+        keys = null;
+        ArrayProperty<StructProperty> lookupPoints = trackMove.GetProperty<StructProperty>("LookupTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> positionPoints = trackMove.GetProperty<StructProperty>("PosTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> rotationPoints = trackMove.GetProperty<StructProperty>("EulerTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        if (lookupPoints is not { Count: > 0 } || positionPoints is null || rotationPoints is null
+            || lookupPoints.Count != positionPoints.Count || lookupPoints.Count != rotationPoints.Count)
+        {
+            return false;
+        }
+
+        CameraPresetGenerator.BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        var captured = new List<CameraPresetLocalKey>(lookupPoints.Count);
+        for (int i = 0; i < lookupPoints.Count; i++)
+        {
+            InterpCurvePoint<Vector3> position = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[i]);
+            InterpCurvePoint<Vector3> rotation = InterpCurvePoint<Vector3>.FromStructProperty(rotationPoints[i]);
+            Vector3 delta = position.OutVal - origin.Location;
+            captured.Add(new CameraPresetLocalKey(
+                Math.Max(0, (lookupPoints[i].GetProp<FloatProperty>("Time")?.Value ?? position.InVal) - sequenceStart),
+                CameraPresetTrackCapture.ToLocalVector(delta, forward, right, up),
+                CameraPresetGenerator.WorldRotationToLocal(rotation.OutVal, origin.Rotation),
+                MapInterpolation(position.InterpMode),
+                CameraPresetTrackCapture.ToLocalVector(position.ArriveTangent, forward, right, up),
+                CameraPresetTrackCapture.ToLocalVector(position.LeaveTangent, forward, right, up),
+                rotation.ArriveTangent, rotation.LeaveTangent));
+        }
+        keys = captured;
+        return true;
+    }
+
+    private static IReadOnlyList<MulticamFovKey> CaptureFovKeys(ExportEntry group, float sequenceStart)
+    {
+        ExportEntry fovTrack = GetTracks(group).FirstOrDefault(track => track.ClassName == "InterpTrackFloatProp"
+            && (string.Equals(track.GetProperty<NameProperty>("PropertyName")?.Value.Instanced, "FOVAngle", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(track.GetProperty<StrProperty>("TrackTitle")?.Value, "FOVAngle", StringComparison.OrdinalIgnoreCase)));
+        StructProperty floatTrack = fovTrack?.GetProperty<StructProperty>("FloatTrack");
+        ArrayProperty<StructProperty> points = floatTrack?.GetProp<ArrayProperty<StructProperty>>("Points");
+        return points?.Select(point => InterpCurvePoint<float>.FromStructProperty(point))
+            .Select(point => new MulticamFovKey(Math.Max(0, point.InVal - sequenceStart), point.OutVal,
+                point.ArriveTangent, point.LeaveTangent, MapInterpolation(point.InterpMode))).ToArray() ?? [];
+    }
+
+    private static IEnumerable<ExportEntry> GetTracks(ExportEntry group) =>
+        group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+            .Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .Where(track => track is not null) ?? [];
+
+    private static bool IsStatic(IReadOnlyList<CameraPresetLocalKey> keys, IReadOnlyList<MulticamFovKey> fovKeys)
+    {
+        CameraPresetLocalKey first = keys[0];
+        bool transformIsStatic = keys.All(key => Vector3.DistanceSquared(key.LocalPosition, first.LocalPosition) < 0.0001f
+            && Vector3.DistanceSquared(key.LocalRotation, first.LocalRotation) < 0.0001f);
+        bool fovIsStatic = fovKeys is not { Count: > 1 }
+            || fovKeys.All(key => Math.Abs(key.Value - fovKeys[0].Value) < 0.0001f);
+        return transformIsStatic && fovIsStatic;
+    }
+
+    private static string GetMovementName(ExportEntry group, ExportEntry trackMove) =>
+        trackMove.GetProperty<StrProperty>("TrackTitle")?.Value
+        ?? group.GetProperty<NameProperty>("GroupName")?.Value.Instanced
+        ?? "Dynamic Camera";
+
+    internal static CameraKeyInterpolation MapInterpolation(EInterpCurveMode mode) => mode switch
+    {
+        EInterpCurveMode.CIM_Constant => CameraKeyInterpolation.Constant,
+        EInterpCurveMode.CIM_Linear => CameraKeyInterpolation.Linear,
+        EInterpCurveMode.CIM_CurveAutoClamped => CameraKeyInterpolation.SmoothClamped,
+        _ => CameraKeyInterpolation.Smooth
+    };
 }
 
 public enum CameraPathKind
@@ -46,7 +415,13 @@ public enum CameraPathKind
     PullCrane,
     MoveThenHold,
     HoldThenMove,
-    Reframe
+    Reframe,
+    TiltDown,
+    TiltUp,
+    ZoomIn,
+    ZoomOut,
+    Tracking,
+    Drift
 }
 
 public enum CameraKeyInterpolation
@@ -63,7 +438,9 @@ public readonly record struct GeneratedCameraKey(float TimeOffset, Vector3 Locat
     CameraKeyInterpolation Interpolation);
 
 public readonly record struct CameraPresetLocalKey(float TimeOffset, Vector3 LocalPosition, Vector3 LocalRotation,
-    CameraKeyInterpolation Interpolation);
+    CameraKeyInterpolation Interpolation, Vector3 PositionArriveTangent = default,
+    Vector3 PositionLeaveTangent = default, Vector3 RotationArriveTangent = default,
+    Vector3 RotationLeaveTangent = default);
 
 public sealed record CameraPreset(
     string Name,
@@ -83,6 +460,41 @@ public sealed record CameraPreset(
     IReadOnlyList<CameraPresetLocalKey> LocalKeys = null)
 {
     public bool IsSavedTrackMove => Category == CameraPresetCategory.SavedTrackMoves && LocalKeys is { Count: > 0 };
+}
+
+public enum MulticamPresetType
+{
+    StaticToDynamic,
+    DynamicToStatic
+}
+
+public readonly record struct MulticamDirectorKey(float TimeOffset, string GroupName);
+
+public readonly record struct MulticamFovKey(float TimeOffset, float Value, float ArriveTangent, float LeaveTangent,
+    CameraKeyInterpolation Interpolation);
+
+public sealed record MulticamCameraGroup(
+    string GroupName,
+    string FindActorName,
+    bool IsStatic,
+    string MovementName,
+    IReadOnlyList<CameraPresetLocalKey> TrackMoveKeys,
+    IReadOnlyList<MulticamFovKey> FovKeys = null,
+    string AnchorRole = null);
+
+public sealed record MulticamCameraPreset(
+    string Name,
+    MulticamPresetType Type,
+    float Duration,
+    IReadOnlyList<MulticamDirectorKey> DirectorKeys,
+    IReadOnlyList<MulticamCameraGroup> CameraGroups,
+    string Description = null,
+    IReadOnlyList<string> SearchableMetadata = null,
+    bool IsBuiltIn = false)
+{
+    public string TypeDisplay => Type == MulticamPresetType.StaticToDynamic
+        ? "Static → Dynamic"
+        : "Dynamic → Static";
 }
 
 public static class CameraPresetCatalog
@@ -213,6 +625,145 @@ public static class CameraPresetCatalog
         Reaction("Custom Reaction Shot", 160, 25, 76, 74);
 
         return presets;
+    }
+}
+
+public static class MulticamCameraPresetCatalog
+{
+    private const float TemplateDuration = 4f;
+    private const float CutTime = TemplateDuration / 2f;
+
+    public static IReadOnlyList<MulticamCameraPreset> All { get; } = BuildPresets();
+
+    public static IReadOnlyList<MulticamCameraPreset> GetByType(MulticamPresetType type) =>
+        All.Where(preset => preset.Type == type).ToList();
+
+    private static IReadOnlyList<MulticamCameraPreset> BuildPresets()
+    {
+        var presets = new List<MulticamCameraPreset>();
+
+        AddDynamicToStatic("Push In → Static Close", CameraPathKind.Push, "Push In", "Close");
+        AddDynamicToStatic("Push In → Static Medium", CameraPathKind.Push, "Push In", "Medium");
+        AddDynamicToStatic("Push In → Static Wide", CameraPathKind.Push, "Push In", "Wide");
+        AddDynamicToStatic("Dolly In → Static Close", CameraPathKind.Push, "Dolly In", "Close");
+        AddDynamicToStatic("Dolly Out → Static Wide", CameraPathKind.Pull, "Dolly Out", "Wide");
+        AddDynamicToStatic("Arc Left → Static Close", CameraPathKind.ArcLeft, "Arc Left", "Close");
+        AddDynamicToStatic("Arc Right → Static Close", CameraPathKind.ArcRight, "Arc Right", "Close");
+        AddDynamicToStatic("Lateral Slide Left → Static", CameraPathKind.SlideLeft, "Lateral Slide Left");
+        AddDynamicToStatic("Lateral Slide Right → Static", CameraPathKind.SlideRight, "Lateral Slide Right");
+        AddDynamicToStatic("Orbit Left → Static", CameraPathKind.OrbitLeft, "Orbit Left");
+        AddDynamicToStatic("Orbit Right → Static", CameraPathKind.OrbitRight, "Orbit Right");
+        AddDynamicToStatic("Crane Down → Static", CameraPathKind.CraneDown, "Crane Down");
+        AddDynamicToStatic("Crane Up → Static", CameraPathKind.CraneUp, "Crane Up");
+        AddDynamicToStatic("Tilt Down → Static", CameraPathKind.TiltDown, "Tilt Down");
+        AddDynamicToStatic("Tilt Up → Static", CameraPathKind.TiltUp, "Tilt Up");
+        AddDynamicToStatic("Zoom In → Static", CameraPathKind.ZoomIn, "Zoom In");
+        AddDynamicToStatic("Zoom Out → Static", CameraPathKind.ZoomOut, "Zoom Out");
+        AddDynamicToStatic("Tracking → Static", CameraPathKind.Tracking, "Tracking");
+        AddDynamicToStatic("Drift → Static", CameraPathKind.Drift, "Drift");
+        AddDynamicToStatic("Follow → Static", CameraPathKind.Follow, "Follow");
+
+        AddStaticToDynamic("Static Close → Push In", "Close", CameraPathKind.Push, "Push In");
+        AddStaticToDynamic("Static Medium → Push In", "Medium", CameraPathKind.Push, "Push In");
+        AddStaticToDynamic("Static Wide → Push In", "Wide", CameraPathKind.Push, "Push In");
+        AddStaticToDynamic("Static Close → Dolly In", "Close", CameraPathKind.Push, "Dolly In");
+        AddStaticToDynamic("Static Wide → Dolly Out", "Wide", CameraPathKind.Pull, "Dolly Out");
+        AddStaticToDynamic("Static → Arc Left", null, CameraPathKind.ArcLeft, "Arc Left");
+        AddStaticToDynamic("Static → Arc Right", null, CameraPathKind.ArcRight, "Arc Right");
+        AddStaticToDynamic("Static → Slide Left", null, CameraPathKind.SlideLeft, "Slide Left");
+        AddStaticToDynamic("Static → Slide Right", null, CameraPathKind.SlideRight, "Slide Right");
+        AddStaticToDynamic("Static → Orbit Left", null, CameraPathKind.OrbitLeft, "Orbit Left");
+        AddStaticToDynamic("Static → Orbit Right", null, CameraPathKind.OrbitRight, "Orbit Right");
+        AddStaticToDynamic("Static → Crane Up", null, CameraPathKind.CraneUp, "Crane Up");
+        AddStaticToDynamic("Static → Crane Down", null, CameraPathKind.CraneDown, "Crane Down");
+        AddStaticToDynamic("Static → Tilt Up", null, CameraPathKind.TiltUp, "Tilt Up");
+        AddStaticToDynamic("Static → Tilt Down", null, CameraPathKind.TiltDown, "Tilt Down");
+        AddStaticToDynamic("Static → Zoom In", null, CameraPathKind.ZoomIn, "Zoom In");
+        AddStaticToDynamic("Static → Zoom Out", null, CameraPathKind.ZoomOut, "Zoom Out");
+        AddStaticToDynamic("Static → Tracking", null, CameraPathKind.Tracking, "Tracking");
+        AddStaticToDynamic("Static → Drift", null, CameraPathKind.Drift, "Drift");
+        AddStaticToDynamic("Static → Follow", null, CameraPathKind.Follow, "Follow");
+
+        return presets;
+
+        void AddDynamicToStatic(string name, CameraPathKind pathKind, string movementName, string framing = null)
+        {
+            MulticamCameraGroup dynamicGroup = BuildDynamicGroup("Cam1", pathKind, movementName, 0);
+            MulticamCameraGroup staticGroup = BuildStaticGroup("Cam2", framing, CutTime);
+            presets.Add(BuildPreset(name, MulticamPresetType.DynamicToStatic, dynamicGroup, staticGroup));
+        }
+
+        void AddStaticToDynamic(string name, string framing, CameraPathKind pathKind, string movementName)
+        {
+            MulticamCameraGroup staticGroup = BuildStaticGroup("Cam1", framing, 0);
+            MulticamCameraGroup dynamicGroup = BuildDynamicGroup("Cam2", pathKind, movementName, CutTime);
+            presets.Add(BuildPreset(name, MulticamPresetType.StaticToDynamic, staticGroup, dynamicGroup));
+        }
+    }
+
+    private static MulticamCameraPreset BuildPreset(string name, MulticamPresetType type,
+        MulticamCameraGroup firstGroup, MulticamCameraGroup secondGroup) =>
+        new(name, type, TemplateDuration,
+            [new MulticamDirectorKey(0, "Cam1"), new MulticamDirectorKey(CutTime, "Cam2")],
+            [firstGroup, secondGroup],
+            $"Two-camera {type switch { MulticamPresetType.StaticToDynamic => "static-to-dynamic", _ => "dynamic-to-static" }} sequence.",
+            [firstGroup.MovementName, secondGroup.MovementName, "Cam1", "Cam2"], true);
+
+    private static MulticamCameraGroup BuildStaticGroup(string groupName, string framing, float startTime)
+    {
+        string presetName = framing switch
+        {
+            "Close" => "Front Close-Up",
+            "Wide" => "Medium Wide Shot",
+            _ => "Front Medium Shot"
+        };
+        CameraPreset preset = CameraPresetCatalog.All.First(item => item.Name == presetName);
+        return new MulticamCameraGroup(groupName, groupName, true, preset.Name,
+            ToLocalKeys(preset, startTime, 0),
+            [new MulticamFovKey(startTime, 60, 0, 0, CameraKeyInterpolation.Constant)]);
+    }
+
+    private static MulticamCameraGroup BuildDynamicGroup(string groupName, CameraPathKind pathKind,
+        string movementName, float startTime)
+    {
+        var preset = new CameraPreset(movementName, CameraPresetCategory.DynamicShots,
+            300, 0, 90, 70, Duration: CutTime, KeyCount: 6, PathKind: pathKind, MovementAmount: 140,
+            Interpolation: CameraKeyInterpolation.SmoothClamped);
+        IReadOnlyList<CameraPresetLocalKey> localKeys = ToLocalKeys(preset, startTime, CutTime);
+        if (pathKind is CameraPathKind.TiltDown or CameraPathKind.TiltUp)
+        {
+            float direction = pathKind == CameraPathKind.TiltUp ? 1 : -1;
+            localKeys = localKeys.Select((key, index) => key with
+            {
+                LocalRotation = key.LocalRotation with
+                {
+                    Y = key.LocalRotation.Y + direction * 25f * index / Math.Max(1, localKeys.Count - 1)
+                }
+            }).ToArray();
+        }
+
+        IReadOnlyList<MulticamFovKey> fovKeys = pathKind switch
+        {
+            CameraPathKind.ZoomIn =>
+            [new(startTime, 65, 0, 0, CameraKeyInterpolation.SmoothClamped),
+                new(startTime + CutTime, 38, 0, 0, CameraKeyInterpolation.SmoothClamped)],
+            CameraPathKind.ZoomOut =>
+            [new(startTime, 38, 0, 0, CameraKeyInterpolation.SmoothClamped),
+                new(startTime + CutTime, 65, 0, 0, CameraKeyInterpolation.SmoothClamped)],
+            _ => [new MulticamFovKey(startTime, 60, 0, 0, CameraKeyInterpolation.Constant)]
+        };
+        return new MulticamCameraGroup(groupName, groupName, false, movementName,
+            localKeys, fovKeys);
+    }
+
+    private static IReadOnlyList<CameraPresetLocalKey> ToLocalKeys(CameraPreset preset, float startTime, float duration)
+    {
+        IReadOnlyList<GeneratedCameraKey> generated = CameraPresetGenerator.Generate(preset,
+            new CameraOrigin(Vector3.Zero, Vector3.Zero));
+        float sourceDuration = generated.Count > 0 ? generated[^1].TimeOffset : 0;
+        return generated.Select(key => new CameraPresetLocalKey(
+            startTime + (sourceDuration <= float.Epsilon ? 0 : key.TimeOffset / sourceDuration * duration),
+            key.Location, key.Rotation, key.Interpolation)).ToArray();
     }
 }
 
@@ -448,6 +999,8 @@ public static class CameraPresetGenerator
                 break;
             case CameraPathKind.HoldThenMove: distance -= amount * SmoothSegment(t, 0.35f, 1); break;
             case CameraPathKind.Reframe: side += amount * smooth; distance -= amount * 0.25f * smooth; height += amount * 0.12f * smooth; break;
+            case CameraPathKind.Tracking: side += amount * smooth; break;
+            case CameraPathKind.Drift: side += amount * 0.4f * smooth; height += amount * 0.1f * smooth; break;
         }
     }
 
@@ -564,14 +1117,18 @@ public static class CameraPresetTrackCapture
         var localKeys = new List<CameraPresetLocalKey>(lookupPoints.Count);
         for (int i = 0; i < lookupPoints.Count; i++)
         {
-            Vector3 worldPosition = CommonStructs.GetVector3(positionPoints[i].GetProp<StructProperty>("OutVal"));
-            Vector3 worldRotation = CommonStructs.GetVector3(rotationPoints[i].GetProp<StructProperty>("OutVal"));
+            InterpCurvePoint<Vector3> positionPoint = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[i]);
+            InterpCurvePoint<Vector3> rotationPoint = InterpCurvePoint<Vector3>.FromStructProperty(rotationPoints[i]);
+            Vector3 worldPosition = positionPoint.OutVal;
+            Vector3 worldRotation = rotationPoint.OutVal;
             Vector3 delta = worldPosition - origin.Location;
             Vector3 localPosition = new(Vector3.Dot(delta, forward), Vector3.Dot(delta, right), Vector3.Dot(delta, up));
             Vector3 localRotation = CameraPresetGenerator.WorldRotationToLocal(worldRotation, origin.Rotation);
             float time = (lookupPoints[i].GetProp<FloatProperty>("Time")?.Value ?? firstTime) - firstTime;
-            EInterpCurveMode mode = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[i]).InterpMode;
-            localKeys.Add(new CameraPresetLocalKey(time, localPosition, localRotation, MapInterpolation(mode)));
+            localKeys.Add(new CameraPresetLocalKey(time, localPosition, localRotation, MapInterpolation(positionPoint.InterpMode),
+                ToLocalVector(positionPoint.ArriveTangent, forward, right, up),
+                ToLocalVector(positionPoint.LeaveTangent, forward, right, up),
+                rotationPoint.ArriveTangent, rotationPoint.LeaveTangent));
         }
 
         float duration = Math.Max(0, localKeys[^1].TimeOffset);
@@ -590,4 +1147,7 @@ public static class CameraPresetTrackCapture
         EInterpCurveMode.CIM_CurveAutoClamped => CameraKeyInterpolation.SmoothClamped,
         _ => CameraKeyInterpolation.Smooth
     };
+
+    internal static Vector3 ToLocalVector(Vector3 value, Vector3 forward, Vector3 right, Vector3 up) =>
+        new(Vector3.Dot(value, forward), Vector3.Dot(value, right), Vector3.Dot(value, up));
 }

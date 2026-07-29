@@ -33,7 +33,10 @@ public partial class CameraPresetDialog : Window
     private readonly IMEPackage _package;
     private readonly CameraActorAnchorContext _actorAnchorContext;
     private readonly ExportEntry _selectedTrackMove;
+    private readonly ExportEntry _selectedDirectorTrack;
+    private readonly ExportEntry _interpData;
     private CameraPreset _selectedPreset;
+    private MulticamCameraPreset _selectedMulticamPreset;
     private bool _updatingCameraSpeed;
     private bool _updatingDistanceScale;
     private bool _updatingResolvedOrigin;
@@ -45,7 +48,8 @@ public partial class CameraPresetDialog : Window
     public CameraPresetDialog(Func<CameraOrigin?> getTrackKeyOrigin, Func<CameraOrigin?> getViewportOrigin,
         Action<GeneratedCameraKey> previewCamera, float initialStartTime = 0, float? maximumEndTime = null,
         IMEPackage package = null, CameraActorAnchorContext actorAnchorContext = null,
-        ExportEntry selectedTrackMove = null)
+        ExportEntry selectedTrackMove = null, ExportEntry selectedDirectorTrack = null,
+        ExportEntry interpData = null)
     {
         _getTrackKeyOrigin = getTrackKeyOrigin;
         _getViewportOrigin = getViewportOrigin;
@@ -54,6 +58,8 @@ public partial class CameraPresetDialog : Window
         _package = package;
         _actorAnchorContext = actorAnchorContext;
         _selectedTrackMove = selectedTrackMove;
+        _selectedDirectorTrack = selectedDirectorTrack;
+        _interpData = interpData;
 
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
@@ -62,7 +68,9 @@ public partial class CameraPresetDialog : Window
         DynamicPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.DynamicShots);
         ReactionPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.ReactionShots);
         SavedPresetList.ItemsSource = SavedCameraPresetManager.Presets;
+        MulticamPresetList.ItemsSource = GetAllMulticamPresets().ToList();
         SaveTrackMovePresetButton.IsEnabled = _selectedTrackMove is not null;
+        SaveMulticamPresetButton.IsEnabled = _selectedDirectorTrack is not null && _interpData is not null;
         UseTrackKeyButton.IsEnabled = _getTrackKeyOrigin?.Invoke() is not null;
         UseOtherTrackKeyButton.IsEnabled = _package is not null;
         bool hasViewport = _getViewportOrigin?.Invoke() is not null;
@@ -84,6 +92,173 @@ public partial class CameraPresetDialog : Window
             textBox.TextChanged += PreviewParameter_TextChanged;
         }
         SelectSavedPreset();
+        if (_selectedDirectorTrack is not null)
+        {
+            CameraModeTabs.SelectedIndex = 1;
+            RefreshMulticamList();
+            MulticamPresetList.SelectedIndex = 0;
+        }
+    }
+
+    private void SaveMulticamPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedDirectorTrack is null || _interpData is null)
+        {
+            MessageBox.Show("Select a Director track before saving a multicam preset.", "Save Multicam Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            return;
+        }
+        if (!MulticamCameraPresetCapture.TryCapture(_selectedDirectorTrack, _interpData, origin,
+                "Pending", null, null, out MulticamCameraPreset captured, out string error))
+        {
+            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var saveDialog = new MulticamPresetSaveDialog(captured.Type, SavedMulticamCameraPresetManager.ContainsName)
+        {
+            Owner = this
+        };
+        if (saveDialog.ShowDialog() != true)
+        {
+            return;
+        }
+        if (!MulticamCameraPresetCapture.TryCapture(_selectedDirectorTrack, _interpData, origin,
+                saveDialog.PresetName, saveDialog.Description, saveDialog.PresetType,
+                out MulticamCameraPreset preset, out error))
+        {
+            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            SavedMulticamCameraPresetManager.Add(preset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        _selectedMulticamPreset = SavedMulticamCameraPresetManager.Presets.First(item =>
+            string.Equals(item.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+        RefreshMulticamList();
+        MulticamPresetList.SelectedItem = _selectedMulticamPreset;
+        MulticamPresetList.ScrollIntoView(_selectedMulticamPreset);
+        StatusTextBlock.Text = $"Saved complete Director preset '{preset.Name}'.";
+    }
+
+    private void DeleteMulticamPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (MulticamPresetList.SelectedItem is not MulticamCameraPreset { IsBuiltIn: false } preset)
+        {
+            return;
+        }
+        if (MessageBox.Show($"Delete saved multicam preset '{preset.Name}'?", "Delete Multicam Preset",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            SavedMulticamCameraPresetManager.Delete(preset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Delete Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        _selectedMulticamPreset = null;
+        RefreshMulticamList();
+        MulticamPresetList.SelectedIndex = 0;
+        StatusTextBlock.Text = $"Deleted multicam preset '{preset.Name}'.";
+    }
+
+    private void ImportMulticamPresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import Multicam Director Presets",
+            Filter = "Multicam preset list (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        IReadOnlyList<MulticamCameraPreset> imported = SavedMulticamCameraPresetManager.ReadCollection(dialog.FileName);
+        if (imported.Count == 0)
+        {
+            MessageBox.Show("The file contains no valid multicam Director presets.", "Import Multicam Presets",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string[] duplicates = imported.Where(preset => SavedMulticamCameraPresetManager.ContainsName(preset.Name))
+            .Select(preset => preset.Name).ToArray();
+        bool replaceDuplicates = false;
+        if (duplicates.Length > 0)
+        {
+            MessageBoxResult result = MessageBox.Show(
+                $"The following preset names already exist:\n\n{string.Join("\n", duplicates)}\n\n" +
+                "Choose Yes to replace all duplicates, No to skip all duplicates, or Cancel to stop importing.",
+                "Duplicate Multicam Presets", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+            replaceDuplicates = result == MessageBoxResult.Yes;
+        }
+
+        try
+        {
+            (int added, int replaced, int skipped) = SavedMulticamCameraPresetManager.Merge(imported, replaceDuplicates);
+            RefreshMulticamList();
+            StatusTextBlock.Text = $"Imported {added} multicam preset(s); replaced {replaced}; skipped {skipped}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Import Multicam Presets", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportMulticamPresets_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedMulticamCameraPresetManager.Presets.Count == 0)
+        {
+            MessageBox.Show("There are no saved multicam presets to export.", "Export Multicam Presets",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Multicam Director Presets",
+            Filter = "Multicam preset list (*.json)|*.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+            FileName = "MulticamDirectorPresets.json"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            SavedMulticamCameraPresetManager.Export(dialog.FileName);
+            StatusTextBlock.Text = $"Exported {SavedMulticamCameraPresetManager.Presets.Count} multicam preset(s).";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Export Multicam Presets", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void AnchorModeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -201,6 +376,32 @@ public partial class CameraPresetDialog : Window
         return true;
     }
 
+    public static bool GenerateForDirector(Window owner, ExportEntry directorTrack,
+        Func<CameraOrigin?> getViewportOrigin = null, Action<GeneratedCameraKey> previewCamera = null,
+        CameraActorAnchorContext actorAnchorContext = null)
+    {
+        if (directorTrack?.ClassName != "InterpTrackDirector")
+        {
+            return false;
+        }
+
+        ExportEntry interpData = FindOwningInterpData(directorTrack);
+        if (interpData is null)
+        {
+            return false;
+        }
+
+        var dialog = new CameraPresetDialog(
+            () => GetDirectorOrigin(directorTrack, interpData), getViewportOrigin, previewCamera,
+            maximumEndTime: interpData.GetProperty<FloatProperty>("InterpLength")?.Value,
+            package: directorTrack.FileRef, actorAnchorContext: actorAnchorContext,
+            selectedDirectorTrack: directorTrack, interpData: interpData)
+        {
+            Owner = owner
+        };
+        return dialog.ShowDialog() == true;
+    }
+
     private void PresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_updatingPresetSelection || sender is not ListBox { SelectedItem: CameraPreset preset })
@@ -224,8 +425,14 @@ public partial class CameraPresetDialog : Window
 
     private void PresetSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (PresetTabs is null || PresetSearchResultsList is null)
+        if (PresetTabs is null || PresetSearchResultsList is null || CameraModeTabs is null)
         {
+            return;
+        }
+
+        if (CameraModeTabs.SelectedIndex == 1)
+        {
+            RefreshMulticamList();
             return;
         }
 
@@ -244,6 +451,106 @@ public partial class CameraPresetDialog : Window
                 || GetCategoryDisplay(preset.Category).Contains(search, StringComparison.OrdinalIgnoreCase))
             .Select(preset => new PresetSearchResult(preset, preset.Name, GetCategoryDisplay(preset.Category)))
             .ToList();
+    }
+
+    private void CameraModeTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source != CameraModeTabs || SingleCamParametersPanel is null)
+        {
+            return;
+        }
+
+        bool isMulticam = CameraModeTabs.SelectedIndex == 1;
+        SingleCamParametersPanel.Visibility = isMulticam ? Visibility.Collapsed : Visibility.Visible;
+        MulticamDetailsPanel.Visibility = isMulticam ? Visibility.Visible : Visibility.Collapsed;
+        PresetDetailsGroup.Header = isMulticam ? "Multicam Director Sequence" : "Local Composition and Movement";
+        GenerateButton.Content = isMulticam ? "Apply Multicam" : "Generate";
+        RefreshPresetSearchForCurrentMode();
+        if (isMulticam && MulticamPresetList.SelectedItem is null)
+        {
+            MulticamPresetList.SelectedIndex = 0;
+        }
+        RefreshLivePreview();
+    }
+
+    private void MulticamTypeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MulticamPresetList is not null)
+        {
+            RefreshMulticamList();
+        }
+    }
+
+    private void RefreshMulticamList()
+    {
+        if (MulticamPresetList is null)
+        {
+            return;
+        }
+
+        string search = PresetSearchTextBox?.Text.Trim() ?? string.Empty;
+        string typeTag = (MulticamTypeFilterComboBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "All";
+        MulticamCameraPreset selected = _selectedMulticamPreset;
+        List<MulticamCameraPreset> filtered = GetAllMulticamPresets()
+            .Where(preset => typeTag == "All" || string.Equals(preset.Type.ToString(), typeTag, StringComparison.Ordinal))
+            .Where(preset => string.IsNullOrEmpty(search) || MulticamMatchesSearch(preset, search))
+            .ToList();
+        MulticamPresetList.ItemsSource = filtered;
+        if (selected is not null)
+        {
+            MulticamPresetList.SelectedItem = filtered.FirstOrDefault(preset =>
+                string.Equals(preset.Name, selected.Name, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static bool MulticamMatchesSearch(MulticamCameraPreset preset, string search)
+    {
+        IEnumerable<string> values = new[] { preset.Name, preset.Description, preset.TypeDisplay }
+            .Concat(preset.CameraGroups.SelectMany(group => new[] { group.GroupName, group.FindActorName, group.MovementName }))
+            .Concat(preset.SearchableMetadata ?? []);
+        return values.Any(value => value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private void MulticamPresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MulticamPresetList.SelectedItem is not MulticamCameraPreset preset)
+        {
+            return;
+        }
+
+        _selectedMulticamPreset = preset;
+        DeleteMulticamPresetButton.IsEnabled = !preset.IsBuiltIn
+            && SavedMulticamCameraPresetManager.Presets.Contains(preset);
+        MulticamNameTextBlock.Text = preset.Name;
+        MulticamTypeTextBlock.Text = preset.TypeDisplay;
+        MulticamDescriptionTextBlock.Text = string.IsNullOrWhiteSpace(preset.Description)
+            ? "No description."
+            : preset.Description;
+        MulticamCutsItemsControl.ItemsSource = preset.DirectorKeys
+            .OrderBy(key => key.TimeOffset)
+            .Select(key => $"{key.TimeOffset:0.###}s  →  {key.GroupName}")
+            .ToArray();
+        MulticamGroupsItemsControl.ItemsSource = preset.CameraGroups
+            .Select(group => $"{group.GroupName} ({(group.IsStatic ? "Static" : "Dynamic")}) — {group.MovementName}")
+            .ToArray();
+        RefreshLivePreview();
+    }
+
+    private static IEnumerable<MulticamCameraPreset> GetAllMulticamPresets() =>
+        MulticamCameraPresetCatalog.All.Concat(SavedMulticamCameraPresetManager.Presets);
+
+    private void RefreshPresetSearchForCurrentMode()
+    {
+        if (CameraModeTabs?.SelectedIndex == 1)
+        {
+            PresetTabs.Visibility = Visibility.Visible;
+            PresetSearchResultsList.Visibility = Visibility.Collapsed;
+            RefreshMulticamList();
+        }
+        else
+        {
+            PresetSearchTextBox_TextChanged(PresetSearchTextBox, null);
+        }
     }
 
     private void PresetSearchResultsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -447,10 +754,7 @@ public partial class CameraPresetDialog : Window
 
     private void RefreshPresetSearch()
     {
-        if (!string.IsNullOrWhiteSpace(PresetSearchTextBox.Text))
-        {
-            PresetSearchTextBox_TextChanged(PresetSearchTextBox, null);
-        }
+        RefreshPresetSearchForCurrentMode();
     }
 
     private void SelectSavedPreset()
@@ -535,6 +839,16 @@ public partial class CameraPresetDialog : Window
 
     private void RefreshLivePreview()
     {
+        if (TogglePreviewButton is { IsChecked: true }
+            && CameraModeTabs?.SelectedIndex == 1
+            && _selectedMulticamPreset is not null
+            && TryResolveGenerationOrigin(false, out CameraOrigin multicamOrigin))
+        {
+            CameraPreviewControl.Visibility = Visibility.Visible;
+            CameraPreviewControl.SetMulticamPreview(_selectedMulticamPreset, multicamOrigin,
+                BuildMulticamPreview(_selectedMulticamPreset, multicamOrigin), _previewCamera);
+            return;
+        }
         if (TogglePreviewButton is not { IsChecked: true }
             || CameraPreviewControl is null
             || _selectedPreset is null
@@ -746,6 +1060,11 @@ public partial class CameraPresetDialog : Window
 
     private void Preview_Click(object sender, RoutedEventArgs e)
     {
+        if (CameraModeTabs.SelectedIndex == 1)
+        {
+            PreviewMulticamPreset();
+            return;
+        }
         if (!TryGenerate(out IReadOnlyList<GeneratedCameraKey> keys))
         {
             return;
@@ -755,14 +1074,82 @@ public partial class CameraPresetDialog : Window
         StatusTextBlock.Text = $"Previewing {_selectedPreset.Name}.";
     }
 
+    private void PreviewMulticamPreset()
+    {
+        if (_selectedMulticamPreset is null || !TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            return;
+        }
+
+        IReadOnlyDictionary<string, IReadOnlyList<GeneratedCameraKey>> cameras = BuildMulticamPreview(_selectedMulticamPreset, origin);
+        float previewTime = _selectedMulticamPreset.Duration / 2f;
+        MulticamDirectorKey activeCut = _selectedMulticamPreset.DirectorKeys
+            .Where(key => key.TimeOffset <= previewTime)
+            .OrderBy(key => key.TimeOffset)
+            .LastOrDefault();
+        if (cameras.TryGetValue(activeCut.GroupName, out IReadOnlyList<GeneratedCameraKey> keys) && keys.Count > 0)
+        {
+            GeneratedCameraKey activeKey = keys.OrderBy(key => Math.Abs(key.TimeOffset - previewTime)).First();
+            _previewCamera?.Invoke(activeKey);
+        }
+        StatusTextBlock.Text = $"Previewing complete Director sequence '{_selectedMulticamPreset.Name}'.";
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<GeneratedCameraKey>> BuildMulticamPreview(
+        MulticamCameraPreset preset, CameraOrigin origin)
+    {
+        CameraPresetGenerator.BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        return preset.CameraGroups.ToDictionary(group => group.GroupName, group =>
+            (IReadOnlyList<GeneratedCameraKey>)group.TrackMoveKeys.Select(key => new GeneratedCameraKey(
+                key.TimeOffset,
+                origin.Location + forward * key.LocalPosition.X + right * key.LocalPosition.Y + up * key.LocalPosition.Z,
+                CameraPresetGenerator.LocalRotationToWorld(key.LocalRotation, origin.Rotation),
+                key.Interpolation)).ToArray(), StringComparer.OrdinalIgnoreCase);
+    }
+
     private void Generate_Click(object sender, RoutedEventArgs e)
     {
+        if (CameraModeTabs.SelectedIndex == 1)
+        {
+            ApplyMulticamPreset();
+            return;
+        }
         if (!TryGenerate(out IReadOnlyList<GeneratedCameraKey> keys))
         {
             return;
         }
 
         GeneratedKeys = keys;
+        DialogResult = true;
+        Close();
+    }
+
+    private void ApplyMulticamPreset()
+    {
+        if (_selectedMulticamPreset is null)
+        {
+            MessageBox.Show("Select a multicam preset.", "No Preset Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (_selectedDirectorTrack is null || _interpData is null)
+        {
+            MessageBox.Show("Select a Director track as the multicam destination.", "No Director Selected",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            return;
+        }
+
+        float destinationDuration = _maximumEndTime ?? _selectedMulticamPreset.Duration;
+        if (!MulticamCameraPresetApplicator.TryApply(_selectedMulticamPreset, _selectedDirectorTrack,
+                _interpData, origin, destinationDuration, out string error))
+        {
+            MessageBox.Show(error, "Unable to Apply Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         DialogResult = true;
         Close();
     }
@@ -874,6 +1261,28 @@ public partial class CameraPresetDialog : Window
         }
 
         return null;
+    }
+
+    private static CameraOrigin? GetDirectorOrigin(ExportEntry directorTrack, ExportEntry interpData)
+    {
+        StructProperty firstCut = directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack")?
+            .OrderBy(cut => cut.GetProp<FloatProperty>("Time")?.Value ?? 0)
+            .FirstOrDefault();
+        string groupName = firstCut?.GetProp<NameProperty>("TargetCamGroup")?.Value.Instanced;
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            return null;
+        }
+
+        ArrayProperty<ObjectProperty> groupRefs = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+        ExportEntry group = groupRefs?.Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry item) ? item : null)
+            .FirstOrDefault(item => item?.ClassName == "InterpGroup"
+                && string.Equals(item.GetProperty<NameProperty>("GroupName")?.Value.Instanced,
+                    groupName, StringComparison.OrdinalIgnoreCase));
+        ExportEntry trackMove = group?.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+            .Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry item) ? item : null)
+            .FirstOrDefault(item => item?.ClassName == "InterpTrackMove");
+        return trackMove is null ? null : new InterpTrackMove(trackMove).GetCameraOriginNearestTime(0);
     }
 
     private void InitializeActorAnchorControls()
