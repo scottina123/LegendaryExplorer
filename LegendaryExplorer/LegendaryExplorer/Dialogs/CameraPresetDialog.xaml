@@ -16,9 +16,66 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <GroupBox Header="Scene Origin Transform (degrees)" Padding="10" Margin="0,0,0,10">
+        <GroupBox Header="Camera Anchor" Padding="10" Margin="0,0,0,10">
             <StackPanel>
-                <UniformGrid Columns="6" Margin="0,0,0,8">
+                <Grid Margin="3,0,3,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Anchor mode" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="AnchorModeComboBox" Grid.Column="1" SelectedIndex="0"
+                              SelectionChanged="AnchorModeComboBox_SelectionChanged">
+                        <ComboBoxItem Content="Manual Origin" Tag="ManualOrigin"/>
+                        <ComboBoxItem Content="Single Actor" Tag="SingleActor"/>
+                        <ComboBoxItem Content="Multiple Actors" Tag="MultipleActors"/>
+                    </ComboBox>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
+                        <Button x:Name="ApplyActorOriginButton" Content="Apply Actor Origin"
+                                Click="ApplyActorOriginButton_Click" Padding="8,4" Margin="0,0,8,0"
+                                IsEnabled="False"
+                                ToolTip="Copy the resolved actor anchor into Manual Origin for further adjustment"/>
+                        <TextBlock x:Name="AnchorModeAvailabilityText" VerticalAlignment="Center"
+                                   Opacity="0.7" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+                <Grid x:Name="SingleActorPanel" Visibility="Collapsed" Margin="3,0,3,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Actor tag" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="SingleActorComboBox" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True"
+                              SelectionChanged="AnchorSelection_Changed" LostKeyboardFocus="AnchorSelection_LostKeyboardFocus"
+                              ToolTip="Select a conversation speaker or type an exact actor tag"/>
+                </Grid>
+                <Grid x:Name="MultipleActorsPanel" Visibility="Collapsed" Margin="3,0,3,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Scene speakers" VerticalAlignment="Top" Margin="0,4,0,0"/>
+                    <ListBox x:Name="MultipleActorListBox" Grid.Column="1" Height="72" SelectionMode="Extended"
+                             SelectionChanged="AnchorSelection_Changed"
+                             ToolTip="Select two or more speakers; Ctrl-click to select multiple"/>
+                    <TextBlock Grid.Row="1" Text="Additional tags" VerticalAlignment="Center"/>
+                    <TextBox x:Name="MultipleActorTagsTextBox" Grid.Row="1" Grid.Column="1" Margin="0,4,0,0" Padding="4"
+                             TextChanged="AnchorSelection_Changed"
+                             ToolTip="Optional exact actor tags separated by commas, semicolons, or new lines"/>
+                    <TextBlock Grid.Row="2" Text="Primary actor" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="PrimaryActorComboBox" Grid.Row="2" Grid.Column="1" Margin="0,4,0,0"
+                              IsEditable="True" IsTextSearchEnabled="True" SelectionChanged="AnchorSelection_Changed"
+                              LostKeyboardFocus="AnchorSelection_LostKeyboardFocus"
+                              ToolTip="Used to choose the preferred side for asymmetric group shots"/>
+                </Grid>
+                <StackPanel x:Name="ManualOriginPanel">
+                <UniformGrid x:Name="OriginFieldsPanel" Columns="6" Margin="0,0,0,8">
                     <StackPanel Margin="3">
                         <TextBlock Text="Origin X"/>
                         <TextBox x:Name="OriginXTextBox" Padding="4"/>
@@ -44,7 +101,7 @@
                         <TextBox x:Name="OriginYawTextBox" Padding="4"/>
                     </StackPanel>
                 </UniformGrid>
-                <WrapPanel>
+                <WrapPanel x:Name="ManualOriginButtonsPanel">
                     <Button Content="Enter Coordinates Manually" Click="EnterManually_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseTrackKeyButton" Content="Use Selected TrackMove Key" Click="UseTrackKey_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseOtherTrackKeyButton" Content="Choose TrackMove Key from PCC" Click="UseOtherTrackKey_Click" Margin="3" Padding="8,4"/>
@@ -56,6 +113,7 @@
                 </WrapPanel>
                 <TextBlock Text="The preset is generated in the origin's local forward/right/up space; no world coordinates are built into a preset."
                            Margin="3,6,3,0" Opacity="0.75" TextWrapping="Wrap"/>
+                </StackPanel>
             </StackPanel>
         </GroupBox>
 

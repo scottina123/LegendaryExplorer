@@ -5476,7 +5476,12 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
                 case "GenerateCameraPresets":
-                    if (export.ClassName == "InterpTrackMove" && CameraPresetDialog.GenerateForTrack(this, export))
+                    var actorAnchorContext = SelectedConv is not null && SelectedDialogueNode is not null
+                        ? new CameraActorAnchorContext(SelectedConv, SelectedDialogueNode,
+                            SelectedSpeakerList.Select(speaker => speaker.SpeakerName).ToArray())
+                        : null;
+                    if (export.ClassName == "InterpTrackMove"
+                        && CameraPresetDialog.GenerateForTrack(this, export, actorAnchorContext: actorAnchorContext))
                     {
                         RefreshInterpDataTreePreserveState(export.UIndex);
                     }

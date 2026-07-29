@@ -19,6 +19,8 @@ public partial class CameraPresetDialog : Window
 {
     private sealed record PresetSearchResult(CameraPreset Preset, string Name, string CategoryDisplay);
 
+    private static readonly Dictionary<string, string> SessionBranchChoices = new(StringComparer.Ordinal);
+
     private static string SavedOriginPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetOriginV2.txt");
     private static string SavedPresetPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetSelection.txt");
     private static string SavedDistanceScalePath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetDistanceScale.txt");
@@ -28,9 +30,11 @@ public partial class CameraPresetDialog : Window
     private readonly Action<GeneratedCameraKey> _previewCamera;
     private readonly float? _maximumEndTime;
     private readonly IMEPackage _package;
+    private readonly CameraActorAnchorContext _actorAnchorContext;
     private CameraPreset _selectedPreset;
     private bool _updatingCameraSpeed;
     private bool _updatingDistanceScale;
+    private bool _updatingResolvedOrigin;
     private bool _updatingPresetSelection;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
@@ -38,13 +42,14 @@ public partial class CameraPresetDialog : Window
 
     public CameraPresetDialog(Func<CameraOrigin?> getTrackKeyOrigin, Func<CameraOrigin?> getViewportOrigin,
         Action<GeneratedCameraKey> previewCamera, float initialStartTime = 0, float? maximumEndTime = null,
-        IMEPackage package = null)
+        IMEPackage package = null, CameraActorAnchorContext actorAnchorContext = null)
     {
         _getTrackKeyOrigin = getTrackKeyOrigin;
         _getViewportOrigin = getViewportOrigin;
         _previewCamera = previewCamera;
         _maximumEndTime = maximumEndTime;
         _package = package;
+        _actorAnchorContext = actorAnchorContext;
 
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
@@ -62,6 +67,7 @@ public partial class CameraPresetDialog : Window
         StartTimeTextBox.Text = Format(initialStartTime);
         SetOrigin(LoadSavedOrigin());
         SetDistanceScale(LoadSavedDistanceScale());
+        InitializeActorAnchorControls();
         foreach (TextBox textBox in new[]
         {
             OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
@@ -72,6 +78,67 @@ public partial class CameraPresetDialog : Window
             textBox.TextChanged += PreviewParameter_TextChanged;
         }
         SelectSavedPreset();
+    }
+
+    private void AnchorModeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ManualOriginPanel is null)
+        {
+            return;
+        }
+
+        CameraAnchorMode mode = GetAnchorMode();
+        ManualOriginPanel.Visibility = Visibility.Visible;
+        bool isManualOrigin = mode == CameraAnchorMode.ManualOrigin;
+        ApplyActorOriginButton.IsEnabled = !isManualOrigin && _actorAnchorContext is not null;
+        ManualOriginButtonsPanel.IsEnabled = isManualOrigin;
+        foreach (TextBox textBox in new[]
+                 {
+                     OriginXTextBox, OriginYTextBox, OriginZTextBox,
+                     OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox
+                 })
+        {
+            textBox.IsReadOnly = !isManualOrigin;
+        }
+        SingleActorPanel.Visibility = mode == CameraAnchorMode.SingleActor ? Visibility.Visible : Visibility.Collapsed;
+        MultipleActorsPanel.Visibility = mode == CameraAnchorMode.MultipleActors ? Visibility.Visible : Visibility.Collapsed;
+        UpdateResolvedOriginDisplay();
+        RefreshLivePreview();
+    }
+
+    private void ApplyActorOriginButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            return;
+        }
+
+        SetResolvedOriginDisplay(origin);
+        AnchorModeComboBox.SelectedIndex = 0;
+        StatusTextBlock.Text = "Actor anchor copied to Manual Origin.";
+    }
+
+    private void AnchorSelection_Changed(object sender, EventArgs e)
+    {
+        UpdateResolvedOriginDisplay();
+        RefreshLivePreview();
+    }
+
+    private void AnchorSelection_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        UpdateResolvedOriginDisplay();
+        RefreshLivePreview();
+    }
+
+    private CameraAnchorMode GetAnchorMode()
+    {
+        if (AnchorModeComboBox?.SelectedItem is ComboBoxItem { Tag: string tag }
+            && Enum.TryParse(tag, out CameraAnchorMode mode))
+        {
+            return mode;
+        }
+
+        return CameraAnchorMode.ManualOrigin;
     }
 
     protected override void OnClosed(EventArgs e)
@@ -96,7 +163,8 @@ public partial class CameraPresetDialog : Window
     }
 
     public static bool GenerateForTrack(Window owner, ExportEntry export, float initialStartTime = 0,
-        Func<CameraOrigin?> getViewportOrigin = null, Action<GeneratedCameraKey> previewCamera = null)
+        Func<CameraOrigin?> getViewportOrigin = null, Action<GeneratedCameraKey> previewCamera = null,
+        CameraActorAnchorContext actorAnchorContext = null)
     {
         if (export?.ClassName != "InterpTrackMove")
         {
@@ -111,7 +179,8 @@ public partial class CameraPresetDialog : Window
             previewCamera,
             initialStartTime,
             maximumEndTime,
-            export.FileRef)
+            export.FileRef,
+            actorAnchorContext)
         {
             Owner = owner
         };
@@ -250,14 +319,20 @@ public partial class CameraPresetDialog : Window
         Width = 820;
     }
 
-    private void PreviewParameter_TextChanged(object sender, TextChangedEventArgs e) => RefreshLivePreview();
+    private void PreviewParameter_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_updatingResolvedOrigin)
+        {
+            RefreshLivePreview();
+        }
+    }
 
     private void RefreshLivePreview()
     {
         if (TogglePreviewButton is not { IsChecked: true }
             || CameraPreviewControl is null
             || _selectedPreset is null
-            || !TryReadOrigin(out CameraOrigin origin)
+            || !TryResolveGenerationOrigin(false, out CameraOrigin origin)
             || !TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction,
                 out float distanceScale))
         {
@@ -276,8 +351,7 @@ public partial class CameraPresetDialog : Window
         sampleCount = 0;
         pathFraction = 1;
         distanceScale = 1;
-        if (!TryReadOrigin(out CameraOrigin origin)
-            || !TryReadFloat(ForwardDistanceTextBox, out float distance)
+        if (!TryReadFloat(ForwardDistanceTextBox, out float distance)
             || !TryReadFloat(DistanceScaleTextBox, out float distanceScalePercent)
             || !TryReadFloat(SideOffsetTextBox, out float side)
             || !TryReadFloat(HeightOffsetTextBox, out float height)
@@ -496,9 +570,8 @@ public partial class CameraPresetDialog : Window
             return false;
         }
 
-        if (!TryReadOrigin(out CameraOrigin origin))
+        if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
         {
-            ShowInvalidOrigin();
             return false;
         }
 
@@ -592,6 +665,182 @@ public partial class CameraPresetDialog : Window
         }
 
         return null;
+    }
+
+    private void InitializeActorAnchorControls()
+    {
+        string[] actorTags = _actorAnchorContext?.ActorTags?
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+        SingleActorComboBox.ItemsSource = actorTags;
+        MultipleActorListBox.ItemsSource = actorTags;
+        PrimaryActorComboBox.ItemsSource = actorTags;
+
+        bool actorAnchorsAvailable = _actorAnchorContext is not null;
+        foreach (ComboBoxItem item in AnchorModeComboBox.Items)
+        {
+            if (item.Tag is string tag && tag != nameof(CameraAnchorMode.ManualOrigin))
+            {
+                item.IsEnabled = actorAnchorsAvailable;
+            }
+        }
+        AnchorModeAvailabilityText.Text = actorAnchorsAvailable
+            ? "Actor transforms resolve from the selected conversation node."
+            : "Actor modes require a selected node in the Dialogue Editor.";
+    }
+
+    private bool TryResolveGenerationOrigin(bool showErrors, out CameraOrigin origin)
+    {
+        origin = default;
+        CameraAnchorMode mode = GetAnchorMode();
+        if (mode == CameraAnchorMode.ManualOrigin)
+        {
+            if (TryReadOrigin(out origin))
+            {
+                return true;
+            }
+
+            if (showErrors)
+            {
+                ShowInvalidOrigin();
+            }
+            return false;
+        }
+
+        if (_actorAnchorContext is null)
+        {
+            if (showErrors)
+            {
+                MessageBox.Show("Actor anchor modes require a selected conversation node in the Dialogue Editor.",
+                    "Actor Anchor Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        string[] actorTags = GetSelectedActorTags(mode);
+        int minimumActors = mode == CameraAnchorMode.MultipleActors ? 2 : 1;
+        if (actorTags.Length < minimumActors)
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(mode == CameraAnchorMode.MultipleActors
+                        ? "Select or enter at least two actor tags."
+                        : "Select or enter an actor tag.",
+                    "Actor Anchor Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        IReadOnlyList<ActorSceneStatePath> paths = CameraActorSceneStateResolver.ResolvePaths(_actorAnchorContext, actorTags);
+        ActorSceneStatePath[] completePaths = paths.Where(candidate =>
+            actorTags.All(candidate.ActorTransforms.ContainsKey)).ToArray();
+        ActorSceneStatePath path = SelectActorSceneStatePath(completePaths, actorTags, showErrors);
+        if (path is null)
+        {
+            if (showErrors && completePaths.Length == 0)
+            {
+                string unresolved = string.Join(", ", actorTags.Where(tag =>
+                    paths.All(pathCandidate => !pathCandidate.ActorTransforms.ContainsKey(tag))));
+                MessageBox.Show($"No matching TrackMove or initial actor transform was found for: {unresolved}.",
+                    "Actor Transform Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        string primaryActorTag = PrimaryActorComboBox.Text.Trim();
+        ActorAnchorResolution resolution = CameraActorAnchorResolver.Resolve(path, actorTags, primaryActorTag);
+        if (resolution is null)
+        {
+            return false;
+        }
+
+        origin = resolution.Origin;
+        SetResolvedOriginDisplay(origin);
+        StatusTextBlock.Text = $"Actor anchor resolved from {resolution.Path.PathId}.";
+        return true;
+    }
+
+    private void UpdateResolvedOriginDisplay()
+    {
+        if (GetAnchorMode() != CameraAnchorMode.ManualOrigin
+            && TryResolveGenerationOrigin(false, out CameraOrigin origin))
+        {
+            SetResolvedOriginDisplay(origin);
+        }
+    }
+
+    private void SetResolvedOriginDisplay(CameraOrigin origin)
+    {
+        _updatingResolvedOrigin = true;
+        SetOrigin(origin);
+        _updatingResolvedOrigin = false;
+    }
+
+    private ActorSceneStatePath SelectActorSceneStatePath(IReadOnlyList<ActorSceneStatePath> paths,
+        IReadOnlyList<string> actorTags, bool showPrompt)
+    {
+        if (paths.Count == 0)
+        {
+            return null;
+        }
+
+        if (paths.Count == 1 || paths.Skip(1).All(path =>
+                CameraActorAnchorResolver.HaveEquivalentTransforms(paths[0], path, actorTags)))
+        {
+            return paths[0];
+        }
+
+        string cacheKey = GetBranchChoiceCacheKey(actorTags);
+        if (SessionBranchChoices.TryGetValue(cacheKey, out string selectedPathId)
+            && paths.FirstOrDefault(path => path.PathId == selectedPathId) is { } cachedPath)
+        {
+            return cachedPath;
+        }
+
+        if (!showPrompt)
+        {
+            return null;
+        }
+
+        IReadOnlyList<string> differingActors = CameraActorAnchorResolver.GetDifferingActors(paths, actorTags);
+        var choices = paths.ToDictionary(FormatPathChoice, path => path, StringComparer.Ordinal);
+        string selectedChoice = StringSelectorDialog.GetValue(this,
+            $"Incoming conversation paths resolve different transforms for: {string.Join(", ", differingActors)}. " +
+            "Choose the executed path to use for this editing session.",
+            "Choose Actor Transform Path", choices.Keys);
+        if (string.IsNullOrEmpty(selectedChoice) || !choices.TryGetValue(selectedChoice, out ActorSceneStatePath selectedPath))
+        {
+            return null;
+        }
+
+        SessionBranchChoices[cacheKey] = selectedPath.PathId;
+        return selectedPath;
+    }
+
+    private string GetBranchChoiceCacheKey(IEnumerable<string> actorTags) =>
+        $"{_actorAnchorContext.Conversation.Export.FileRef.GetHashCode()}:{_actorAnchorContext.Conversation.UIndex}:" +
+        $"{(_actorAnchorContext.SelectedNode.IsReply ? 'R' : 'E')}{_actorAnchorContext.SelectedNode.NodeCount}:" +
+        string.Join("|", actorTags.OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase));
+
+    private static string FormatPathChoice(ActorSceneStatePath path) =>
+        $"{path.PathId} | " + string.Join("; ", path.ActorTransforms.Values.Select(transform =>
+            $"{transform.ActorTag}: ({transform.Location.X:0.##}, {transform.Location.Y:0.##}, {transform.Location.Z:0.##}) from {transform.SourceDescription}"));
+
+    private string[] GetSelectedActorTags(CameraAnchorMode mode)
+    {
+        if (mode == CameraAnchorMode.SingleActor)
+        {
+            string actorTag = SingleActorComboBox.Text.Trim();
+            return string.IsNullOrEmpty(actorTag) ? [] : [actorTag];
+        }
+
+        return MultipleActorListBox.SelectedItems.Cast<string>()
+            .Concat(MultipleActorTagsTextBox.Text.Split([',', ';', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private bool TryReadOrigin(out CameraOrigin origin)
