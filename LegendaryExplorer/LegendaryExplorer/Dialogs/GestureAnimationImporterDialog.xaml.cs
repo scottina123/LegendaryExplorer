@@ -1002,6 +1002,7 @@ namespace LegendaryExplorer.Dialogs
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
                 sourceDynAnimSet, _pcc, gestureModule, true, relinkerOptions, out IEntry importedDynEntry);
             ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, gestureModule, relinkerOptions, "BioDynamicAnimSet");
+            EnsureUniqueObjectNameIndex(importedDynAnimSet);
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
@@ -1073,6 +1074,7 @@ namespace LegendaryExplorer.Dialogs
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
                 sourceDynAnimSet, _pcc, skelMeshComp, true, relinkerOptions, out IEntry importedDynEntry);
             ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, skelMeshComp, relinkerOptions, "BioDynamicAnimSet");
+            EnsureUniqueObjectNameIndex(importedDynAnimSet);
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
@@ -1150,6 +1152,7 @@ namespace LegendaryExplorer.Dialogs
             EntryImporter.ImportAndRelinkEntries(EntryImporter.PortingOption.CloneAllDependencies,
                 sourceDynAnimSet, _pcc, sequenceExport, true, relinkerOptions, out IEntry importedDynEntry);
             ExportEntry importedDynAnimSet = GetImportedExport(importedDynEntry, sourceDynAnimSet, sequenceExport, relinkerOptions, "BioDynamicAnimSet");
+            EnsureUniqueObjectNameIndex(importedDynAnimSet);
 
             // Clear stale Sequences from the cloned source and initialize with the new animation
             importedDynAnimSet.WriteProperty(new ObjectProperty(bioAnimSetData.UIndex, "m_pBioAnimSetData"));
@@ -1176,6 +1179,19 @@ namespace LegendaryExplorer.Dialogs
             sequenceExport.WriteProperty(sharedAnimSets);
 
             return importedDynAnimSet;
+        }
+
+        private void EnsureUniqueObjectNameIndex(ExportEntry importedDynAnimSet)
+        {
+            bool hasDuplicateIndex = _pcc.Exports.Any(export =>
+                !ReferenceEquals(export, importedDynAnimSet) &&
+                export.idxLink == importedDynAnimSet.idxLink &&
+                export.ObjectName == importedDynAnimSet.ObjectName);
+
+            if (hasDuplicateIndex)
+            {
+                importedDynAnimSet.indexValue = _pcc.GetNextIndexForInstancedName(importedDynAnimSet);
+            }
         }
 
         /// <summary>
