@@ -111,25 +111,29 @@
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <TextBlock Text="Forward distance" Margin="3,6"/>
                         <TextBox x:Name="ForwardDistanceTextBox" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="1" Text="Side offset (local right)" Margin="3,6"/>
-                        <TextBox x:Name="SideOffsetTextBox" Grid.Row="1" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="2" Text="Height offset (local up)" Margin="3,6"/>
-                        <TextBox x:Name="HeightOffsetTextBox" Grid.Row="2" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="3" Text="Look-at height" Margin="3,6"/>
-                        <TextBox x:Name="LookAtHeightTextBox" Grid.Row="3" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="4" Text="Local roll (X)" Margin="3,6"/>
-                        <TextBox x:Name="LocalRollTextBox" Grid.Row="4" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="5" Text="Local pitch (Y)" Margin="3,6"/>
-                        <TextBox x:Name="LocalPitchTextBox" Grid.Row="5" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="6" Text="Local yaw (Z)" Margin="3,6"/>
-                        <TextBox x:Name="LocalYawTextBox" Grid.Row="6" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="7" Text="Duration (seconds)" Margin="3,6"/>
-                        <TextBox x:Name="DurationTextBox" Grid.Row="7" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="8" Text="Movement speed" Margin="3,6"/>
-                        <Grid Grid.Row="8" Grid.Column="1" Margin="3">
+                        <TextBlock Grid.Row="1" Text="Distance scale (%)" Margin="3,6"/>
+                        <TextBox x:Name="DistanceScaleTextBox" Grid.Row="1" Grid.Column="1" Text="100" Margin="3" Padding="4"
+                                 ToolTip="Scales every preset's forward distance; 100% uses the original value"/>
+                        <TextBlock Grid.Row="2" Text="Side offset (local right)" Margin="3,6"/>
+                        <TextBox x:Name="SideOffsetTextBox" Grid.Row="2" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="3" Text="Height offset (local up)" Margin="3,6"/>
+                        <TextBox x:Name="HeightOffsetTextBox" Grid.Row="3" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="4" Text="Look-at height" Margin="3,6"/>
+                        <TextBox x:Name="LookAtHeightTextBox" Grid.Row="4" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="5" Text="Local roll (X)" Margin="3,6"/>
+                        <TextBox x:Name="LocalRollTextBox" Grid.Row="5" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="6" Text="Local pitch (Y)" Margin="3,6"/>
+                        <TextBox x:Name="LocalPitchTextBox" Grid.Row="6" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="7" Text="Local yaw (Z)" Margin="3,6"/>
+                        <TextBox x:Name="LocalYawTextBox" Grid.Row="7" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="8" Text="Duration (seconds)" Margin="3,6"/>
+                        <TextBox x:Name="DurationTextBox" Grid.Row="8" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="9" Text="Movement speed" Margin="3,6"/>
+                        <Grid Grid.Row="9" Grid.Column="1" Margin="3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="70"/>
@@ -144,12 +148,12 @@
                                      ToolTip="Enter a speed multiplier from 0.1 to 2.0"/>
                             <TextBlock Grid.Column="2" Text="x" VerticalAlignment="Center"/>
                         </Grid>
-                        <TextBlock Grid.Row="9" Text="Generated key count" Margin="3,6"/>
-                        <TextBox x:Name="KeyCountTextBox" Grid.Row="9" Grid.Column="1" Margin="3" Padding="4" IsReadOnly="True"/>
-                        <TextBlock Grid.Row="10" Text="Movement amount" Margin="3,6"/>
-                        <TextBox x:Name="MovementAmountTextBox" Grid.Row="10" Grid.Column="1" Margin="3" Padding="4"/>
-                        <TextBlock Grid.Row="11" Text="Start time (seconds)" Margin="3,6"/>
-                        <TextBox x:Name="StartTimeTextBox" Grid.Row="11" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="10" Text="Generated key count" Margin="3,6"/>
+                        <TextBox x:Name="KeyCountTextBox" Grid.Row="10" Grid.Column="1" Margin="3" Padding="4" IsReadOnly="True"/>
+                        <TextBlock Grid.Row="11" Text="Movement amount" Margin="3,6"/>
+                        <TextBox x:Name="MovementAmountTextBox" Grid.Row="11" Grid.Column="1" Margin="3" Padding="4"/>
+                        <TextBlock Grid.Row="12" Text="Start time (seconds)" Margin="3,6"/>
+                        <TextBox x:Name="StartTimeTextBox" Grid.Row="12" Grid.Column="1" Margin="3" Padding="4"/>
                     </Grid>
                 </ScrollViewer>
             </GroupBox>

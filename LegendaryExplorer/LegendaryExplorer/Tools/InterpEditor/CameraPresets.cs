@@ -220,24 +220,26 @@ public static class CameraPresetGenerator
         return Math.Max(2, (int)MathF.Ceiling(preset.Duration * intervalsPerSecond) + 1);
     }
 
-    public static float GetPathLength(CameraPreset preset, CameraOrigin origin) => BuildMeasuredPath(preset, origin).TotalLength;
+    public static float GetPathLength(CameraPreset preset, CameraOrigin origin, float distanceScale = 1f) =>
+        BuildMeasuredPath(preset, origin, Math.Max(0f, distanceScale)).TotalLength;
 
     public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin, int? sampleCount = null,
-        float pathFraction = 1f)
+        float pathFraction = 1f, float distanceScale = 1f)
     {
         int count = sampleCount is > 0 ? sampleCount.Value : GetKeyCount(preset);
         pathFraction = Math.Clamp(pathFraction, 0f, 1f);
+        distanceScale = Math.Max(0f, distanceScale);
 
         BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
-        MeasuredPath measuredPath = BuildMeasuredPath(preset, origin);
+        MeasuredPath measuredPath = BuildMeasuredPath(preset, origin, distanceScale);
         var keys = new List<GeneratedCameraKey>(count);
         for (int i = 0; i < count; i++)
         {
             float elapsedFraction = count == 1 ? 0 : i / (float)(count - 1);
             float normalizedDistance = elapsedFraction * pathFraction;
             float t = measuredPath.GetPathProgress(normalizedDistance);
-            GetLocalPosition(preset, t, out float distance, out float side, out float height);
-            Vector3 location = origin.Location - forward * distance + right * side + up * height;
+            GetLocalPosition(preset, t, distanceScale, out float distance, out float side, out float height);
+            Vector3 location = origin.Location + forward * distance + right * side + up * height;
             Vector3 target = origin.Location + up * preset.LookAtHeight;
             Vector3 rotation = LookAtRotation(location, target, origin.Rotation.X + preset.LocalRoll);
             rotation.Y += preset.LocalPitch;
@@ -248,16 +250,16 @@ public static class CameraPresetGenerator
         return keys;
     }
 
-    private static MeasuredPath BuildMeasuredPath(CameraPreset preset, CameraOrigin origin)
+    private static MeasuredPath BuildMeasuredPath(CameraPreset preset, CameraOrigin origin, float distanceScale)
     {
         BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
         var progress = new float[PathMeasurementSegments + 1];
         var cumulativeDistance = new float[PathMeasurementSegments + 1];
-        Vector3 previous = GetWorldPosition(preset, origin.Location, forward, right, up, 0);
+        Vector3 previous = GetWorldPosition(preset, origin.Location, forward, right, up, 0, distanceScale);
         for (int i = 1; i <= PathMeasurementSegments; i++)
         {
             float t = i / (float)PathMeasurementSegments;
-            Vector3 current = GetWorldPosition(preset, origin.Location, forward, right, up, t);
+            Vector3 current = GetWorldPosition(preset, origin.Location, forward, right, up, t, distanceScale);
             progress[i] = t;
             cumulativeDistance[i] = cumulativeDistance[i - 1] + Vector3.Distance(previous, current);
             previous = current;
@@ -266,10 +268,11 @@ public static class CameraPresetGenerator
         return new MeasuredPath(progress, cumulativeDistance);
     }
 
-    private static Vector3 GetWorldPosition(CameraPreset preset, Vector3 origin, Vector3 forward, Vector3 right, Vector3 up, float t)
+    private static Vector3 GetWorldPosition(CameraPreset preset, Vector3 origin, Vector3 forward, Vector3 right, Vector3 up,
+        float t, float distanceScale)
     {
-        GetLocalPosition(preset, t, out float distance, out float side, out float height);
-        return origin - forward * distance + right * side + up * height;
+        GetLocalPosition(preset, t, distanceScale, out float distance, out float side, out float height);
+        return origin + forward * distance + right * side + up * height;
     }
 
     private sealed class MeasuredPath(float[] progress, float[] cumulativeDistance)
@@ -331,9 +334,11 @@ public static class CameraPresetGenerator
         };
     }
 
-    private static void GetLocalPosition(CameraPreset preset, float t, out float distance, out float side, out float height)
+    private static void GetLocalPosition(CameraPreset preset, float t, float distanceScale, out float distance, out float side,
+        out float height)
     {
-        distance = preset.ForwardDistance;
+        float baseDistance = preset.ForwardDistance * distanceScale;
+        distance = baseDistance;
         side = preset.SideOffset;
         height = preset.HeightOffset;
         float amount = preset.MovementAmount;
@@ -347,10 +352,10 @@ public static class CameraPresetGenerator
             case CameraPathKind.SlideLeft: side -= amount * smooth; break;
             case CameraPathKind.DollyRight:
             case CameraPathKind.SlideRight: side += amount * smooth; break;
-            case CameraPathKind.ArcLeft: ApplyArc(-amount, preset.ForwardDistance, smooth, ref distance, ref side); break;
-            case CameraPathKind.ArcRight: ApplyArc(amount, preset.ForwardDistance, smooth, ref distance, ref side); break;
-            case CameraPathKind.OrbitLeft: ApplyArc(-amount, preset.ForwardDistance, smooth, ref distance, ref side); break;
-            case CameraPathKind.OrbitRight: ApplyArc(amount, preset.ForwardDistance, smooth, ref distance, ref side); break;
+            case CameraPathKind.ArcLeft: ApplyArc(-amount, baseDistance, smooth, ref distance, ref side); break;
+            case CameraPathKind.ArcRight: ApplyArc(amount, baseDistance, smooth, ref distance, ref side); break;
+            case CameraPathKind.OrbitLeft: ApplyArc(-amount, baseDistance, smooth, ref distance, ref side); break;
+            case CameraPathKind.OrbitRight: ApplyArc(amount, baseDistance, smooth, ref distance, ref side); break;
             case CameraPathKind.CraneUp: height += amount * smooth; break;
             case CameraPathKind.CraneDown: height -= amount * smooth; break;
             case CameraPathKind.RiseAndPush: distance -= amount * smooth; height += amount * 0.65f * smooth; break;
@@ -362,8 +367,8 @@ public static class CameraPresetGenerator
             case CameraPathKind.SideFollow: side += amount * smooth; break;
             case CameraPathKind.RevealLeft: side += amount * smooth; break;
             case CameraPathKind.RevealRight: side -= amount * smooth; break;
-            case CameraPathKind.OrbitPush: ApplyArc(-70, preset.ForwardDistance - amount * 0.7f * smooth, smooth, ref distance, ref side); break;
-            case CameraPathKind.OrbitPull: ApplyArc(70, preset.ForwardDistance + amount * 0.7f * smooth, smooth, ref distance, ref side); break;
+            case CameraPathKind.OrbitPush: ApplyArc(-70, baseDistance - amount * 0.7f * smooth, smooth, ref distance, ref side); break;
+            case CameraPathKind.OrbitPull: ApplyArc(70, baseDistance + amount * 0.7f * smooth, smooth, ref distance, ref side); break;
             case CameraPathKind.PushCrane: distance -= amount * smooth; height += amount * 0.55f * smooth; break;
             case CameraPathKind.PullCrane: distance += amount * smooth; height -= amount * 0.55f * smooth; break;
             case CameraPathKind.MoveThenHold:

@@ -62,7 +62,7 @@ public partial class CameraPresetDialog : Window
         foreach (TextBox textBox in new[]
         {
             OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
-            ForwardDistanceTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
+            ForwardDistanceTextBox, DistanceScaleTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
             LocalRollTextBox, LocalPitchTextBox, LocalYawTextBox, DurationTextBox, MovementAmountTextBox
         })
         {
@@ -249,23 +249,27 @@ public partial class CameraPresetDialog : Window
             || CameraPreviewControl is null
             || _selectedPreset is null
             || !TryReadOrigin(out CameraOrigin origin)
-            || !TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction))
+            || !TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction,
+                out float distanceScale))
         {
             return;
         }
 
         CameraPreviewControl.Visibility = Visibility.Visible;
         CameraPreviewControl.SetPreview(_selectedPreset, origin,
-            CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction));
+            CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction, distanceScale));
     }
 
-    private bool TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction)
+    private bool TryCreateConfiguredPreset(out CameraPreset configured, out int sampleCount, out float pathFraction,
+        out float distanceScale)
     {
         configured = null;
         sampleCount = 0;
         pathFraction = 1;
+        distanceScale = 1;
         if (!TryReadOrigin(out CameraOrigin origin)
             || !TryReadFloat(ForwardDistanceTextBox, out float distance)
+            || !TryReadFloat(DistanceScaleTextBox, out float distanceScalePercent)
             || !TryReadFloat(SideOffsetTextBox, out float side)
             || !TryReadFloat(HeightOffsetTextBox, out float height)
             || !TryReadFloat(LookAtHeightTextBox, out float lookHeight)
@@ -275,7 +279,7 @@ public partial class CameraPresetDialog : Window
             || !TryReadFloat(DurationTextBox, out float duration)
             || !TryReadFloat(CameraSpeedTextBox, out float cameraSpeed)
             || !TryReadFloat(MovementAmountTextBox, out float movement)
-            || duration < 0 || cameraSpeed <= 0)
+            || duration < 0 || cameraSpeed <= 0 || distanceScalePercent <= 0)
         {
             return false;
         }
@@ -297,6 +301,7 @@ public partial class CameraPresetDialog : Window
             ? duration / cameraSpeed
             : duration;
         configured = samplingPreset with { Duration = generatedDuration };
+        distanceScale = distanceScalePercent / 100f;
         return true;
     }
 
@@ -458,6 +463,7 @@ public partial class CameraPresetDialog : Window
         }
 
         if (!TryReadFloat(ForwardDistanceTextBox, out float distance)
+            || !TryReadFloat(DistanceScaleTextBox, out float distanceScalePercent)
             || !TryReadFloat(SideOffsetTextBox, out float side)
             || !TryReadFloat(HeightOffsetTextBox, out float height)
             || !TryReadFloat(LookAtHeightTextBox, out float lookHeight)
@@ -469,10 +475,11 @@ public partial class CameraPresetDialog : Window
             || !TryReadFloat(MovementAmountTextBox, out float movement)
             || !TryReadFloat(StartTimeTextBox, out float startTime)
             || duration < 0
+            || distanceScalePercent <= 0
             || cameraSpeed < CameraSpeedSlider.Minimum
             || cameraSpeed > CameraSpeedSlider.Maximum)
         {
-            MessageBox.Show($"All composition fields must contain valid numbers. Duration cannot be negative and movement speed must be between {CameraSpeedSlider.Minimum:0.##}x and {CameraSpeedSlider.Maximum:0.##}x.",
+            MessageBox.Show($"All composition fields must contain valid numbers. Distance scale must be greater than 0%, duration cannot be negative, and movement speed must be between {CameraSpeedSlider.Minimum:0.##}x and {CameraSpeedSlider.Maximum:0.##}x.",
                 "Invalid Preset Parameters", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
@@ -490,12 +497,13 @@ public partial class CameraPresetDialog : Window
             MovementAmount = movement
         };
         int sampleCount = CameraPresetGenerator.GetKeyCount(samplingPreset);
+        float distanceScale = distanceScalePercent / 100f;
         float pathFraction = 1f;
         float generatedDuration = duration;
         float movementRate = 0;
         if (samplingPreset.Category == CameraPresetCategory.DynamicShots)
         {
-            float pathLength = CameraPresetGenerator.GetPathLength(samplingPreset, origin);
+            float pathLength = CameraPresetGenerator.GetPathLength(samplingPreset, origin, distanceScale);
             if (duration <= float.Epsilon && pathLength > float.Epsilon)
             {
                 MessageBox.Show("Dynamic camera movement duration must be greater than zero.",
@@ -528,7 +536,7 @@ public partial class CameraPresetDialog : Window
         var configured = samplingPreset with { Duration = generatedDuration };
         KeyCountTextBox.Text = sampleCount.ToString(CultureInfo.InvariantCulture);
         GeneratedStartTime = startTime;
-        keys = CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction);
+        keys = CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction, distanceScale);
         return true;
     }
 
