@@ -27,6 +27,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
     private readonly Dictionary<string, InterpCurve<Vector3>> _multicamRotationCurves = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, InterpCurve<float>> _multicamFovCurves = new(StringComparer.OrdinalIgnoreCase);
     private Action<GeneratedCameraKey> _activeCameraChanged;
+    private string _activeMulticamGroupName;
 
     public CameraPresetPreview()
     {
@@ -46,6 +47,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _multicamPreset = null;
         _multicamKeys = null;
         _activeCameraChanged = null;
+        _activeMulticamGroupName = null;
         _keys = keys ?? [];
         _sceneOrigin = origin.Location;
         _isDynamic = preset is not null
@@ -69,6 +71,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _multicamPreset = preset;
         _multicamKeys = cameras;
         _activeCameraChanged = activeCameraChanged;
+        _activeMulticamGroupName = null;
         _sceneOrigin = origin.Location;
         _keys = [];
         _duration = preset?.Duration ?? 0;
@@ -172,7 +175,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         MulticamDirectorKey activeCut = _multicamPreset.DirectorKeys
             .Where(key => key.TimeOffset <= time)
             .OrderBy(key => key.TimeOffset)
-            .LastOrDefault();
+            .LastOrDefault(_multicamPreset.DirectorKeys.OrderBy(key => key.TimeOffset).FirstOrDefault());
         if (!_multicamKeys.TryGetValue(activeCut.GroupName, out IReadOnlyList<GeneratedCameraKey> keys)
             || keys.Count == 0
             || !_multicamPositionCurves.TryGetValue(activeCut.GroupName, out InterpCurve<Vector3> positionCurve)
@@ -181,17 +184,25 @@ public partial class CameraPresetPreview : UserControl, IDisposable
             return;
         }
 
-        Vector3 location = positionCurve.Eval(time, keys[0].Location);
-        Vector3 rotation = rotationCurve.Eval(time, keys[0].Rotation);
+        float cameraTime = Math.Clamp(time, keys[0].TimeOffset, keys[^1].TimeOffset);
+        Vector3 location = positionCurve.Eval(cameraTime, keys[0].Location);
+        Vector3 rotation = rotationCurve.Eval(cameraTime, keys[0].Rotation);
         const float degreesToRadians = MathF.PI / 180f;
         _renderContext.Camera.Position = location;
         _renderContext.Camera.Roll = rotation.X * degreesToRadians;
         _renderContext.Camera.Pitch = rotation.Y * degreesToRadians;
         _renderContext.Camera.Yaw = rotation.Z * degreesToRadians;
-        if (_multicamFovCurves.TryGetValue(activeCut.GroupName, out InterpCurve<float> fovCurve))
+        if (_multicamFovCurves.TryGetValue(activeCut.GroupName, out InterpCurve<float> fovCurve)
+            && fovCurve.Points.Count > 0)
         {
-            _renderContext.Camera.FOV = fovCurve.Eval(time, 60) * degreesToRadians;
+            float fovTime = Math.Clamp(time, fovCurve.Points[0].InVal, fovCurve.Points[^1].InVal);
+            _renderContext.Camera.FOV = fovCurve.Eval(fovTime, 60) * degreesToRadians;
         }
+        else if (!string.Equals(_activeMulticamGroupName, activeCut.GroupName, StringComparison.OrdinalIgnoreCase))
+        {
+            _renderContext.Camera.FOV = 60 * degreesToRadians;
+        }
+        _activeMulticamGroupName = activeCut.GroupName;
         _renderContext.Camera.FocusDepth = 0;
         _activeCameraChanged?.Invoke(new GeneratedCameraKey(time, location, rotation, CameraKeyInterpolation.Linear));
         SceneViewer.MarkRenderDirty();
