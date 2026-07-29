@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorer.Tools.InterpEditor;
 
@@ -9,7 +12,8 @@ public enum CameraPresetCategory
 {
     StaticShots,
     DynamicShots,
-    ReactionShots
+    ReactionShots,
+    SavedTrackMoves
 }
 
 public enum CameraPathKind
@@ -58,6 +62,9 @@ public readonly record struct CameraOrigin(Vector3 Location, Vector3 Rotation);
 public readonly record struct GeneratedCameraKey(float TimeOffset, Vector3 Location, Vector3 Rotation,
     CameraKeyInterpolation Interpolation);
 
+public readonly record struct CameraPresetLocalKey(float TimeOffset, Vector3 LocalPosition, Vector3 LocalRotation,
+    CameraKeyInterpolation Interpolation);
+
 public sealed record CameraPreset(
     string Name,
     CameraPresetCategory Category,
@@ -72,7 +79,11 @@ public sealed record CameraPreset(
     int KeyCount = 1,
     CameraPathKind PathKind = CameraPathKind.Static,
     float MovementAmount = 0,
-    CameraKeyInterpolation Interpolation = CameraKeyInterpolation.Constant);
+    CameraKeyInterpolation Interpolation = CameraKeyInterpolation.Constant,
+    IReadOnlyList<CameraPresetLocalKey> LocalKeys = null)
+{
+    public bool IsSavedTrackMove => Category == CameraPresetCategory.SavedTrackMoves && LocalKeys is { Count: > 0 };
+}
 
 public static class CameraPresetCatalog
 {
@@ -211,6 +222,11 @@ public static class CameraPresetGenerator
 
     public static int GetKeyCount(CameraPreset preset)
     {
+        if (preset.IsSavedTrackMove)
+        {
+            return preset.LocalKeys.Count;
+        }
+
         if (preset.Category != CameraPresetCategory.DynamicShots || preset.Duration <= 0)
         {
             return 1;
@@ -220,8 +236,22 @@ public static class CameraPresetGenerator
         return Math.Max(2, (int)MathF.Ceiling(preset.Duration * intervalsPerSecond) + 1);
     }
 
-    public static float GetPathLength(CameraPreset preset, CameraOrigin origin, float distanceScale = 1f) =>
-        BuildMeasuredPath(preset, origin, Math.Max(0f, distanceScale)).TotalLength;
+    public static float GetPathLength(CameraPreset preset, CameraOrigin origin, float distanceScale = 1f)
+    {
+        distanceScale = Math.Max(0f, distanceScale);
+        if (preset.IsSavedTrackMove)
+        {
+            IReadOnlyList<GeneratedCameraKey> keys = GenerateSavedTrackMove(preset, origin, 1f, distanceScale);
+            float length = 0;
+            for (int i = 1; i < keys.Count; i++)
+            {
+                length += Vector3.Distance(keys[i - 1].Location, keys[i].Location);
+            }
+            return length;
+        }
+
+        return BuildMeasuredPath(preset, origin, distanceScale).TotalLength;
+    }
 
     public static IReadOnlyList<GeneratedCameraKey> Generate(CameraPreset preset, CameraOrigin origin, int? sampleCount = null,
         float pathFraction = 1f, float distanceScale = 1f)
@@ -229,6 +259,10 @@ public static class CameraPresetGenerator
         int count = sampleCount is > 0 ? sampleCount.Value : GetKeyCount(preset);
         pathFraction = Math.Clamp(pathFraction, 0f, 1f);
         distanceScale = Math.Max(0f, distanceScale);
+        if (preset.IsSavedTrackMove)
+        {
+            return GenerateSavedTrackMove(preset, origin, pathFraction, distanceScale);
+        }
 
         BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
         MeasuredPath measuredPath = BuildMeasuredPath(preset, origin, distanceScale);
@@ -248,6 +282,43 @@ public static class CameraPresetGenerator
         }
 
         return keys;
+    }
+
+    private static IReadOnlyList<GeneratedCameraKey> GenerateSavedTrackMove(CameraPreset preset, CameraOrigin origin,
+        float pathFraction, float distanceScale)
+    {
+        IReadOnlyList<CameraPresetLocalKey> sourceKeys = preset.LocalKeys;
+        float sourceDuration = sourceKeys[^1].TimeOffset;
+        float cutoff = sourceDuration * pathFraction;
+        var localKeys = sourceKeys.Where(key => key.TimeOffset <= cutoff).ToList();
+        if (localKeys.Count == 0)
+        {
+            localKeys.Add(sourceKeys[0]);
+        }
+        if (pathFraction < 1f && cutoff > localKeys[^1].TimeOffset)
+        {
+            int upperIndex = sourceKeys.ToList().FindIndex(key => key.TimeOffset > cutoff);
+            if (upperIndex > 0)
+            {
+                CameraPresetLocalKey lower = sourceKeys[upperIndex - 1];
+                CameraPresetLocalKey upper = sourceKeys[upperIndex];
+                float fraction = (cutoff - lower.TimeOffset) / Math.Max(upper.TimeOffset - lower.TimeOffset, float.Epsilon);
+                localKeys.Add(new CameraPresetLocalKey(cutoff,
+                    Vector3.Lerp(lower.LocalPosition, upper.LocalPosition, fraction),
+                    LerpRotation(lower.LocalRotation, upper.LocalRotation, fraction), lower.Interpolation));
+            }
+        }
+
+        BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        float outputSourceDuration = Math.Max(cutoff, float.Epsilon);
+        return localKeys.Select(key =>
+        {
+            Vector3 localPosition = key.LocalPosition with { X = key.LocalPosition.X * distanceScale };
+            Vector3 location = origin.Location + forward * localPosition.X + right * localPosition.Y + up * localPosition.Z;
+            Vector3 rotation = LocalRotationToWorld(key.LocalRotation, origin.Rotation);
+            float time = sourceDuration <= float.Epsilon ? 0 : key.TimeOffset / outputSourceDuration * preset.Duration;
+            return new GeneratedCameraKey(time, location, rotation, key.Interpolation);
+        }).ToArray();
     }
 
     private static MeasuredPath BuildMeasuredPath(CameraPreset preset, CameraOrigin origin, float distanceScale)
@@ -401,7 +472,7 @@ public static class CameraPresetGenerator
         return new Vector3(roll, RadiansToDegrees(pitch), RadiansToDegrees(yaw));
     }
 
-    private static void BuildBasis(Vector3 rotation, out Vector3 forward, out Vector3 right, out Vector3 up)
+    internal static void BuildBasis(Vector3 rotation, out Vector3 forward, out Vector3 right, out Vector3 up)
     {
         float roll = DegreesToRadians(rotation.X);
         float pitch = DegreesToRadians(rotation.Y);
@@ -418,6 +489,105 @@ public static class CameraPresetGenerator
         up = Vector3.Normalize(new Vector3(-(cr * sp * cy + sr * sy), cy * sr - cr * sp * sy, cr * cp));
     }
 
+    internal static Vector3 WorldRotationToLocal(Vector3 worldRotation, Vector3 originRotation)
+    {
+        BuildBasis(originRotation, out Vector3 originForward, out Vector3 originRight, out Vector3 originUp);
+        BuildBasis(worldRotation, out Vector3 worldForward, out Vector3 worldRight, out Vector3 worldUp);
+        return BasisToRotation(
+            new Vector3(Vector3.Dot(worldForward, originForward), Vector3.Dot(worldForward, originRight), Vector3.Dot(worldForward, originUp)),
+            new Vector3(Vector3.Dot(worldRight, originForward), Vector3.Dot(worldRight, originRight), Vector3.Dot(worldRight, originUp)),
+            new Vector3(Vector3.Dot(worldUp, originForward), Vector3.Dot(worldUp, originRight), Vector3.Dot(worldUp, originUp)));
+    }
+
+    internal static Vector3 LocalRotationToWorld(Vector3 localRotation, Vector3 originRotation)
+    {
+        BuildBasis(originRotation, out Vector3 originForward, out Vector3 originRight, out Vector3 originUp);
+        BuildBasis(localRotation, out Vector3 localForward, out Vector3 localRight, out Vector3 localUp);
+        Vector3 Transform(Vector3 local) =>
+            originForward * local.X + originRight * local.Y + originUp * local.Z;
+        return BasisToRotation(Transform(localForward), Transform(localRight), Transform(localUp));
+    }
+
+    private static Vector3 BasisToRotation(Vector3 forward, Vector3 right, Vector3 up)
+    {
+        float pitch = MathF.Atan2(forward.Z, MathF.Sqrt(forward.X * forward.X + forward.Y * forward.Y));
+        float yaw = MathF.Atan2(forward.Y, forward.X);
+        float roll = MathF.Atan2(-right.Z, up.Z);
+        return new Vector3(RadiansToDegrees(roll), RadiansToDegrees(pitch), RadiansToDegrees(yaw));
+    }
+
+    private static Vector3 LerpRotation(Vector3 start, Vector3 end, float fraction) => new(
+        start.X + ShortestAngleDelta(start.X, end.X) * fraction,
+        start.Y + ShortestAngleDelta(start.Y, end.Y) * fraction,
+        start.Z + ShortestAngleDelta(start.Z, end.Z) * fraction);
+
+    private static float ShortestAngleDelta(float start, float end)
+    {
+        float delta = (end - start) % 360f;
+        if (delta > 180f) delta -= 360f;
+        if (delta < -180f) delta += 360f;
+        return delta;
+    }
+
     private static float DegreesToRadians(float degrees) => degrees * (MathF.PI / 180f);
     private static float RadiansToDegrees(float radians) => radians * (180f / MathF.PI);
+}
+
+public static class CameraPresetTrackCapture
+{
+    public static bool TryCapture(ExportEntry trackMove, CameraOrigin origin, string name,
+        out CameraPreset preset, out string error)
+    {
+        preset = null;
+        error = null;
+        if (trackMove?.ClassName != "InterpTrackMove")
+        {
+            error = "The selected export is not an InterpTrackMove.";
+            return false;
+        }
+
+        var lookupPoints = trackMove.GetProperty<StructProperty>("LookupTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        var positionPoints = trackMove.GetProperty<StructProperty>("PosTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        var rotationPoints = trackMove.GetProperty<StructProperty>("EulerTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        if (lookupPoints is not { Count: > 0 } || positionPoints is null || rotationPoints is null
+            || lookupPoints.Count != positionPoints.Count || lookupPoints.Count != rotationPoints.Count)
+        {
+            error = "The TrackMove must contain synchronized lookup, position, and rotation keys.";
+            return false;
+        }
+
+        CameraPresetGenerator.BuildBasis(origin.Rotation, out Vector3 forward, out Vector3 right, out Vector3 up);
+        float firstTime = lookupPoints[0].GetProp<FloatProperty>("Time")?.Value ?? 0;
+        var localKeys = new List<CameraPresetLocalKey>(lookupPoints.Count);
+        for (int i = 0; i < lookupPoints.Count; i++)
+        {
+            Vector3 worldPosition = CommonStructs.GetVector3(positionPoints[i].GetProp<StructProperty>("OutVal"));
+            Vector3 worldRotation = CommonStructs.GetVector3(rotationPoints[i].GetProp<StructProperty>("OutVal"));
+            Vector3 delta = worldPosition - origin.Location;
+            Vector3 localPosition = new(Vector3.Dot(delta, forward), Vector3.Dot(delta, right), Vector3.Dot(delta, up));
+            Vector3 localRotation = CameraPresetGenerator.WorldRotationToLocal(worldRotation, origin.Rotation);
+            float time = (lookupPoints[i].GetProp<FloatProperty>("Time")?.Value ?? firstTime) - firstTime;
+            EInterpCurveMode mode = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[i]).InterpMode;
+            localKeys.Add(new CameraPresetLocalKey(time, localPosition, localRotation, MapInterpolation(mode)));
+        }
+
+        float duration = Math.Max(0, localKeys[^1].TimeOffset);
+        CameraPresetLocalKey first = localKeys[0];
+        preset = new CameraPreset(name.Trim(), CameraPresetCategory.SavedTrackMoves,
+            first.LocalPosition.X, first.LocalPosition.Y, first.LocalPosition.Z, 0,
+            Duration: duration, KeyCount: localKeys.Count,
+            Interpolation: first.Interpolation, LocalKeys: localKeys);
+        return true;
+    }
+
+    private static CameraKeyInterpolation MapInterpolation(EInterpCurveMode mode) => mode switch
+    {
+        EInterpCurveMode.CIM_Constant => CameraKeyInterpolation.Constant,
+        EInterpCurveMode.CIM_Linear => CameraKeyInterpolation.Linear,
+        EInterpCurveMode.CIM_CurveAutoClamped => CameraKeyInterpolation.SmoothClamped,
+        _ => CameraKeyInterpolation.Smooth
+    };
 }

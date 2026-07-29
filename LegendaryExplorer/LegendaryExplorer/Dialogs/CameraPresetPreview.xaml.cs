@@ -38,7 +38,9 @@ public partial class CameraPresetPreview : UserControl, IDisposable
     {
         _keys = keys ?? [];
         _sceneOrigin = origin.Location;
-        _isDynamic = preset?.Category == CameraPresetCategory.DynamicShots && _keys.Count > 1;
+        _isDynamic = preset is not null
+            && (preset.Category == CameraPresetCategory.DynamicShots || preset.IsSavedTrackMove)
+            && _keys.Count > 1;
         _duration = _keys.Count > 0 ? _keys[^1].TimeOffset : 0;
         _elapsed = 0;
         BuildCurves();

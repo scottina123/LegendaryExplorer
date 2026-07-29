@@ -142,6 +142,20 @@
                         <TabItem Header="Reaction Shots">
                             <ListBox x:Name="ReactionPresetList" DisplayMemberPath="Name" SelectionChanged="PresetList_SelectionChanged"/>
                         </TabItem>
+                        <TabItem Header="Saved Presets">
+                            <DockPanel>
+                                <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                                    <Button x:Name="SaveTrackMovePresetButton" Content="Save Current" Click="SaveTrackMovePreset_Click"
+                                            Margin="2" Padding="7,4" ToolTip="Save the selected TrackMove relative to the current origin"/>
+                                    <Button x:Name="DeleteSavedPresetButton" Content="Delete" Click="DeleteSavedPreset_Click"
+                                            Margin="2" Padding="7,4" IsEnabled="False"/>
+                                    <Button Content="Import List" Click="ImportSavedPresets_Click" Margin="2" Padding="7,4"/>
+                                    <Button Content="Export List" Click="ExportSavedPresets_Click" Margin="2" Padding="7,4"/>
+                                </WrapPanel>
+                                <ListBox x:Name="SavedPresetList" DisplayMemberPath="Name"
+                                         SelectionChanged="PresetList_SelectionChanged"/>
+                            </DockPanel>
+                        </TabItem>
                     </TabControl>
                     <ListBox x:Name="PresetSearchResultsList" Grid.Row="1" Visibility="Collapsed"
                              SelectionChanged="PresetSearchResultsList_SelectionChanged">

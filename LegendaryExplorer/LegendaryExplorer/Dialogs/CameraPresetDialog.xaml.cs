@@ -11,6 +11,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
+using Microsoft.Win32;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs;
@@ -31,6 +32,7 @@ public partial class CameraPresetDialog : Window
     private readonly float? _maximumEndTime;
     private readonly IMEPackage _package;
     private readonly CameraActorAnchorContext _actorAnchorContext;
+    private readonly ExportEntry _selectedTrackMove;
     private CameraPreset _selectedPreset;
     private bool _updatingCameraSpeed;
     private bool _updatingDistanceScale;
@@ -42,7 +44,8 @@ public partial class CameraPresetDialog : Window
 
     public CameraPresetDialog(Func<CameraOrigin?> getTrackKeyOrigin, Func<CameraOrigin?> getViewportOrigin,
         Action<GeneratedCameraKey> previewCamera, float initialStartTime = 0, float? maximumEndTime = null,
-        IMEPackage package = null, CameraActorAnchorContext actorAnchorContext = null)
+        IMEPackage package = null, CameraActorAnchorContext actorAnchorContext = null,
+        ExportEntry selectedTrackMove = null)
     {
         _getTrackKeyOrigin = getTrackKeyOrigin;
         _getViewportOrigin = getViewportOrigin;
@@ -50,6 +53,7 @@ public partial class CameraPresetDialog : Window
         _maximumEndTime = maximumEndTime;
         _package = package;
         _actorAnchorContext = actorAnchorContext;
+        _selectedTrackMove = selectedTrackMove;
 
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
@@ -57,6 +61,8 @@ public partial class CameraPresetDialog : Window
         StaticPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.StaticShots);
         DynamicPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.DynamicShots);
         ReactionPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.ReactionShots);
+        SavedPresetList.ItemsSource = SavedCameraPresetManager.Presets;
+        SaveTrackMovePresetButton.IsEnabled = _selectedTrackMove is not null;
         UseTrackKeyButton.IsEnabled = _getTrackKeyOrigin?.Invoke() is not null;
         UseOtherTrackKeyButton.IsEnabled = _package is not null;
         bool hasViewport = _getViewportOrigin?.Invoke() is not null;
@@ -180,7 +186,8 @@ public partial class CameraPresetDialog : Window
             initialStartTime,
             maximumEndTime,
             export.FileRef,
-            actorAnchorContext)
+            actorAnchorContext,
+            export)
         {
             Owner = owner
         };
@@ -202,7 +209,7 @@ public partial class CameraPresetDialog : Window
         }
 
         _updatingPresetSelection = true;
-        foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList })
+        foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList, SavedPresetList })
         {
             if (list != sender)
             {
@@ -232,7 +239,7 @@ public partial class CameraPresetDialog : Window
             return;
         }
 
-        PresetSearchResultsList.ItemsSource = CameraPresetCatalog.All
+        PresetSearchResultsList.ItemsSource = GetAllPresets()
             .Where(preset => preset.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || GetCategoryDisplay(preset.Category).Contains(search, StringComparison.OrdinalIgnoreCase))
             .Select(preset => new PresetSearchResult(preset, preset.Name, GetCategoryDisplay(preset.Category)))
@@ -247,7 +254,7 @@ public partial class CameraPresetDialog : Window
         }
 
         _updatingPresetSelection = true;
-        foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList })
+        foreach (ListBox list in new[] { StaticPresetList, DynamicPresetList, ReactionPresetList, SavedPresetList })
         {
             list.SelectedItem = null;
         }
@@ -262,6 +269,190 @@ public partial class CameraPresetDialog : Window
         RefreshLivePreview();
     }
 
+    private void SaveTrackMovePreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedTrackMove is null)
+        {
+            MessageBox.Show("No TrackMove is selected.", "Save Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            return;
+        }
+
+        string name = PromptDialog.Prompt(this, "Preset name:", "Save TrackMove Camera Preset",
+            validator: value =>
+            {
+                string trimmed = value?.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    return (false, "Enter a preset name.");
+                }
+                return SavedCameraPresetManager.ContainsName(trimmed)
+                    ? (false, $"A preset named '{trimmed}' already exists.")
+                    : (true, null);
+            });
+        if (name is null)
+        {
+            return;
+        }
+
+        if (!CameraPresetTrackCapture.TryCapture(_selectedTrackMove, origin, name,
+                out CameraPreset preset, out string error))
+        {
+            MessageBox.Show(error, "Unable to Save Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            SavedCameraPresetManager.Add(preset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Save Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        PresetTabs.SelectedIndex = 3;
+        SavedPresetList.SelectedItem = preset;
+        SavedPresetList.ScrollIntoView(preset);
+        RefreshPresetSearch();
+        StatusTextBlock.Text = $"Saved TrackMove preset '{preset.Name}' relative to the current origin.";
+    }
+
+    private void DeleteSavedPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedPresetList.SelectedItem is not CameraPreset preset || !preset.IsSavedTrackMove)
+        {
+            return;
+        }
+        if (MessageBox.Show($"Delete saved camera preset '{preset.Name}'?", "Delete Camera Preset",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            SavedCameraPresetManager.Delete(preset);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Delete Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        DeleteSavedPresetButton.IsEnabled = false;
+        RefreshPresetSearch();
+        if (SavedCameraPresetManager.Presets.FirstOrDefault() is { } nextPreset)
+        {
+            SavedPresetList.SelectedItem = nextPreset;
+        }
+        else
+        {
+            PresetTabs.SelectedIndex = 0;
+            StaticPresetList.SelectedIndex = 0;
+        }
+        StatusTextBlock.Text = $"Deleted saved preset '{preset.Name}'.";
+    }
+
+    private void ImportSavedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import Camera TrackMove Presets",
+            Filter = "Camera preset list (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        IReadOnlyList<CameraPreset> imported = SavedCameraPresetManager.ReadCollection(dialog.FileName);
+        if (imported.Count == 0)
+        {
+            MessageBox.Show("The file contains no valid saved TrackMove camera presets.", "Import Camera Presets",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        bool replaceDuplicates = false;
+        string[] duplicateNames = imported.Where(preset => SavedCameraPresetManager.ContainsName(preset.Name))
+            .Select(preset => preset.Name).ToArray();
+        if (duplicateNames.Length > 0)
+        {
+            MessageBoxResult result = MessageBox.Show(
+                $"The following preset names already exist:\n\n{string.Join("\n", duplicateNames)}\n\n" +
+                "Choose Yes to replace all duplicates, No to skip all duplicates, or Cancel to stop importing.",
+                "Duplicate Camera Presets", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+            replaceDuplicates = result == MessageBoxResult.Yes;
+        }
+
+        try
+        {
+            (int added, int replaced, int skipped) = SavedCameraPresetManager.Merge(imported, replaceDuplicates);
+            RefreshPresetSearch();
+            StatusTextBlock.Text = $"Imported {added} preset(s); replaced {replaced}; skipped {skipped}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Import Camera Presets",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportSavedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedCameraPresetManager.Presets.Count == 0)
+        {
+            MessageBox.Show("There are no saved TrackMove camera presets to export.", "Export Camera Presets",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Camera TrackMove Presets",
+            Filter = "Camera preset list (*.json)|*.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+            FileName = "CameraTrackMovePresets.json"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            SavedCameraPresetManager.Export(dialog.FileName);
+            StatusTextBlock.Text = $"Exported {SavedCameraPresetManager.Presets.Count} saved camera preset(s).";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Export Camera Presets",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void RefreshPresetSearch()
+    {
+        if (!string.IsNullOrWhiteSpace(PresetSearchTextBox.Text))
+        {
+            PresetSearchTextBox_TextChanged(PresetSearchTextBox, null);
+        }
+    }
+
     private void SelectSavedPreset()
     {
         CameraPreset preset = LoadSavedPreset() ?? CameraPresetCatalog.All[0];
@@ -269,6 +460,7 @@ public partial class CameraPresetDialog : Window
         {
             CameraPresetCategory.DynamicShots => (DynamicPresetList, 1),
             CameraPresetCategory.ReactionShots => (ReactionPresetList, 2),
+            CameraPresetCategory.SavedTrackMoves => (SavedPresetList, 3),
             _ => (StaticPresetList, 0)
         };
         PresetTabs.SelectedIndex = tabIndex;
@@ -282,8 +474,12 @@ public partial class CameraPresetDialog : Window
         CameraPresetCategory.StaticShots => "Static Shot",
         CameraPresetCategory.DynamicShots => "Dynamic Shot",
         CameraPresetCategory.ReactionShots => "Reaction Shot",
+        CameraPresetCategory.SavedTrackMoves => "Saved TrackMove",
         _ => category.ToString()
     };
+
+    private static IEnumerable<CameraPreset> GetAllPresets() =>
+        CameraPresetCatalog.All.Concat(SavedCameraPresetManager.Presets);
 
     private void SetPresetFields(CameraPreset preset)
     {
@@ -297,9 +493,19 @@ public partial class CameraPresetDialog : Window
         DurationTextBox.Text = Format(preset.Duration);
         KeyCountTextBox.Text = CameraPresetGenerator.GetKeyCount(preset).ToString(CultureInfo.InvariantCulture);
         MovementAmountTextBox.Text = Format(preset.MovementAmount);
-        bool isDynamic = preset.Category == CameraPresetCategory.DynamicShots;
-        CameraSpeedSlider.IsEnabled = isDynamic;
-        CameraSpeedTextBox.IsEnabled = isDynamic;
+        bool isSavedTrackMove = preset.IsSavedTrackMove;
+        foreach (TextBox textBox in new[]
+                 {
+                     ForwardDistanceTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
+                     LocalRollTextBox, LocalPitchTextBox, LocalYawTextBox, MovementAmountTextBox
+                 })
+        {
+            textBox.IsEnabled = !isSavedTrackMove;
+        }
+        bool isMoving = preset.Category == CameraPresetCategory.DynamicShots || isSavedTrackMove;
+        CameraSpeedSlider.IsEnabled = isMoving;
+        CameraSpeedTextBox.IsEnabled = isMoving;
+        DeleteSavedPresetButton.IsEnabled = isSavedTrackMove;
         SetCameraSpeed(1);
     }
 
@@ -382,7 +588,7 @@ public partial class CameraPresetDialog : Window
             MovementAmount = movement
         };
         sampleCount = CameraPresetGenerator.GetKeyCount(samplingPreset);
-        float generatedDuration = samplingPreset.Category == CameraPresetCategory.DynamicShots
+        float generatedDuration = IsMovingPreset(samplingPreset)
             ? duration / cameraSpeed
             : duration;
         configured = samplingPreset with { Duration = generatedDuration };
@@ -615,7 +821,7 @@ public partial class CameraPresetDialog : Window
         float pathFraction = 1f;
         float generatedDuration = duration;
         float movementRate = 0;
-        if (samplingPreset.Category == CameraPresetCategory.DynamicShots)
+        if (IsMovingPreset(samplingPreset))
         {
             float pathLength = CameraPresetGenerator.GetPathLength(samplingPreset, origin, distanceScale);
             if (duration <= float.Epsilon && pathLength > float.Epsilon)
@@ -629,7 +835,7 @@ public partial class CameraPresetDialog : Window
             generatedDuration = movementRate <= float.Epsilon ? duration : pathLength / movementRate;
         }
 
-        if (samplingPreset.Category == CameraPresetCategory.DynamicShots && _maximumEndTime is float maximumEndTime)
+        if (IsMovingPreset(samplingPreset) && _maximumEndTime is float maximumEndTime)
         {
             float remainingDuration = maximumEndTime - startTime;
             if (remainingDuration <= 0)
@@ -653,6 +859,9 @@ public partial class CameraPresetDialog : Window
         keys = CameraPresetGenerator.Generate(configured, origin, sampleCount, pathFraction, distanceScale);
         return true;
     }
+
+    private static bool IsMovingPreset(CameraPreset preset) =>
+        preset.Category == CameraPresetCategory.DynamicShots || preset.IsSavedTrackMove;
 
     private static ExportEntry FindOwningInterpData(ExportEntry export)
     {
@@ -907,7 +1116,7 @@ public partial class CameraPresetDialog : Window
                 if (values.Length == 2
                     && Enum.TryParse(values[0], out CameraPresetCategory category))
                 {
-                    return CameraPresetCatalog.All.FirstOrDefault(preset =>
+                    return GetAllPresets().FirstOrDefault(preset =>
                         preset.Category == category && preset.Name == values[1]);
                 }
             }
