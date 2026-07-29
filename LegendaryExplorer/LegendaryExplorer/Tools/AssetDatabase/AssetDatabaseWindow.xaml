@@ -1832,6 +1832,10 @@
                                         <xctk:WatermarkTextBox Width="180" Margin="0,0,12,0"
                                                                Watermark="Any value"
                                                                Text="{Binding GestureStartingPoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                         <TextBlock Text="Node TLK:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                         <xctk:WatermarkTextBox Width="240" Margin="0,0,12,0"
+                                                                Watermark="Text or StrRef"
+                                                                Text="{Binding GestureNodeTlkFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                         <Button Content="Add Gesture Group" Padding="8,2" Click="AddGestureCriterion_Click"
                                                 ToolTip="Require another BioGestureData entry to match."/>
                                     </WrapPanel>

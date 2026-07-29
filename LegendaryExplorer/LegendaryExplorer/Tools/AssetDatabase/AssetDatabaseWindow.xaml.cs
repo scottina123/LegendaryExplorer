@@ -476,6 +476,19 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        private string _gestureNodeTlkFilter;
+        public string GestureNodeTlkFilter
+        {
+            get => _gestureNodeTlkFilter;
+            set
+            {
+                if (SetProperty(ref _gestureNodeTlkFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
         private const string AllMeshFilterOption = "All";
         private const string SkeletalMeshFilterOption = "Skeletal Meshes";
         private const string StaticMeshFilterOption = "Static Meshes";
@@ -5514,7 +5527,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             if (obj is not GestureTrackRecord track
                 || !MatchesGestureValue(track.StartingPoseSet, GestureStartingPoseSet)
-                || !MatchesGestureValue(track.StartingPoseAnim, GestureStartingPoseAnim))
+                || !MatchesGestureValue(track.StartingPoseAnim, GestureStartingPoseAnim)
+                || !MatchesGestureNodeTlk(track, GestureNodeTlkFilter))
             {
                 return false;
             }
@@ -5543,6 +5557,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                     || ContainsText(gesture.GestureAnim, FilterText)
                                                     || ContainsText(gesture.TransitionSet, FilterText)
                                                     || ContainsText(gesture.TransitionAnim, FilterText));
+        }
+
+        private bool MatchesGestureNodeTlk(GestureTrackRecord track, string filter)
+        {
+            return string.IsNullOrWhiteSpace(filter)
+                   || ContainsText(track.NodeTlkString, filter.Trim())
+                   || (track.NodeStrRef > 0 && ContainsText(track.NodeStrRef.ToString(), filter.Trim()));
         }
 
         private bool MatchesGestureCriterion(GestureDataRecord gesture, GestureFilterCriterion criterion)
