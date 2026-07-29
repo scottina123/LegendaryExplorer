@@ -268,8 +268,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v10.0: Index BioEvtSysTrackGesture starting poses and BioGestureData entries.
-        public const string dbCurrentBuild = "10.0";
+        // v11.0: Index the conversation node TLK StrRef for BioEvtSysTrackGesture records.
+        public const string dbCurrentBuild = "11.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -1344,6 +1344,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void RefreshTlkDisplayRecords()
         {
+            RefreshGestureTrackTlkStrings();
+
             Dictionary<int, string> sourceValues = null;
             if (!string.Equals(SelectedTlkSourceFilter, AllTlkSourceFilterOption, StringComparison.OrdinalIgnoreCase))
             {
@@ -1378,6 +1380,16 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             else
             {
                 SelectedTlkString = null;
+            }
+        }
+
+        private void RefreshGestureTrackTlkStrings()
+        {
+            foreach (var track in CurrentDataBase.GestureTracks)
+            {
+                track.NodeTlkString = track.NodeStrRef > 0
+                    ? _mergedTlkValues.GetValueOrDefault(track.NodeStrRef, $"TLK #{track.NodeStrRef}")
+                    : string.Empty;
             }
         }
 
@@ -5521,6 +5533,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
 
             return ContainsText(track.TrackName, FilterText)
+                   || (track.NodeStrRef > 0 && ContainsText(track.NodeStrRef.ToString(), FilterText))
+                   || ContainsText(track.NodeTlkString, FilterText)
                    || ContainsText(track.StartingPoseSet, FilterText)
                    || ContainsText(track.StartingPoseAnim, FilterText)
                    || track.Gestures.Any(gesture => ContainsText(gesture.PoseSet, FilterText)

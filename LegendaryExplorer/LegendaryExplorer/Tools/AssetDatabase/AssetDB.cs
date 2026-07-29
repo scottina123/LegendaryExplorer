@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -874,9 +875,29 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public ActorUsage() : this(default, default, default) { }
     }
 
-    public class GestureTrackRecord : IAssetRecord
+    public class GestureTrackRecord : IAssetRecord, INotifyPropertyChanged
     {
+        private string _nodeTlkString;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public string TrackName { get; set; }
+
+        public int NodeStrRef { get; set; }
+
+        [IgnoredMember]
+        public string NodeTlkString
+        {
+            get => _nodeTlkString;
+            set
+            {
+                if (_nodeTlkString != value)
+                {
+                    _nodeTlkString = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NodeTlkString)));
+                }
+            }
+        }
 
         public string StartingPoseSet { get; set; }
 
@@ -890,9 +911,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<GestureTrackUsage> Usages { get; set; } = new();
 
-        public GestureTrackRecord(string trackName, string startingPoseSet, string startingPoseAnim, IEnumerable<GestureDataRecord> gestures, bool isModOnly)
+        public GestureTrackRecord(string trackName, int nodeStrRef, string startingPoseSet, string startingPoseAnim, IEnumerable<GestureDataRecord> gestures, bool isModOnly)
         {
             TrackName = trackName;
+            NodeStrRef = nodeStrRef;
             StartingPoseSet = startingPoseSet;
             StartingPoseAnim = startingPoseAnim;
             Gestures.AddRange(gestures);

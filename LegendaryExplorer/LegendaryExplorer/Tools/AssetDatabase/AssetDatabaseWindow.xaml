@@ -1863,11 +1863,14 @@
                             <controls:ListBoxScroll x:Name="lstbx_GestureTracks" MinWidth="300" Grid.Row="2" Grid.Column="0">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding TrackName}"/>
-                                            <TextBlock FontSize="10" Text=" (" VerticalAlignment="Center"/>
-                                            <TextBlock FontSize="10" Text="{Binding Gestures.Count}" VerticalAlignment="Center"/>
-                                            <TextBlock FontSize="10" Text=" gestures)" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding TrackName}"/>
+                                                <TextBlock FontSize="10" Text=" (" VerticalAlignment="Center"/>
+                                                <TextBlock FontSize="10" Text="{Binding Gestures.Count}" VerticalAlignment="Center"/>
+                                                <TextBlock FontSize="10" Text=" gestures)" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding NodeTlkString}" FontSize="10" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </controls:ListBoxScroll.ItemTemplate>
