@@ -116,8 +116,21 @@
                         <TextBlock Text="Forward distance" Margin="3,6"/>
                         <TextBox x:Name="ForwardDistanceTextBox" Grid.Column="1" Margin="3" Padding="4"/>
                         <TextBlock Grid.Row="1" Text="Distance scale (%)" Margin="3,6"/>
-                        <TextBox x:Name="DistanceScaleTextBox" Grid.Row="1" Grid.Column="1" Text="100" Margin="3" Padding="4"
-                                 ToolTip="Scales every preset's forward distance; 100% uses the original value"/>
+                        <Grid Grid.Row="1" Grid.Column="1" Margin="3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="DistanceScaleSlider" Minimum="10" Maximum="200" Value="100"
+                                    TickFrequency="10" SmallChange="1" LargeChange="10"
+                                    VerticalAlignment="Center" ValueChanged="DistanceScaleSlider_ValueChanged"
+                                    ToolTip="Scales every preset's forward distance; 100% uses the original value"/>
+                            <TextBox x:Name="DistanceScaleTextBox" Grid.Column="1" Text="100" Margin="8,0,4,0" Padding="4"
+                                     HorizontalContentAlignment="Right" TextChanged="DistanceScaleTextBox_TextChanged"
+                                     ToolTip="Enter a distance scale from 10% to 200%"/>
+                            <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
+                        </Grid>
                         <TextBlock Grid.Row="2" Text="Side offset (local right)" Margin="3,6"/>
                         <TextBox x:Name="SideOffsetTextBox" Grid.Row="2" Grid.Column="1" Margin="3" Padding="4"/>
                         <TextBlock Grid.Row="3" Text="Height offset (local up)" Margin="3,6"/>

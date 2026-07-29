@@ -21,6 +21,7 @@ public partial class CameraPresetDialog : Window
 
     private static string SavedOriginPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetOriginV2.txt");
     private static string SavedPresetPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetSelection.txt");
+    private static string SavedDistanceScalePath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetDistanceScale.txt");
 
     private readonly Func<CameraOrigin?> _getTrackKeyOrigin;
     private readonly Func<CameraOrigin?> _getViewportOrigin;
@@ -29,6 +30,7 @@ public partial class CameraPresetDialog : Window
     private readonly IMEPackage _package;
     private CameraPreset _selectedPreset;
     private bool _updatingCameraSpeed;
+    private bool _updatingDistanceScale;
     private bool _updatingPresetSelection;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
@@ -59,10 +61,11 @@ public partial class CameraPresetDialog : Window
         StatusTextBlock.Text = hasViewport ? "Preview uses the connected Level Editor viewport." : "Connect a Level Editor to enable viewport actions and preview.";
         StartTimeTextBox.Text = Format(initialStartTime);
         SetOrigin(LoadSavedOrigin());
+        SetDistanceScale(LoadSavedDistanceScale());
         foreach (TextBox textBox in new[]
         {
             OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
-            ForwardDistanceTextBox, DistanceScaleTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
+            ForwardDistanceTextBox, SideOffsetTextBox, HeightOffsetTextBox, LookAtHeightTextBox,
             LocalRollTextBox, LocalPitchTextBox, LocalYawTextBox, DurationTextBox, MovementAmountTextBox
         })
         {
@@ -80,6 +83,12 @@ public partial class CameraPresetDialog : Window
         if (_selectedPreset is not null)
         {
             SavePreset(_selectedPreset);
+        }
+        if (TryReadFloat(DistanceScaleTextBox, out float distanceScale)
+            && distanceScale >= DistanceScaleSlider.Minimum
+            && distanceScale <= DistanceScaleSlider.Maximum)
+        {
+            SaveDistanceScale(distanceScale);
         }
 
         CameraPreviewControl.Dispose();
@@ -279,7 +288,9 @@ public partial class CameraPresetDialog : Window
             || !TryReadFloat(DurationTextBox, out float duration)
             || !TryReadFloat(CameraSpeedTextBox, out float cameraSpeed)
             || !TryReadFloat(MovementAmountTextBox, out float movement)
-            || duration < 0 || cameraSpeed <= 0 || distanceScalePercent <= 0)
+            || duration < 0 || cameraSpeed <= 0
+            || distanceScalePercent < DistanceScaleSlider.Minimum
+            || distanceScalePercent > DistanceScaleSlider.Maximum)
         {
             return false;
         }
@@ -303,6 +314,35 @@ public partial class CameraPresetDialog : Window
         configured = samplingPreset with { Duration = generatedDuration };
         distanceScale = distanceScalePercent / 100f;
         return true;
+    }
+
+    private void DistanceScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_updatingDistanceScale || DistanceScaleTextBox is null)
+        {
+            return;
+        }
+
+        _updatingDistanceScale = true;
+        DistanceScaleTextBox.Text = e.NewValue.ToString("0.##", CultureInfo.InvariantCulture);
+        DistanceScaleTextBox.CaretIndex = DistanceScaleTextBox.Text.Length;
+        _updatingDistanceScale = false;
+        RefreshLivePreview();
+    }
+
+    private void DistanceScaleTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingDistanceScale || DistanceScaleSlider is null
+            || !double.TryParse(DistanceScaleTextBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double scale)
+            || scale < DistanceScaleSlider.Minimum || scale > DistanceScaleSlider.Maximum)
+        {
+            return;
+        }
+
+        _updatingDistanceScale = true;
+        DistanceScaleSlider.Value = scale;
+        _updatingDistanceScale = false;
+        RefreshLivePreview();
     }
 
     private void CameraSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -475,11 +515,12 @@ public partial class CameraPresetDialog : Window
             || !TryReadFloat(MovementAmountTextBox, out float movement)
             || !TryReadFloat(StartTimeTextBox, out float startTime)
             || duration < 0
-            || distanceScalePercent <= 0
+            || distanceScalePercent < DistanceScaleSlider.Minimum
+            || distanceScalePercent > DistanceScaleSlider.Maximum
             || cameraSpeed < CameraSpeedSlider.Minimum
             || cameraSpeed > CameraSpeedSlider.Maximum)
         {
-            MessageBox.Show($"All composition fields must contain valid numbers. Distance scale must be greater than 0%, duration cannot be negative, and movement speed must be between {CameraSpeedSlider.Minimum:0.##}x and {CameraSpeedSlider.Maximum:0.##}x.",
+            MessageBox.Show($"All composition fields must contain valid numbers. Distance scale must be between {DistanceScaleSlider.Minimum:0.##}% and {DistanceScaleSlider.Maximum:0.##}%, duration cannot be negative, and movement speed must be between {CameraSpeedSlider.Minimum:0.##}x and {CameraSpeedSlider.Maximum:0.##}x.",
                 "Invalid Preset Parameters", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
@@ -580,6 +621,14 @@ public partial class CameraPresetDialog : Window
         OriginYawTextBox.Text = Format(origin.Rotation.Z);
     }
 
+    private void SetDistanceScale(float distanceScale)
+    {
+        _updatingDistanceScale = true;
+        DistanceScaleSlider.Value = distanceScale;
+        DistanceScaleTextBox.Text = Format(distanceScale);
+        _updatingDistanceScale = false;
+    }
+
     private static CameraOrigin LoadSavedOrigin()
     {
         try
@@ -624,6 +673,28 @@ public partial class CameraPresetDialog : Window
         return null;
     }
 
+    private static float LoadSavedDistanceScale()
+    {
+        try
+        {
+            if (File.Exists(SavedDistanceScalePath)
+                && float.TryParse(File.ReadAllText(SavedDistanceScalePath), NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out float distanceScale)
+                && distanceScale is >= 10 and <= 200)
+            {
+                return distanceScale;
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return 100;
+    }
+
     private static void SaveOrigin(CameraOrigin origin)
     {
         try
@@ -647,6 +718,20 @@ public partial class CameraPresetDialog : Window
         try
         {
             File.WriteAllLines(SavedPresetPath, new[] { preset.Category.ToString(), preset.Name });
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void SaveDistanceScale(float distanceScale)
+    {
+        try
+        {
+            File.WriteAllText(SavedDistanceScalePath, Format(distanceScale));
         }
         catch (IOException)
         {
