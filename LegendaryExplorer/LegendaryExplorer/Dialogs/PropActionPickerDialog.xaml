@@ -2,13 +2,17 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
-        Title="Select Prop Action" Width="620" Height="520"
+        Title="Select Prop Action" Width="620" Height="620"
         WindowStartupLocation="CenterOwner">
     <DockPanel Margin="8">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <TextBlock Text="nmProp" Margin="0,0,0,3" />
-            <ComboBox x:Name="PropComboBox" ItemsSource="{Binding PropNames}" IsEditable="True"
-                      IsTextSearchEnabled="True" SelectionChanged="PropComboBox_SelectionChanged" />
+            <TextBlock Text="Search nmProp" Margin="0,0,0,3" />
+            <TextBox x:Name="PropFilterTextBox" ToolTip="Search the available nmProp values"
+                     TextChanged="PropFilterTextBox_TextChanged" KeyDown="PropFilterTextBox_KeyDown" />
+            <ListBox x:Name="PropListBox" Height="140" Margin="0,4,0,0"
+                     ItemsSource="{Binding PropNamesView}" SelectionChanged="PropListBox_SelectionChanged"
+                     ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling" />
             <TextBlock Text="Filter actions" Margin="0,8,0,3" />
             <TextBox x:Name="FilterTextBox" ToolTip="Filter the actions available for the selected nmProp"
                      TextChanged="FilterTextBox_TextChanged" />

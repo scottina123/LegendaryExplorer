@@ -29,6 +29,7 @@ namespace LegendaryExplorer.Dialogs
 
         public ICollectionView ChoicesView { get; }
         public IReadOnlyList<string> PropNames { get; }
+        public ICollectionView PropNamesView { get; }
         public PropActionChoice SelectedChoice { get; private set; }
 
         public PropActionPickerDialog(IEnumerable<PropActionChoice> choices, Window owner, string initialProp = null, string initialAction = null)
@@ -42,6 +43,7 @@ namespace LegendaryExplorer.Dialogs
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(prop => prop, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            PropNamesView = CollectionViewSource.GetDefaultView(PropNames);
             ChoicesView = CollectionViewSource.GetDefaultView(choiceList);
             InitializeComponent();
             if (owner?.IsLoaded == true && PresentationSource.FromVisual(owner) != null)
@@ -51,12 +53,43 @@ namespace LegendaryExplorer.Dialogs
 
             Loaded += (_, _) =>
             {
-                int initialPropIndex = string.IsNullOrWhiteSpace(_initialProp)
-                    ? -1
-                    : PropNames.ToList().FindIndex(prop => prop.Equals(_initialProp, StringComparison.OrdinalIgnoreCase));
-                PropComboBox.SelectedIndex = initialPropIndex >= 0 ? initialPropIndex : PropNames.Count > 0 ? 0 : -1;
-                PropComboBox.Focus();
+                PropListBox.SelectedItem = PropNames.FirstOrDefault(prop =>
+                                               prop.Equals(_initialProp, StringComparison.OrdinalIgnoreCase))
+                                           ?? PropNames.FirstOrDefault();
+                if (PropListBox.SelectedItem is not null)
+                {
+                    PropListBox.ScrollIntoView(PropListBox.SelectedItem);
+                }
+
+                PropFilterTextBox.Focus();
             };
+        }
+
+        private void PropFilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            if (PropNamesView is null || PropFilterTextBox is null || PropListBox is null)
+            {
+                return;
+            }
+
+            string selectedProp = PropListBox.SelectedItem as string;
+            string filter = PropFilterTextBox.Text.Trim();
+            PropNamesView.Filter = item => item is string prop
+                && (filter.Length == 0 || prop.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            PropNamesView.Refresh();
+            PropListBox.SelectedItem = PropNamesView.Cast<string>()
+                .FirstOrDefault(prop => prop.Equals(selectedProp, StringComparison.OrdinalIgnoreCase))
+                ?? PropNamesView.Cast<string>().FirstOrDefault();
+        }
+
+        private void PropFilterTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Down && PropListBox.Items.Count > 0)
+            {
+                PropListBox.SelectedItem ??= PropListBox.Items[0];
+                PropListBox.Focus();
+                e.Handled = true;
+            }
         }
 
         private void FilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -64,18 +97,19 @@ namespace LegendaryExplorer.Dialogs
             RefreshChoiceFilter();
         }
 
-        private void PropComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => RefreshChoiceFilter();
+        private void PropListBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => RefreshChoiceFilter();
 
         private void RefreshChoiceFilter()
         {
-            if (ChoicesView is null || FilterTextBox is null || PropComboBox is null)
+            if (ChoicesView is null || FilterTextBox is null || PropListBox is null)
             {
                 return;
             }
 
-            string prop = PropComboBox.SelectedItem as string ?? PropComboBox.Text;
+            string prop = PropListBox.SelectedItem as string;
             string filter = FilterTextBox.Text.Trim();
             ChoicesView.Filter = item => item is PropActionChoice choice
+                && prop is not null
                 && choice.Prop.Equals(prop, StringComparison.OrdinalIgnoreCase)
                 && (filter.Length == 0 || choice.Action.Contains(filter, StringComparison.OrdinalIgnoreCase));
             ChoicesView.Refresh();

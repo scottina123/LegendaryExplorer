@@ -4449,6 +4449,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
+                NormalizeBioPropTrackDataPropertyOrder(importedProperties);
                 propKey.Properties = importedProperties;
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
             }
@@ -4457,6 +4458,38 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Mouse.OverrideCursor = null;
                 IsEnabled = true;
             }
+        }
+
+        private static void NormalizeBioPropTrackDataPropertyOrder(PropertyCollection properties)
+        {
+            string[] canonicalOrder =
+            [
+                "fTime",
+                "pWeaponClass",
+                "nmProp",
+                "nmAction",
+                "pPropMesh",
+                "pActionPartSys",
+                "pActionClientEffect",
+                "bEquip",
+                "bForceGenericWeapon"
+            ];
+            Property[] orderedProperties = properties
+                .OrderBy(property =>
+                {
+                    if (property is NoneProperty)
+                    {
+                        return int.MaxValue;
+                    }
+
+                    int index = Array.FindIndex(canonicalOrder, name =>
+                        property.Name.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    return index >= 0 ? index : canonicalOrder.Length;
+                })
+                .ToArray();
+
+            properties.Clear();
+            properties.AddRange(orderedProperties);
         }
 
         private void StringRefTextLookupButton_Click(object sender, RoutedEventArgs e)
