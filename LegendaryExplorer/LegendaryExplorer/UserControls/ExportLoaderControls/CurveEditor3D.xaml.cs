@@ -79,7 +79,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool updatingCameraRotationText;
     private int cameraRotationEditorsFocused;
     private string selectedKeyframeInVal;
-    private char locationScrubAxis = 'X';
+    private string locationScrubAxes = "X";
     private double locationScrubDragAccumulator;
     private string rotationDialAxis = nameof(CurveEditor3DKeyframe.Pitch);
     private bool rotationDialDragging;
@@ -659,9 +659,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void LocationScrubAxis_Checked(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: string { Length: 1 } axis })
+        if (sender is FrameworkElement { Tag: string axes })
         {
-            locationScrubAxis = axis[0];
+            locationScrubAxes = axes;
         }
     }
 
@@ -695,19 +695,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         locationScrubDragAccumulator -= stepCount * dragStep;
         float increment = LocationIncrementUpDown.Value ?? 1f;
         float delta = stepCount * increment;
-        switch (locationScrubAxis)
+        var locationDelta = new Vector3(
+            locationScrubAxes.Contains('X') ? delta : 0,
+            locationScrubAxes.Contains('Y') ? delta : 0,
+            locationScrubAxes.Contains('Z') ? delta : 0);
+        if (LocationScrubAllKeysCheckBox.IsChecked == true)
         {
-            case 'X':
-                SelectedKeyframe.X += delta;
-                break;
-            case 'Y':
-                SelectedKeyframe.Y += delta;
-                break;
-            case 'Z':
-                SelectedKeyframe.Z += delta;
-                break;
+            model.TranslateAllKeyframes(locationDelta);
         }
-        SnapCameraToKey(SelectedKeyframe, focusViewport: false);
+        else
+        {
+            SelectedKeyframe.Location += locationDelta;
+            SnapCameraToKey(SelectedKeyframe, focusViewport: false);
+        }
     }
 
     private void LocationScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
@@ -759,17 +759,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         rotationDialAngleAccumulator -= stepCount * increment;
         float rotationDelta = stepCount * increment;
-        switch (rotationDialAxis)
+        var rotationDeltaVector = new Vector3(
+            rotationDialAxis is nameof(CurveEditor3DKeyframe.Roll) or "All" ? rotationDelta : 0,
+            rotationDialAxis is nameof(CurveEditor3DKeyframe.Pitch) or "All" ? rotationDelta : 0,
+            rotationDialAxis is nameof(CurveEditor3DKeyframe.Yaw) or "All" ? rotationDelta : 0);
+        if (RotationDialAllKeysCheckBox.IsChecked == true)
         {
-            case nameof(CurveEditor3DKeyframe.Pitch):
-                SelectedKeyframe.Pitch += rotationDelta;
-                break;
-            case nameof(CurveEditor3DKeyframe.Roll):
-                SelectedKeyframe.Roll += rotationDelta;
-                break;
-            case nameof(CurveEditor3DKeyframe.Yaw):
-                SelectedKeyframe.Yaw += rotationDelta;
-                break;
+            model.RotateAllKeyframes(rotationDeltaVector);
+        }
+        else
+        {
+            SelectedKeyframe.SetRotation(SelectedKeyframe.Rotation + rotationDeltaVector, commit: true);
         }
 
         UpdateRotationDialIndicator();
@@ -806,6 +806,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             nameof(CurveEditor3DKeyframe.Pitch) => SelectedKeyframe?.Pitch ?? 0,
             nameof(CurveEditor3DKeyframe.Roll) => SelectedKeyframe?.Roll ?? 0,
             nameof(CurveEditor3DKeyframe.Yaw) => SelectedKeyframe?.Yaw ?? 0,
+            "All" => SelectedKeyframe?.Pitch ?? 0,
             _ => 0
         };
     }

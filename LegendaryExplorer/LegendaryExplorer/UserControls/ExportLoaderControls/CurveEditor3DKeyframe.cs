@@ -56,7 +56,7 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     public Vector3 Location
     {
         get => location;
-        set => SetLocation(value, null);
+        set => SetLocation(value, null, commit: true);
     }
 
     public Vector3 Rotation => rotation;
@@ -64,37 +64,37 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     public float X
     {
         get => location.X;
-        set => SetLocation(location with { X = value }, nameof(X));
+        set => SetLocation(location with { X = value }, nameof(X), commit: true);
     }
 
     public float Y
     {
         get => location.Y;
-        set => SetLocation(location with { Y = value }, nameof(Y));
+        set => SetLocation(location with { Y = value }, nameof(Y), commit: true);
     }
 
     public float Z
     {
         get => location.Z;
-        set => SetLocation(location with { Z = value }, nameof(Z));
+        set => SetLocation(location with { Z = value }, nameof(Z), commit: true);
     }
 
     public float Roll
     {
         get => rotation.X;
-        set => SetRotation(rotation with { X = value }, nameof(Roll));
+        set => SetRotation(rotation with { X = value }, nameof(Roll), commit: true);
     }
 
     public float Pitch
     {
         get => rotation.Y;
-        set => SetRotation(rotation with { Y = value }, nameof(Pitch));
+        set => SetRotation(rotation with { Y = value }, nameof(Pitch), commit: true);
     }
 
     public float Yaw
     {
         get => rotation.Z;
-        set => SetRotation(rotation with { Z = value }, nameof(Yaw));
+        set => SetRotation(rotation with { Z = value }, nameof(Yaw), commit: true);
     }
 
     public EInterpCurveMode PosTrackInterpMode
@@ -146,7 +146,7 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
     Rotator ITransformWidgetTarget.Rotation
     {
         get => Rotator.FromDegreesVector(rotation);
-        set => SetRotation(value.GetDegreesVector(), null);
+        set => SetRotation(value.GetDegreesVector(), null, commit: true);
     }
 
     public float DrawScale { get; set; } = 1f;
@@ -159,7 +159,13 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
 
     public TransformSnapshot SnapshotTransform() => new(Location, Rotator.FromDegreesVector(Rotation), DrawScale, DrawScale3D);
 
-    private void SetLocation(Vector3 value, string propertyName)
+    internal void SetLocation(Vector3 value, bool commit)
+        => SetLocation(value, null, commit);
+
+    internal void SetRotation(Vector3 value, bool commit)
+        => SetRotation(value, null, commit);
+
+    private void SetLocation(Vector3 value, string propertyName, bool commit)
     {
         if (location == value)
         {
@@ -178,10 +184,13 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
             OnPropertyChanged(nameof(Z));
         }
         OnPropertyChanged(nameof(Location));
-        changed(this, null);
+        if (commit)
+        {
+            changed(this, null);
+        }
     }
 
-    private void SetRotation(Vector3 value, string propertyName)
+    private void SetRotation(Vector3 value, string propertyName, bool commit)
     {
         if (rotation == value)
         {
@@ -200,6 +209,9 @@ public sealed class CurveEditor3DKeyframe : NotifyPropertyChangedBase, IHitProxy
             OnPropertyChanged(nameof(Yaw));
         }
         OnPropertyChanged(nameof(Rotation));
-        changed(this, null);
+        if (commit)
+        {
+            changed(this, null);
+        }
     }
 }

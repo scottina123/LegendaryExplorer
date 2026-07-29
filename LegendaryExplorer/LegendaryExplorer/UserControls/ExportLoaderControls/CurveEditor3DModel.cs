@@ -199,6 +199,49 @@ public sealed class CurveEditor3DModel
         Changed?.Invoke();
     }
 
+    public void TranslateAllKeyframes(Vector3 delta)
+    {
+        if (Export is null || delta == Vector3.Zero)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            Vector3 location = keyframe.Location + delta;
+            keyframe.SetLocation(location, commit: false);
+            keyframe.PositionPoint.OutVal = location;
+        }
+
+        PositionTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
+    public void RotateAllKeyframes(Vector3 delta)
+    {
+        if (Export is null || delta == Vector3.Zero)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in Keyframes)
+        {
+            Vector3 rotation = keyframe.Rotation + delta;
+            keyframe.SetRotation(rotation, commit: false);
+            InterpCurvePoint<Vector3> rotationPoint = keyframe.RotationPoint ??= AddPoint(
+                RotationTrack,
+                keyframe.Time,
+                rotation,
+                keyframe.EulerTrackInterpMode);
+            rotationPoint.OutVal = rotation;
+        }
+
+        RotationTrack.ReCalculateTangents();
+        WriteTracks();
+        Changed?.Invoke();
+    }
+
     private void RebuildKeyframes()
     {
         Keyframes.Clear();

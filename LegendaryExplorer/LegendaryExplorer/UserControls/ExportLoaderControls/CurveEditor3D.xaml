@@ -242,15 +242,21 @@
                                 <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=LocationIncrementUpDown}"/>
                                 <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
-                                    <UniformGrid Rows="1" Columns="3" Margin="0,0,0,4">
+                                    <UniformGrid Rows="1" Columns="5" Margin="0,0,0,4">
                                         <RadioButton Content="X" Tag="X" GroupName="LocationScrubAxis" IsChecked="True"
                                                      HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
                                         <RadioButton Content="Y" Tag="Y" GroupName="LocationScrubAxis"
                                                      HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
                                         <RadioButton Content="Z" Tag="Z" GroupName="LocationScrubAxis"
                                                      HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
+                                        <RadioButton Content="XY" Tag="XY" GroupName="LocationScrubAxis"
+                                                     HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
+                                        <RadioButton Content="XYZ" Tag="XYZ" GroupName="LocationScrubAxis"
+                                                     HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
                                     </UniformGrid>
-                                    <Grid Height="24" ToolTip="Drag left or right to move the selected keyframe continuously along the selected axis">
+                                    <CheckBox x:Name="LocationScrubAllKeysCheckBox" Content="Apply location drag to all keys" Margin="0,0,0,4"
+                                              ToolTip="Apply the same location delta to every keyframe while preserving the track shape"/>
+                                    <Grid Height="24" ToolTip="Drag left or right to move keyframes continuously along the selected axes">
                                         <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
                                                 Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
                                         <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
@@ -290,14 +296,18 @@
                                 <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
                                 <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
-                                    <UniformGrid Rows="1" Columns="3" Margin="0,0,0,4">
+                                    <UniformGrid Rows="1" Columns="4" Margin="0,0,0,4">
                                         <RadioButton Content="Pitch" Tag="Pitch" GroupName="RotationDialAxis" IsChecked="True"
                                                      HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
                                         <RadioButton Content="Roll" Tag="Roll" GroupName="RotationDialAxis"
                                                      HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
                                         <RadioButton Content="Yaw" Tag="Yaw" GroupName="RotationDialAxis"
                                                      HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
+                                        <RadioButton Content="All" Tag="All" GroupName="RotationDialAxis"
+                                                     HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
                                     </UniformGrid>
+                                    <CheckBox x:Name="RotationDialAllKeysCheckBox" Content="Apply rotation drag to all keys" Margin="0,0,0,4"
+                                              ToolTip="Apply the same rotation delta to every keyframe while preserving relative rotations"/>
                                     <Grid x:Name="RotationDial" Width="120" Height="120" HorizontalAlignment="Center" Cursor="Hand"
                                           MouseLeftButtonDown="RotationDial_MouseLeftButtonDown"
                                           MouseMove="RotationDial_MouseMove"
