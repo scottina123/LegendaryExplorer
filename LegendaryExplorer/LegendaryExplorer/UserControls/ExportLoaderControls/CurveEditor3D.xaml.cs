@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
@@ -78,6 +79,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool updatingCameraRotationText;
     private int cameraRotationEditorsFocused;
     private string selectedKeyframeInVal;
+    private char locationScrubAxis = 'X';
+    private double locationScrubDragAccumulator;
+    private string rotationDialAxis = nameof(CurveEditor3DKeyframe.Pitch);
+    private bool rotationDialDragging;
+    private double rotationDialAngleAccumulator;
+    private double rotationDialPreviousAngle;
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -379,6 +386,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 KeyframeList.ScrollIntoView(value);
             }
             RenderContext.TransformWidget.Attach = value;
+            UpdateRotationDialIndicator();
             SceneViewer?.MarkRenderDirty();
         }
     }
@@ -647,6 +655,173 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.TransformWidget.CurrentAxis = EWidgetAxis.None;
         SceneViewer.MarkRenderDirty();
         SceneViewer.Focus();
+    }
+
+    private void LocationScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string { Length: 1 } axis })
+        {
+            locationScrubAxis = axis[0];
+        }
+    }
+
+    private void LocationScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedKeyframe is null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        StopPlayback(false);
+        locationScrubDragAccumulator = 0;
+    }
+
+    private void LocationScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedKeyframe is null || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        locationScrubDragAccumulator += e.HorizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(locationScrubDragAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        locationScrubDragAccumulator -= stepCount * dragStep;
+        float increment = LocationIncrementUpDown.Value ?? 1f;
+        float delta = stepCount * increment;
+        switch (locationScrubAxis)
+        {
+            case 'X':
+                SelectedKeyframe.X += delta;
+                break;
+            case 'Y':
+                SelectedKeyframe.Y += delta;
+                break;
+            case 'Z':
+                SelectedKeyframe.Z += delta;
+                break;
+        }
+        SnapCameraToKey(SelectedKeyframe, focusViewport: false);
+    }
+
+    private void LocationScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void RotationDialAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axis })
+        {
+            rotationDialAxis = axis;
+            UpdateRotationDialIndicator();
+        }
+    }
+
+    private void RotationDial_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (SelectedKeyframe is null)
+        {
+            return;
+        }
+
+        StopPlayback(false);
+        rotationDialPreviousAngle = GetRotationDialPointerAngle(e.GetPosition(RotationDial));
+        rotationDialAngleAccumulator = 0;
+        rotationDialDragging = RotationDial.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void RotationDial_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!rotationDialDragging || SelectedKeyframe is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        double pointerAngle = GetRotationDialPointerAngle(e.GetPosition(RotationDial));
+        double angleDelta = NormalizeAngle(pointerAngle - rotationDialPreviousAngle);
+        rotationDialPreviousAngle = pointerAngle;
+        rotationDialAngleAccumulator += angleDelta;
+
+        float increment = RotationIncrementUpDown.Value ?? 1f;
+        int stepCount = (int)(rotationDialAngleAccumulator / increment);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        rotationDialAngleAccumulator -= stepCount * increment;
+        float rotationDelta = stepCount * increment;
+        switch (rotationDialAxis)
+        {
+            case nameof(CurveEditor3DKeyframe.Pitch):
+                SelectedKeyframe.Pitch += rotationDelta;
+                break;
+            case nameof(CurveEditor3DKeyframe.Roll):
+                SelectedKeyframe.Roll += rotationDelta;
+                break;
+            case nameof(CurveEditor3DKeyframe.Yaw):
+                SelectedKeyframe.Yaw += rotationDelta;
+                break;
+        }
+
+        UpdateRotationDialIndicator();
+        e.Handled = true;
+    }
+
+    private void RotationDial_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!rotationDialDragging)
+        {
+            return;
+        }
+
+        rotationDialDragging = false;
+        RotationDial.ReleaseMouseCapture();
+        SceneViewer.MarkRenderDirty();
+        e.Handled = true;
+    }
+
+    private void RotationDial_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        rotationDialDragging = false;
+    }
+
+    private void UpdateRotationDialIndicator()
+    {
+        if (RotationDialIndicator?.RenderTransform is not System.Windows.Media.RotateTransform indicatorTransform)
+        {
+            return;
+        }
+
+        indicatorTransform.Angle = rotationDialAxis switch
+        {
+            nameof(CurveEditor3DKeyframe.Pitch) => SelectedKeyframe?.Pitch ?? 0,
+            nameof(CurveEditor3DKeyframe.Roll) => SelectedKeyframe?.Roll ?? 0,
+            nameof(CurveEditor3DKeyframe.Yaw) => SelectedKeyframe?.Yaw ?? 0,
+            _ => 0
+        };
+    }
+
+    private static double GetRotationDialPointerAngle(Point pointerPosition)
+    {
+        double centerX = 60;
+        double centerY = 60;
+        return Math.Atan2(pointerPosition.Y - centerY, pointerPosition.X - centerX) * 180d / Math.PI + 90d;
+    }
+
+    private static double NormalizeAngle(double angle)
+    {
+        while (angle > 180d) angle -= 360d;
+        while (angle < -180d) angle += 360d;
+        return angle;
     }
 
     private void CameraPositionAdjustButton_Click(object sender, RoutedEventArgs e)
@@ -1180,7 +1355,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SnapCameraToKey(keyframe);
     }
 
-    private void SnapCameraToKey(CurveEditor3DKeyframe keyframe)
+    private void SnapCameraToKey(CurveEditor3DKeyframe keyframe, bool focusViewport = true)
     {
         const float degreesToRadians = 0.017453292519943295f;
         const float cameraDistance = 150f;
@@ -1192,7 +1367,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         UpdateCameraPositionText();
         UpdateCameraRotationText();
         SceneViewer.MarkRenderDirty();
-        SceneViewer.Focus();
+        if (focusViewport)
+        {
+            SceneViewer.Focus();
+        }
     }
 
     private void PlayMoveButton_Loaded(object sender, RoutedEventArgs e)

@@ -227,6 +227,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Increment" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown x:Name="LocationIncrementUpDown" Grid.Column="1" Value="1" Increment="0.1" Minimum="0.0001"
@@ -240,6 +241,26 @@
                                 <TextBlock Grid.Row="3" Text="Z" Foreground="#FF0000FF" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Z, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=LocationIncrementUpDown}"/>
+                                <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                                    <UniformGrid Rows="1" Columns="3" Margin="0,0,0,4">
+                                        <RadioButton Content="X" Tag="X" GroupName="LocationScrubAxis" IsChecked="True"
+                                                     HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
+                                        <RadioButton Content="Y" Tag="Y" GroupName="LocationScrubAxis"
+                                                     HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
+                                        <RadioButton Content="Z" Tag="Z" GroupName="LocationScrubAxis"
+                                                     HorizontalContentAlignment="Center" Checked="LocationScrubAxis_Checked"/>
+                                    </UniformGrid>
+                                    <Grid Height="24" ToolTip="Drag left or right to move the selected keyframe continuously along the selected axis">
+                                        <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
+                                                Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                        <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                        <Thumb x:Name="LocationScrubThumb" Width="24" Height="20" HorizontalAlignment="Center"
+                                               DragStarted="LocationScrubThumb_DragStarted"
+                                               DragDelta="LocationScrubThumb_DragDelta"
+                                               DragCompleted="LocationScrubThumb_DragCompleted"/>
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </GroupBox>
 
@@ -250,6 +271,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
@@ -267,6 +289,34 @@
                                 <TextBlock Grid.Row="3" Text="Z (Yaw)" Foreground="#FF0000FF" VerticalAlignment="Center"/>
                                 <xctk:SingleUpDown Grid.Row="3" Grid.Column="1" Value="{Binding Yaw, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=150, ValidatesOnExceptions=True}"
                                                    Increment="{Binding Value, ElementName=RotationIncrementUpDown}"/>
+                                <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                                    <UniformGrid Rows="1" Columns="3" Margin="0,0,0,4">
+                                        <RadioButton Content="Pitch" Tag="Pitch" GroupName="RotationDialAxis" IsChecked="True"
+                                                     HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
+                                        <RadioButton Content="Roll" Tag="Roll" GroupName="RotationDialAxis"
+                                                     HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
+                                        <RadioButton Content="Yaw" Tag="Yaw" GroupName="RotationDialAxis"
+                                                     HorizontalContentAlignment="Center" Checked="RotationDialAxis_Checked"/>
+                                    </UniformGrid>
+                                    <Grid x:Name="RotationDial" Width="120" Height="120" HorizontalAlignment="Center" Cursor="Hand"
+                                          MouseLeftButtonDown="RotationDial_MouseLeftButtonDown"
+                                          MouseMove="RotationDial_MouseMove"
+                                          MouseLeftButtonUp="RotationDial_MouseLeftButtonUp"
+                                          LostMouseCapture="RotationDial_LostMouseCapture"
+                                          ToolTip="Drag around the circle to rotate the selected keyframe on the selected axis">
+                                        <Ellipse Margin="4" StrokeThickness="4"
+                                                 Stroke="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                                 Fill="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                        <Line x:Name="RotationDialIndicator" X1="60" Y1="60" X2="60" Y2="10" StrokeThickness="3"
+                                              Stroke="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" IsHitTestVisible="False">
+                                            <Line.RenderTransform>
+                                                <RotateTransform CenterX="60" CenterY="60"/>
+                                            </Line.RenderTransform>
+                                        </Line>
+                                        <Ellipse Width="10" Height="10"
+                                                 Fill="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </GroupBox>
 
