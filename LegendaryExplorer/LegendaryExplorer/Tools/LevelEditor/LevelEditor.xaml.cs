@@ -175,6 +175,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private bool _isActorTransformScrubbing;
     private ActorProxy _actorTransformScrubActor;
     private TransformSnapshot? _actorTransformScrubBefore;
+    private double _lightRadiusScrubAccumulator;
+    private double _lightRadiusScrubPreviousHorizontalChange;
+    private string _lightDialProperty = nameof(ActorProxy.InnerConeAngle);
+    private bool _lightValueDialDragging;
+    private double _lightValueDialAccumulator;
+    private double _lightValueDialPreviousAngle;
     public ActorProxy SelectedActor
     {
         get => selectedActor;
@@ -695,6 +701,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     UnloadPropertyTabs();
                 }
             UpdateActorRotationDialIndicator();
+            UpdateLightValueDialIndicator();
         }
     }
 
@@ -904,6 +911,141 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         while (angle > 180d) angle -= 360d;
         while (angle < -180d) angle += 360d;
         return angle;
+    }
+
+    private void LightDialProperty_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string propertyName })
+        {
+            _lightDialProperty = propertyName;
+            UpdateLightValueDialIndicator();
+        }
+    }
+
+    private void LightRadiusScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || !SelectedActor.HasLightRadius)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _lightRadiusScrubAccumulator = 0;
+        _lightRadiusScrubPreviousHorizontalChange = 0;
+    }
+
+    private void LightRadiusScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _lightRadiusScrubPreviousHorizontalChange;
+        _lightRadiusScrubPreviousHorizontalChange = e.HorizontalChange;
+        _lightRadiusScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_lightRadiusScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _lightRadiusScrubAccumulator -= stepCount * dragStep;
+        SelectedActor.LightRadius = MathF.Max(0, SelectedActor.LightRadius + stepCount * 16f);
+    }
+
+    private void LightRadiusScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void LightValueDial_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (SelectedActor is null
+            || SelectedActor.IsReadOnly
+            || !SelectedActor.HasConeAngles)
+        {
+            return;
+        }
+
+        _lightValueDialPreviousAngle = GetActorRotationDialPointerAngle(e.GetPosition(LightValueDial));
+        _lightValueDialAccumulator = 0;
+        _lightValueDialDragging = LightValueDial.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void LightValueDial_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_lightValueDialDragging || SelectedActor is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        double pointerAngle = GetActorRotationDialPointerAngle(e.GetPosition(LightValueDial));
+        double angleDelta = NormalizeActorRotationDialAngle(pointerAngle - _lightValueDialPreviousAngle);
+        _lightValueDialPreviousAngle = pointerAngle;
+        _lightValueDialAccumulator += angleDelta;
+
+        const float increment = 1f;
+        int stepCount = (int)(_lightValueDialAccumulator / increment);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _lightValueDialAccumulator -= stepCount * increment;
+        float delta = stepCount * increment;
+        switch (_lightDialProperty)
+        {
+            case nameof(ActorProxy.InnerConeAngle):
+                SelectedActor.InnerConeAngle = Math.Clamp(SelectedActor.InnerConeAngle + delta, 0, 89.9f);
+                break;
+            case nameof(ActorProxy.OuterConeAngle):
+                SelectedActor.OuterConeAngle = Math.Clamp(SelectedActor.OuterConeAngle + delta, 0, 89.9f);
+                break;
+            case "ConeAngles":
+                SelectedActor.InnerConeAngle = Math.Clamp(SelectedActor.InnerConeAngle + delta, 0, 89.9f);
+                SelectedActor.OuterConeAngle = Math.Clamp(SelectedActor.OuterConeAngle + delta, 0, 89.9f);
+                break;
+        }
+
+        UpdateLightValueDialIndicator();
+        e.Handled = true;
+    }
+
+    private void LightValueDial_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_lightValueDialDragging)
+        {
+            return;
+        }
+
+        _lightValueDialDragging = false;
+        LightValueDial.ReleaseMouseCapture();
+        SceneViewer?.MarkRenderDirty();
+        e.Handled = true;
+    }
+
+    private void LightValueDial_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _lightValueDialDragging = false;
+    }
+
+    private void UpdateLightValueDialIndicator()
+    {
+        if (LightValueDialIndicator?.RenderTransform is not System.Windows.Media.RotateTransform indicatorTransform)
+        {
+            return;
+        }
+
+        indicatorTransform.Angle = _lightDialProperty switch
+        {
+            nameof(ActorProxy.InnerConeAngle) => SelectedActor?.InnerConeAngle ?? 0,
+            nameof(ActorProxy.OuterConeAngle) => SelectedActor?.OuterConeAngle ?? 0,
+            "ConeAngles" when SelectedActor is not null => (SelectedActor.InnerConeAngle + SelectedActor.OuterConeAngle) / 2f,
+            _ => 0
+        };
     }
 
     private void CenterView()
@@ -2109,6 +2251,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             or nameof(ActorProxy.LightEnv_BouncedModulationColor)
             or nameof(ActorProxy.ApplyBouncedModulationColor))
         {
+            if (e.PropertyName is nameof(ActorProxy.LightRadius) or nameof(ActorProxy.InnerConeAngle) or nameof(ActorProxy.OuterConeAngle))
+            {
+                UpdateLightValueDialIndicator();
+            }
             SceneViewer?.MarkRenderDirty();
             return;
         }
