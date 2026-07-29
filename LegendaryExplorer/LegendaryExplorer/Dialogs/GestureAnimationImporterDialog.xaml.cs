@@ -51,6 +51,13 @@ namespace LegendaryExplorer.Dialogs
         public string DisplayName { get; init; }
     }
 
+    public sealed class GestureTrackSourceOption
+    {
+        public string DisplayName { get; init; }
+        public string FilePath { get; init; }
+        public int UIndex { get; init; }
+    }
+
     public partial class GestureAnimationImporterDialog : Window, INotifyPropertyChanged
     {
         private readonly ExportEntry _gestureTrackExport;
@@ -296,6 +303,65 @@ namespace LegendaryExplorer.Dialogs
             set { _currentAmbPerfInfo = value; OnPropertyChanged(); }
         }
 
+        private List<GestureTrackRecord> _allGestureTracks = [];
+        public ObservableCollectionExtended<GestureTrackRecord> FilteredGestureTracks { get; } = new();
+        public ObservableCollectionExtended<GestureTrackSourceOption> AvailableGestureTrackSources { get; } = new();
+        public ObservableCollectionExtended<AssetDatabaseWindow.GestureFilterCriterion> GestureTrackCriteria { get; } = new();
+
+        private string _gestureTrackStartingPoseSet;
+        public string GestureTrackStartingPoseSet
+        {
+            get => _gestureTrackStartingPoseSet;
+            set { _gestureTrackStartingPoseSet = value; OnPropertyChanged(); ApplyGestureTrackFilter(); }
+        }
+
+        private string _gestureTrackStartingPoseAnim;
+        public string GestureTrackStartingPoseAnim
+        {
+            get => _gestureTrackStartingPoseAnim;
+            set { _gestureTrackStartingPoseAnim = value; OnPropertyChanged(); ApplyGestureTrackFilter(); }
+        }
+
+        private string _gestureTrackNodeTlkFilter;
+        public string GestureTrackNodeTlkFilter
+        {
+            get => _gestureTrackNodeTlkFilter;
+            set { _gestureTrackNodeTlkFilter = value; OnPropertyChanged(); ApplyGestureTrackFilter(); }
+        }
+
+        private GestureTrackRecord _selectedGestureTrack;
+        public GestureTrackRecord SelectedGestureTrack
+        {
+            get => _selectedGestureTrack;
+            set
+            {
+                _selectedGestureTrack = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanImportGestureTrack));
+                RefreshSelectedGestureTrackSources();
+            }
+        }
+
+        private GestureTrackSourceOption _selectedGestureTrackSource;
+        public GestureTrackSourceOption SelectedGestureTrackSource
+        {
+            get => _selectedGestureTrackSource;
+            set
+            {
+                _selectedGestureTrackSource = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private string _gestureTrackStatusText = "";
+        public string GestureTrackStatusText
+        {
+            get => _gestureTrackStatusText;
+            set { _gestureTrackStatusText = value; OnPropertyChanged(); }
+        }
+
+        public bool CanImportGestureTrack => SelectedGestureTrackSource != null;
+
         #endregion
 
         // File list from DB for resolving paths
@@ -304,6 +370,7 @@ namespace LegendaryExplorer.Dialogs
         // Animation preview state
         private IMEPackage _animPreviewPcc;
         private IMEPackage _ambPerfPreviewPcc;
+        private IMEPackage _gestureTrackPreviewPcc;
         private readonly PackageCache _ambPerfPreviewPackageCache = new();
         private List<MeshRecord> _skeletonMeshes;
 
@@ -325,6 +392,7 @@ namespace LegendaryExplorer.Dialogs
                 GbPropertyGroups.Visibility = Visibility.Collapsed;
                 GbGestureKeySettings.Visibility = Visibility.Collapsed;
                 EditGesturesTab.Visibility = Visibility.Collapsed;
+                TrackGesturesTab.Visibility = Visibility.Collapsed;
             }
 
             // Show Ambient Performances tab for targets that expose m_pPerfGameData
@@ -339,6 +407,7 @@ namespace LegendaryExplorer.Dialogs
             SourceGameComboBox.ItemsSource = AvailableSourceGames;
             SourceGameComboBox.SelectedItem = _pcc.Game;
 
+            EnsureGestureTrackCriteria();
             LoadExistingGestures();
             _ = LoadDatabaseAsync();
         }
@@ -356,6 +425,11 @@ namespace LegendaryExplorer.Dialogs
             PreviewMeshComboBox.ItemsSource = null;
             PreviewMeshComboBox.SelectedItem = null;
             AnimPreviewControl.ClearAnimation();
+            _allGestureTracks = [];
+            SelectedGestureTrack = null;
+            AvailableGestureTrackSources.ClearEx();
+            SelectedGestureTrackSource = null;
+            FilteredGestureTracks.ClearEx();
 
             if (UsesDefaultPoseSetTarget)
             {
@@ -412,6 +486,11 @@ namespace LegendaryExplorer.Dialogs
             FilteredAnimations.ReplaceAll(_allAnimations);
             AnimationStatusText = $"{_allAnimations.Count} {game} animations loaded.";
 
+            _allGestureTracks = _db.GestureTracks.ToList();
+            LoadGestureTrackTlkStrings(game, _db.Localization);
+            FilteredGestureTracks.ReplaceAll(_allGestureTracks);
+            GestureTrackStatusText = $"{_allGestureTracks.Count} {game} gesture tracks loaded.";
+
             // Set up skeleton mesh list for animation preview
             _skeletonMeshes = _db.Meshes.Where(m => m.IsSkeleton).ToList();
             PreviewMeshComboBox.ItemsSource = _skeletonMeshes;
@@ -440,6 +519,49 @@ namespace LegendaryExplorer.Dialogs
                     AmbPerfMeshComboBox.SelectedIndex = meshIdx;
                 }
             }
+        }
+
+        private void LoadGestureTrackTlkStrings(MEGame game, MELocalization localization)
+        {
+            var mergedTlkValues = new Dictionary<int, string>();
+            string gamePath = MEDirectories.GetDefaultGamePath(game);
+            if (!string.IsNullOrWhiteSpace(gamePath) && Directory.Exists(gamePath))
+            {
+                var talkFiles = game.IsGame1()
+                    ? TLKSystem.LoadTLKs(game, localization, male: false, gamePath)
+                        .Concat(TLKSystem.LoadTLKs(game, localization, male: true, gamePath))
+                    : TLKSystem.LoadTLKs(game, localization, male: true, gamePath);
+
+                foreach (var talkFile in talkFiles)
+                {
+                    foreach (var stringRef in talkFile.StringRefs.Where(stringRef => stringRef.StringID > 0))
+                    {
+                        mergedTlkValues[stringRef.StringID] = NormalizeTlkText(stringRef.Data);
+                    }
+                }
+            }
+
+            foreach (GestureTrackRecord track in _allGestureTracks)
+            {
+                track.NodeTlkString = track.NodeStrRef > 0
+                    ? mergedTlkValues.GetValueOrDefault(track.NodeStrRef, $"TLK #{track.NodeStrRef}")
+                    : string.Empty;
+            }
+        }
+
+        private static string NormalizeTlkText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "No Data", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (text.Length >= 2 && ((text[0] == '"' && text[^1] == '"') || (text[0] == '“' && text[^1] == '”')))
+            {
+                return text[1..^1];
+            }
+
+            return text;
         }
 
         private void LoadExistingGestures()
@@ -565,6 +687,111 @@ namespace LegendaryExplorer.Dialogs
             }
             AnimationStatusText = $"{FilteredAnimations.Count} / {_allAnimations.Count} animations shown.";
         }
+
+        private void EnsureGestureTrackCriteria()
+        {
+            if (GestureTrackCriteria.Count == 0)
+            {
+                AddGestureTrackCriterion();
+            }
+            else
+            {
+                UpdateGestureTrackCriteriaMetadata();
+            }
+        }
+
+        private void AddGestureTrackCriterion()
+        {
+            var criterion = new AssetDatabaseWindow.GestureFilterCriterion();
+            criterion.PropertyChanged += GestureTrackCriterion_PropertyChanged;
+            GestureTrackCriteria.Add(criterion);
+            UpdateGestureTrackCriteriaMetadata();
+        }
+
+        private void RemoveGestureTrackCriterion(AssetDatabaseWindow.GestureFilterCriterion criterion)
+        {
+            if (criterion == null)
+            {
+                return;
+            }
+
+            criterion.PropertyChanged -= GestureTrackCriterion_PropertyChanged;
+            GestureTrackCriteria.Remove(criterion);
+            EnsureGestureTrackCriteria();
+            ApplyGestureTrackFilter();
+        }
+
+        private void UpdateGestureTrackCriteriaMetadata()
+        {
+            for (int i = 0; i < GestureTrackCriteria.Count; i++)
+            {
+                GestureTrackCriteria[i].GroupLabel = $"Gesture {i + 1}:";
+                GestureTrackCriteria[i].CanRemove = GestureTrackCriteria.Count > 1;
+            }
+        }
+
+        private void GestureTrackCriterion_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is not nameof(AssetDatabaseWindow.GestureFilterCriterion.GroupLabel)
+                and not nameof(AssetDatabaseWindow.GestureFilterCriterion.CanRemove))
+            {
+                ApplyGestureTrackFilter();
+            }
+        }
+
+        private void AddGestureTrackCriterion_Click(object sender, RoutedEventArgs e) => AddGestureTrackCriterion();
+
+        private void RemoveGestureTrackCriterion_Click(object sender, RoutedEventArgs e) =>
+            RemoveGestureTrackCriterion((sender as FrameworkElement)?.Tag as AssetDatabaseWindow.GestureFilterCriterion);
+
+        private void ApplyGestureTrackFilter()
+        {
+            FilteredGestureTracks.ReplaceAll(_allGestureTracks.Where(MatchesGestureTrackFilters));
+            GestureTrackStatusText = $"{FilteredGestureTracks.Count} / {_allGestureTracks.Count} gesture tracks shown.";
+        }
+
+        private bool MatchesGestureTrackFilters(GestureTrackRecord track)
+        {
+            if (!MatchesGestureValue(track.StartingPoseSet, GestureTrackStartingPoseSet)
+                || !MatchesGestureValue(track.StartingPoseAnim, GestureTrackStartingPoseAnim)
+                || !MatchesGestureNodeTlk(track, GestureTrackNodeTlkFilter))
+            {
+                return false;
+            }
+
+            return GestureTrackCriteria
+                .Where(criterion => criterion.HasValues)
+                .All(criterion => track.Gestures.Any(gesture => MatchesGestureCriterion(gesture, criterion)));
+        }
+
+        private static bool MatchesGestureNodeTlk(GestureTrackRecord track, string filter) =>
+            string.IsNullOrWhiteSpace(filter)
+            || ContainsText(track.NodeTlkString, filter.Trim())
+            || (track.NodeStrRef > 0 && ContainsText(track.NodeStrRef.ToString(), filter.Trim()));
+
+        private static bool MatchesGestureCriterion(GestureDataRecord gesture, AssetDatabaseWindow.GestureFilterCriterion criterion) =>
+            MatchesGestureValue(gesture.PoseSet, criterion.PoseSet)
+            && MatchesGestureValue(gesture.PoseAnim, criterion.PoseAnim)
+            && MatchesGestureValue(gesture.GestureSet, criterion.GestureSet)
+            && MatchesGestureValue(gesture.GestureAnim, criterion.GestureAnim)
+            && MatchesGestureValue(gesture.TransitionSet, criterion.TransitionSet)
+            && MatchesGestureValue(gesture.TransitionAnim, criterion.TransitionAnim);
+
+        private static bool MatchesGestureValue(string value, string filter)
+        {
+            if (string.IsNullOrWhiteSpace(filter))
+            {
+                return true;
+            }
+
+            string trimmedFilter = filter.Trim();
+            return string.Equals(trimmedFilter, "None", StringComparison.OrdinalIgnoreCase)
+                ? string.Equals(value, "None", StringComparison.OrdinalIgnoreCase)
+                : ContainsText(value, trimmedFilter);
+        }
+
+        private static bool ContainsText(string value, string filter) =>
+            value?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
 
         #endregion
 
@@ -890,6 +1117,92 @@ namespace LegendaryExplorer.Dialogs
             }
 
             return options;
+        }
+
+        private void RefreshSelectedGestureTrackSources()
+        {
+            List<GestureTrackSourceOption> options = GetGestureTrackSourceOptions(SelectedGestureTrack);
+            AvailableGestureTrackSources.ReplaceAll(options);
+
+            if (options.Count == 0)
+            {
+                SelectedGestureTrackSource = null;
+                OnPropertyChanged(nameof(CanImportGestureTrack));
+                return;
+            }
+
+            if (SelectedGestureTrackSource != null)
+            {
+                GestureTrackSourceOption matchingOption = options.FirstOrDefault(option =>
+                    option.UIndex == SelectedGestureTrackSource.UIndex
+                    && option.FilePath.CaseInsensitiveEquals(SelectedGestureTrackSource.FilePath));
+                if (matchingOption != null)
+                {
+                    SelectedGestureTrackSource = matchingOption;
+                    OnPropertyChanged(nameof(CanImportGestureTrack));
+                    return;
+                }
+            }
+
+            SelectedGestureTrackSource = options[0];
+            OnPropertyChanged(nameof(CanImportGestureTrack));
+        }
+
+        private List<GestureTrackSourceOption> GetGestureTrackSourceOptions(GestureTrackRecord track)
+        {
+            if (track?.Usages == null || track.Usages.Count == 0)
+            {
+                return [];
+            }
+
+            var options = new List<GestureTrackSourceOption>();
+            foreach (GestureTrackUsage usage in track.Usages)
+            {
+                if (!TryGetFilePath(usage.FileKey, out string filePath, out string fileName, out string contentDir))
+                {
+                    continue;
+                }
+
+                if (options.Any(option => option.UIndex == usage.UIndex && option.FilePath.CaseInsensitiveEquals(filePath)))
+                {
+                    continue;
+                }
+
+                options.Add(new GestureTrackSourceOption
+                {
+                    DisplayName = $"{fileName} ({contentDir})",
+                    FilePath = filePath,
+                    UIndex = usage.UIndex,
+                });
+            }
+
+            return options;
+        }
+
+        private void LoadGestureTrackPreview()
+        {
+            GestureTrackPreviewControl.UnloadExport();
+            _gestureTrackPreviewPcc?.Dispose();
+            _gestureTrackPreviewPcc = null;
+
+            if (SelectedGestureTrackSource == null || !File.Exists(SelectedGestureTrackSource.FilePath))
+            {
+                return;
+            }
+
+            _gestureTrackPreviewPcc = MEPackageHandler.OpenMEPackage(SelectedGestureTrackSource.FilePath);
+            if (!_gestureTrackPreviewPcc.IsUExport(SelectedGestureTrackSource.UIndex))
+            {
+                _gestureTrackPreviewPcc.Dispose();
+                _gestureTrackPreviewPcc = null;
+                return;
+            }
+
+            ExportEntry sourceTrack = _gestureTrackPreviewPcc.GetUExport(SelectedGestureTrackSource.UIndex);
+            if (GestureTrackPreviewControl.CanParse(sourceTrack))
+            {
+                GestureTrackPreviewControl.LoadExport(sourceTrack);
+            }
         }
 
         private bool TryGetFilePath(int fileKey, out string filePath, out string fileName, out string contentDir)
@@ -1856,6 +2169,133 @@ namespace LegendaryExplorer.Dialogs
 
         #endregion
 
+        #region Gesture Track Import
+
+        private void ImportGestureTrack_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedGestureTrack == null || SelectedGestureTrackSource == null)
+            {
+                MessageBox.Show("Please select a gesture track and source package first.", "No Gesture Track Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            MessageBoxResult confirmation = MessageBox.Show(
+                $"Replace '{_gestureTrackExport.ObjectName.Instanced}' with all data and references from '{SelectedGestureTrack.TrackName}'?\n\nThe destination actor lookup properties will be preserved.",
+                "Replace Gesture Track",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                ReplaceGestureTrackFromDatabase(SelectedGestureTrackSource);
+                LoadExistingGestures();
+                StatusMessage = $"Successfully replaced the gesture track with '{SelectedGestureTrack.TrackName}'.";
+                MessageBox.Show(
+                    $"Gesture track '{SelectedGestureTrack.TrackName}' was imported with its links and referenced exports.",
+                    "Import Successful",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Gesture track import failed: {ex.Message}";
+                MessageBox.Show($"Error importing gesture track: {ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ReplaceGestureTrackFromDatabase(GestureTrackSourceOption sourceOption)
+        {
+            if (!File.Exists(sourceOption.FilePath))
+            {
+                throw new FileNotFoundException("The selected source package could not be found.", sourceOption.FilePath);
+            }
+
+            if (_pcc.FilePath.CaseInsensitiveEquals(sourceOption.FilePath) && _gestureTrackExport.UIndex == sourceOption.UIndex)
+            {
+                throw new InvalidOperationException("The selected source is the destination gesture track.");
+            }
+
+            using IMEPackage sourcePackage = MEPackageHandler.OpenMEPackage(sourceOption.FilePath);
+            if (!sourcePackage.IsUExport(sourceOption.UIndex))
+            {
+                throw new InvalidOperationException($"Export {sourceOption.UIndex} does not exist in the selected source package.");
+            }
+
+            ExportEntry sourceTrack = sourcePackage.GetUExport(sourceOption.UIndex);
+            if (!sourceTrack.IsA("BioEvtSysTrackGesture"))
+            {
+                throw new InvalidOperationException($"Export {sourceOption.UIndex} is not a BioEvtSysTrackGesture.");
+            }
+
+            Property[] protectedProperties =
+            [
+                _gestureTrackExport.GetProperty<EnumProperty>("m_eFindActorMode")?.DeepClone(),
+                _gestureTrackExport.GetProperty<NameProperty>("m_nmFindActor")?.DeepClone(),
+            ];
+
+            var relinkerErrors = new List<string>();
+            var relinkerOptions = new RelinkerOptionsPackage
+            {
+                ImportExportDependencies = true,
+                PortImportsMemorySafe = true,
+                PortExportsAsImportsWhenPossible = true,
+                ErrorOccurredCallback = relinkerErrors.Add,
+                RelinkPropertyMutator = (export, properties) =>
+                {
+                    if (!ReferenceEquals(export, sourceTrack))
+                    {
+                        return;
+                    }
+
+                    foreach (Property property in protectedProperties)
+                    {
+                        if (property != null)
+                        {
+                            properties.AddOrReplaceProp(property.DeepClone());
+                        }
+                    }
+                },
+            };
+
+            List<EntryStringPair> relinkReport = EntryImporter.ImportAndRelinkEntries(
+                EntryImporter.PortingOption.ReplaceSingularWithRelink,
+                sourceTrack,
+                _pcc,
+                _gestureTrackExport,
+                true,
+                relinkerOptions,
+                out IEntry replacedEntry);
+
+            if (!ReferenceEquals(replacedEntry, _gestureTrackExport))
+            {
+                throw new InvalidOperationException("The relinker did not replace the destination gesture track in place.");
+            }
+
+            foreach (Property property in protectedProperties)
+            {
+                if (property != null)
+                {
+                    _gestureTrackExport.WriteProperty(property.DeepClone());
+                }
+            }
+
+            if (relinkerErrors.Count > 0)
+            {
+                throw new InvalidOperationException(string.Join(Environment.NewLine, relinkerErrors.Distinct()));
+            }
+
+            if (relinkReport.Count > 0)
+            {
+                StatusMessage = $"Gesture track imported with {relinkReport.Count} relinker warning(s).";
+            }
+        }
+
+        #endregion
+
         #region Ambient Performances
 
         private void LoadCurrentAmbPerfInfo()
@@ -2149,10 +2589,13 @@ namespace LegendaryExplorer.Dialogs
         {
             AnimPreviewControl?.Dispose();
             AmbPerfPreviewControl?.Dispose();
+            GestureTrackPreviewControl?.Dispose();
             _animPreviewPcc?.Dispose();
             _animPreviewPcc = null;
             _ambPerfPreviewPcc?.Dispose();
             _ambPerfPreviewPcc = null;
+            _gestureTrackPreviewPcc?.Dispose();
+            _gestureTrackPreviewPcc = null;
             _ambPerfPreviewPackageCache.Dispose();
         }
     }

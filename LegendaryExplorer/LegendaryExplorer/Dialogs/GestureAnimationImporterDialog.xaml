@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
         xmlns:sharedToolControls="clr-namespace:LegendaryExplorer.UserControls.SharedToolControls"
+        xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         Title="Gesture Animation Importer" Width="1250" Height="700"
         WindowStartupLocation="CenterOwner"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -302,7 +303,139 @@
                 </Grid>
             </TabItem>
 
-            <!-- Tab 3: Ambient Performances (SFXModule_Gestures only) -->
+            <!-- Tab 3: Track Gestures -->
+            <TabItem x:Name="TrackGesturesTab" Header="Track Gestures">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" MinWidth="300"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="2*" MinWidth="300"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="3*" MinWidth="450"/>
+                    </Grid.ColumnDefinitions>
+
+                    <DockPanel Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top" Text="Gesture Tracks from Asset Database" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <ScrollViewer DockPanel.Dock="Top" MaxHeight="250" VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
+                            <StackPanel>
+                                <WrapPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Starting Pose Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0"
+                                                           Watermark="Any value"
+                                                           Text="{Binding GestureTrackStartingPoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBlock Text="Starting Pose Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0"
+                                                           Watermark="Any value"
+                                                           Text="{Binding GestureTrackStartingPoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBlock Text="Node TLK:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <xctk:WatermarkTextBox Width="180" Margin="0,0,8,0"
+                                                           Watermark="Text or StrRef"
+                                                           Text="{Binding GestureTrackNodeTlkFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Content="Add Gesture Group" Padding="8,2" Click="AddGestureTrackCriterion_Click"
+                                            ToolTip="Require another BioGestureData entry to match."/>
+                                </WrapPanel>
+                                <ItemsControl ItemsSource="{Binding GestureTrackCriteria}" Margin="0,4,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2,0,4">
+                                                <DockPanel>
+                                                    <TextBlock Text="{Binding GroupLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                    <Button Content="Remove" Padding="8,2" Margin="8,0,0,0" HorizontalAlignment="Right"
+                                                            Tag="{Binding}" IsEnabled="{Binding CanRemove}" Click="RemoveGestureTrackCriterion_Click"/>
+                                                </DockPanel>
+                                                <WrapPanel Margin="0,2,0,0">
+                                                    <TextBlock Text="Pose Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Margin="0,0,6,0" Watermark="Any" Text="{Binding PoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Pose Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Margin="0,0,6,0" Watermark="Any" Text="{Binding PoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Gesture Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Margin="0,0,6,0" Watermark="Any" Text="{Binding GestureSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Gesture Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Margin="0,0,6,0" Watermark="Any" Text="{Binding GestureAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Transition Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Margin="0,0,6,0" Watermark="Any" Text="{Binding TransitionSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Transition Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                    <xctk:WatermarkTextBox Width="125" Watermark="Any" Text="{Binding TransitionAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding GestureTrackStatusText}" Opacity="0.6" Margin="0,0,0,4"/>
+                        <ListBox ItemsSource="{Binding FilteredGestureTracks}"
+                                 SelectedItem="{Binding SelectedGestureTrack}"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock Text="{Binding TrackName}" FontWeight="DemiBold"/>
+                                        <TextBlock Text="{Binding NodeTlkString}" Opacity="0.7" FontSize="10" TextWrapping="Wrap"/>
+                                        <TextBlock Opacity="0.7" FontSize="10">
+                                            <Run Text="Starting pose: "/>
+                                            <Run Text="{Binding StartingPoseSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding StartingPoseAnim}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <DockPanel Grid.Column="2" Margin="5,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Gesture Data" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <TextBlock Text="Source Package: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
+                            <ComboBox ItemsSource="{Binding AvailableGestureTrackSources}"
+                                      SelectedItem="{Binding SelectedGestureTrackSource}"
+                                      DisplayMemberPath="DisplayName"/>
+                        </DockPanel>
+                        <Button DockPanel.Dock="Bottom"
+                                Content="Replace Current Gesture Track"
+                                Padding="8,4"
+                                Margin="0,6,0,0"
+                                IsEnabled="{Binding CanImportGestureTrack}"
+                                Click="ImportGestureTrack_Click"/>
+                        <ListBox ItemsSource="{Binding SelectedGestureTrack.Gestures}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,3">
+                                        <TextBlock FontWeight="DemiBold">
+                                            <Run Text="Gesture: "/>
+                                            <Run Text="{Binding GestureSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding GestureAnim}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Opacity="0.7">
+                                            <Run Text="Pose: "/>
+                                            <Run Text="{Binding PoseSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding PoseAnim}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Opacity="0.7">
+                                            <Run Text="Transition: "/>
+                                            <Run Text="{Binding TransitionSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding TransitionAnim}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <exportLoaderControls:GesturePreviewExportLoader x:Name="GestureTrackPreviewControl" Grid.Column="4" Margin="5,0,0,0"/>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 4: Ambient Performances (SFXModule_Gestures only) -->
             <TabItem x:Name="AmbPerfTab" Header="Ambient Performances" Visibility="Collapsed">
                 <Grid>
                     <Grid.ColumnDefinitions>
