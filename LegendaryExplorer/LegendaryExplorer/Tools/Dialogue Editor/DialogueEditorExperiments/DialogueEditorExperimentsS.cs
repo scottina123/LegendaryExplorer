@@ -843,6 +843,42 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
             return clonedFxa;
         }
 
+        internal static ExportEntry ImportFaceFXWithAudio(
+            IMEPackage destinationPackage,
+            ExportEntry sourceFaceFx,
+            IEntry destinationParent,
+            string newFaceFxName)
+        {
+            if (destinationPackage == null || sourceFaceFx == null || destinationParent?.FileRef != destinationPackage)
+            {
+                return null;
+            }
+
+            var relinkerOptions = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceFaceFx.Game != destinationPackage.Game && sourceFaceFx.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                ImportExportDependencies = true
+            };
+            EntryImporter.ImportAndRelinkEntries(
+                EntryImporter.PortingOption.CloneAllDependencies,
+                sourceFaceFx,
+                destinationPackage,
+                destinationParent,
+                true,
+                relinkerOptions,
+                out IEntry importedEntry);
+
+            if (importedEntry is not ExportEntry importedFaceFx)
+            {
+                return null;
+            }
+
+            destinationPackage.FindNameOrAdd(newFaceFxName);
+            importedFaceFx.ObjectName = new NameReference(newFaceFxName);
+            return importedFaceFx;
+        }
+
         /// <summary>
         /// Gets the top-level package name for an entry by walking up its parent chain.
         /// For a root-level entry, returns its own name.

@@ -149,6 +149,21 @@ namespace LegendaryExplorer.DialogueEditor
             internal int MatchingTargetOrdinal { get; init; }
         }
 
+        private sealed class CrossEditorParticipantOption
+        {
+            internal SpeakerExtended Speaker { get; init; }
+            internal bool KeepSource { get; init; }
+            internal string DisplayName { get; init; }
+
+            public override string ToString() => DisplayName;
+        }
+
+        private sealed class CrossEditorParticipantSelection
+        {
+            internal CrossEditorParticipantOption Speaker { get; init; }
+            internal CrossEditorParticipantOption Listener { get; init; }
+        }
+
         private readonly ConvGraphEditor graphEditor;
         public ObservableCollectionExtended<IEntry> FFXAnimsets { get; } = new();
         public ObservableCollectionExtended<ConversationExtended> Conversations { get; } = new();
@@ -429,6 +444,7 @@ namespace LegendaryExplorer.DialogueEditor
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             graphEditor = (ConvGraphEditor)GraphHost.Child;
+            graphEditor.Owner = this;
             graphEditor.BackColor = GraphBackgroundColor;
             graphEditor.Camera.MouseDown += backMouseDown_Handler;
             graphEditor.Camera.MouseUp += back_MouseUp;
@@ -10508,20 +10524,375 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void DialogueEditor_DragEnter(object sender, System.Windows.Forms.DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop))
+            if (e.Data.GetData(typeof(DialogueNodeDragData)) is DialogueNodeDragData nodeDragData)
+            {
+                e.Effect = nodeDragData.SourceEditor != this && SelectedConv != null
+                    ? System.Windows.Forms.DragDropEffects.Copy
+                    : System.Windows.Forms.DragDropEffects.None;
+            }
+            else if (e.Data.GetDataPresent(System.Windows.Forms.DataFormats.FileDrop))
                 e.Effect = System.Windows.Forms.DragDropEffects.All;
             else
                 e.Effect = System.Windows.Forms.DragDropEffects.None;
         }
         private void DialogueEditor_DragDrop(object sender, System.Windows.Forms.DragEventArgs e)
         {
-            if (e.Data.GetData(System.Windows.Forms.DataFormats.FileDrop) is string[] DroppedFiles)
+            if (e.Data.GetData(typeof(DialogueNodeDragData)) is DialogueNodeDragData nodeDragData)
+            {
+                CopyDialogueNodeFromEditor(nodeDragData);
+            }
+            else if (e.Data.GetData(System.Windows.Forms.DataFormats.FileDrop) is string[] DroppedFiles)
             {
                 if (DroppedFiles.Any())
                 {
                     LoadFile(DroppedFiles[0]);
                 }
             }
+        }
+
+        private void CopyDialogueNodeFromEditor(DialogueNodeDragData nodeDragData)
+        {
+            if (nodeDragData?.SourceEditor == null || nodeDragData.SourceEditor == this || nodeDragData.SourceNode == null || SelectedConv == null)
+            {
+                return;
+            }
+
+            if (nodeDragData.SourceEditor.Pcc.Game.IsLEGame() != Pcc.Game.IsLEGame()
+                && !App.IsDebug
+                && nodeDragData.SourceEditor.Pcc.Game != MEGame.UDK)
+            {
+                MessageBox.Show(
+                    "Cannot copy dialogue nodes between Original Trilogy (OT) games and Legendary Edition (LE) games in release builds of Legendary Explorer.",
+                    "Cannot copy dialogue node",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            CrossEditorParticipantSelection participantSelection = PromptForCrossEditorParticipants(nodeDragData);
+            if (participantSelection?.Speaker?.Speaker == null || participantSelection.Listener?.Speaker == null)
+            {
+                return;
+            }
+
+            SpeakerExtended destinationSpeaker = ResolveCrossEditorParticipant(participantSelection.Speaker);
+            SpeakerExtended destinationListener = ResolveCrossEditorParticipant(participantSelection.Listener);
+            int newExportId = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
+                .Select(node => node.ExportID)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+
+            DialogueEditorExperimentsE.CrossEditorSequenceImportResult importResult = DialogueEditorExperimentsE.ImportNodeSequence(
+                nodeDragData.SourceEditor,
+                nodeDragData.SourceNode,
+                this);
+            if (importResult?.InterpData == null || importResult.ConvNode == null)
+            {
+                MessageBox.Show(
+                    "The node's sequence could not be imported or linked to the destination conversation.",
+                    "Copy dialogue node",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            importResult.ConvNode.WriteProperty(new IntProperty(newExportId, "m_nNodeID"));
+            if (SelectedConv.BioConvo.GetProp<IntProperty>("m_nResRefID") is { } destinationResRef)
+            {
+                importResult.ConvNode.WriteProperty(new IntProperty(destinationResRef.Value, "m_nConvResRefID"));
+            }
+
+            DialogueNodeExtended copiedNode = AddCrossEditorDialogueNode(
+                nodeDragData.SourceNode,
+                destinationSpeaker,
+                destinationListener,
+                importResult.InterpData,
+                newExportId);
+            if (copiedNode == null)
+            {
+                MessageBox.Show("The dialogue-list node could not be created in the destination conversation.", "Copy dialogue node", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            CopyRetainedParticipantFaceFx(participantSelection.Speaker, destinationSpeaker);
+            if (participantSelection.Listener.Speaker.SpeakerNameRef != participantSelection.Speaker.Speaker.SpeakerNameRef
+                || destinationListener.SpeakerID != destinationSpeaker.SpeakerID)
+            {
+                CopyRetainedParticipantFaceFx(participantSelection.Listener, destinationListener);
+            }
+            SaveSpeakersToProperties(SelectedSpeakerList);
+
+            RemoveConversationGraphCache([SelectedConv.UIndex]);
+            GenerateGraph(regenerate: true);
+            SelectDialogueNodeByIndex(copiedNode.NodeCount, copiedNode.IsReply, centerView: true);
+            StatusBar_OtherText.Text = $"Copied node as ExportID {newExportId} from another Dialogue Editor.";
+
+            if (importResult.RelinkResults.Count > 0)
+            {
+                new ListDialog(
+                    importResult.RelinkResults,
+                    "Dialogue node copy relink report",
+                    "The node was copied, but the following items reported relinking issues.",
+                    this).Show();
+            }
+        }
+
+        private void CopyRetainedParticipantFaceFx(CrossEditorParticipantOption option, SpeakerExtended destinationSpeaker)
+        {
+            if (option?.KeepSource != true || option.Speaker == null || destinationSpeaker == null)
+            {
+                return;
+            }
+
+            IEntry topLevelPackage = SelectedConv.Export;
+            while (topLevelPackage.HasParent)
+            {
+                topLevelPackage = topLevelPackage.Parent;
+            }
+
+            string baseName = $"{topLevelPackage.ObjectName.Name}_{option.Speaker.SpeakerNameRef.Name}";
+            if (option.Speaker.FaceFX_Male is ExportEntry sourceMaleFaceFx)
+            {
+                destinationSpeaker.FaceFX_Male = DialogueEditorExperimentsS.ImportFaceFXWithAudio(
+                    Pcc,
+                    sourceMaleFaceFx,
+                    SelectedConv.Export.Parent,
+                    $"{baseName}_M");
+            }
+            if (option.Speaker.FaceFX_Female is ExportEntry sourceFemaleFaceFx)
+            {
+                destinationSpeaker.FaceFX_Female = DialogueEditorExperimentsS.ImportFaceFXWithAudio(
+                    Pcc,
+                    sourceFemaleFaceFx,
+                    SelectedConv.Export.Parent,
+                    $"{baseName}_F");
+            }
+
+            if (destinationSpeaker.FaceFX_Male != null && FFXAnimsets.All(entry => entry.UIndex != destinationSpeaker.FaceFX_Male.UIndex))
+            {
+                FFXAnimsets.Add(destinationSpeaker.FaceFX_Male);
+            }
+            if (destinationSpeaker.FaceFX_Female != null && FFXAnimsets.All(entry => entry.UIndex != destinationSpeaker.FaceFX_Female.UIndex))
+            {
+                FFXAnimsets.Add(destinationSpeaker.FaceFX_Female);
+            }
+        }
+
+        private DialogueNodeExtended AddCrossEditorDialogueNode(
+            DialogueNodeExtended sourceNode,
+            SpeakerExtended destinationSpeaker,
+            SpeakerExtended destinationListener,
+            ExportEntry importedInterpData,
+            int newExportId)
+        {
+            PropertyCollection properties = new();
+            foreach (Property property in sourceNode.NodeProp.Properties)
+            {
+                if (property.Name.Name == "EntryList")
+                {
+                    properties.AddOrReplaceProp(new ArrayProperty<IntProperty>(property.Name));
+                }
+                else if (property.Name.Name == "ReplyListNew")
+                {
+                    properties.AddOrReplaceProp(new ArrayProperty<StructProperty>(property.Name));
+                }
+                else
+                {
+                    properties.AddOrReplaceProp(property.DeepClone());
+                }
+            }
+
+            properties.AddOrReplaceProp(new IntProperty(newExportId, "nExportID"));
+            properties.AddOrReplaceProp(new IntProperty(destinationListener.SpeakerID, "nListenerIndex"));
+            if (!sourceNode.IsReply)
+            {
+                properties.AddOrReplaceProp(new IntProperty(destinationSpeaker.SpeakerID, "nSpeakerIndex"));
+            }
+            properties.AddOrReplaceProp(new NoneProperty());
+
+            string listPropertyName = sourceNode.IsReply ? "m_ReplyList" : "m_EntryList";
+            string structTypeName = sourceNode.IsReply ? "BioDialogReplyNode" : "BioDialogEntryNode";
+            ArrayProperty<StructProperty> nodeListProperty = SelectedConv.BioConvo.GetProp<ArrayProperty<StructProperty>>(listPropertyName);
+            if (nodeListProperty == null)
+            {
+                return null;
+            }
+
+            int nodeIndex = nodeListProperty.Count;
+            var nodeProperty = new StructProperty(structTypeName, properties);
+            nodeListProperty.Add(nodeProperty);
+            DialogueNodeExtended copiedNode = SelectedConv.ParseSingleLine(nodeProperty, nodeIndex, sourceNode.IsReply, TLKLookup);
+            copiedNode.InterpData = importedInterpData;
+            copiedNode.InterpLength = importedInterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? sourceNode.InterpLength;
+            copiedNode.Line = sourceNode.Line;
+            copiedNode.SpeakerIndex = sourceNode.IsReply ? -2 : destinationSpeaker.SpeakerID;
+            copiedNode.SpeakerTag = sourceNode.IsReply
+                ? SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == -2)
+                : destinationSpeaker;
+            copiedNode.Listener = destinationListener.SpeakerID;
+            copiedNode.ExportID = newExportId;
+
+            if (sourceNode.IsReply)
+            {
+                SelectedConv.ReplyList.Add(copiedNode);
+            }
+            else
+            {
+                SelectedConv.EntryList.Add(copiedNode);
+            }
+
+            SaveSpeakersToProperties(SelectedSpeakerList);
+            RecreateNodesToProperties(SelectedConv);
+            return copiedNode;
+        }
+
+        private CrossEditorParticipantSelection PromptForCrossEditorParticipants(DialogueNodeDragData nodeDragData)
+        {
+            DialogueNodeExtended sourceNode = nodeDragData.SourceNode;
+            DialogueEditorWindow sourceEditor = nodeDragData.SourceEditor;
+            SpeakerExtended sourceSpeaker = sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.SpeakerIndex)
+                                                    ?? sourceNode.SpeakerTag
+                                                    ?? new SpeakerExtended(sourceNode.SpeakerIndex, $"Speaker {sourceNode.SpeakerIndex}");
+            SpeakerExtended sourceListener = sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.Listener)
+                                                     ?? new SpeakerExtended(sourceNode.Listener, sourceNode.Listener == -3 ? "None" : $"Listener {sourceNode.Listener}");
+
+            var speakerOptions = CreateParticipantOptions(sourceSpeaker, includeNone: false);
+            var listenerOptions = CreateParticipantOptions(sourceListener, includeNone: true);
+            var speakerComboBox = new ComboBox
+            {
+                ItemsSource = speakerOptions,
+                SelectedIndex = 0,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4),
+                IsEnabled = !sourceNode.IsReply
+            };
+            var listenerComboBox = new ComboBox
+            {
+                ItemsSource = listenerOptions,
+                SelectedIndex = 0,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4)
+            };
+
+            var dialog = new Window
+            {
+                Title = "Copy Dialogue Node Participants",
+                Owner = this,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow,
+                ShowInTaskbar = false
+            };
+            dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
+            dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
+            CustomWindowChrome.ApplyCustomChrome(dialog);
+
+            var grid = new Grid { Margin = new Thickness(16) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var prompt = new TextBlock
+            {
+                Text = "Choose destination participants. Keeping a source participant adds it to the destination conversation and copies its FaceFX.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 560,
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            Grid.SetColumnSpan(prompt, 2);
+            grid.Children.Add(prompt);
+
+            var speakerLabel = new TextBlock { Text = "Speaker:", VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRow(speakerLabel, 1);
+            grid.Children.Add(speakerLabel);
+            Grid.SetRow(speakerComboBox, 1);
+            Grid.SetColumn(speakerComboBox, 1);
+            grid.Children.Add(speakerComboBox);
+
+            var listenerLabel = new TextBlock { Text = "Listener:", VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRow(listenerLabel, 2);
+            grid.Children.Add(listenerLabel);
+            Grid.SetRow(listenerComboBox, 2);
+            Grid.SetColumn(listenerComboBox, 1);
+            grid.Children.Add(listenerComboBox);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            var copyButton = new Button { Content = "Copy", IsDefault = true, MinWidth = 90, Padding = new Thickness(10, 4, 10, 4) };
+            copyButton.Click += (_, _) => dialog.DialogResult = true;
+            buttons.Children.Add(copyButton);
+            buttons.Children.Add(new Button { Content = "Cancel", IsCancel = true, MinWidth = 90, Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 4, 10, 4) });
+            Grid.SetRow(buttons, 3);
+            Grid.SetColumnSpan(buttons, 2);
+            grid.Children.Add(buttons);
+            dialog.Content = grid;
+
+            if (dialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            return new CrossEditorParticipantSelection
+            {
+                Speaker = sourceNode.IsReply
+                    ? new CrossEditorParticipantOption { Speaker = SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == -2), DisplayName = "Player" }
+                    : speakerComboBox.SelectedItem as CrossEditorParticipantOption,
+                Listener = listenerComboBox.SelectedItem as CrossEditorParticipantOption
+            };
+
+            List<CrossEditorParticipantOption> CreateParticipantOptions(SpeakerExtended sourceParticipant, bool includeNone)
+            {
+                var options = new List<CrossEditorParticipantOption>
+                {
+                    new()
+                    {
+                        Speaker = sourceParticipant,
+                        KeepSource = true,
+                        DisplayName = $"Keep source: {sourceParticipant.DisplayName}"
+                    }
+                };
+                if (includeNone && SelectedSpeakerList.All(speaker => speaker.SpeakerID != -3))
+                {
+                    options.Add(new CrossEditorParticipantOption
+                    {
+                        Speaker = new SpeakerExtended(-3, "None"),
+                        DisplayName = "None"
+                    });
+                }
+                options.AddRange(SelectedSpeakerList.Select(speaker => new CrossEditorParticipantOption
+                {
+                    Speaker = speaker,
+                    DisplayName = speaker.DisplayName
+                }));
+                return options;
+            }
+        }
+
+        private SpeakerExtended ResolveCrossEditorParticipant(CrossEditorParticipantOption option)
+        {
+            if (option?.Speaker == null || !option.KeepSource || option.Speaker.SpeakerID < 0)
+            {
+                return option?.Speaker;
+            }
+
+            SpeakerExtended existingSpeaker = SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerNameRef == option.Speaker.SpeakerNameRef);
+            if (existingSpeaker != null)
+            {
+                return existingSpeaker;
+            }
+
+            int speakerId = SelectedSpeakerList.Where(speaker => speaker.SpeakerID >= 0).Select(speaker => speaker.SpeakerID).DefaultIfEmpty(-1).Max() + 1;
+            var retainedSpeaker = new SpeakerExtended(speakerId, option.Speaker.SpeakerNameRef, null, null, option.Speaker.StrRefID, option.Speaker.FriendlyName);
+            SelectedSpeakerList.Add(retainedSpeaker);
+            return retainedSpeaker;
         }
         private void saveView(bool toFile = true)
         {

@@ -950,7 +950,15 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
             //if (sourceObjReference == 287)
             //    Debugger.Break();
             //Debug.WriteLine($"{prefix} Relinking:{propertyName}");
-            if (rop.CrossPackageMap.TryGetValue(importingPCC.GetEntry(uIndex), out IEntry targetEntry))
+            IEntry sourceEntry = importingPCC.GetEntry(uIndex);
+            if (sourceEntry == null)
+            {
+                return new EntryStringPair(
+                    relinkingExport,
+                    $"Relink failed: {prefix}{propertyName} references invalid UIndex {uIndex} in export {relinkingExport.InstancedFullPath}({relinkingExport.UIndex})");
+            }
+
+            if (rop.CrossPackageMap.TryGetValue(sourceEntry, out IEntry targetEntry))
             {
                 //relink
                 uIndex = targetEntry.UIndex;

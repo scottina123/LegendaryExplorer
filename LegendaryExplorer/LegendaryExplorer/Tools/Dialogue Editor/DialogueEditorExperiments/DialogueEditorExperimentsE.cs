@@ -27,6 +27,13 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
     /// </summary>
     static class DialogueEditorExperimentsE
     {
+        internal sealed class CrossEditorSequenceImportResult
+        {
+            internal ExportEntry InterpData { get; init; }
+            internal ExportEntry ConvNode { get; init; }
+            internal List<EntryStringPair> RelinkResults { get; init; } = [];
+        }
+
         #region Update Native Node String Ref
         /// <summary>
         /// Change the node's LineRef and the references to it in the FXA and audio elements.
@@ -372,6 +379,103 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         #endregion
 
         #region Clone Node And Sequence
+
+        internal static CrossEditorSequenceImportResult ImportNodeSequence(
+            DialogueEditorWindow sourceEditor,
+            DialogueNodeExtended sourceNode,
+            DialogueEditorWindow destinationEditor)
+        {
+            if (sourceEditor?.SelectedConv == null || sourceNode?.InterpData == null
+                || destinationEditor?.SelectedConv?.Sequence is not ExportEntry destinationSequence)
+            {
+                return null;
+            }
+
+            ExportEntry sourceInterpData = sourceNode.InterpData;
+            ExportEntry sourceInterp = sourceInterpData.GetEntriesThatReferenceThisOne()
+                .Select(reference => reference.Key)
+                .OfType<ExportEntry>()
+                .FirstOrDefault(export => export.ClassName == "SeqAct_Interp");
+            if (sourceInterp == null)
+            {
+                return null;
+            }
+
+            ExportEntry sourceTopLevelSequence = sourceEditor.SelectedConv.Sequence as ExportEntry;
+            ExportEntry sourceConvNode = GetConvNodeLinkedToInterp(sourceEditor.SelectedConv, sourceInterp, sourceNode.ExportID);
+            ExportEntry nestedSequenceRoot = GetNestedSequenceCloneRoot(sourceInterpData, sourceTopLevelSequence);
+            ExportEntry sourceRoot = nestedSequenceRoot ?? sourceConvNode ?? sourceInterp;
+            ExportEntry sourceParentSequence = KismetHelper.GetParentSequence(sourceRoot);
+            if (sourceParentSequence == null)
+            {
+                return null;
+            }
+
+            var relinkerOptions = new RelinkerOptionsPackage
+            {
+                IsCrossGame = sourceEditor.Pcc.Game != destinationEditor.Pcc.Game && sourceEditor.Pcc.Game != MEGame.UDK,
+                Cache = new PackageCache(),
+                ImportExportDependencies = true
+            };
+            relinkerOptions.CrossPackageMap[sourceParentSequence] = destinationSequence;
+            relinkerOptions.RelinkMapEntriesToSkip.Add(sourceParentSequence);
+
+            List<EntryStringPair> relinkResults = EntryImporter.ImportAndRelinkEntries(
+                EntryImporter.PortingOption.CloneAllDependencies,
+                sourceRoot,
+                destinationEditor.Pcc,
+                destinationSequence,
+                true,
+                relinkerOptions,
+                out IEntry importedRoot);
+
+            IEnumerable<ExportEntry> importedSequenceObjects = relinkerOptions.CrossPackageMap
+                .Where(pair => pair.Key is ExportEntry sourceExport
+                               && sourceExport.IsA("SequenceObject")
+                               && KismetHelper.GetParentSequence(sourceExport) == sourceParentSequence
+                               && pair.Value is ExportEntry)
+                .Select(pair => (ExportEntry)pair.Value)
+                .Append(importedRoot as ExportEntry)
+                .Where(export => export?.IsA("SequenceObject") == true)
+                .Distinct();
+            foreach (ExportEntry importedSequenceObject in importedSequenceObjects)
+            {
+                importedSequenceObject.idxLink = destinationSequence.UIndex;
+                KismetHelper.SynchronizeSequenceObjectMembership(importedSequenceObject, null, destinationSequence);
+            }
+
+            foreach ((IEntry sourceEntry, IEntry destinationEntry) in relinkerOptions.CrossPackageMap.ToList())
+            {
+                if (sourceEntry is ExportEntry { ClassName: "BioEvtSysTrackGesture" } sourceGestureTrack
+                    && destinationEntry is ExportEntry destinationGestureTrack)
+                {
+                    relinkResults.AddRange(MatineeHelper.CloneGestureTrackAnimSets(sourceGestureTrack, destinationGestureTrack, relinkerOptions));
+                }
+            }
+
+            relinkerOptions.CrossPackageMap.TryGetValue(sourceInterpData, out IEntry importedInterpData);
+            if (sourceConvNode != null)
+            {
+                relinkerOptions.CrossPackageMap.TryGetValue(sourceConvNode, out IEntry importedConvNode);
+                return new CrossEditorSequenceImportResult
+                {
+                    InterpData = importedInterpData as ExportEntry,
+                    ConvNode = importedConvNode as ExportEntry,
+                    RelinkResults = relinkResults
+                };
+            }
+
+            ExportEntry destinationInterp = relinkerOptions.CrossPackageMap.TryGetValue(sourceInterp, out IEntry importedInterp)
+                ? importedInterp as ExportEntry
+                : null;
+            return new CrossEditorSequenceImportResult
+            {
+                InterpData = importedInterpData as ExportEntry,
+                ConvNode = GetConvNodeLinkedToInterp(destinationEditor.SelectedConv, destinationInterp, sourceNode.ExportID),
+                RelinkResults = relinkResults
+            };
+        }
+
         private static ExportEntry GetNestedSequenceCloneRoot(ExportEntry export, ExportEntry topLevelSequence)
         {
             ExportEntry current = KismetHelper.GetParentSequence(export);

@@ -1,13 +1,27 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorerCore.Dialogue;
 using Piccolo;
 using Piccolo.Event;
 
 namespace LegendaryExplorer.DialogueEditor
 {
+    internal sealed class DialogueNodeDragData
+    {
+        internal DialogueEditorWindow SourceEditor { get; }
+        internal DialogueNodeExtended SourceNode { get; }
+
+        internal DialogueNodeDragData(DialogueEditorWindow sourceEditor, DialogueNodeExtended sourceNode)
+        {
+            SourceEditor = sourceEditor;
+            SourceNode = sourceNode;
+        }
+    }
+
     /// <summary>
     /// Creates a simple graph control with some random nodes and connected edges.
     /// An event handler allows users to drag nodes around, keeping the edges connected.
@@ -34,6 +48,8 @@ namespace LegendaryExplorer.DialogueEditor
         public PLayer nodeLayer;
         public PLayer edgeLayer;
         public PLayer backLayer;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        internal DialogueEditorWindow Owner { get; set; }
         public ConvGraphEditor(int width, int height)
         {
             InitializeComponent();
@@ -46,7 +62,7 @@ namespace LegendaryExplorer.DialogueEditor
             Root.AddChild(backLayer);
             backLayer.MoveToBack();
             this.Camera.AddLayer(1, backLayer);
-            dragHandler = new NodeDragHandler();
+            dragHandler = new NodeDragHandler(this);
             nodeLayer.AddInputEventListener(dragHandler);
             zoomController = new ZoomController(this);
         }
@@ -168,6 +184,13 @@ namespace LegendaryExplorer.DialogueEditor
         /// </summary>
         public class NodeDragHandler : PDragEventHandler
         {
+            private readonly ConvGraphEditor graph;
+
+            internal NodeDragHandler(ConvGraphEditor graph)
+            {
+                this.graph = graph;
+            }
+
             private static DObj GetDraggedNode(PNode pickedNode)
             {
                 for (PNode node = pickedNode; node is not null; node = node.Parent)
@@ -188,6 +211,16 @@ namespace LegendaryExplorer.DialogueEditor
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                if (!DObj.draggingOutlink
+                    && Control.ModifierKeys.HasFlag(Keys.Shift)
+                    && GetDraggedNode(e.PickedNode) is DiagNode draggedDialogueNode
+                    && graph.Owner != null)
+                {
+                    e.Handled = true;
+                    graph.DoDragDrop(new DialogueNodeDragData(graph.Owner, draggedDialogueNode.Node), DragDropEffects.Copy);
+                    return;
+                }
+
                 base.OnStartDrag(sender, e);
                 e.Handled = true;
                 if (!DObj.draggingOutlink)
