@@ -82,7 +82,9 @@ namespace LegendaryExplorer.Dialogs
                     choice.SourceClientEffectPackagePath ?? choice.SourcePackagePath,
                     choice.SourceClientEffectUIndex,
                     choice.ClientEffectPath))
-                .GroupBy(choice => $"{choice.Prop}\0{choice.SourcePackagePath}\0{choice.SourceUIndex}\0{choice.ClientEffectPath}", StringComparer.OrdinalIgnoreCase)
+                .GroupBy(choice => string.IsNullOrWhiteSpace(choice.ClientEffectPath)
+                    ? $"{choice.Prop}\0{choice.SourcePackagePath}\0{choice.SourceUIndex}"
+                    : $"{choice.Prop}\0{choice.ClientEffectPath}", StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .OrderBy(choice => choice.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
