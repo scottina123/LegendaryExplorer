@@ -1839,20 +1839,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            foreach (UPropertyTreeViewEntry actionNode in topLevelTree.FlattenTree().Where(node =>
-                         node.Property is NameProperty { Name.Name: "nmAction" }
-                         && node.UPParent?.Property is StructProperty
-                         && node.UPParent.UPParent?.Property is ArrayPropertyBase { Name.Name: "m_aPropKeys" }))
+            foreach (UPropertyTreeViewEntry propKeyNode in topLevelTree.FlattenTree().Where(node =>
+                         node.Property is StructProperty
+                         && node.UPParent?.Property is ArrayPropertyBase { Name.Name: "m_aPropKeys" }))
             {
-                UPropertyTreeViewEntry propNode = actionNode.UPParent.ChildrenProperties
+                UPropertyTreeViewEntry propNode = propKeyNode.ChildrenProperties
                     .FirstOrDefault(node => node.Property is NameProperty { Name.Name: "nmProp" });
-                if (propNode is null)
+                UPropertyTreeViewEntry actionNode = propKeyNode.ChildrenProperties
+                    .FirstOrDefault(node => node.Property is NameProperty { Name.Name: "nmAction" });
+                if (propNode is null || actionNode is null)
                 {
                     continue;
                 }
 
                 propNode.ShowPropActionPicker = true;
                 actionNode.ShowPropActionPicker = true;
+                if (propKeyNode.ChildrenProperties.FirstOrDefault(node =>
+                        node.Property is ObjectProperty { Name.Name: "pActionClientEffect" }) is { } clientEffectNode)
+                {
+                    clientEffectNode.ShowClientEffectPicker = true;
+                }
             }
         }
 
@@ -1892,6 +1898,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     NameProperty prop = propKey.Properties.GetProp<NameProperty>("nmProp");
                     NameProperty action = propKey.Properties.GetProp<NameProperty>("nmAction");
                     ObjectProperty weaponClass = propKey.Properties.GetProp<ObjectProperty>("pWeaponClass");
+                    ObjectProperty clientEffect = propKey.Properties.GetProp<ObjectProperty>("pActionClientEffect");
                     if (prop is null || action is null || prop.Value == NameReference.None || action.Value == NameReference.None)
                     {
                         continue;
@@ -1904,18 +1911,15 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         SourceTrackUIndex: export.UIndex,
                         SourceKeyIndex: propKeys.IndexOf(propKey),
                         SourceWeaponUIndex: weaponClass?.Value ?? 0,
+                        SourceClientEffectUIndex: clientEffect?.Value ?? 0,
+                        SourceClientEffectPackagePath: Pcc.FilePath,
+                        ClientEffectPath: Pcc.GetEntry(clientEffect?.Value ?? 0)?.InstancedFullPath,
                         HasEffects: propKey.Properties.Any(property =>
                             property is ObjectProperty && property.Name.Name.Contains("Effect", StringComparison.OrdinalIgnoreCase))));
                 }
             }
 
             return choices
-                .GroupBy(choice => $"{choice.Prop}\0{choice.Action}", StringComparer.OrdinalIgnoreCase)
-                .Select(group => group
-                    .OrderByDescending(choice => choice.SourceTrackUIndex != 0)
-                    .ThenByDescending(choice => choice.HasEffects)
-                    .ThenByDescending(choice => choice.SourceWeaponUIndex != 0)
-                    .First())
                 .OrderBy(choice => choice.Prop, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(choice => choice.Action, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -1969,6 +1973,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             SourceKeyIndex: record.SourceKeyIndex,
                             SourceWeaponUIndex: weaponUIndex,
                             SourceWeaponPackagePath: weaponFileKey >= 0 ? ResolvePath(weaponFileKey) : null,
+                            SourceClientEffectUIndex: record.SourceClientEffectUIndex,
+                            SourceClientEffectPackagePath: record.SourceClientEffectUIndex != 0 ? ResolvePath(record.SourceFileKey) : null,
+                            ClientEffectPath: record.ClientEffectPath,
                             HasEffects: record.HasEffects);
                     })
                     .ToList();
@@ -2031,6 +2038,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     NameProperty prop = propKey.Properties.GetProp<NameProperty>("nmProp");
                     NameProperty action = propKey.Properties.GetProp<NameProperty>("nmAction");
                     ObjectProperty weaponClass = propKey.Properties.GetProp<ObjectProperty>("pWeaponClass");
+                    ObjectProperty clientEffect = propKey.Properties.GetProp<ObjectProperty>("pActionClientEffect");
                     if (prop is null || action is null || prop.Value == NameReference.None || action.Value == NameReference.None)
                     {
                         continue;
@@ -2043,6 +2051,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         SourceTrackUIndex: export.UIndex,
                         SourceKeyIndex: keyIndex,
                         SourceWeaponUIndex: weaponClass?.Value ?? 0,
+                        SourceClientEffectUIndex: clientEffect?.Value ?? 0,
+                        SourceClientEffectPackagePath: packagePath,
+                        ClientEffectPath: package.GetEntry(clientEffect?.Value ?? 0)?.InstancedFullPath,
                         HasEffects: propKey.Properties.Any(property =>
                             property is ObjectProperty && property.Name.Name.Contains("Effect", StringComparison.OrdinalIgnoreCase))));
                 }
@@ -4370,11 +4381,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
+            ObjectProperty currentClientEffect = propKey.Properties.GetProp<ObjectProperty>("pActionClientEffect");
             var picker = new PropActionPickerDialog(
                 choices,
                 Window.GetWindow(this),
                 propKey.Properties.GetProp<NameProperty>("nmProp")?.Value.Name,
-                propKey.Properties.GetProp<NameProperty>("nmAction")?.Value.Name);
+                propKey.Properties.GetProp<NameProperty>("nmAction")?.Value.Name,
+                currentClientEffect?.Value ?? 0,
+                Pcc.GetEntry(currentClientEffect?.Value ?? 0)?.InstancedFullPath);
             if (picker.ShowDialog() != true || picker.SelectedChoice is not { } choice)
             {
                 return;
@@ -4411,6 +4425,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
 
                     importedProperties.RemoveNamedProperty("pWeaponClass");
+                    importedProperties.RemoveNamedProperty("pActionClientEffect");
                     if (sourcePackage != Pcc)
                     {
                         Relinker.RelinkPropertyCollection(sourcePackage, Pcc, importedProperties, relinkerOptions, out _);
@@ -4449,6 +4464,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     }
                 }
 
+                await ApplyClientEffectChoiceAsync(importedProperties, picker.SelectedClientEffectChoice, packageCache, relinkerOptions);
+
                 NormalizeBioPropTrackDataPropertyOrder(importedProperties);
                 propKey.Properties = importedProperties;
                 CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
@@ -4458,6 +4475,106 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 Mouse.OverrideCursor = null;
                 IsEnabled = true;
             }
+        }
+
+        private async void ClientEffectPickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || node.Property is not ObjectProperty currentClientEffect
+                || node.UPParent?.Property is not StructProperty propKey
+                || propKey.Properties.GetProp<NameProperty>("nmProp") is not { } prop)
+            {
+                return;
+            }
+
+            IReadOnlyList<PropActionPickerDialog.PropActionChoice> allChoices = await GetBioEvtSysTrackPropChoicesAsync();
+            List<PropActionPickerDialog.PropActionChoice> choices = allChoices
+                .Where(choice => choice.Prop.Equals(prop.Value.Name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (!choices.Any(choice => choice.SourceClientEffectUIndex != 0))
+            {
+                MessageBox.Show(
+                    $"No compatible pActionClientEffect catalog entries are available for {prop.Value.Name}. Rebuild the {Pcc.Game} Asset Database, then open this picker again.",
+                    "Client-effect catalog unavailable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var picker = new PropActionPickerDialog(
+                choices,
+                Window.GetWindow(this),
+                prop.Value.Name,
+                propKey.Properties.GetProp<NameProperty>("nmAction")?.Value.Name,
+                currentClientEffect.Value,
+                Pcc.GetEntry(currentClientEffect.Value)?.InstancedFullPath);
+            if (picker.ShowDialog() != true || picker.SelectedClientEffectChoice is not { } selectedEffect)
+            {
+                return;
+            }
+
+            IsEnabled = false;
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                using var packageCache = new PackageCache();
+                var relinkerOptions = new RelinkerOptionsPackage(packageCache)
+                {
+                    ImportExportDependencies = true,
+                    PortImportsMemorySafe = true
+                };
+                await ApplyClientEffectChoiceAsync(propKey.Properties, selectedEffect, packageCache, relinkerOptions);
+                NormalizeBioPropTrackDataPropertyOrder(propKey.Properties);
+                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                IsEnabled = true;
+            }
+        }
+
+        private async Task ApplyClientEffectChoiceAsync(
+            PropertyCollection properties,
+            PropActionPickerDialog.ClientEffectChoice selectedEffect,
+            PackageCache packageCache,
+            RelinkerOptionsPackage relinkerOptions)
+        {
+            if (selectedEffect is null)
+            {
+                return;
+            }
+
+            if (selectedEffect.SourceUIndex == 0)
+            {
+                properties.AddOrReplaceProp(new ObjectProperty(0, "pActionClientEffect"));
+                return;
+            }
+
+            IMEPackage sourcePackage = string.IsNullOrWhiteSpace(selectedEffect.SourcePackagePath)
+                                       || string.Equals(selectedEffect.SourcePackagePath, Pcc.FilePath, StringComparison.OrdinalIgnoreCase)
+                ? Pcc
+                : await Task.Run(() => packageCache.GetCachedPackage(selectedEffect.SourcePackagePath));
+            if (sourcePackage?.GetEntry(selectedEffect.SourceUIndex) is not { } sourceEffect)
+            {
+                return;
+            }
+
+            IEntry targetEffect = sourceEffect;
+            if (sourcePackage != Pcc)
+            {
+                IEntry targetParent = EntryExporter.PortParents(sourceEffect, Pcc, cache: packageCache, customROP: relinkerOptions);
+                EntryImporter.ImportAndRelinkEntries(
+                    EntryImporter.PortingOption.CloneAllDependencies,
+                    sourceEffect,
+                    Pcc,
+                    targetParent,
+                    true,
+                    relinkerOptions,
+                    out targetEffect);
+            }
+
+            properties.AddOrReplaceProp(new ObjectProperty(targetEffect.UIndex, "pActionClientEffect"));
         }
 
         private static void NormalizeBioPropTrackDataPropertyOrder(PropertyCollection properties)
@@ -6098,6 +6215,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
+        public bool ShowClientEffectPicker { get; set; }
         public bool ShowStandardNamePicker => true;
         public bool ShowEnumInlineEditor => IsEnumProperty;
         public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);

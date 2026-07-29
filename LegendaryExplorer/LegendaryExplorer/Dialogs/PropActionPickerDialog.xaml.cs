@@ -13,6 +13,8 @@ namespace LegendaryExplorer.Dialogs
     {
         private readonly string _initialProp;
         private readonly string _initialAction;
+        private readonly int _initialClientEffectUIndex;
+        private readonly string _initialClientEffectPath;
 
         public sealed record PropActionChoice(
             string Prop,
@@ -22,21 +24,69 @@ namespace LegendaryExplorer.Dialogs
             int SourceKeyIndex = -1,
             int SourceWeaponUIndex = 0,
             string SourceWeaponPackagePath = null,
+            int SourceClientEffectUIndex = 0,
+            string SourceClientEffectPackagePath = null,
+            string ClientEffectPath = null,
             bool HasEffects = false)
         {
             public bool HasWeaponClass => SourceWeaponUIndex != 0;
         }
 
+        public sealed record ClientEffectChoice(
+            string Prop,
+            string SourcePackagePath,
+            int SourceUIndex,
+            string ClientEffectPath)
+        {
+            public string DisplayName => SourceUIndex == 0
+                ? "None"
+                : string.IsNullOrWhiteSpace(ClientEffectPath)
+                    ? $"Entry {SourceUIndex}"
+                    : ClientEffectPath;
+        }
+
         public ICollectionView ChoicesView { get; }
         public IReadOnlyList<string> PropNames { get; }
         public ICollectionView PropNamesView { get; }
+        public ICollectionView ClientEffectChoicesView { get; }
         public PropActionChoice SelectedChoice { get; private set; }
+        public ClientEffectChoice SelectedClientEffectChoice { get; private set; }
 
-        public PropActionPickerDialog(IEnumerable<PropActionChoice> choices, Window owner, string initialProp = null, string initialAction = null)
+        public PropActionPickerDialog(
+            IEnumerable<PropActionChoice> choices,
+            Window owner,
+            string initialProp = null,
+            string initialAction = null,
+            int initialClientEffectUIndex = 0,
+            string initialClientEffectPath = null)
         {
             _initialProp = initialProp;
             _initialAction = initialAction;
-            List<PropActionChoice> choiceList = choices.ToList();
+            _initialClientEffectUIndex = initialClientEffectUIndex;
+            _initialClientEffectPath = initialClientEffectPath;
+            List<PropActionChoice> allChoices = choices.ToList();
+            List<PropActionChoice> choiceList = allChoices
+                .GroupBy(choice => $"{choice.Prop}\0{choice.Action}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderByDescending(choice => choice.SourceTrackUIndex != 0)
+                    .ThenByDescending(choice => choice.SourceClientEffectUIndex != 0)
+                    .ThenByDescending(choice => choice.HasEffects)
+                    .First())
+                .OrderBy(choice => choice.Prop, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(choice => choice.Action, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            List<ClientEffectChoice> clientEffectChoices = allChoices
+                .Where(choice => choice.SourceClientEffectUIndex != 0)
+                .Select(choice => new ClientEffectChoice(
+                    choice.Prop,
+                    choice.SourceClientEffectPackagePath ?? choice.SourcePackagePath,
+                    choice.SourceClientEffectUIndex,
+                    choice.ClientEffectPath))
+                .GroupBy(choice => $"{choice.Prop}\0{choice.SourcePackagePath}\0{choice.SourceUIndex}\0{choice.ClientEffectPath}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(choice => choice.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            clientEffectChoices.Insert(0, new ClientEffectChoice(null, null, 0, null));
             DataContext = this;
             PropNames = choiceList
                 .Select(choice => choice.Prop)
@@ -45,6 +95,7 @@ namespace LegendaryExplorer.Dialogs
                 .ToList();
             PropNamesView = CollectionViewSource.GetDefaultView(PropNames);
             ChoicesView = CollectionViewSource.GetDefaultView(choiceList);
+            ClientEffectChoicesView = CollectionViewSource.GetDefaultView(clientEffectChoices);
             InitializeComponent();
             if (owner?.IsLoaded == true && PresentationSource.FromVisual(owner) != null)
             {
@@ -99,6 +150,18 @@ namespace LegendaryExplorer.Dialogs
 
         private void PropListBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => RefreshChoiceFilter();
 
+        private void ClientEffectFilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => RefreshClientEffectFilter();
+
+        private void ClientEffectFilterTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Down && ClientEffectListBox.Items.Count > 0)
+            {
+                ClientEffectListBox.SelectedItem ??= ClientEffectListBox.Items[0];
+                ClientEffectListBox.Focus();
+                e.Handled = true;
+            }
+        }
+
         private void RefreshChoiceFilter()
         {
             if (ChoicesView is null || FilterTextBox is null || PropListBox is null)
@@ -121,6 +184,63 @@ namespace LegendaryExplorer.Dialogs
             {
                 ChoicesGrid.Dispatcher.BeginInvoke(() => ChoicesGrid.ScrollIntoView(actionToSelect));
             }
+
+            RefreshClientEffectFilter();
+        }
+
+        private void ChoicesGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            SelectClientEffectForCurrentAction();
+        }
+
+        private void RefreshClientEffectFilter()
+        {
+            if (ClientEffectChoicesView is null || ClientEffectFilterTextBox is null || ClientEffectListBox is null)
+            {
+                return;
+            }
+
+            ClientEffectChoice selectedEffect = ClientEffectListBox.SelectedItem as ClientEffectChoice;
+            string prop = PropListBox.SelectedItem as string;
+            string filter = ClientEffectFilterTextBox.Text.Trim();
+            ClientEffectChoicesView.Filter = item => item is ClientEffectChoice effect
+                && (effect.SourceUIndex == 0 || effect.Prop.Equals(prop, StringComparison.OrdinalIgnoreCase))
+                && (filter.Length == 0 || effect.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            ClientEffectChoicesView.Refresh();
+
+            ClientEffectListBox.SelectedItem = ClientEffectChoicesView.Cast<ClientEffectChoice>()
+                .FirstOrDefault(effect => effect == selectedEffect);
+            if (ClientEffectListBox.SelectedItem is null)
+            {
+                SelectClientEffectForCurrentAction();
+            }
+        }
+
+        private void SelectClientEffectForCurrentAction()
+        {
+            if (ClientEffectChoicesView is null || ClientEffectListBox is null)
+            {
+                return;
+            }
+
+            PropActionChoice action = ChoicesGrid?.SelectedItem as PropActionChoice;
+            ClientEffectChoice effectToSelect = ClientEffectChoicesView.Cast<ClientEffectChoice>()
+                .FirstOrDefault(effect => !string.IsNullOrWhiteSpace(_initialClientEffectPath)
+                                          && string.Equals(effect.ClientEffectPath, _initialClientEffectPath, StringComparison.OrdinalIgnoreCase)
+                                          || string.IsNullOrWhiteSpace(_initialClientEffectPath)
+                                          && _initialClientEffectUIndex != 0
+                                          && effect.SourceUIndex == _initialClientEffectUIndex)
+                ?? ClientEffectChoicesView.Cast<ClientEffectChoice>()
+                    .FirstOrDefault(effect => action is not null
+                                              && action.SourceClientEffectUIndex != 0
+                                              && effect.SourceUIndex == action.SourceClientEffectUIndex
+                                              && string.Equals(effect.SourcePackagePath, action.SourceClientEffectPackagePath ?? action.SourcePackagePath, StringComparison.OrdinalIgnoreCase))
+                ?? ClientEffectChoicesView.Cast<ClientEffectChoice>().FirstOrDefault();
+            ClientEffectListBox.SelectedItem = effectToSelect;
+            if (effectToSelect is not null)
+            {
+                ClientEffectListBox.ScrollIntoView(effectToSelect);
+            }
         }
 
         private void SelectButton_Click(object sender, RoutedEventArgs e) => AcceptSelection();
@@ -135,6 +255,7 @@ namespace LegendaryExplorer.Dialogs
             }
 
             SelectedChoice = choice;
+            SelectedClientEffectChoice = ClientEffectListBox.SelectedItem as ClientEffectChoice;
             DialogResult = true;
         }
     }

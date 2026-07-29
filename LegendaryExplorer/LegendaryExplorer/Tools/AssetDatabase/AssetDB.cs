@@ -970,6 +970,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public int SourceTrackUIndex { get; set; }
         public int SourceKeyIndex { get; set; } = -1;
         public int SourceWeaponUIndex { get; set; }
+        public int SourceClientEffectUIndex { get; set; }
+        public string ClientEffectPath { get; set; }
         public bool HasEffects { get; set; }
 
         [IgnoredMember]
@@ -984,6 +986,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             int sourceTrackUIndex,
             int sourceKeyIndex,
             int sourceWeaponUIndex,
+            int sourceClientEffectUIndex,
+            string clientEffectPath,
             bool hasEffects,
             bool isMod)
         {
@@ -993,8 +997,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             SourceTrackUIndex = sourceTrackUIndex;
             SourceKeyIndex = sourceKeyIndex;
             SourceWeaponUIndex = sourceWeaponUIndex;
+            SourceClientEffectUIndex = sourceClientEffectUIndex;
+            ClientEffectPath = clientEffectPath;
             HasEffects = hasEffects;
-            Usages.Add(new PropActionUsage(sourceFileKey, sourceTrackUIndex != 0 ? sourceTrackUIndex : sourceWeaponUIndex, isMod));
+            int sourceUIndex = sourceTrackUIndex != 0
+                ? sourceTrackUIndex
+                : sourceWeaponUIndex != 0
+                    ? sourceWeaponUIndex
+                    : sourceClientEffectUIndex;
+            Usages.Add(new PropActionUsage(sourceFileKey, sourceUIndex, isMod));
         }
 
         public PropActionRecord()

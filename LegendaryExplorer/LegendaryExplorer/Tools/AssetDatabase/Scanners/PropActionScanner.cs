@@ -18,7 +18,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
             if (e.ClassName == "Class" && e.Export.ObjectName.Name.StartsWith("SFXWeapon_", StringComparison.OrdinalIgnoreCase))
             {
                 string propName = e.Export.ObjectName.Name["SFXWeapon_".Length..];
-                AddRecord(db, new PropActionRecord(propName, NameReference.None.Name, e.FileKey, 0, -1, e.Export.UIndex, false, e.IsMod), "weapon");
+                AddRecord(db, new PropActionRecord(propName, NameReference.None.Name, e.FileKey, 0, -1, e.Export.UIndex, 0, null, false, e.IsMod), "weapon");
                 return;
             }
 
@@ -66,6 +66,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                                      .Where(IsUsableName)
                                      .Distinct(StringComparer.OrdinalIgnoreCase))
                         {
+                            IEntry clientEffect = string.IsNullOrWhiteSpace(actionData.sClientEffect)
+                                ? null
+                                : e.Export.FileRef.FindEntry(actionData.sClientEffect);
                             var record = new PropActionRecord(
                                 propName,
                                 actionName,
@@ -73,6 +76,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                                 0,
                                 -1,
                                 0,
+                                clientEffect?.UIndex ?? 0,
+                                actionData.sClientEffect,
                                 !string.IsNullOrWhiteSpace(actionData.sClientEffect) || !string.IsNullOrWhiteSpace(actionData.sParticleSys),
                                 e.IsMod);
                             AddRecord(db, record, $"runtime:{e.Export.UIndex}");
@@ -100,6 +105,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                 }
 
                 int weaponUIndex = propKey.Properties.GetProp<ObjectProperty>("pWeaponClass")?.Value ?? 0;
+                int clientEffectUIndex = propKey.Properties.GetProp<ObjectProperty>("pActionClientEffect")?.Value ?? 0;
+                string clientEffectPath = e.Export.FileRef.GetEntry(clientEffectUIndex)?.InstancedFullPath;
                 bool hasEffects = propKey.Properties.Any(property =>
                     property.Name.Name.Contains("Effect", StringComparison.OrdinalIgnoreCase)
                     && property is not NoneProperty);
@@ -110,6 +117,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
                     e.Export.UIndex,
                     keyIndex,
                     weaponUIndex,
+                    clientEffectUIndex,
+                    clientEffectPath,
                     hasEffects,
                     e.IsMod);
                 AddRecord(db, record, $"track:{e.Export.UIndex}:{keyIndex}");

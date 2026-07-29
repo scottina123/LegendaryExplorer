@@ -269,8 +269,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v11.0: Index the conversation node TLK StrRef for BioEvtSysTrackGesture records.
-        public const string dbCurrentBuild = "12.0";
+        // v13.0: Index compatible pActionClientEffect references for prop/action records.
+        public const string dbCurrentBuild = "13.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
