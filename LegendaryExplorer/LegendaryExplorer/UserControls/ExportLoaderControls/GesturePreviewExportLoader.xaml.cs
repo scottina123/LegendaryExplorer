@@ -619,6 +619,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         PreviewMeshComboBox.ItemsSource = null;
         SelectedAnimation = null;
         TrackPropertiesText = null;
+        StatusText = "Load a preview mesh to play the gesture track.";
         AnimPreviewControl.Clear();
         _packageCache.ReleasePackages();
         CurrentLoadedExport = null;

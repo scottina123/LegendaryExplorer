@@ -1818,10 +1818,11 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="2*"/>
                                 <ColumnDefinition Width="2*"/>
+                                 <ColumnDefinition MinWidth="500" Width="3*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Gesture Tracks" Style="{StaticResource ColumnHeaderStyle}" ToolTip="BioEvtSysTrackGesture exports and their BioGestureData entries." Grid.Row="0" Grid.Column="0"/>
-                            <ScrollViewer Grid.Row="1" Grid.ColumnSpan="3" MaxHeight="190" VerticalScrollBarVisibility="Auto">
+                             <ScrollViewer Grid.Row="1" Grid.ColumnSpan="4" MaxHeight="190" VerticalScrollBarVisibility="Auto">
                                 <StackPanel Margin="4,2">
                                     <WrapPanel VerticalAlignment="Center">
                                         <TextBlock Text="Starting Pose Set:" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -1864,7 +1865,8 @@
                                     </ItemsControl>
                                 </StackPanel>
                             </ScrollViewer>
-                            <controls:ListBoxScroll x:Name="lstbx_GestureTracks" MinWidth="300" Grid.Row="2" Grid.Column="0">
+                             <controls:ListBoxScroll x:Name="lstbx_GestureTracks" MinWidth="300" Grid.Row="2" Grid.Column="0"
+                                                     SelectionChanged="lstbx_GestureTracks_SelectionChanged">
                                 <controls:ListBoxScroll.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel>
@@ -1907,7 +1909,15 @@
                                     </StackPanel>
                                 </ScrollViewer>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="gestureTracksUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                             <TextBlock Text="Gesture Preview" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Toggle the gesture track preview on or off" Grid.Row="0" Grid.Column="2"/>
+                             <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.7" Grid.Row="2" Grid.Column="2">
+                                 <DockPanel Margin="3">
+                                     <ToggleButton x:Name="btn_GesturePreviewToggle" Content="Toggle Gesture Preview" MaxHeight="30" ClickMode="Release"
+                                                   Click="btn_GesturePreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"/>
+                                     <exportLoaderControls:GesturePreviewExportLoader x:Name="GesturePreviewControl"/>
+                                 </DockPanel>
+                             </Border>
+                             <assetDatabase:AssetUsagesPanel x:Name="gestureTracksUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"
                                                            FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_GestureTracks}"
                                                            HeaderToolTip="The package containing this gesture track&#x0a;Right click to open in Package Editor">

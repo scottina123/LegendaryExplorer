@@ -831,6 +831,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
+        private IMEPackage gesturePreviewPcc;
         private readonly PackageCache _animPreviewPackageCache = new();
         private IMEPackage _ambPerfMasterPcc;
         private record struct AmbPerfStep(ExportEntry AnimExport, float BlendInTime);
@@ -1124,11 +1125,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             AnimPreviewControl.AnimationCompleted -= OnAmbPerfStepCompleted;
             _ambPerfAnimQueue = null;
             AnimPreviewControl?.Dispose();
+            GesturePreviewControl?.UnloadExport();
+            GesturePreviewControl?.Dispose();
 
             audioPcc?.Dispose();
             meshPcc?.Dispose();
             textPcc?.Dispose();
             animPcc?.Dispose();
+            gesturePreviewPcc?.Dispose();
             _animPreviewPackageCache.Dispose();
             _ambPerfMasterPcc?.Dispose();
 
@@ -1136,6 +1140,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             meshPcc = null;
             textPcc = null;
             animPcc = null;
+            gesturePreviewPcc = null;
             _ambPerfMasterPcc = null;
             AmbPerfMasterPccPath = null;
 
@@ -2318,6 +2323,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         public void SwitchGame(object param)
         {
             var p = param as string;
+            UnloadGesturePreview();
+            btn_GesturePreviewToggle.IsChecked = false;
+            btn_GesturePreviewToggle.Content = "Toggle Gesture Preview";
             switchME1_menu.IsChecked = false;
             switchME2_menu.IsChecked = false;
             switchME3_menu.IsChecked = false;
@@ -3253,6 +3261,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
                 }
 
+                if (previousView == 13)
+                {
+                    UnloadGesturePreview();
+                    btn_GesturePreviewToggle.IsChecked = false;
+                    btn_GesturePreviewToggle.Content = "Toggle Gesture Preview";
+                }
+
                 if (currentView == 0)
                 {
                     menu_OpenUsage.Header = "Open File";
@@ -3413,6 +3428,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        private void lstbx_GestureTracks_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            e.Handled = true;
+            if (currentView == 13)
+            {
+                ToggleGesturePreview();
+            }
+        }
+
         private void lstbx_Lines_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
@@ -3527,6 +3551,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 btn_AnimPreviewToggle.Content = "Toggle Animation Preview";
             }
+        }
+
+        private void btn_GesturePreviewToggle_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleGesturePreview();
+            btn_GesturePreviewToggle.Content = btn_GesturePreviewToggle.IsChecked == true
+                ? "Untoggle Gesture Preview"
+                : "Toggle Gesture Preview";
         }
 
         private void btn_LinePlaybackToggle_Click(object sender, RoutedEventArgs e)
@@ -4176,6 +4208,65 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 AnimPreviewControl.LoadAnimSequence(animExp);
                 AnimPreviewControl.Play();
             }
+        }
+
+        private void ToggleGesturePreview()
+        {
+            UnloadGesturePreview();
+            if (btn_GesturePreviewToggle.IsChecked != true
+                || currentView != 13
+                || lstbx_GestureTracks.SelectedItem is not GestureTrackRecord track)
+            {
+                return;
+            }
+
+            foreach (var usage in track.Usages)
+            {
+                string filePath = null;
+                IMEPackage package = null;
+                try
+                {
+                    filePath = GetFilePath(usage.FileKey);
+                    if (string.IsNullOrWhiteSpace(filePath))
+                    {
+                        continue;
+                    }
+
+                    package = MEPackageHandler.OpenMEPackage(filePath);
+                    if (!package.IsUExport(usage.UIndex))
+                    {
+                        continue;
+                    }
+
+                    var gestureTrack = package.GetUExport(usage.UIndex);
+                    if (!GesturePreviewControl.CanParse(gestureTrack))
+                    {
+                        continue;
+                    }
+
+                    GesturePreviewControl.LoadExport(gestureTrack);
+                    gesturePreviewPcc = package;
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    Debug.WriteLine($"Could not load gesture preview from {filePath}: {exception.Message}");
+                }
+                finally
+                {
+                    if (!ReferenceEquals(package, gesturePreviewPcc))
+                    {
+                        package?.Dispose();
+                    }
+                }
+            }
+        }
+
+        private void UnloadGesturePreview()
+        {
+            GesturePreviewControl?.UnloadExport();
+            gesturePreviewPcc?.Dispose();
+            gesturePreviewPcc = null;
         }
 
         private static bool TryOpenAmbientLeAnimationPackage(AnimationRecord anim, out IMEPackage package, out ExportEntry animationExport)
