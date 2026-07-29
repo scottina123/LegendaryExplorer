@@ -44,6 +44,7 @@ System.Threading.Tasks;
 using System.Windows;
 using
 System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using
 System.Windows.Input;
@@ -164,6 +165,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     private ActorProxy selectedActor;
+    private char _actorLocationScrubAxis = 'X';
+    private double _actorLocationScrubAccumulator;
+    private double _actorLocationScrubPreviousHorizontalChange;
+    private string _actorRotationDialAxis = nameof(ActorProxy.PitchDegrees);
+    private bool _actorRotationDialDragging;
+    private double _actorRotationDialAngleAccumulator;
+    private double _actorRotationDialPreviousAngle;
+    private bool _isActorTransformScrubbing;
+    private ActorProxy _actorTransformScrubActor;
+    private TransformSnapshot? _actorTransformScrubBefore;
     public ActorProxy SelectedActor
     {
         get => selectedActor;
@@ -683,7 +694,216 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                     _preEditSnapshot = null;
                     UnloadPropertyTabs();
                 }
+            UpdateActorRotationDialIndicator();
         }
+    }
+
+    private void ActorLocationScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string { Length: 1 } axis })
+        {
+            _actorLocationScrubAxis = axis[0];
+        }
+    }
+
+    private void ActorLocationScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _actorLocationScrubAccumulator = 0;
+        _actorLocationScrubPreviousHorizontalChange = 0;
+        BeginActorTransformScrub();
+    }
+
+    private void ActorLocationScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _actorLocationScrubPreviousHorizontalChange;
+        _actorLocationScrubPreviousHorizontalChange = e.HorizontalChange;
+        _actorLocationScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_actorLocationScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _actorLocationScrubAccumulator -= stepCount * dragStep;
+        float delta = stepCount * PosIncrement;
+        Vector3 location = SelectedActor.Location;
+        switch (_actorLocationScrubAxis)
+        {
+            case 'X':
+                location.X += delta;
+                break;
+            case 'Y':
+                location.Y += delta;
+                break;
+            case 'Z':
+                location.Z += delta;
+                break;
+        }
+
+        SelectedActor.Location = location;
+    }
+
+    private void ActorLocationScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        EndActorTransformScrub();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void ActorRotationDialAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axis })
+        {
+            _actorRotationDialAxis = axis switch
+            {
+                "Pitch" => nameof(ActorProxy.PitchDegrees),
+                "Roll" => nameof(ActorProxy.RollDegrees),
+                "Yaw" => nameof(ActorProxy.YawDegrees),
+                _ => _actorRotationDialAxis
+            };
+            UpdateActorRotationDialIndicator();
+        }
+    }
+
+    private void ActorRotationDial_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || RotIncrement <= 0)
+        {
+            return;
+        }
+
+        _actorRotationDialPreviousAngle = GetActorRotationDialPointerAngle(e.GetPosition(ActorRotationDial));
+        _actorRotationDialAngleAccumulator = 0;
+        _actorRotationDialDragging = ActorRotationDial.CaptureMouse();
+        if (_actorRotationDialDragging)
+        {
+            BeginActorTransformScrub();
+        }
+        e.Handled = true;
+    }
+
+    private void ActorRotationDial_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_actorRotationDialDragging || SelectedActor is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        double pointerAngle = GetActorRotationDialPointerAngle(e.GetPosition(ActorRotationDial));
+        double angleDelta = NormalizeActorRotationDialAngle(pointerAngle - _actorRotationDialPreviousAngle);
+        _actorRotationDialPreviousAngle = pointerAngle;
+        _actorRotationDialAngleAccumulator += angleDelta;
+
+        int stepCount = (int)(_actorRotationDialAngleAccumulator / RotIncrement);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _actorRotationDialAngleAccumulator -= stepCount * RotIncrement;
+        float delta = stepCount * RotIncrement;
+        switch (_actorRotationDialAxis)
+        {
+            case nameof(ActorProxy.PitchDegrees):
+                SelectedActor.PitchDegrees += delta;
+                break;
+            case nameof(ActorProxy.RollDegrees):
+                SelectedActor.RollDegrees += delta;
+                break;
+            case nameof(ActorProxy.YawDegrees):
+                SelectedActor.YawDegrees += delta;
+                break;
+        }
+
+        UpdateActorRotationDialIndicator();
+        e.Handled = true;
+    }
+
+    private void ActorRotationDial_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_actorRotationDialDragging)
+        {
+            return;
+        }
+
+        _actorRotationDialDragging = false;
+        EndActorTransformScrub();
+        ActorRotationDial.ReleaseMouseCapture();
+        SceneViewer?.MarkRenderDirty();
+        e.Handled = true;
+    }
+
+    private void ActorRotationDial_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _actorRotationDialDragging = false;
+        EndActorTransformScrub();
+    }
+
+    private void BeginActorTransformScrub()
+    {
+        _actorTransformScrubActor = SelectedActor;
+        _actorTransformScrubBefore = SelectedActor?.SnapshotTransform();
+        _isActorTransformScrubbing = _actorTransformScrubActor is not null;
+    }
+
+    private void EndActorTransformScrub()
+    {
+        if (!_isActorTransformScrubbing || _actorTransformScrubActor is null || _actorTransformScrubBefore is not { } before)
+        {
+            return;
+        }
+
+        TransformSnapshot after = _actorTransformScrubActor.SnapshotTransform();
+        if (!before.Equals(after))
+        {
+            UndoHistory.Push(new TransformAction(
+                _actorTransformScrubActor,
+                before,
+                after,
+                $"Drag {_actorTransformScrubActor.Export.ObjectName.Instanced}"));
+            _preEditSnapshot = after;
+        }
+
+        _isActorTransformScrubbing = false;
+        _actorTransformScrubActor = null;
+        _actorTransformScrubBefore = null;
+    }
+
+    private void UpdateActorRotationDialIndicator()
+    {
+        if (ActorRotationDialIndicator?.RenderTransform is not System.Windows.Media.RotateTransform indicatorTransform)
+        {
+            return;
+        }
+
+        indicatorTransform.Angle = _actorRotationDialAxis switch
+        {
+            nameof(ActorProxy.PitchDegrees) => SelectedActor?.PitchDegrees ?? 0,
+            nameof(ActorProxy.RollDegrees) => SelectedActor?.RollDegrees ?? 0,
+            nameof(ActorProxy.YawDegrees) => SelectedActor?.YawDegrees ?? 0,
+            _ => 0
+        };
+    }
+
+    private static double GetActorRotationDialPointerAngle(Point pointerPosition)
+        => Math.Atan2(pointerPosition.Y - 60d, pointerPosition.X - 60d) * 180d / Math.PI + 90d;
+
+    private static double NormalizeActorRotationDialAngle(double angle)
+    {
+        while (angle > 180d) angle -= 360d;
+        while (angle < -180d) angle += 360d;
+        return angle;
     }
 
     private void CenterView()
@@ -1897,7 +2117,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         SceneViewer?.MarkRenderDirty();
         RefreshSelectedPropertiesPreview();
-        if (sender is ActorProxy actor && _preEditSnapshot is { } before)
+        if (e.PropertyName == nameof(ActorProxy.Rotation))
+        {
+            UpdateActorRotationDialIndicator();
+        }
+        if (!_isActorTransformScrubbing && sender is ActorProxy actor && _preEditSnapshot is { } before)
         {
             var after = actor.SnapshotTransform();
             if (!before.Equals(after))

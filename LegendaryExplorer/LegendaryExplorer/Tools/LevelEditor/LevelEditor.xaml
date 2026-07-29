@@ -593,7 +593,24 @@
                                 <TextBlock Text=" Increment:  " VerticalAlignment="Center" />
                                 <xctk:SingleUpDown Value="{Binding PosIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}" Minimum="0" ButtonSpinnerLocation="Left" FormatString="F3"/>
                             </StackPanel>
-
+                            <UniformGrid Rows="1" Columns="3" Margin="0,8,0,4">
+                                <RadioButton Content="X" Tag="X" GroupName="ActorLocationScrubAxis" IsChecked="True"
+                                             HorizontalContentAlignment="Center" Checked="ActorLocationScrubAxis_Checked"/>
+                                <RadioButton Content="Y" Tag="Y" GroupName="ActorLocationScrubAxis"
+                                             HorizontalContentAlignment="Center" Checked="ActorLocationScrubAxis_Checked"/>
+                                <RadioButton Content="Z" Tag="Z" GroupName="ActorLocationScrubAxis"
+                                             HorizontalContentAlignment="Center" Checked="ActorLocationScrubAxis_Checked"/>
+                            </UniformGrid>
+                            <Grid Height="24" ToolTip="Drag left or right to move the selected actor continuously along the selected axis">
+                                <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                <Thumb x:Name="ActorLocationScrubThumb" Width="24" Height="20" HorizontalAlignment="Center"
+                                       DragStarted="ActorLocationScrubThumb_DragStarted"
+                                       DragDelta="ActorLocationScrubThumb_DragDelta"
+                                       DragCompleted="ActorLocationScrubThumb_DragCompleted"/>
+                            </Grid>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Actor Rotation" Margin="5,0,5,5" BorderThickness="2">
@@ -610,6 +627,32 @@
                                 <TextBlock Text=" Increment:  " VerticalAlignment="Center" />
                                 <xctk:IntegerUpDown Value="{Binding RotIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}" Minimum="0" ButtonSpinnerLocation="Left"/>
                             </StackPanel>
+                            <UniformGrid Rows="1" Columns="3" Margin="0,8,0,4">
+                                <RadioButton Content="Pitch" Tag="Pitch" GroupName="ActorRotationDialAxis" IsChecked="True"
+                                             HorizontalContentAlignment="Center" Checked="ActorRotationDialAxis_Checked"/>
+                                <RadioButton Content="Roll" Tag="Roll" GroupName="ActorRotationDialAxis"
+                                             HorizontalContentAlignment="Center" Checked="ActorRotationDialAxis_Checked"/>
+                                <RadioButton Content="Yaw" Tag="Yaw" GroupName="ActorRotationDialAxis"
+                                             HorizontalContentAlignment="Center" Checked="ActorRotationDialAxis_Checked"/>
+                            </UniformGrid>
+                            <Grid x:Name="ActorRotationDial" Width="120" Height="120" HorizontalAlignment="Center" Cursor="Hand"
+                                  MouseLeftButtonDown="ActorRotationDial_MouseLeftButtonDown"
+                                  MouseMove="ActorRotationDial_MouseMove"
+                                  MouseLeftButtonUp="ActorRotationDial_MouseLeftButtonUp"
+                                  LostMouseCapture="ActorRotationDial_LostMouseCapture"
+                                  ToolTip="Drag around the circle to rotate the selected actor on the selected axis">
+                                <Ellipse Margin="4" StrokeThickness="4"
+                                         Stroke="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                         Fill="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                <Line x:Name="ActorRotationDialIndicator" X1="60" Y1="60" X2="60" Y2="10" StrokeThickness="3"
+                                      Stroke="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" IsHitTestVisible="False">
+                                    <Line.RenderTransform>
+                                        <RotateTransform CenterX="60" CenterY="60"/>
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Width="10" Height="10"
+                                         Fill="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" IsHitTestVisible="False"/>
+                            </Grid>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Actor DrawScale" Margin="5,0,5,5" BorderThickness="2" >

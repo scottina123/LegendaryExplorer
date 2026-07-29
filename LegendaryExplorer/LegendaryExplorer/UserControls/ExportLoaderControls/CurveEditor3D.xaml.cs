@@ -81,6 +81,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private string selectedKeyframeInVal;
     private string locationScrubAxes = "X";
     private double locationScrubDragAccumulator;
+    private double locationScrubPreviousHorizontalChange;
     private string rotationDialAxis = nameof(CurveEditor3DKeyframe.Pitch);
     private bool rotationDialDragging;
     private double rotationDialAngleAccumulator;
@@ -675,6 +676,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         StopPlayback(false);
         locationScrubDragAccumulator = 0;
+        locationScrubPreviousHorizontalChange = 0;
     }
 
     private void LocationScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
@@ -684,7 +686,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        locationScrubDragAccumulator += e.HorizontalChange;
+        double horizontalChange = e.HorizontalChange - locationScrubPreviousHorizontalChange;
+        locationScrubPreviousHorizontalChange = e.HorizontalChange;
+        locationScrubDragAccumulator += horizontalChange;
         double dragStep = SystemParameters.MinimumHorizontalDragDistance;
         int stepCount = (int)(locationScrubDragAccumulator / dragStep);
         if (stepCount == 0)
