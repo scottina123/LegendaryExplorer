@@ -22,8 +22,10 @@
                  Height="90" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
         <TextBlock Grid.Row="2" Text="Category" Margin="0,5,8,5"/>
         <ComboBox x:Name="TypeComboBox" Grid.Row="2" Grid.Column="1" Margin="0,3" SelectedIndex="0">
+            <ComboBoxItem Content="Static → Static" Tag="StaticToStatic"/>
             <ComboBoxItem Content="Static → Dynamic" Tag="StaticToDynamic"/>
             <ComboBoxItem Content="Dynamic → Static" Tag="DynamicToStatic"/>
+            <ComboBoxItem Content="Dynamic → Dynamic" Tag="DynamicToDynamic"/>
         </ComboBox>
         <TextBlock x:Name="ValidationTextBlock" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,8,0,0"
                    Foreground="IndianRed" TextWrapping="Wrap"/>

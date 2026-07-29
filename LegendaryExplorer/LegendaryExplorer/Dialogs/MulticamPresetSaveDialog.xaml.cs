@@ -23,7 +23,14 @@ public partial class MulticamPresetSaveDialog : Window
         _nameExists = nameExists;
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
-        TypeComboBox.SelectedIndex = inferredType == MulticamPresetType.StaticToDynamic ? 0 : 1;
+        TypeComboBox.SelectedIndex = inferredType switch
+        {
+            MulticamPresetType.StaticToStatic => 0,
+            MulticamPresetType.StaticToDynamic => 1,
+            MulticamPresetType.DynamicToStatic => 2,
+            MulticamPresetType.DynamicToDynamic => 3,
+            _ => 1
+        };
         Loaded += (_, _) => PresetNameTextBox.Focus();
         Validate();
     }

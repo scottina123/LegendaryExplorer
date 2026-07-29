@@ -5,6 +5,17 @@
         Title="Generate Camera Presets" Width="820" Height="760"
         MinWidth="760" MinHeight="680" WindowStartupLocation="CenterOwner">
     <Grid>
+        <Grid.Resources>
+            <DataTemplate x:Key="MulticamPresetItemTemplate">
+                <StackPanel Margin="2">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding TypeDisplay}" Opacity="0.7" FontSize="11"/>
+                </StackPanel>
+            </DataTemplate>
+            <Style x:Key="MulticamPresetListStyle" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+                <Setter Property="ItemTemplate" Value="{StaticResource MulticamPresetItemTemplate}"/>
+            </Style>
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="820"/>
             <ColumnDefinition x:Name="PreviewColumn" Width="0"/>
@@ -175,15 +186,6 @@
                         </TabItem>
                         <TabItem x:Name="MulticamTab" Header="Multicam">
                             <DockPanel>
-                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                                    <TextBlock Text="Type" VerticalAlignment="Center" Margin="2,0,6,0"/>
-                                    <ComboBox x:Name="MulticamTypeFilterComboBox" Width="150" SelectedIndex="0"
-                                              SelectionChanged="MulticamTypeFilter_SelectionChanged">
-                                        <ComboBoxItem Content="All" Tag="All"/>
-                                        <ComboBoxItem Content="Static → Dynamic" Tag="StaticToDynamic"/>
-                                        <ComboBoxItem Content="Dynamic → Static" Tag="DynamicToStatic"/>
-                                    </ComboBox>
-                                </WrapPanel>
                                 <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
                                     <Button x:Name="SaveMulticamPresetButton" Content="Save Current Director" Click="SaveMulticamPreset_Click"
                                             Margin="2" Padding="7,4" ToolTip="Save the complete selected Director sequence"/>
@@ -192,16 +194,23 @@
                                     <Button Content="Import List" Click="ImportMulticamPresets_Click" Margin="2" Padding="7,4"/>
                                     <Button Content="Export List" Click="ExportMulticamPresets_Click" Margin="2" Padding="7,4"/>
                                 </WrapPanel>
-                                <ListBox x:Name="MulticamPresetList" SelectionChanged="MulticamPresetList_SelectionChanged">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Margin="2">
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding TypeDisplay}" Opacity="0.7" FontSize="11"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                                <TabControl x:Name="MulticamPresetTabs" SelectionChanged="MulticamPresetTabs_SelectionChanged">
+                                    <TabItem Header="Static → Static">
+                                        <ListBox x:Name="StaticToStaticPresetList" Style="{StaticResource MulticamPresetListStyle}" SelectionChanged="MulticamPresetList_SelectionChanged"/>
+                                    </TabItem>
+                                    <TabItem Header="Static → Dynamic">
+                                        <ListBox x:Name="StaticToDynamicPresetList" Style="{StaticResource MulticamPresetListStyle}" SelectionChanged="MulticamPresetList_SelectionChanged"/>
+                                    </TabItem>
+                                    <TabItem Header="Dynamic → Static">
+                                        <ListBox x:Name="DynamicToStaticPresetList" Style="{StaticResource MulticamPresetListStyle}" SelectionChanged="MulticamPresetList_SelectionChanged"/>
+                                    </TabItem>
+                                    <TabItem Header="Dynamic → Dynamic">
+                                        <ListBox x:Name="DynamicToDynamicPresetList" Style="{StaticResource MulticamPresetListStyle}" SelectionChanged="MulticamPresetList_SelectionChanged"/>
+                                    </TabItem>
+                                    <TabItem Header="Custom">
+                                        <ListBox x:Name="CustomMulticamPresetList" Style="{StaticResource MulticamPresetListStyle}" SelectionChanged="MulticamPresetList_SelectionChanged"/>
+                                    </TabItem>
+                                </TabControl>
                             </DockPanel>
                         </TabItem>
                     </TabControl>

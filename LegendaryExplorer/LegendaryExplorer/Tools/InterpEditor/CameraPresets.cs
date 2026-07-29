@@ -283,9 +283,13 @@ public static class MulticamCameraPresetCapture
             string.Equals(group.GroupName, directorKeys[0].GroupName, StringComparison.OrdinalIgnoreCase));
         MulticamCameraGroup lastGroup = groups.First(group =>
             string.Equals(group.GroupName, directorKeys[^1].GroupName, StringComparison.OrdinalIgnoreCase));
-        MulticamPresetType inferredType = firstGroup.IsStatic && !lastGroup.IsStatic
-            ? MulticamPresetType.StaticToDynamic
-            : MulticamPresetType.DynamicToStatic;
+        MulticamPresetType inferredType = (firstGroup.IsStatic, lastGroup.IsStatic) switch
+        {
+            (true, true) => MulticamPresetType.StaticToStatic,
+            (true, false) => MulticamPresetType.StaticToDynamic,
+            (false, true) => MulticamPresetType.DynamicToStatic,
+            _ => MulticamPresetType.DynamicToDynamic
+        };
         preset = new MulticamCameraPreset(name.Trim(), typeOverride ?? inferredType, duration,
             directorKeys, groups, description?.Trim(),
             groups.Select(group => group.MovementName).Concat(groups.Select(group => group.GroupName)).Distinct().ToArray());
@@ -464,8 +468,10 @@ public sealed record CameraPreset(
 
 public enum MulticamPresetType
 {
+    StaticToStatic,
     StaticToDynamic,
-    DynamicToStatic
+    DynamicToStatic,
+    DynamicToDynamic
 }
 
 public readonly record struct MulticamDirectorKey(float TimeOffset, string GroupName);
@@ -492,9 +498,14 @@ public sealed record MulticamCameraPreset(
     IReadOnlyList<string> SearchableMetadata = null,
     bool IsBuiltIn = false)
 {
-    public string TypeDisplay => Type == MulticamPresetType.StaticToDynamic
-        ? "Static → Dynamic"
-        : "Dynamic → Static";
+    public string TypeDisplay => Type switch
+    {
+        MulticamPresetType.StaticToStatic => "Static → Static",
+        MulticamPresetType.StaticToDynamic => "Static → Dynamic",
+        MulticamPresetType.DynamicToStatic => "Dynamic → Static",
+        MulticamPresetType.DynamicToDynamic => "Dynamic → Dynamic",
+        _ => Type.ToString()
+    };
 }
 
 public static class CameraPresetCatalog
@@ -642,6 +653,47 @@ public static class MulticamCameraPresetCatalog
     {
         var presets = new List<MulticamCameraPreset>();
 
+        string[] staticToStaticNames =
+        [
+            "Wide → Wide", "Wide → Medium", "Wide → Close", "Wide → Two Shot", "Wide → OTS",
+            "Medium → Wide", "Medium → Medium", "Medium → Close", "Medium → Two Shot", "Medium → OTS",
+            "Close → Wide", "Close → Medium", "Close → Close", "Close → Two Shot", "Close → OTS",
+            "Two Shot → Wide", "Two Shot → Medium", "Two Shot → Close", "Two Shot → OTS",
+            "OTS → Reverse OTS", "OTS → Wide", "OTS → Medium", "OTS → Close", "OTS → Two Shot",
+            "Speaker → Listener", "Listener → Speaker", "Speaker Close → Listener Close",
+            "Speaker Medium → Listener Medium", "Speaker Wide → Listener Wide", "Reaction → Speaker",
+            "Speaker → Reaction", "Two Shot → Speaker Close", "Two Shot → Listener Close",
+            "Establishing → Speaker", "Establishing → Two Shot", "Profile → Profile", "Front → Profile",
+            "Profile → Front", "High Angle → Low Angle", "Low Angle → High Angle"
+        ];
+        foreach (string name in staticToStaticNames)
+        {
+            string[] shots = name.Split(" → ", StringSplitOptions.TrimEntries);
+            AddStaticToStatic(name, shots[0], shots[1]);
+        }
+
+        string[] dynamicToDynamicNames =
+        [
+            "Push In → Push In", "Push In → Push Out", "Push In → Dolly In", "Push In → Dolly Out",
+            "Push In → Orbit Left", "Push In → Orbit Right", "Push In → Arc Left", "Push In → Arc Right",
+            "Push In → Slide Left", "Push In → Slide Right", "Push In → Tracking", "Push In → Follow",
+            "Push In → Drift", "Dolly In → Push In", "Dolly In → Dolly Out", "Dolly In → Orbit",
+            "Dolly In → Tracking", "Dolly Out → Push In", "Dolly Out → Orbit", "Orbit Left → Orbit Right",
+            "Orbit Right → Orbit Left", "Orbit → Push In", "Orbit → Push Out", "Orbit → Orbit",
+            "Arc Left → Arc Right", "Arc Right → Arc Left", "Arc → Push In", "Arc → Orbit",
+            "Slide Left → Slide Right", "Slide Right → Slide Left", "Slide → Push In", "Slide → Orbit",
+            "Tracking → Tracking", "Tracking → Push In", "Tracking → Orbit", "Tracking → Follow",
+            "Follow → Tracking", "Follow → Push In", "Follow → Orbit", "Drift → Drift", "Drift → Push In",
+            "Drift → Orbit", "Crane Up → Crane Down", "Crane Down → Crane Up", "Zoom In → Push In",
+            "Zoom Out → Orbit", "Pull Back → Push In", "Reveal Orbit → Push In", "Walk Follow → Tracking",
+            "Walk Follow → Push In", "Tracking → Walk Follow"
+        ];
+        foreach (string name in dynamicToDynamicNames)
+        {
+            string[] movements = name.Split(" → ", StringSplitOptions.TrimEntries);
+            AddDynamicToDynamic(name, movements[0], movements[1]);
+        }
+
         AddDynamicToStatic("Push In → Static Close", CameraPathKind.Push, "Push In", "Close");
         AddDynamicToStatic("Push In → Static Medium", CameraPathKind.Push, "Push In", "Medium");
         AddDynamicToStatic("Push In → Static Wide", CameraPathKind.Push, "Push In", "Wide");
@@ -699,6 +751,20 @@ public static class MulticamCameraPresetCatalog
             MulticamCameraGroup dynamicGroup = BuildDynamicGroup("Cam2", pathKind, movementName, CutTime);
             presets.Add(BuildPreset(name, MulticamPresetType.StaticToDynamic, staticGroup, dynamicGroup));
         }
+
+        void AddStaticToStatic(string name, string firstShot, string secondShot)
+        {
+            MulticamCameraGroup firstGroup = BuildStaticGroup("Cam1", firstShot, 0);
+            MulticamCameraGroup secondGroup = BuildStaticGroup("Cam2", secondShot, CutTime);
+            presets.Add(BuildPreset(name, MulticamPresetType.StaticToStatic, firstGroup, secondGroup));
+        }
+
+        void AddDynamicToDynamic(string name, string firstMovement, string secondMovement)
+        {
+            MulticamCameraGroup firstGroup = BuildDynamicGroup("Cam1", MapDynamicPath(firstMovement), firstMovement, 0);
+            MulticamCameraGroup secondGroup = BuildDynamicGroup("Cam2", MapDynamicPath(secondMovement), secondMovement, CutTime);
+            presets.Add(BuildPreset(name, MulticamPresetType.DynamicToDynamic, firstGroup, secondGroup));
+        }
     }
 
     private static MulticamCameraPreset BuildPreset(string name, MulticamPresetType type,
@@ -706,15 +772,35 @@ public static class MulticamCameraPresetCatalog
         new(name, type, TemplateDuration,
             [new MulticamDirectorKey(0, "Cam1"), new MulticamDirectorKey(CutTime, "Cam2")],
             [firstGroup, secondGroup],
-            $"Two-camera {type switch { MulticamPresetType.StaticToDynamic => "static-to-dynamic", _ => "dynamic-to-static" }} sequence.",
+            $"Two-camera {type switch
+            {
+                MulticamPresetType.StaticToStatic => "static-to-static",
+                MulticamPresetType.StaticToDynamic => "static-to-dynamic",
+                MulticamPresetType.DynamicToStatic => "dynamic-to-static",
+                MulticamPresetType.DynamicToDynamic => "dynamic-to-dynamic",
+                _ => "multicam"
+            }} sequence.",
             [firstGroup.MovementName, secondGroup.MovementName, "Cam1", "Cam2"], true);
 
     private static MulticamCameraGroup BuildStaticGroup(string groupName, string framing, float startTime)
     {
         string presetName = framing switch
         {
-            "Close" => "Front Close-Up",
-            "Wide" => "Medium Wide Shot",
+            "Wide" or "Speaker Wide" => "Medium Wide Shot",
+            "Listener Wide" => "Centered Wide Shot",
+            "Close" or "Speaker Close" => "Left Three-Quarter Close-Up",
+            "Listener Close" => "Right Three-Quarter Close-Up",
+            "Medium" or "Speaker" or "Speaker Medium" => "Left Medium Shot",
+            "Listener" or "Listener Medium" => "Right Medium Shot",
+            "Two Shot" => "Two-Shot",
+            "OTS" => "Over-the-Shoulder Left",
+            "Reverse OTS" => "Over-the-Shoulder Right",
+            "Reaction" => "Reaction Shot",
+            "Establishing" => "Centered Wide Shot",
+            "Profile" => groupName == "Cam1" ? "Profile Left" : "Profile Right",
+            "Front" => "Front Medium Shot",
+            "High Angle" => "High-Angle Shot",
+            "Low Angle" => "Low-Angle Shot",
             _ => "Front Medium Shot"
         };
         CameraPreset preset = CameraPresetCatalog.All.First(item => item.Name == presetName);
@@ -755,6 +841,29 @@ public static class MulticamCameraPresetCatalog
         return new MulticamCameraGroup(groupName, groupName, false, movementName,
             localKeys, fovKeys);
     }
+
+    private static CameraPathKind MapDynamicPath(string movementName) => movementName switch
+    {
+        "Push In" or "Dolly In" => CameraPathKind.Push,
+        "Push Out" or "Dolly Out" or "Pull Back" => CameraPathKind.Pull,
+        "Orbit Left" => CameraPathKind.OrbitLeft,
+        "Orbit Right" => CameraPathKind.OrbitRight,
+        "Orbit" => CameraPathKind.OrbitPush,
+        "Arc Left" => CameraPathKind.ArcLeft,
+        "Arc Right" => CameraPathKind.ArcRight,
+        "Arc" or "Reveal Orbit" => CameraPathKind.RevealLeft,
+        "Slide Left" => CameraPathKind.SlideLeft,
+        "Slide Right" => CameraPathKind.SlideRight,
+        "Slide" => CameraPathKind.SlidePush,
+        "Tracking" => CameraPathKind.Tracking,
+        "Follow" or "Walk Follow" => CameraPathKind.Follow,
+        "Drift" => CameraPathKind.Drift,
+        "Crane Up" => CameraPathKind.CraneUp,
+        "Crane Down" => CameraPathKind.CraneDown,
+        "Zoom In" => CameraPathKind.ZoomIn,
+        "Zoom Out" => CameraPathKind.ZoomOut,
+        _ => CameraPathKind.Tracking
+    };
 
     private static IReadOnlyList<CameraPresetLocalKey> ToLocalKeys(CameraPreset preset, float startTime, float duration)
     {

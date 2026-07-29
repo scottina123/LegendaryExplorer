@@ -68,7 +68,6 @@ public partial class CameraPresetDialog : Window
         DynamicPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.DynamicShots);
         ReactionPresetList.ItemsSource = CameraPresetCatalog.GetByCategory(CameraPresetCategory.ReactionShots);
         SavedPresetList.ItemsSource = SavedCameraPresetManager.Presets;
-        MulticamPresetList.ItemsSource = GetAllMulticamPresets().ToList();
         SaveTrackMovePresetButton.IsEnabled = _selectedTrackMove is not null;
         SaveMulticamPresetButton.IsEnabled = _selectedDirectorTrack is not null && _interpData is not null;
         UseTrackKeyButton.IsEnabled = _getTrackKeyOrigin?.Invoke() is not null;
@@ -98,7 +97,7 @@ public partial class CameraPresetDialog : Window
             MulticamTab.Visibility = Visibility.Visible;
             CameraModeTabs.SelectedIndex = 1;
             RefreshMulticamList();
-            MulticamPresetList.SelectedIndex = 0;
+            SelectFirstMulticamPreset();
         }
         else if (_selectedTrackMove is not null)
         {
@@ -155,15 +154,16 @@ public partial class CameraPresetDialog : Window
 
         _selectedMulticamPreset = SavedMulticamCameraPresetManager.Presets.First(item =>
             string.Equals(item.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+        MulticamPresetTabs.SelectedIndex = 4;
         RefreshMulticamList();
-        MulticamPresetList.SelectedItem = _selectedMulticamPreset;
-        MulticamPresetList.ScrollIntoView(_selectedMulticamPreset);
+        CustomMulticamPresetList.SelectedItem = _selectedMulticamPreset;
+        CustomMulticamPresetList.ScrollIntoView(_selectedMulticamPreset);
         StatusTextBlock.Text = $"Saved complete Director preset '{preset.Name}'.";
     }
 
     private void DeleteMulticamPreset_Click(object sender, RoutedEventArgs e)
     {
-        if (MulticamPresetList.SelectedItem is not MulticamCameraPreset { IsBuiltIn: false } preset)
+        if (CustomMulticamPresetList.SelectedItem is not MulticamCameraPreset { IsBuiltIn: false } preset)
         {
             return;
         }
@@ -184,7 +184,7 @@ public partial class CameraPresetDialog : Window
         }
         _selectedMulticamPreset = null;
         RefreshMulticamList();
-        MulticamPresetList.SelectedIndex = 0;
+        SelectFirstMulticamPreset();
         StatusTextBlock.Text = $"Deleted multicam preset '{preset.Name}'.";
     }
 
@@ -474,40 +474,64 @@ public partial class CameraPresetDialog : Window
         PresetDetailsGroup.Header = isMulticam ? "Multicam Director Sequence" : "Local Composition and Movement";
         GenerateButton.Content = isMulticam ? "Apply Multicam" : "Generate";
         RefreshPresetSearchForCurrentMode();
-        if (isMulticam && MulticamPresetList.SelectedItem is null)
+        if (isMulticam && _selectedMulticamPreset is null)
         {
-            MulticamPresetList.SelectedIndex = 0;
+            SelectFirstMulticamPreset();
         }
         RefreshLivePreview();
     }
 
-    private void MulticamTypeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void MulticamPresetTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MulticamPresetList is not null)
+        if (e.Source == MulticamPresetTabs)
         {
             RefreshMulticamList();
+            SelectFirstMulticamPreset();
         }
     }
 
     private void RefreshMulticamList()
     {
-        if (MulticamPresetList is null)
+        if (StaticToStaticPresetList is null || CustomMulticamPresetList is null)
         {
             return;
         }
 
         string search = PresetSearchTextBox?.Text.Trim() ?? string.Empty;
-        string typeTag = (MulticamTypeFilterComboBox?.SelectedItem as ComboBoxItem)?.Tag as string ?? "All";
         MulticamCameraPreset selected = _selectedMulticamPreset;
-        List<MulticamCameraPreset> filtered = GetAllMulticamPresets()
-            .Where(preset => typeTag == "All" || string.Equals(preset.Type.ToString(), typeTag, StringComparison.Ordinal))
-            .Where(preset => string.IsNullOrEmpty(search) || MulticamMatchesSearch(preset, search))
-            .ToList();
-        MulticamPresetList.ItemsSource = filtered;
-        if (selected is not null)
+        SetMulticamList(StaticToStaticPresetList, MulticamCameraPresetCatalog.GetByType(MulticamPresetType.StaticToStatic));
+        SetMulticamList(StaticToDynamicPresetList, MulticamCameraPresetCatalog.GetByType(MulticamPresetType.StaticToDynamic));
+        SetMulticamList(DynamicToStaticPresetList, MulticamCameraPresetCatalog.GetByType(MulticamPresetType.DynamicToStatic));
+        SetMulticamList(DynamicToDynamicPresetList, MulticamCameraPresetCatalog.GetByType(MulticamPresetType.DynamicToDynamic));
+        SetMulticamList(CustomMulticamPresetList, SavedMulticamCameraPresetManager.Presets);
+
+        void SetMulticamList(ListBox list, IEnumerable<MulticamCameraPreset> source)
         {
-            MulticamPresetList.SelectedItem = filtered.FirstOrDefault(preset =>
+            List<MulticamCameraPreset> filtered = source
+                .Where(preset => string.IsNullOrEmpty(search) || MulticamMatchesSearch(preset, search))
+                .ToList();
+            list.ItemsSource = filtered;
+            list.SelectedItem = selected is null ? null : filtered.FirstOrDefault(preset =>
                 string.Equals(preset.Name, selected.Name, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private ListBox GetActiveMulticamPresetList() => MulticamPresetTabs?.SelectedIndex switch
+    {
+        0 => StaticToStaticPresetList,
+        1 => StaticToDynamicPresetList,
+        2 => DynamicToStaticPresetList,
+        3 => DynamicToDynamicPresetList,
+        4 => CustomMulticamPresetList,
+        _ => null
+    };
+
+    private void SelectFirstMulticamPreset()
+    {
+        ListBox list = GetActiveMulticamPresetList();
+        if (list?.Items.Count > 0 && list.SelectedItem is null)
+        {
+            list.SelectedIndex = 0;
         }
     }
 
@@ -521,9 +545,18 @@ public partial class CameraPresetDialog : Window
 
     private void MulticamPresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MulticamPresetList.SelectedItem is not MulticamCameraPreset preset)
+        if (sender is not ListBox { SelectedItem: MulticamCameraPreset preset })
         {
             return;
+        }
+
+        foreach (ListBox list in new[] { StaticToStaticPresetList, StaticToDynamicPresetList, DynamicToStaticPresetList,
+                     DynamicToDynamicPresetList, CustomMulticamPresetList })
+        {
+            if (list != sender)
+            {
+                list.SelectedItem = null;
+            }
         }
 
         _selectedMulticamPreset = preset;
@@ -543,9 +576,6 @@ public partial class CameraPresetDialog : Window
             .ToArray();
         RefreshLivePreview();
     }
-
-    private static IEnumerable<MulticamCameraPreset> GetAllMulticamPresets() =>
-        MulticamCameraPresetCatalog.All.Concat(SavedMulticamCameraPresetManager.Presets);
 
     private void RefreshPresetSearchForCurrentMode()
     {
