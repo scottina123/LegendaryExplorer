@@ -208,6 +208,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (CurrentLoadedExport != exportEntry || !IsKeyboardFocusWithin)
             {
+                bool reloadingCurrentExport = CurrentLoadedExport == exportEntry;
+                string selectedLineName = reloadingCurrentExport ? SelectedLine?.NameAsString : null;
+                int selectedLineIndex = reloadingCurrentExport ? Lines.IndexOf(SelectedLineEntry) : -1;
                 bool samePackage = CurrentLoadedExport?.FileRef == exportEntry.FileRef;
                 if (!samePackage)
                 {
@@ -231,6 +234,17 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
                 CurrentLoadedExport = exportEntry;
                 LoadFaceFXAnimset();
+
+                if (selectedLineName != null)
+                {
+                    var selectedLine = Lines.FirstOrDefault(line => line.Line.NameAsString == selectedLineName)
+                                       ?? Lines.ElementAtOrDefault(selectedLineIndex);
+                    if (selectedLine != null)
+                    {
+                        SelectedLineEntry = selectedLine;
+                        linesListBox.ScrollIntoView(selectedLine);
+                    }
+                }
             }
         }
 
@@ -3050,7 +3064,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             SaveChanges();
 
             int mouthAnimationCount = Lines.Sum(lineEntry => lineEntry.Line?.AnimationNames.Count(animationNameIndex =>
-                FaceFX.Names[animationNameIndex].StartsWith("m_", StringComparison.OrdinalIgnoreCase)) ?? 0);
+                IsMouthAnimation(animationNameIndex)) ?? 0);
 
             if (mouthAnimationCount == 0)
             {
@@ -3071,34 +3085,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             int affectedLineCount = 0;
             foreach (var lineEntry in Lines)
             {
-                var line = lineEntry.Line;
-                if (line == null)
-                    continue;
-
-                int pointOffset = 0;
-                bool lineChanged = false;
-                for (int i = 0; i < line.AnimationNames.Count;)
-                {
-                    int keyCount = line.NumKeys[i];
-                    if (FaceFX.Names[line.AnimationNames[i]].StartsWith("m_", StringComparison.OrdinalIgnoreCase))
-                    {
-                        line.AnimationNames.RemoveAt(i);
-                        line.NumKeys.RemoveAt(i);
-                        line.Points.RemoveRange(pointOffset, keyCount);
-                        lineChanged = true;
-                    }
-                    else
-                    {
-                        pointOffset += keyCount;
-                        i++;
-                    }
-                }
-
-                if (lineChanged)
-                {
-                    lineEntry.UpdateLength();
+                if (DeleteMouthAnimations(lineEntry) > 0)
                     affectedLineCount++;
-                }
             }
 
             CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
@@ -3106,6 +3094,70 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             MessageBox.Show($"Deleted {mouthAnimationCount} mouth animations from {affectedLineCount} lines.",
                 "Mouth Animations Deleted", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void DeleteMouthAnimations_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLineEntry?.Line == null)
+                return;
+
+            SaveChanges();
+
+            int mouthAnimationCount = SelectedLine.AnimationNames.Count(IsMouthAnimation);
+            if (mouthAnimationCount == 0)
+            {
+                MessageBox.Show("No mouth animations were found on this line.", "No Mouth Animations",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"This will delete all {mouthAnimationCount} animations whose names start with m_ from this line.\n\n" +
+                "This operation cannot be undone. Continue?",
+                "Delete Mouth Animations",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            DeleteMouthAnimations(SelectedLineEntry);
+            CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
+            UpdateAnimListBox();
+
+            MessageBox.Show($"Deleted {mouthAnimationCount} mouth animations from this line.",
+                "Mouth Animations Deleted", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private bool IsMouthAnimation(int animationNameIndex) =>
+            FaceFX.Names[animationNameIndex].StartsWith("m_", StringComparison.OrdinalIgnoreCase);
+
+        private int DeleteMouthAnimations(FaceFXLineEntry lineEntry)
+        {
+            var line = lineEntry.Line;
+            int deletedCount = 0;
+            int pointOffset = 0;
+            for (int i = 0; i < line.AnimationNames.Count;)
+            {
+                int keyCount = line.NumKeys[i];
+                if (IsMouthAnimation(line.AnimationNames[i]))
+                {
+                    line.AnimationNames.RemoveAt(i);
+                    line.NumKeys.RemoveAt(i);
+                    line.Points.RemoveRange(pointOffset, keyCount);
+                    deletedCount++;
+                }
+                else
+                {
+                    pointOffset += keyCount;
+                    i++;
+                }
+            }
+
+            if (deletedCount > 0)
+                lineEntry.UpdateLength();
+
+            return deletedCount;
         }
 
         private void BulkClearAnimations_Click(object sender, RoutedEventArgs e)
