@@ -401,12 +401,20 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 return null;
             }
 
-            ExportEntry sourceTopLevelSequence = sourceEditor.SelectedConv.Sequence as ExportEntry;
             ExportEntry sourceConvNode = GetConvNodeLinkedToInterp(sourceEditor.SelectedConv, sourceInterp, sourceNode.ExportID);
-            ExportEntry nestedSequenceRoot = GetNestedSequenceCloneRoot(sourceInterpData, sourceTopLevelSequence);
-            ExportEntry sourceRoot = nestedSequenceRoot ?? sourceConvNode ?? sourceInterp;
-            ExportEntry sourceParentSequence = KismetHelper.GetParentSequence(sourceRoot);
+            if (sourceConvNode == null)
+            {
+                return null;
+            }
+
+            ExportEntry sourceParentSequence = KismetHelper.GetParentSequence(sourceConvNode);
             if (sourceParentSequence == null)
+            {
+                return null;
+            }
+
+            List<ExportEntry> connectedSequenceObjects = GetOrderedConnectedSequenceObjects(sourceConvNode, sourceInterpData, sourceParentSequence);
+            if (connectedSequenceObjects.Count == 0)
             {
                 return null;
             }
@@ -415,34 +423,56 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             {
                 IsCrossGame = sourceEditor.Pcc.Game != destinationEditor.Pcc.Game && sourceEditor.Pcc.Game != MEGame.UDK,
                 Cache = new PackageCache(),
-                ImportExportDependencies = true
+                ImportExportDependencies = false
+            };
+            int existingDestinationExportCount = destinationEditor.Pcc.ExportCount;
+            relinkerOptions.CrossPackageMap.OnDictionaryChanged += (_, args) =>
+            {
+                if (args.Type == DictChangeType.AddItem
+                    && args.Key is ExportEntry sourceExport
+                    && args.Value is ExportEntry destinationExport
+                    && destinationExport.UIndex <= existingDestinationExportCount)
+                {
+                    relinkerOptions.RelinkMapEntriesToSkip.Add(sourceExport);
+                }
             };
             relinkerOptions.CrossPackageMap[sourceParentSequence] = destinationSequence;
             relinkerOptions.RelinkMapEntriesToSkip.Add(sourceParentSequence);
 
-            List<EntryStringPair> relinkResults = EntryImporter.ImportAndRelinkEntries(
-                EntryImporter.PortingOption.CloneAllDependencies,
-                sourceRoot,
-                destinationEditor.Pcc,
-                destinationSequence,
-                true,
-                relinkerOptions,
-                out IEntry importedRoot);
-
-            IEnumerable<ExportEntry> importedSequenceObjects = relinkerOptions.CrossPackageMap
-                .Where(pair => pair.Key is ExportEntry sourceExport
-                               && sourceExport.IsA("SequenceObject")
-                               && KismetHelper.GetParentSequence(sourceExport) == sourceParentSequence
-                               && pair.Value is ExportEntry)
-                .Select(pair => (ExportEntry)pair.Value)
-                .Append(importedRoot as ExportEntry)
-                .Where(export => export?.IsA("SequenceObject") == true)
-                .Distinct();
-            foreach (ExportEntry importedSequenceObject in importedSequenceObjects)
+            var relinkResults = new List<EntryStringPair>();
+            foreach (ExportEntry sourceSequenceObject in connectedSequenceObjects)
             {
+                EntryImporter.PortingOption portingOption = sourceSequenceObject.FileRef.Tree.NumChildrenOf(sourceSequenceObject) > 0
+                    ? EntryImporter.PortingOption.CloneTreeAsChild
+                    : EntryImporter.PortingOption.AddSingularAsChild;
+                relinkResults.AddRange(EntryImporter.ImportAndRelinkEntries(
+                    portingOption,
+                    sourceSequenceObject,
+                    destinationEditor.Pcc,
+                    destinationSequence,
+                    false,
+                    relinkerOptions,
+                    out _));
+            }
+
+            relinkerOptions.ImportExportDependencies = true;
+            Relinker.RelinkAll(relinkerOptions);
+            relinkResults.AddRange(relinkerOptions.RelinkReport);
+
+            foreach (ExportEntry sourceSequenceObject in connectedSequenceObjects)
+            {
+                if (!relinkerOptions.CrossPackageMap.TryGetValue(sourceSequenceObject, out IEntry mappedEntry)
+                    || mappedEntry is not ExportEntry importedSequenceObject)
+                {
+                    continue;
+                }
+
                 importedSequenceObject.idxLink = destinationSequence.UIndex;
                 KismetHelper.SynchronizeSequenceObjectMembership(importedSequenceObject, null, destinationSequence);
             }
+
+            RepairImportedSequenceLinks(relinkerOptions);
+            RepairImportedSequenceObjectArrays(destinationSequence, relinkerOptions);
 
             foreach ((IEntry sourceEntry, IEntry destinationEntry) in relinkerOptions.CrossPackageMap.ToList())
             {
@@ -454,26 +484,168 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             }
 
             relinkerOptions.CrossPackageMap.TryGetValue(sourceInterpData, out IEntry importedInterpData);
-            if (sourceConvNode != null)
-            {
-                relinkerOptions.CrossPackageMap.TryGetValue(sourceConvNode, out IEntry importedConvNode);
-                return new CrossEditorSequenceImportResult
-                {
-                    InterpData = importedInterpData as ExportEntry,
-                    ConvNode = importedConvNode as ExportEntry,
-                    RelinkResults = relinkResults
-                };
-            }
-
-            ExportEntry destinationInterp = relinkerOptions.CrossPackageMap.TryGetValue(sourceInterp, out IEntry importedInterp)
-                ? importedInterp as ExportEntry
-                : null;
+            relinkerOptions.CrossPackageMap.TryGetValue(sourceConvNode, out IEntry importedConvNode);
             return new CrossEditorSequenceImportResult
             {
                 InterpData = importedInterpData as ExportEntry,
-                ConvNode = GetConvNodeLinkedToInterp(destinationEditor.SelectedConv, destinationInterp, sourceNode.ExportID),
+                ConvNode = importedConvNode as ExportEntry,
                 RelinkResults = relinkResults
             };
+        }
+
+        private static void RepairImportedSequenceLinks(RelinkerOptionsPackage relinkerOptions)
+        {
+            foreach ((IEntry sourceEntry, IEntry destinationEntry) in relinkerOptions.CrossPackageMap.ToList())
+            {
+                if (sourceEntry is not ExportEntry sourceSequenceObject
+                    || destinationEntry is not ExportEntry importedSequenceObject
+                    || !sourceSequenceObject.IsA("SequenceObject"))
+                {
+                    continue;
+                }
+
+                PropertyCollection sourceProperties = sourceSequenceObject.GetProperties();
+                PropertyCollection importedProperties = importedSequenceObject.GetProperties();
+                RepairStructLinkArray("OutputLinks", "Links", "LinkedOp", sourceSequenceObject, sourceProperties, importedProperties, relinkerOptions);
+                RepairStructLinkArray("VariableLinks", "LinkedVariables", null, sourceSequenceObject, sourceProperties, importedProperties, relinkerOptions);
+                RepairStructLinkArray("EventLinks", "LinkedEvents", null, sourceSequenceObject, sourceProperties, importedProperties, relinkerOptions);
+                importedSequenceObject.WriteProperties(importedProperties);
+            }
+        }
+
+        private static void RepairStructLinkArray(
+            string linkArrayName,
+            string linkedObjectsName,
+            string linkedObjectPropertyName,
+            ExportEntry sourceSequenceObject,
+            PropertyCollection sourceProperties,
+            PropertyCollection importedProperties,
+            RelinkerOptionsPackage relinkerOptions)
+        {
+            ArrayProperty<StructProperty> sourceLinkArray = sourceProperties.GetProp<ArrayProperty<StructProperty>>(linkArrayName);
+            ArrayProperty<StructProperty> importedLinkArray = importedProperties.GetProp<ArrayProperty<StructProperty>>(linkArrayName);
+            if (sourceLinkArray == null || importedLinkArray == null)
+            {
+                return;
+            }
+
+            int commonLinkCount = Math.Min(sourceLinkArray.Count, importedLinkArray.Count);
+            for (int linkIndex = 0; linkIndex < commonLinkCount; linkIndex++)
+            {
+                if (linkedObjectPropertyName != null)
+                {
+                    ArrayProperty<StructProperty> sourceLinks = sourceLinkArray[linkIndex].GetProp<ArrayProperty<StructProperty>>(linkedObjectsName);
+                    ArrayProperty<StructProperty> importedLinks = importedLinkArray[linkIndex].GetProp<ArrayProperty<StructProperty>>(linkedObjectsName);
+                    if (sourceLinks == null || importedLinks == null)
+                    {
+                        continue;
+                    }
+
+                    for (int objectIndex = Math.Min(sourceLinks.Count, importedLinks.Count) - 1; objectIndex >= 0; objectIndex--)
+                    {
+                        ObjectProperty sourceReference = sourceLinks[objectIndex].GetProp<ObjectProperty>(linkedObjectPropertyName);
+                        ObjectProperty importedReference = importedLinks[objectIndex].GetProp<ObjectProperty>(linkedObjectPropertyName);
+                        if (!TryGetMappedSequenceObject(sourceReference, sourceSequenceObject, relinkerOptions, out ExportEntry mappedObject))
+                        {
+                            importedLinks.RemoveAt(objectIndex);
+                        }
+                        else
+                        {
+                            importedReference.Value = mappedObject.UIndex;
+                        }
+                    }
+
+                    while (importedLinks.Count > sourceLinks.Count)
+                    {
+                        importedLinks.RemoveAt(importedLinks.Count - 1);
+                    }
+                }
+                else
+                {
+                    ArrayProperty<ObjectProperty> sourceLinks = sourceLinkArray[linkIndex].GetProp<ArrayProperty<ObjectProperty>>(linkedObjectsName);
+                    ArrayProperty<ObjectProperty> importedLinks = importedLinkArray[linkIndex].GetProp<ArrayProperty<ObjectProperty>>(linkedObjectsName);
+                    if (sourceLinks == null || importedLinks == null)
+                    {
+                        continue;
+                    }
+
+                    for (int objectIndex = Math.Min(sourceLinks.Count, importedLinks.Count) - 1; objectIndex >= 0; objectIndex--)
+                    {
+                        if (!TryGetMappedSequenceObject(sourceLinks[objectIndex], sourceSequenceObject, relinkerOptions, out ExportEntry mappedObject))
+                        {
+                            importedLinks.RemoveAt(objectIndex);
+                        }
+                        else
+                        {
+                            importedLinks[objectIndex].Value = mappedObject.UIndex;
+                        }
+                    }
+
+                    while (importedLinks.Count > sourceLinks.Count)
+                    {
+                        importedLinks.RemoveAt(importedLinks.Count - 1);
+                    }
+                }
+            }
+        }
+
+        private static bool TryGetMappedSequenceObject(
+            ObjectProperty sourceReference,
+            ExportEntry sourceSequenceObject,
+            RelinkerOptionsPackage relinkerOptions,
+            out ExportEntry mappedObject)
+        {
+            mappedObject = null;
+            IEntry sourceObject = sourceReference?.ResolveToEntry(sourceSequenceObject.FileRef);
+            if (sourceObject != null
+                && relinkerOptions.CrossPackageMap.TryGetValue(sourceObject, out IEntry destinationObject)
+                && destinationObject is ExportEntry destinationExport
+                && destinationExport.IsA("SequenceObject"))
+            {
+                mappedObject = destinationExport;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void RepairImportedSequenceObjectArrays(ExportEntry destinationSequence, RelinkerOptionsPackage relinkerOptions)
+        {
+            foreach ((IEntry sourceEntry, IEntry destinationEntry) in relinkerOptions.CrossPackageMap.ToList())
+            {
+                if (sourceEntry is not ExportEntry sourceSequence
+                    || destinationEntry is not ExportEntry importedSequence
+                    || importedSequence == destinationSequence
+                    || sourceSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects") is not { } sourceSequenceObjects)
+                {
+                    continue;
+                }
+
+                var importedSequenceObjects = new ArrayProperty<ObjectProperty>("SequenceObjects");
+                foreach (ObjectProperty sourceObjectReference in sourceSequenceObjects)
+                {
+                    IEntry sourceObject = sourceObjectReference.ResolveToEntry(sourceSequence.FileRef);
+                    if (sourceObject != null
+                        && relinkerOptions.CrossPackageMap.TryGetValue(sourceObject, out IEntry importedObject)
+                        && importedObject is ExportEntry importedExport
+                        && importedExport.IsA("SequenceObject"))
+                    {
+                        importedSequenceObjects.Add(new ObjectProperty(importedExport));
+                    }
+                }
+
+                importedSequence.WriteProperty(importedSequenceObjects);
+            }
+
+            if (destinationSequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects") is not { } destinationSequenceObjects)
+            {
+                return;
+            }
+
+            destinationSequenceObjects.RemoveAll(reference =>
+                !destinationSequence.FileRef.TryGetUExport(reference.Value, out ExportEntry sequenceObject)
+                || !sequenceObject.IsA("SequenceObject"));
+            destinationSequence.WriteProperty(destinationSequenceObjects);
         }
 
         private static ExportEntry GetNestedSequenceCloneRoot(ExportEntry export, ExportEntry topLevelSequence)
@@ -494,7 +666,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             return cloneRoot;
         }
 
-        private static List<ExportEntry> GetOrderedConnectedSequenceObjects(ExportEntry interp, ExportEntry interpData, ExportEntry sequence)
+        private static List<ExportEntry> GetOrderedConnectedSequenceObjects(ExportEntry rootObject, ExportEntry interpData, ExportEntry sequence)
         {
             var orderedSequenceObjects = sequence.GetProperty<ArrayProperty<ObjectProperty>>("SequenceObjects")?
                 .Select(prop => prop.ResolveToEntry(sequence.FileRef) as ExportEntry)
@@ -523,7 +695,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }
             }
 
-            QueueIfSequenceObject(interp);
+            QueueIfSequenceObject(rootObject);
             QueueIfSequenceObject(interpData);
 
             while (pendingObjects.Count > 0)
@@ -541,6 +713,18 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                              .Where(linkedNode => linkedNode != null))
                 {
                     QueueIfSequenceObject(outputNode);
+                }
+
+                foreach (ExportEntry variableSource in KismetHelper.FindVariableConnectionsToNode(current, orderedSequenceObjects))
+                {
+                    QueueIfSequenceObject(variableSource);
+                }
+
+                foreach (ExportEntry variableTarget in KismetHelper.GetVariableLinksOfNode(current)
+                             .SelectMany(link => link.LinkedNodes)
+                             .OfType<ExportEntry>())
+                {
+                    QueueIfSequenceObject(variableTarget);
                 }
 
                 foreach (ExportEntry eventSource in KismetHelper.FindEventConnectionsToNode(current, orderedSequenceObjects))

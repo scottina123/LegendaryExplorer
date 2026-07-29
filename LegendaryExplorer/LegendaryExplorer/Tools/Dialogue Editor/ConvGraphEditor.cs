@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Threading;
 using System.Windows.Forms;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Dialogue;
@@ -12,6 +13,8 @@ namespace LegendaryExplorer.DialogueEditor
 {
     internal sealed class DialogueNodeDragData
     {
+        private int consumed;
+
         internal DialogueEditorWindow SourceEditor { get; }
         internal DialogueNodeExtended SourceNode { get; }
 
@@ -20,6 +23,8 @@ namespace LegendaryExplorer.DialogueEditor
             SourceEditor = sourceEditor;
             SourceNode = sourceNode;
         }
+
+        internal bool TryConsume() => Interlocked.Exchange(ref consumed, 1) == 0;
     }
 
     /// <summary>
@@ -185,6 +190,8 @@ namespace LegendaryExplorer.DialogueEditor
         public class NodeDragHandler : PDragEventHandler
         {
             private readonly ConvGraphEditor graph;
+            private bool crossEditorDragActive;
+            private DateTime nextCrossEditorDragAllowedUtc;
 
             internal NodeDragHandler(ConvGraphEditor graph)
             {
@@ -211,13 +218,21 @@ namespace LegendaryExplorer.DialogueEditor
 
             protected override void OnStartDrag(object sender, PInputEventArgs e)
             {
+                if (crossEditorDragActive || DateTime.UtcNow < nextCrossEditorDragAllowedUtc)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 if (!DObj.draggingOutlink
                     && Control.ModifierKeys.HasFlag(Keys.Shift)
                     && GetDraggedNode(e.PickedNode) is DiagNode draggedDialogueNode
                     && graph.Owner != null)
                 {
+                    crossEditorDragActive = true;
                     e.Handled = true;
                     graph.DoDragDrop(new DialogueNodeDragData(graph.Owner, draggedDialogueNode.Node), DragDropEffects.Copy);
+                    nextCrossEditorDragAllowedUtc = DateTime.UtcNow.AddMilliseconds(750);
                     return;
                 }
 
@@ -281,6 +296,12 @@ namespace LegendaryExplorer.DialogueEditor
                         UpdateEdge(edge);
                     }
                 }
+            }
+
+            protected override void OnEndDrag(object sender, PInputEventArgs e)
+            {
+                crossEditorDragActive = false;
+                base.OnEndDrag(sender, e);
             }
         }
 

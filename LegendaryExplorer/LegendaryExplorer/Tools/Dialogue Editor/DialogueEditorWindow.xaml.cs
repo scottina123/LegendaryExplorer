@@ -10557,6 +10557,11 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!nodeDragData.TryConsume())
+            {
+                return;
+            }
+
             if (nodeDragData.SourceEditor.Pcc.Game.IsLEGame() != Pcc.Game.IsLEGame()
                 && !App.IsDebug
                 && nodeDragData.SourceEditor.Pcc.Game != MEGame.UDK)
@@ -10629,10 +10634,18 @@ namespace LegendaryExplorer.DialogueEditor
 
             if (importResult.RelinkResults.Count > 0)
             {
+                List<EntryStringPair> distinctRelinkResults = importResult.RelinkResults
+                    .GroupBy(result => result.Message, StringComparer.Ordinal)
+                    .Select(group => group.First())
+                    .ToList();
+                const int maxDisplayedRelinkResults = 200;
+                bool reportWasLimited = distinctRelinkResults.Count > maxDisplayedRelinkResults;
                 new ListDialog(
-                    importResult.RelinkResults,
+                    distinctRelinkResults.Take(maxDisplayedRelinkResults),
                     "Dialogue node copy relink report",
-                    "The node was copied, but the following items reported relinking issues.",
+                    reportWasLimited
+                        ? $"The node was copied with {distinctRelinkResults.Count} distinct relinking issues. Showing the first {maxDisplayedRelinkResults}."
+                        : "The node was copied, but the following items reported relinking issues.",
                     this).Show();
             }
         }
@@ -10758,10 +10771,12 @@ namespace LegendaryExplorer.DialogueEditor
 
             var speakerOptions = CreateParticipantOptions(sourceSpeaker, includeNone: false);
             var listenerOptions = CreateParticipantOptions(sourceListener, includeNone: true);
+            int defaultSpeakerId = sourceNode.IsReply ? -2 : -1;
+            int defaultListenerId = sourceNode.IsReply ? -3 : -2;
             var speakerComboBox = new ComboBox
             {
                 ItemsSource = speakerOptions,
-                SelectedIndex = 0,
+                SelectedItem = speakerOptions.FirstOrDefault(option => !option.KeepSource && option.Speaker?.SpeakerID == defaultSpeakerId),
                 MinWidth = 360,
                 Margin = new Thickness(8, 4, 0, 4),
                 IsEnabled = !sourceNode.IsReply
@@ -10769,7 +10784,7 @@ namespace LegendaryExplorer.DialogueEditor
             var listenerComboBox = new ComboBox
             {
                 ItemsSource = listenerOptions,
-                SelectedIndex = 0,
+                SelectedItem = listenerOptions.FirstOrDefault(option => !option.KeepSource && option.Speaker?.SpeakerID == defaultListenerId),
                 MinWidth = 360,
                 Margin = new Thickness(8, 4, 0, 4)
             };
@@ -11281,7 +11296,7 @@ namespace LegendaryExplorer.DialogueEditor
                     OpenInToolkit("PackageEditor", SelectedConv.UIndex);
                     break;
                 case "PackEdLine":
-                    OpenInToolkit("PackageEditor", SelectedDialogueNode.InterpData.UIndex, Path.GetFileName(SelectedDialogueNode.InterpData.FileRef.FilePath));
+                    OpenInToolkit("PackageEditor", SelectedDialogueNode.InterpData.UIndex, SelectedDialogueNode.InterpData.FileRef.FilePath);
                     break;
                 case "PackEd_StreamM":
                     if (SelectedDialogueNode.WwiseStream_Male != null)
@@ -11328,7 +11343,7 @@ namespace LegendaryExplorer.DialogueEditor
                     }
                     break;
                 case "SeqEdLine":
-                    OpenInToolkit("SequenceEditor", SelectedDialogueNode.InterpData.UIndex, Path.GetFileName(SelectedDialogueNode.InterpData.FileRef.FilePath));
+                    OpenInToolkit("SequenceEditor", SelectedDialogueNode.InterpData.UIndex, SelectedDialogueNode.InterpData.FileRef.FilePath);
                     break;
                 case "FaceFXNS":
                     OpenInToolkit("FaceFXEditor", SelectedConv.NonSpkrFFX.UIndex);

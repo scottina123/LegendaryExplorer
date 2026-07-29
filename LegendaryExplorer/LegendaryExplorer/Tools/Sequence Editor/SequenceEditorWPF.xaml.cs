@@ -1907,8 +1907,8 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 var nullCount = seqObjs.Count(x => x.Value == 0);
 
                 var loadedExports = seqObjs.OrderBy(prop => prop.Value)
-                    .Where(prop => Pcc.IsUExport(prop.Value))
-                    .Select(prop => Pcc.GetUExport(prop.Value))
+                    .Select(prop => Pcc.TryGetUExport(prop.Value, out ExportEntry sequenceObject) ? sequenceObject : null)
+                    .Where(sequenceObject => sequenceObject != null)
                     .ToHashSet();
 
                 CurrentObjects.AddRange(loadedExports.Select(LoadObject));
