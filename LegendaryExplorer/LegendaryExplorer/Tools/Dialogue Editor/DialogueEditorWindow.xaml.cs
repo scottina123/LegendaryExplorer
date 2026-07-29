@@ -6105,7 +6105,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
-        private (NameReference SpeakerName, ExportEntry MaleFaceFX, ExportEntry FemaleFaceFX)? PromptForNewSpeaker()
+        private (NameReference SpeakerName, ExportEntry MaleFaceFX, ExportEntry FemaleFaceFX, bool CreateFaceFX)? PromptForNewSpeaker()
         {
             if (Pcc == null)
             {
@@ -6150,6 +6150,13 @@ namespace LegendaryExplorer.DialogueEditor
                 Text = "None"
             };
 
+            var createFaceFxCheckBox = new CheckBox
+            {
+                Content = "Create male and female FaceFX sets",
+                IsChecked = true,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+
             var okButton = new Button
             {
                 Content = "OK",
@@ -6163,8 +6170,8 @@ namespace LegendaryExplorer.DialogueEditor
             void UpdateOkState()
             {
                 okButton.IsEnabled = !string.IsNullOrWhiteSpace(actorTagTextBox.Text)
-                    && selectedMaleFaceFx != null
-                    && selectedFemaleFaceFx != null;
+                    && (createFaceFxCheckBox.IsChecked == true
+                        || selectedMaleFaceFx != null && selectedFemaleFaceFx != null);
             }
 
             Button CreateFaceFxSelectButton(bool isMale, TextBox targetTextBox)
@@ -6174,8 +6181,12 @@ namespace LegendaryExplorer.DialogueEditor
                     Content = "Select...",
                     MinWidth = 90,
                     Margin = new Thickness(0, 4, 0, 0),
-                    Padding = new Thickness(10, 4, 10, 4)
+                    Padding = new Thickness(10, 4, 10, 4),
+                    IsEnabled = false
                 };
+
+                createFaceFxCheckBox.Checked += (_, _) => button.IsEnabled = false;
+                createFaceFxCheckBox.Unchecked += (_, _) => button.IsEnabled = true;
 
                 button.Click += (_, _) =>
                 {
@@ -6210,6 +6221,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             actorTagTextBox.TextChanged += (_, _) => UpdateOkState();
+            createFaceFxCheckBox.Checked += (_, _) => UpdateOkState();
+            createFaceFxCheckBox.Unchecked += (_, _) => UpdateOkState();
             okButton.Click += (_, _) => dialog.DialogResult = true;
 
             var rootPanel = new StackPanel
@@ -6224,6 +6237,7 @@ namespace LegendaryExplorer.DialogueEditor
             });
             actorTagPanel.Children.Add(actorTagTextBox);
             rootPanel.Children.Add(actorTagPanel);
+            rootPanel.Children.Add(createFaceFxCheckBox);
 
             Grid CreateFaceFxRow(string label, TextBox displayTextBox, bool isMale)
             {
@@ -6258,7 +6272,7 @@ namespace LegendaryExplorer.DialogueEditor
             rootPanel.Children.Add(CreateFaceFxRow("Female FaceFX", femaleFaceFxTextBox, isMale: false));
             rootPanel.Children.Add(new TextBlock
             {
-                Text = "Both FaceFX selections are required before the speaker can be created.",
+                Text = "Uncheck automatic creation to select existing FaceFX sets. Both selections are then required.",
                 Margin = new Thickness(0, 12, 0, 0),
                 TextWrapping = TextWrapping.Wrap
             });
@@ -6291,7 +6305,8 @@ namespace LegendaryExplorer.DialogueEditor
             return (
                 NameReference.FromInstancedString(actorTagTextBox.Text.Trim()),
                 selectedMaleFaceFx,
-                selectedFemaleFaceFx);
+                selectedFemaleFaceFx,
+                createFaceFxCheckBox.IsChecked == true);
         }
 
         private (SpeakerExtended ReplacementSpeaker, Dictionary<DialogueNodeExtended, int> LineStrRefs, bool? UpdateInterpLengthsByFxa, Dictionary<string, string> InterpNameReplacements)? PromptForBulkCloneSpeakerOptions(SpeakerExtended sourceSpeaker, List<DialogueNodeExtended> sourceNodes)
@@ -6744,13 +6759,34 @@ namespace LegendaryExplorer.DialogueEditor
             if (!newSpeaker.HasValue)
                 return;
 
-            var (speakerName, maleFaceFx, femaleFaceFx) = newSpeaker.Value;
+            var (speakerName, maleFaceFx, femaleFaceFx, createFaceFx) = newSpeaker.Value;
             Pcc.FindNameOrAdd(speakerName.Name);
+            if (createFaceFx)
+            {
+                maleFaceFx = CreateBlankSpeakerFaceFx(speakerName.Instanced, isMale: true);
+                femaleFaceFx = CreateBlankSpeakerFaceFx(speakerName.Instanced, isMale: false);
+            }
+
             int strRefId = LookupTagRef(speakerName.Instanced);
             string friendlyName = strRefId > 0 ? GlobalFindStrRefbyID(strRefId, Pcc) : "No Data";
             SelectedSpeakerList.Add(new SpeakerExtended(maxID + 1, speakerName, maleFaceFx, femaleFaceFx, strRefId, friendlyName));
             SaveSpeakerChangesInPlace(reindexSpeakerIds: true);
             Speakers_ListBox.SelectedIndex = SelectedSpeakerList.Count - 1;
+        }
+
+        private ExportEntry CreateBlankSpeakerFaceFx(string speakerName, bool isMale)
+        {
+            IEntry topPackage = SelectedConv.Export;
+            while (topPackage.HasParent)
+            {
+                topPackage = topPackage.Parent;
+            }
+
+            string faceFxName = $"{topPackage.ObjectName.Instanced}_{speakerName}_{(isMale ? "M" : "F")}";
+            ExportEntry faceFx = ExportCreator.CreateExport(Pcc, faceFxName, "FaceFXAnimSet", SelectedConv.Export.Parent, indexed: false);
+            faceFx.WritePropertiesAndBinary(new PropertyCollection(), FaceFXAnimSet.Create(Pcc.Game));
+            FFXAnimsets.Add(faceFx);
+            return faceFx;
         }
         private void SpeakerDelete()
         {
