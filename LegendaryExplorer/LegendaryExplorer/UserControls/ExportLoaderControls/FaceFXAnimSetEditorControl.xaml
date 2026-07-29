@@ -57,6 +57,7 @@
                         <MenuItem Header="Import Audio and Generate FaceFX" Click="ImportAudioAndGenerateFaceFX_Click" ToolTip="Import WAV files via Wwise, add them as FaceFX lines, and bulk-generate lip sync animations"/>
                         <Separator/>
                         <MenuItem Header="Bulk Generate FaceFX for All Lines" Click="BulkGenerateFaceFX_Click" ToolTip="Generate lip sync animations for all lines in this FaceFX asset"/>
+                        <MenuItem Header="Delete All Mouth Animations" Click="BulkDeleteMouthAnimations_Click" ToolTip="Delete every animation whose name starts with m_ from all lines in this FaceFX asset"/>
                         <MenuItem Header="Bulk Clear All Animations" Click="BulkClearAnimations_Click" ToolTip="Clear all animations from every line in this FaceFX asset"/>
                         <MenuItem Header="Bulk Delete All Lines" Click="BulkDeleteAllLines_Click" ToolTip="Delete all lines from this FaceFX asset"/>
                     </MenuItem>

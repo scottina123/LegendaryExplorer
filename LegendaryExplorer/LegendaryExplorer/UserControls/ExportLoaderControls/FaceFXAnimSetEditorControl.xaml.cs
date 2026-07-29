@@ -3039,6 +3039,75 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 errorCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }
 
+        private void BulkDeleteMouthAnimations_Click(object sender, RoutedEventArgs e)
+        {
+            if (Lines.Count == 0)
+            {
+                MessageBox.Show("No lines in this FaceFX asset.", "No Lines", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            SaveChanges();
+
+            int mouthAnimationCount = Lines.Sum(lineEntry => lineEntry.Line?.AnimationNames.Count(animationNameIndex =>
+                FaceFX.Names[animationNameIndex].StartsWith("m_", StringComparison.OrdinalIgnoreCase)) ?? 0);
+
+            if (mouthAnimationCount == 0)
+            {
+                MessageBox.Show("No mouth animations were found.", "No Mouth Animations", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"This will delete all {mouthAnimationCount} animations whose names start with m_ from all lines in this FaceFX asset.\n\n" +
+                "This operation cannot be undone. Continue?",
+                "Delete All Mouth Animations",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            int affectedLineCount = 0;
+            foreach (var lineEntry in Lines)
+            {
+                var line = lineEntry.Line;
+                if (line == null)
+                    continue;
+
+                int pointOffset = 0;
+                bool lineChanged = false;
+                for (int i = 0; i < line.AnimationNames.Count;)
+                {
+                    int keyCount = line.NumKeys[i];
+                    if (FaceFX.Names[line.AnimationNames[i]].StartsWith("m_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        line.AnimationNames.RemoveAt(i);
+                        line.NumKeys.RemoveAt(i);
+                        line.Points.RemoveRange(pointOffset, keyCount);
+                        lineChanged = true;
+                    }
+                    else
+                    {
+                        pointOffset += keyCount;
+                        i++;
+                    }
+                }
+
+                if (lineChanged)
+                {
+                    lineEntry.UpdateLength();
+                    affectedLineCount++;
+                }
+            }
+
+            CurrentLoadedExport?.WriteBinary(FaceFX.Binary);
+            if (SelectedLineEntry != null) UpdateAnimListBox();
+
+            MessageBox.Show($"Deleted {mouthAnimationCount} mouth animations from {affectedLineCount} lines.",
+                "Mouth Animations Deleted", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private void BulkClearAnimations_Click(object sender, RoutedEventArgs e)
         {
             if (Lines.Count == 0)
