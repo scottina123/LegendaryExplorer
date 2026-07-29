@@ -133,7 +133,7 @@
                              TextChanged="PresetSearchTextBox_TextChanged"
                              ToolTip="Search presets in the selected camera mode"/>
                     <TabControl x:Name="CameraModeTabs" Grid.Row="1" SelectionChanged="CameraModeTabs_SelectionChanged">
-                        <TabItem Header="Single Cam">
+                        <TabItem x:Name="SingleCamTab" Header="Single Cam">
                             <Grid>
                                 <TabControl x:Name="PresetTabs">
                                     <TabItem Header="Static Shots">
@@ -173,7 +173,7 @@
                                 </ListBox>
                             </Grid>
                         </TabItem>
-                        <TabItem Header="Multicam">
+                        <TabItem x:Name="MulticamTab" Header="Multicam">
                             <DockPanel>
                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                                     <TextBlock Text="Type" VerticalAlignment="Center" Margin="2,0,6,0"/>

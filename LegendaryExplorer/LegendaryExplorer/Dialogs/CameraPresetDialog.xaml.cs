@@ -94,9 +94,17 @@ public partial class CameraPresetDialog : Window
         SelectSavedPreset();
         if (_selectedDirectorTrack is not null)
         {
+            SingleCamTab.Visibility = Visibility.Collapsed;
+            MulticamTab.Visibility = Visibility.Visible;
             CameraModeTabs.SelectedIndex = 1;
             RefreshMulticamList();
             MulticamPresetList.SelectedIndex = 0;
+        }
+        else if (_selectedTrackMove is not null)
+        {
+            SingleCamTab.Visibility = Visibility.Visible;
+            MulticamTab.Visibility = Visibility.Collapsed;
+            CameraModeTabs.SelectedItem = SingleCamTab;
         }
     }
 
