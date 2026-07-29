@@ -17,6 +17,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
@@ -1950,6 +1951,105 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         {
             RemoveGestureCriterion((sender as FrameworkElement)?.Tag as GestureFilterCriterion);
         }
+
+        private void BrowseGestureFilterValue_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is not string category)
+            {
+                return;
+            }
+
+            string currentValue = category == "StartingPoseSet" ? GestureStartingPoseSet : GestureStartingPoseAnim;
+            string selectedValue = SelectGestureFilterValue(category, currentValue);
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                return;
+            }
+
+            if (category == "StartingPoseSet")
+            {
+                GestureStartingPoseSet = selectedValue;
+            }
+            else
+            {
+                GestureStartingPoseAnim = selectedValue;
+            }
+        }
+
+        private void BrowseGestureCriterionValue_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: string category, CommandParameter: GestureFilterCriterion criterion })
+            {
+                return;
+            }
+
+            string currentValue = category switch
+            {
+                "PoseSet" => criterion.PoseSet,
+                "PoseAnim" => criterion.PoseAnim,
+                "GestureSet" => criterion.GestureSet,
+                "GestureAnim" => criterion.GestureAnim,
+                "TransitionSet" => criterion.TransitionSet,
+                "TransitionAnim" => criterion.TransitionAnim,
+                _ => null,
+            };
+            string selectedValue = SelectGestureFilterValue(category, currentValue);
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                return;
+            }
+
+            switch (category)
+            {
+                case "PoseSet": criterion.PoseSet = selectedValue; break;
+                case "PoseAnim": criterion.PoseAnim = selectedValue; break;
+                case "GestureSet": criterion.GestureSet = selectedValue; break;
+                case "GestureAnim": criterion.GestureAnim = selectedValue; break;
+                case "TransitionSet": criterion.TransitionSet = selectedValue; break;
+                case "TransitionAnim": criterion.TransitionAnim = selectedValue; break;
+            }
+        }
+
+        private string SelectGestureFilterValue(string category, string currentValue)
+        {
+            IEnumerable<string> values = category switch
+            {
+                "StartingPoseSet" => CurrentDataBase.GestureTracks.Select(track => track.StartingPoseSet),
+                "StartingPoseAnim" => CurrentDataBase.GestureTracks.Select(track => track.StartingPoseAnim),
+                "PoseSet" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.PoseSet),
+                "PoseAnim" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.PoseAnim),
+                "GestureSet" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.GestureSet),
+                "GestureAnim" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.GestureAnim),
+                "TransitionSet" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.TransitionSet),
+                "TransitionAnim" => CurrentDataBase.GestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.TransitionAnim),
+                _ => [],
+            };
+            List<string> options = values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return StringSelectorDialog.GetValue(
+                this,
+                $"Search or scroll to select a {GetGestureFilterCategoryLabel(category)}.",
+                $"Select {GetGestureFilterCategoryLabel(category)}",
+                options,
+                currentValue);
+        }
+
+        private static string GetGestureFilterCategoryLabel(string category) => category switch
+        {
+            "StartingPoseSet" => "starting pose set",
+            "StartingPoseAnim" => "starting pose animation",
+            "PoseSet" => "pose set",
+            "PoseAnim" => "pose animation",
+            "GestureSet" => "gesture set",
+            "GestureAnim" => "gesture animation",
+            "TransitionSet" => "transition set",
+            "TransitionAnim" => "transition animation",
+            _ => "gesture value",
+        };
 
         private static int GetMaterialTextureCountForFilter(MaterialRecord material, string textureTypeFilter)
         {

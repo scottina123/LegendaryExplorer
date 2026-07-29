@@ -1829,10 +1829,12 @@
                                         <xctk:WatermarkTextBox Width="180" Margin="0,0,12,0"
                                                                Watermark="Any value"
                                                                Text="{Binding GestureStartingPoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <Button Content="..." Padding="6,1" Margin="-8,0,12,0" Tag="StartingPoseSet" Click="BrowseGestureFilterValue_Click" ToolTip="Browse starting pose set names"/>
                                         <TextBlock Text="Starting Pose Anim:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <xctk:WatermarkTextBox Width="180" Margin="0,0,12,0"
                                                                Watermark="Any value"
                                                                Text="{Binding GestureStartingPoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <Button Content="..." Padding="6,1" Margin="-8,0,12,0" Tag="StartingPoseAnim" Click="BrowseGestureFilterValue_Click" ToolTip="Browse starting pose animation names"/>
                                          <TextBlock Text="Node TLK:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                          <xctk:WatermarkTextBox Width="240" Margin="0,0,12,0"
                                                                 Watermark="Text or StrRef"
@@ -1847,16 +1849,22 @@
                                                     <TextBlock Text="{Binding GroupLabel}" FontWeight="SemiBold" Width="72" VerticalAlignment="Center"/>
                                                     <TextBlock Text="Pose Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding PoseSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="PoseSet" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse pose set names"/>
                                                     <TextBlock Text="Pose Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding PoseAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="PoseAnim" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse pose animation names"/>
                                                     <TextBlock Text="Gesture Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding GestureSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="GestureSet" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse gesture set names"/>
                                                     <TextBlock Text="Gesture Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding GestureAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="GestureAnim" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse gesture animation names"/>
                                                     <TextBlock Text="Transition Set:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding TransitionSet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="TransitionSet" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse transition set names"/>
                                                     <TextBlock Text="Transition Anim:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                     <xctk:WatermarkTextBox Width="140" Margin="0,0,8,0" Watermark="Any" Text="{Binding TransitionAnim, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <Button Content="..." Padding="5,1" Margin="-4,0,8,0" Tag="TransitionAnim" CommandParameter="{Binding}" Click="BrowseGestureCriterionValue_Click" ToolTip="Browse transition animation names"/>
                                                     <Button Content="Remove" Padding="8,2" Tag="{Binding}" Click="RemoveGestureCriterion_Click"
                                                             Visibility="{Binding CanRemove, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                 </WrapPanel>

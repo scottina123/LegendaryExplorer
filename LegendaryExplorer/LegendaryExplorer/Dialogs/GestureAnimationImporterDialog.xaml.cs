@@ -745,6 +745,105 @@ namespace LegendaryExplorer.Dialogs
         private void RemoveGestureTrackCriterion_Click(object sender, RoutedEventArgs e) =>
             RemoveGestureTrackCriterion((sender as FrameworkElement)?.Tag as AssetDatabaseWindow.GestureFilterCriterion);
 
+        private void BrowseGestureTrackFilterValue_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is not string category)
+            {
+                return;
+            }
+
+            string currentValue = category == "StartingPoseSet" ? GestureTrackStartingPoseSet : GestureTrackStartingPoseAnim;
+            string selectedValue = SelectGestureTrackFilterValue(category, currentValue);
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                return;
+            }
+
+            if (category == "StartingPoseSet")
+            {
+                GestureTrackStartingPoseSet = selectedValue;
+            }
+            else
+            {
+                GestureTrackStartingPoseAnim = selectedValue;
+            }
+        }
+
+        private void BrowseGestureTrackCriterionValue_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: string category, CommandParameter: AssetDatabaseWindow.GestureFilterCriterion criterion })
+            {
+                return;
+            }
+
+            string currentValue = category switch
+            {
+                "PoseSet" => criterion.PoseSet,
+                "PoseAnim" => criterion.PoseAnim,
+                "GestureSet" => criterion.GestureSet,
+                "GestureAnim" => criterion.GestureAnim,
+                "TransitionSet" => criterion.TransitionSet,
+                "TransitionAnim" => criterion.TransitionAnim,
+                _ => null,
+            };
+            string selectedValue = SelectGestureTrackFilterValue(category, currentValue);
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                return;
+            }
+
+            switch (category)
+            {
+                case "PoseSet": criterion.PoseSet = selectedValue; break;
+                case "PoseAnim": criterion.PoseAnim = selectedValue; break;
+                case "GestureSet": criterion.GestureSet = selectedValue; break;
+                case "GestureAnim": criterion.GestureAnim = selectedValue; break;
+                case "TransitionSet": criterion.TransitionSet = selectedValue; break;
+                case "TransitionAnim": criterion.TransitionAnim = selectedValue; break;
+            }
+        }
+
+        private string SelectGestureTrackFilterValue(string category, string currentValue)
+        {
+            IEnumerable<string> values = category switch
+            {
+                "StartingPoseSet" => _allGestureTracks.Select(track => track.StartingPoseSet),
+                "StartingPoseAnim" => _allGestureTracks.Select(track => track.StartingPoseAnim),
+                "PoseSet" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.PoseSet),
+                "PoseAnim" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.PoseAnim),
+                "GestureSet" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.GestureSet),
+                "GestureAnim" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.GestureAnim),
+                "TransitionSet" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.TransitionSet),
+                "TransitionAnim" => _allGestureTracks.SelectMany(track => track.Gestures).Select(gesture => gesture.TransitionAnim),
+                _ => [],
+            };
+            List<string> options = values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return StringSelectorDialog.GetValue(
+                this,
+                $"Search or scroll to select a {GetGestureTrackFilterCategoryLabel(category)}.",
+                $"Select {GetGestureTrackFilterCategoryLabel(category)}",
+                options,
+                currentValue);
+        }
+
+        private static string GetGestureTrackFilterCategoryLabel(string category) => category switch
+        {
+            "StartingPoseSet" => "starting pose set",
+            "StartingPoseAnim" => "starting pose animation",
+            "PoseSet" => "pose set",
+            "PoseAnim" => "pose animation",
+            "GestureSet" => "gesture set",
+            "GestureAnim" => "gesture animation",
+            "TransitionSet" => "transition set",
+            "TransitionAnim" => "transition animation",
+            _ => "gesture value",
+        };
+
         private void ApplyGestureTrackFilter()
         {
             FilteredGestureTracks.ReplaceAll(_allGestureTracks.Where(MatchesGestureTrackFilters));
