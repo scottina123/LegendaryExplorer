@@ -131,7 +131,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
             try
             {
-                using ZipArchive archive = new(new FileStream(databasePath, FileMode.Open, FileAccess.Read, FileShare.Read));
+                using ZipArchive archive = new(new FileStream(databasePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete));
                 if (archive.GetEntry(entryName) is not ZipArchiveEntry entry)
                 {
                     return ownerFriendlyNames;

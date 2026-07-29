@@ -87,7 +87,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             new TlkScanner(),
             new PlotUsageScanner(),
             new ActorScanner(),
-            new GestureTrackScanner()
+            new GestureTrackScanner(),
+            new PropActionScanner()
         ];
 
         private readonly int _fileKey;

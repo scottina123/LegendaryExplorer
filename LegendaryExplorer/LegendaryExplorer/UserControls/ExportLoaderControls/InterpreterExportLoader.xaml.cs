@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -7,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -59,8 +61,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public static readonly string[] IntToStringConverters = [ "WwiseEvent", "WwiseBank", "WwiseStream", "BioSeqAct_PMExecuteTransition", "BioSeqAct_PMExecuteConsequence", "BioSeqAct_PMCheckState", "BioSeqAct_PMCheckConditional", "BioSeqVar_StoryManagerInt",
                                                                 "BioSeqVar_StoryManagerFloat", "BioSeqVar_StoryManagerBool", "BioSeqVar_StoryManagerStateId", "SFXSceneShopNodePlotCheck", "BioWorldInfo", "CoverLink" ];
         public ObservableCollectionExtended<IndexedName> ParentNameList { get; private set; }
-        private MEGame _cachedPropActionGame = MEGame.Unknown;
-        private IReadOnlyDictionary<string, IReadOnlyList<string>> _cachedPropActions;
+        private static readonly ConcurrentDictionary<MEGame, Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>>> PropActionCatalogTasks = new();
 
         public bool SubstituteImageForHexBox
         {
@@ -1838,107 +1839,212 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            IReadOnlyDictionary<string, IReadOnlyList<string>> actionsByProp = GetBioEvtSysTrackPropActions();
             foreach (UPropertyTreeViewEntry actionNode in topLevelTree.FlattenTree().Where(node =>
                          node.Property is NameProperty { Name.Name: "nmAction" }
                          && node.UPParent?.Property is StructProperty
                          && node.UPParent.UPParent?.Property is ArrayPropertyBase { Name.Name: "m_aPropKeys" }))
             {
-                NameProperty propProperty = actionNode.UPParent.ChildrenProperties
-                    .Select(node => node.Property)
-                    .OfType<NameProperty>()
-                    .FirstOrDefault(property => property.Name.Name == "nmProp");
-                if (propProperty is null || !actionsByProp.TryGetValue(propProperty.Value.Name, out IReadOnlyList<string> actionNames))
+                UPropertyTreeViewEntry propNode = actionNode.UPParent.ChildrenProperties
+                    .FirstOrDefault(node => node.Property is NameProperty { Name.Name: "nmProp" });
+                if (propNode is null)
                 {
                     continue;
                 }
 
-                actionNode.InlineNameChoicesOverride = actionNames
-                    .Select(actionName => new IndexedName(Pcc.findName(actionName), actionName))
-                    .ToList();
+                propNode.ShowPropActionPicker = true;
+                actionNode.ShowPropActionPicker = true;
             }
         }
 
-        private IReadOnlyDictionary<string, IReadOnlyList<string>> GetBioEvtSysTrackPropActions()
+        private async Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>> GetBioEvtSysTrackPropChoicesAsync()
         {
-            if (_cachedPropActions is null || _cachedPropActionGame != Pcc.Game)
-            {
-                _cachedPropActionGame = Pcc.Game;
-                _cachedPropActions = LoadInstalledGamePropActions(Pcc.Game);
-            }
-
-            var combinedActions = _cachedPropActions.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToList(),
-                StringComparer.OrdinalIgnoreCase);
-            AddPropActionsFromPackage(Pcc, combinedActions);
-            return combinedActions.ToDictionary(
-                pair => pair.Key,
-                pair => (IReadOnlyList<string>)pair.Value,
-                StringComparer.OrdinalIgnoreCase);
-        }
-
-        private static IReadOnlyDictionary<string, IReadOnlyList<string>> LoadInstalledGamePropActions(MEGame game)
-        {
-            var actionsByProp = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            if (game.IsGame1())
-            {
-                return actionsByProp.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value, StringComparer.OrdinalIgnoreCase);
-            }
-
+            MEGame game = Pcc.Game;
+            Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>> catalogTask = PropActionCatalogTasks.GetOrAdd(
+                game,
+                static requestedGame => LoadAssetDatabasePropActionChoicesAsync(requestedGame));
+            IReadOnlyList<PropActionPickerDialog.PropActionChoice> installedChoices;
             try
             {
-                var loadedFiles = MELoadedFiles.GetFilesLoadedInGame(game, forceUseCached: true);
-                foreach (string fileName in new[] { "GesturesConfigDLC.pcc", "GesturesConfig.pcc" })
+                installedChoices = await catalogTask;
+            }
+            catch
+            {
+                PropActionCatalogTasks.TryRemove(new KeyValuePair<MEGame, Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>>>(game, catalogTask));
+                throw;
+            }
+
+            if (installedChoices.Count == 0)
+            {
+                PropActionCatalogTasks.TryRemove(new KeyValuePair<MEGame, Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>>>(game, catalogTask));
+            }
+
+            var choices = installedChoices.ToList();
+
+            foreach (ExportEntry export in Pcc.Exports.Where(export => export.IsA("BioEvtSysTrackProp")))
+            {
+                if (export.GetProperty<ArrayProperty<StructProperty>>("m_aPropKeys") is not { } propKeys)
                 {
-                    if (!loadedFiles.TryGetValue(fileName, out string filePath))
+                    continue;
+                }
+
+                foreach (StructProperty propKey in propKeys)
+                {
+                    NameProperty prop = propKey.Properties.GetProp<NameProperty>("nmProp");
+                    NameProperty action = propKey.Properties.GetProp<NameProperty>("nmAction");
+                    ObjectProperty weaponClass = propKey.Properties.GetProp<ObjectProperty>("pWeaponClass");
+                    if (prop is null || action is null || prop.Value == NameReference.None || action.Value == NameReference.None)
                     {
                         continue;
                     }
 
-                    using IMEPackage package = MEPackageHandler.UnsafePartialLoad(
-                        filePath,
-                        export => !export.IsDefaultObject && export.ClassName == "BioGestureRuntimeData");
-                    AddPropActionsFromPackage(package, actionsByProp);
+                    choices.Add(new PropActionPickerDialog.PropActionChoice(
+                        prop.Value.Name,
+                        action.Value.Name,
+                        SourcePackagePath: Pcc.FilePath,
+                        SourceTrackUIndex: export.UIndex,
+                        SourceKeyIndex: propKeys.IndexOf(propKey),
+                        SourceWeaponUIndex: weaponClass?.Value ?? 0,
+                        HasEffects: propKey.Properties.Any(property =>
+                            property is ObjectProperty && property.Name.Name.Contains("Effect", StringComparison.OrdinalIgnoreCase))));
                 }
             }
-            catch (Exception exception)
-            {
-                Debug.WriteLine($"Could not load BioEvtSysTrackProp action choices: {exception.Message}");
-            }
 
-            return actionsByProp.ToDictionary(
-                pair => pair.Key,
-                pair => (IReadOnlyList<string>)pair.Value,
-                StringComparer.OrdinalIgnoreCase);
+            return choices
+                .GroupBy(choice => $"{choice.Prop}\0{choice.Action}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderByDescending(choice => choice.SourceTrackUIndex != 0)
+                    .ThenByDescending(choice => choice.HasEffects)
+                    .ThenByDescending(choice => choice.SourceWeaponUIndex != 0)
+                    .First())
+                .OrderBy(choice => choice.Prop, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(choice => choice.Action, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
-        private static void AddPropActionsFromPackage(IMEPackage package, Dictionary<string, List<string>> actionsByProp)
+        private static async Task<IReadOnlyList<PropActionPickerDialog.PropActionChoice>> LoadAssetDatabasePropActionChoicesAsync(MEGame game)
         {
-            foreach (ExportEntry export in package.Exports.Where(export => !export.IsDefaultObject && export.ClassName == "BioGestureRuntimeData" && export.IsDataLoaded()))
+            string databasePath = AssetDatabaseWindow.GetDBPath(game);
+            if (!File.Exists(databasePath))
             {
-                BioGestureRuntimeData runtimeData = export.GetBinaryData<BioGestureRuntimeData>();
-                foreach ((NameReference propKey, BioGestureRuntimeData.BioMeshPropData propData) in runtimeData.m_mapMeshProps)
+                return [];
+            }
+
+            var database = new AssetDB();
+            await AssetDatabaseWindow.LoadDatabase(databasePath, game, database, CancellationToken.None);
+            if (database.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild || database.PropActions.Count == 0)
+            {
+                return [];
+            }
+
+            return await Task.Run<IReadOnlyList<PropActionPickerDialog.PropActionChoice>>(() =>
+            {
+                var pathCache = new Dictionary<int, string>();
+                string ResolvePath(int fileKey)
                 {
-                    string[] propNames = [propKey.Name, propData.nmPropName.Name];
-                    string[] actionNames = propData.mapActions
-                        .SelectMany(action => new[] { action.Key.Name, action.Value.nmActionName.Name })
-                        .Where(name => !string.IsNullOrWhiteSpace(name) && name != NameReference.None.Name)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
-
-                    foreach (string propName in propNames.Where(name => !string.IsNullOrWhiteSpace(name) && name != NameReference.None.Name).Distinct(StringComparer.OrdinalIgnoreCase))
+                    if (!pathCache.TryGetValue(fileKey, out string path))
                     {
-                        if (!actionsByProp.TryGetValue(propName, out List<string> actions))
-                        {
-                            actionsByProp[propName] = actions = [];
-                        }
-
-                        foreach (string actionName in actionNames.Where(actionName => !actions.Contains(actionName, StringComparer.OrdinalIgnoreCase)))
-                        {
-                            actions.Add(actionName);
-                        }
+                        path = ResolveAssetDatabaseFilePath(database, game, fileKey);
+                        pathCache[fileKey] = path;
                     }
+
+                    return path;
+                }
+                var weaponsByProp = database.PropActions
+                    .Where(record => record.SourceWeaponUIndex != 0 && record.ActionName == NameReference.None.Name)
+                    .GroupBy(record => record.PropName, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+                var choices = database.PropActions
+                    .Where(record => record.ActionName != NameReference.None.Name)
+                    .Select(record =>
+                    {
+                        weaponsByProp.TryGetValue(record.PropName, out PropActionRecord weaponRecord);
+                        int weaponUIndex = record.SourceWeaponUIndex != 0 ? record.SourceWeaponUIndex : weaponRecord?.SourceWeaponUIndex ?? 0;
+                        int weaponFileKey = record.SourceWeaponUIndex != 0 ? record.SourceFileKey : weaponRecord?.SourceFileKey ?? -1;
+                        return new PropActionPickerDialog.PropActionChoice(
+                            record.PropName,
+                            record.ActionName,
+                            SourcePackagePath: record.SourceTrackUIndex != 0 ? ResolvePath(record.SourceFileKey) : null,
+                            SourceTrackUIndex: record.SourceTrackUIndex,
+                            SourceKeyIndex: record.SourceKeyIndex,
+                            SourceWeaponUIndex: weaponUIndex,
+                            SourceWeaponPackagePath: weaponFileKey >= 0 ? ResolvePath(weaponFileKey) : null,
+                            HasEffects: record.HasEffects);
+                    })
+                    .ToList();
+
+                foreach (PropActionRecord weaponRecord in weaponsByProp.Values)
+                {
+                    if (!choices.Any(choice => choice.Prop.Equals(weaponRecord.PropName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        choices.Add(new PropActionPickerDialog.PropActionChoice(
+                            weaponRecord.PropName,
+                            NameReference.None.Name,
+                            SourceWeaponUIndex: weaponRecord.SourceWeaponUIndex,
+                            SourceWeaponPackagePath: ResolvePath(weaponRecord.SourceFileKey)));
+                    }
+                }
+
+                return choices;
+            });
+        }
+
+        private static string ResolveAssetDatabaseFilePath(AssetDB database, MEGame game, int fileKey)
+        {
+            if (fileKey < 0 || fileKey >= database.FileList.Count)
+            {
+                return null;
+            }
+
+            (string fileName, int directoryKey) = database.FileList[fileKey];
+            if (directoryKey < 0 || directoryKey >= database.ContentDir.Count)
+            {
+                return null;
+            }
+
+            string rootPath = MEDirectories.GetDefaultGamePath(game);
+            string contentDirectory = database.ContentDir[directoryKey];
+            if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
+            {
+                return null;
+            }
+
+            return Directory.EnumerateFiles(rootPath, fileName, SearchOption.AllDirectories)
+                .FirstOrDefault(path => path.Contains(contentDirectory, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void AddPropTrackChoices(
+            IMEPackage package,
+            string packagePath,
+            List<PropActionPickerDialog.PropActionChoice> choices)
+        {
+            foreach (ExportEntry export in package.Exports.Where(export => export.ClassName == "BioEvtSysTrackProp" && export.IsDataLoaded()))
+            {
+                if (export.GetProperty<ArrayProperty<StructProperty>>("m_aPropKeys") is not { } propKeys)
+                {
+                    continue;
+                }
+
+                for (int keyIndex = 0; keyIndex < propKeys.Count; keyIndex++)
+                {
+                    StructProperty propKey = propKeys[keyIndex];
+                    NameProperty prop = propKey.Properties.GetProp<NameProperty>("nmProp");
+                    NameProperty action = propKey.Properties.GetProp<NameProperty>("nmAction");
+                    ObjectProperty weaponClass = propKey.Properties.GetProp<ObjectProperty>("pWeaponClass");
+                    if (prop is null || action is null || prop.Value == NameReference.None || action.Value == NameReference.None)
+                    {
+                        continue;
+                    }
+
+                    choices.Add(new PropActionPickerDialog.PropActionChoice(
+                        prop.Value.Name,
+                        action.Value.Name,
+                        SourcePackagePath: packagePath,
+                        SourceTrackUIndex: export.UIndex,
+                        SourceKeyIndex: keyIndex,
+                        SourceWeaponUIndex: weaponClass?.Value ?? 0,
+                        HasEffects: propKey.Properties.Any(property =>
+                            property is ObjectProperty && property.Name.Name.Contains("Effect", StringComparison.OrdinalIgnoreCase))));
                 }
             }
         }
@@ -4245,6 +4351,114 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(sender as FrameworkElement);
         }
 
+        private async void PropActionPickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || node.UPParent?.Property is not StructProperty propKey)
+            {
+                return;
+            }
+
+            IReadOnlyList<PropActionPickerDialog.PropActionChoice> choices = await GetBioEvtSysTrackPropChoicesAsync();
+            if (choices.Count == 0)
+            {
+                MessageBox.Show(
+                    $"No prop/action catalog is available for {Pcc.Game}. Generate or rebuild that game's Asset Database, then open this picker again.",
+                    "Prop/action catalog unavailable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var picker = new PropActionPickerDialog(
+                choices,
+                Window.GetWindow(this),
+                propKey.Properties.GetProp<NameProperty>("nmProp")?.Value.Name,
+                propKey.Properties.GetProp<NameProperty>("nmAction")?.Value.Name);
+            if (picker.ShowDialog() != true || picker.SelectedChoice is not { } choice)
+            {
+                return;
+            }
+
+            PropertyCollection destinationProperties = propKey.Properties;
+            FloatProperty destinationTime = destinationProperties.GetProp<FloatProperty>("fTime")?.DeepClone() as FloatProperty;
+            IsEnabled = false;
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                using var packageCache = new PackageCache();
+                IMEPackage sourcePackage = string.IsNullOrWhiteSpace(choice.SourcePackagePath)
+                                           || string.Equals(choice.SourcePackagePath, Pcc.FilePath, StringComparison.OrdinalIgnoreCase)
+                    ? Pcc
+                    : await Task.Run(() => packageCache.GetCachedPackage(choice.SourcePackagePath));
+                var relinkerOptions = new RelinkerOptionsPackage(packageCache)
+                {
+                    ImportExportDependencies = true,
+                    PortImportsMemorySafe = true
+                };
+                PropertyCollection importedProperties = destinationProperties.DeepClone();
+
+                if (choice.SourceTrackUIndex != 0
+                    && choice.SourceKeyIndex >= 0
+                    && sourcePackage?.TryGetUExport(choice.SourceTrackUIndex, out ExportEntry sourceTrack) == true
+                    && sourceTrack.GetProperty<ArrayProperty<StructProperty>>("m_aPropKeys") is { } sourceKeys
+                    && choice.SourceKeyIndex < sourceKeys.Count)
+                {
+                    importedProperties = sourceKeys[choice.SourceKeyIndex].Properties.DeepClone();
+                    if (destinationTime is not null)
+                    {
+                        importedProperties.AddOrReplaceProp(destinationTime);
+                    }
+
+                    importedProperties.RemoveNamedProperty("pWeaponClass");
+                    if (sourcePackage != Pcc)
+                    {
+                        Relinker.RelinkPropertyCollection(sourcePackage, Pcc, importedProperties, relinkerOptions, out _);
+                    }
+                }
+
+                importedProperties.AddOrReplaceProp(new NameProperty(choice.Prop, "nmProp"));
+                importedProperties.AddOrReplaceProp(new NameProperty(choice.Action, "nmAction"));
+
+                if (choice.SourceWeaponUIndex != 0)
+                {
+                    IMEPackage weaponPackage = string.IsNullOrWhiteSpace(choice.SourceWeaponPackagePath)
+                                               || string.Equals(choice.SourceWeaponPackagePath, sourcePackage?.FilePath, StringComparison.OrdinalIgnoreCase)
+                        ? sourcePackage
+                        : string.Equals(choice.SourceWeaponPackagePath, Pcc.FilePath, StringComparison.OrdinalIgnoreCase)
+                            ? Pcc
+                            : await Task.Run(() => packageCache.GetCachedPackage(choice.SourceWeaponPackagePath));
+
+                    if (weaponPackage?.GetEntry(choice.SourceWeaponUIndex) is { } sourceWeapon)
+                    {
+                        IEntry targetWeapon = sourceWeapon;
+                        if (weaponPackage != Pcc)
+                        {
+                            IEntry targetParent = EntryExporter.PortParents(sourceWeapon, Pcc, cache: packageCache, customROP: relinkerOptions);
+                            EntryImporter.ImportAndRelinkEntries(
+                                EntryImporter.PortingOption.CloneAllDependencies,
+                                sourceWeapon,
+                                Pcc,
+                                targetParent,
+                                true,
+                                relinkerOptions,
+                                out targetWeapon);
+                        }
+
+                        importedProperties.AddOrReplaceProp(new ObjectProperty(targetWeapon.UIndex, "pWeaponClass"));
+                    }
+                }
+
+                propKey.Properties = importedProperties;
+                CurrentLoadedExport.WriteProperties(CurrentLoadedProperties);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+                IsEnabled = true;
+            }
+        }
+
         private void StringRefTextLookupButton_Click(object sender, RoutedEventArgs e)
         {
             UPropertyTreeViewEntry node = (sender as FrameworkElement)?.Tag as UPropertyTreeViewEntry ?? TreeSelectedItem;
@@ -5850,6 +6064,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowObjectInlineEditor => IsObjectProperty;
         public bool ShowEditableTextBlock => !(ShowNumericInlineEditor || ShowNameInlineEditor || ShowObjectInlineEditor || ShowEnumInlineEditor);
         public bool ShowNameInlineEditor => IsNameProperty;
+        public bool ShowPropActionPicker { get; set; }
+        public bool ShowStandardNamePicker => true;
         public bool ShowEnumInlineEditor => IsEnumProperty;
         public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);
 

@@ -292,6 +292,7 @@
                                         <StackPanel x:Name="PropertyItem_NameInlineEditor" Orientation="Horizontal" Margin="5,0,0,0" VerticalAlignment="Top"
                                                     Visibility="{Binding ShowNameInlineEditor, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <ComboBox MinWidth="140"
+                                                      Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"
                                                       IsEditable="True"
                                                       IsTextSearchEnabled="True"
                                                       StaysOpenOnEdit="True"
@@ -309,9 +310,10 @@
                                                     </ItemsPanelTemplate>
                                                 </ComboBox.ItemsPanel>
                                             </ComboBox>
-                                            <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold"/>
-                                            <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}"/>
-                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click"/>
+                                            <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                            <Button Margin="5,0,0,0" Padding="8,0" Content="Choose prop/action..." ToolTip="Show every valid nmProp and nmAction pair" Tag="{Binding}" Click="PropActionPickerButton_Click" Visibility="{Binding ShowPropActionPicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↑" ToolTip="Add a new element above this array element" Tag="{Binding}" Click="InlineAddArrayElementAboveButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="+↓" ToolTip="Add a new element below this array element" Tag="{Binding}" Click="InlineAddArrayElementBelowButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="×" ToolTip="Delete this array element" Tag="{Binding}" Click="InlineDeleteArrayElementButton_Click" Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibilityConverter}}"/>

@@ -77,21 +77,26 @@ namespace LegendaryExplorer
         /// <param name="e">Exception to process</param>
         internal static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            var eh = new ExceptionHandlerDialog(e.Exception);
-            Window wpfActiveWindow = Current.Windows.OfType<Window>().SingleOrDefault(x => x.IsActive);
-            eh.Owner = wpfActiveWindow;
             try
             {
+                var eh = new ExceptionHandlerDialog(e.Exception);
+                Window wpfActiveWindow = Current.Windows.OfType<Window>().FirstOrDefault(x => x.IsActive);
+                if (wpfActiveWindow?.IsLoaded == true && PresentationSource.FromVisual(wpfActiveWindow) != null)
+                {
+                    eh.Owner = wpfActiveWindow;
+                }
+
                 eh.ShowDialog();
+                e.Handled = eh.Handled;
             }
             catch
             {
                 // Retry without owner - if owner window is in error state it will crash this dialog and the 
                 // whole app will die instead
-                eh = new ExceptionHandlerDialog(e.Exception);
+                var eh = new ExceptionHandlerDialog(e.Exception);
                 eh.ShowDialog();
+                e.Handled = eh.Handled;
             }
-            e.Handled = eh.Handled;
         }
 
         private static void OnInstanceInvoked(string[] args)

@@ -1,0 +1,29 @@
+<misc:NotifyPropertyChangedWindowBase x:Class="LegendaryExplorer.Dialogs.PropActionPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:misc="clr-namespace:LegendaryExplorer.Misc"
+        Title="Select Prop Action" Width="620" Height="520"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="8">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <TextBlock Text="nmProp" Margin="0,0,0,3" />
+            <ComboBox x:Name="PropComboBox" ItemsSource="{Binding PropNames}" IsEditable="True"
+                      IsTextSearchEnabled="True" SelectionChanged="PropComboBox_SelectionChanged" />
+            <TextBlock Text="Filter actions" Margin="0,8,0,3" />
+            <TextBox x:Name="FilterTextBox" ToolTip="Filter the actions available for the selected nmProp"
+                     TextChanged="FilterTextBox_TextChanged" />
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Width="80" Margin="0,0,8,0" IsDefault="True" Content="Select" Click="SelectButton_Click" />
+            <Button Width="80" IsCancel="True" Content="Cancel" />
+        </StackPanel>
+        <DataGrid x:Name="ChoicesGrid" ItemsSource="{Binding ChoicesView}" IsReadOnly="True"
+                  AutoGenerateColumns="False" SelectionMode="Single" MouseDoubleClick="ChoicesGrid_MouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="nmAction" Binding="{Binding Action}" Width="*" />
+                <DataGridCheckBoxColumn Header="Effects" Binding="{Binding HasEffects, Mode=OneWay}" Width="Auto" />
+                <DataGridCheckBoxColumn Header="Weapon class" Binding="{Binding HasWeaponClass, Mode=OneWay}" Width="Auto" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</misc:NotifyPropertyChangedWindowBase>

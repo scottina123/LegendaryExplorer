@@ -270,7 +270,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         #region Declarations
         // v11.0: Index the conversation node TLK StrRef for BioEvtSysTrackGesture records.
-        public const string dbCurrentBuild = "11.0";
+        public const string dbCurrentBuild = "12.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -1189,7 +1189,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 return await Task.Run(() =>
                 {
-                    using ZipArchive archive = new(new FileStream(dbpath, FileMode.Open));
+                    using ZipArchive archive = new(new FileStream(dbpath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete));
                     if (archive.Entries.FirstOrDefault(e => e.Name == $"MasterDB.{dbgame}_{build}.bin") is ZipArchiveEntry entry)
                     {
                         var ms = new MemoryStream((int)entry.Length);
@@ -1257,15 +1257,25 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 CurrentOverallOperationText = "Database saving...";
             }
 
-            await using (var fileStream = new FileStream(CurrentDBPath, FileMode.Create))
+            string tempDbPath = $"{CurrentDBPath}.{Guid.NewGuid():N}.tmp";
+            try
             {
-                using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create, true))
+                await using (var fileStream = new FileStream(tempDbPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    string build = dbCurrentBuild.Trim(' ', '*', '.');
-                    ZipArchiveEntry archiveEntry = archive.CreateEntry($"MasterDB.{CurrentGame}_{build}.bin");
-                    await using Stream entryStream = archiveEntry.Open();
-                    await Task.Run(() => BinaryConverter.Serialize(CurrentDataBase, entryStream));
+                    using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create, true))
+                    {
+                        string build = dbCurrentBuild.Trim(' ', '*', '.');
+                        ZipArchiveEntry archiveEntry = archive.CreateEntry($"MasterDB.{CurrentGame}_{build}.bin");
+                        await using Stream entryStream = archiveEntry.Open();
+                        await Task.Run(() => BinaryConverter.Serialize(CurrentDataBase, entryStream));
+                    }
                 }
+
+                File.Move(tempDbPath, CurrentDBPath, true);
+            }
+            finally
+            {
+                File.Delete(tempDbPath);
             }
             menu_SaveXEmptyLines.IsEnabled = false;
             CurrentOverallOperationText = $"Database saved.";

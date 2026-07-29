@@ -88,6 +88,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, GestureTrackRecord> GeneratedGestureTracks = new();
         /// <summary>
+        /// Dictionary that stores generated prop/action catalog records
+        /// </summary>
+        public ConcurrentDictionary<string, PropActionRecord> GeneratedPropActions = new();
+        /// <summary>
         /// Used to do per-class locking during generation
         /// </summary>
         public ConcurrentDictionary<string, Lock> ClassLocks = new();
@@ -113,6 +117,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedMaterialSpecifications.Clear();
             GeneratedActors.Clear();
             GeneratedGestureTracks.Clear();
+            GeneratedPropActions.Clear();
         }
 
         public string GetProgressString()
@@ -128,6 +133,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Sequence Events: {GeneratedSequenceEvents.Count}\n" +
                    $"Actors: {GeneratedActors.Count}\n" +
                    $"Gesture Tracks: {GeneratedGestureTracks.Count}\n" +
+                   $"Prop Actions: {GeneratedPropActions.Count}\n" +
                    $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
@@ -215,6 +221,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 .OrderBy(x => x.TrackName, System.StringComparer.OrdinalIgnoreCase)
                 .ToList();
             pdb.GestureTracks.AddRange(gestureTracksSorted);
+
+            var propActionsSorted = GeneratedPropActions.Values
+                .OrderBy(x => x.PropName, System.StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.ActionName, System.StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.SourceFileKey)
+                .ThenBy(x => x.SourceTrackUIndex)
+                .ThenBy(x => x.SourceKeyIndex)
+                .ToList();
+            pdb.PropActions.AddRange(propActionsSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

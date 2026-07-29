@@ -59,6 +59,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<GestureTrackRecord> GestureTracks { get; set; } = new();
 
+        public List<PropActionRecord> PropActions { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -97,6 +99,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             TlkStrings.Clear();
             Actors.Clear();
             GestureTracks.Clear();
+            PropActions.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -116,6 +119,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             TlkStrings.AddRange(from.TlkStrings);
             Actors.AddRange(from.Actors);
             GestureTracks.AddRange(from.GestureTracks);
+            PropActions.AddRange(from.PropActions);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -956,5 +960,49 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     public sealed record GestureTrackUsage(int FileKey, int UIndex, bool IsInMod) : IAssetUsage
     {
         public GestureTrackUsage() : this(default, default, default) { }
+    }
+
+    public class PropActionRecord : IAssetRecord
+    {
+        public string PropName { get; set; }
+        public string ActionName { get; set; }
+        public int SourceFileKey { get; set; }
+        public int SourceTrackUIndex { get; set; }
+        public int SourceKeyIndex { get; set; } = -1;
+        public int SourceWeaponUIndex { get; set; }
+        public bool HasEffects { get; set; }
+
+        [IgnoredMember]
+        public IEnumerable<IAssetUsage> AssetUsages => Usages;
+
+        public List<PropActionUsage> Usages { get; set; } = new();
+
+        public PropActionRecord(
+            string propName,
+            string actionName,
+            int sourceFileKey,
+            int sourceTrackUIndex,
+            int sourceKeyIndex,
+            int sourceWeaponUIndex,
+            bool hasEffects,
+            bool isMod)
+        {
+            PropName = propName;
+            ActionName = actionName;
+            SourceFileKey = sourceFileKey;
+            SourceTrackUIndex = sourceTrackUIndex;
+            SourceKeyIndex = sourceKeyIndex;
+            SourceWeaponUIndex = sourceWeaponUIndex;
+            HasEffects = hasEffects;
+            Usages.Add(new PropActionUsage(sourceFileKey, sourceTrackUIndex != 0 ? sourceTrackUIndex : sourceWeaponUIndex, isMod));
+        }
+
+        public PropActionRecord()
+        { }
+    }
+
+    public sealed record PropActionUsage(int FileKey, int UIndex, bool IsInMod) : IAssetUsage
+    {
+        public PropActionUsage() : this(default, default, default) { }
     }
 }
