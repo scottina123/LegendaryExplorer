@@ -7,6 +7,7 @@ using System.Windows.Input;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.Dialogue_Editor;
 using LegendaryExplorerCore.Packages;
+using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs;
 

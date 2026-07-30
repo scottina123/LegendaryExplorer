@@ -11073,17 +11073,30 @@ namespace LegendaryExplorer.DialogueEditor
                                                 ?? new SpeakerExtended(sourceNode.SpeakerIndex, $"Speaker {sourceNode.SpeakerIndex}");
                 SpeakerExtended sourceListener = snapshot.Conversation.Speakers.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.Listener)
                                                  ?? new SpeakerExtended(sourceNode.Listener, sourceNode.Listener == -3 ? "None" : $"Listener {sourceNode.Listener}");
-                if (!PromptForSavedNodeParticipants(sourceNode, sourceSpeaker, sourceListener,
-                        out CrossEditorParticipantOption speakerOption, out CrossEditorParticipantOption listenerOption))
+                CrossEditorParticipantSelection importSelection = PromptForCrossEditorParticipants(
+                    new DialogueNodeDragData(this, sourceNode),
+                    templateImport: true,
+                    sourceSpeakerOverride: sourceSpeaker,
+                    sourceListenerOverride: sourceListener);
+                if (importSelection?.Speaker?.Speaker == null || importSelection.Listener?.Speaker == null)
                 {
                     return;
+                }
+                CameraOrigin? appliedOrigin = null;
+                if (importSelection.CameraOrigin?.Recenter == true)
+                {
+                    if (!TryResolveCrossEditorCameraOrigin(importSelection.CameraOrigin, out CameraOrigin resolvedOrigin))
+                    {
+                        return;
+                    }
+                    appliedOrigin = resolvedOrigin;
                 }
 
                 using var suppressedPackageUpdates = SuppressPackageUpdatesAndDeferLocalUpdateReset();
                 SpeakerExtended destinationSpeaker = sourceNode.IsReply
                     ? SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == -2)
-                    : ResolveCrossEditorParticipant(speakerOption);
-                SpeakerExtended destinationListener = ResolveCrossEditorParticipant(listenerOption);
+                    : ResolveCrossEditorParticipant(importSelection.Speaker);
+                SpeakerExtended destinationListener = ResolveCrossEditorParticipant(importSelection.Listener);
                 if (destinationSpeaker == null || destinationListener == null)
                 {
                     return;
@@ -11114,9 +11127,27 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     throw new InvalidOperationException("The saved node could not be added to the destination conversation.");
                 }
+                if (appliedOrigin.HasValue && importResult?.InterpData != null)
+                {
+                    List<string> errors = [];
+                    foreach (ExportEntry trackMove in Pcc.Exports.Where(export => export.ClassName == "InterpTrackMove"
+                                 && export.IsDescendantOf(importResult.InterpData)))
+                    {
+                        if (!CameraPresetTrackCapture.TryRecenter(trackMove, appliedOrigin.Value, out string error))
+                        {
+                            errors.Add($"{trackMove.InstancedFullPath}: {error}");
+                        }
+                    }
+                    if (errors.Count > 0)
+                    {
+                        MessageBox.Show(this, string.Join(Environment.NewLine, errors.Take(20)),
+                            "Some Imported Camera TrackMoves Were Not Re-centered",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
                 UpdateNodeLineDerivedData(copiedNode);
-                CopyRetainedParticipantFaceFx(speakerOption, destinationSpeaker);
-                CopyRetainedParticipantFaceFx(listenerOption, destinationListener);
+                CopyRetainedParticipantFaceFx(importSelection.Speaker, destinationSpeaker);
+                CopyRetainedParticipantFaceFx(importSelection.Listener, destinationListener);
                 RecreateNodesToProperties(SelectedConv);
 
                 PointF position = GetNewDialogueNodePosition(copiedNode.IsReply);
@@ -11344,14 +11375,20 @@ namespace LegendaryExplorer.DialogueEditor
             return copiedNode;
         }
 
-        private CrossEditorParticipantSelection PromptForCrossEditorParticipants(DialogueNodeDragData nodeDragData)
+        private CrossEditorParticipantSelection PromptForCrossEditorParticipants(
+            DialogueNodeDragData nodeDragData,
+            bool templateImport = false,
+            SpeakerExtended sourceSpeakerOverride = null,
+            SpeakerExtended sourceListenerOverride = null)
         {
             DialogueNodeExtended sourceNode = nodeDragData.SourceNode;
             DialogueEditorWindow sourceEditor = nodeDragData.SourceEditor;
-            SpeakerExtended sourceSpeaker = sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.SpeakerIndex)
+            SpeakerExtended sourceSpeaker = sourceSpeakerOverride
+                                                    ?? sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.SpeakerIndex)
                                                     ?? sourceNode.SpeakerTag
                                                     ?? new SpeakerExtended(sourceNode.SpeakerIndex, $"Speaker {sourceNode.SpeakerIndex}");
-            SpeakerExtended sourceListener = sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.Listener)
+            SpeakerExtended sourceListener = sourceListenerOverride
+                                                     ?? sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == sourceNode.Listener)
                                                      ?? new SpeakerExtended(sourceNode.Listener, sourceNode.Listener == -3 ? "None" : $"Listener {sourceNode.Listener}");
 
             var speakerOptions = CreateParticipantOptions(sourceSpeaker, includeNone: false);
@@ -11375,7 +11412,7 @@ namespace LegendaryExplorer.DialogueEditor
             };
             var recenterCheckBox = new CheckBox
             {
-                Content = "Re-center copied camera TrackMoves",
+                Content = templateImport ? "Re-center imported camera TrackMoves" : "Re-center copied camera TrackMoves",
                 Margin = new Thickness(0, 8, 0, 4)
             };
             var originModeComboBox = new ComboBox
@@ -11538,7 +11575,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             var dialog = new Window
             {
-                Title = "Copy Dialogue Node Participants",
+                Title = templateImport ? "Import Saved Dialogue Node" : "Copy Dialogue Node Participants",
                 Owner = this,
                 SizeToContent = SizeToContent.WidthAndHeight,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -11563,7 +11600,9 @@ namespace LegendaryExplorer.DialogueEditor
 
             var prompt = new TextBlock
             {
-                Text = "Choose destination participants. Keeping a source participant adds it to the destination conversation and copies its FaceFX.",
+                Text = templateImport
+                    ? "Choose destination participants and optionally re-center camera TrackMoves while applying this saved node."
+                    : "Choose destination participants. Keeping a source participant adds it to the destination conversation and copies its FaceFX.",
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 560,
                 Margin = new Thickness(0, 0, 0, 12)
@@ -11592,6 +11631,12 @@ namespace LegendaryExplorer.DialogueEditor
             Grid.SetColumn(copyModeComboBox, 1);
             grid.Children.Add(copyModeComboBox);
 
+            if (templateImport)
+            {
+                copyModeLabel.Visibility = Visibility.Collapsed;
+                copyModeComboBox.Visibility = Visibility.Collapsed;
+            }
+
             Grid.SetRow(recenterCheckBox, 4);
             Grid.SetColumnSpan(recenterCheckBox, 2);
             grid.Children.Add(recenterCheckBox);
@@ -11613,7 +11658,7 @@ namespace LegendaryExplorer.DialogueEditor
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 12, 0, 0)
             };
-            var copyButton = new Button { Content = "Copy", IsDefault = true, MinWidth = 90, Padding = new Thickness(10, 4, 10, 4) };
+            var copyButton = new Button { Content = templateImport ? "Import" : "Copy", IsDefault = true, MinWidth = 90, Padding = new Thickness(10, 4, 10, 4) };
             copyButton.Click += (_, _) =>
             {
                 if (recenterCheckBox.IsChecked == true
