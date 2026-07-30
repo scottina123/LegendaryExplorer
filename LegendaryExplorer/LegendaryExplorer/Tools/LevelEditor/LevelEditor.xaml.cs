@@ -2957,6 +2957,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         pointLightItem.Click += (_, _) => CreatePointLight(location);
         createMenu.Items.Add(pointLightItem);
 
+        var spotLightItem = new System.Windows.Controls.MenuItem { Header = "Spot Light" };
+        spotLightItem.Click += (_, _) => CreateSpotLight(location);
+        createMenu.Items.Add(spotLightItem);
+
         return createMenu;
     }
 
@@ -3013,6 +3017,77 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return [
             new FloatProperty(600f, "Radius"),
             new FloatProperty(5f, "Brightness"),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightColor"),
+            new BoolProperty(true, "bHasLightEverBeenBuiltIntoLightMap"),
+            CreateInitializedLightingChannelsProperty(),
+            CommonStructs.ColorProp(System.Drawing.Color.White, "LightEnv_BouncedModulationColor"),
+            new FloatProperty(0.129841f, "LightEnv_BouncedLightBrightness"),
+            new BoolProperty(true, "CastsShadows"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightGuid"),
+            CommonStructs.GuidProp(Guid.NewGuid(), "LightmassGuid"),
+            CommonStructs.MatrixProp(ActorUtils.ComposeLocalToWorld(location, new Rotator(0, 0, 0), Vector3.One), "CachedParentToWorld"),
+            new StructProperty("LightmassPointLightSettings", [
+                new FloatProperty(0.2f, "IndirectLightingScale")
+            ], "LightmassSettings"),
+            new ArrayProperty<NameProperty>("OtherLevelsToAffect")
+        ];
+    }
+
+    private void CreateSpotLight(Vector3 location)
+    {
+        if (ActiveFile is not { IsReadOnly: false } activeFile)
+        {
+            return;
+        }
+
+        ExportEntry actorExport = null;
+        ActorProxy actor = null;
+        try
+        {
+            IMEPackage package = activeFile.Package;
+            actorExport = ExportCreator.CreateExport(package, "SpotLight", "SpotLight", activeFile.LevelExport, createWithStack: true);
+            ExportEntry componentExport = ExportCreator.CreateExport(package, "SpotLightComponent", "SpotLightComponent", actorExport, prePropBinary: new byte[8]);
+            componentExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
+            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "Engine", "Default__SpotLight.SpotLightComponent0");
+
+            actorExport.WriteProperties([
+                new ObjectProperty(componentExport, "LightComponent"),
+                CommonStructs.Vector3Prop(location, "Location")
+            ]);
+
+            componentExport.WritePropertiesAndBinary(CreateSpotLightProperties(location), LightComponent.Create());
+
+            actor = ActorProxy.Create(this, actorExport)
+                    ?? throw new InvalidOperationException("The level editor cannot render SpotLight actors.");
+            actor.OwningFile = activeFile;
+
+            Level level = activeFile.LevelExport.GetBinaryData<Level>();
+            level.Actors.Add(actorExport.UIndex);
+            activeFile.LevelExport.WriteBinary(level);
+            AddActor(actor);
+            SelectActor(actor, false);
+            activeFile.IsDirty = true;
+            UndoHistory.Clear();
+            _preEditSnapshot = null;
+            SceneViewer?.MarkRenderDirty();
+        }
+        catch (Exception ex)
+        {
+            if (actorExport is not null && !actorExport.IsTrash())
+            {
+                EntryPruner.TrashEntryAndDescendants(actorExport);
+            }
+            MessageBox.Show(this, $"Failed to create SpotLight:\n{ex.Message}", "Error");
+        }
+    }
+
+    private static PropertyCollection CreateSpotLightProperties(Vector3 location)
+    {
+        return [
+            new FloatProperty(50f, "InnerConeAngle"),
+            new FloatProperty(70f, "OuterConeAngle"),
+            new FloatProperty(200f, "Radius"),
+            new FloatProperty(2f, "Brightness"),
             CommonStructs.ColorProp(System.Drawing.Color.White, "LightColor"),
             new BoolProperty(true, "bHasLightEverBeenBuiltIntoLightMap"),
             CreateInitializedLightingChannelsProperty(),
