@@ -207,7 +207,8 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
 
             rop.CrossPackageMap.OnDictionaryChanged += (sender, args) =>
             {
-                if (args.Type == DictChangeType.AddItem)
+                if (args.Type == DictChangeType.AddItem
+                    && !rop.RelinkMapEntriesToSkip.Contains(args.Key))
                 {
                     mappingList.Add(new KeyValuePair<IEntry, IEntry>(args.Key, args.Value));
                     //Debug.WriteLine($"ROP {rop.aDebuggingGuid} -  Adding relink mapping {args.Key.ObjectName} {args.Key.UIndex} -> {args.Value.UIndex}");
@@ -1022,6 +1023,10 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 }
 #endif
                 //Debug.WriteLine($"Relink hit [EXPERIMENTAL]: Existing entry in file was found, linking to it:  {uIndex} {sourceExport.InstancedFullPath} -> {existingEntry.InstancedFullPath}");
+                if (!rop.CrossPackageMap.ContainsKey(sourceExport))
+                {
+                    rop.CrossPackageMap.Add(sourceExport, existingEntry);
+                }
                 uIndex = existingEntry.UIndex;
             }
             else if (rop.ImportExportDependencies)
@@ -1062,6 +1067,10 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                             if (existingEntry != null)
                             {
                                 // Relink to existing object
+                                if (!rop.CrossPackageMap.ContainsKey(sourceExport))
+                                {
+                                    rop.CrossPackageMap.Add(sourceExport, existingEntry);
+                                }
                                 uIndex = existingEntry.UIndex;
                                 return null;
                             }

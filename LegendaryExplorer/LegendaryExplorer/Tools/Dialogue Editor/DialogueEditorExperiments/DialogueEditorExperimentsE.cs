@@ -428,8 +428,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             int existingDestinationExportCount = destinationEditor.Pcc.ExportCount;
             relinkerOptions.CrossPackageMap.OnDictionaryChanged += (_, args) =>
             {
-                if (args.Type == DictChangeType.AddItem
-                    && args.Key is ExportEntry sourceExport
+                if (args.Key is ExportEntry sourceExport
                     && args.Value is ExportEntry destinationExport
                     && destinationExport.UIndex <= existingDestinationExportCount)
                 {
@@ -462,6 +461,16 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
             EnsureUniqueImportedObjectNames(destinationEditor.Pcc, existingDestinationExportCount, relinkerOptions);
 
+            foreach ((IEntry sourceEntry, IEntry destinationEntry) in relinkerOptions.CrossPackageMap)
+            {
+                if (sourceEntry is ExportEntry sourceExport
+                    && destinationEntry is ExportEntry destinationExport
+                    && destinationExport.UIndex <= existingDestinationExportCount)
+                {
+                    relinkerOptions.RelinkMapEntriesToSkip.Add(sourceExport);
+                }
+            }
+
             relinkerOptions.ImportExportDependencies = true;
             Relinker.RelinkAll(relinkerOptions);
             relinkResults.AddRange(relinkerOptions.RelinkReport);
@@ -490,6 +499,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 }
             }
             EnsureUniqueImportedObjectNames(destinationEditor.Pcc, existingDestinationExportCount, relinkerOptions);
+            RemoveResolvedWwiseRelinkReports(relinkResults);
 
             relinkerOptions.CrossPackageMap.TryGetValue(sourceInterpData, out IEntry importedInterpData);
             relinkerOptions.CrossPackageMap.TryGetValue(sourceConvNode, out IEntry importedConvNode);
@@ -499,6 +509,36 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 ConvNode = importedConvNode as ExportEntry,
                 RelinkResults = relinkResults
             };
+        }
+
+        private static void RemoveResolvedWwiseRelinkReports(List<EntryStringPair> relinkResults)
+        {
+            var resolvedWwiseEvents = new Dictionary<int, bool>();
+            relinkResults.RemoveAll(result =>
+            {
+                if (result.Entry is not ExportEntry { ClassName: "WwiseEvent" } wwiseEventExport
+                    || !result.Message.Contains("(Binary Property: WwiseStreams", StringComparison.Ordinal)
+                    || !result.Message.Contains("references invalid UIndex", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                if (!resolvedWwiseEvents.TryGetValue(wwiseEventExport.UIndex, out bool isResolved))
+                {
+                    WwiseEvent wwiseEvent = ObjectBinary.From<WwiseEvent>(wwiseEventExport);
+                    List<int> streamUIndexes = wwiseEvent.Links?
+                        .Where(link => link?.WwiseStreams != null)
+                        .SelectMany(link => link.WwiseStreams)
+                        .ToList() ?? [];
+                    isResolved = streamUIndexes.Count > 0
+                                 && streamUIndexes.All(uIndex =>
+                                     wwiseEventExport.FileRef.TryGetUExport(uIndex, out ExportEntry streamExport)
+                                     && streamExport.ClassName == "WwiseStream");
+                    resolvedWwiseEvents[wwiseEventExport.UIndex] = isResolved;
+                }
+
+                return isResolved;
+            });
         }
 
         private static void EnsureUniqueImportedObjectNames(
