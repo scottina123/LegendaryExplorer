@@ -231,8 +231,15 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     crossEditorDragActive = true;
                     e.Handled = true;
-                    graph.DoDragDrop(new DialogueNodeDragData(graph.Owner, draggedDialogueNode.Node), DragDropEffects.Copy);
-                    nextCrossEditorDragAllowedUtc = DateTime.UtcNow.AddMilliseconds(750);
+                    try
+                    {
+                        graph.DoDragDrop(new DialogueNodeDragData(graph.Owner, draggedDialogueNode.Node), DragDropEffects.Copy);
+                    }
+                    finally
+                    {
+                        crossEditorDragActive = false;
+                        nextCrossEditorDragAllowedUtc = DateTime.UtcNow.AddMilliseconds(250);
+                    }
                     return;
                 }
 

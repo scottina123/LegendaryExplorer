@@ -442,6 +442,11 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
             var relinkResults = new List<EntryStringPair>();
             foreach (ExportEntry sourceSequenceObject in connectedSequenceObjects)
             {
+                if (relinkerOptions.CrossPackageMap.ContainsKey(sourceSequenceObject))
+                {
+                    continue;
+                }
+
                 EntryImporter.PortingOption portingOption = sourceSequenceObject.FileRef.Tree.NumChildrenOf(sourceSequenceObject) > 0
                     ? EntryImporter.PortingOption.CloneTreeAsChild
                     : EntryImporter.PortingOption.AddSingularAsChild;
@@ -454,6 +459,8 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                     relinkerOptions,
                     out _));
             }
+
+            EnsureUniqueImportedObjectNames(destinationEditor.Pcc, existingDestinationExportCount, relinkerOptions);
 
             relinkerOptions.ImportExportDependencies = true;
             Relinker.RelinkAll(relinkerOptions);
@@ -482,6 +489,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                     relinkResults.AddRange(MatineeHelper.CloneGestureTrackAnimSets(sourceGestureTrack, destinationGestureTrack, relinkerOptions));
                 }
             }
+            EnsureUniqueImportedObjectNames(destinationEditor.Pcc, existingDestinationExportCount, relinkerOptions);
 
             relinkerOptions.CrossPackageMap.TryGetValue(sourceInterpData, out IEntry importedInterpData);
             relinkerOptions.CrossPackageMap.TryGetValue(sourceConvNode, out IEntry importedConvNode);
@@ -491,6 +499,28 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 ConvNode = importedConvNode as ExportEntry,
                 RelinkResults = relinkResults
             };
+        }
+
+        private static void EnsureUniqueImportedObjectNames(
+            IMEPackage destinationPackage,
+            int existingDestinationExportCount,
+            RelinkerOptionsPackage relinkerOptions)
+        {
+            foreach (ExportEntry importedExport in relinkerOptions.CrossPackageMap.Values
+                         .OfType<ExportEntry>()
+                         .Where(export => export.UIndex > existingDestinationExportCount)
+                         .DistinctBy(export => export.UIndex)
+                         .OrderBy(export => export.UIndex))
+            {
+                bool hasDuplicateName = destinationPackage.Exports.Any(export =>
+                    export != importedExport
+                    && export.idxLink == importedExport.idxLink
+                    && export.ObjectName == importedExport.ObjectName);
+                if (hasDuplicateName)
+                {
+                    importedExport.indexValue = destinationPackage.GetNextIndexForInstancedName(importedExport);
+                }
+            }
         }
 
         private static void RepairImportedSequenceLinks(RelinkerOptionsPackage relinkerOptions)
