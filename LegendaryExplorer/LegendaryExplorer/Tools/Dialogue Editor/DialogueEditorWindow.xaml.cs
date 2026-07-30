@@ -10580,6 +10580,7 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            using var suppressedPackageUpdates = SuppressPackageUpdatesAndDeferLocalUpdateReset();
             SpeakerExtended destinationSpeaker = ResolveCrossEditorParticipant(participantSelection.Speaker);
             SpeakerExtended destinationListener = ResolveCrossEditorParticipant(participantSelection.Listener);
             int newExportId = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
@@ -10627,9 +10628,13 @@ namespace LegendaryExplorer.DialogueEditor
             }
             SaveSpeakersToProperties(SelectedSpeakerList);
 
-            RemoveConversationGraphCache([SelectedConv.UIndex]);
-            GenerateGraph(regenerate: true);
+            PointF copiedNodePosition = GetNewDialogueNodePosition(copiedNode.IsReply);
+            DiagNode copiedGraphNode = copiedNode.IsReply
+                ? new DiagNodeReply(this, copiedNode, copiedNodePosition.X, copiedNodePosition.Y, graphEditor)
+                : new DiagNodeEntry(this, copiedNode, copiedNodePosition.X, copiedNodePosition.Y, graphEditor);
+            AddDialogueNodeToGraphInPlace(copiedGraphNode, copiedNodePosition, centerView: false);
             SelectDialogueNodeByIndex(copiedNode.NodeCount, copiedNode.IsReply, centerView: true);
+            CacheCurrentConversationGraphState();
             StatusBar_OtherText.Text = $"Copied node as ExportID {newExportId} from another Dialogue Editor.";
 
             if (importResult.RelinkResults.Count > 0)
