@@ -795,8 +795,8 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Class Records" Style="{StaticResource ColumnHeaderStyle}" Grid.Row="0" ToolTip="Unreal classes"/>
-                                <controls:ListBoxScroll x:Name="lstbx_Classes"  MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.ClassRecords, Mode=OneWay}" Grid.Row="1"
-                                                        SelectedItem="{Binding SelectedClass}">
+                                <controls:ListBoxScroll x:Name="lstbx_Classes" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.ClassRecords, Mode=OneWay}" Grid.Row="2"
+                                                        SelectedItem="{Binding SelectedClass}" VirtualizingPanel.VirtualizationMode="Recycling">
                                     <controls:ListBoxScroll.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal">
@@ -839,7 +839,7 @@
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Properties" Style="{StaticResource ColumnHeaderStyle}" Grid.Row="0" ToolTip="Properties of this class that are used in game"/>
                                 <controls:ListBoxScroll x:Name="lstbx_Properties" MinWidth="200" ItemsSource="{Binding Source={StaticResource PropertyContentView} }"
-                                                        ItemTemplate="{StaticResource PropertyTemplate}" Grid.Row="1" >
+                                                        ItemTemplate="{StaticResource PropertyTemplate}" Grid.Row="2" VirtualizingPanel.VirtualizationMode="Recycling">
                                     <controls:ListBoxScroll.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="Open Class Definition" Command="{Binding OpenSourcePkgCommand}" ToolTip="Opens this class definition in Package Editor" />
