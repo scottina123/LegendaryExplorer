@@ -62,7 +62,7 @@
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenFileCommand}"/>
         <KeyBinding Key="O" Modifiers="Control+Shift" Command="{Binding AddFileCommand}"/>
-        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveFileCommand}"/>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveAllCommand}"/>
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveAsCommand}"/>
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}"/>
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}"/>
@@ -79,7 +79,16 @@
                     <MenuItem Header="Add File..." Command="{Binding AddFileCommand}" InputGestureText="Ctrl+Shift+O" ToolTip="Add another level file to the scene"/>
                     <MenuItem Header="Load Related Levels" Command="{Binding LoadRelatedLevelsCommand}" ToolTip="Load all related level files for the current level" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <Separator />
-                    <MenuItem Header="Save All" Command="{Binding SaveFileCommand}" InputGestureText="Ctrl+S" ToolTip="Save all open files in-place" IsEnabled="{Binding HasAnyFileOpen}"/>
+                    <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGestureText="Ctrl+S" ToolTip="Commit and save all open files in-place" IsEnabled="{Binding HasAnyFileOpen}"/>
+                    <MenuItem Header="Save Individual File" ItemsSource="{Binding OpenFiles}" IsEnabled="{Binding HasAnyFileOpen}" ToolTip="Commit and save a selected open file">
+                        <MenuItem.ItemContainerStyle>
+                            <Style TargetType="{x:Type MenuItem}">
+                                <Setter Property="Header" Value="{Binding FileName}"/>
+                                <Setter Property="Command" Value="{Binding Data.SaveSingleFileCommand, Source={StaticResource bindingProxy}}"/>
+                                <Setter Property="CommandParameter" Value="{Binding}"/>
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
                     <MenuItem Header="Save As..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" ToolTip="Save selected file to another location" IsEnabled="{Binding HasAnyFileOpen}"/>
                     <MenuItem Header="Open file location" Command="{Binding OpenCurrentFileLocationCommand}" ToolTip="{Binding CurrentPackageFilePath, StringFormat=Open containing folder for {0}}"/>
                     <MenuItem Header="Copy file name" Command="{Binding CopyCurrentFileNameCommand}"/>

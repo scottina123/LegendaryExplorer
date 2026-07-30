@@ -1985,20 +1985,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
     private async void SaveAllFiles()
     {
-        if (IsDirty)
-        {
-            switch (MessageBox.Show("Do you want to commit your Level Editor changes before saving all files?", "Uncommitted changes", MessageBoxButton.YesNoCancel))
-            {
-                case MessageBoxResult.Yes:
-                    CommitChanges();
-                    break;
-                case MessageBoxResult.No:
-                    break;
-                case MessageBoxResult.Cancel:
-                default:
-                    return;
-            }
-        }
+        CommitChanges();
+
         foreach (var file in OpenFiles)
         {
             if (!file.IsReadOnly && file.Package.IsModified)
@@ -2015,18 +2003,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
         if (file.IsDirty)
         {
-            switch (MessageBox.Show($"Do you want to commit changes to {file.FileName} before saving?", "Uncommitted changes", MessageBoxButton.YesNoCancel))
-            {
-                case MessageBoxResult.Yes:
-                    CommitChangesForFile(file);
-                    break;
-                case MessageBoxResult.No:
-                    break;
-                case MessageBoxResult.Cancel:
-                default:
-                    return;
-            }
+            CommitChangesForFile(file);
         }
+
         await file.Package.SaveAsync();
     }
 
