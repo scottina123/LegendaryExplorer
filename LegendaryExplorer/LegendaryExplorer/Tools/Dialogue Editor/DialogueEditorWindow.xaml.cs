@@ -162,6 +162,26 @@ namespace LegendaryExplorer.DialogueEditor
         {
             internal CrossEditorParticipantOption Speaker { get; init; }
             internal CrossEditorParticipantOption Listener { get; init; }
+            internal CrossEditorCopyMode CopyMode { get; init; }
+        }
+
+        private sealed class CrossEditorCopySelection
+        {
+            internal CrossEditorCopyMode CopyMode { get; init; }
+            internal Dictionary<int, CrossEditorParticipantOption> Participants { get; init; } = [];
+        }
+
+        private sealed class CrossEditorBranchCopyResult
+        {
+            internal Dictionary<DialogueNodeExtended, DialogueNodeExtended> CopiedNodes { get; } = [];
+            internal List<EntryStringPair> RelinkResults { get; } = [];
+        }
+
+        private enum CrossEditorCopyMode
+        {
+            SingleNode,
+            ForwardBranch,
+            EntireBranch
         }
 
         private readonly ConvGraphEditor graphEditor;
@@ -177,6 +197,226 @@ namespace LegendaryExplorer.DialogueEditor
         {
             get => _SelectedDialogueNode;
             set => SetProperty(ref _SelectedDialogueNode, value);
+        }
+
+        private static List<DialogueNodeExtended> GetCrossEditorNodesToCopy(
+            ConversationExtended sourceConversation,
+            DialogueNodeExtended sourceNode,
+            CrossEditorCopyMode copyMode)
+        {
+            if (copyMode == CrossEditorCopyMode.SingleNode)
+            {
+                return [sourceNode];
+            }
+
+            var allNodes = sourceConversation.EntryList.Concat(sourceConversation.ReplyList).ToList();
+            var outgoing = allNodes.ToDictionary(node => node, node => GetOutgoingDialogueNodes(sourceConversation, node));
+            Dictionary<DialogueNodeExtended, List<DialogueNodeExtended>> incoming = null;
+            if (copyMode == CrossEditorCopyMode.EntireBranch)
+            {
+                incoming = allNodes.ToDictionary(node => node, _ => new List<DialogueNodeExtended>());
+                foreach ((DialogueNodeExtended node, List<DialogueNodeExtended> targets) in outgoing)
+                {
+                    foreach (DialogueNodeExtended target in targets)
+                    {
+                        incoming[target].Add(node);
+                    }
+                }
+            }
+
+            var result = new List<DialogueNodeExtended>();
+            var visited = new HashSet<DialogueNodeExtended>();
+            var pending = new Queue<DialogueNodeExtended>();
+            pending.Enqueue(sourceNode);
+            while (pending.TryDequeue(out DialogueNodeExtended node) && visited.Add(node))
+            {
+                result.Add(node);
+                foreach (DialogueNodeExtended target in outgoing[node])
+                {
+                    pending.Enqueue(target);
+                }
+
+                if (incoming != null)
+                {
+                    foreach (DialogueNodeExtended source in incoming[node])
+                    {
+                        pending.Enqueue(source);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static List<DialogueNodeExtended> GetOutgoingDialogueNodes(
+            ConversationExtended conversation,
+            DialogueNodeExtended node)
+        {
+            if (node.IsReply)
+            {
+                return node.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")?
+                    .Where(reference => reference.Value >= 0 && reference.Value < conversation.EntryList.Count)
+                    .Select(reference => conversation.EntryList[reference.Value])
+                    .ToList() ?? [];
+            }
+
+            return node.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?
+                .Select(reference => reference.GetProp<IntProperty>("nIndex")?.Value ?? -1)
+                .Where(index => index >= 0 && index < conversation.ReplyList.Count)
+                .Select(index => conversation.ReplyList[index])
+                .ToList() ?? [];
+        }
+
+        private Dictionary<int, CrossEditorParticipantOption> BuildCrossEditorParticipantMap(
+            DialogueEditorWindow sourceEditor,
+            IReadOnlyCollection<DialogueNodeExtended> sourceNodes,
+            DialogueNodeExtended draggedNode,
+            CrossEditorParticipantSelection draggedNodeSelection)
+        {
+            var participantMap = new Dictionary<int, CrossEditorParticipantOption>
+            {
+                [draggedNode.SpeakerIndex] = draggedNodeSelection.Speaker,
+                [draggedNode.Listener] = draggedNodeSelection.Listener
+            };
+
+            foreach (int participantId in sourceNodes
+                         .SelectMany(node => new[] { node.IsReply ? -2 : node.SpeakerIndex, node.Listener })
+                         .Distinct())
+            {
+                if (participantMap.ContainsKey(participantId))
+                {
+                    continue;
+                }
+
+                SpeakerExtended destinationSpecialParticipant = participantId < 0
+                    ? SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == participantId)
+                    : null;
+                if (destinationSpecialParticipant != null)
+                {
+                    participantMap[participantId] = new CrossEditorParticipantOption
+                    {
+                        Speaker = destinationSpecialParticipant,
+                        DisplayName = destinationSpecialParticipant.DisplayName
+                    };
+                    continue;
+                }
+
+                SpeakerExtended sourceParticipant = sourceEditor.SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == participantId)
+                                                    ?? new SpeakerExtended(participantId, $"Speaker {participantId}");
+                participantMap[participantId] = new CrossEditorParticipantOption
+                {
+                    Speaker = sourceParticipant,
+                    KeepSource = true,
+                    DisplayName = $"Keep source: {sourceParticipant.DisplayName}"
+                };
+            }
+
+            return participantMap;
+        }
+
+        private CrossEditorBranchCopyResult CopyCrossEditorBranchNodes(
+            DialogueEditorWindow sourceEditor,
+            IReadOnlyCollection<DialogueNodeExtended> sourceNodes,
+            IReadOnlyDictionary<int, CrossEditorParticipantOption> participantMap)
+        {
+            var result = new CrossEditorBranchCopyResult();
+            var destinationParticipants = participantMap.ToDictionary(
+                pair => pair.Key,
+                pair => ResolveCrossEditorParticipant(pair.Value));
+            int nextExportId = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
+                .Select(node => node.ExportID)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+
+            foreach (DialogueNodeExtended sourceNode in sourceNodes)
+            {
+                DialogueEditorExperimentsE.CrossEditorSequenceImportResult importResult = null;
+                if (sourceNode.InterpData != null)
+                {
+                    importResult = DialogueEditorExperimentsE.ImportNodeSequence(
+                        sourceEditor,
+                        sourceNode,
+                        this);
+                    if (importResult?.InterpData == null || importResult.ConvNode == null)
+                    {
+                        continue;
+                    }
+                }
+
+                int newExportId = nextExportId++;
+                if (importResult?.ConvNode != null)
+                {
+                    importResult.ConvNode.WriteProperty(new IntProperty(newExportId, "m_nNodeID"));
+                    if (SelectedConv.BioConvo.GetProp<IntProperty>("m_nResRefID") is { } destinationResRef)
+                    {
+                        importResult.ConvNode.WriteProperty(new IntProperty(destinationResRef.Value, "m_nConvResRefID"));
+                    }
+                }
+
+                int speakerId = sourceNode.IsReply ? -2 : sourceNode.SpeakerIndex;
+                DialogueNodeExtended copiedNode = AddCrossEditorDialogueNode(
+                    sourceNode,
+                    destinationParticipants[speakerId],
+                    destinationParticipants[sourceNode.Listener],
+                    importResult?.InterpData,
+                    newExportId);
+                if (copiedNode != null)
+                {
+                    result.CopiedNodes[sourceNode] = copiedNode;
+                }
+                if (importResult != null)
+                {
+                    result.RelinkResults.AddRange(importResult.RelinkResults);
+                }
+            }
+
+            foreach ((int participantId, CrossEditorParticipantOption option) in participantMap)
+            {
+                CopyRetainedParticipantFaceFx(option, destinationParticipants[participantId]);
+            }
+            SaveSpeakersToProperties(SelectedSpeakerList);
+            return result;
+        }
+
+        private static void RestoreCrossEditorBranchLinks(
+            IReadOnlyDictionary<DialogueNodeExtended, DialogueNodeExtended> copiedNodes,
+            ConversationExtended sourceConversation)
+        {
+            foreach ((DialogueNodeExtended sourceNode, DialogueNodeExtended copiedNode) in copiedNodes)
+            {
+                if (sourceNode.IsReply)
+                {
+                    var copiedEntryLinks = new ArrayProperty<IntProperty>("EntryList");
+                    ArrayProperty<IntProperty> sourceEntryLinks = sourceNode.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList");
+                    foreach (IntProperty sourceLink in sourceEntryLinks ?? Enumerable.Empty<IntProperty>())
+                    {
+                        if (sourceLink.Value >= 0
+                            && sourceLink.Value < sourceConversation.EntryList.Count
+                            && copiedNodes.TryGetValue(sourceConversation.EntryList[sourceLink.Value], out DialogueNodeExtended copiedTarget))
+                        {
+                            copiedEntryLinks.Add(new IntProperty(copiedTarget.NodeCount));
+                        }
+                    }
+                    copiedNode.NodeProp.Properties.AddOrReplaceProp(copiedEntryLinks);
+                    continue;
+                }
+
+                var copiedReplyLinks = new ArrayProperty<StructProperty>("ReplyListNew");
+                ArrayProperty<StructProperty> sourceReplyLinks = sourceNode.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew");
+                foreach (StructProperty sourceLink in sourceReplyLinks ?? Enumerable.Empty<StructProperty>())
+                {
+                    IntProperty sourceTargetIndex = sourceLink.GetProp<IntProperty>("nIndex");
+                    if (sourceTargetIndex?.Value >= 0
+                        && sourceTargetIndex.Value < sourceConversation.ReplyList.Count
+                        && copiedNodes.TryGetValue(sourceConversation.ReplyList[sourceTargetIndex.Value], out DialogueNodeExtended copiedTarget))
+                    {
+                        StructProperty copiedLink = sourceLink.DeepClone();
+                        copiedLink.Properties.AddOrReplaceProp(new IntProperty(copiedTarget.NodeCount, "nIndex"));
+                        copiedReplyLinks.Add(copiedLink);
+                    }
+                }
+                copiedNode.NodeProp.Properties.AddOrReplaceProp(copiedReplyLinks);
+            }
         }
         private DialogueNodeExtended MirrorDialogueNode;
         private bool IsLocalUpdate; //Used to prevent uneccessary UI updates.
@@ -1694,7 +1934,7 @@ namespace LegendaryExplorer.DialogueEditor
             return new PointF(0, startOrder * 127);
         }
 
-        private void AddDialogueNodeToGraphInPlace(DiagNode node, PointF position, bool centerView = true)
+        private void AddDialogueNodeToGraphInPlace(DiagNode node, PointF position, bool centerView = true, bool createConnections = true)
         {
             if (node == null)
             {
@@ -1707,7 +1947,10 @@ namespace LegendaryExplorer.DialogueEditor
             node.SetOffset(position.X, position.Y);
             node.MouseDown += node_MouseDown;
             node.Click += node_Click;
-            node.RecreateConnections(CurrentObjects);
+            if (createConnections)
+            {
+                node.RecreateConnections(CurrentObjects);
+            }
 
             foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
@@ -10581,18 +10824,22 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             using var suppressedPackageUpdates = SuppressPackageUpdatesAndDeferLocalUpdateReset();
-            SpeakerExtended destinationSpeaker = ResolveCrossEditorParticipant(participantSelection.Speaker);
-            SpeakerExtended destinationListener = ResolveCrossEditorParticipant(participantSelection.Listener);
-            int newExportId = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
-                .Select(node => node.ExportID)
-                .DefaultIfEmpty(0)
-                .Max() + 1;
-
-            DialogueEditorExperimentsE.CrossEditorSequenceImportResult importResult = DialogueEditorExperimentsE.ImportNodeSequence(
-                nodeDragData.SourceEditor,
+            List<DialogueNodeExtended> sourceNodes = GetCrossEditorNodesToCopy(
+                nodeDragData.SourceEditor.SelectedConv,
                 nodeDragData.SourceNode,
-                this);
-            if (importResult?.InterpData == null || importResult.ConvNode == null)
+                participantSelection.CopyMode);
+            Dictionary<int, CrossEditorParticipantOption> participantMap = BuildCrossEditorParticipantMap(
+                nodeDragData.SourceEditor,
+                sourceNodes,
+                nodeDragData.SourceNode,
+                participantSelection);
+            CrossEditorBranchCopyResult copyResult = CopyCrossEditorBranchNodes(
+                nodeDragData.SourceEditor,
+                sourceNodes,
+                participantMap);
+            RestoreCrossEditorBranchLinks(copyResult.CopiedNodes, nodeDragData.SourceEditor.SelectedConv);
+            RecreateNodesToProperties(SelectedConv);
+            if (!copyResult.CopiedNodes.TryGetValue(nodeDragData.SourceNode, out DialogueNodeExtended copiedNode))
             {
                 MessageBox.Show(
                     "The node's sequence could not be imported or linked to the destination conversation.",
@@ -10602,44 +10849,34 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            importResult.ConvNode.WriteProperty(new IntProperty(newExportId, "m_nNodeID"));
-            if (SelectedConv.BioConvo.GetProp<IntProperty>("m_nResRefID") is { } destinationResRef)
+            var copiedGraphNodes = new List<DiagNode>();
+            foreach (DialogueNodeExtended branchNode in copyResult.CopiedNodes.Values)
             {
-                importResult.ConvNode.WriteProperty(new IntProperty(destinationResRef.Value, "m_nConvResRefID"));
+                PointF branchNodePosition = GetNewDialogueNodePosition(branchNode.IsReply);
+                DiagNode branchGraphNode = branchNode.IsReply
+                    ? new DiagNodeReply(this, branchNode, branchNodePosition.X, branchNodePosition.Y, graphEditor)
+                    : new DiagNodeEntry(this, branchNode, branchNodePosition.X, branchNodePosition.Y, graphEditor);
+                copiedGraphNodes.Add(branchGraphNode);
+                AddDialogueNodeToGraphInPlace(branchGraphNode, branchNodePosition, centerView: false, createConnections: false);
             }
-
-            DialogueNodeExtended copiedNode = AddCrossEditorDialogueNode(
-                nodeDragData.SourceNode,
-                destinationSpeaker,
-                destinationListener,
-                importResult.InterpData,
-                newExportId);
-            if (copiedNode == null)
+            foreach (DiagNode copiedGraphNode in copiedGraphNodes)
             {
-                MessageBox.Show("The dialogue-list node could not be created in the destination conversation.", "Copy dialogue node", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                copiedGraphNode.RecreateConnections(CurrentObjects);
             }
-
-            CopyRetainedParticipantFaceFx(participantSelection.Speaker, destinationSpeaker);
-            if (participantSelection.Listener.Speaker.SpeakerNameRef != participantSelection.Speaker.Speaker.SpeakerNameRef
-                || destinationListener.SpeakerID != destinationSpeaker.SpeakerID)
+            foreach (DiagEdEdge edge in graphEditor.edgeLayer)
             {
-                CopyRetainedParticipantFaceFx(participantSelection.Listener, destinationListener);
+                ConvGraphEditor.UpdateEdge(edge);
             }
-            SaveSpeakersToProperties(SelectedSpeakerList);
-
-            PointF copiedNodePosition = GetNewDialogueNodePosition(copiedNode.IsReply);
-            DiagNode copiedGraphNode = copiedNode.IsReply
-                ? new DiagNodeReply(this, copiedNode, copiedNodePosition.X, copiedNodePosition.Y, graphEditor)
-                : new DiagNodeEntry(this, copiedNode, copiedNodePosition.X, copiedNodePosition.Y, graphEditor);
-            AddDialogueNodeToGraphInPlace(copiedGraphNode, copiedNodePosition, centerView: false);
+            graphEditor.Refresh();
             SelectDialogueNodeByIndex(copiedNode.NodeCount, copiedNode.IsReply, centerView: true);
             CacheCurrentConversationGraphState();
-            StatusBar_OtherText.Text = $"Copied node as ExportID {newExportId} from another Dialogue Editor.";
+            StatusBar_OtherText.Text = copyResult.CopiedNodes.Count == 1
+                ? $"Copied node as ExportID {copiedNode.ExportID} from another Dialogue Editor."
+                : $"Copied {copyResult.CopiedNodes.Count} branch nodes from another Dialogue Editor.";
 
-            if (importResult.RelinkResults.Count > 0)
+            if (copyResult.RelinkResults.Count > 0)
             {
-                List<EntryStringPair> distinctRelinkResults = importResult.RelinkResults
+                List<EntryStringPair> distinctRelinkResults = copyResult.RelinkResults
                     .GroupBy(result => result.Message, StringComparer.Ordinal)
                     .Select(group => group.First())
                     .ToList();
@@ -10741,7 +10978,7 @@ namespace LegendaryExplorer.DialogueEditor
             nodeListProperty.Add(nodeProperty);
             DialogueNodeExtended copiedNode = SelectedConv.ParseSingleLine(nodeProperty, nodeIndex, sourceNode.IsReply, TLKLookup);
             copiedNode.InterpData = importedInterpData;
-            copiedNode.InterpLength = importedInterpData.GetProperty<FloatProperty>("InterpLength")?.Value ?? sourceNode.InterpLength;
+            copiedNode.InterpLength = importedInterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? sourceNode.InterpLength;
             copiedNode.Line = sourceNode.Line;
             copiedNode.SpeakerIndex = sourceNode.IsReply ? -2 : destinationSpeaker.SpeakerID;
             copiedNode.SpeakerTag = sourceNode.IsReply
@@ -10793,6 +11030,18 @@ namespace LegendaryExplorer.DialogueEditor
                 MinWidth = 360,
                 Margin = new Thickness(8, 4, 0, 4)
             };
+            var copyModeComboBox = new ComboBox
+            {
+                ItemsSource = new[]
+                {
+                    "Single node",
+                    "Forward branch",
+                    "Entire connected branch"
+                },
+                SelectedIndex = 0,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4)
+            };
 
             var dialog = new Window
             {
@@ -10811,6 +11060,7 @@ namespace LegendaryExplorer.DialogueEditor
             var grid = new Grid { Margin = new Thickness(16) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -10840,6 +11090,13 @@ namespace LegendaryExplorer.DialogueEditor
             Grid.SetColumn(listenerComboBox, 1);
             grid.Children.Add(listenerComboBox);
 
+            var copyModeLabel = new TextBlock { Text = "Copy:", VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRow(copyModeLabel, 3);
+            grid.Children.Add(copyModeLabel);
+            Grid.SetRow(copyModeComboBox, 3);
+            Grid.SetColumn(copyModeComboBox, 1);
+            grid.Children.Add(copyModeComboBox);
+
             var buttons = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -10850,7 +11107,7 @@ namespace LegendaryExplorer.DialogueEditor
             copyButton.Click += (_, _) => dialog.DialogResult = true;
             buttons.Children.Add(copyButton);
             buttons.Children.Add(new Button { Content = "Cancel", IsCancel = true, MinWidth = 90, Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 4, 10, 4) });
-            Grid.SetRow(buttons, 3);
+            Grid.SetRow(buttons, 4);
             Grid.SetColumnSpan(buttons, 2);
             grid.Children.Add(buttons);
             dialog.Content = grid;
@@ -10865,7 +11122,8 @@ namespace LegendaryExplorer.DialogueEditor
                 Speaker = sourceNode.IsReply
                     ? new CrossEditorParticipantOption { Speaker = SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == -2), DisplayName = "Player" }
                     : speakerComboBox.SelectedItem as CrossEditorParticipantOption,
-                Listener = listenerComboBox.SelectedItem as CrossEditorParticipantOption
+                Listener = listenerComboBox.SelectedItem as CrossEditorParticipantOption,
+                CopyMode = (CrossEditorCopyMode)copyModeComboBox.SelectedIndex
             };
 
             List<CrossEditorParticipantOption> CreateParticipantOptions(SpeakerExtended sourceParticipant, bool includeNone)
