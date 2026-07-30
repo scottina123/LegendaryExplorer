@@ -534,6 +534,17 @@
                                 <xctk:SingleUpDown Value="{Binding Brightness}" Minimum="0" Increment="0.25"
                                                    ButtonSpinnerLocation="Left" FormatString="F2" Width="100"/>
                             </StackPanel>
+                            <Grid Height="24" Margin="0,5,0,0"
+                                  ToolTip="Drag left or right to adjust light brightness in 0.25 steps">
+                                <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                <Thumb Width="24" Height="20" HorizontalAlignment="Center"
+                                       DragStarted="LightBrightnessScrubThumb_DragStarted"
+                                       DragDelta="LightBrightnessScrubThumb_DragDelta"
+                                       DragCompleted="LightBrightnessScrubThumb_DragCompleted"/>
+                            </Grid>
                             <StackPanel Orientation="Vertical" Margin="0,5,0,0">
                                 <TextBlock Text=" Light Color" Margin="0,0,0,2"/>
                                 <xctk:ColorPicker SelectedColor="{Binding LightColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

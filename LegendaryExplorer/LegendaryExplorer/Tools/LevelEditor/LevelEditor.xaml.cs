@@ -180,6 +180,8 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private TransformSnapshot? _actorTransformScrubBefore;
     private double _lightRadiusScrubAccumulator;
     private double _lightRadiusScrubPreviousHorizontalChange;
+    private double _lightBrightnessScrubAccumulator;
+    private double _lightBrightnessScrubPreviousHorizontalChange;
     private string _lightDialProperty = nameof(ActorProxy.InnerConeAngle);
     private bool _lightValueDialDragging;
     private double _lightValueDialAccumulator;
@@ -1012,6 +1014,47 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     private void LightRadiusScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void LightBrightnessScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || !SelectedActor.HasLightSettings)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _lightBrightnessScrubAccumulator = 0;
+        _lightBrightnessScrubPreviousHorizontalChange = 0;
+    }
+
+    private void LightBrightnessScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedActor is null
+            || SelectedActor.IsReadOnly
+            || !SelectedActor.HasLightSettings
+            || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _lightBrightnessScrubPreviousHorizontalChange;
+        _lightBrightnessScrubPreviousHorizontalChange = e.HorizontalChange;
+        _lightBrightnessScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_lightBrightnessScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _lightBrightnessScrubAccumulator -= stepCount * dragStep;
+        SelectedActor.Brightness = MathF.Max(0, SelectedActor.Brightness + stepCount * 0.25f);
+    }
+
+    private void LightBrightnessScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
     {
         SceneViewer?.MarkRenderDirty();
     }
