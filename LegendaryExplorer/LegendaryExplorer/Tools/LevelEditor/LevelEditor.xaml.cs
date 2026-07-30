@@ -144,7 +144,22 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     public OpenLevelFile ActiveFile
     {
         get => _activeFile;
-        private set => SetProperty(ref _activeFile, value);
+        private set
+        {
+            if (SetProperty(ref _activeFile, value))
+            {
+                if (value is null)
+                {
+                    UnLoadMEPackage();
+                }
+                else
+                {
+                    RegisterPackage(value.Package);
+                }
+
+                UpdateStatusBarText();
+            }
+        }
     }
 
     public ObservableCollectionExtended<ActorProxy> Actors { get; } = [];
@@ -1646,10 +1661,15 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         else
             Title = $"Level Editor - {OpenFiles.Count} files";
 
+        UpdateStatusBarText();
+    }
+
+    private void UpdateStatusBarText()
+    {
         StatusBar_LeftMostText.Text = OpenFiles.Count switch
         {
             0 => "Select package file to load",
-            1 => OpenFiles[0].FileName,
+            _ when ActiveFile is not null => GetStatusBarText(),
             _ => $"{OpenFiles.Count} files loaded"
         };
     }

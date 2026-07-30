@@ -287,15 +287,14 @@
 
             <StatusBar Height="23" DockPanel.Dock="Bottom">
                 <sharedToolControls:StatusBarGameIDIndicator Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                 GameType="{Binding Game}" Margin="0,-4"/>
+                                                 GameType="{Binding Pcc.Game}" Margin="0,-4"/>
                 <StatusBarItem>
                     <TextBlock x:Name="StatusBar_LeftMostText" Text="Select package file to load"/>
                 </StatusBarItem>
-                <StatusBarItem Visibility="{Binding SelectedActor, Converter={StaticResource NullVisibilityConverter}}">
-                    <TextBlock Text="{Binding SelectedActor.Export.ObjectName.Instanced, StringFormat='Selected: {0}'}" Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"/>
-                </StatusBarItem>
-                <StatusBarItem Visibility="{Binding HasAnyFileOpen, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <TextBlock Text="{Binding CurrentModeName, StringFormat='Mode: {0}'}" Foreground="Gray"/>
+                <StatusBarItem HorizontalAlignment="Right" Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Name="StatusBar_RightSide_LastSaved" Text="{Binding Pcc.LastSaved, StringFormat='Last saved at {0}'}" Foreground="Gray"/>
+                    </StackPanel>
                 </StatusBarItem>
             </StatusBar>
             <Grid>
