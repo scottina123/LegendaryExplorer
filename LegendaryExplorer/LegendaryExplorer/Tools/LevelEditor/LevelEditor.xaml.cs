@@ -168,6 +168,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private char _actorLocationScrubAxis = 'X';
     private double _actorLocationScrubAccumulator;
     private double _actorLocationScrubPreviousHorizontalChange;
+    private string _actorScaleScrubAxes = "X";
+    private double _actorScaleScrubAccumulator;
+    private double _actorScaleScrubPreviousHorizontalChange;
     private string _actorRotationDialAxis = nameof(ActorProxy.PitchDegrees);
     private bool _actorRotationDialDragging;
     private double _actorRotationDialAngleAccumulator;
@@ -763,6 +766,59 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     }
 
     private void ActorLocationScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        EndActorTransformScrub();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void ActorScaleScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            _actorScaleScrubAxes = axes;
+        }
+    }
+
+    private void ActorScaleScrubThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _actorScaleScrubAccumulator = 0;
+        _actorScaleScrubPreviousHorizontalChange = 0;
+        BeginActorTransformScrub();
+    }
+
+    private void ActorScaleScrubThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (SelectedActor is null || SelectedActor.IsReadOnly || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _actorScaleScrubPreviousHorizontalChange;
+        _actorScaleScrubPreviousHorizontalChange = e.HorizontalChange;
+        _actorScaleScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_actorScaleScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _actorScaleScrubAccumulator -= stepCount * dragStep;
+        float delta = stepCount * ScaleIncrement;
+        Vector3 scale = SelectedActor.DrawScale3D;
+        if (_actorScaleScrubAxes is "X" or "All") scale.X += delta;
+        if (_actorScaleScrubAxes is "Y" or "All") scale.Y += delta;
+        if (_actorScaleScrubAxes is "Z" or "All") scale.Z += delta;
+        SelectedActor.DrawScale3D = scale;
+    }
+
+    private void ActorScaleScrubThumb_DragCompleted(object sender, DragCompletedEventArgs e)
     {
         EndActorTransformScrub();
         SceneViewer?.MarkRenderDirty();

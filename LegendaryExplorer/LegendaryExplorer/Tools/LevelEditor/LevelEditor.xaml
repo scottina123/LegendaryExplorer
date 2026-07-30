@@ -728,6 +728,28 @@
                                 <TextBlock Text=" Increment:  " VerticalAlignment="Center" />
                                 <xctk:SingleUpDown Value="{Binding ScaleIncrement, RelativeSource={RelativeSource AncestorType={x:Type local:LevelEditor}}}" Minimum="0" ButtonSpinnerLocation="Left" FormatString="F3"/>
                             </StackPanel>
+                            <StackPanel Margin="0,5,0,0">
+                                <UniformGrid Rows="1" Columns="4" Margin="0,0,0,4">
+                                    <RadioButton Content="X" Tag="X" GroupName="ActorScaleScrubAxis" IsChecked="True"
+                                                 HorizontalContentAlignment="Center" Checked="ActorScaleScrubAxis_Checked"/>
+                                    <RadioButton Content="Y" Tag="Y" GroupName="ActorScaleScrubAxis"
+                                                 HorizontalContentAlignment="Center" Checked="ActorScaleScrubAxis_Checked"/>
+                                    <RadioButton Content="Z" Tag="Z" GroupName="ActorScaleScrubAxis"
+                                                 HorizontalContentAlignment="Center" Checked="ActorScaleScrubAxis_Checked"/>
+                                    <RadioButton Content="All" Tag="All" GroupName="ActorScaleScrubAxis"
+                                                 HorizontalContentAlignment="Center" Checked="ActorScaleScrubAxis_Checked"/>
+                                </UniformGrid>
+                                <Grid Height="24" ToolTip="Drag left or right to scale the selected actor continuously on the selected axes">
+                                    <Border Height="8" CornerRadius="4" VerticalAlignment="Center"
+                                            Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                    <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                            Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                    <Thumb Width="24" Height="20" HorizontalAlignment="Center"
+                                           DragStarted="ActorScaleScrubThumb_DragStarted"
+                                           DragDelta="ActorScaleScrubThumb_DragDelta"
+                                           DragCompleted="ActorScaleScrubThumb_DragCompleted"/>
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
                     </GroupBox>
                     </WrapPanel>
