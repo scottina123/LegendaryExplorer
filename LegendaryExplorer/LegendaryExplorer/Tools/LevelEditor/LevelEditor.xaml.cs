@@ -3830,14 +3830,14 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     {
         result = null;
         string fullPropertyPath = $"{prefix}{propertyName}";
-        if (!fullPropertyPath.Contains(".UniformExpressionTextures[", StringComparison.Ordinal)
+        if (!fullPropertyPath.Contains("UniformExpressionTextures[", StringComparison.Ordinal)
             || sourcePackage.GetEntry(uIndex) is not null
-            || destinationExport.FileRef.GetEntry(uIndex) is not { } destinationEntry)
+            || destinationExport.FileRef.GetEntry(uIndex) is null)
         {
             return false;
         }
 
-        return options.CrossPackageMap.Values.Contains(destinationEntry);
+        return true;
     }
 
     private async Task<bool> ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport, bool refreshActor = true)
