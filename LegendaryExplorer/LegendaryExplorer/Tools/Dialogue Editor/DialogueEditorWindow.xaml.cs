@@ -51,6 +51,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Globalization;
 using System.Text;
@@ -59,6 +60,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
@@ -93,6 +95,82 @@ namespace LegendaryExplorer.DialogueEditor
                 index = i;
             }
         }
+
+        private static bool TryParseCameraOrigin(string text, out CameraOrigin origin)
+        {
+            origin = default;
+            string[] values = text?.Split([',', ';'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
+            if (values.Length != 6
+                || !values.All(value => float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)))
+            {
+                return false;
+            }
+
+            float[] parsed = values.Select(value => float.Parse(value, CultureInfo.InvariantCulture)).ToArray();
+            origin = new CameraOrigin(new Vector3(parsed[0], parsed[1], parsed[2]), new Vector3(parsed[3], parsed[4], parsed[5]));
+            return true;
+        }
+
+        private bool TryResolveCrossEditorCameraOrigin(
+            CrossEditorCameraOriginSelection selection,
+            out CameraOrigin origin)
+        {
+            origin = default;
+            if (selection?.Recenter != true)
+            {
+                return false;
+            }
+            if (selection.Mode == CameraAnchorMode.ManualOrigin)
+            {
+                origin = selection.ManualOrigin;
+                return true;
+            }
+            if (selection.DestinationNode == null)
+            {
+                MessageBox.Show("Select a destination conversation node for actor-based camera origin resolution.",
+                    "Camera Origin Unavailable",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            var context = new CameraActorAnchorContext(SelectedConv, selection.DestinationNode,
+                SelectedSpeakerList.Select(speaker => speaker.SpeakerName).ToArray());
+            ActorSceneStatePath[] paths = CameraActorSceneStateResolver.ResolvePaths(context, selection.ActorTags)
+                .Where(path => selection.ActorTags.All(path.ActorTransforms.ContainsKey))
+                .ToArray();
+            if (paths.Length == 0)
+            {
+                MessageBox.Show($"No matching TrackMove or initial actor transform was found for: {string.Join(", ", selection.ActorTags)}.",
+                    "Actor Transform Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            ActorSceneStatePath path = paths[0];
+            if (paths.Skip(1).Any(candidate =>
+                    !CameraActorAnchorResolver.HaveEquivalentTransforms(path, candidate, selection.ActorTags)))
+            {
+                var choices = paths.ToDictionary(FormatActorPathChoice, candidate => candidate, StringComparer.Ordinal);
+                string selectedChoice = StringSelectorDialog.GetValue(this,
+                    "Incoming conversation paths resolve different actor transforms. Choose the path used for camera re-centering.",
+                    "Choose Actor Transform Path", choices.Keys);
+                if (string.IsNullOrEmpty(selectedChoice) || !choices.TryGetValue(selectedChoice, out path))
+                {
+                    return false;
+                }
+            }
+
+            ActorAnchorResolution resolution = CameraActorAnchorResolver.Resolve(path, selection.ActorTags, selection.PrimaryActorTag);
+            if (resolution == null)
+            {
+                return false;
+            }
+            origin = resolution.Origin;
+            return true;
+        }
+
+        private static string FormatActorPathChoice(ActorSceneStatePath path) =>
+            $"{path.PathId} | " + string.Join("; ", path.ActorTransforms.Values.Select(transform =>
+                $"{transform.ActorTag}: ({transform.Location.X:0.##}, {transform.Location.Y:0.##}, {transform.Location.Z:0.##}) from {transform.SourceDescription}"));
 
         private enum ESaveViewMode
         {
@@ -163,6 +241,22 @@ namespace LegendaryExplorer.DialogueEditor
             internal CrossEditorParticipantOption Speaker { get; init; }
             internal CrossEditorParticipantOption Listener { get; init; }
             internal CrossEditorCopyMode CopyMode { get; init; }
+            internal CrossEditorCameraOriginSelection CameraOrigin { get; init; }
+        }
+
+        private sealed class CrossEditorCameraOriginSelection
+        {
+            internal bool Recenter { get; init; }
+            internal CameraAnchorMode Mode { get; init; }
+            internal DialogueNodeExtended DestinationNode { get; init; }
+            internal CameraOrigin ManualOrigin { get; init; }
+            internal string[] ActorTags { get; init; } = [];
+            internal string PrimaryActorTag { get; init; }
+        }
+
+        private sealed record CrossEditorNodeOption(DialogueNodeExtended Node, string DisplayName)
+        {
+            public override string ToString() => DisplayName;
         }
 
         private sealed class CrossEditorCopySelection
@@ -174,6 +268,7 @@ namespace LegendaryExplorer.DialogueEditor
         private sealed class CrossEditorBranchCopyResult
         {
             internal Dictionary<DialogueNodeExtended, DialogueNodeExtended> CopiedNodes { get; } = [];
+            internal HashSet<ExportEntry> ImportedInterpData { get; } = [];
             internal List<EntryStringPair> RelinkResults { get; } = [];
         }
 
@@ -364,6 +459,10 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     result.CopiedNodes[sourceNode] = copiedNode;
                 }
+                if (importResult?.InterpData != null)
+                {
+                    result.ImportedInterpData.Add(importResult.InterpData);
+                }
                 if (importResult != null)
                 {
                     result.RelinkResults.AddRange(importResult.RelinkResults);
@@ -376,6 +475,32 @@ namespace LegendaryExplorer.DialogueEditor
             }
             SaveSpeakersToProperties(SelectedSpeakerList);
             return result;
+        }
+
+        private void RecenterCopiedTrackMoves(CrossEditorBranchCopyResult copyResult, CrossEditorCameraOriginSelection selection)
+        {
+            if (!TryResolveCrossEditorCameraOrigin(selection, out CameraOrigin origin))
+            {
+                return;
+            }
+
+            List<string> errors = [];
+            foreach (ExportEntry trackMove in copyResult.ImportedInterpData
+                         .SelectMany(interpData => Pcc.Exports.Where(export =>
+                             export.ClassName == "InterpTrackMove" && export.IsDescendantOf(interpData)))
+                         .DistinctBy(export => export.UIndex))
+            {
+                if (!CameraPresetTrackCapture.TryRecenter(trackMove, origin, out string error))
+                {
+                    errors.Add($"{trackMove.InstancedFullPath}: {error}");
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                MessageBox.Show(string.Join(Environment.NewLine, errors.Take(20)),
+                    "Some Camera TrackMoves Were Not Re-centered", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private static void RestoreCrossEditorBranchLinks(
@@ -10839,6 +10964,10 @@ namespace LegendaryExplorer.DialogueEditor
                 participantMap);
             RestoreCrossEditorBranchLinks(copyResult.CopiedNodes, nodeDragData.SourceEditor.SelectedConv);
             RecreateNodesToProperties(SelectedConv);
+            if (participantSelection.CameraOrigin?.Recenter == true)
+            {
+                RecenterCopiedTrackMoves(copyResult, participantSelection.CameraOrigin);
+            }
             if (!copyResult.CopiedNodes.TryGetValue(nodeDragData.SourceNode, out DialogueNodeExtended copiedNode))
             {
                 MessageBox.Show(
@@ -11030,6 +11159,156 @@ namespace LegendaryExplorer.DialogueEditor
                 MinWidth = 360,
                 Margin = new Thickness(8, 4, 0, 4)
             };
+            var recenterCheckBox = new CheckBox
+            {
+                Content = "Re-center copied camera TrackMoves",
+                Margin = new Thickness(0, 8, 0, 4)
+            };
+            var originModeComboBox = new ComboBox
+            {
+                ItemsSource = new[] { "Custom origin", "Actor focus", "Multi-actor focus" },
+                SelectedIndex = 0,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4),
+                IsEnabled = false
+            };
+            var applyActorOriginButton = new Button
+            {
+                Content = "Apply Actor Origin",
+                Margin = new Thickness(8, 4, 0, 4),
+                Padding = new Thickness(10, 4, 10, 4),
+                IsEnabled = false
+            };
+            var originModePanel = new StackPanel { Orientation = Orientation.Horizontal };
+            originModePanel.Children.Add(originModeComboBox);
+            originModePanel.Children.Add(applyActorOriginButton);
+            var originNodeComboBox = new ComboBox
+            {
+                ItemsSource = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
+                    .Select(node => new CrossEditorNodeOption(node, $"{(node.IsReply ? 'R' : 'E')}{node.NodeCount}: {node.Line}"))
+                    .ToList(),
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4),
+                IsEnabled = false
+            };
+            originNodeComboBox.SelectedIndex = originNodeComboBox.Items.Count > 0 ? 0 : -1;
+            string[] actorTags = SelectedSpeakerList
+                .Select(speaker => speaker.SpeakerName)
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var singleActorComboBox = new ComboBox
+            {
+                ItemsSource = actorTags,
+                IsEditable = true,
+                IsTextSearchEnabled = true,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4)
+            };
+            var actorListBox = new ListBox
+            {
+                ItemsSource = actorTags,
+                SelectionMode = SelectionMode.Multiple,
+                MinWidth = 360,
+                MaxHeight = 110,
+                Margin = new Thickness(8, 4, 0, 4),
+                IsEnabled = false
+            };
+            var additionalActorTagsTextBox = new TextBox
+            {
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4),
+                ToolTip = "Optional exact actor tags separated by commas, semicolons, or new lines"
+            };
+            var primaryActorComboBox = new ComboBox
+            {
+                ItemsSource = actorTags,
+                IsEditable = true,
+                IsTextSearchEnabled = true,
+                MinWidth = 360,
+                Margin = new Thickness(8, 4, 0, 4),
+                IsEnabled = false
+            };
+            TextBox originXTextBox = CreateOriginTextBox();
+            TextBox originYTextBox = CreateOriginTextBox();
+            TextBox originZTextBox = CreateOriginTextBox();
+            TextBox originRollTextBox = CreateOriginTextBox();
+            TextBox originPitchTextBox = CreateOriginTextBox();
+            TextBox originYawTextBox = CreateOriginTextBox();
+            var singleActorPanel = new Grid { Visibility = Visibility.Collapsed };
+            singleActorPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            singleActorPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var singleActorLabel = new TextBlock { Text = "Actor tag:", VerticalAlignment = VerticalAlignment.Center };
+            singleActorPanel.Children.Add(singleActorLabel);
+            Grid.SetColumn(singleActorComboBox, 1);
+            singleActorPanel.Children.Add(singleActorComboBox);
+            var multipleActorsPanel = new Grid { Visibility = Visibility.Collapsed };
+            multipleActorsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            multipleActorsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            for (int i = 0; i < 3; i++) multipleActorsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AddPanelRow(multipleActorsPanel, "Scene speakers:", actorListBox, 0);
+            AddPanelRow(multipleActorsPanel, "Additional tags:", additionalActorTagsTextBox, 1);
+            AddPanelRow(multipleActorsPanel, "Primary actor:", primaryActorComboBox, 2);
+            var originFieldsPanel = new UniformGrid { Columns = 6, Margin = new Thickness(0, 4, 0, 4) };
+            AddOriginField(originFieldsPanel, "Origin X", originXTextBox);
+            AddOriginField(originFieldsPanel, "Origin Y", originYTextBox);
+            AddOriginField(originFieldsPanel, "Origin Z", originZTextBox);
+            AddOriginField(originFieldsPanel, "Roll (X)", originRollTextBox);
+            AddOriginField(originFieldsPanel, "Pitch (Y)", originPitchTextBox);
+            AddOriginField(originFieldsPanel, "Yaw (Z)", originYawTextBox);
+            void UpdateCameraOriginControls()
+            {
+                bool enabled = recenterCheckBox.IsChecked == true;
+                bool custom = originModeComboBox.SelectedIndex == 0;
+                originModeComboBox.IsEnabled = enabled;
+                applyActorOriginButton.IsEnabled = enabled && !custom;
+                originNodeComboBox.IsEnabled = enabled && !custom;
+                singleActorPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+                multipleActorsPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+                actorListBox.IsEnabled = enabled && originModeComboBox.SelectedIndex == 2;
+                additionalActorTagsTextBox.IsEnabled = actorListBox.IsEnabled;
+                primaryActorComboBox.IsEnabled = actorListBox.IsEnabled;
+                foreach (TextBox textBox in new[] { originXTextBox, originYTextBox, originZTextBox, originRollTextBox, originPitchTextBox, originYawTextBox })
+                {
+                    textBox.IsEnabled = enabled && custom;
+                }
+            }
+            recenterCheckBox.Checked += (_, _) => UpdateCameraOriginControls();
+            recenterCheckBox.Unchecked += (_, _) => UpdateCameraOriginControls();
+            originModeComboBox.SelectionChanged += (_, _) => UpdateCameraOriginControls();
+            applyActorOriginButton.Click += (_, _) =>
+            {
+                string[] selectedActorTags = GetSelectedCameraActorTags();
+                int requiredActors = originModeComboBox.SelectedIndex == 2 ? 2 : 1;
+                if (selectedActorTags.Length < requiredActors)
+                {
+                    MessageBox.Show(requiredActors == 2
+                            ? "Select at least two actor tags for multi-actor focus."
+                            : "Select an actor tag for actor focus.",
+                        "Actor Focus Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (originNodeComboBox.SelectedItem is not CrossEditorNodeOption destinationNode)
+                {
+                    MessageBox.Show("Select a destination conversation node to resolve actor transforms.",
+                        "Destination Node Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var selection = new CrossEditorCameraOriginSelection
+                {
+                    Recenter = true,
+                    Mode = (CameraAnchorMode)originModeComboBox.SelectedIndex,
+                    DestinationNode = destinationNode.Node,
+                    ActorTags = selectedActorTags,
+                    PrimaryActorTag = primaryActorComboBox.Text.Trim()
+                };
+                if (TryResolveCrossEditorCameraOrigin(selection, out CameraOrigin resolvedOrigin))
+                {
+                    SetCameraOrigin(resolvedOrigin);
+                }
+            };
             var copyModeComboBox = new ComboBox
             {
                 ItemsSource = new[]
@@ -11060,8 +11339,10 @@ namespace LegendaryExplorer.DialogueEditor
             var grid = new Grid { Margin = new Thickness(16) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (int i = 0; i < 11; i++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -11097,6 +11378,21 @@ namespace LegendaryExplorer.DialogueEditor
             Grid.SetColumn(copyModeComboBox, 1);
             grid.Children.Add(copyModeComboBox);
 
+            Grid.SetRow(recenterCheckBox, 4);
+            Grid.SetColumnSpan(recenterCheckBox, 2);
+            grid.Children.Add(recenterCheckBox);
+            AddCameraOriginRow("Origin mode:", originModePanel, 5);
+            AddCameraOriginRow("Base on destination node:", originNodeComboBox, 6);
+            Grid.SetRow(singleActorPanel, 7);
+            Grid.SetColumnSpan(singleActorPanel, 2);
+            grid.Children.Add(singleActorPanel);
+            Grid.SetRow(multipleActorsPanel, 8);
+            Grid.SetColumnSpan(multipleActorsPanel, 2);
+            grid.Children.Add(multipleActorsPanel);
+            Grid.SetRow(originFieldsPanel, 9);
+            Grid.SetColumnSpan(originFieldsPanel, 2);
+            grid.Children.Add(originFieldsPanel);
+
             var buttons = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -11104,10 +11400,41 @@ namespace LegendaryExplorer.DialogueEditor
                 Margin = new Thickness(0, 12, 0, 0)
             };
             var copyButton = new Button { Content = "Copy", IsDefault = true, MinWidth = 90, Padding = new Thickness(10, 4, 10, 4) };
-            copyButton.Click += (_, _) => dialog.DialogResult = true;
+            copyButton.Click += (_, _) =>
+            {
+                if (recenterCheckBox.IsChecked == true
+                    && originModeComboBox.SelectedIndex == 0
+                    && !TryReadCameraOrigin(out _))
+                {
+                    MessageBox.Show("Enter the custom origin as X, Y, Z, Roll, Pitch, Yaw.",
+                        "Invalid Camera Origin", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                string[] selectedActorTags = GetSelectedCameraActorTags();
+                int requiredActors = originModeComboBox.SelectedIndex == 2 ? 2 : 1;
+                if (recenterCheckBox.IsChecked == true
+                    && originModeComboBox.SelectedIndex > 0
+                    && selectedActorTags.Length < requiredActors)
+                {
+                    MessageBox.Show(requiredActors == 2
+                            ? "Select at least two actor tags for multi-actor focus."
+                            : "Select an actor tag for actor focus.",
+                        "Actor Focus Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (recenterCheckBox.IsChecked == true
+                    && originModeComboBox.SelectedIndex > 0
+                    && originNodeComboBox.SelectedItem is not CrossEditorNodeOption)
+                {
+                    MessageBox.Show("Select a destination conversation node to resolve actor transforms.",
+                        "Destination Node Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                dialog.DialogResult = true;
+            };
             buttons.Children.Add(copyButton);
             buttons.Children.Add(new Button { Content = "Cancel", IsCancel = true, MinWidth = 90, Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 4, 10, 4) });
-            Grid.SetRow(buttons, 4);
+            Grid.SetRow(buttons, 10);
             Grid.SetColumnSpan(buttons, 2);
             grid.Children.Add(buttons);
             dialog.Content = grid;
@@ -11123,8 +11450,99 @@ namespace LegendaryExplorer.DialogueEditor
                     ? new CrossEditorParticipantOption { Speaker = SelectedSpeakerList.FirstOrDefault(speaker => speaker.SpeakerID == -2), DisplayName = "Player" }
                     : speakerComboBox.SelectedItem as CrossEditorParticipantOption,
                 Listener = listenerComboBox.SelectedItem as CrossEditorParticipantOption,
-                CopyMode = (CrossEditorCopyMode)copyModeComboBox.SelectedIndex
+                CopyMode = (CrossEditorCopyMode)copyModeComboBox.SelectedIndex,
+                CameraOrigin = new CrossEditorCameraOriginSelection
+                {
+                    Recenter = recenterCheckBox.IsChecked == true,
+                    Mode = (CameraAnchorMode)originModeComboBox.SelectedIndex,
+                    DestinationNode = (originNodeComboBox.SelectedItem as CrossEditorNodeOption)?.Node,
+                    ManualOrigin = TryReadCameraOrigin(out CameraOrigin manualOrigin)
+                        ? manualOrigin
+                        : default,
+                    ActorTags = GetSelectedCameraActorTags(),
+                    PrimaryActorTag = primaryActorComboBox.Text.Trim()
+                }
             };
+
+            bool TryReadCameraOrigin(out CameraOrigin origin)
+            {
+                origin = default;
+                if (!TryReadFloat(originXTextBox, out float x)
+                    || !TryReadFloat(originYTextBox, out float y)
+                    || !TryReadFloat(originZTextBox, out float z)
+                    || !TryReadFloat(originRollTextBox, out float roll)
+                    || !TryReadFloat(originPitchTextBox, out float pitch)
+                    || !TryReadFloat(originYawTextBox, out float yaw))
+                {
+                    return false;
+                }
+                origin = new CameraOrigin(new Vector3(x, y, z), new Vector3(roll, pitch, yaw));
+                return true;
+            }
+
+            void SetCameraOrigin(CameraOrigin origin)
+            {
+                originXTextBox.Text = origin.Location.X.ToString("0.######", CultureInfo.InvariantCulture);
+                originYTextBox.Text = origin.Location.Y.ToString("0.######", CultureInfo.InvariantCulture);
+                originZTextBox.Text = origin.Location.Z.ToString("0.######", CultureInfo.InvariantCulture);
+                originRollTextBox.Text = origin.Rotation.X.ToString("0.######", CultureInfo.InvariantCulture);
+                originPitchTextBox.Text = origin.Rotation.Y.ToString("0.######", CultureInfo.InvariantCulture);
+                originYawTextBox.Text = origin.Rotation.Z.ToString("0.######", CultureInfo.InvariantCulture);
+            }
+
+            string[] GetSelectedCameraActorTags()
+            {
+                if (originModeComboBox.SelectedIndex == 1)
+                {
+                    string actorTag = singleActorComboBox.Text.Trim();
+                    return string.IsNullOrEmpty(actorTag) ? [] : [actorTag];
+                }
+                return actorListBox.SelectedItems.Cast<string>()
+                    .Concat(additionalActorTagsTextBox.Text.Split([',', ';', '\r', '\n'],
+                        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+
+            static bool TryReadFloat(TextBox textBox, out float value) =>
+                float.TryParse(textBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+
+            static TextBox CreateOriginTextBox() => new()
+            {
+                Text = "0",
+                MinWidth = 90,
+                Padding = new Thickness(4),
+                Margin = new Thickness(3),
+                IsEnabled = false
+            };
+
+            static void AddOriginField(Panel panel, string label, TextBox textBox)
+            {
+                var stack = new StackPanel { Margin = new Thickness(3) };
+                stack.Children.Add(new TextBlock { Text = label });
+                stack.Children.Add(textBox);
+                panel.Children.Add(stack);
+            }
+
+            static void AddPanelRow(Grid panel, string label, Control control, int row)
+            {
+                var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetRow(text, row);
+                panel.Children.Add(text);
+                Grid.SetRow(control, row);
+                Grid.SetColumn(control, 1);
+                panel.Children.Add(control);
+            }
+
+            void AddCameraOriginRow(string label, FrameworkElement control, int row)
+            {
+                var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetRow(text, row);
+                grid.Children.Add(text);
+                Grid.SetRow(control, row);
+                Grid.SetColumn(control, 1);
+                grid.Children.Add(control);
+            }
 
             List<CrossEditorParticipantOption> CreateParticipantOptions(SpeakerExtended sourceParticipant, bool includeNone)
             {

@@ -316,11 +316,12 @@ public static class MulticamCameraPresetCapture
         out IReadOnlyList<CameraPresetLocalKey> keys)
     {
         keys = null;
-        ArrayProperty<StructProperty> lookupPoints = trackMove.GetProperty<StructProperty>("LookupTrack")?
+        PropertyCollection properties = trackMove.GetProperties();
+        ArrayProperty<StructProperty> lookupPoints = properties.GetProp<StructProperty>("LookupTrack")?
             .GetProp<ArrayProperty<StructProperty>>("Points");
-        ArrayProperty<StructProperty> positionPoints = trackMove.GetProperty<StructProperty>("PosTrack")?
+        ArrayProperty<StructProperty> positionPoints = properties.GetProp<StructProperty>("PosTrack")?
             .GetProp<ArrayProperty<StructProperty>>("Points");
-        ArrayProperty<StructProperty> rotationPoints = trackMove.GetProperty<StructProperty>("EulerTrack")?
+        ArrayProperty<StructProperty> rotationPoints = properties.GetProp<StructProperty>("EulerTrack")?
             .GetProp<ArrayProperty<StructProperty>>("Points");
         if (lookupPoints is not { Count: > 0 } || positionPoints is null || rotationPoints is null
             || lookupPoints.Count != positionPoints.Count || lookupPoints.Count != rotationPoints.Count)
@@ -1197,6 +1198,55 @@ public static class CameraPresetGenerator
 
 public static class CameraPresetTrackCapture
 {
+    public static bool TryRecenter(ExportEntry trackMove, CameraOrigin destinationOrigin, out string error)
+    {
+        error = null;
+        if (trackMove?.ClassName != "InterpTrackMove")
+        {
+            error = "The selected export is not an InterpTrackMove.";
+            return false;
+        }
+
+        PropertyCollection properties = trackMove.GetProperties();
+        ArrayProperty<StructProperty> lookupPoints = properties.GetProp<StructProperty>("LookupTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> positionPoints = properties.GetProp<StructProperty>("PosTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        ArrayProperty<StructProperty> rotationPoints = properties.GetProp<StructProperty>("EulerTrack")?
+            .GetProp<ArrayProperty<StructProperty>>("Points");
+        if (lookupPoints is not { Count: > 0 } || positionPoints is null || rotationPoints is null
+            || lookupPoints.Count != positionPoints.Count || lookupPoints.Count != rotationPoints.Count)
+        {
+            error = "The TrackMove must contain synchronized lookup, position, and rotation keys.";
+            return false;
+        }
+
+        InterpCurvePoint<Vector3> firstPosition = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[0]);
+        InterpCurvePoint<Vector3> firstRotation = InterpCurvePoint<Vector3>.FromStructProperty(rotationPoints[0]);
+        var sourceOrigin = new CameraOrigin(firstPosition.OutVal, firstRotation.OutVal);
+        CameraPresetGenerator.BuildBasis(sourceOrigin.Rotation, out Vector3 sourceForward, out Vector3 sourceRight, out Vector3 sourceUp);
+        CameraPresetGenerator.BuildBasis(destinationOrigin.Rotation, out Vector3 destinationForward, out Vector3 destinationRight, out Vector3 destinationUp);
+
+        for (int i = 0; i < positionPoints.Count; i++)
+        {
+            InterpCurvePoint<Vector3> position = InterpCurvePoint<Vector3>.FromStructProperty(positionPoints[i]);
+            InterpCurvePoint<Vector3> rotation = InterpCurvePoint<Vector3>.FromStructProperty(rotationPoints[i]);
+            Vector3 localPosition = ToLocalVector(position.OutVal - sourceOrigin.Location, sourceForward, sourceRight, sourceUp);
+            position.OutVal = destinationOrigin.Location + ToWorldVector(localPosition, destinationForward, destinationRight, destinationUp);
+            position.ArriveTangent = ToWorldVector(ToLocalVector(position.ArriveTangent, sourceForward, sourceRight, sourceUp),
+                destinationForward, destinationRight, destinationUp);
+            position.LeaveTangent = ToWorldVector(ToLocalVector(position.LeaveTangent, sourceForward, sourceRight, sourceUp),
+                destinationForward, destinationRight, destinationUp);
+            rotation.OutVal = CameraPresetGenerator.LocalRotationToWorld(
+                CameraPresetGenerator.WorldRotationToLocal(rotation.OutVal, sourceOrigin.Rotation), destinationOrigin.Rotation);
+            positionPoints[i] = position.ToStructProperty(trackMove.Game);
+            rotationPoints[i] = rotation.ToStructProperty(trackMove.Game);
+        }
+
+        trackMove.WriteProperties(properties);
+        return true;
+    }
+
     public static bool TryCapture(ExportEntry trackMove, CameraOrigin origin, string name,
         out CameraPreset preset, out string error)
     {
@@ -1259,4 +1309,7 @@ public static class CameraPresetTrackCapture
 
     internal static Vector3 ToLocalVector(Vector3 value, Vector3 forward, Vector3 right, Vector3 up) =>
         new(Vector3.Dot(value, forward), Vector3.Dot(value, right), Vector3.Dot(value, up));
+
+    private static Vector3 ToWorldVector(Vector3 local, Vector3 forward, Vector3 right, Vector3 up) =>
+        forward * local.X + right * local.Y + up * local.Z;
 }
