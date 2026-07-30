@@ -1831,7 +1831,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private TransformSnapshot? _preEditSnapshot;
     private bool _isApplyingUndoRedo;
     private bool _isRefreshingActorFromPackageUpdate;
-    private (int UIndex, IMEPackage Package) _pendingSelect;
+    private (int UIndex, IMEPackage Package, bool Focus) _pendingSelect;
     public bool IsApplyingUndoRedo => _isApplyingUndoRedo;
 
     public bool CanUndo => UndoHistory.CanUndo;
@@ -2259,7 +2259,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
 
             if (_pendingSelect.UIndex > 0 && _pendingSelect.Package == file.Package)
             {
-                SelectedActor = Actors.FirstOrDefault(a => a.Export.UIndex == _pendingSelect.UIndex && a.Export.FileRef == file.Package);
+                SelectActor(Actors.FirstOrDefault(a => a.Export.UIndex == _pendingSelect.UIndex && a.Export.FileRef == file.Package), _pendingSelect.Focus);
                 _pendingSelect = default;
             }
             else if (reselectUIndex is not 0)
@@ -2307,10 +2307,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         if (_pendingSelect.UIndex > 0 && _pendingSelect.Package == file.Package)
             {
                 var pendingSelect = Actors.FirstOrDefault(a => a.Export.UIndex == _pendingSelect.UIndex && a.Export.FileRef == file.Package);
+                bool focusPendingSelection = _pendingSelect.Focus;
                 _pendingSelect = default;
                 if (pendingSelect is not null)
                 {
-                    SelectedActor = pendingSelect;
+                    SelectActor(pendingSelect, focusPendingSelection);
                 }
             }
             else if (reselectUIndex is not 0)
@@ -2996,7 +2997,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 return;
             }
 
-            _pendingSelect = (actorExport.UIndex, package);
+            _pendingSelect = (actorExport.UIndex, package, false);
             Level level = activeFile.LevelExport.GetBinaryData<Level>();
             level.Actors.Add(actorExport.UIndex);
             activeFile.LevelExport.WriteBinary(level);
@@ -3594,7 +3595,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             actor.OwningFile.LevelExport.WriteBinary(levelBin);
         }
 
-        _pendingSelect = (clonedExport.UIndex, actor.OwningFile.Package);
+        _pendingSelect = (clonedExport.UIndex, actor.OwningFile.Package, true);
         UndoHistory.Clear();
         _preEditSnapshot = null;
     }
