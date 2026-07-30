@@ -27,6 +27,7 @@ Microsoft.Win32;
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
+using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using
 Newtonsoft.Json;
@@ -2871,6 +2872,9 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
             Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint
         };
 
+        contextMenu.Items.Add(BuildCreateActorMenu(GetViewportLocationAtSelectedActorDepth(viewportPoint)));
+        contextMenu.Items.Add(new System.Windows.Controls.Separator());
+
         var snapItem = new System.Windows.Controls.MenuItem
         {
             Header = "Snap Selected Actor Here",
@@ -2893,6 +2897,11 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private Vector3 GetViewportLocationAtSelectedActorDepth(Point viewportPoint)
     {
         Vector3 referenceLocation = SelectedActor?.Location ?? RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
+        return GetViewportLocationAtDepth(viewportPoint, referenceLocation);
+    }
+
+    private Vector3 GetViewportLocationAtDepth(Point viewportPoint, Vector3 referenceLocation)
+    {
         float width = MathF.Max(RenderContext.Width, 1f);
         float height = MathF.Max(RenderContext.Height, 1f);
         float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
@@ -2927,6 +2936,98 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return cameraPosition + rayDirection * distance;
     }
 
+    private System.Windows.Controls.MenuItem BuildCreateActorMenu(Vector3 location)
+    {
+        var createMenu = new System.Windows.Controls.MenuItem
+        {
+            Header = "Create",
+            IsEnabled = ActiveFile is { IsReadOnly: false }
+        };
+
+        var interpActorItem = new System.Windows.Controls.MenuItem { Header = "Interp Actor..." };
+        interpActorItem.Click += async (_, _) => await CreateStaticMeshActor("InterpActor", location);
+        createMenu.Items.Add(interpActorItem);
+
+        var staticMeshActorItem = new System.Windows.Controls.MenuItem { Header = "Static Mesh Actor..." };
+        staticMeshActorItem.Click += async (_, _) => await CreateStaticMeshActor("StaticMeshActor", location);
+        createMenu.Items.Add(staticMeshActorItem);
+
+        return createMenu;
+    }
+
+    private async Task CreateStaticMeshActor(string actorClassName, Vector3 location)
+    {
+        if (ActiveFile is not { IsReadOnly: false } activeFile)
+        {
+            return;
+        }
+
+        ExportEntry actorExport = null;
+        ActorProxy actor = null;
+        try
+        {
+            IMEPackage package = activeFile.Package;
+            actorExport = ExportCreator.CreateExport(package, actorClassName, actorClassName, activeFile.LevelExport, createWithStack: true);
+            ExportEntry componentExport = ExportCreator.CreateExport(package, "StaticMeshComponent", "StaticMeshComponent", actorExport, prePropBinary: new byte[8]);
+            componentExport.ObjectFlags |= UnrealFlags.EObjectFlags.Transactional;
+            componentExport.Archetype = PreviewLevelBuilder.GetImportArchetype(package, "Engine", $"Default__{actorClassName}.StaticMeshComponent0");
+
+            actorExport.WriteProperties([
+                new ObjectProperty(componentExport, "StaticMeshComponent"),
+                new ObjectProperty(componentExport, "CollisionComponent"),
+                CommonStructs.Vector3Prop(location, "Location")
+            ]);
+
+            componentExport.WritePropertiesAndBinary([
+                new ObjectProperty(0, "ReplacementPrimitive"),
+                new BoolProperty(true, "bCastDynamicShadow"),
+                new BoolProperty(true, "CastShadow"),
+                new BoolProperty(true, "CollideActors"),
+                new BoolProperty(true, "BlockActors"),
+                CreateInitializedLightingChannelsProperty()
+            ], new byte[4]);
+
+            actor = ActorProxy.Create(this, actorExport)
+                    ?? throw new InvalidOperationException($"The level editor cannot render {actorClassName} actors.");
+            actor.OwningFile = activeFile;
+            if (!await ReplaceStaticMesh(actor, componentExport, false))
+            {
+                EntryPruner.TrashEntryAndDescendants(actorExport);
+                return;
+            }
+
+            _pendingSelect = (actorExport.UIndex, package);
+            Level level = activeFile.LevelExport.GetBinaryData<Level>();
+            level.Actors.Add(actorExport.UIndex);
+            activeFile.LevelExport.WriteBinary(level);
+            UndoHistory.Clear();
+            _preEditSnapshot = null;
+        }
+        catch (Exception ex)
+        {
+            if (actorExport is not null && !actorExport.IsTrash())
+            {
+                EntryPruner.TrashEntryAndDescendants(actorExport);
+            }
+            MessageBox.Show(this, $"Failed to create {actorClassName}:\n{ex.Message}", "Error");
+        }
+        finally
+        {
+            actor?.Dispose();
+        }
+    }
+
+    private static StructProperty CreateInitializedLightingChannelsProperty()
+    {
+        PropertyCollection properties = [];
+        foreach ((string propertyName, _) in LightingChannelMenuItems)
+        {
+            properties.Add(new BoolProperty(propertyName == "bInitialized", propertyName));
+        }
+
+        return new StructProperty("LightingChannelContainer", properties, "LightingChannels");
+    }
+
     private void MeshExportsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         if (e.OriginalSource is not FrameworkElement fe) { e.Handled = true; return; }
@@ -2952,6 +3053,12 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
     private System.Windows.Controls.ContextMenu BuildActorContextMenu(ActorProxy actor, Point? viewportPoint = null)
     {
         var contextMenu = new System.Windows.Controls.ContextMenu();
+
+        if (viewportPoint.HasValue)
+        {
+            contextMenu.Items.Add(BuildCreateActorMenu(GetViewportLocationAtDepth(viewportPoint.Value, actor.Location)));
+            contextMenu.Items.Add(new System.Windows.Controls.Separator());
+        }
 
         AddPropertiesMenuItems(contextMenu, actor.Export,
             $"{actor.Export.UIndex}: {actor.Export.ObjectName.Instanced} ({actor.Export.ClassName})");
@@ -3071,7 +3178,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 Header = "Replace Static Mesh...",
                 IsEnabled = !actor.IsReadOnly
             };
-            replaceMeshItem.Click += (_, _) => ReplaceStaticMesh(actor, smcExport);
+            replaceMeshItem.Click += async (_, _) => await ReplaceStaticMesh(actor, smcExport);
             contextMenu.Items.Add(replaceMeshItem);
         }
 
@@ -3700,10 +3807,10 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return currentParent;
     }
 
-    private async void ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport)
+    private async Task<bool> ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport, bool refreshActor = true)
     {
         var picker = new StaticMeshPickerDialog(Game, componentExport.FileRef, this);
-        if (picker.ShowDialog() != true || picker.SelectedResult is null) return;
+        if (picker.ShowDialog() != true || picker.SelectedResult is null) return false;
 
         var (sourcePath, sourceUIndex) = picker.SelectedResult.Value;
 
@@ -3762,11 +3869,16 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 }
             }
 
-            RefreshActorInViewport(actor);
+            if (refreshActor)
+            {
+                RefreshActorInViewport(actor);
+            }
+            return true;
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, $"Failed to replace static mesh:\n{ex.Message}", "Error");
+            return false;
         }
         finally
         {
