@@ -544,10 +544,13 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
                 }
                 else if (prop is ArrayProperty<ObjectProperty> objArrayProp)
                 {
-                    foreach (ObjectProperty objProperty in objArrayProp)
+                    string arrayPropertyName = objArrayProp.Name.Name is null ? string.Empty : objArrayProp.Name.Instanced;
+                    for (int i = 0; i < objArrayProp.Count; i++)
                     {
+                        ObjectProperty objProperty = objArrayProp[i];
                         int uIndex = objProperty.Value;
-                        var result = relinkUIndex(importingPCC, relinkingExport, ref uIndex, objProperty.Name, prefix, rop);
+                        string propertyName = objProperty.Name.Name is null ? $"{arrayPropertyName}[{i}]" : objProperty.Name;
+                        var result = relinkUIndex(importingPCC, relinkingExport, ref uIndex, propertyName, prefix, rop);
                         objProperty.Value = uIndex;
                         if (result != null)
                         {

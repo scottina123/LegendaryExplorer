@@ -3808,6 +3808,38 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
         return currentParent;
     }
 
+    private static RelinkerOptionsPackage CreateMeshImportRelinkerOptions()
+    {
+        return new RelinkerOptionsPackage
+        {
+            ImportExportDependencies = true,
+            PortImportsMemorySafe = true,
+            Cache = new PackageCache(),
+            CustomRelinkUIndex = PreserveRelinkedMaterialTextureReference
+        };
+    }
+
+    private static bool PreserveRelinkedMaterialTextureReference(
+        IMEPackage sourcePackage,
+        ExportEntry destinationExport,
+        ref int uIndex,
+        string propertyName,
+        string prefix,
+        RelinkerOptionsPackage options,
+        out EntryStringPair result)
+    {
+        result = null;
+        string fullPropertyPath = $"{prefix}{propertyName}";
+        if (!fullPropertyPath.Contains(".UniformExpressionTextures[", StringComparison.Ordinal)
+            || sourcePackage.GetEntry(uIndex) is not null
+            || destinationExport.FileRef.GetEntry(uIndex) is not { } destinationEntry)
+        {
+            return false;
+        }
+
+        return options.CrossPackageMap.Values.Contains(destinationEntry);
+    }
+
     private async Task<bool> ReplaceStaticMesh(ActorProxy actor, ExportEntry componentExport, bool refreshActor = true)
     {
         var picker = new StaticMeshPickerDialog(Game, componentExport.FileRef, this);
@@ -3835,12 +3867,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
                 ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
 
-                var rop = new RelinkerOptionsPackage
-                {
-                    ImportExportDependencies = true,
-                    PortImportsMemorySafe = true,
-                    Cache = new PackageCache()
-                };
+                RelinkerOptionsPackage rop = CreateMeshImportRelinkerOptions();
 
                 var relinkResults = EntryImporter.ImportAndRelinkEntries(
                     EntryImporter.PortingOption.CloneAllDependencies,
@@ -3954,12 +3981,7 @@ public partial class LevelEditor : WPFBase, ISceneRenderContextConfigurable, IAc
                 ExportEntry meshExport = sourcePcc.GetUExport(sourceUIndex);
                 ExportEntry importParent = ResolveStaticMeshImportParent(meshExport, componentExport.FileRef);
 
-                var rop = new RelinkerOptionsPackage
-                {
-                    ImportExportDependencies = true,
-                    PortImportsMemorySafe = true,
-                    Cache = new PackageCache()
-                };
+                RelinkerOptionsPackage rop = CreateMeshImportRelinkerOptions();
 
                 var relinkResults = EntryImporter.ImportAndRelinkEntries(
                     EntryImporter.PortingOption.CloneAllDependencies,
