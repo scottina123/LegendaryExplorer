@@ -137,6 +137,7 @@
             <MenuItem Header="Shift All InterpTrackMoves in Package" ToolTip="Shift all InterpTrackMoves under this package" Command="{Binding ShiftInterpTrackMovesInPackageCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Shift Everything in Level" ToolTip="Shift all actor locations and rotations in this level" Command="{Binding ShiftLevelActorsCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open Gesture Animation Importer" ToolTip="Open the Gesture Animation Importer for this BioEvtSysTrackGesture" Command="{Binding OpenGestureImporterCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Add Gesture Track to Favorites..." ToolTip="Save this BioEvtSysTrackGesture as a named favorite" Command="{Binding AddGestureTrackFavoriteCommand}" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Pathfinding Editor" Command="{Binding OpenExportInCommand}" CommandParameter="PathfindingEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in WwiseEditor" Command="{Binding OpenExportInCommand}" CommandParameter="WwiseEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Open in Level Editor" Command="{Binding OpenExportInCommand}" CommandParameter="LevelEditor" SharedUI:Bindings.VisibilityToEnabled="True"/>

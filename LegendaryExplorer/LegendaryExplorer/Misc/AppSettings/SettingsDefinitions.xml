@@ -12,6 +12,9 @@
   <setting name="MainWindow_Favorites" type="string" defaultvalue=""/>
   <setting name="MainWindow_CompletedInitialSetup" type="bool" defaultvalue="false"/>
 
+  <!-- Gesture Animation Importer specific settings -->
+  <setting name="GestureAnimationImporter_FavoriteTracks" type="string" defaultvalue=""/>
+
   <!-- Package Editor specific settings -->
   <setting name="PackageEditor_HideInterpreterHexBox" type="bool" defaultvalue="true" category="Package Editor"
            friendlyName="Hide Properties Hex Box"/>

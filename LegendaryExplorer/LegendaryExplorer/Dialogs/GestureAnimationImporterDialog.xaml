@@ -376,6 +376,13 @@
                                  SelectedItem="{Binding SelectedGestureTrack}"
                                  VirtualizingStackPanel.IsVirtualizing="True"
                                  VirtualizingStackPanel.VirtualizationMode="Recycling">
+                            <ListBox.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Add to Favorites..."
+                                              Tag="{Binding}"
+                                              Click="AddGestureTrackFavorite_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Margin="0,2">
@@ -443,7 +450,99 @@
                 </Grid>
             </TabItem>
 
-            <!-- Tab 4: Ambient Performances (SFXModule_Gestures only) -->
+            <!-- Tab 4: Favorite Gesture Tracks -->
+            <TabItem x:Name="FavoriteGestureTracksTab" Header="Favorites">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" MinWidth="300"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="3*" MinWidth="450"/>
+                    </Grid.ColumnDefinitions>
+
+                    <DockPanel Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top" Text="Favorite Gesture Tracks" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <TextBlock DockPanel.Dock="Top" Text="Right-click a gesture track on the Track Gestures tab to add it here."
+                                   Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <xctk:WatermarkTextBox DockPanel.Dock="Top"
+                                               Watermark="Search favorite names"
+                                               Text="{Binding FavoriteGestureTrackSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                               Margin="0,0,0,6"/>
+                        <ListBox ItemsSource="{Binding FilteredFavoriteGestureTracks}"
+                                 SelectedItem="{Binding SelectedFavoriteGestureTrack}">
+                            <ListBox.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Remove from Favorites"
+                                              Tag="{Binding}"
+                                              Click="RemoveGestureTrackFavorite_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,3">
+                                        <TextBlock Text="{Binding Name}" FontWeight="DemiBold"/>
+                                        <TextBlock Text="{Binding TrackName}" Opacity="0.75" FontSize="10"/>
+                                        <TextBlock Text="{Binding SourceDisplayName}" Opacity="0.6" FontSize="10" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <DockPanel Grid.Column="2" Margin="5,0,0,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Gesture Data" FontWeight="Bold" Margin="0,0,0,4"/>
+                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <TextBlock>
+                                <Run Text="Track: "/>
+                                <Run Text="{Binding SelectedFavoriteGestureTrack.TrackName}" FontWeight="DemiBold"/>
+                            </TextBlock>
+                            <TextBlock FontSize="10" Opacity="0.7">
+                                <Run Text="Starting pose: "/>
+                                <Run Text="{Binding SelectedFavoriteGestureTrack.StartingPoseSet}"/>
+                                <Run Text="."/>
+                                <Run Text="{Binding SelectedFavoriteGestureTrack.StartingPoseAnim}"/>
+                            </TextBlock>
+                            <TextBlock FontSize="10" Opacity="0.7" Text="{Binding SelectedFavoriteGestureTrack.NodeTlkString}" TextWrapping="Wrap"/>
+                            <TextBlock FontSize="10" Opacity="0.7" Text="{Binding SelectedFavoriteGestureTrack.SourceDisplayName}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button DockPanel.Dock="Bottom"
+                                Content="Replace Current Gesture Track"
+                                Padding="8,4"
+                                Margin="0,6,0,0"
+                                IsEnabled="{Binding CanImportFavoriteGestureTrack}"
+                                Click="ImportFavoriteGestureTrack_Click"/>
+                        <ListBox ItemsSource="{Binding SelectedFavoriteGestureTrack.Gestures}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,3">
+                                        <TextBlock FontWeight="DemiBold">
+                                            <Run Text="Gesture: "/>
+                                            <Run Text="{Binding GestureSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding GestureAnim}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Opacity="0.7">
+                                            <Run Text="Pose: "/>
+                                            <Run Text="{Binding PoseSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding PoseAnim}"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Opacity="0.7">
+                                            <Run Text="Transition: "/>
+                                            <Run Text="{Binding TransitionSet}"/>
+                                            <Run Text="."/>
+                                            <Run Text="{Binding TransitionAnim}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 5: Ambient Performances (SFXModule_Gestures only) -->
             <TabItem x:Name="AmbPerfTab" Header="Ambient Performances" Visibility="Collapsed">
                 <Grid>
                     <Grid.ColumnDefinitions>

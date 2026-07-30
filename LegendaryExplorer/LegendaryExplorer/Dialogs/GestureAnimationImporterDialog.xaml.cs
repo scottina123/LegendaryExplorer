@@ -9,8 +9,10 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.Tools.AssetDatabase.Scanners;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -23,6 +25,7 @@ using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.Collections;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
+using Newtonsoft.Json;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs
@@ -57,6 +60,27 @@ namespace LegendaryExplorer.Dialogs
         public string DisplayName { get; init; }
         public string FilePath { get; init; }
         public int UIndex { get; init; }
+    }
+
+    public sealed class GestureTrackFavorite
+    {
+        public string Name { get; set; }
+        public string TrackName { get; set; }
+        public int NodeStrRef { get; set; }
+        public string NodeTlkString { get; set; }
+        public string StartingPoseSet { get; set; }
+        public string StartingPoseAnim { get; set; }
+        public List<GestureDataRecord> Gestures { get; set; } = [];
+        public string SourceDisplayName { get; set; }
+        public string FilePath { get; set; }
+        public int UIndex { get; set; }
+
+        public GestureTrackSourceOption CreateSourceOption() => new()
+        {
+            DisplayName = SourceDisplayName,
+            FilePath = FilePath,
+            UIndex = UIndex,
+        };
     }
 
     public partial class GestureAnimationImporterDialog : Window, INotifyPropertyChanged
@@ -308,6 +332,20 @@ namespace LegendaryExplorer.Dialogs
         public ObservableCollectionExtended<GestureTrackRecord> FilteredGestureTracks { get; } = new();
         public ObservableCollectionExtended<GestureTrackSourceOption> AvailableGestureTrackSources { get; } = new();
         public ObservableCollectionExtended<AssetDatabaseWindow.GestureFilterCriterion> GestureTrackCriteria { get; } = new();
+        public ObservableCollectionExtended<GestureTrackFavorite> FavoriteGestureTracks { get; } = new();
+        public ObservableCollectionExtended<GestureTrackFavorite> FilteredFavoriteGestureTracks { get; } = new();
+
+        private string _favoriteGestureTrackSearchText;
+        public string FavoriteGestureTrackSearchText
+        {
+            get => _favoriteGestureTrackSearchText;
+            set
+            {
+                _favoriteGestureTrackSearchText = value;
+                OnPropertyChanged();
+                ApplyFavoriteGestureTrackFilter();
+            }
+        }
 
         private string _gestureTrackStartingPoseSet;
         public string GestureTrackStartingPoseSet
@@ -351,6 +389,7 @@ namespace LegendaryExplorer.Dialogs
             {
                 _selectedGestureTrackSource = value;
                 OnPropertyChanged();
+                LoadGestureTrackPreview(value);
             }
         }
 
@@ -362,6 +401,21 @@ namespace LegendaryExplorer.Dialogs
         }
 
         public bool CanImportGestureTrack => SelectedGestureTrackSource != null;
+
+        private GestureTrackFavorite _selectedFavoriteGestureTrack;
+        public GestureTrackFavorite SelectedFavoriteGestureTrack
+        {
+            get => _selectedFavoriteGestureTrack;
+            set
+            {
+                _selectedFavoriteGestureTrack = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanImportFavoriteGestureTrack));
+                LoadGestureTrackPreview(value?.CreateSourceOption());
+            }
+        }
+
+        public bool CanImportFavoriteGestureTrack => SelectedFavoriteGestureTrack != null;
 
         #endregion
 
@@ -394,6 +448,7 @@ namespace LegendaryExplorer.Dialogs
                 GbGestureKeySettings.Visibility = Visibility.Collapsed;
                 EditGesturesTab.Visibility = Visibility.Collapsed;
                 TrackGesturesTab.Visibility = Visibility.Collapsed;
+                FavoriteGestureTracksTab.Visibility = Visibility.Collapsed;
             }
 
             // Show Ambient Performances tab for targets that expose m_pPerfGameData
@@ -409,9 +464,121 @@ namespace LegendaryExplorer.Dialogs
             SourceGameComboBox.SelectedItem = _pcc.Game;
 
             EnsureGestureTrackCriteria();
+            LoadFavoriteGestureTracks();
             LoadExistingGestures();
             _ = LoadDatabaseAsync();
         }
+
+        private void LoadFavoriteGestureTracks()
+        {
+            if (string.IsNullOrWhiteSpace(Settings.GestureAnimationImporter_FavoriteTracks))
+            {
+                return;
+            }
+
+            try
+            {
+                List<GestureTrackFavorite> favorites = JsonConvert.DeserializeObject<List<GestureTrackFavorite>>(
+                    Settings.GestureAnimationImporter_FavoriteTracks);
+                FavoriteGestureTracks.ReplaceAll(favorites?.Where(IsValidFavoriteGestureTrack) ?? []);
+                ApplyFavoriteGestureTrackFilter();
+            }
+            catch (JsonException)
+            {
+                FavoriteGestureTracks.ClearEx();
+                FilteredFavoriteGestureTracks.ClearEx();
+            }
+        }
+
+        private void ApplyFavoriteGestureTrackFilter()
+        {
+            string searchText = FavoriteGestureTrackSearchText?.Trim();
+            IEnumerable<GestureTrackFavorite> favorites = string.IsNullOrEmpty(searchText)
+                ? FavoriteGestureTracks
+                : FavoriteGestureTracks.Where(favorite =>
+                    favorite.Name?.Contains(searchText, StringComparison.CurrentCultureIgnoreCase) == true);
+            FilteredFavoriteGestureTracks.ReplaceAll(favorites);
+
+            if (SelectedFavoriteGestureTrack != null && !FilteredFavoriteGestureTracks.Contains(SelectedFavoriteGestureTrack))
+            {
+                SelectedFavoriteGestureTrack = null;
+            }
+        }
+
+        private static bool IsValidFavoriteGestureTrack(GestureTrackFavorite favorite) =>
+            favorite != null
+            && !string.IsNullOrWhiteSpace(favorite.Name)
+            && !string.IsNullOrWhiteSpace(favorite.TrackName)
+            && !string.IsNullOrWhiteSpace(favorite.FilePath)
+            && favorite.UIndex > 0;
+
+        private void SaveFavoriteGestureTracks()
+        {
+            Settings.GestureAnimationImporter_FavoriteTracks = JsonConvert.SerializeObject(FavoriteGestureTracks);
+        }
+
+        public static void AddGestureTrackFavorite(ExportEntry gestureTrack, Control owner)
+        {
+            if (gestureTrack?.ClassName != "BioEvtSysTrackGesture")
+            {
+                return;
+            }
+
+            string favoriteName = PromptDialog.Prompt(
+                owner,
+                "Favorite name:",
+                "Add Gesture Track Favorite",
+                gestureTrack.ObjectName.Instanced,
+                true,
+                validator: value => !string.IsNullOrWhiteSpace(value)
+                    ? (true, null)
+                    : (false, "Enter a name for the favorite."))?.Trim();
+            if (string.IsNullOrWhiteSpace(favoriteName))
+            {
+                return;
+            }
+
+            var gestures = gestureTrack.GetProperty<ArrayProperty<StructProperty>>("m_aGestures")?
+                .Select(gesture => new GestureDataRecord(
+                    GetGestureName(gesture.Properties, "nmPoseSet"),
+                    GetGestureName(gesture.Properties, "nmPoseAnim"),
+                    GetGestureName(gesture.Properties, "nmGestureSet"),
+                    GetGestureName(gesture.Properties, "nmGestureAnim"),
+                    GetGestureName(gesture.Properties, "nmTransitionSet"),
+                    GetGestureName(gesture.Properties, "nmTransitionAnim")))
+                .ToList() ?? [];
+            int nodeStrRef = GestureTrackScanner.GetNodeStrRef(gestureTrack);
+            var favorite = new GestureTrackFavorite
+            {
+                Name = favoriteName,
+                TrackName = gestureTrack.ObjectName.Instanced,
+                NodeStrRef = nodeStrRef,
+                NodeTlkString = nodeStrRef > 0 ? $"TLK #{nodeStrRef}" : string.Empty,
+                StartingPoseSet = gestureTrack.GetProperty<NameProperty>("nmStartingPoseSet")?.Value.Instanced ?? "None",
+                StartingPoseAnim = gestureTrack.GetProperty<NameProperty>("nmStartingPoseAnim")?.Value.Instanced ?? "None",
+                Gestures = gestures,
+                SourceDisplayName = Path.GetFileName(gestureTrack.FileRef.FilePath),
+                FilePath = gestureTrack.FileRef.FilePath,
+                UIndex = gestureTrack.UIndex,
+            };
+
+            List<GestureTrackFavorite> favorites;
+            try
+            {
+                favorites = JsonConvert.DeserializeObject<List<GestureTrackFavorite>>(
+                    Settings.GestureAnimationImporter_FavoriteTracks) ?? [];
+            }
+            catch (JsonException)
+            {
+                favorites = [];
+            }
+
+            favorites.Add(favorite);
+            Settings.GestureAnimationImporter_FavoriteTracks = JsonConvert.SerializeObject(favorites);
+        }
+
+        private static string GetGestureName(PropertyCollection properties, string propertyName) =>
+            properties.GetProp<NameProperty>(propertyName)?.Value.Instanced ?? "None";
 
         private void ClearLoadedAnimationDatabaseState()
         {
@@ -1279,26 +1446,26 @@ namespace LegendaryExplorer.Dialogs
             return options;
         }
 
-        private void LoadGestureTrackPreview()
+        private void LoadGestureTrackPreview(GestureTrackSourceOption sourceOption)
         {
             GestureTrackPreviewControl.UnloadExport();
             _gestureTrackPreviewPcc?.Dispose();
             _gestureTrackPreviewPcc = null;
 
-            if (SelectedGestureTrackSource == null || !File.Exists(SelectedGestureTrackSource.FilePath))
+            if (sourceOption == null || !File.Exists(sourceOption.FilePath))
             {
                 return;
             }
 
-            _gestureTrackPreviewPcc = MEPackageHandler.OpenMEPackage(SelectedGestureTrackSource.FilePath);
-            if (!_gestureTrackPreviewPcc.IsUExport(SelectedGestureTrackSource.UIndex))
+            _gestureTrackPreviewPcc = MEPackageHandler.OpenMEPackage(sourceOption.FilePath);
+            if (!_gestureTrackPreviewPcc.IsUExport(sourceOption.UIndex))
             {
                 _gestureTrackPreviewPcc.Dispose();
                 _gestureTrackPreviewPcc = null;
                 return;
             }
 
-            ExportEntry sourceTrack = _gestureTrackPreviewPcc.GetUExport(SelectedGestureTrackSource.UIndex);
+            ExportEntry sourceTrack = _gestureTrackPreviewPcc.GetUExport(sourceOption.UIndex);
             if (GestureTrackPreviewControl.CanParse(sourceTrack))
             {
                 GestureTrackPreviewControl.LoadExport(sourceTrack);
@@ -2271,6 +2438,88 @@ namespace LegendaryExplorer.Dialogs
 
         #region Gesture Track Import
 
+        private void AddGestureTrackFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is GestureTrackRecord track && !ReferenceEquals(track, SelectedGestureTrack))
+            {
+                SelectedGestureTrack = track;
+            }
+
+            if (SelectedGestureTrack == null || SelectedGestureTrackSource == null)
+            {
+                MessageBox.Show("Please select a gesture track with an available source package first.", "No Gesture Track Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string favoriteName = PromptDialog.Prompt(
+                this,
+                "Favorite name:",
+                "Add Gesture Track Favorite",
+                SelectedGestureTrack.TrackName,
+                true,
+                validator: value => !string.IsNullOrWhiteSpace(value)
+                    ? (true, null)
+                    : (false, "Enter a name for the favorite."))?.Trim();
+            if (string.IsNullOrWhiteSpace(favoriteName))
+            {
+                return;
+            }
+
+            FavoriteGestureTracks.Add(new GestureTrackFavorite
+            {
+                Name = favoriteName,
+                TrackName = SelectedGestureTrack.TrackName,
+                NodeStrRef = SelectedGestureTrack.NodeStrRef,
+                NodeTlkString = SelectedGestureTrack.NodeTlkString,
+                StartingPoseSet = SelectedGestureTrack.StartingPoseSet,
+                StartingPoseAnim = SelectedGestureTrack.StartingPoseAnim,
+                Gestures = SelectedGestureTrack.Gestures.Select(gesture => new GestureDataRecord(
+                    gesture.PoseSet,
+                    gesture.PoseAnim,
+                    gesture.GestureSet,
+                    gesture.GestureAnim,
+                    gesture.TransitionSet,
+                    gesture.TransitionAnim)).ToList(),
+                SourceDisplayName = SelectedGestureTrackSource.DisplayName,
+                FilePath = SelectedGestureTrackSource.FilePath,
+                UIndex = SelectedGestureTrackSource.UIndex,
+            });
+            ApplyFavoriteGestureTrackFilter();
+            SaveFavoriteGestureTracks();
+            StatusMessage = $"Added '{favoriteName}' to gesture track favorites.";
+        }
+
+        private void RemoveGestureTrackFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            GestureTrackFavorite favorite = (sender as FrameworkElement)?.Tag as GestureTrackFavorite ?? SelectedFavoriteGestureTrack;
+            if (favorite == null
+                || MessageBox.Show(this, $"Remove favorite '{favorite.Name}'?", "Remove Gesture Track Favorite",
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            FavoriteGestureTracks.Remove(favorite);
+            ApplyFavoriteGestureTrackFilter();
+            if (ReferenceEquals(SelectedFavoriteGestureTrack, favorite))
+            {
+                SelectedFavoriteGestureTrack = null;
+            }
+            SaveFavoriteGestureTracks();
+            StatusMessage = $"Removed '{favorite.Name}' from gesture track favorites.";
+        }
+
+        private void ImportFavoriteGestureTrack_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedFavoriteGestureTrack == null)
+            {
+                MessageBox.Show("Please select a favorite gesture track first.", "No Favorite Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            ImportGestureTrack(SelectedFavoriteGestureTrack.CreateSourceOption(), SelectedFavoriteGestureTrack.TrackName);
+        }
+
         private void ImportGestureTrack_Click(object sender, RoutedEventArgs e)
         {
             if (SelectedGestureTrack == null || SelectedGestureTrackSource == null)
@@ -2279,8 +2528,13 @@ namespace LegendaryExplorer.Dialogs
                 return;
             }
 
+            ImportGestureTrack(SelectedGestureTrackSource, SelectedGestureTrack.TrackName);
+        }
+
+        private void ImportGestureTrack(GestureTrackSourceOption sourceOption, string trackName)
+        {
             MessageBoxResult confirmation = MessageBox.Show(
-                $"Replace '{_gestureTrackExport.ObjectName.Instanced}' with all data and references from '{SelectedGestureTrack.TrackName}'?\n\nThe destination actor lookup properties will be preserved.",
+                $"Replace '{_gestureTrackExport.ObjectName.Instanced}' with all data and references from '{trackName}'?\n\nThe destination actor lookup properties will be preserved.",
                 "Replace Gesture Track",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
@@ -2291,11 +2545,11 @@ namespace LegendaryExplorer.Dialogs
 
             try
             {
-                ReplaceGestureTrackFromDatabase(SelectedGestureTrackSource);
+                ReplaceGestureTrackFromDatabase(sourceOption);
                 LoadExistingGestures();
-                StatusMessage = $"Successfully replaced the gesture track with '{SelectedGestureTrack.TrackName}'.";
+                StatusMessage = $"Successfully replaced the gesture track with '{trackName}'.";
                 MessageBox.Show(
-                    $"Gesture track '{SelectedGestureTrack.TrackName}' was imported with its links and referenced exports.",
+                    $"Gesture track '{trackName}' was imported with its links and referenced exports.",
                     "Import Successful",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);

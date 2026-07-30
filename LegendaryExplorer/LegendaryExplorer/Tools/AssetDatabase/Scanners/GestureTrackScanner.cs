@@ -39,7 +39,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase.Scanners
             db.GeneratedGestureTracks.TryAdd($"{e.FileKey}:{e.Export.UIndex}", record);
         }
 
-        private static int GetNodeStrRef(ExportEntry gestureTrack)
+        internal static int GetNodeStrRef(ExportEntry gestureTrack)
         {
             var interpData = GetInterpData(gestureTrack);
             if (interpData == null)

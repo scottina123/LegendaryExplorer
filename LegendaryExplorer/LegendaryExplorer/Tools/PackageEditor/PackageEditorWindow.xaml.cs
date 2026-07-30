@@ -524,6 +524,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand AddInterpTrackCommand { get; set; }
         public ICommand BulkEditInterpGroupsCommand { get; set; }
         public ICommand OpenGestureImporterCommand { get; set; }
+        public ICommand AddGestureTrackFavoriteCommand { get; set; }
         public ICommand ShiftInterpTrackMoveCommand { get; set; }
         public ICommand GenerateCameraPresetsCommand { get; set; }
         public ICommand ShiftInterpTrackMovesInPackageCommand { get; set; }
@@ -600,6 +601,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             AddInterpTrackCommand = new GenericCommand(AddInterpTrack, CanAddInterpTrack);
             BulkEditInterpGroupsCommand = new GenericCommand(BulkEditInterpGroups, CanBulkEditInterpGroups);
             OpenGestureImporterCommand = new GenericCommand(OpenGestureImporter, CanOpenGestureImporter);
+            AddGestureTrackFavoriteCommand = new GenericCommand(AddGestureTrackFavorite, CanAddGestureTrackFavorite);
             ShiftInterpTrackMoveCommand = new GenericCommand(ShiftSelectedInterpTrackMove, CanShiftInterpTrackMove);
             GenerateCameraPresetsCommand = new GenericCommand(GenerateCameraPresets, CanGenerateCameraPresets);
             ShiftInterpTrackMovesInPackageCommand = new GenericCommand(ShiftInterpTrackMovesInSelectedPackage, PackageExportIsSelected);
@@ -1756,6 +1758,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool CanOpenGestureImporter() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName is "BioEvtSysTrackGesture" or "SFXModule_Gestures" or "SFXSkeletalMeshActor" or "SFXSeqAct_SetAmbientPerformance";
 
+        private bool CanAddGestureTrackFavorite() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "BioEvtSysTrackGesture";
+
         private bool CanShiftSelectedLevelActors() => TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "Level";
 
         private void OpenGestureImporter()
@@ -1764,6 +1768,14 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 var dialog = new Dialogs.GestureAnimationImporterDialog(exp, this);
                 dialog.ShowDialog();
+            }
+        }
+
+        private void AddGestureTrackFavorite()
+        {
+            if (TryGetSelectedExport(out ExportEntry exp) && exp.ClassName == "BioEvtSysTrackGesture")
+            {
+                Dialogs.GestureAnimationImporterDialog.AddGestureTrackFavorite(exp, this);
             }
         }
 
