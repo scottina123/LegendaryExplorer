@@ -383,9 +383,16 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
         internal static CrossEditorSequenceImportResult ImportNodeSequence(
             DialogueEditorWindow sourceEditor,
             DialogueNodeExtended sourceNode,
+            DialogueEditorWindow destinationEditor) =>
+            ImportNodeSequence(sourceEditor?.SelectedConv, sourceEditor?.Pcc, sourceNode, destinationEditor);
+
+        internal static CrossEditorSequenceImportResult ImportNodeSequence(
+            ConversationExtended sourceConversation,
+            IMEPackage sourcePackage,
+            DialogueNodeExtended sourceNode,
             DialogueEditorWindow destinationEditor)
         {
-            if (sourceEditor?.SelectedConv == null || sourceNode?.InterpData == null
+            if (sourceConversation == null || sourcePackage == null || sourceNode?.InterpData == null
                 || destinationEditor?.SelectedConv?.Sequence is not ExportEntry destinationSequence)
             {
                 return null;
@@ -401,7 +408,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
                 return null;
             }
 
-            ExportEntry sourceConvNode = GetConvNodeLinkedToInterp(sourceEditor.SelectedConv, sourceInterp, sourceNode.ExportID);
+            ExportEntry sourceConvNode = GetConvNodeLinkedToInterp(sourceConversation, sourceInterp, sourceNode.ExportID);
             if (sourceConvNode == null)
             {
                 return null;
@@ -421,7 +428,7 @@ namespace LegendaryExplorer.DialogueEditor.DialogueEditorExperiments
 
             var relinkerOptions = new RelinkerOptionsPackage
             {
-                IsCrossGame = sourceEditor.Pcc.Game != destinationEditor.Pcc.Game && sourceEditor.Pcc.Game != MEGame.UDK,
+                IsCrossGame = sourcePackage.Game != destinationEditor.Pcc.Game && sourcePackage.Game != MEGame.UDK,
                 Cache = new PackageCache(),
                 ImportExportDependencies = false
             };

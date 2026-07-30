@@ -226,6 +226,9 @@
 		<Compile Update="Dialogs\ClassPickerDlg.xaml.cs">
 			<DependentUpon>ClassPickerDlg.xaml</DependentUpon>
 		</Compile>
+		<Compile Update="Dialogs\SavedDialogueNodeLibraryDialog.xaml.cs">
+			<DependentUpon>SavedDialogueNodeLibraryDialog.xaml</DependentUpon>
+		</Compile>
 		<Compile Update="Dialogs\SoundReplaceOptionsDialog - Copy.xaml.cs">
 			<DependentUpon>SoundReplaceOptionsDialog.xaml</DependentUpon>
 		</Compile>
@@ -344,6 +347,10 @@
 
 	<ItemGroup>
 		<Page Update="Dialogs\ClassPickerDlg.xaml">
+			<SubType>Designer</SubType>
+		</Page>
+		<Page Update="Dialogs\SavedDialogueNodeLibraryDialog.xaml">
+			<XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
 			<SubType>Designer</SubType>
 		</Page>
 		<Page Update="Dialogs\SetWwisePathDialog.xaml">

@@ -61,6 +61,10 @@
                       ToolTip="Add a new autocontinue reply with the Autocontinue TLK string"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
             <Separator />
+            <MenuItem Header="Insert Saved Node from Library" Click="OpenSavedDialogueNodeLibrary_Click"
+                      ToolTip="Search and insert a reusable saved dialogue node"
+                      IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
+            <Separator />
             <MenuItem Header="Create Entry with Sequence" Command="{Binding CreateEntryWithSequenceCommand}"
                       ToolTip="Create one Entry with sequence and InterpData objects"
                       IsEnabled="{Binding SelectedConv, Converter={StaticResource NullEnabledConverter}}" />
@@ -80,6 +84,7 @@
             <MenuItem Header="Clone Reply" Command="{Binding NodeAddCommand}" CommandParameter="CloneReply" ToolTip="Create a new reply as a duplicate of this one"/>
             <MenuItem Header="Clone Reply and Sequence" Command="{Binding CloneNodeAndSequenceCommand}" ToolTip="Clones a dialogue node along with its linked sequence, and give it a unique ID." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Save Node to Library" Click="SaveDialogueNodeToLibrary_Click" ToolTip="Save this node and its associated sequence and InterpData for reuse in other conversations"/>
             <MenuItem Header="Update InterpLengths" Command="{Binding UpdateInterpLengthCommand}" ToolTip="Update the InterpLength of the selected audio node, based either on the FXA or the audio length." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Update VOElements and Interp Comment" Command="{Binding UpdateVOElementsAndInterpCommentCommand}" ToolTip="Update the Interp comment and VOElement' StrRefID that are linked to the selected audio node." 
@@ -132,6 +137,7 @@
             <MenuItem Header="Clone Entry" Command="{Binding NodeAddCommand}" CommandParameter="CloneEntry" ToolTip="Create a new entry as a duplicate of this one"/>
             <MenuItem Header="Clone Entry and Sequence" Command="{Binding CloneNodeAndSequenceCommand}" ToolTip="Clones a dialogue node along with its linked sequence, and give it a unique ID." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Save Node to Library" Click="SaveDialogueNodeToLibrary_Click" ToolTip="Save this node and its associated sequence and InterpData for reuse in other conversations"/>
             <MenuItem Header="Update InterpLengths" Command="{Binding UpdateInterpLengthCommand}" ToolTip="Update the InterpLength of the selected audio node, based either on the FXA or the audio length." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Update VOElements and Interp Comment" Command="{Binding UpdateVOElementsAndInterpCommentCommand}" ToolTip="Update the Interp comment and VOElement' StrRefID that are linked to the selected audio node." 
