@@ -641,7 +641,22 @@
                                                                KeyUp="FilterBox_KeyUp"
                                                                ToolTip="Filter and find classes"
                                                                Text="{Binding FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                               Visibility="{Binding ShowTrackPropFilters, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                                                Watermark="{Binding FilterWatermark, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <StackPanel Grid.Column="0"
+                                                    Orientation="Horizontal"
+                                                    Visibility="{Binding ShowTrackPropFilters, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <xctk:WatermarkTextBox Width="220"
+                                                                   HorizontalContentAlignment="Left"
+                                                                   Text="{Binding TrackPropNameFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                   Watermark="Search nmProp"/>
+                                            <Button Content="..." Padding="6,1" Margin="4,0,12,0" Tag="PropName" Click="BrowseTrackPropFilterValue_Click" ToolTip="Browse all nmProp names"/>
+                                            <xctk:WatermarkTextBox Width="220"
+                                                                   HorizontalContentAlignment="Left"
+                                                                   Text="{Binding TrackActionNameFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                   Watermark="Search nmAction"/>
+                                            <Button Content="..." Padding="6,1" Margin="4,0,0,0" Tag="ActionName" Click="BrowseTrackPropFilterValue_Click" ToolTip="Browse all nmAction names"/>
+                                        </StackPanel>
                                         <xctk:WatermarkTextBox Grid.Column="2"
                                                                Width="300"
                                                                Margin="12,0,0,0"
@@ -776,6 +791,7 @@
                             <Grid DockPanel.Dock="Left">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Class Records" Style="{StaticResource ColumnHeaderStyle}" Grid.Row="0" ToolTip="Unreal classes"/>
@@ -818,6 +834,7 @@
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Properties" Style="{StaticResource ColumnHeaderStyle}" Grid.Row="0" ToolTip="Properties of this class that are used in game"/>
@@ -1932,6 +1949,55 @@
                                 <assetDatabase:AssetUsagesPanel.UsageContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this gesture track in Package Editor."/>
+                                        <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
+                                    </ContextMenu>
+                                </assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                            </assetDatabase:AssetUsagesPanel>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Track Props" TabIndex="14">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Track Props" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Prop and action names found in track property keys." Grid.Row="0" Grid.Column="0"/>
+                            <controls:ListBoxScroll x:Name="lstbx_TrackProps" MinWidth="300" Grid.Row="1" Grid.Column="0">
+                                <controls:ListBoxScroll.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding PropName, StringFormat=nmProp: {0}}"/>
+                                            <TextBlock Text="{Binding ActionName, StringFormat=nmAction: {0}}" FontSize="10" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </controls:ListBoxScroll.ItemTemplate>
+                                <controls:ListBoxScroll.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource ModHighlightItemStyle}"/>
+                                </controls:ListBoxScroll.ItemContainerStyle>
+                            </controls:ListBoxScroll>
+                            <TextBlock Text="Details" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Track property details." Grid.Row="0" Grid.Column="1"/>
+                            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="0.65" Grid.Row="1" Grid.Column="1">
+                                <StackPanel Margin="5">
+                                    <TextBlock Text="nmProp:" Margin="0,0,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.PropName, ElementName=lstbx_TrackProps}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="nmAction:" Margin="0,8,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.ActionName, ElementName=lstbx_TrackProps}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Usages:" Margin="0,8,0,2"/>
+                                    <TextBlock Text="{Binding SelectedItem.Usages.Count, ElementName=lstbx_TrackProps}"/>
+                                </StackPanel>
+                            </Border>
+                            <assetDatabase:AssetUsagesPanel x:Name="trackPropsUsagesPanel" Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                                                           FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                           UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_TrackProps}"
+                                                           HeaderToolTip="Every package containing this prop action&#x0a;Right click to open in Package Editor">
+                                <assetDatabase:AssetUsagesPanel.UsageContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Open in Package Editor" Command="{Binding OpenUsagePkgCommand}" ToolTip="Open this prop action in Package Editor."/>
                                         <MenuItem Header="Open in Windows Explorer" Command="{Binding OpenInWindowsExplorerCommand}" ToolTip="Open this package in Windows Explorer."/>
                                     </ContextMenu>
                                 </assetDatabase:AssetUsagesPanel.UsageContextMenu>

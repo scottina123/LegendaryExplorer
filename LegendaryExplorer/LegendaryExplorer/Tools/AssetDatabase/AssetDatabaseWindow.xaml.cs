@@ -352,6 +352,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             get => _showUsageFilter;
             set => SetProperty(ref _showUsageFilter, value);
         }
+        private bool _showTrackPropFilters;
+        public bool ShowTrackPropFilters
+        {
+            get => _showTrackPropFilters;
+            set => SetProperty(ref _showTrackPropFilters, value);
+        }
         private bool _BusyBarInd;
         public bool BusyBarInd
         {
@@ -484,6 +490,32 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             set
             {
                 if (SetProperty(ref _gestureNodeTlkFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _trackPropNameFilter;
+        public string TrackPropNameFilter
+        {
+            get => _trackPropNameFilter;
+            set
+            {
+                if (SetProperty(ref _trackPropNameFilter, value))
+                {
+                    Filter();
+                }
+            }
+        }
+
+        private string _trackActionNameFilter;
+        public string TrackActionNameFilter
+        {
+            get => _trackActionNameFilter;
+            set
+            {
+                if (SetProperty(ref _trackActionNameFilter, value))
                 {
                     Filter();
                 }
@@ -920,6 +952,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 || (currentView == 11 && tlkUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 12 && actorsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 13 && gestureTracksUsagesPanel?.SelectedIndex >= 0)
+                || (currentView == 14 && trackPropsUsagesPanel?.SelectedIndex >= 0)
                 || (currentView == 0 && IsNotCND(lstbx_Files?.SelectedItem));
         }
 
@@ -1292,7 +1325,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -2048,6 +2081,46 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 currentValue);
         }
 
+        private void BrowseTrackPropFilterValue_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is not string category)
+            {
+                return;
+            }
+
+            bool selectPropName = category == "PropName";
+            IEnumerable<string> values = selectPropName
+                ? CurrentDataBase.PropActions.Select(propAction => propAction.PropName)
+                : CurrentDataBase.PropActions.Select(propAction => propAction.ActionName);
+            List<string> options = values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            string label = selectPropName ? "nmProp" : "nmAction";
+            string currentValue = selectPropName ? TrackPropNameFilter : TrackActionNameFilter;
+            string selectedValue = StringSelectorDialog.GetValue(
+                this,
+                $"Search or scroll to select an {label} name.",
+                $"Select {label}",
+                options,
+                currentValue);
+
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                return;
+            }
+
+            if (selectPropName)
+            {
+                TrackPropNameFilter = selectedValue;
+            }
+            else
+            {
+                TrackActionNameFilter = selectedValue;
+            }
+        }
+
         private static string GetGestureFilterCategoryLabel(string category) => category switch
         {
             "StartingPoseSet" => "starting pose set",
@@ -2575,7 +2648,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
                                                       $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} " +
-                                                      $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count}";
+                                                       $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
@@ -3308,7 +3381,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 FilterText = string.Empty;
                 UsageFilterText = string.Empty;
-                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11 or 12 or 13;
+                ShowUsageFilter = currentView is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 11 or 12 or 13 or 14;
+                ShowTrackPropFilters = currentView == 14;
                 Filter();
                 switch (currentView)
                 {
@@ -3336,6 +3410,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                         break;
                     case 13:
                         FilterWatermark = "Search (by track, pose, gesture, or transition name)";
+                        break;
+                    case 14:
+                        FilterWatermark = "Search (by nmProp or nmAction)";
                         break;
                     default:
                         FilterWatermark = "Search";
@@ -5408,6 +5485,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             tlkUsagesPanel?.RefreshFilter();
             actorsUsagesPanel?.RefreshFilter();
             gestureTracksUsagesPanel?.RefreshFilter();
+            trackPropsUsagesPanel?.RefreshFilter();
 
             RefreshUsageView(lstbx_Usages);
             RefreshUsageView(lstbx_PlotUsages);
@@ -5760,6 +5838,18 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                     || ContainsText(gesture.TransitionAnim, FilterText));
         }
 
+        private bool TrackPropTabFilter(object obj)
+        {
+            return obj is PropActionRecord propAction
+                   && (string.IsNullOrWhiteSpace(TrackPropNameFilter)
+                       || ContainsText(propAction.PropName, TrackPropNameFilter.Trim()))
+                   && (string.IsNullOrWhiteSpace(TrackActionNameFilter)
+                       || ContainsText(propAction.ActionName, TrackActionNameFilter.Trim()))
+                   && (string.IsNullOrWhiteSpace(FilterText)
+                       || ContainsText(propAction.PropName, FilterText)
+                       || ContainsText(propAction.ActionName, FilterText));
+        }
+
         private bool MatchesGestureNodeTlk(GestureTrackRecord track, string filter)
         {
             return string.IsNullOrWhiteSpace(filter)
@@ -5879,6 +5969,11 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewGT = CollectionViewSource.GetDefaultView(CurrentDataBase.GestureTracks);
                     viewGT.Filter = GestureTrackTabFilter;
                     lstbx_GestureTracks.ItemsSource = viewGT;
+                    break;
+                case 14: // Track Props
+                    ICollectionView viewTP = CollectionViewSource.GetDefaultView(CurrentDataBase.PropActions);
+                    viewTP.Filter = TrackPropTabFilter;
+                    lstbx_TrackProps.ItemsSource = viewTP;
                     break;
                 default: //Files
                     lstbx_Files.Items.Filter = FileFilter;
@@ -6516,6 +6611,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 10 => sequenceEventsUsagesPanel.SelectedItem as IAssetUsage,
                 12 => actorsUsagesPanel.SelectedItem as IAssetUsage,
                 13 => gestureTracksUsagesPanel.SelectedItem as IAssetUsage,
+                14 => trackPropsUsagesPanel.SelectedItem as IAssetUsage,
                 _ => null
             };
         }
