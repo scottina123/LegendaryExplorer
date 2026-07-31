@@ -132,6 +132,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private Button playMoveButton;
     private Button playActorButton;
     private PreviewActorConfiguration playbackActor;
+    private CameraOrigin playbackActorOriginalOrigin;
+    private bool hasPlaybackActorOriginalOrigin;
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
@@ -1841,6 +1843,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playbackElapsed = 0f;
         isPlayingActor = false;
         playbackActor = null;
+        hasPlaybackActorOriginalOrigin = false;
         isPlayingMove = true;
         RenderContext.ForceContinuousRendering = true;
         ApplyCameraAtTime(playbackStartTime);
@@ -1867,11 +1870,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playbackStartTime = model.Keyframes[0].Time;
         playbackEndTime = model.Keyframes[^1].Time;
         playbackActor = selectedPreviewActor;
+        playbackActorOriginalOrigin = playbackActor.Origin;
+        hasPlaybackActorOriginalOrigin = true;
         if (playbackEndTime <= playbackStartTime)
         {
             ApplyActorAtTime(playbackStartTime);
-            SavePreviewActorLayout();
+            RestorePlaybackActorOrigin();
             playbackActor = null;
+            hasPlaybackActorOriginalOrigin = false;
             return;
         }
 
@@ -2004,9 +2010,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (stoppedActorPlayback && playbackActor is not null)
         {
-            SavePreviewActorLayout();
+            RestorePlaybackActorOrigin();
         }
         playbackActor = null;
+        hasPlaybackActorOriginalOrigin = false;
         if (previewActorWidgetActive && selectedPreviewActor is not null)
         {
             previewActorWidgetTarget.SetTransform(selectedPreviewActor.Origin);
@@ -2017,6 +2024,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         }
         SceneViewer?.MarkRenderDirty();
+    }
+
+    private void RestorePlaybackActorOrigin()
+    {
+        if (playbackActor is null || !hasPlaybackActorOriginalOrigin)
+        {
+            return;
+        }
+
+        playbackActor.Origin = playbackActorOriginalOrigin;
+        if (ReferenceEquals(selectedPreviewActor, playbackActor))
+        {
+            updatingPreviewActorControls = true;
+            SetPreviewActorOriginFields(playbackActorOriginalOrigin);
+            UpdatePreviewActorRotationDialIndicator();
+            updatingPreviewActorControls = false;
+        }
     }
 
     private void UpdatePlaybackButton()
