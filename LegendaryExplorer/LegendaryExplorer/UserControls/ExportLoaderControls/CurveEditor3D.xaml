@@ -196,6 +196,17 @@
                                           IsTextSearchEnabled="True" DisplayMemberPath="DisplayString"
                                           SelectionChanged="PreviewActorModel_SelectionChanged"/>
                             </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gesture" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="PreviewActorGestureComboBox" Grid.Column="1"
+                                          DisplayMemberPath="DisplayName"
+                                          SelectionChanged="PreviewActorGesture_SelectionChanged"
+                                          ToolTip="Session-only gesture assignment for actor-on-track playback"/>
+                            </Grid>
                             <UniformGrid Columns="3" Margin="0,0,0,4">
                                 <StackPanel Margin="2"><TextBlock Text="Origin X"/><TextBox x:Name="PreviewActorXTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
                                 <StackPanel Margin="2"><TextBlock Text="Origin Y"/><TextBox x:Name="PreviewActorYTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>

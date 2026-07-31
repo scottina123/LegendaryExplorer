@@ -20,10 +20,13 @@ using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
+using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
+using LegendaryExplorerCore.Unreal.Animation;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
@@ -78,6 +81,69 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private sealed class GestureTrackOption
+    {
+        public static readonly GestureTrackOption None = new() { DisplayName = "None" };
+
+        public string DisplayName { get; init; }
+        public ExportEntry Track { get; init; }
+        public IReadOnlyList<GesturePreviewExportLoader.GestureAnimationItem> Animations { get; init; } = [];
+        public IReadOnlyList<AnimationPreviewControl.AnimationTimelineClip> Timeline { get; init; } = [];
+        public string Status { get; init; }
+        public bool HasResolvedTimeline => Timeline.Count > 0;
+    }
+
+    private sealed class PreviewActorAnimationState
+    {
+        public SkeletalMesh SkeletalMesh { get; init; }
+        public SkinnedMeshRenderer Renderer { get; init; }
+        public AnimSequencePlayer Player { get; init; }
+        public bool HasTimeline => Player?.HasAnimation == true;
+
+        public void SetTimeline(IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache)
+        {
+            List<AnimSequencePlayer.ScheduledAnimationClip> scheduledClips = [];
+            foreach (AnimationPreviewControl.AnimationTimelineClip clip in timeline)
+            {
+                if (clip.AnimationExport is null)
+                {
+                    continue;
+                }
+
+                var animation = ObjectBinary.From<AnimSequence>(clip.AnimationExport);
+                animation.DecompressAnimationData();
+                scheduledClips.Add(new AnimSequencePlayer.ScheduledAnimationClip
+                {
+                    Animation = animation,
+                    StartTime = clip.StartTime,
+                    EndTime = clip.EndTime,
+                    AnimationStartTime = clip.AnimationStartTime,
+                    AnimationEndTime = clip.AnimationEndTime,
+                    PlayRate = clip.PlayRate,
+                    BlendInDuration = clip.BlendInDuration,
+                    BlendOutDuration = clip.BlendOutDuration,
+                    Weight = clip.Weight,
+                    Loop = clip.Loop,
+                });
+            }
+
+            Player.SetAnimationTimeline(scheduledClips, packageCache);
+            Renderer.NeedsUpdate = true;
+        }
+
+        public void SetTime(float time)
+        {
+            Player.SetCurrentTime(time);
+            Renderer.NeedsUpdate = true;
+        }
+
+        public void Clear()
+        {
+            Player.SetAnimation(null);
+            Renderer.NeedsUpdate = true;
+        }
+    }
+
     private sealed class PreviewActorConfiguration
     {
         public string DisplayName { get; set; }
@@ -116,6 +182,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<PreviewActorConfiguration> previewActors = [];
     private readonly List<ModelPreview<WorldVertex>> previewActorModels = [];
     private readonly PreviewActorWidgetTarget previewActorWidgetTarget = new();
+    private readonly PackageCache previewActorGesturePackageCache = new();
+    private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
+    private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
+    private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
     private AssetDB previewAssetDatabase;
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
     private PreviewActorConfiguration selectedPreviewActor;
@@ -199,6 +269,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         LoadCommands();
         InitializeComponent();
         PreviewActorListBox.ItemsSource = previewActors;
+        PreviewActorGestureComboBox.ItemsSource = availableGestureTracks;
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
@@ -513,6 +584,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
+        RefreshAvailableGestureTracks(exportEntry);
         InitializePreviewActorLayout(exportEntry.Game);
         model.Load(exportEntry);
         trajectorySamplesDirty = true;
@@ -545,6 +617,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SelectedKeyframe = null;
         CurrentLoadedExport = null;
         CurrentExportName = null;
+        previewActorGestureAssignments.Clear();
+        availableGestureTracks.Clear();
         UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
     }
@@ -574,7 +648,82 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.UpdateScene -= UpdatePlayback;
         ThemeManager.ThemeChanged -= OnThemeChanged;
         KeyframeList.PreviewMouseRightButtonDown -= KeyframeList_PreviewMouseRightButtonDown;
+        previewActorGesturePackageCache.ReleasePackages();
         SceneViewer.Dispose();
+    }
+
+    private void RefreshAvailableGestureTracks(ExportEntry trackMove)
+    {
+        availableGestureTracks.Clear();
+        availableGestureTracks.Add(GestureTrackOption.None);
+        previewActorGestureAssignments.Clear();
+        foreach (KeyValuePair<PreviewActorConfiguration, PreviewActorAnimationState> pair in previewActorAnimationStates)
+        {
+            pair.Value.Clear();
+            UpdatePreviewActorSkinning(pair.Key);
+        }
+        previewActorGesturePackageCache.ReleasePackages();
+
+        foreach (ExportEntry gestureTrack in FindGestureTracksInSameInterpData(trackMove))
+        {
+            List<GesturePreviewExportLoader.GestureAnimationItem> animations = GesturePreviewExportLoader
+                .BuildAnimationTimeline(gestureTrack, previewActorGesturePackageCache);
+            List<GesturePreviewExportLoader.GestureAnimationItem> resolvedAnimations = animations
+                .Where(animation => animation.AnimationExport is not null)
+                .ToList();
+            List<AnimationPreviewControl.AnimationTimelineClip> timeline = GesturePreviewExportLoader
+                .BuildPlaybackTimeline(resolvedAnimations);
+            string title = gestureTrack.GetProperty<StrProperty>("TrackTitle")?.Value ?? gestureTrack.ObjectName.Instanced;
+            string actor = gestureTrack.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced ?? "None";
+            availableGestureTracks.Add(new GestureTrackOption
+            {
+                DisplayName = $"{title} ({actor})",
+                Track = gestureTrack,
+                Animations = animations,
+                Timeline = timeline,
+                Status = timeline.Count == 0
+                    ? $"{title}: no resolved gesture animation timeline."
+                    : $"{title}: {resolvedAnimations.Count} resolved animation slot(s).",
+            });
+        }
+    }
+
+    private static IEnumerable<ExportEntry> FindGestureTracksInSameInterpData(ExportEntry trackMove)
+    {
+        if (trackMove?.Parent is not ExportEntry interpGroup
+            || interpGroup.Parent is not ExportEntry interpData)
+        {
+            yield break;
+        }
+
+        ArrayProperty<ObjectProperty> groupRefs = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups");
+        if (groupRefs is null)
+        {
+            yield break;
+        }
+
+        foreach (ObjectProperty groupRef in groupRefs)
+        {
+            if (groupRef.ResolveToExport(interpData.FileRef, null) is not ExportEntry group)
+            {
+                continue;
+            }
+
+            ArrayProperty<ObjectProperty> trackRefs = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks");
+            if (trackRefs is null)
+            {
+                continue;
+            }
+
+            foreach (ObjectProperty trackRef in trackRefs)
+            {
+                if (trackRef.ResolveToExport(interpData.FileRef, null) is ExportEntry track
+                    && track.IsA("BioEvtSysTrackGesture"))
+                {
+                    yield return track;
+                }
+            }
+        }
     }
 
     private async Task InitializePreviewActorModelsAsync()
@@ -721,6 +870,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SavePreviewActorLayout();
         ClearPreviewActorModels();
         previewActors.Clear();
+        previewActorGestureAssignments.Clear();
         previewActorGame = game;
         previewAssetDatabase = null;
         previewAssetFiles = [];
@@ -754,6 +904,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         RenumberPreviewActors();
         PreviewActorListBox.SelectedIndex = previewActors.Count > 0 ? 0 : -1;
+        PreviewActorGestureComboBox.Items.Refresh();
     }
 
     private void SavePreviewActorLayout()
@@ -811,6 +962,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         int removedIndex = previewActors.IndexOf(selectedPreviewActor);
         previewActors.RemoveAt(removedIndex);
+        previewActorGestureAssignments.Remove(selectedPreviewActor);
         RemovePreviewActorModel(removedIndex);
         RenumberPreviewActors();
         PreviewActorListBox.SelectedIndex = Math.Min(removedIndex, previewActors.Count - 1);
@@ -824,6 +976,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             StopPlayback();
         }
         previewActors.Clear();
+        previewActorGestureAssignments.Clear();
         ClearPreviewActorModels();
         RenumberPreviewActors();
         PreviewActorListBox.SelectedIndex = -1;
@@ -1959,6 +2112,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             UpdatePreviewActorRotationDialIndicator();
             updatingPreviewActorControls = false;
         }
+        if (previewActorAnimationStates.TryGetValue(playbackActor, out PreviewActorAnimationState animationState)
+            && animationState.HasTimeline)
+        {
+            animationState.SetTime(time);
+            UpdatePreviewActorSkinning(playbackActor);
+        }
         PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
         SceneStatus = $"Playing {playbackActor.DisplayName} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         SceneViewer.MarkRenderDirty();
@@ -2034,6 +2193,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         playbackActor.Origin = playbackActorOriginalOrigin;
+        if (previewActorAnimationStates.TryGetValue(playbackActor, out PreviewActorAnimationState animationState))
+        {
+            if (animationState.HasTimeline)
+            {
+                animationState.SetTime(animationState.Player.StartTime);
+            }
+            else
+            {
+                animationState.Clear();
+            }
+            UpdatePreviewActorSkinning(playbackActor);
+        }
         if (ReferenceEquals(selectedPreviewActor, playbackActor))
         {
             updatingPreviewActorControls = true;
@@ -2104,6 +2275,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 continue;
             }
+            UpdatePreviewActorSkinning(previewActors[actorIndex]);
             actorModel.UpdateLocalToWorld(CreatePreviewActorTransform(previewActors[actorIndex].Origin));
             actorModel.Render(RenderPass.Base, RenderContext, 0);
             actorModel.Render(RenderPass.Hair, RenderContext, 0);
@@ -2507,13 +2679,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        ModelPreview<WorldVertex> modelPreview = new(RenderContext, skeletalMeshExport.GetBinaryData<SkeletalMesh>());
+        SkeletalMesh skeletalMesh = skeletalMeshExport.GetBinaryData<SkeletalMesh>();
+        ModelPreview<WorldVertex> modelPreview = new(RenderContext, skeletalMesh);
         while (previewActorModels.Count <= actorIndex)
         {
             previewActorModels.Add(null);
         }
         previewActorModels[actorIndex]?.Dispose();
         previewActorModels[actorIndex] = modelPreview;
+        if (actorIndex < previewActors.Count && skeletalMesh.LODModels.Length > 0)
+        {
+            var renderer = new SkinnedMeshRenderer();
+            renderer.BuildFromSkeletalMesh(skeletalMeshExport.Game, skeletalMesh.LODModels[0]);
+            var animationState = new PreviewActorAnimationState
+            {
+                SkeletalMesh = skeletalMesh,
+                Renderer = renderer,
+                Player = new AnimSequencePlayer(skeletalMesh),
+            };
+            previewActorAnimationStates[previewActors[actorIndex]] = animationState;
+            ApplyAssignedGestureToActor(previewActors[actorIndex]);
+        }
         SceneViewer.MarkRenderDirty();
     }
 
@@ -2522,6 +2708,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (actorIndex < 0 || actorIndex >= previewActorModels.Count)
         {
             return;
+        }
+        if (actorIndex < previewActors.Count)
+        {
+            previewActorAnimationStates.Remove(previewActors[actorIndex]);
         }
         previewActorModels[actorIndex]?.Dispose();
         previewActorModels.RemoveAt(actorIndex);
@@ -2535,6 +2725,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             actorModel?.Dispose();
         }
         previewActorModels.Clear();
+        previewActorAnimationStates.Clear();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -2602,8 +2793,86 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             PreviewActorComboBox.SelectedItem = meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName,
                 selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
         }
+        PreviewActorGestureComboBox.Items.Refresh();
+        PreviewActorGestureComboBox.SelectedItem = previewActorGestureAssignments.GetValueOrDefault(selectedPreviewActor)
+                                                ?? GestureTrackOption.None;
+        UpdatePreviewActorGestureStatus();
         UpdatePreviewActorRotationDialIndicator();
         updatingPreviewActorControls = false;
+    }
+
+    private void PreviewActorGesture_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingPreviewActorControls || selectedPreviewActor is null)
+        {
+            return;
+        }
+
+        if (PreviewActorGestureComboBox.SelectedItem is GestureTrackOption { Track: not null } gesture)
+        {
+            previewActorGestureAssignments[selectedPreviewActor] = gesture;
+        }
+        else
+        {
+            previewActorGestureAssignments.Remove(selectedPreviewActor);
+        }
+
+        ApplyAssignedGestureToActor(selectedPreviewActor);
+        UpdatePreviewActorGestureStatus();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyAssignedGestureToActor(PreviewActorConfiguration actor)
+    {
+        if (!previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
+        {
+            return;
+        }
+
+        if (!previewActorGestureAssignments.TryGetValue(actor, out GestureTrackOption gesture) || gesture.Timeline.Count == 0)
+        {
+            animationState.Clear();
+            UpdatePreviewActorSkinning(actor);
+            return;
+        }
+
+        animationState.SetTimeline(gesture.Timeline, previewActorGesturePackageCache);
+        UpdatePreviewActorSkinning(actor);
+    }
+
+    private void UpdatePreviewActorGestureStatus()
+    {
+        if (selectedPreviewActor is null)
+        {
+            SetPreviewActorStatus("Select or add an actor to assign a gesture.");
+            return;
+        }
+
+        if (!previewActorGestureAssignments.TryGetValue(selectedPreviewActor, out GestureTrackOption gesture))
+        {
+            SetPreviewActorStatus(availableGestureTracks.Count > 1
+                ? "No gesture assigned to this actor."
+                : "No gesture tracks were found under this InterpData.");
+            return;
+        }
+
+        SetPreviewActorStatus(gesture.Status);
+    }
+
+    private void UpdatePreviewActorSkinning(PreviewActorConfiguration actor)
+    {
+        int actorIndex = previewActors.IndexOf(actor);
+        if (actorIndex < 0 || actorIndex >= previewActorModels.Count
+            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState)
+            || previewActorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+        {
+            return;
+        }
+
+        if (animationState.Renderer.NeedsUpdate)
+        {
+            animationState.Renderer.UpdateSkinning(RenderContext.ImmediateContext, actorModel.LODs[0].Mesh, animationState.Player);
+        }
     }
 
     private void PreviewActorTransform_TextChanged(object sender, TextChangedEventArgs e)
