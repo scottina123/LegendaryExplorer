@@ -135,9 +135,14 @@ namespace LegendaryExplorer.Startup
                     cliHandler.InvokeAsync(Arguments.Dequeue()).GetAwaiter().GetResult();
                 }
 
+                Window startupOpenedTool = Application.Current.Windows.OfType<Window>()
+                    .LastOrDefault(w => w != mainWindow && w.IsVisible);
+
                 mainWindow.TransitionFromSplashToMainWindow();
 
                 GameController.InitializeMessageHook(mainWindow);
+
+                startupOpenedTool?.RestoreAndBringToFront();
             });
 
             var mpc1 = LegendaryExplorerCore.PlotDatabase.PlotDatabases.GetModPlotContainerForGame(MEGame.LE1);
