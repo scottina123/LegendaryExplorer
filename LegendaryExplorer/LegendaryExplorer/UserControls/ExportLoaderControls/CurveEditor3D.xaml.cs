@@ -2574,7 +2574,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             DrawTrajectory();
         }
         RenderPreviewActors();
-        DrawAdditionalCameraActors();
         RenderContext.DrawUI();
     }
 
