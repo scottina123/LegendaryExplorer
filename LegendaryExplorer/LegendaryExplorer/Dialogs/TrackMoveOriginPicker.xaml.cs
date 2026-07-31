@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 
@@ -15,7 +16,8 @@ namespace LegendaryExplorer.Dialogs;
 
 public partial class TrackMoveOriginPicker : Window
 {
-    private sealed record TrackItem(ExportEntry Export, string DisplayName, string ExportPath);
+    private sealed record TrackItem(ExportEntry Export, string DisplayName, string Subtitle, string ExportPath,
+        string SearchText);
 
     private sealed record KeyItem(int KeyIndex, int KeyNumber, float Time, Vector3 Location, Vector3 Rotation)
     {
@@ -33,11 +35,7 @@ public partial class TrackMoveOriginPicker : Window
         InitializeComponent();
         CustomWindowChrome.ApplyCustomChrome(this);
 
-        _tracks = package?.Exports
-            .Where(export => export.ClassName == "InterpTrackMove")
-            .OrderBy(export => export.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
-            .Select(export => new TrackItem(export, $"#{export.UIndex} {export.ObjectName.Instanced}", export.InstancedFullPath))
-            .ToList() ?? [];
+        _tracks = package is null ? [] : BuildTrackItems(package);
         TrackListBox.ItemsSource = _tracks;
         StatusTextBlock.Text = _tracks.Count == 0
             ? "No InterpTrackMove exports were found in this PCC."
@@ -55,16 +53,94 @@ public partial class TrackMoveOriginPicker : Window
             return;
         }
 
-        string search = ExportSearchTextBox.Text.Trim().TrimStart('#');
+        string search = ExportSearchTextBox.Text.Trim();
+        string normalizedSearch = search.TrimStart('#');
         List<TrackItem> filteredTracks = search.Length == 0
             ? _tracks
-            : _tracks.Where(track => track.Export.UIndex.ToString(CultureInfo.InvariantCulture).Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+            : _tracks.Where(track =>
+                track.SearchText.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || track.Export.UIndex.ToString(CultureInfo.InvariantCulture).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)).ToList();
         TrackListBox.ItemsSource = filteredTracks;
         StatusTextBlock.Text = filteredTracks.Count == 0
-            ? $"No InterpTrackMove export numbers match '{ExportSearchTextBox.Text.Trim()}'."
+            ? $"No InterpTrackMove metadata matches '{search}'."
             : $"{filteredTracks.Count} matching InterpTrackMove export(s).";
         TrackListBox.SelectedIndex = filteredTracks.Count > 0 ? 0 : -1;
     }
+
+    private static List<TrackItem> BuildTrackItems(IMEPackage package)
+    {
+        List<ExportEntry> groups = package.Exports
+            .Where(export => export.ClassName is "InterpGroup" or "InterpGroupDirector")
+            .ToList();
+        var groupByTrackIndex = new Dictionary<int, ExportEntry>();
+        foreach (ExportEntry group in groups)
+        {
+            foreach (ExportEntry track in GetReferencedExports(group, "InterpTracks"))
+            {
+                groupByTrackIndex.TryAdd(track.UIndex, group);
+            }
+        }
+
+        var stringRefByGroupIndex = new Dictionary<int, int>();
+        foreach (ExportEntry interpData in package.Exports.Where(export => export.ClassName == "InterpData"))
+        {
+            List<ExportEntry> interpGroups = GetReferencedExports(interpData, "InterpGroups").ToList();
+            int? stringRef = interpGroups
+                .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+                .Select(track => track.GetProperty<IntProperty>("m_nStrRefID")?.Value)
+                .FirstOrDefault(value => value is not null);
+            if (stringRef is null)
+            {
+                continue;
+            }
+
+            foreach (ExportEntry group in interpGroups)
+            {
+                stringRefByGroupIndex.TryAdd(group.UIndex, stringRef.Value);
+            }
+        }
+
+        return package.Exports
+            .Where(export => export.ClassName == "InterpTrackMove")
+            .OrderBy(export => export.InstancedFullPath, StringComparer.OrdinalIgnoreCase)
+            .Select(export => CreateTrackItem(package, export, groupByTrackIndex.GetValueOrDefault(export.UIndex),
+                stringRefByGroupIndex))
+            .ToList();
+    }
+
+    private static TrackItem CreateTrackItem(IMEPackage package, ExportEntry track, ExportEntry group,
+        IReadOnlyDictionary<int, int> stringRefByGroupIndex)
+    {
+        string groupName = group?.GetProperty<NameProperty>("GroupName")?.Value.Instanced
+                           ?? group?.ObjectName.Instanced
+                           ?? "Unknown";
+        string findActor = group?.GetProperty<NameProperty>("m_nmSFXFindActor")?.Value.Instanced;
+        int? stringRef = group is not null && stringRefByGroupIndex.TryGetValue(group.UIndex, out int value)
+            ? value
+            : null;
+        string tlkText = stringRef is not null
+            ? TLKManagerWPF.GlobalFindStrRefbyID(stringRef.Value, package)
+            : null;
+
+        var subtitleParts = new List<string> { $"Group: {groupName}" };
+        if (!string.IsNullOrWhiteSpace(findActor))
+        {
+            subtitleParts.Add($"FindActor: {findActor}");
+        }
+        subtitleParts.Add(stringRef is null
+            ? "TLK: unavailable"
+            : $"TLK #{stringRef}: {tlkText}");
+
+        string displayName = $"#{track.UIndex} {track.ObjectName.Instanced}";
+        string subtitle = string.Join("  •  ", subtitleParts);
+        string searchText = string.Join('\n', displayName, groupName, findActor, stringRef?.ToString(CultureInfo.InvariantCulture), tlkText);
+        return new TrackItem(track, displayName, subtitle, track.InstancedFullPath, searchText);
+    }
+
+    private static IEnumerable<ExportEntry> GetReferencedExports(ExportEntry owner, string propertyName) =>
+        owner.GetProperty<ArrayProperty<ObjectProperty>>(propertyName)?
+            .Where(reference => owner.FileRef.IsUExport(reference.Value))
+            .Select(reference => owner.FileRef.GetUExport(reference.Value)) ?? [];
 
     private void TrackListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

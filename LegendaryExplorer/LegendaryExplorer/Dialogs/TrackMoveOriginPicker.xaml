@@ -15,18 +15,18 @@
         <Grid Grid.Row="1" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="500"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Text="Export number:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,8,0"/>
             <TextBox x:Name="ExportSearchTextBox" Grid.Column="1" Padding="6,4"
                      TextChanged="ExportSearchTextBox_TextChanged"
-                     ToolTip="Enter an export number, such as 461 or #461"/>
+                      ToolTip="Search by export number, group name, SFX FindActor name, TLK StringRef, or localized node text"/>
         </Grid>
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
             <GroupBox Header="InterpTrackMove exports" Padding="6" Margin="0,0,8,0">
                 <ListBox x:Name="TrackListBox" SelectionChanged="TrackListBox_SelectionChanged">
@@ -34,7 +34,8 @@
                         <DataTemplate>
                             <StackPanel Margin="2">
                                 <TextBlock Text="{Binding DisplayName, Mode=OneWay}" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding ExportPath, Mode=OneWay}" Opacity="0.7" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Subtitle, Mode=OneWay}" Opacity="0.8" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding ExportPath, Mode=OneWay}" Opacity="0.55" FontSize="10" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
