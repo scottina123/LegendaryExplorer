@@ -12021,25 +12021,9 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 return;
             }
-
-            ExportEntry[] groups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups")?
-                .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
-                .Where(group => group?.ClassName == "InterpGroup")
-                .ToArray() ?? [];
-            if (groups.Length == 0)
-            {
-                MessageBox.Show("This node's InterpData has no camera-compatible groups.", "No Interp Groups",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var choices = groups.ToDictionary(
-                group => $"{group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced} ({group.UIndex})",
-                group => group,
-                StringComparer.Ordinal);
-            string selectedGroup = StringSelectorDialog.GetValue(this, "Choose the group whose camera track should be modified:",
-                "Apply Single-Camera Preset", choices.Keys);
-            if (!choices.TryGetValue(selectedGroup, out ExportEntry group))
+            ExportEntry group = SelectCameraGroup(interpData, "Choose the group whose camera track should be modified:",
+                "Apply Single-Camera Preset");
+            if (group is null)
             {
                 return;
             }
@@ -12061,6 +12045,50 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 RefreshSelectedNodeAfterInterpMutation(interpData.UIndex);
             }
+        }
+
+        private void SaveSingleCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.InterpData is not ExportEntry interpData)
+            {
+                return;
+            }
+
+            ExportEntry group = SelectCameraGroup(interpData, "Choose the group whose camera track should be saved:",
+                "Save Single-Camera Preset");
+            if (group is not null)
+            {
+                CameraPresetDialog.SaveGroupAsPreset(this, group);
+            }
+        }
+
+        private void SaveMulticamCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.InterpData is ExportEntry interpData)
+            {
+                CameraPresetDialog.SaveInterpDataAsMulticamPreset(this, interpData);
+            }
+        }
+
+        private ExportEntry SelectCameraGroup(ExportEntry interpData, string prompt, string title)
+        {
+            ExportEntry[] groups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups")?
+                .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+                .Where(group => group?.ClassName == "InterpGroup")
+                .ToArray() ?? [];
+            if (groups.Length == 0)
+            {
+                MessageBox.Show("This node's InterpData has no camera-compatible groups.", "No Interp Groups",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+
+            var choices = groups.ToDictionary(
+                group => $"{group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced} ({group.UIndex})",
+                group => group,
+                StringComparer.Ordinal);
+            string selectedGroup = StringSelectorDialog.GetValue(this, prompt, title, choices.Keys);
+            return choices.GetValueOrDefault(selectedGroup);
         }
 
         private CameraActorAnchorContext GetCameraActorAnchorContext() =>

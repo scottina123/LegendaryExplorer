@@ -94,6 +94,11 @@
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>
+                <Separator/>
+                <MenuItem Header="Save as Preset">
+                    <MenuItem Header="Single Camera..." Click="SaveSingleCameraPreset_Click" ToolTip="Choose an Interp group and save its camera track as a preset"/>
+                    <MenuItem Header="Multicam..." Click="SaveMulticamCameraPreset_Click" ToolTip="Save the complete Director camera sequence as a multicam preset"/>
+                </MenuItem>
             </MenuItem>
             <Separator />
             <MenuItem Header="Break Links" Name="breakLinksMenuItem">
@@ -151,6 +156,11 @@
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>
+                <Separator/>
+                <MenuItem Header="Save as Preset">
+                    <MenuItem Header="Single Camera..." Click="SaveSingleCameraPreset_Click" ToolTip="Choose an Interp group and save its camera track as a preset"/>
+                    <MenuItem Header="Multicam..." Click="SaveMulticamCameraPreset_Click" ToolTip="Save the complete Director camera sequence as a multicam preset"/>
+                </MenuItem>
             </MenuItem>
             <Separator />
             <MenuItem Header="Break Links" Name="ebreakLinksMenuItem">

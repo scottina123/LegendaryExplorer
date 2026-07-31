@@ -1102,36 +1102,8 @@ public partial class CameraPresetDialog : Window
         {
             return;
         }
-        if (!MulticamCameraPresetCapture.TryCapture(_selectedDirectorTrack, _interpData, origin,
-                "Pending", null, null, out MulticamCameraPreset captured, out string error))
+        if (!SaveMulticamPreset(this, _selectedDirectorTrack, _interpData, origin, out MulticamCameraPreset preset))
         {
-            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var saveDialog = new MulticamPresetSaveDialog(captured.Type, SavedMulticamCameraPresetManager.ContainsName)
-        {
-            Owner = this
-        };
-        if (saveDialog.ShowDialog() != true)
-        {
-            return;
-        }
-        if (!MulticamCameraPresetCapture.TryCapture(_selectedDirectorTrack, _interpData, origin,
-                saveDialog.PresetName, saveDialog.Description, saveDialog.PresetType,
-                out MulticamCameraPreset preset, out error))
-        {
-            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        try
-        {
-            SavedMulticamCameraPresetManager.Add(preset);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            MessageBox.Show(exception.Message, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
@@ -1690,8 +1662,77 @@ public partial class CameraPresetDialog : Window
         {
             return;
         }
+        if (!SaveTrackMovePreset(this, _selectedTrackMove, origin, out CameraPreset preset))
+        {
+            return;
+        }
 
-        string name = PromptDialog.Prompt(this, "Preset name:", "Save TrackMove Camera Preset",
+        PresetTabs.SelectedIndex = 3;
+        SavedPresetList.SelectedItem = preset;
+        SavedPresetList.ScrollIntoView(preset);
+        RefreshPresetSearch();
+        StatusTextBlock.Text = $"Saved TrackMove preset '{preset.Name}' relative to the current origin.";
+    }
+
+    public static bool SaveGroupAsPreset(Window owner, ExportEntry group)
+    {
+        if (group?.ClassName != "InterpGroup")
+        {
+            return false;
+        }
+
+        ExportEntry trackMove = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+            .Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .FirstOrDefault(track => track?.ClassName == "InterpTrackMove");
+        if (trackMove is null)
+        {
+            MessageBox.Show("The selected group does not contain an InterpTrackMove.", "Unable to Save Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        CameraOrigin? origin = new InterpTrackMove(trackMove).GetCameraOriginNearestTime(0);
+        if (origin is null)
+        {
+            MessageBox.Show("The selected camera track does not contain a usable origin.", "Unable to Save Camera Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return SaveTrackMovePreset(owner, trackMove, origin.Value, out _);
+    }
+
+    public static bool SaveInterpDataAsMulticamPreset(Window owner, ExportEntry interpData)
+    {
+        if (interpData?.ClassName != "InterpData")
+        {
+            return false;
+        }
+
+        ExportEntry directorTrack = FindDirectorTrack(interpData);
+        if (directorTrack is null)
+        {
+            MessageBox.Show("This node's InterpData does not contain a Director track.", "Unable to Save Multicam Preset",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        CameraOrigin? origin = GetDirectorOrigin(directorTrack, interpData);
+        if (origin is null)
+        {
+            MessageBox.Show("The Director track does not reference a camera group with a usable origin.",
+                "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return SaveMulticamPreset(owner, directorTrack, interpData, origin.Value, out _);
+    }
+
+    private static bool SaveTrackMovePreset(Window owner, ExportEntry trackMove, CameraOrigin origin,
+        out CameraPreset preset)
+    {
+        preset = null;
+        string name = PromptDialog.Prompt(owner, "Preset name:", "Save TrackMove Camera Preset",
             validator: value =>
             {
                 string trimmed = value?.Trim();
@@ -1705,33 +1746,64 @@ public partial class CameraPresetDialog : Window
             });
         if (name is null)
         {
-            return;
+            return false;
         }
 
-        if (!CameraPresetTrackCapture.TryCapture(_selectedTrackMove, origin, name,
-                out CameraPreset preset, out string error))
+        if (!CameraPresetTrackCapture.TryCapture(trackMove, origin, name, out preset, out string error))
         {
-            MessageBox.Show(error, "Unable to Save Camera Preset",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            MessageBox.Show(error, "Unable to Save Camera Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
 
         try
         {
             SavedCameraPresetManager.Add(preset);
+            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            MessageBox.Show(exception.Message, "Unable to Save Camera Preset",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+            MessageBox.Show(exception.Message, "Unable to Save Camera Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private static bool SaveMulticamPreset(Window owner, ExportEntry directorTrack, ExportEntry interpData,
+        CameraOrigin origin, out MulticamCameraPreset preset)
+    {
+        preset = null;
+        if (!MulticamCameraPresetCapture.TryCapture(directorTrack, interpData, origin,
+                "Pending", null, null, out MulticamCameraPreset captured, out string error))
+        {
+            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
 
-        PresetTabs.SelectedIndex = 3;
-        SavedPresetList.SelectedItem = preset;
-        SavedPresetList.ScrollIntoView(preset);
-        RefreshPresetSearch();
-        StatusTextBlock.Text = $"Saved TrackMove preset '{preset.Name}' relative to the current origin.";
+        var saveDialog = new MulticamPresetSaveDialog(captured.Type, SavedMulticamCameraPresetManager.ContainsName)
+        {
+            Owner = owner
+        };
+        if (saveDialog.ShowDialog() != true)
+        {
+            return false;
+        }
+        if (!MulticamCameraPresetCapture.TryCapture(directorTrack, interpData, origin,
+                saveDialog.PresetName, saveDialog.Description, saveDialog.PresetType,
+                out preset, out error))
+        {
+            MessageBox.Show(error, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        try
+        {
+            SavedMulticamCameraPresetManager.Add(preset);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(exception.Message, "Unable to Save Multicam Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
     }
 
     private void DeleteSavedPreset_Click(object sender, RoutedEventArgs e)
