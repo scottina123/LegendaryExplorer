@@ -234,6 +234,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private Button playActorButton;
     private PreviewActorConfiguration playbackActor;
     private CameraOrigin playbackActorOriginalOrigin;
+    private float playbackActorZOffset;
     private bool hasPlaybackActorOriginalOrigin;
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
@@ -2201,6 +2202,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SetPlaybackRangeForCurrentMode();
         playbackActor = selectedPreviewActor;
         playbackActorOriginalOrigin = playbackActor.Origin;
+        playbackActorZOffset = playbackActorOriginalOrigin.Location.Z - EvaluateTrackMove(model, model.Keyframes[0].Time).Location.Z;
         hasPlaybackActorOriginalOrigin = true;
         if (playbackEndTime <= playbackStartTime)
         {
@@ -2350,9 +2352,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        Vector3 location = model.PositionTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
-        Vector3 rotation = model.RotationTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
-        playbackActor.Origin = new CameraOrigin(location, rotation);
+        float actorTrackTime = Math.Clamp(time, model.Keyframes[0].Time, model.Keyframes[^1].Time);
+        CameraOrigin trackOrigin = EvaluateTrackMove(model, actorTrackTime);
+        Vector3 actorLocation = trackOrigin.Location;
+        actorLocation.Z += playbackActorZOffset;
+        playbackActor.Origin = new CameraOrigin(actorLocation, trackOrigin.Rotation);
         if (ReferenceEquals(selectedPreviewActor, playbackActor))
         {
             updatingPreviewActorControls = true;
