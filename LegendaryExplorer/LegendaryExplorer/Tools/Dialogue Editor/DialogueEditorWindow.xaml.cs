@@ -12037,7 +12037,7 @@ namespace LegendaryExplorer.DialogueEditor
                 group => $"{group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced} ({group.UIndex})",
                 group => group,
                 StringComparer.Ordinal);
-            string selectedGroup = InputComboBoxDialog.GetValue(this, "Choose the group whose camera track should be modified:",
+            string selectedGroup = StringSelectorDialog.GetValue(this, "Choose the group whose camera track should be modified:",
                 "Apply Single-Camera Preset", choices.Keys);
             if (!choices.TryGetValue(selectedGroup, out ExportEntry group))
             {

@@ -45,7 +45,7 @@
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      KeyDown="SearchTextBox_KeyDown"
                      ToolTip="Search values"/>
-            <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="Search the available storage targets"/>
+            <TextBlock Margin="0,4,0,8" Foreground="Gray" Text="Search the available values"/>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Margin="0,10,0,0">
