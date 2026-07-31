@@ -13,6 +13,7 @@ using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.Scanners;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -411,7 +412,7 @@ namespace LegendaryExplorer.Dialogs
                 _selectedFavoriteGestureTrack = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(CanImportFavoriteGestureTrack));
-                LoadGestureTrackPreview(value?.CreateSourceOption());
+                LoadFavoriteGestureTrackPreview(value?.CreateSourceOption());
             }
         }
 
@@ -426,8 +427,10 @@ namespace LegendaryExplorer.Dialogs
         private IMEPackage _animPreviewPcc;
         private IMEPackage _ambPerfPreviewPcc;
         private IMEPackage _gestureTrackPreviewPcc;
+        private IMEPackage _favoriteGestureTrackPreviewPcc;
         private readonly PackageCache _ambPerfPreviewPackageCache = new();
         private List<MeshRecord> _skeletonMeshes;
+        private GesturePreviewExportLoader _favoriteGestureTrackPreviewControl;
 
         public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner)
         {
@@ -1448,27 +1451,46 @@ namespace LegendaryExplorer.Dialogs
 
         private void LoadGestureTrackPreview(GestureTrackSourceOption sourceOption)
         {
-            GestureTrackPreviewControl.UnloadExport();
-            _gestureTrackPreviewPcc?.Dispose();
-            _gestureTrackPreviewPcc = null;
+            LoadGestureTrackPreview(sourceOption, GestureTrackPreviewControl, ref _gestureTrackPreviewPcc);
+        }
+
+        private void LoadFavoriteGestureTrackPreview(GestureTrackSourceOption sourceOption)
+        {
+            if (_favoriteGestureTrackPreviewControl != null)
+            {
+                LoadGestureTrackPreview(sourceOption, _favoriteGestureTrackPreviewControl, ref _favoriteGestureTrackPreviewPcc);
+            }
+        }
+
+        private void FavoriteGestureTrackPreviewControl_Loaded(object sender, RoutedEventArgs e)
+        {
+            _favoriteGestureTrackPreviewControl = (GesturePreviewExportLoader)sender;
+            LoadFavoriteGestureTrackPreview(SelectedFavoriteGestureTrack?.CreateSourceOption());
+        }
+
+        private static void LoadGestureTrackPreview(GestureTrackSourceOption sourceOption, GesturePreviewExportLoader previewControl, ref IMEPackage previewPcc)
+        {
+            previewControl.UnloadExport();
+            previewPcc?.Dispose();
+            previewPcc = null;
 
             if (sourceOption == null || !File.Exists(sourceOption.FilePath))
             {
                 return;
             }
 
-            _gestureTrackPreviewPcc = MEPackageHandler.OpenMEPackage(sourceOption.FilePath);
-            if (!_gestureTrackPreviewPcc.IsUExport(sourceOption.UIndex))
+            previewPcc = MEPackageHandler.OpenMEPackage(sourceOption.FilePath);
+            if (!previewPcc.IsUExport(sourceOption.UIndex))
             {
-                _gestureTrackPreviewPcc.Dispose();
-                _gestureTrackPreviewPcc = null;
+                previewPcc.Dispose();
+                previewPcc = null;
                 return;
             }
 
-            ExportEntry sourceTrack = _gestureTrackPreviewPcc.GetUExport(sourceOption.UIndex);
-            if (GestureTrackPreviewControl.CanParse(sourceTrack))
+            ExportEntry sourceTrack = previewPcc.GetUExport(sourceOption.UIndex);
+            if (previewControl.CanParse(sourceTrack))
             {
-                GestureTrackPreviewControl.LoadExport(sourceTrack);
+                previewControl.LoadExport(sourceTrack);
             }
         }
 
@@ -2947,12 +2969,15 @@ namespace LegendaryExplorer.Dialogs
             AnimPreviewControl?.Dispose();
             AmbPerfPreviewControl?.Dispose();
             GestureTrackPreviewControl?.Dispose();
+            _favoriteGestureTrackPreviewControl?.Dispose();
             _animPreviewPcc?.Dispose();
             _animPreviewPcc = null;
             _ambPerfPreviewPcc?.Dispose();
             _ambPerfPreviewPcc = null;
             _gestureTrackPreviewPcc?.Dispose();
             _gestureTrackPreviewPcc = null;
+            _favoriteGestureTrackPreviewPcc?.Dispose();
+            _favoriteGestureTrackPreviewPcc = null;
             _ambPerfPreviewPackageCache.Dispose();
         }
     }

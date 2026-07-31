@@ -457,6 +457,8 @@
                         <ColumnDefinition Width="2*" MinWidth="300"/>
                         <ColumnDefinition Width="5"/>
                         <ColumnDefinition Width="3*" MinWidth="450"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="3*" MinWidth="450"/>
                     </Grid.ColumnDefinitions>
 
                     <DockPanel Grid.Column="0">
@@ -539,6 +541,10 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </DockPanel>
+
+                    <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+
+                    <exportLoaderControls:GesturePreviewExportLoader Grid.Column="4" Margin="5,0,0,0" Loaded="FavoriteGestureTrackPreviewControl_Loaded"/>
                 </Grid>
             </TabItem>
 
