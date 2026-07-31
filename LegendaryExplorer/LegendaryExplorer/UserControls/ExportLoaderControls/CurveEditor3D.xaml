@@ -283,6 +283,28 @@
                                 <Button Content="Add Keyframe..." Click="AddKeyframe_Click" Margin="0,0,4,4" ToolTip="Add a keyframe based on the selected keyframe"/>
                                 <Button Content="Shift InterpTrack..." Click="ShiftInterpTrack_Click" Margin="0,0,4,4" ToolTip="Shift the entire interpolation track"/>
                             </WrapPanel>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="ExtraTrackMoveCheckBox" Content="Extra camera" VerticalAlignment="Center"
+                                          Checked="MulticamPlaybackOption_Changed" Unchecked="MulticamPlaybackOption_Changed"
+                                          ToolTip="Play one additional camera group TrackMove as a viewport camera actor"/>
+                                <ComboBox x:Name="ExtraTrackMoveComboBox" Grid.Column="1" Margin="6,0,0,0"
+                                          DisplayMemberPath="DisplayName" SelectionChanged="ExtraTrackMove_SelectionChanged"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="DirectorMulticamCheckBox" Content="Director multicam" VerticalAlignment="Center"
+                                          Checked="MulticamPlaybackOption_Changed" Unchecked="MulticamPlaybackOption_Changed"
+                                          ToolTip="Follow this InterpData's Director cut track camera order during playback"/>
+                                <ComboBox x:Name="DirectorTrackComboBox" Grid.Column="1" Margin="6,0,0,0"
+                                          DisplayMemberPath="DisplayName" SelectionChanged="DirectorTrack_SelectionChanged"/>
+                            </Grid>
                             <TextBlock Text="{Binding PlaybackKeyframeStatus}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </GroupBox>

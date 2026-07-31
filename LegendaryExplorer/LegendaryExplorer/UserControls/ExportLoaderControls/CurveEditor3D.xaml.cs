@@ -170,6 +170,32 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private sealed class TrackMovePlaybackOption
+    {
+        public static readonly TrackMovePlaybackOption None = new() { DisplayName = "None" };
+
+        public string DisplayName { get; init; }
+        public ExportEntry Group { get; init; }
+        public ExportEntry TrackMove { get; init; }
+        public CurveEditor3DModel Model { get; init; }
+    }
+
+    private sealed class DirectorPlaybackOption
+    {
+        public static readonly DirectorPlaybackOption None = new() { DisplayName = "None" };
+
+        public string DisplayName { get; init; }
+        public ExportEntry DirectorTrack { get; init; }
+        public IReadOnlyList<DirectorCameraCut> Cuts { get; init; } = [];
+    }
+
+    private sealed class DirectorCameraCut
+    {
+        public float Time { get; init; }
+        public string GroupName { get; init; }
+        public TrackMovePlaybackOption Camera { get; init; }
+    }
+
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
@@ -186,6 +212,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
     private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
+    private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
+    private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
     private AssetDB previewAssetDatabase;
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
     private PreviewActorConfiguration selectedPreviewActor;
@@ -197,6 +225,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool hasSnappedInitialCamera;
     private bool isPlayingMove;
     private bool isPlayingActor;
+    private bool updatingMulticamControls;
+    private bool playExtraTrackMove;
+    private bool playDirectorMulticam;
     private bool sessionLevelsRestored;
     private bool trajectorySamplesDirty;
     private Button playMoveButton;
@@ -211,6 +242,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackStartTime;
     private float playbackEndTime;
     private float playbackElapsed;
+    private float playbackCurrentTime;
+    private TrackMovePlaybackOption selectedExtraTrackMove;
+    private DirectorPlaybackOption selectedDirectorPlayback;
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
     private bool showCollision = Settings.LevelEditor_ShowCollision;
@@ -270,6 +304,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         InitializeComponent();
         PreviewActorListBox.ItemsSource = previewActors;
         PreviewActorGestureComboBox.ItemsSource = availableGestureTracks;
+        ExtraTrackMoveComboBox.ItemsSource = availableExtraTrackMoves;
+        DirectorTrackComboBox.ItemsSource = availableDirectorTracks;
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
@@ -585,6 +621,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
         RefreshAvailableGestureTracks(exportEntry);
+        RefreshMulticamPlaybackOptions(exportEntry);
         InitializePreviewActorLayout(exportEntry.Game);
         model.Load(exportEntry);
         trajectorySamplesDirty = true;
@@ -619,6 +656,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         CurrentExportName = null;
         previewActorGestureAssignments.Clear();
         availableGestureTracks.Clear();
+        availableExtraTrackMoves.Clear();
+        availableDirectorTracks.Clear();
+        selectedExtraTrackMove = null;
+        selectedDirectorPlayback = null;
+        playExtraTrackMove = false;
+        playDirectorMulticam = false;
         UpdatePlaybackButton();
         SceneViewer?.MarkRenderDirty();
     }
@@ -686,6 +729,141 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     : $"{title}: {resolvedAnimations.Count} resolved animation slot(s).",
             });
         }
+    }
+
+    private void RefreshMulticamPlaybackOptions(ExportEntry trackMove)
+    {
+        updatingMulticamControls = true;
+        availableExtraTrackMoves.Clear();
+        availableExtraTrackMoves.Add(TrackMovePlaybackOption.None);
+        availableDirectorTracks.Clear();
+        availableDirectorTracks.Add(DirectorPlaybackOption.None);
+
+        ExportEntry interpData = FindOwningInterpData(trackMove);
+        if (interpData is not null)
+        {
+            Dictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup = new(StringComparer.OrdinalIgnoreCase);
+            foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+            {
+                ExportEntry groupTrackMove = GetReferencedExports(group, "InterpTracks")
+                    .FirstOrDefault(track => track.ClassName == "InterpTrackMove");
+                if (groupTrackMove is null)
+                {
+                    continue;
+                }
+
+                var trackModel = new CurveEditor3DModel();
+                trackModel.Load(groupTrackMove);
+                if (trackModel.Keyframes.Count == 0)
+                {
+                    continue;
+                }
+
+                string groupName = GetInterpGroupName(group);
+                string trackTitle = groupTrackMove.GetProperty<StrProperty>("TrackTitle")?.Value ?? groupTrackMove.ObjectName.Instanced;
+                var option = new TrackMovePlaybackOption
+                {
+                    DisplayName = $"{groupName} - {trackTitle}",
+                    Group = group,
+                    TrackMove = groupTrackMove,
+                    Model = trackModel,
+                };
+                if (groupTrackMove != trackMove)
+                {
+                    availableExtraTrackMoves.Add(option);
+                }
+                cameraOptionsByGroup[groupName] = option;
+            }
+
+            foreach (ExportEntry directorTrack in FindDirectorTracks(interpData))
+            {
+                List<DirectorCameraCut> cuts = BuildDirectorCameraCuts(directorTrack, cameraOptionsByGroup);
+                if (cuts.Count == 0)
+                {
+                    continue;
+                }
+
+                string title = directorTrack.GetProperty<StrProperty>("TrackTitle")?.Value ?? directorTrack.ObjectName.Instanced;
+                availableDirectorTracks.Add(new DirectorPlaybackOption
+                {
+                    DisplayName = $"{title} ({cuts.Count} cut{(cuts.Count == 1 ? string.Empty : "s")})",
+                    DirectorTrack = directorTrack,
+                    Cuts = cuts,
+                });
+            }
+        }
+
+        selectedExtraTrackMove = availableExtraTrackMoves.Contains(selectedExtraTrackMove) ? selectedExtraTrackMove : TrackMovePlaybackOption.None;
+        selectedDirectorPlayback = availableDirectorTracks.Contains(selectedDirectorPlayback) ? selectedDirectorPlayback : DirectorPlaybackOption.None;
+        ExtraTrackMoveComboBox.SelectedItem = selectedExtraTrackMove;
+        DirectorTrackComboBox.SelectedItem = selectedDirectorPlayback;
+        playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove?.TrackMove is not null;
+        playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback?.Cuts.Count > 0;
+        updatingMulticamControls = false;
+    }
+
+    private static ExportEntry FindOwningInterpData(ExportEntry track)
+        => track?.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry interpData ? interpData : null;
+
+    private static IEnumerable<ExportEntry> GetReferencedExports(ExportEntry export, string propertyName)
+    {
+        ArrayProperty<ObjectProperty> references = export?.GetProperty<ArrayProperty<ObjectProperty>>(propertyName);
+        if (references is null)
+        {
+            yield break;
+        }
+
+        foreach (ObjectProperty reference in references)
+        {
+            if (export.FileRef.TryGetUExport(reference.Value, out ExportEntry referencedExport))
+            {
+                yield return referencedExport;
+            }
+        }
+    }
+
+    private static string GetInterpGroupName(ExportEntry group)
+        => group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced;
+
+    private static IEnumerable<ExportEntry> FindDirectorTracks(ExportEntry interpData)
+    {
+        foreach (ExportEntry group in GetReferencedExports(interpData, "InterpGroups"))
+        {
+            foreach (ExportEntry track in GetReferencedExports(group, "InterpTracks"))
+            {
+                if (track.ClassName == "InterpTrackDirector")
+                {
+                    yield return track;
+                }
+            }
+        }
+    }
+
+    private static List<DirectorCameraCut> BuildDirectorCameraCuts(ExportEntry directorTrack,
+        IReadOnlyDictionary<string, TrackMovePlaybackOption> cameraOptionsByGroup)
+    {
+        ArrayProperty<StructProperty> cutTrack = directorTrack.GetProperty<ArrayProperty<StructProperty>>("CutTrack");
+        if (cutTrack is null)
+        {
+            return [];
+        }
+
+        return cutTrack
+            .Select(cut => new
+            {
+                Time = cut.GetProp<FloatProperty>("Time")?.Value ?? 0,
+                GroupName = cut.GetProp<NameProperty>("TargetCamGroup")?.Value.Instanced,
+            })
+            .Where(cut => !string.IsNullOrWhiteSpace(cut.GroupName)
+                          && cameraOptionsByGroup.TryGetValue(cut.GroupName, out _))
+            .OrderBy(cut => cut.Time)
+            .Select(cut => new DirectorCameraCut
+            {
+                Time = cut.Time,
+                GroupName = cut.GroupName,
+                Camera = cameraOptionsByGroup[cut.GroupName],
+            })
+            .ToList();
     }
 
     private static IEnumerable<ExportEntry> FindGestureTracksInSameInterpData(ExportEntry trackMove)
@@ -1980,8 +2158,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        playbackStartTime = model.Keyframes[0].Time;
-        playbackEndTime = model.Keyframes[^1].Time;
+        SetPlaybackRangeForCurrentMode();
         if (playbackEndTime <= playbackStartTime)
         {
             ApplyCameraAtTime(playbackStartTime);
@@ -1994,6 +2171,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RenderContext.TransformWidget.Attach = null;
         playbackElapsed = 0f;
+        playbackCurrentTime = playbackStartTime;
         isPlayingActor = false;
         playbackActor = null;
         hasPlaybackActorOriginalOrigin = false;
@@ -2020,8 +2198,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        playbackStartTime = model.Keyframes[0].Time;
-        playbackEndTime = model.Keyframes[^1].Time;
+        SetPlaybackRangeForCurrentMode();
         playbackActor = selectedPreviewActor;
         playbackActorOriginalOrigin = playbackActor.Origin;
         hasPlaybackActorOriginalOrigin = true;
@@ -2040,6 +2217,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RenderContext.TransformWidget.Attach = null;
         playbackElapsed = 0f;
+        playbackCurrentTime = playbackStartTime;
         isPlayingActor = true;
         isPlayingMove = true;
         RenderContext.ForceContinuousRendering = true;
@@ -2068,9 +2246,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ApplyPlaybackAtTime(float time)
     {
+        playbackCurrentTime = time;
         if (isPlayingActor)
         {
             ApplyActorAtTime(time);
+            UpdateAdditionalCameraPlayback(time);
         }
         else
         {
@@ -2078,18 +2258,86 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void SetPlaybackRangeForCurrentMode()
+    {
+        playbackStartTime = model.Keyframes[0].Time;
+        playbackEndTime = model.Keyframes[^1].Time;
+
+        if (playExtraTrackMove && selectedExtraTrackMove?.Model.Keyframes is { Count: > 0 } extraKeys)
+        {
+            playbackStartTime = MathF.Min(playbackStartTime, extraKeys[0].Time);
+            playbackEndTime = MathF.Max(playbackEndTime, extraKeys[^1].Time);
+        }
+
+        if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
+        {
+            playbackStartTime = MathF.Min(playbackStartTime, cuts[0].Time);
+            playbackEndTime = MathF.Max(playbackEndTime, cuts[^1].Time);
+            foreach (DirectorCameraCut cut in cuts)
+            {
+                if (cut.Camera?.Model.Keyframes is { Count: > 0 } cameraKeys)
+                {
+                    playbackStartTime = MathF.Min(playbackStartTime, cameraKeys[0].Time);
+                    playbackEndTime = MathF.Max(playbackEndTime, cameraKeys[^1].Time);
+                }
+            }
+        }
+    }
+
+    private CameraOrigin GetPlaybackCameraOrigin(float time)
+    {
+        if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
+        {
+            DirectorCameraCut cut = cuts[0];
+            foreach (DirectorCameraCut candidate in cuts)
+            {
+                if (candidate.Time > time)
+                {
+                    break;
+                }
+
+                cut = candidate;
+            }
+
+            if (cut.Camera?.Model is not null)
+            {
+                return EvaluateTrackMove(cut.Camera.Model, time);
+            }
+        }
+
+        return EvaluateTrackMove(model, time);
+    }
+
+    private static CameraOrigin EvaluateTrackMove(CurveEditor3DModel trackModel, float time)
+    {
+        Vector3 location = trackModel.PositionTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        Vector3 rotation = trackModel.RotationTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        return new CameraOrigin(location, rotation);
+    }
+
+    private void ApplyViewportCameraOrigin(CameraOrigin origin)
+    {
+        const float degreesToRadians = 0.017453292519943295f;
+        RenderContext.Camera.Position = origin.Location;
+        RenderContext.Camera.Roll = origin.Rotation.X * degreesToRadians;
+        RenderContext.Camera.Pitch = origin.Rotation.Y * degreesToRadians;
+        RenderContext.Camera.Yaw = origin.Rotation.Z * degreesToRadians;
+    }
+
+    private void UpdateAdditionalCameraPlayback(float time)
+    {
+        playbackCurrentTime = time;
+    }
+
     private void ApplyCameraAtTime(float time)
     {
-        Vector3 location = model.PositionTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
-        Vector3 rotation = model.RotationTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
-        const float degreesToRadians = 0.017453292519943295f;
-        RenderContext.Camera.Position = location;
-        RenderContext.Camera.Roll = rotation.X * degreesToRadians;
-        RenderContext.Camera.Pitch = rotation.Y * degreesToRadians;
-        RenderContext.Camera.Yaw = rotation.Z * degreesToRadians;
+        CameraOrigin origin = GetPlaybackCameraOrigin(time);
+        ApplyViewportCameraOrigin(origin);
         RenderContext.Camera.FocusDepth = 0f;
         PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
-        SceneStatus = $"Playing camera at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        string playbackMode = playDirectorMulticam ? "director multicam" : "camera";
+        SceneStatus = $"Playing {playbackMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        UpdateAdditionalCameraPlayback(time);
         UpdateCameraPositionText();
         UpdateCameraRotationText();
         SceneViewer.MarkRenderDirty();
@@ -2118,9 +2366,31 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             animationState.SetTime(time);
             UpdatePreviewActorSkinning(playbackActor);
         }
+        ApplyActorPlaybackCameraAtTime(time);
         PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
-        SceneStatus = $"Playing {playbackActor.DisplayName} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
+        string cameraMode = playDirectorMulticam ? " with director multicam" : playExtraTrackMove ? " with extra camera" : string.Empty;
+        SceneStatus = $"Playing {playbackActor.DisplayName}{cameraMode} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyActorPlaybackCameraAtTime(float time)
+    {
+        if (playDirectorMulticam)
+        {
+            ApplyViewportCameraOrigin(GetPlaybackCameraOrigin(time));
+        }
+        else if (playExtraTrackMove && selectedExtraTrackMove?.Model is not null)
+        {
+            ApplyViewportCameraOrigin(EvaluateTrackMove(selectedExtraTrackMove.Model, time));
+        }
+        else
+        {
+            return;
+        }
+
+        RenderContext.Camera.FocusDepth = 0f;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
     }
 
     private string GetPlaybackKeyframeStatus(float time)
@@ -2234,6 +2504,42 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void ExtraTrackMove_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingMulticamControls)
+        {
+            return;
+        }
+
+        selectedExtraTrackMove = ExtraTrackMoveComboBox.SelectedItem as TrackMovePlaybackOption ?? TrackMovePlaybackOption.None;
+        playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove.TrackMove is not null;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void DirectorTrack_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingMulticamControls)
+        {
+            return;
+        }
+
+        selectedDirectorPlayback = DirectorTrackComboBox.SelectedItem as DirectorPlaybackOption ?? DirectorPlaybackOption.None;
+        playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback.Cuts.Count > 0;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void MulticamPlaybackOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (updatingMulticamControls)
+        {
+            return;
+        }
+
+        playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove?.TrackMove is not null;
+        playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback?.Cuts.Count > 0;
+        SceneViewer?.MarkRenderDirty();
+    }
+
     private void Model_Changed()
     {
         StopPlayback();
@@ -2262,6 +2568,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             DrawTrajectory();
         }
         RenderPreviewActors();
+        DrawAdditionalCameraActors();
         RenderContext.DrawUI();
     }
 
@@ -2286,6 +2593,63 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         return Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
+    }
+
+    private void DrawAdditionalCameraActors()
+    {
+        if (!isPlayingMove)
+        {
+            return;
+        }
+
+        if (playExtraTrackMove && selectedExtraTrackMove?.Model is not null)
+        {
+            DrawCameraActor(EvaluateTrackMove(selectedExtraTrackMove.Model, playbackCurrentTime), new Vector4(0.2f, 0.85f, 1f, 1f));
+        }
+
+        if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
+        {
+            foreach (TrackMovePlaybackOption camera in cuts.Select(cut => cut.Camera).Distinct())
+            {
+                if (camera?.Model is not null)
+                {
+                    DrawCameraActor(EvaluateTrackMove(camera.Model, playbackCurrentTime), new Vector4(1f, 0.25f, 0.9f, 1f));
+                }
+            }
+        }
+    }
+
+    private void DrawCameraActor(CameraOrigin origin, Vector4 color)
+    {
+        const float bodyHalfSize = 18f;
+        const float frustumLength = 85f;
+        const float frustumHalfWidth = 38f;
+        const float frustumHalfHeight = 24f;
+
+        Quaternion orientation = Rotator.FromDegreesVector(origin.Rotation).ToQuaternion();
+        Vector3 forward = Vector3.Transform(Vector3.UnitX, orientation);
+        Vector3 right = Vector3.Transform(Vector3.UnitY, orientation);
+        Vector3 up = Vector3.Transform(Vector3.UnitZ, orientation);
+        Vector3 position = origin.Location;
+
+        Vector3 nearForward = position + forward * bodyHalfSize;
+        Vector3 farCenter = position + forward * frustumLength;
+        Vector3 topLeft = farCenter - right * frustumHalfWidth + up * frustumHalfHeight;
+        Vector3 topRight = farCenter + right * frustumHalfWidth + up * frustumHalfHeight;
+        Vector3 bottomLeft = farCenter - right * frustumHalfWidth - up * frustumHalfHeight;
+        Vector3 bottomRight = farCenter + right * frustumHalfWidth - up * frustumHalfHeight;
+
+        RenderContext.Primitives.AddLine(position - right * bodyHalfSize, position + right * bodyHalfSize, color, 0);
+        RenderContext.Primitives.AddLine(position - up * bodyHalfSize, position + up * bodyHalfSize, color, 0);
+        RenderContext.Primitives.AddLine(position, nearForward, color, 0);
+        RenderContext.Primitives.AddLine(nearForward, topLeft, color, 0);
+        RenderContext.Primitives.AddLine(nearForward, topRight, color, 0);
+        RenderContext.Primitives.AddLine(nearForward, bottomLeft, color, 0);
+        RenderContext.Primitives.AddLine(nearForward, bottomRight, color, 0);
+        RenderContext.Primitives.AddLine(topLeft, topRight, color, 0);
+        RenderContext.Primitives.AddLine(topRight, bottomRight, color, 0);
+        RenderContext.Primitives.AddLine(bottomRight, bottomLeft, color, 0);
+        RenderContext.Primitives.AddLine(bottomLeft, topLeft, color, 0);
     }
 
     private void DrawTrajectory()
