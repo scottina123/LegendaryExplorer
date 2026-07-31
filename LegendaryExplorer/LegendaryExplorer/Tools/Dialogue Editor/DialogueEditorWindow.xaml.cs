@@ -11511,16 +11511,35 @@ namespace LegendaryExplorer.DialogueEditor
             var originModePanel = new StackPanel { Orientation = Orientation.Horizontal };
             originModePanel.Children.Add(originModeComboBox);
             originModePanel.Children.Add(applyActorOriginButton);
-            var originNodeComboBox = new ComboBox
+            List<CrossEditorNodeOption> originNodeOptions = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
+                .Select(node => new CrossEditorNodeOption(node, $"{(node.IsReply ? 'R' : 'E')}{node.NodeCount}: {node.Line}"))
+                .ToList();
+            var originNodeSearchBox = new TextBox
             {
-                ItemsSource = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
-                    .Select(node => new CrossEditorNodeOption(node, $"{(node.IsReply ? 'R' : 'E')}{node.NodeCount}: {node.Line}"))
-                    .ToList(),
                 MinWidth = 360,
-                Margin = new Thickness(8, 4, 0, 4),
-                IsEnabled = false
+                Margin = new Thickness(8, 4, 0, 2),
+                ToolTip = "Search destination nodes"
             };
-            originNodeComboBox.SelectedIndex = originNodeComboBox.Items.Count > 0 ? 0 : -1;
+            var originNodeListBox = new ListBox
+            {
+                ItemsSource = originNodeOptions,
+                MinWidth = 360,
+                MaxHeight = 160,
+                Margin = new Thickness(8, 2, 0, 4)
+            };
+            originNodeListBox.SelectedIndex = originNodeOptions.Count > 0 ? 0 : -1;
+            originNodeSearchBox.TextChanged += (_, _) =>
+            {
+                string searchText = originNodeSearchBox.Text.Trim();
+                List<CrossEditorNodeOption> filteredOptions = string.IsNullOrEmpty(searchText)
+                    ? originNodeOptions
+                    : originNodeOptions.Where(option => option.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+                originNodeListBox.ItemsSource = filteredOptions;
+                originNodeListBox.SelectedIndex = filteredOptions.Count > 0 ? 0 : -1;
+            };
+            var originNodePanel = new StackPanel { IsEnabled = false };
+            originNodePanel.Children.Add(originNodeSearchBox);
+            originNodePanel.Children.Add(originNodeListBox);
             string[] actorTags = SelectedSpeakerList
                 .Select(speaker => speaker.SpeakerName)
                 .Where(tag => !string.IsNullOrWhiteSpace(tag))
@@ -11592,7 +11611,7 @@ namespace LegendaryExplorer.DialogueEditor
                 bool custom = originModeComboBox.SelectedIndex == 0;
                 originModeComboBox.IsEnabled = enabled;
                 applyActorOriginButton.IsEnabled = enabled && !custom;
-                originNodeComboBox.IsEnabled = enabled && !custom;
+                originNodePanel.IsEnabled = enabled && !custom;
                 singleActorPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
                 multipleActorsPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
                 actorListBox.IsEnabled = enabled && originModeComboBox.SelectedIndex == 2;
@@ -11618,7 +11637,7 @@ namespace LegendaryExplorer.DialogueEditor
                         "Actor Focus Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
-                if (originNodeComboBox.SelectedItem is not CrossEditorNodeOption destinationNode)
+                if (originNodeListBox.SelectedItem is not CrossEditorNodeOption destinationNode)
                 {
                     MessageBox.Show("Select a destination conversation node to resolve actor transforms.",
                         "Destination Node Required", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -11719,7 +11738,7 @@ namespace LegendaryExplorer.DialogueEditor
             Grid.SetColumnSpan(recenterCheckBox, 2);
             grid.Children.Add(recenterCheckBox);
             AddCameraOriginRow("Origin mode:", originModePanel, 5);
-            AddCameraOriginRow("Base on destination node:", originNodeComboBox, 6);
+            AddCameraOriginRow("Base on destination node:", originNodePanel, 6);
             Grid.SetRow(singleActorPanel, 7);
             Grid.SetColumnSpan(singleActorPanel, 2);
             grid.Children.Add(singleActorPanel);
@@ -11761,7 +11780,7 @@ namespace LegendaryExplorer.DialogueEditor
                 }
                 if (recenterCheckBox.IsChecked == true
                     && originModeComboBox.SelectedIndex > 0
-                    && originNodeComboBox.SelectedItem is not CrossEditorNodeOption)
+                    && originNodeListBox.SelectedItem is not CrossEditorNodeOption)
                 {
                     MessageBox.Show("Select a destination conversation node to resolve actor transforms.",
                         "Destination Node Required", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -11792,7 +11811,7 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     Recenter = recenterCheckBox.IsChecked == true,
                     Mode = (CameraAnchorMode)originModeComboBox.SelectedIndex,
-                    DestinationNode = (originNodeComboBox.SelectedItem as CrossEditorNodeOption)?.Node,
+                    DestinationNode = (originNodeListBox.SelectedItem as CrossEditorNodeOption)?.Node,
                     ManualOrigin = TryReadCameraOrigin(out CameraOrigin manualOrigin)
                         ? manualOrigin
                         : default,
