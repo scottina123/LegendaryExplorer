@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
@@ -381,6 +382,50 @@ public partial class CameraPresetDialog : Window
         }
 
         track.InsertCameraPresetKeys(dialog.GeneratedStartTime, dialog.GeneratedKeys);
+        return true;
+    }
+
+    public static bool GenerateForGroup(Window owner, ExportEntry group, float initialStartTime = 0,
+        Func<CameraOrigin?> getViewportOrigin = null, Action<GeneratedCameraKey> previewCamera = null,
+        CameraActorAnchorContext actorAnchorContext = null)
+    {
+        if (group?.ClassName != "InterpGroup")
+        {
+            return false;
+        }
+
+        ExportEntry trackMove = group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+            .Select(reference => group.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .FirstOrDefault(track => track?.ClassName == "InterpTrackMove");
+        var existingTrack = trackMove is null ? null : new InterpTrackMove(trackMove);
+        ExportEntry interpData = FindOwningInterpData(group);
+        var dialog = new CameraPresetDialog(
+            () => existingTrack?.GetCameraOriginNearestTime(initialStartTime),
+            getViewportOrigin,
+            previewCamera,
+            initialStartTime,
+            interpData?.GetProperty<FloatProperty>("InterpLength")?.Value,
+            group.FileRef,
+            actorAnchorContext,
+            trackMove)
+        {
+            Owner = owner
+        };
+        dialog.SingleCamTab.Visibility = Visibility.Visible;
+        dialog.MulticamTab.Visibility = Visibility.Collapsed;
+        dialog.CameraModeTabs.SelectedItem = dialog.SingleCamTab;
+
+        if (dialog.ShowDialog() != true || dialog.GeneratedKeys is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        if (trackMove is null)
+        {
+            trackMove = MatineeHelper.AddNewTrackToGroup(group, "InterpTrackMove");
+            MatineeHelper.AddDefaultPropertiesToTrack(trackMove);
+        }
+        new InterpTrackMove(trackMove).InsertCameraPresetKeys(dialog.GeneratedStartTime, dialog.GeneratedKeys);
         return true;
     }
 

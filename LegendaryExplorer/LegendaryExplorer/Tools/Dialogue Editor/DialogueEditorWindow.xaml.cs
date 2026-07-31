@@ -12015,6 +12015,69 @@ namespace LegendaryExplorer.DialogueEditor
         #endregion UIHandling-graph
 
         #region UIHandling-menus
+        private void ApplySingleCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.InterpData is not ExportEntry interpData)
+            {
+                return;
+            }
+
+            ExportEntry[] groups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups")?
+                .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+                .Where(group => group?.ClassName == "InterpGroup")
+                .ToArray() ?? [];
+            if (groups.Length == 0)
+            {
+                MessageBox.Show("This node's InterpData has no camera-compatible groups.", "No Interp Groups",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var choices = groups.ToDictionary(
+                group => $"{group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced} ({group.UIndex})",
+                group => group,
+                StringComparer.Ordinal);
+            string selectedGroup = InputComboBoxDialog.GetValue(this, "Choose the group whose camera track should be modified:",
+                "Apply Single-Camera Preset", choices.Keys);
+            if (!choices.TryGetValue(selectedGroup, out ExportEntry group))
+            {
+                return;
+            }
+
+            if (CameraPresetDialog.GenerateForGroup(this, group, actorAnchorContext: GetCameraActorAnchorContext()))
+            {
+                RefreshSelectedNodeAfterInterpMutation(group.UIndex);
+            }
+        }
+
+        private void ApplyMulticamCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedDialogueNode?.InterpData is not ExportEntry interpData)
+            {
+                return;
+            }
+
+            ExportEntry directorTrack = Pcc?.Exports.FirstOrDefault(export =>
+                export.ClassName == "InterpTrackDirector" && export.IsDescendantOf(interpData));
+            if (directorTrack is null)
+            {
+                MessageBox.Show("This node's InterpData has no Director track.", "No Director Track",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (CameraPresetDialog.GenerateForDirector(this, directorTrack, actorAnchorContext: GetCameraActorAnchorContext()))
+            {
+                RefreshSelectedNodeAfterInterpMutation(directorTrack.UIndex);
+            }
+        }
+
+        private CameraActorAnchorContext GetCameraActorAnchorContext() =>
+            SelectedConv is not null && SelectedDialogueNode is not null
+                ? new CameraActorAnchorContext(SelectedConv, SelectedDialogueNode,
+                    SelectedSpeakerList.Select(speaker => speaker.SpeakerName).ToArray())
+                : null;
+
         public void OpenNodeContextMenu(DObj obj)
         {
             if (obj is DStart dStart)
