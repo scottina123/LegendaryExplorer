@@ -128,16 +128,16 @@ namespace LegendaryExplorer.Startup
                 var mainWindow = new LEXMainWindow();
                 app.MainWindow = mainWindow;
                 app.ShutdownMode = ShutdownMode.OnMainWindowClose;
-                mainWindow.TransitionFromSplashToMainWindow();
-
-                GameController.InitializeMessageHook(mainWindow);
-
                 IsLoaded = true;
 
                 while (Arguments.Any())
                 {
-                    cliHandler.InvokeAsync(Arguments.Dequeue());
+                    cliHandler.InvokeAsync(Arguments.Dequeue()).GetAwaiter().GetResult();
                 }
+
+                mainWindow.TransitionFromSplashToMainWindow();
+
+                GameController.InitializeMessageHook(mainWindow);
             });
 
             var mpc1 = LegendaryExplorerCore.PlotDatabase.PlotDatabases.GetModPlotContainerForGame(MEGame.LE1);

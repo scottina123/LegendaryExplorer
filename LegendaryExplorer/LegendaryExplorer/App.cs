@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
@@ -18,11 +19,30 @@ namespace LegendaryExplorer
         [STAThread]
         public static void Main()
         {
-            DPIAwareSplashScreen.Show();
+            if (!IsInitialPccOpenRequest())
+            {
+                DPIAwareSplashScreen.Show();
+            }
 
             var app = new App();
             app.Startup += app.Application_Startup;
             app.Run();
+        }
+
+        private static bool IsInitialPccOpenRequest()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            for (int i = 1; i < args.Length; i++)
+            {
+                if ((args[i].Equals("-o", StringComparison.OrdinalIgnoreCase) || args[i].Equals("--open", StringComparison.OrdinalIgnoreCase))
+                    && i + 1 < args.Length
+                    && Path.GetExtension(args[i + 1]).Equals(".pcc", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         #region Application-wide variables
