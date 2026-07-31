@@ -507,6 +507,16 @@ namespace LegendaryExplorer.Misc.AppSettings
             get => _dialogueeditor_bulkcloneinterpreplacements;
             set => SetProperty(ref _dialogueeditor_bulkcloneinterpreplacements, value);
         }
+        private static bool _dialogueeditor_rememberbulkinterpreplacements = false;
+        public static bool DialogueEditor_RememberBulkInterpReplacements {
+            get => _dialogueeditor_rememberbulkinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_rememberbulkinterpreplacements, value);
+        }
+        private static List<string> _dialogueeditor_bulkinterpreplacements = new List<string>();
+        public static List<string> DialogueEditor_BulkInterpReplacements {
+            get => _dialogueeditor_bulkinterpreplacements;
+            set => SetProperty(ref _dialogueeditor_bulkinterpreplacements, value);
+        }
 
         public static string Get_SequenceEditor_Favorites (MEGame game) => game switch
         {
@@ -683,6 +693,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             TLKEditor_SelectedTab = TryGetSetting(settingsJson, "tlkeditor_selectedtab", "");
             DialogueEditor_RememberBulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkcloneinterpreplacements", false);
             DialogueEditor_BulkCloneInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkcloneinterpreplacements", new List<string>());
+            DialogueEditor_RememberBulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_rememberbulkinterpreplacements", false);
+            DialogueEditor_BulkInterpReplacements = TryGetSetting(settingsJson, "dialogueeditor_bulkinterpreplacements", new List<string>());
 
             ConditionalsEditor_DefaultGraphView = TryGetSetting(settingsJson, "conditionalseditor_defaultgraphview", false);
 
@@ -797,6 +809,8 @@ namespace LegendaryExplorer.Misc.AppSettings
             settingsJson["tlkeditor_selectedtab"] = TLKEditor_SelectedTab.ToString();
             settingsJson["dialogueeditor_rememberbulkcloneinterpreplacements"] = DialogueEditor_RememberBulkCloneInterpReplacements.ToString();
             settingsJson["dialogueeditor_bulkcloneinterpreplacements"] = DialogueEditor_BulkCloneInterpReplacements;
+            settingsJson["dialogueeditor_rememberbulkinterpreplacements"] = DialogueEditor_RememberBulkInterpReplacements.ToString();
+            settingsJson["dialogueeditor_bulkinterpreplacements"] = DialogueEditor_BulkInterpReplacements;
 
             settingsJson["conditionalseditor_defaultgraphview"] = ConditionalsEditor_DefaultGraphView.ToString();
 

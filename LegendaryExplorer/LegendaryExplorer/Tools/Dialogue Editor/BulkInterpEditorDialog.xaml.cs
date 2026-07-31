@@ -1,4 +1,5 @@
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Kismet;
 using LegendaryExplorerCore.Misc;
@@ -14,6 +15,12 @@ using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.DialogueEditor
 {
+    public class InterpNameReplacement
+    {
+        public string Find { get; set; } = "";
+        public string Replace { get; set; } = "";
+    }
+
     /// <summary>
     /// A data item representing an InterpGroup or Track and its editable properties.
     /// </summary>
@@ -122,8 +129,11 @@ namespace LegendaryExplorer.DialogueEditor
     {
         public ObservableCollectionExtended<InterpGroupItem> InterpGroupItems { get; } = new();
         public ObservableCollectionExtended<string> FindNames { get; } = new();
+        public ObservableCollectionExtended<InterpNameReplacement> NameReplacements { get; } = new();
+        public bool RememberReplacements { get; set; } = Settings.DialogueEditor_RememberBulkInterpReplacements;
         public bool ChangesApplied { get; private set; }
 
+        private const char ReplacementSeparator = '\u001F';
         private readonly ExportEntry _interpData;
         private readonly IMEPackage _pcc;
 
@@ -136,6 +146,7 @@ namespace LegendaryExplorer.DialogueEditor
             CustomWindowChrome.ApplyCustomChrome(this);
             Owner = owner;
 
+            LoadNameReplacements();
             LoadInterpGroups();
         }
 
@@ -148,7 +159,63 @@ namespace LegendaryExplorer.DialogueEditor
             CustomWindowChrome.ApplyCustomChrome(this);
             Owner = owner;
 
+            LoadNameReplacements();
             LoadInterpGroups();
+        }
+
+        private void LoadNameReplacements()
+        {
+            if (Settings.DialogueEditor_RememberBulkInterpReplacements)
+            {
+                foreach (string encodedReplacement in Settings.DialogueEditor_BulkInterpReplacements ?? [])
+                {
+                    int separatorIndex = encodedReplacement?.IndexOf(ReplacementSeparator) ?? -1;
+                    if (separatorIndex >= 0)
+                    {
+                        NameReplacements.Add(new InterpNameReplacement
+                        {
+                            Find = encodedReplacement[..separatorIndex],
+                            Replace = encodedReplacement[(separatorIndex + 1)..]
+                        });
+                    }
+                }
+            }
+
+            if (NameReplacements.Count == 0)
+            {
+                NameReplacements.Add(new InterpNameReplacement());
+            }
+        }
+
+        private void PersistNameReplacements()
+        {
+            Settings.DialogueEditor_RememberBulkInterpReplacements = RememberReplacements;
+            Settings.DialogueEditor_BulkInterpReplacements = Settings.DialogueEditor_RememberBulkInterpReplacements
+                ? NameReplacements.Select(row => $"{row.Find ?? string.Empty}{ReplacementSeparator}{row.Replace ?? string.Empty}").ToList()
+                : [];
+        }
+
+        private void AddReplacement_Click(object sender, RoutedEventArgs e)
+        {
+            NameReplacements.Add(new InterpNameReplacement());
+        }
+
+        private void RemoveReplacement_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: InterpNameReplacement replacement })
+            {
+                NameReplacements.Remove(replacement);
+            }
+
+            if (NameReplacements.Count == 0)
+            {
+                NameReplacements.Add(new InterpNameReplacement());
+            }
+        }
+
+        private void BulkInterpEditorDialog_Closing(object sender, CancelEventArgs e)
+        {
+            PersistNameReplacements();
         }
 
         /// <summary>
@@ -415,11 +482,11 @@ namespace LegendaryExplorer.DialogueEditor
         /// </summary>
         private void Apply_Click(object sender, RoutedEventArgs e)
         {
-            // Apply bulk find/replace first if there is text in the find box
-            string findText = FindNameComboBox.SelectedItem as string;
-            string replaceText = ReplaceTextBox.Text;
+            var replacements = NameReplacements
+                .Where(row => !string.IsNullOrEmpty(row.Find))
+                .ToList();
 
-            if (!string.IsNullOrEmpty(findText))
+            if (replacements.Count > 0)
             {
                 foreach (var item in InterpGroupItems)
                 {
@@ -427,7 +494,7 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         if (ReplaceGroupName.IsChecked == true && !string.IsNullOrEmpty(item.GroupName))
                         {
-                            string newValue = item.GroupName.Replace(findText, replaceText);
+                            string newValue = ApplyReplacements(item.GroupName, replacements);
                             if (newValue != item.GroupName)
                             {
                                 item.GroupName = newValue;
@@ -436,7 +503,7 @@ namespace LegendaryExplorer.DialogueEditor
 
                         if (ReplaceSFXFindActor.IsChecked == true && !string.IsNullOrEmpty(item.SFXFindActor))
                         {
-                            string newValue = item.SFXFindActor.Replace(findText, replaceText);
+                            string newValue = ApplyReplacements(item.SFXFindActor, replacements);
                             if (newValue != item.SFXFindActor)
                             {
                                 item.SFXFindActor = newValue;
@@ -447,7 +514,7 @@ namespace LegendaryExplorer.DialogueEditor
                     {
                         if (ReplaceTrackFindActor.IsChecked == true && !string.IsNullOrEmpty(item.TrackFindActor))
                         {
-                            string newValue = item.TrackFindActor.Replace(findText, replaceText);
+                            string newValue = ApplyReplacements(item.TrackFindActor, replacements);
                             if (newValue != item.TrackFindActor)
                             {
                                 item.TrackFindActor = newValue;
@@ -525,6 +592,16 @@ namespace LegendaryExplorer.DialogueEditor
                 RebuildFindNames();
                 MessageBox.Show($"Applied {changesApplied} change(s).", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
+        }
+
+        private static string ApplyReplacements(string value, IReadOnlyList<InterpNameReplacement> replacements)
+        {
+            foreach (InterpNameReplacement replacement in replacements)
+            {
+                value = value.Replace(replacement.Find, replacement.Replace ?? string.Empty);
+            }
+
+            return value;
         }
 
         /// <summary>
