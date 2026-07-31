@@ -11508,9 +11508,19 @@ namespace LegendaryExplorer.DialogueEditor
                 Padding = new Thickness(10, 4, 10, 4),
                 IsEnabled = false
             };
+            var chooseTrackMoveOriginButton = new Button
+            {
+                Content = "Choose TrackMove Key from PCC",
+                Margin = new Thickness(8, 4, 0, 4),
+                Padding = new Thickness(10, 4, 10, 4),
+                ToolTip = "Choose an origin key from an InterpTrackMove in the destination PCC",
+                IsEnabled = false,
+                Visibility = templateImport ? Visibility.Collapsed : Visibility.Visible
+            };
             var originModePanel = new StackPanel { Orientation = Orientation.Horizontal };
             originModePanel.Children.Add(originModeComboBox);
             originModePanel.Children.Add(applyActorOriginButton);
+            originModePanel.Children.Add(chooseTrackMoveOriginButton);
             List<CrossEditorNodeOption> originNodeOptions = SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
                 .Select(node => new CrossEditorNodeOption(node, $"{(node.IsReply ? 'R' : 'E')}{node.NodeCount}: {node.Line}"))
                 .ToList();
@@ -11611,6 +11621,7 @@ namespace LegendaryExplorer.DialogueEditor
                 bool custom = originModeComboBox.SelectedIndex == 0;
                 originModeComboBox.IsEnabled = enabled;
                 applyActorOriginButton.IsEnabled = enabled && !custom;
+                chooseTrackMoveOriginButton.IsEnabled = enabled && custom;
                 originNodePanel.IsEnabled = enabled && !custom;
                 singleActorPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
                 multipleActorsPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -11683,6 +11694,18 @@ namespace LegendaryExplorer.DialogueEditor
             dialog.SetResourceReference(Window.BackgroundProperty, System.Windows.SystemColors.WindowBrushKey);
             dialog.SetResourceReference(Window.ForegroundProperty, System.Windows.SystemColors.WindowTextBrushKey);
             CustomWindowChrome.ApplyCustomChrome(dialog);
+            chooseTrackMoveOriginButton.Click += (_, _) =>
+            {
+                var picker = new TrackMoveOriginPicker(Pcc)
+                {
+                    Owner = dialog
+                };
+                if (picker.ShowDialog() == true)
+                {
+                    originModeComboBox.SelectedIndex = 0;
+                    SetCameraOrigin(picker.SelectedOrigin);
+                }
+            };
 
             var grid = new Grid { Margin = new Thickness(16) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
