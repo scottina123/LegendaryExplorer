@@ -4,11 +4,15 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
@@ -36,12 +40,16 @@ public partial class CameraPresetDialog : Window
     private readonly ExportEntry _selectedTrackMove;
     private readonly ExportEntry _selectedDirectorTrack;
     private readonly ExportEntry _interpData;
+    private AssetDB _previewAssetDatabase;
+    private List<(string FileName, string ContentDir)> _previewAssetFiles = [];
     private CameraPreset _selectedPreset;
     private MulticamCameraPreset _selectedMulticamPreset;
     private bool _updatingCameraSpeed;
     private bool _updatingDistanceScale;
     private bool _updatingResolvedOrigin;
     private bool _updatingPresetSelection;
+
+    private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -106,6 +114,150 @@ public partial class CameraPresetDialog : Window
             MulticamTab.Visibility = Visibility.Collapsed;
             CameraModeTabs.SelectedItem = SingleCamTab;
         }
+        _ = InitializePreviewActorModelsAsync();
+    }
+
+    private async Task InitializePreviewActorModelsAsync()
+    {
+        if (_package is null)
+        {
+            SetPreviewActorStatus("Open the camera preset dialog from a package to load actor models.");
+            return;
+        }
+
+        MEGame game = _package.Game;
+        string databasePath = AssetDatabaseWindow.GetDBPath(game);
+        if (!File.Exists(databasePath))
+        {
+            SetPreviewActorStatus($"No {game} Asset Database found. Generate one in the Asset Database tool.");
+            return;
+        }
+
+        try
+        {
+            SetPreviewActorStatus($"Loading {game} actor models...");
+            var database = new AssetDB();
+            await AssetDatabaseWindow.LoadDatabase(databasePath, game, database, CancellationToken.None);
+            if (database.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
+            {
+                SetPreviewActorStatus($"The {game} Asset Database is out of date. Regenerate it to select actor models.");
+                return;
+            }
+
+            List<MeshRecord> meshes = database.Meshes
+                .Where(mesh => mesh.IsSkeleton && mesh.Usages.Count > 0)
+                .OrderBy(mesh => mesh.MeshName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _previewAssetDatabase = database;
+            _previewAssetFiles = database.FileList
+                .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
+                .ToList();
+            PreviewActorSelector.ItemsSource = meshes;
+
+            string defaultMeshName = game switch
+            {
+                MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
+                MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
+                _ => "QRN_ARM_TLIa_MDL"
+            };
+            MeshRecord defaultMesh = meshes.FirstOrDefault(mesh =>
+                string.Equals(mesh.MeshName, defaultMeshName, StringComparison.OrdinalIgnoreCase));
+            if (defaultMesh is not null)
+            {
+                PreviewActorSelector.SelectedItem = defaultMesh;
+            }
+            SetPreviewActorStatus(meshes.Count == 0
+                ? $"The {game} Asset Database contains no skeletal meshes."
+                : $"{meshes.Count:N0} skeletal actor models available.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            SetPreviewActorStatus($"Unable to load actor models: {exception.Message}");
+        }
+    }
+
+    private void SetPreviewActorStatus(string status)
+    {
+        if (FindName("PreviewActorStatusTextBlock") is TextBlock statusTextBlock)
+        {
+            statusTextBlock.Text = status;
+        }
+    }
+
+    private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { SelectedItem: MeshRecord meshRecord } comboBox)
+        {
+            return;
+        }
+
+        if (!TryLoadPreviewActorModel(meshRecord, out string error))
+        {
+            SetPreviewActorStatus(error);
+            return;
+        }
+
+        SetPreviewActorStatus($"Actor: {meshRecord.MeshName}");
+        RefreshLivePreview();
+    }
+
+    private bool TryLoadPreviewActorModel(MeshRecord meshRecord, out string error)
+    {
+        error = null;
+        if (_package is null || _previewAssetDatabase is null)
+        {
+            error = "The actor model database is not loaded.";
+            return false;
+        }
+
+        string gamePath = MEDirectories.GetDefaultGamePath(_package.Game);
+        if (string.IsNullOrEmpty(gamePath) || !Directory.Exists(gamePath))
+        {
+            error = $"The configured {_package.Game} game directory could not be found.";
+            return false;
+        }
+
+        foreach (MeshUsage usage in meshRecord.Usages)
+        {
+            if (usage.FileKey < 0 || usage.FileKey >= _previewAssetFiles.Count)
+            {
+                continue;
+            }
+
+            (string fileName, string contentDir) = _previewAssetFiles[usage.FileKey];
+            string filePath = Directory.EnumerateFiles(gamePath, $"{fileName}.*", SearchOption.AllDirectories)
+                .FirstOrDefault(path => path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
+            if (filePath is null)
+            {
+                continue;
+            }
+
+            using IMEPackage meshPackage = MEPackageHandler.OpenMEPackage(filePath);
+            if (!meshPackage.IsUExport(usage.UIndex))
+            {
+                continue;
+            }
+
+            ExportEntry meshExport = meshPackage.GetUExport(usage.UIndex);
+            if (!string.Equals(meshExport.ClassName, "SkeletalMesh", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                CameraPreviewControl.LoadActorModel(meshExport);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = $"Unable to render {meshRecord.MeshName}: {exception.Message}";
+                return false;
+            }
+        }
+
+        error = $"No installed package containing {meshRecord.MeshName} could be resolved.";
+        return false;
     }
 
     private void SaveMulticamPreset_Click(object sender, RoutedEventArgs e)

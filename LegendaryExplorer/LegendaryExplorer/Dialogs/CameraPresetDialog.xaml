@@ -316,7 +316,27 @@
         </Grid>
         <Border x:Name="PreviewPanel" Grid.Column="1" Visibility="Collapsed" Margin="0,16,16,16"
                 BorderBrush="#555" BorderThickness="1">
-            <local:CameraPresetPreview x:Name="CameraPreviewControl"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Margin="8">
+                    <TextBlock Text="Preview Actor" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Model" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox x:Name="PreviewActorComboBox" Grid.Column="1"
+                                  IsEditable="True" IsTextSearchEnabled="True" DisplayMemberPath="DisplayString"
+                                  SelectionChanged="PreviewActorModel_SelectionChanged"/>
+                    </Grid>
+                    <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="0,4,0,0" Opacity="0.7" TextWrapping="Wrap"/>
+                </StackPanel>
+                <local:CameraPresetPreview x:Name="CameraPreviewControl" Grid.Row="1"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

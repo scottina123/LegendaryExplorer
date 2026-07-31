@@ -5,6 +5,8 @@ using System.Numerics;
 using System.Windows.Controls;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 
@@ -13,6 +15,7 @@ namespace LegendaryExplorer.Dialogs;
 public partial class CameraPresetPreview : UserControl, IDisposable
 {
     private readonly LevelEditorRenderContext _renderContext;
+    private ModelPreview<WorldVertex> _actorModel;
     private IReadOnlyList<GeneratedCameraKey> _keys = [];
     private InterpCurve<Vector3> _positionCurve;
     private InterpCurve<Vector3> _rotationCurve;
@@ -40,6 +43,19 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _renderContext.RenderScene += RenderScene;
         _renderContext.UpdateScene += UpdateScene;
         SceneViewer.Context = _renderContext;
+    }
+
+    public void LoadActorModel(ExportEntry skeletalMeshExport)
+    {
+        if (skeletalMeshExport is null)
+        {
+            return;
+        }
+
+        ModelPreview<WorldVertex> model = new(_renderContext, skeletalMeshExport.GetBinaryData<SkeletalMesh>());
+        _actorModel?.Dispose();
+        _actorModel = model;
+        SceneViewer.MarkRenderDirty();
     }
 
     public void SetPreview(CameraPreset preset, CameraOrigin origin, IReadOnlyList<GeneratedCameraKey> keys)
@@ -212,22 +228,26 @@ public partial class CameraPresetPreview : UserControl, IDisposable
     {
         if (_multicamPreset is not null)
         {
+            RenderActor();
             DrawMulticamPaths();
             _renderContext.DrawUI();
             return;
         }
-        if (_isDynamic)
-        {
-            DrawCube(_sceneOrigin + new Vector3(0, -110, 60), 55, new Vector4(0.2f, 0.55f, 1f, 1f));
-            DrawCube(_sceneOrigin + new Vector3(80, 75, 45), 45, new Vector4(1f, 0.55f, 0.2f, 1f));
-            DrawCube(_sceneOrigin + new Vector3(-100, 65, 35), 35, new Vector4(0.35f, 0.9f, 0.45f, 1f));
-        }
-        else
-        {
-            DrawCube(_sceneOrigin + new Vector3(0, 0, 65), 65, new Vector4(0.25f, 0.65f, 1f, 1f));
-        }
+        RenderActor();
 
         _renderContext.DrawUI();
+    }
+
+    private void RenderActor()
+    {
+        if (_actorModel is null)
+        {
+            return;
+        }
+
+        _actorModel.UpdateLocalToWorld(Matrix4x4.CreateTranslation(_sceneOrigin));
+        _actorModel.Render(RenderPass.Base, _renderContext, 0);
+        _actorModel.Render(RenderPass.Hair, _renderContext, 0);
     }
 
     private void DrawMulticamPaths()
@@ -264,7 +284,6 @@ public partial class CameraPresetPreview : UserControl, IDisposable
                 DrawCube(positionCurve.Eval(cameraTime, keys[0].Location), 12, color);
             }
         }
-        DrawCube(_sceneOrigin, 10, new Vector4(1f, 1f, 1f, 1f));
     }
 
     private void DrawCube(Vector3 center, float halfSize, Vector4 color)
@@ -303,6 +322,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _renderContext.ForceContinuousRendering = false;
         _renderContext.RenderScene -= RenderScene;
         _renderContext.UpdateScene -= UpdateScene;
+        _actorModel?.Dispose();
         SceneViewer.Dispose();
     }
 }
