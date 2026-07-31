@@ -741,6 +741,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ICommand SearchCommand { get; set; }
         public ICommand CopyToClipboardCommand { get; set; }
         public ICommand ForceRefreshCommand { get; set; }
+        public ICommand GenerateBlankBioConversationCommand { get; set; }
         public ICommand ExtractSpeakerAudioCommand { get; set; }
         public ICommand LocalizeSpeakerFaceFXCommand { get; set; }
         public ICommand ImportSpeakerFaceFXAudioCommand { get; set; }
@@ -1095,6 +1096,7 @@ namespace LegendaryExplorer.DialogueEditor
             SearchCommand = new GenericCommand(SearchDialogue, () => CurrentObjects.Any);
             CopyToClipboardCommand = new RelayCommand(CopyStringToClipboard);
             ForceRefreshCommand = new RelayCommand(ForceRefresh);
+            GenerateBlankBioConversationCommand = new GenericCommand(GenerateBlankBioConversation, CanGenerateBlankBioConversation);
             ExtractSpeakerAudioCommand = new GenericCommand(ExtractSpeakerAudio, () => SelectedSpeaker != null && SelectedSpeaker.SpeakerID >= -2);
             LocalizeSpeakerFaceFXCommand = new GenericCommand(() => DialogueEditorExperimentsS.LocalizeSpeakerFaceFX(this), () => SelectedSpeaker != null && SelectedConv != null);
             ImportSpeakerFaceFXAudioCommand = new RelayCommand(ImportSpeakerFaceFXAudio, CanImportSpeakerFaceFXAudio);
@@ -1448,6 +1450,82 @@ namespace LegendaryExplorer.DialogueEditor
             foreach (var exp in Pcc.Exports.Where(exp => exp.ClassName.Equals("BioConversation")))
             {
                 Conversations.Add(new ConversationExtended(exp));
+            }
+        }
+
+        private bool CanGenerateBlankBioConversation()
+        {
+            return Pcc?.Game is MEGame.ME3 or MEGame.LE3;
+        }
+
+        private void GenerateBlankBioConversation()
+        {
+            if (Pcc == null)
+            {
+                return;
+            }
+
+            if (!CanGenerateBlankBioConversation())
+            {
+                MessageBox.Show(this,
+                    "Blank BioConversation generation is available only for ME3 and LE3 packages.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            (string TopPackageName, string ConversationName)? names =
+                PackageEditorExperimentsScottina.PromptForBlankBioConversationNames(this);
+            if (names == null)
+            {
+                return;
+            }
+
+            string topPackageName = names.Value.TopPackageName;
+            string conversationName = names.Value.ConversationName;
+
+            if (Pcc.FindExport(topPackageName, "Package") != null)
+            {
+                MessageBox.Show(this,
+                    $"A top-level package named '{topPackageName}' already exists. Choose a new name to avoid modifying existing assets.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                (ExportEntry bioConversation, List<ExportEntry> referencedExports) =
+                    PackageEditorExperimentsScottina.GenerateBlankBioConversationAssets(
+                        Pcc, topPackageName, conversationName);
+
+                var conversation = new ConversationExtended(bioConversation);
+                conversation.LoadConversation(TLKLookup, detailedParse: true);
+                conversation.IsFirstParsed = true;
+                ApplyAssetDatabaseOwnerFriendlyName(conversation);
+                Conversations.Add(conversation);
+
+                foreach (ExportEntry export in referencedExports.Where(export => export.ClassName == "FaceFXAnimSet"))
+                {
+                    FFXAnimsets.Add(export);
+                }
+
+                Conversations_ListBox.SelectedItem = conversation;
+                MessageBox.Show(this,
+                    $"Created '{bioConversation.InstancedFullPath}' with blank player, owner, and non-speaker FaceFX assets.",
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this,
+                    ex.FlattenException(),
+                    "Generate blank BioConversation",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
         private async void FirstParse()

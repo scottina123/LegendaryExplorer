@@ -712,15 +712,20 @@
                                                        Visibility="{Binding Pcc, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bases:WPFBase}},Converter={StaticResource NullVisibilityConverter}, ConverterParameter='Reversed'}" />
 
                     <!-- Conversation Box-->
-                    <ListBox Name="Conversations_ListBox" Grid.Row="0" Grid.Column="0"
-                             ItemsSource="{Binding Conversations}"
-                             SelectionChanged="ConversationList_SelectedItemChanged"
-                             MouseLeftButtonUp="ListBox_MouseLeftButtonUp" HorizontalContentAlignment="Stretch"
-                              PreviewMouseRightButtonDown="Conversations_ListBox_PreviewMouseRightButtonDown"
-                              dd:DragDrop.IsDragSource="True"
-                              dd:DragDrop.IsDropTarget="True"
-                              dd:DragDrop.DropHandler="{Binding}"
-                             Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                    <DockPanel Grid.Row="0" Grid.Column="0"
+                               Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}">
+                        <Button DockPanel.Dock="Top" Margin="2" Padding="4,2"
+                                Content="Generate blank BioConversation"
+                                Command="{Binding GenerateBlankBioConversationCommand}"
+                                ToolTip="Create a blank BioConversation and its player, owner, and non-speaker FaceFX assets" />
+                        <ListBox Name="Conversations_ListBox"
+                                 ItemsSource="{Binding Conversations}"
+                                 SelectionChanged="ConversationList_SelectedItemChanged"
+                                 MouseLeftButtonUp="ListBox_MouseLeftButtonUp" HorizontalContentAlignment="Stretch"
+                                  PreviewMouseRightButtonDown="Conversations_ListBox_PreviewMouseRightButtonDown"
+                                  dd:DragDrop.IsDragSource="True"
+                                  dd:DragDrop.IsDropTarget="True"
+                                  dd:DragDrop.DropHandler="{Binding}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,0,5,0">
@@ -780,7 +785,8 @@
                                 <MenuItem Header="Trash top-level package and children" Click="Conversations_TrashTopLevelPackage_Click" />
                             </ContextMenu>
                         </ListBox.ContextMenu>
-                    </ListBox>
+                        </ListBox>
+                    </DockPanel>
                     <GridSplitter Grid.Row="0" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <!--Tab Control -->
