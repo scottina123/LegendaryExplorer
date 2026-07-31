@@ -8,9 +8,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
+using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
@@ -18,8 +22,10 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorer.Dialogs;
 
-public partial class CameraPresetPreview : UserControl, IDisposable, IActorEditorContext
+public partial class CameraPresetPreview : UserControl, IDisposable, IActorEditorContext, ISceneRenderContextConfigurable
 {
+    private static readonly RenderPass[] BaseRenderPasses = [RenderPass.Base, RenderPass.Hair];
+
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
     {
         private Vector3 _location;
@@ -83,6 +89,17 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     private readonly Dictionary<string, InterpCurve<float>> _multicamFovCurves = new(StringComparer.OrdinalIgnoreCase);
     private Action<GeneratedCameraKey> _activeCameraChanged;
     private string _activeMulticamGroupName;
+    private bool _showCollision = Settings.LevelEditor_ShowCollision;
+    private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
+    private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
+    private bool _showVolumetrics;
+    private bool _unlit = Settings.LevelEditor_Unlit;
+    private bool _setAlphaToBlack = true;
+    private bool _showRedChannel = true;
+    private bool _showGreenChannel = true;
+    private bool _showBlueChannel = true;
+    private bool _showAlphaChannel = true;
+    private System.Windows.Media.Color _backgroundColor;
 
     public LevelEditorRenderContext RenderContext => _renderContext;
     public bool IsApplyingUndoRedo => false;
@@ -91,22 +108,185 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     public event Action<CameraOrigin> SelectedActorTransformChanged;
     public event Action<Vector3> SelectedActorSnapRequested;
 
+    public bool ShowCollision
+    {
+        get => _showCollision;
+        set => SetRenderOption(ref _showCollision, value);
+    }
+
+    public bool ShowLightIcons
+    {
+        get => _showLightIcons;
+        set
+        {
+            if (SetRenderOption(ref _showLightIcons, value))
+            {
+                _renderContext.ShowLightIcons = value;
+            }
+        }
+    }
+
+    public bool ShowVolumes
+    {
+        get => _showVolumes;
+        set
+        {
+            if (SetRenderOption(ref _showVolumes, value))
+            {
+                _renderContext.ShowVolumes = value;
+            }
+        }
+    }
+
+    public bool ShowVolumetrics
+    {
+        get => _showVolumetrics;
+        set
+        {
+            if (SetRenderOption(ref _showVolumetrics, value))
+            {
+                _renderContext.ShowVolumetrics = value;
+            }
+        }
+    }
+
+    public bool Unlit
+    {
+        get => _unlit;
+        set
+        {
+            if (SetRenderOption(ref _unlit, value))
+            {
+                SetRenderFlag(LevelEditorRenderContext.ShaderFlags.Unlit, value);
+            }
+        }
+    }
+
+    public bool SetAlphaToBlack
+    {
+        get => _setAlphaToBlack;
+        set
+        {
+            if (SetRenderOption(ref _setAlphaToBlack, value))
+            {
+                SetRenderFlag(LevelEditorRenderContext.ShaderFlags.AlphaAsBlack, value);
+            }
+        }
+    }
+
+    public bool ShowRedChannel
+    {
+        get => _showRedChannel;
+        set => SetChannelOption(ref _showRedChannel, value, LevelEditorRenderContext.ShaderFlags.EnableRedChannel);
+    }
+
+    public bool ShowGreenChannel
+    {
+        get => _showGreenChannel;
+        set => SetChannelOption(ref _showGreenChannel, value, LevelEditorRenderContext.ShaderFlags.EnableGreenChannel);
+    }
+
+    public bool ShowBlueChannel
+    {
+        get => _showBlueChannel;
+        set => SetChannelOption(ref _showBlueChannel, value, LevelEditorRenderContext.ShaderFlags.EnableBlueChannel);
+    }
+
+    public bool ShowAlphaChannel
+    {
+        get => _showAlphaChannel;
+        set => SetChannelOption(ref _showAlphaChannel, value, LevelEditorRenderContext.ShaderFlags.EnableAlphaChannel);
+    }
+
+    public System.Windows.Media.Color BackgroundColor
+    {
+        get => _backgroundColor;
+        set
+        {
+            if (_backgroundColor != value)
+            {
+                _backgroundColor = value;
+                _renderContext.BackgroundColor = value;
+                SceneViewer?.MarkRenderDirty();
+            }
+        }
+    }
+
+    public bool UseLocalCoordsForWidget
+    {
+        get => _renderContext.TransformWidget.UseLocalCoords;
+        set
+        {
+            _renderContext.TransformWidget.UseLocalCoords = value;
+            SceneViewer?.MarkRenderDirty();
+        }
+    }
+
+    public ICommand ToggleTranslateCommand { get; }
+    public ICommand ToggleRotateCommand { get; }
+    public ICommand ToggleScaleCommand { get; }
+    public ICommand ToggleUniformScaleCommand { get; }
+
     public CameraPresetPreview()
     {
         InitializeComponent();
-        _renderContext = new LevelEditorRenderContext()
-        {
-            BackgroundColor = System.Windows.Media.Color.FromRgb(0x20, 0x24, 0x2A)
-        };
-        _renderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+        _renderContext = new LevelEditorRenderContext();
+        _backgroundColor = LevelEditor.GetThemeDefaultBackgroundColor();
+        _renderContext.BackgroundColor = _backgroundColor;
+        _renderContext.ShowLightIcons = _showLightIcons;
+        _renderContext.ShowVolumes = _showVolumes;
+        _renderContext.ShowVolumetrics = _showVolumetrics;
+        SetRenderFlag(LevelEditorRenderContext.ShaderFlags.Unlit, _unlit);
+        SetRenderFlag(LevelEditorRenderContext.ShaderFlags.AlphaAsBlack, _setAlphaToBlack);
         _renderContext.EnableTransformWidget();
         _renderContext.TransformWidget.UseLocalCoords = true;
+        ToggleTranslateCommand = new GenericCommand(() => _renderContext.TransformWidget.Mode = EWidgetMode.Translate);
+        ToggleRotateCommand = new GenericCommand(() =>
+        {
+            _renderContext.TransformWidget.Mode = EWidgetMode.Rotate;
+            _renderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        });
+        ToggleScaleCommand = new GenericCommand(() => _renderContext.TransformWidget.Mode = EWidgetMode.Scale);
+        ToggleUniformScaleCommand = new GenericCommand(() => _renderContext.TransformWidget.Mode = EWidgetMode.UniformScale);
         _actorWidgetTarget.TransformChanged = origin => SelectedActorTransformChanged?.Invoke(origin);
         _renderContext.RenderScene += RenderScene;
         _renderContext.UpdateScene += UpdateScene;
         _renderContext.RightClickViewport += ShowViewportContextMenu;
         _renderContext.RightClickActor += _ => ShowViewportContextMenu();
         SceneViewer.Context = _renderContext;
+        PreviewOptionsControl.DataContext = this;
+    }
+
+    private bool SetRenderOption(ref bool field, bool value)
+    {
+        if (field == value)
+        {
+            return false;
+        }
+
+        field = value;
+        SceneViewer?.MarkRenderDirty();
+        return true;
+    }
+
+    private void SetChannelOption(ref bool field, bool value, LevelEditorRenderContext.ShaderFlags flag)
+    {
+        if (SetRenderOption(ref field, value))
+        {
+            SetRenderFlag(flag, value);
+        }
+    }
+
+    private void SetRenderFlag(LevelEditorRenderContext.ShaderFlags flag, bool enabled)
+    {
+        if (enabled)
+        {
+            _renderContext.RenderFlags |= flag;
+        }
+        else
+        {
+            _renderContext.RenderFlags &= ~flag;
+        }
     }
 
     private void ShowViewportContextMenu()
@@ -522,10 +702,17 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
 
     private void RenderScene(object sender, EventArgs e)
     {
-        foreach (RenderPass pass in new[] { RenderPass.Base, RenderPass.Hair })
+        ReadOnlySpan<RenderPass> renderPasses = ShowCollision
+            ? [RenderPass.Base, RenderPass.Hair, RenderPass.Collision]
+            : BaseRenderPasses;
+        foreach (RenderPass pass in renderPasses)
         {
             foreach (ActorProxy actor in _renderContext.DrawList_3D)
             {
+                if (actor.IsVolume && !ShowVolumes) continue;
+                if (actor.IsVolumetricMesh && !ShowVolumetrics) continue;
+                int hitId = actor.HitID;
+                _renderContext.CurrentHitTestId = new Vector3((hitId & 0xFF) / 255f, ((hitId >> 8) & 0xFF) / 255f, ((hitId >> 16) & 0xFF) / 255f);
                 actor.Render(_renderContext, pass);
             }
         }
