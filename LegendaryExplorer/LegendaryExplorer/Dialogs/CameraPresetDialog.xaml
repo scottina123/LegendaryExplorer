@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:LegendaryExplorer.Dialogs"
         Title="Generate Camera Presets" Width="820" Height="760"
-        MinWidth="760" MinHeight="680" WindowStartupLocation="CenterOwner">
+        MinWidth="760" MinHeight="680" WindowStartupLocation="CenterOwner" StateChanged="CameraPresetDialog_StateChanged">
     <Grid>
         <Grid.Resources>
             <DataTemplate x:Key="MulticamPresetItemTemplate">
@@ -339,8 +339,10 @@
                     <TextBlock x:Name="PreviewLevelStatusTextBlock" Margin="8,0,0,0" VerticalAlignment="Center" Opacity="0.7"/>
                 </WrapPanel>
                 <Expander Grid.Row="1" Header="Preview Actors" IsExpanded="True" Margin="8">
-                    <Grid MaxHeight="330">
+                    <Grid MaxHeight="520">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -418,7 +420,48 @@
                             <StackPanel Margin="2"><TextBlock Text="Pitch (Y)"/><TextBox x:Name="PreviewActorPitchTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
                             <StackPanel Margin="2"><TextBlock Text="Yaw (Z)"/><TextBox x:Name="PreviewActorYawTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
                         </UniformGrid>
-                        <StackPanel Grid.Row="5">
+                        <Grid Grid.Row="5" Margin="2,0,2,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="150"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Move actor" FontWeight="SemiBold"/>
+                                <UniformGrid Rows="1" Columns="4" Margin="0,4">
+                                    <RadioButton Content="X" Tag="X" GroupName="PreviewActorLocationScrubAxis" IsChecked="True" HorizontalContentAlignment="Center" Checked="PreviewActorLocationScrubAxis_Checked"/>
+                                    <RadioButton Content="Y" Tag="Y" GroupName="PreviewActorLocationScrubAxis" HorizontalContentAlignment="Center" Checked="PreviewActorLocationScrubAxis_Checked"/>
+                                    <RadioButton Content="Z" Tag="Z" GroupName="PreviewActorLocationScrubAxis" HorizontalContentAlignment="Center" Checked="PreviewActorLocationScrubAxis_Checked"/>
+                                    <RadioButton Content="All" Tag="All" GroupName="PreviewActorLocationScrubAxis" HorizontalContentAlignment="Center" Checked="PreviewActorLocationScrubAxis_Checked"/>
+                                </UniformGrid>
+                                <Grid Height="24" ToolTip="Drag left or right to move the selected actor along the selected axes">
+                                    <Border Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                    <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                                    <Thumb Width="24" Height="20" HorizontalAlignment="Center" DragStarted="PreviewActorLocationScrub_DragStarted" DragDelta="PreviewActorLocationScrub_DragDelta" DragCompleted="PreviewActorLocationScrub_DragCompleted"/>
+                                </Grid>
+                                <WrapPanel Margin="0,4,0,0">
+                                    <TextBlock Text="Gizmo:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <RadioButton Content="Move" GroupName="PreviewActorGizmoMode" IsChecked="True" Checked="PreviewActorMoveGizmo_Checked" Margin="2"/>
+                                    <RadioButton Content="Rotate" GroupName="PreviewActorGizmoMode" Checked="PreviewActorRotateGizmo_Checked" Margin="2"/>
+                                </WrapPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Rotate actor" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                                <UniformGrid Rows="1" Columns="4" Margin="0,4">
+                                    <RadioButton Content="Roll" Tag="Roll" GroupName="PreviewActorRotationDialAxis" IsChecked="True" HorizontalContentAlignment="Center" Checked="PreviewActorRotationDialAxis_Checked"/>
+                                    <RadioButton Content="Pitch" Tag="Pitch" GroupName="PreviewActorRotationDialAxis" HorizontalContentAlignment="Center" Checked="PreviewActorRotationDialAxis_Checked"/>
+                                    <RadioButton Content="Yaw" Tag="Yaw" GroupName="PreviewActorRotationDialAxis" HorizontalContentAlignment="Center" Checked="PreviewActorRotationDialAxis_Checked"/>
+                                    <RadioButton Content="All" Tag="All" GroupName="PreviewActorRotationDialAxis" HorizontalContentAlignment="Center" Checked="PreviewActorRotationDialAxis_Checked"/>
+                                </UniformGrid>
+                                <Grid x:Name="PreviewActorRotationDial" Width="90" Height="90" HorizontalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="PreviewActorRotationDial_MouseLeftButtonDown" MouseMove="PreviewActorRotationDial_MouseMove" MouseLeftButtonUp="PreviewActorRotationDial_MouseLeftButtonUp" LostMouseCapture="PreviewActorRotationDial_LostMouseCapture">
+                                    <Ellipse Margin="4" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" StrokeThickness="2"/>
+                                    <Ellipse Width="8" Height="8" Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                                    <Line x:Name="PreviewActorRotationDialIndicator" X1="45" Y1="45" X2="45" Y2="8" Stroke="Orange" StrokeThickness="3">
+                                        <Line.RenderTransform><RotateTransform CenterX="45" CenterY="45"/></Line.RenderTransform>
+                                    </Line>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Grid.Row="6">
                             <WrapPanel>
                                 <Button Content="Apply Actor Origin" Click="ApplyPreviewActorOrigin_Click" Padding="7,3" Margin="2"/>
                                 <Button Content="Use Camera Anchor" Click="UseCameraAnchorForPreviewActor_Click" Padding="7,3" Margin="2"/>

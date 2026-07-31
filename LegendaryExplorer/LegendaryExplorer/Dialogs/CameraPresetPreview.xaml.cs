@@ -4,7 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -17,7 +20,50 @@ namespace LegendaryExplorer.Dialogs;
 
 public partial class CameraPresetPreview : UserControl, IDisposable, IActorEditorContext
 {
+    private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
+    {
+        private Vector3 _location;
+        private Rotator _rotation;
+
+        public Action<CameraOrigin> TransformChanged { get; set; }
+        public Vector3 Location
+        {
+            get => _location;
+            set
+            {
+                _location = value;
+                NotifyTransformChanged();
+            }
+        }
+        public Rotator Rotation
+        {
+            get => _rotation;
+            set
+            {
+                _rotation = value;
+                NotifyTransformChanged();
+            }
+        }
+        public float DrawScale { get; set; } = 1;
+        public Vector3 DrawScale3D { get; set; } = Vector3.One;
+        public bool IsReadOnly => false;
+        public Matrix4x4 LocalToWorld => ActorUtils.ComposeLocalToWorld(Location, Rotation, Vector3.One);
+        public TransformSnapshot SnapshotTransform() => new(Location, Rotation, DrawScale, DrawScale3D);
+
+        public void SetTransform(CameraOrigin origin)
+        {
+            _location = origin.Location;
+            _rotation = Rotator.FromDegreesVector(origin.Rotation);
+        }
+
+        private void NotifyTransformChanged()
+        {
+            TransformChanged?.Invoke(new CameraOrigin(_location, _rotation.GetDegreesVector()));
+        }
+    }
+
     private readonly LevelEditorRenderContext _renderContext;
+    private readonly PreviewActorWidgetTarget _actorWidgetTarget = new();
     private readonly List<ModelPreview<WorldVertex>> _actorModels = [];
     private readonly List<IMEPackage> _levelPackages = [];
     private readonly List<string> _levelPaths = [];
@@ -42,18 +88,78 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     public bool IsApplyingUndoRedo => false;
     public IReadOnlyList<string> LevelPaths => _levelPaths;
     public MEGame LevelGame => _levelPackages.Count > 0 ? _levelPackages[0].Game : MEGame.Unknown;
+    public event Action<CameraOrigin> SelectedActorTransformChanged;
+    public event Action<Vector3> SelectedActorSnapRequested;
 
     public CameraPresetPreview()
     {
         InitializeComponent();
-        _renderContext = new LevelEditorRenderContext(readOnly: true)
+        _renderContext = new LevelEditorRenderContext()
         {
             BackgroundColor = System.Windows.Media.Color.FromRgb(0x20, 0x24, 0x2A)
         };
         _renderContext.RenderFlags |= LevelEditorRenderContext.ShaderFlags.Unlit;
+        _renderContext.EnableTransformWidget();
+        _renderContext.TransformWidget.UseLocalCoords = true;
+        _actorWidgetTarget.TransformChanged = origin => SelectedActorTransformChanged?.Invoke(origin);
         _renderContext.RenderScene += RenderScene;
         _renderContext.UpdateScene += UpdateScene;
+        _renderContext.RightClickViewport += ShowViewportContextMenu;
+        _renderContext.RightClickActor += _ => ShowViewportContextMenu();
         SceneViewer.Context = _renderContext;
+    }
+
+    private void ShowViewportContextMenu()
+    {
+        Point viewportPoint = Mouse.GetPosition(SceneViewer);
+        var contextMenu = new ContextMenu
+        {
+            PlacementTarget = SceneViewer,
+            Placement = PlacementMode.MousePoint
+        };
+        var snapItem = new MenuItem
+        {
+            Header = "Snap Selected Actor Here",
+            IsEnabled = _renderContext.TransformWidget.Attach is not null
+        };
+        snapItem.Click += (_, _) => SelectedActorSnapRequested?.Invoke(GetViewportLocationAtSelectedActorDepth(viewportPoint));
+        contextMenu.Items.Add(snapItem);
+        contextMenu.IsOpen = true;
+    }
+
+    private Vector3 GetViewportLocationAtSelectedActorDepth(Point viewportPoint)
+    {
+        Vector3 referenceLocation = _actorWidgetTarget.Location;
+        float width = MathF.Max(_renderContext.Width, 1f);
+        float height = MathF.Max(_renderContext.Height, 1f);
+        float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
+        float normalizedY = 1f - ((float)viewportPoint.Y / height * 2f);
+        Vector3 forward = _renderContext.Camera.CameraForward;
+        Vector3 right = _renderContext.Camera.CameraRight;
+        Vector3 up = _renderContext.Camera.CameraUp;
+        Vector3 cameraPosition = _renderContext.Camera.Position;
+
+        if (_renderContext.Camera.IsOrthographic)
+        {
+            return cameraPosition
+                   + right * (normalizedX * _renderContext.Camera.OrthoWidth * 0.5f)
+                   + up * (normalizedY * _renderContext.Camera.OrthoWidth / MathF.Max(_renderContext.Camera.aspect, float.Epsilon) * 0.5f)
+                   + forward * Vector3.Dot(referenceLocation - cameraPosition, forward);
+        }
+
+        float halfHeightAtUnitDepth = MathF.Tan(_renderContext.Camera.FOV * 0.5f);
+        Vector3 rayDirection = Vector3.Normalize(forward
+            + right * normalizedX * halfHeightAtUnitDepth * _renderContext.Camera.aspect
+            + up * normalizedY * halfHeightAtUnitDepth);
+        float denominator = Vector3.Dot(rayDirection, forward);
+        if (MathF.Abs(denominator) < 0.0001f)
+        {
+            return referenceLocation;
+        }
+        float distance = Vector3.Dot(referenceLocation - cameraPosition, forward) / denominator;
+        return distance > 0f && float.IsFinite(distance)
+            ? cameraPosition + rayDirection * distance
+            : referenceLocation;
     }
 
     public async Task LoadLevelAsync(string path, bool replace)
@@ -92,6 +198,32 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
             package.Dispose();
             throw;
         }
+    }
+
+    public void SelectActor(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= _actorTransforms.Count)
+        {
+            _renderContext.TransformWidget.Attach = null;
+            SceneViewer.MarkRenderDirty();
+            return;
+        }
+        _actorWidgetTarget.SetTransform(_actorTransforms[actorIndex]);
+        _renderContext.TransformWidget.Attach = _actorWidgetTarget;
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void SetSelectedActorTransform(CameraOrigin origin)
+    {
+        _actorWidgetTarget.SetTransform(origin);
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void SetActorGizmoMode(bool rotate)
+    {
+        _renderContext.TransformWidget.Mode = rotate ? EWidgetMode.Rotate : EWidgetMode.Translate;
+        _renderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        SceneViewer.MarkRenderDirty();
     }
 
     private List<ActorProxy> LoadLevelActors(Level level)
@@ -446,6 +578,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         _renderContext.ForceContinuousRendering = false;
         _renderContext.RenderScene -= RenderScene;
         _renderContext.UpdateScene -= UpdateScene;
+        _renderContext.RightClickViewport -= ShowViewportContextMenu;
         UnloadLevels();
         ClearActorModels();
         SceneViewer.Dispose();

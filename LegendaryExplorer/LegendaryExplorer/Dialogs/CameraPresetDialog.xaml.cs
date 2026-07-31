@@ -89,11 +89,21 @@ public partial class CameraPresetDialog : Window
     private bool _updatingDistanceScale;
     private bool _updatingResolvedOrigin;
     private bool _updatingPresetSelection;
+    private string _previewActorLocationScrubAxes = "X";
+    private double _previewActorLocationScrubAccumulator;
+    private double _previewActorLocationScrubPreviousHorizontalChange;
+    private string _previewActorRotationDialAxes = "Roll";
+    private bool _previewActorRotationDialDragging;
+    private double _previewActorRotationDialAngleAccumulator;
+    private double _previewActorRotationDialPreviousAngle;
 
     private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
     private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
     private ContextMenu PreviewRecentLevelsContextMenu => PreviewRecentLevelsButtonControl?.ContextMenu;
     private TextBlock PreviewLevelStatus => FindName("PreviewLevelStatusTextBlock") as TextBlock;
+    private Grid PreviewActorRotationDialControl => FindName("PreviewActorRotationDial") as Grid;
+    private System.Windows.Shapes.Line PreviewActorRotationDialIndicatorControl =>
+        FindName("PreviewActorRotationDialIndicator") as System.Windows.Shapes.Line;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -135,6 +145,8 @@ public partial class CameraPresetDialog : Window
         SetDistanceScale(LoadSavedDistanceScale());
         InitializeActorAnchorControls();
         InitializePreviewActorLayout();
+        CameraPreviewControl.SelectedActorTransformChanged += PreviewActorGizmo_TransformChanged;
+        CameraPreviewControl.SelectedActorSnapRequested += PreviewActorViewportSnapRequested;
         foreach (TextBox textBox in new[]
         {
             OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
@@ -615,6 +627,7 @@ public partial class CameraPresetDialog : Window
     {
         _selectedPreviewActor = PreviewActorListBox.SelectedItem as PreviewActorConfiguration;
         SynchronizePreviewActorControls();
+        CameraPreviewControl.SelectActor(PreviewActorListBox.SelectedIndex);
     }
 
     private void PreviewActorListBox_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -645,7 +658,152 @@ public partial class CameraPresetDialog : Window
                 _selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
         }
         UpdatePreviewActorAnchorPanels();
+        UpdatePreviewActorRotationDialIndicator();
         _updatingPreviewActorControls = false;
+    }
+
+    private void PreviewActorLocationScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            _previewActorLocationScrubAxes = axes;
+        }
+    }
+
+    private void PreviewActorLocationScrub_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            e.Handled = true;
+            return;
+        }
+        _previewActorLocationScrubAccumulator = 0;
+        _previewActorLocationScrubPreviousHorizontalChange = 0;
+    }
+
+    private void PreviewActorLocationScrub_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        if (_selectedPreviewActor is null || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _previewActorLocationScrubPreviousHorizontalChange;
+        _previewActorLocationScrubPreviousHorizontalChange = e.HorizontalChange;
+        _previewActorLocationScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_previewActorLocationScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _previewActorLocationScrubAccumulator -= stepCount * dragStep;
+        float delta = stepCount;
+        Vector3 location = _selectedPreviewActor.Origin.Location;
+        if (_previewActorLocationScrubAxes is "X" or "All") location.X += delta;
+        if (_previewActorLocationScrubAxes is "Y" or "All") location.Y += delta;
+        if (_previewActorLocationScrubAxes is "Z" or "All") location.Z += delta;
+        SetSelectedPreviewActorOrigin(new CameraOrigin(location, _selectedPreviewActor.Origin.Rotation), true);
+    }
+
+    private void PreviewActorLocationScrub_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        SavePreviewActorLayout();
+    }
+
+    private void PreviewActorRotationDialAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            _previewActorRotationDialAxes = axes;
+            UpdatePreviewActorRotationDialIndicator();
+        }
+    }
+
+    private void PreviewActorRotationDial_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_selectedPreviewActor is null || PreviewActorRotationDialControl is null)
+        {
+            return;
+        }
+        _previewActorRotationDialPreviousAngle = GetPreviewActorRotationDialPointerAngle(
+            e.GetPosition(PreviewActorRotationDialControl));
+        _previewActorRotationDialAngleAccumulator = 0;
+        _previewActorRotationDialDragging = PreviewActorRotationDialControl.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_previewActorRotationDialDragging || _selectedPreviewActor is null
+            || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        double pointerAngle = GetPreviewActorRotationDialPointerAngle(e.GetPosition(PreviewActorRotationDialControl));
+        double angleDelta = NormalizePreviewActorRotationDialAngle(pointerAngle - _previewActorRotationDialPreviousAngle);
+        _previewActorRotationDialPreviousAngle = pointerAngle;
+        _previewActorRotationDialAngleAccumulator += angleDelta;
+        const float increment = 5f;
+        int stepCount = (int)(_previewActorRotationDialAngleAccumulator / increment);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _previewActorRotationDialAngleAccumulator -= stepCount * increment;
+        float delta = stepCount * increment;
+        Vector3 rotation = _selectedPreviewActor.Origin.Rotation;
+        if (_previewActorRotationDialAxes is "Roll" or "All") rotation.X += delta;
+        if (_previewActorRotationDialAxes is "Pitch" or "All") rotation.Y += delta;
+        if (_previewActorRotationDialAxes is "Yaw" or "All") rotation.Z += delta;
+        SetSelectedPreviewActorOrigin(new CameraOrigin(_selectedPreviewActor.Origin.Location, rotation), true);
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!_previewActorRotationDialDragging)
+        {
+            return;
+        }
+        _previewActorRotationDialDragging = false;
+        PreviewActorRotationDialControl.ReleaseMouseCapture();
+        SavePreviewActorLayout();
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        _previewActorRotationDialDragging = false;
+    }
+
+    private void UpdatePreviewActorRotationDialIndicator()
+    {
+        if (PreviewActorRotationDialIndicatorControl?.RenderTransform is not System.Windows.Media.RotateTransform transform)
+        {
+            return;
+        }
+        Vector3 rotation = _selectedPreviewActor?.Origin.Rotation ?? Vector3.Zero;
+        transform.Angle = _previewActorRotationDialAxes switch
+        {
+            "Roll" => rotation.X,
+            "Pitch" => rotation.Y,
+            "Yaw" => rotation.Z,
+            _ => (rotation.X + rotation.Y + rotation.Z) / 3f
+        };
+    }
+
+    private static double GetPreviewActorRotationDialPointerAngle(Point point)
+        => Math.Atan2(point.Y - 45d, point.X - 45d) * 180d / Math.PI + 90d;
+
+    private static double NormalizePreviewActorRotationDialAngle(double angle)
+    {
+        while (angle > 180d) angle -= 360d;
+        while (angle < -180d) angle += 360d;
+        return angle;
     }
 
     private void PreviewActorAnchorMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -778,6 +936,7 @@ public partial class CameraPresetDialog : Window
         }
         _selectedPreviewActor.Origin = origin;
         UpdatePreviewActorTransforms();
+        CameraPreviewControl.SetSelectedActorTransform(origin);
     }
 
     private TextBox[] GetPreviewActorTransformTextBoxes() =>
@@ -825,6 +984,42 @@ public partial class CameraPresetDialog : Window
         }
         SynchronizePreviewActorControls();
         UpdatePreviewActorTransforms();
+        CameraPreviewControl.SetSelectedActorTransform(origin);
+    }
+
+    private void PreviewActorMoveGizmo_Checked(object sender, RoutedEventArgs e)
+    {
+        CameraPreviewControl?.SetActorGizmoMode(rotate: false);
+    }
+
+    private void PreviewActorRotateGizmo_Checked(object sender, RoutedEventArgs e)
+    {
+        CameraPreviewControl?.SetActorGizmoMode(rotate: true);
+    }
+
+    private void PreviewActorGizmo_TransformChanged(CameraOrigin origin)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return;
+        }
+        _selectedPreviewActor.Origin = origin;
+        _selectedPreviewActor.AnchorMode = CameraAnchorMode.ManualOrigin;
+        _updatingPreviewActorControls = true;
+        SetPreviewActorOriginFields(origin);
+        UpdatePreviewActorRotationDialIndicator();
+        _updatingPreviewActorControls = false;
+        UpdatePreviewActorTransforms();
+    }
+
+    private void PreviewActorViewportSnapRequested(Vector3 location)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return;
+        }
+        SetSelectedPreviewActorOrigin(new CameraOrigin(location, _selectedPreviewActor.Origin.Rotation), true);
+        SavePreviewActorLayout();
     }
 
     private void UseCameraAnchorForPreviewActor_Click(object sender, RoutedEventArgs e)
@@ -881,7 +1076,6 @@ public partial class CameraPresetDialog : Window
     private void UpdatePreviewActorTransforms()
     {
         CameraPreviewControl.SetActorTransforms(_previewActors.Select(actor => actor.Origin).ToArray());
-        RefreshLivePreview();
     }
 
     private void SaveMulticamPreset_Click(object sender, RoutedEventArgs e)
@@ -1125,6 +1319,8 @@ public partial class CameraPresetDialog : Window
         }
         SavePreviewActorLayout();
 
+        CameraPreviewControl.SelectedActorTransformChanged -= PreviewActorGizmo_TransformChanged;
+        CameraPreviewControl.SelectedActorSnapRequested -= PreviewActorViewportSnapRequested;
         CameraPreviewControl.Dispose();
         base.OnClosed(e);
     }
@@ -1709,10 +1905,23 @@ public partial class CameraPresetDialog : Window
 
     private void TogglePreviewButton_Checked(object sender, RoutedEventArgs e)
     {
-        PreviewColumn.Width = new GridLength(520);
+        PreviewColumn.Width = WindowState == WindowState.Maximized
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(520);
         PreviewPanel.Visibility = Visibility.Visible;
         Width = Math.Max(Width, 1360);
         RefreshLivePreview();
+    }
+
+    private void CameraPresetDialog_StateChanged(object sender, EventArgs e)
+    {
+        if (TogglePreviewButton is not { IsChecked: true })
+        {
+            return;
+        }
+        PreviewColumn.Width = WindowState == WindowState.Maximized
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(520);
     }
 
     private void TogglePreviewButton_Unchecked(object sender, RoutedEventArgs e)
