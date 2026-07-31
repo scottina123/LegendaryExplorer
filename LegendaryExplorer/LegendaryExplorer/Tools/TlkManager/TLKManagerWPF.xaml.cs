@@ -537,50 +537,79 @@ namespace LegendaryExplorer.Tools.TlkManagerNS
 
         public static void AutoFindAndReloadTlks(MEGame game, string tlkPath = null, int exportNumber = 0)
         {
+            List<LoadedTLK> tlks = AutoFindTlks(game, tlkPath, exportNumber);
+            ReloadTlks(game, tlks);
+        }
+
+        public static List<LoadedTLK> AutoFindTlks(MEGame game, string tlkPath = null, int exportNumber = 0)
+        {
             switch (game)
             {
                 case MEGame.ME1:
                 {
                     var tlks = FindME1Tlks();
                     SelectExistingEmbeddedTlks(tlks, ME1TalkFiles.LoadedTlks.Select(x => (x.FilePath, x.UIndex)).ToHashSet(), tlkPath, exportNumber);
-                    ME1ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
                 case MEGame.ME2:
                 {
                     var tlks = FindME2Tlks();
                     SelectExistingTlks(tlks, ME2TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
-                    ME2ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
                 case MEGame.ME3:
                 {
                     var tlks = FindME3Tlks();
                     SelectExistingTlks(tlks, ME3TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
-                    ME3ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
                 case MEGame.LE1:
                 {
                     var tlks = FindLE1Tlks();
                     SelectExistingEmbeddedTlks(tlks, LE1TalkFiles.LoadedTlks.Select(x => (x.FilePath, x.UIndex)).ToHashSet(), tlkPath, exportNumber);
-                    LE1ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
                 case MEGame.LE2:
                 {
                     var tlks = FindLE2Tlks();
                     SelectExistingTlks(tlks, LE2TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
-                    LE2ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
                 case MEGame.LE3:
                 {
                     var tlks = FindLE3Tlks();
                     SelectExistingTlks(tlks, LE3TalkFiles.LoadedTlks.Select(x => x.FilePath).ToHashSet(), tlkPath);
-                    LE3ReloadTLKStringsAsync(tlks.Where(x => x.selectedForLoad).ToList());
-                    break;
+                    return tlks;
                 }
+
+                default:
+                    return [];
+            }
+        }
+
+        public static void ReloadTlks(MEGame game, List<LoadedTLK> tlks)
+        {
+            List<LoadedTLK> selectedTlks = tlks.Where(x => x.selectedForLoad).ToList();
+            switch (game)
+            {
+                case MEGame.ME1:
+                    ME1ReloadTLKStringsAsync(selectedTlks);
+                    break;
+                case MEGame.ME2:
+                    ME2ReloadTLKStringsAsync(selectedTlks);
+                    break;
+                case MEGame.ME3:
+                    ME3ReloadTLKStringsAsync(selectedTlks);
+                    break;
+                case MEGame.LE1:
+                    LE1ReloadTLKStringsAsync(selectedTlks);
+                    break;
+                case MEGame.LE2:
+                    LE2ReloadTLKStringsAsync(selectedTlks);
+                    break;
+                case MEGame.LE3:
+                    LE3ReloadTLKStringsAsync(selectedTlks);
+                    break;
             }
         }
 

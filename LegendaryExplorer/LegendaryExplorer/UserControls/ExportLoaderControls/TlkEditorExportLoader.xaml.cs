@@ -1400,7 +1400,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             try
             {
-                TLKManagerWPF.AutoFindAndReloadTlks(game, tlkPath, exportNumber);
+                List<TLKManagerWPF.LoadedTLK> tlks = TLKManagerWPF.AutoFindTlks(game, tlkPath, exportNumber);
+                TLKManagerWPF.ReloadTlks(game, tlks);
             }
             catch (Exception ex)
             {
