@@ -6,12 +6,14 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Text;
 using System.Threading.Tasks;
+using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.CoalescedEditor;
 using LegendaryExplorer.Tools.ConditionalsEditor;
 using LegendaryExplorer.Tools.FaceFXEditor;
+using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.Meshplorer;
 using LegendaryExplorer.Tools.MountEditor;
 using LegendaryExplorer.Tools.PackageEditor;
@@ -25,6 +27,11 @@ namespace LegendaryExplorer.Startup
 {
     public static class CommandLineArgs
     {
+        private const string PackageEditorTool = "Package Editor";
+        private const string DialogueEditorTool = "Dialogue Editor";
+        private const string SequenceEditorTool = "Sequence Editor";
+        private const string LevelEditorTool = "Level Editor";
+
         // Documentation: 
         // https://github.com/dotnet/command-line-api
         public static RootCommand CreateCLIHandler()
@@ -50,11 +57,17 @@ namespace LegendaryExplorer.Startup
             {
                 switch(tool)
                 {
+                    case "PackageEditor":
+                        OpenTool<PackageEditorWindow>((p) => p.LoadFile(file.FullName, UIndex));
+                        break;
                     case "SequenceEditor":
                         OpenTool<SequenceEditorWPF>((s) => s.LoadFileAndGoTo(file.FullName, UIndex));
                         break;
                     case "DialogueEditor":
                         OpenTool<DialogueEditorWindow>((s) => s.LoadFile(file.FullName, UIndex));
+                        break;
+                    case "LevelEditor":
+                        OpenTool<LevelEditor>(async l => await l.LoadFileAsync(file.FullName));
                         break;
                     case "SoundExplorer":
                     case "Soundplorer":
@@ -68,7 +81,7 @@ namespace LegendaryExplorer.Startup
                             case ".upk":
                             case ".u":
                             case ".udk":
-                                OpenTool<PackageEditorWindow>((p) => p.LoadFile(file.FullName, UIndex));
+                                OpenPackageFile(file.FullName, UIndex, file.Extension);
                                 break;
                             case ".tlk":
                                 var elhw = new ExportLoaderHostedWindow(new TLKEditorExportLoader(), file.FullName)
@@ -123,6 +136,9 @@ namespace LegendaryExplorer.Startup
                     case "DialogueEditor":
                         OpenTool<DialogueEditorWindow>();
                         break;
+                    case "LevelEditor":
+                        OpenTool<LevelEditor>();
+                        break;
                     case "PathfindingEditor":
                         OpenTool<PathfindingEditorWindow>();
                         break;
@@ -137,6 +153,34 @@ namespace LegendaryExplorer.Startup
                         (new AssetDatabaseWindow()).Show();
                         break;
                 }
+            }
+        }
+
+        private static void OpenPackageFile(string fileName, int uIndex, string extension)
+        {
+            if (extension.Equals(".pcc", StringComparison.OrdinalIgnoreCase))
+            {
+                string selectedTool = OpenPccToolSelector.GetTool(fileName);
+
+                switch (selectedTool)
+                {
+                    case PackageEditorTool:
+                        OpenTool<PackageEditorWindow>((p) => p.LoadFile(fileName, uIndex));
+                        break;
+                    case DialogueEditorTool:
+                        OpenTool<DialogueEditorWindow>((d) => d.LoadFile(fileName, uIndex));
+                        break;
+                    case SequenceEditorTool:
+                        OpenTool<SequenceEditorWPF>((s) => s.LoadFileAndGoTo(fileName, uIndex));
+                        break;
+                    case LevelEditorTool:
+                        OpenTool<LevelEditor>(async l => await l.LoadFileAsync(fileName));
+                        break;
+                }
+            }
+            else
+            {
+                OpenTool<PackageEditorWindow>((p) => p.LoadFile(fileName, uIndex));
             }
         }
 
