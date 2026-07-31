@@ -96,6 +96,13 @@ public partial class CameraPresetDialog : Window
     private bool _previewActorRotationDialDragging;
     private double _previewActorRotationDialAngleAccumulator;
     private double _previewActorRotationDialPreviousAngle;
+    private string _cameraOriginLocationScrubAxes = "X";
+    private double _cameraOriginLocationScrubAccumulator;
+    private double _cameraOriginLocationScrubPreviousHorizontalChange;
+    private string _cameraOriginRotationDialAxes = "Roll";
+    private bool _cameraOriginRotationDialDragging;
+    private double _cameraOriginRotationDialAngleAccumulator;
+    private double _cameraOriginRotationDialPreviousAngle;
 
     private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
     private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
@@ -104,6 +111,9 @@ public partial class CameraPresetDialog : Window
     private Grid PreviewActorRotationDialControl => FindName("PreviewActorRotationDial") as Grid;
     private System.Windows.Shapes.Line PreviewActorRotationDialIndicatorControl =>
         FindName("PreviewActorRotationDialIndicator") as System.Windows.Shapes.Line;
+    private Grid CameraOriginRotationDialControl => FindName("CameraOriginRotationDial") as Grid;
+    private System.Windows.Shapes.Line CameraOriginRotationDialIndicatorControl =>
+        FindName("CameraOriginRotationDialIndicator") as System.Windows.Shapes.Line;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -2085,6 +2095,139 @@ public partial class CameraPresetDialog : Window
         OriginXTextBox.SelectAll();
     }
 
+    private void CameraOriginLocationScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            _cameraOriginLocationScrubAxes = axes;
+        }
+    }
+
+    private void CameraOriginLocationScrub_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+    {
+        _cameraOriginLocationScrubAccumulator = 0;
+        _cameraOriginLocationScrubPreviousHorizontalChange = 0;
+    }
+
+    private void CameraOriginLocationScrub_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        if (!double.IsFinite(e.HorizontalChange) || !TryReadOrigin(out CameraOrigin origin))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _cameraOriginLocationScrubPreviousHorizontalChange;
+        _cameraOriginLocationScrubPreviousHorizontalChange = e.HorizontalChange;
+        _cameraOriginLocationScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_cameraOriginLocationScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _cameraOriginLocationScrubAccumulator -= stepCount * dragStep;
+        Vector3 location = origin.Location;
+        if (_cameraOriginLocationScrubAxes is "X" or "All") location.X += stepCount;
+        if (_cameraOriginLocationScrubAxes is "Y" or "All") location.Y += stepCount;
+        if (_cameraOriginLocationScrubAxes is "Z" or "All") location.Z += stepCount;
+        SetOrigin(new CameraOrigin(location, origin.Rotation));
+    }
+
+    private void CameraOriginRotationDialAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            _cameraOriginRotationDialAxes = axes;
+            UpdateCameraOriginRotationDialIndicator();
+        }
+    }
+
+    private void CameraOriginRotationDial_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!TryReadOrigin(out _) || CameraOriginRotationDialControl is null)
+        {
+            return;
+        }
+        _cameraOriginRotationDialPreviousAngle = GetCameraOriginRotationDialPointerAngle(
+            e.GetPosition(CameraOriginRotationDialControl));
+        _cameraOriginRotationDialAngleAccumulator = 0;
+        _cameraOriginRotationDialDragging = CameraOriginRotationDialControl.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void CameraOriginRotationDial_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_cameraOriginRotationDialDragging || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed
+            || !TryReadOrigin(out CameraOrigin origin))
+        {
+            return;
+        }
+
+        double pointerAngle = GetCameraOriginRotationDialPointerAngle(e.GetPosition(CameraOriginRotationDialControl));
+        double angleDelta = NormalizeCameraOriginRotationDialAngle(pointerAngle - _cameraOriginRotationDialPreviousAngle);
+        _cameraOriginRotationDialPreviousAngle = pointerAngle;
+        _cameraOriginRotationDialAngleAccumulator += angleDelta;
+        const float increment = 5f;
+        int stepCount = (int)(_cameraOriginRotationDialAngleAccumulator / increment);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _cameraOriginRotationDialAngleAccumulator -= stepCount * increment;
+        float delta = stepCount * increment;
+        Vector3 rotation = origin.Rotation;
+        if (_cameraOriginRotationDialAxes is "Roll" or "All") rotation.X += delta;
+        if (_cameraOriginRotationDialAxes is "Pitch" or "All") rotation.Y += delta;
+        if (_cameraOriginRotationDialAxes is "Yaw" or "All") rotation.Z += delta;
+        SetOrigin(new CameraOrigin(origin.Location, rotation));
+        UpdateCameraOriginRotationDialIndicator();
+        e.Handled = true;
+    }
+
+    private void CameraOriginRotationDial_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!_cameraOriginRotationDialDragging)
+        {
+            return;
+        }
+        _cameraOriginRotationDialDragging = false;
+        CameraOriginRotationDialControl.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void CameraOriginRotationDial_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        _cameraOriginRotationDialDragging = false;
+    }
+
+    private void UpdateCameraOriginRotationDialIndicator()
+    {
+        if (CameraOriginRotationDialIndicatorControl?.RenderTransform is not System.Windows.Media.RotateTransform transform
+            || !TryReadOrigin(out CameraOrigin origin))
+        {
+            return;
+        }
+        transform.Angle = _cameraOriginRotationDialAxes switch
+        {
+            "Roll" => origin.Rotation.X,
+            "Pitch" => origin.Rotation.Y,
+            "Yaw" => origin.Rotation.Z,
+            _ => (origin.Rotation.X + origin.Rotation.Y + origin.Rotation.Z) / 3f
+        };
+    }
+
+    private static double GetCameraOriginRotationDialPointerAngle(Point point)
+        => Math.Atan2(point.Y - 45d, point.X - 45d) * 180d / Math.PI + 90d;
+
+    private static double NormalizeCameraOriginRotationDialAngle(double angle)
+    {
+        while (angle > 180d) angle -= 360d;
+        while (angle < -180d) angle += 360d;
+        return angle;
+    }
+
     private void UseTrackKey_Click(object sender, RoutedEventArgs e)
     {
         if (_getTrackKeyOrigin?.Invoke() is { } origin)
@@ -2624,6 +2767,7 @@ public partial class CameraPresetDialog : Window
         OriginRollTextBox.Text = Format(origin.Rotation.X);
         OriginPitchTextBox.Text = Format(origin.Rotation.Y);
         OriginYawTextBox.Text = Format(origin.Rotation.Z);
+        UpdateCameraOriginRotationDialIndicator();
     }
 
     private void SetDistanceScale(float distanceScale)

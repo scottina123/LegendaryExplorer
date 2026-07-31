@@ -112,6 +112,42 @@
                         <TextBox x:Name="OriginYawTextBox" Padding="4"/>
                     </StackPanel>
                 </UniformGrid>
+                <Grid Margin="3,0,3,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="Move camera origin" FontWeight="SemiBold"/>
+                        <UniformGrid Rows="1" Columns="4" Margin="0,4">
+                            <RadioButton Content="X" Tag="X" GroupName="CameraOriginLocationScrubAxis" IsChecked="True" HorizontalContentAlignment="Center" Checked="CameraOriginLocationScrubAxis_Checked"/>
+                            <RadioButton Content="Y" Tag="Y" GroupName="CameraOriginLocationScrubAxis" HorizontalContentAlignment="Center" Checked="CameraOriginLocationScrubAxis_Checked"/>
+                            <RadioButton Content="Z" Tag="Z" GroupName="CameraOriginLocationScrubAxis" HorizontalContentAlignment="Center" Checked="CameraOriginLocationScrubAxis_Checked"/>
+                            <RadioButton Content="All" Tag="All" GroupName="CameraOriginLocationScrubAxis" HorizontalContentAlignment="Center" Checked="CameraOriginLocationScrubAxis_Checked"/>
+                        </UniformGrid>
+                        <Grid Height="24" ToolTip="Drag left or right to move the camera origin by one Unreal unit per step">
+                            <Border Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                            <Border Width="2" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" IsHitTestVisible="False"/>
+                            <Thumb Width="24" Height="20" HorizontalAlignment="Center" DragStarted="CameraOriginLocationScrub_DragStarted" DragDelta="CameraOriginLocationScrub_DragDelta"/>
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Rotate camera origin" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <UniformGrid Rows="1" Columns="4" Margin="0,4">
+                            <RadioButton Content="Roll" Tag="Roll" GroupName="CameraOriginRotationDialAxis" IsChecked="True" HorizontalContentAlignment="Center" Checked="CameraOriginRotationDialAxis_Checked"/>
+                            <RadioButton Content="Pitch" Tag="Pitch" GroupName="CameraOriginRotationDialAxis" HorizontalContentAlignment="Center" Checked="CameraOriginRotationDialAxis_Checked"/>
+                            <RadioButton Content="Yaw" Tag="Yaw" GroupName="CameraOriginRotationDialAxis" HorizontalContentAlignment="Center" Checked="CameraOriginRotationDialAxis_Checked"/>
+                            <RadioButton Content="All" Tag="All" GroupName="CameraOriginRotationDialAxis" HorizontalContentAlignment="Center" Checked="CameraOriginRotationDialAxis_Checked"/>
+                        </UniformGrid>
+                        <Grid x:Name="CameraOriginRotationDial" Width="90" Height="90" HorizontalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="CameraOriginRotationDial_MouseLeftButtonDown" MouseMove="CameraOriginRotationDial_MouseMove" MouseLeftButtonUp="CameraOriginRotationDial_MouseLeftButtonUp" LostMouseCapture="CameraOriginRotationDial_LostMouseCapture">
+                            <Ellipse Margin="4" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" StrokeThickness="2"/>
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+                            <Line x:Name="CameraOriginRotationDialIndicator" X1="45" Y1="45" X2="45" Y2="8" Stroke="Orange" StrokeThickness="3">
+                                <Line.RenderTransform><RotateTransform CenterX="45" CenterY="45"/></Line.RenderTransform>
+                            </Line>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
                 <WrapPanel x:Name="ManualOriginButtonsPanel">
                     <Button Content="Enter Coordinates Manually" Click="EnterManually_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseTrackKeyButton" Content="Use Selected TrackMove Key" Click="UseTrackKey_Click" Margin="3" Padding="8,4"/>
