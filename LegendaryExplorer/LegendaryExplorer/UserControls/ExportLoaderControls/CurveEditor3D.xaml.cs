@@ -708,7 +708,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void InitializePreviewActorLayout(MEGame game)
     {
-        if (previewActorGame == game && previewActors.Count > 0)
+        if (previewActorGame == game)
         {
             return;
         }
@@ -747,18 +747,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             SetPreviewActorStatus($"Saved actor layout could not be loaded: {exception.Message}");
         }
 
-        if (previewActors.Count == 0)
-        {
-            AddDefaultPreviewActor();
-            return;
-        }
         RenumberPreviewActors();
-        PreviewActorListBox.SelectedIndex = 0;
+        PreviewActorListBox.SelectedIndex = previewActors.Count > 0 ? 0 : -1;
     }
 
     private void SavePreviewActorLayout()
     {
-        if (previewActorGame == MEGame.Unknown || previewActors.Count == 0)
+        if (previewActorGame == MEGame.Unknown)
         {
             return;
         }
@@ -799,7 +794,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RemovePreviewActor_Click(object sender, RoutedEventArgs e)
     {
-        if (selectedPreviewActor is null || previewActors.Count <= 1)
+        if (selectedPreviewActor is null)
         {
             return;
         }
@@ -816,9 +811,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         previewActors.Clear();
         ClearPreviewActorModels();
-        AddDefaultPreviewActor();
-        LoadSelectedPreviewActorModel();
-        SetPreviewActorStatus("Preview actors reset to one default actor at the selected keyframe.");
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedIndex = -1;
+        SetPreviewActorStatus("Preview actors cleared.");
         SavePreviewActorLayout();
     }
 
@@ -829,7 +824,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             previewActors[index].DisplayName = $"Actor {index + 1}";
         }
         PreviewActorListBox.Items.Refresh();
-        RemovePreviewActorButton.IsEnabled = previewActors.Count > 1;
+        RemovePreviewActorButton.IsEnabled = previewActors.Count > 0;
     }
 
     private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
