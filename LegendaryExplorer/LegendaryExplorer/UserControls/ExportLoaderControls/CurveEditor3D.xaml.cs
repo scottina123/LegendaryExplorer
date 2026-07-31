@@ -2088,11 +2088,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private static Matrix4x4 CreatePreviewActorTransform(CameraOrigin transform)
     {
-        const float degreesToRadians = MathF.PI / 180f;
-        return Matrix4x4.CreateFromYawPitchRoll(
-                   transform.Rotation.Z * degreesToRadians,
-                   transform.Rotation.Y * degreesToRadians,
-                   transform.Rotation.X * degreesToRadians)
+        return Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
     }
 
