@@ -114,6 +114,46 @@ namespace LegendaryExplorer.Tools.Soundplorer
             }
         }
 
+        private void FindWwiseStreamCommandBinding_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = Pcc != null && BindedItemsList.OfType<SoundplorerExport>().Any(x => x.Export.ClassName == "WwiseStream");
+        }
+
+        private void FindWwiseStreamCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            string searchText = PromptDialog.Prompt(this, "Enter a TLK string ID or text:", "Find WwiseStream by TLK", selectText: true);
+            if (searchText is null)
+            {
+                return;
+            }
+
+            IReadOnlyList<int> stringRefs = TlkStringRefSelector.FindStringRefs(Pcc, searchText);
+            if (stringRefs.Count == 0)
+            {
+                MessageBox.Show(this, "That text was not found in any loaded TLK for this game.", "TLK Text Not Found",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            SoundplorerExport match = BindedItemsList.OfType<SoundplorerExport>().FirstOrDefault(x =>
+                x.Export.ClassName == "WwiseStream" &&
+                x.Export.ObjectName.Name.Split('_', ',').Any(part => int.TryParse(part, out int parsed) && stringRefs.Contains(parsed)));
+            if (match is null)
+            {
+                MessageBox.Show(this, "No WwiseStream matching that TLK string was found in this package.", "WwiseStream Not Found",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            SoundExports_ListBox.SelectedItem = match;
+            SoundExports_ListBox.ScrollIntoView(match);
+            SoundExports_ListBox.UpdateLayout();
+            if (SoundExports_ListBox.ItemContainerGenerator.ContainerFromItem(match) is ListBoxItem item)
+            {
+                item.Focus();
+            }
+        }
+
         public void LoadFile(string fileName)
         {
             try

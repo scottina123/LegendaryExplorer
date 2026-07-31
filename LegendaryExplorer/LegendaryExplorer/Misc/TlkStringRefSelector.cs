@@ -24,6 +24,24 @@ namespace LegendaryExplorer.Misc
             return SelectStringRef(owner, package.Game, package.LocalTalkFiles);
         }
 
+        public static IReadOnlyList<int> FindStringRefs(IMEPackage package, string searchText)
+        {
+            if (package is null || string.IsNullOrWhiteSpace(searchText))
+            {
+                return [];
+            }
+
+            if (int.TryParse(searchText, out int stringRef))
+            {
+                return [stringRef];
+            }
+
+            return FindMatches(package.Game, package.LocalTalkFiles, searchText)
+                .Select(match => match.StringRef)
+                .Distinct()
+                .ToList();
+        }
+
         public static int? SelectStringRef(Window owner, MEGame game)
         {
             return game == MEGame.Unknown ? null : SelectStringRef(owner, game, []);
@@ -49,6 +67,11 @@ namespace LegendaryExplorer.Misc
                 return null;
             }
 
+            return SelectStringRef(owner, game, localTalkFiles, searchText);
+        }
+
+        private static int? SelectStringRef(Window owner, MEGame game, IEnumerable<ME1TalkFile> localTalkFiles, string searchText)
+        {
             List<TlkTextMatch> matches = FindMatches(game, localTalkFiles, searchText);
             if (matches.Count == 0)
             {
