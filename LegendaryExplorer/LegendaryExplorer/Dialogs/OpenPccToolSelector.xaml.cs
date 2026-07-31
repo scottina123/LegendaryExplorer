@@ -1,6 +1,8 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 
 namespace LegendaryExplorer.Dialogs
@@ -19,6 +21,22 @@ namespace LegendaryExplorer.Dialogs
         public static string GetTool(string fileName)
         {
             var dialog = new OpenPccToolSelector(fileName);
+            var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive)
+                        ?? Application.Current.MainWindow;
+
+            if (owner?.IsLoaded == true && PresentationSource.FromVisual(owner) != null)
+            {
+                dialog.Owner = owner;
+                dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+                owner.RestoreAndBringToFront();
+            }
+
+            dialog.Loaded += (_, _) =>
+            {
+                dialog.RestoreAndBringToFront();
+                dialog.Activate();
+                dialog.Focus();
+            };
 
             return dialog.ShowDialog() == true ? dialog.SelectedTool : null;
         }
