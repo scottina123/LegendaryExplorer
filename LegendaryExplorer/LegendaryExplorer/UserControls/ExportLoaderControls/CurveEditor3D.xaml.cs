@@ -2202,7 +2202,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SetPlaybackRangeForCurrentMode();
         playbackActor = selectedPreviewActor;
         playbackActorOriginalOrigin = playbackActor.Origin;
-        playbackActorZOffset = playbackActorOriginalOrigin.Location.Z - EvaluateTrackMove(model, model.Keyframes[0].Time).Location.Z;
+        playbackActorZOffset = ActorPlaybackTrackZCheckBox.IsChecked == true
+            ? 0f
+            : playbackActorOriginalOrigin.Location.Z - EvaluateTrackMove(model, model.Keyframes[0].Time).Location.Z;
         hasPlaybackActorOriginalOrigin = true;
         if (playbackEndTime <= playbackStartTime)
         {
