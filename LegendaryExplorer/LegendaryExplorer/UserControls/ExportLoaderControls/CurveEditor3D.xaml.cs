@@ -1,9 +1,11 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,10 +15,12 @@ using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.UserControls.Interfaces;
+using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
@@ -24,12 +28,82 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
 using System.Windows.Threading;
+using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
 {
+    private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
+    {
+        private Vector3 location;
+        private Rotator rotation;
+
+        public Action<CameraOrigin> TransformChanged { get; set; }
+        public Vector3 Location
+        {
+            get => location;
+            set
+            {
+                location = value;
+                NotifyTransformChanged();
+            }
+        }
+
+        public Rotator Rotation
+        {
+            get => rotation;
+            set
+            {
+                rotation = value;
+                NotifyTransformChanged();
+            }
+        }
+        public float DrawScale { get; set; } = 1;
+        public Vector3 DrawScale3D { get; set; } = Vector3.One;
+        public bool IsReadOnly => false;
+        public Matrix4x4 LocalToWorld => ActorUtils.ComposeLocalToWorld(Location, Rotation, Vector3.One);
+        public TransformSnapshot SnapshotTransform() => new(Location, Rotation, DrawScale, DrawScale3D);
+
+        public void SetTransform(CameraOrigin origin)
+        {
+            location = origin.Location;
+            rotation = Rotator.FromDegreesVector(origin.Rotation);
+        }
+
+        private void NotifyTransformChanged()
+        {
+            TransformChanged?.Invoke(new CameraOrigin(location, rotation.GetDegreesVector()));
+        }
+    }
+
+    private sealed class PreviewActorConfiguration
+    {
+        public string DisplayName { get; set; }
+        public string ModelName { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public float Roll { get; set; }
+        public float Pitch { get; set; }
+        public float Yaw { get; set; }
+
+        public CameraOrigin Origin
+        {
+            get => new(new Vector3(X, Y, Z), new Vector3(Roll, Pitch, Yaw));
+            set
+            {
+                X = value.Location.X;
+                Y = value.Location.Y;
+                Z = value.Location.Z;
+                Roll = value.Rotation.X;
+                Pitch = value.Rotation.Y;
+                Yaw = value.Rotation.Z;
+            }
+        }
+    }
+
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
@@ -39,6 +113,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<IMEPackage> levelPackages = [];
     private readonly List<ActorProxy> levelActors = [];
     private readonly List<string> levelPaths = [];
+    private readonly ObservableCollection<PreviewActorConfiguration> previewActors = [];
+    private readonly List<ModelPreview<WorldVertex>> previewActorModels = [];
+    private readonly PreviewActorWidgetTarget previewActorWidgetTarget = new();
+    private AssetDB previewAssetDatabase;
+    private List<(string FileName, string ContentDir)> previewAssetFiles = [];
+    private PreviewActorConfiguration selectedPreviewActor;
+    private MEGame previewActorGame = MEGame.Unknown;
+    private bool updatingPreviewActorControls;
+    private bool previewActorWidgetActive;
     private IReadOnlyList<Vector3> trajectorySamples = [];
     private bool eventsAttached;
     private bool hasSnappedInitialCamera;
@@ -86,6 +169,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool rotationDialDragging;
     private double rotationDialAngleAccumulator;
     private double rotationDialPreviousAngle;
+    private string previewActorLocationScrubAxes = "X";
+    private double previewActorLocationScrubAccumulator;
+    private double previewActorLocationScrubPreviousHorizontalChange;
+    private string previewActorRotationDialAxes = "Roll";
+    private bool previewActorRotationDialDragging;
+    private double previewActorRotationDialAngleAccumulator;
+    private double previewActorRotationDialPreviousAngle;
+
+    private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
+        $"CurveEditor3DPreviewActors_{previewActorGame}.json");
 
     public CurveEditor3D() : base("3D Curve Editor")
     {
@@ -100,9 +193,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         InterpModes = Enum.GetValues<EInterpCurveMode>();
         LoadCommands();
         InitializeComponent();
+        PreviewActorListBox.ItemsSource = previewActors;
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
+        previewActorWidgetTarget.TransformChanged = PreviewActorGizmo_TransformChanged;
         ThemeManager.ThemeChanged += OnThemeChanged;
         model.Changed += Model_Changed;
         RenderContext.UpdateScene += UpdatePlayback;
@@ -379,6 +474,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         private set
         {
             bool selectionChanged = SetProperty(ref selectedKeyframe, value);
+            previewActorWidgetActive = false;
             SelectedKeyframeInVal = value?.Time.ToString(CultureInfo.CurrentCulture);
             SnapToKeyButton.IsEnabled = value is not null;
             KeyframeList.SelectedItem = value;
@@ -412,6 +508,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
+        InitializePreviewActorLayout(exportEntry.Game);
         model.Load(exportEntry);
         trajectorySamplesDirty = true;
         KeyframeList.ItemsSource = model.Keyframes;
@@ -463,6 +560,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     public override void Dispose()
     {
+        SavePreviewActorLayout();
+        ClearPreviewActorModels();
         UnloadExport();
         CloseLevels();
         DetachEvents();
@@ -471,6 +570,301 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ThemeManager.ThemeChanged -= OnThemeChanged;
         KeyframeList.PreviewMouseRightButtonDown -= KeyframeList_PreviewMouseRightButtonDown;
         SceneViewer.Dispose();
+    }
+
+    private async Task InitializePreviewActorModelsAsync()
+    {
+        if (CurrentLoadedExport is null)
+        {
+            SetPreviewActorStatus("Select an InterpTrackMove export to load actor models.");
+            return;
+        }
+
+        MEGame game = CurrentLoadedExport.Game;
+        string databasePath = AssetDatabaseWindow.GetDBPath(game);
+        if (!File.Exists(databasePath))
+        {
+            SetPreviewActorStatus($"No {game} Asset Database found. Generate one in the Asset Database tool.");
+            return;
+        }
+
+        try
+        {
+            SetPreviewActorStatus($"Loading {game} actor models...");
+            var database = new AssetDB();
+            await AssetDatabaseWindow.LoadDatabase(databasePath, game, database, CancellationToken.None);
+            if (database.DatabaseVersion != AssetDatabaseWindow.dbCurrentBuild)
+            {
+                SetPreviewActorStatus($"The {game} Asset Database is out of date. Regenerate it to select actor models.");
+                return;
+            }
+
+            List<MeshRecord> meshes = database.Meshes
+                .Where(mesh => mesh.IsSkeleton && mesh.Usages.Count > 0)
+                .OrderBy(mesh => mesh.MeshName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            previewAssetDatabase = database;
+            previewAssetFiles = database.FileList
+                .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
+                .ToList();
+            PreviewActorComboBox.ItemsSource = meshes;
+
+            string defaultMeshName = GetDefaultPreviewModelName(game);
+            for (int actorIndex = 0; actorIndex < previewActors.Count; actorIndex++)
+            {
+                PreviewActorConfiguration actor = previewActors[actorIndex];
+                MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+                    actor.ModelName, StringComparison.OrdinalIgnoreCase))
+                    ?? meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+                        defaultMeshName, StringComparison.OrdinalIgnoreCase));
+                if (mesh is null)
+                {
+                    continue;
+                }
+                actor.ModelName = mesh.MeshName;
+                TryLoadPreviewActorModel(actorIndex, mesh, out _);
+            }
+            SynchronizePreviewActorControls();
+            SetPreviewActorStatus(meshes.Count == 0
+                ? $"The {game} Asset Database contains no skeletal meshes."
+                : $"{meshes.Count:N0} skeletal actor models available.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            SetPreviewActorStatus($"Unable to load actor models: {exception.Message}");
+        }
+    }
+
+    private void SetPreviewActorStatus(string status)
+    {
+        PreviewActorStatusTextBlock.Text = status;
+    }
+
+    private bool TryLoadPreviewActorModel(int actorIndex, MeshRecord meshRecord, out string error)
+    {
+        error = null;
+        if (CurrentLoadedExport is null || previewAssetDatabase is null)
+        {
+            error = "The actor model database is not loaded.";
+            return false;
+        }
+
+        string gamePath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
+        if (string.IsNullOrEmpty(gamePath) || !Directory.Exists(gamePath))
+        {
+            error = $"The configured {CurrentLoadedExport.Game} game directory could not be found.";
+            return false;
+        }
+
+        foreach (MeshUsage usage in meshRecord.Usages)
+        {
+            if (usage.FileKey < 0 || usage.FileKey >= previewAssetFiles.Count)
+            {
+                continue;
+            }
+
+            (string fileName, string contentDir) = previewAssetFiles[usage.FileKey];
+            string filePath = Directory.EnumerateFiles(gamePath, $"{fileName}.*", SearchOption.AllDirectories)
+                .FirstOrDefault(path => path.Contains(contentDir, StringComparison.OrdinalIgnoreCase));
+            if (filePath is null)
+            {
+                continue;
+            }
+
+            using IMEPackage meshPackage = MEPackageHandler.OpenMEPackage(filePath);
+            if (!meshPackage.IsUExport(usage.UIndex))
+            {
+                continue;
+            }
+
+            ExportEntry meshExport = meshPackage.GetUExport(usage.UIndex);
+            if (!string.Equals(meshExport.ClassName, "SkeletalMesh", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                LoadPreviewActorModel(actorIndex, meshExport);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = $"Unable to render {meshRecord.MeshName}: {exception.Message}";
+                return false;
+            }
+        }
+
+        error = $"No installed package containing {meshRecord.MeshName} could be resolved.";
+        return false;
+    }
+
+    private static string GetDefaultPreviewModelName(MEGame game) => game switch
+    {
+        MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
+        MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
+        _ => "QRN_ARM_TLIa_MDL"
+    };
+
+    private void InitializePreviewActorLayout(MEGame game)
+    {
+        if (previewActorGame == game && previewActors.Count > 0)
+        {
+            return;
+        }
+
+        SavePreviewActorLayout();
+        ClearPreviewActorModels();
+        previewActors.Clear();
+        previewActorGame = game;
+        previewAssetDatabase = null;
+        previewAssetFiles = [];
+        PreviewActorComboBox.ItemsSource = null;
+        LoadPreviewActorLayout();
+        _ = InitializePreviewActorModelsAsync();
+    }
+
+    private void LoadPreviewActorLayout()
+    {
+        try
+        {
+            if (File.Exists(SavedPreviewActorsPath))
+            {
+                List<PreviewActorConfiguration> actors = JsonConvert.DeserializeObject<List<PreviewActorConfiguration>>(
+                    File.ReadAllText(SavedPreviewActorsPath));
+                if (actors is { Count: > 0 })
+                {
+                    foreach (PreviewActorConfiguration actor in actors)
+                    {
+                        actor.ModelName ??= GetDefaultPreviewModelName(previewActorGame);
+                        previewActors.Add(actor);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            SetPreviewActorStatus($"Saved actor layout could not be loaded: {exception.Message}");
+        }
+
+        if (previewActors.Count == 0)
+        {
+            AddDefaultPreviewActor();
+            return;
+        }
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedIndex = 0;
+    }
+
+    private void SavePreviewActorLayout()
+    {
+        if (previewActorGame == MEGame.Unknown || previewActors.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(SavedPreviewActorsPath,
+                JsonConvert.SerializeObject(previewActors.ToList(), Formatting.Indented));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            SetPreviewActorStatus($"Actor layout could not be saved: {exception.Message}");
+        }
+    }
+
+    private void AddDefaultPreviewActor()
+    {
+        CameraOrigin origin = SelectedKeyframe is null
+            ? new CameraOrigin(RenderContext.Camera.Position, Vector3.Zero)
+            : new CameraOrigin(SelectedKeyframe.Location, SelectedKeyframe.Rotation);
+        var actor = new PreviewActorConfiguration
+        {
+            ModelName = GetDefaultPreviewModelName(previewActorGame),
+            Origin = origin
+        };
+        previewActors.Add(actor);
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedItem = actor;
+    }
+
+    private void AddPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        AddDefaultPreviewActor();
+        LoadSelectedPreviewActorModel();
+        SavePreviewActorLayout();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void RemovePreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedPreviewActor is null || previewActors.Count <= 1)
+        {
+            return;
+        }
+
+        int removedIndex = previewActors.IndexOf(selectedPreviewActor);
+        previewActors.RemoveAt(removedIndex);
+        RemovePreviewActorModel(removedIndex);
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedIndex = Math.Min(removedIndex, previewActors.Count - 1);
+        SavePreviewActorLayout();
+    }
+
+    private void ClearPreviewActors_Click(object sender, RoutedEventArgs e)
+    {
+        previewActors.Clear();
+        ClearPreviewActorModels();
+        AddDefaultPreviewActor();
+        LoadSelectedPreviewActorModel();
+        SetPreviewActorStatus("Preview actors reset to one default actor at the selected keyframe.");
+        SavePreviewActorLayout();
+    }
+
+    private void RenumberPreviewActors()
+    {
+        for (int index = 0; index < previewActors.Count; index++)
+        {
+            previewActors[index].DisplayName = $"Actor {index + 1}";
+        }
+        PreviewActorListBox.Items.Refresh();
+        RemovePreviewActorButton.IsEnabled = previewActors.Count > 1;
+    }
+
+    private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (updatingPreviewActorControls || selectedPreviewActor is null
+            || sender is not ComboBox { SelectedItem: MeshRecord meshRecord })
+        {
+            return;
+        }
+
+        int actorIndex = previewActors.IndexOf(selectedPreviewActor);
+        if (!TryLoadPreviewActorModel(actorIndex, meshRecord, out string error))
+        {
+            SetPreviewActorStatus(error);
+            return;
+        }
+
+        selectedPreviewActor.ModelName = meshRecord.MeshName;
+        SetPreviewActorStatus($"{selectedPreviewActor.DisplayName}: {meshRecord.MeshName}");
+        SavePreviewActorLayout();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void LoadSelectedPreviewActorModel()
+    {
+        if (selectedPreviewActor is null || PreviewActorComboBox.ItemsSource is not IEnumerable<MeshRecord> meshes)
+        {
+            return;
+        }
+        MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+            selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
+        if (mesh is not null)
+        {
+            TryLoadPreviewActorModel(previewActors.IndexOf(selectedPreviewActor), mesh, out _);
+        }
     }
 
     private void ConfigureKeyframeContextMenu()
@@ -621,7 +1015,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void IgnoreActorSelection(ActorProxy actor)
     {
-        RenderContext.TransformWidget.Attach = SelectedKeyframe;
+        RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
     }
 
     private void RightClickActor(ActorProxy actor)
@@ -1284,6 +1678,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         };
         snapItem.Click += SnapSelectedKeyframeToViewport_Click;
         menu.Items.Add(snapItem);
+
+        var snapActorItem = new MenuItem
+        {
+            Header = "Snap Selected Actor Here",
+            IsEnabled = selectedPreviewActor is not null
+        };
+        Vector3 actorLocation = selectedPreviewActor is null
+            ? default
+            : GetViewportKeyframeLocation(viewportPoint, selectedPreviewActor.Origin.Location);
+        snapActorItem.Click += (_, _) =>
+        {
+            if (selectedPreviewActor is not null)
+            {
+                SetSelectedPreviewActorOrigin(new CameraOrigin(actorLocation, selectedPreviewActor.Origin.Rotation));
+            }
+        };
+        menu.Items.Add(snapActorItem);
         menu.Items.Add(new Separator());
 
         var addItem = new MenuItem
@@ -1491,7 +1902,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             playMoveButton.Content = "Play";
         }
-        RenderContext.TransformWidget.Attach = SelectedKeyframe;
+        RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
         if (restoreStatus)
         {
             SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
@@ -1540,7 +1951,34 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             DrawTrajectory();
         }
+        RenderPreviewActors();
         RenderContext.DrawUI();
+    }
+
+    private void RenderPreviewActors()
+    {
+        int actorCount = Math.Min(previewActorModels.Count, previewActors.Count);
+        for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
+        {
+            ModelPreview<WorldVertex> actorModel = previewActorModels[actorIndex];
+            if (actorModel is null)
+            {
+                continue;
+            }
+            actorModel.UpdateLocalToWorld(CreatePreviewActorTransform(previewActors[actorIndex].Origin));
+            actorModel.Render(RenderPass.Base, RenderContext, 0);
+            actorModel.Render(RenderPass.Hair, RenderContext, 0);
+        }
+    }
+
+    private static Matrix4x4 CreatePreviewActorTransform(CameraOrigin transform)
+    {
+        const float degreesToRadians = MathF.PI / 180f;
+        return Matrix4x4.CreateFromYawPitchRoll(
+                   transform.Rotation.Z * degreesToRadians,
+                   transform.Rotation.Y * degreesToRadians,
+                   transform.Rotation.X * degreesToRadians)
+               * Matrix4x4.CreateTranslation(transform.Location);
     }
 
     private void DrawTrajectory()
@@ -1925,5 +2363,363 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             sets.RemoveRange(10, sets.Count - 10);
         }
         File.WriteAllText(RecentSetsFile, JsonConvert.SerializeObject(sets, Formatting.Indented));
+    }
+
+    private void LoadPreviewActorModel(int actorIndex, ExportEntry skeletalMeshExport)
+    {
+        if (actorIndex < 0 || skeletalMeshExport is null)
+        {
+            return;
+        }
+
+        ModelPreview<WorldVertex> modelPreview = new(RenderContext, skeletalMeshExport.GetBinaryData<SkeletalMesh>());
+        while (previewActorModels.Count <= actorIndex)
+        {
+            previewActorModels.Add(null);
+        }
+        previewActorModels[actorIndex]?.Dispose();
+        previewActorModels[actorIndex] = modelPreview;
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void RemovePreviewActorModel(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= previewActorModels.Count)
+        {
+            return;
+        }
+        previewActorModels[actorIndex]?.Dispose();
+        previewActorModels.RemoveAt(actorIndex);
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void ClearPreviewActorModels()
+    {
+        foreach (ModelPreview<WorldVertex> actorModel in previewActorModels)
+        {
+            actorModel?.Dispose();
+        }
+        previewActorModels.Clear();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void PreviewActorListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        selectedPreviewActor = PreviewActorListBox.SelectedItem as PreviewActorConfiguration;
+        SynchronizePreviewActorControls();
+        SelectPreviewActor(PreviewActorListBox.SelectedIndex);
+    }
+
+    private void PreviewActorListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        FocusPreviewActor(PreviewActorListBox.SelectedIndex);
+    }
+
+    private void SelectPreviewActor(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= previewActors.Count)
+        {
+            previewActorWidgetActive = false;
+            RenderContext.TransformWidget.Attach = SelectedKeyframe;
+            SceneViewer.MarkRenderDirty();
+            return;
+        }
+        previewActorWidgetTarget.SetTransform(previewActors[actorIndex].Origin);
+        previewActorWidgetActive = true;
+        RenderContext.TransformWidget.Attach = previewActorWidgetTarget;
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void FocusPreviewActor(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= previewActorModels.Count || actorIndex >= previewActors.Count
+            || previewActorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+        {
+            return;
+        }
+
+        CameraOrigin transform = previewActors[actorIndex].Origin;
+        BoxSphereBounds bounds = actorModel.LODs[0].Mesh.BaseBounds.TransformBy(CreatePreviewActorTransform(transform));
+        float distance = MathF.Max(bounds.SphereRadius, 50) * 2;
+        (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
+        StopPlayback(false);
+        RenderContext.Camera.Position = new Vector3(bounds.Origin.X, bounds.Origin.Y + sin * distance,
+            bounds.Origin.Z + cos * distance);
+        RenderContext.Camera.OrientTowards(bounds.Origin);
+        RenderContext.Camera.FocusDepth = 0;
+        UpdateCameraPositionText();
+        UpdateCameraRotationText();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void SynchronizePreviewActorControls()
+    {
+        if (selectedPreviewActor is null)
+        {
+            return;
+        }
+
+        updatingPreviewActorControls = true;
+        SetPreviewActorOriginFields(selectedPreviewActor.Origin);
+        if (PreviewActorComboBox.ItemsSource is IEnumerable<MeshRecord> meshes)
+        {
+            PreviewActorComboBox.SelectedItem = meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName,
+                selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
+        }
+        UpdatePreviewActorRotationDialIndicator();
+        updatingPreviewActorControls = false;
+    }
+
+    private void PreviewActorTransform_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (updatingPreviewActorControls || selectedPreviewActor is null
+            || !TryReadPreviewActorOrigin(out CameraOrigin origin))
+        {
+            return;
+        }
+        selectedPreviewActor.Origin = origin;
+        previewActorWidgetTarget.SetTransform(origin);
+        UpdatePreviewActorRotationDialIndicator();
+        SavePreviewActorLayout();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private bool TryReadPreviewActorOrigin(out CameraOrigin origin)
+    {
+        origin = default;
+        if (!float.TryParse(PreviewActorXTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float x)
+            || !float.TryParse(PreviewActorYTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float y)
+            || !float.TryParse(PreviewActorZTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float z)
+            || !float.TryParse(PreviewActorRollTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float roll)
+            || !float.TryParse(PreviewActorPitchTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float pitch)
+            || !float.TryParse(PreviewActorYawTextBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out float yaw))
+        {
+            return false;
+        }
+        origin = new CameraOrigin(new Vector3(x, y, z), new Vector3(roll, pitch, yaw));
+        return true;
+    }
+
+    private void SetPreviewActorOriginFields(CameraOrigin origin)
+    {
+        PreviewActorXTextBox.Text = origin.Location.X.ToString("0.###", CultureInfo.CurrentCulture);
+        PreviewActorYTextBox.Text = origin.Location.Y.ToString("0.###", CultureInfo.CurrentCulture);
+        PreviewActorZTextBox.Text = origin.Location.Z.ToString("0.###", CultureInfo.CurrentCulture);
+        PreviewActorRollTextBox.Text = origin.Rotation.X.ToString("0.###", CultureInfo.CurrentCulture);
+        PreviewActorPitchTextBox.Text = origin.Rotation.Y.ToString("0.###", CultureInfo.CurrentCulture);
+        PreviewActorYawTextBox.Text = origin.Rotation.Z.ToString("0.###", CultureInfo.CurrentCulture);
+    }
+
+    private void SetSelectedPreviewActorOrigin(CameraOrigin origin)
+    {
+        if (selectedPreviewActor is null)
+        {
+            return;
+        }
+        selectedPreviewActor.Origin = origin;
+        previewActorWidgetTarget.SetTransform(origin);
+        SynchronizePreviewActorControls();
+        SavePreviewActorLayout();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void PreviewActorLocationScrubAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            previewActorLocationScrubAxes = axes;
+        }
+    }
+
+    private void PreviewActorLocationScrub_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (selectedPreviewActor is null)
+        {
+            e.Handled = true;
+            return;
+        }
+        previewActorLocationScrubAccumulator = 0;
+        previewActorLocationScrubPreviousHorizontalChange = 0;
+    }
+
+    private void PreviewActorLocationScrub_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (selectedPreviewActor is null || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - previewActorLocationScrubPreviousHorizontalChange;
+        previewActorLocationScrubPreviousHorizontalChange = e.HorizontalChange;
+        previewActorLocationScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(previewActorLocationScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        previewActorLocationScrubAccumulator -= stepCount * dragStep;
+        Vector3 location = selectedPreviewActor.Origin.Location;
+        if (previewActorLocationScrubAxes is "X" or "All") location.X += stepCount;
+        if (previewActorLocationScrubAxes is "Y" or "All") location.Y += stepCount;
+        if (previewActorLocationScrubAxes is "Z" or "All") location.Z += stepCount;
+        SetSelectedPreviewActorOrigin(new CameraOrigin(location, selectedPreviewActor.Origin.Rotation));
+    }
+
+    private void PreviewActorLocationScrub_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        SavePreviewActorLayout();
+    }
+
+    private void PreviewActorRotationDialAxis_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string axes })
+        {
+            previewActorRotationDialAxes = axes;
+            UpdatePreviewActorRotationDialIndicator();
+        }
+    }
+
+    private void PreviewActorRotationDial_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (selectedPreviewActor is null)
+        {
+            return;
+        }
+        previewActorRotationDialPreviousAngle = GetPreviewActorRotationDialPointerAngle(e.GetPosition(PreviewActorRotationDial));
+        previewActorRotationDialAngleAccumulator = 0;
+        previewActorRotationDialDragging = PreviewActorRotationDial.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!previewActorRotationDialDragging || selectedPreviewActor is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        double pointerAngle = GetPreviewActorRotationDialPointerAngle(e.GetPosition(PreviewActorRotationDial));
+        double angleDelta = NormalizeAngle(pointerAngle - previewActorRotationDialPreviousAngle);
+        previewActorRotationDialPreviousAngle = pointerAngle;
+        previewActorRotationDialAngleAccumulator += angleDelta;
+        const float increment = 5f;
+        int stepCount = (int)(previewActorRotationDialAngleAccumulator / increment);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        previewActorRotationDialAngleAccumulator -= stepCount * increment;
+        float delta = stepCount * increment;
+        Vector3 rotation = selectedPreviewActor.Origin.Rotation;
+        if (previewActorRotationDialAxes is "Roll" or "All") rotation.X += delta;
+        if (previewActorRotationDialAxes is "Pitch" or "All") rotation.Y += delta;
+        if (previewActorRotationDialAxes is "Yaw" or "All") rotation.Z += delta;
+        SetSelectedPreviewActorOrigin(new CameraOrigin(selectedPreviewActor.Origin.Location, rotation));
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!previewActorRotationDialDragging)
+        {
+            return;
+        }
+        previewActorRotationDialDragging = false;
+        PreviewActorRotationDial.ReleaseMouseCapture();
+        SavePreviewActorLayout();
+        e.Handled = true;
+    }
+
+    private void PreviewActorRotationDial_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        previewActorRotationDialDragging = false;
+    }
+
+    private void UpdatePreviewActorRotationDialIndicator()
+    {
+        if (PreviewActorRotationDialIndicator?.RenderTransform is not System.Windows.Media.RotateTransform transform)
+        {
+            return;
+        }
+        Vector3 rotation = selectedPreviewActor?.Origin.Rotation ?? Vector3.Zero;
+        transform.Angle = previewActorRotationDialAxes switch
+        {
+            "Roll" => rotation.X,
+            "Pitch" => rotation.Y,
+            "Yaw" => rotation.Z,
+            _ => (rotation.X + rotation.Y + rotation.Z) / 3f
+        };
+    }
+
+    private static double GetPreviewActorRotationDialPointerAngle(Point point)
+        => Math.Atan2(point.Y - 45d, point.X - 45d) * 180d / Math.PI + 90d;
+
+    private void PreviewActorMoveGizmo_Checked(object sender, RoutedEventArgs e)
+    {
+        RenderContext.TransformWidget.Mode = EWidgetMode.Translate;
+        RenderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void PreviewActorRotateGizmo_Checked(object sender, RoutedEventArgs e)
+    {
+        RenderContext.TransformWidget.Mode = EWidgetMode.Rotate;
+        RenderContext.TransformWidget.VisibleAxes = EWidgetAxis.XYZ;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void PreviewActorGizmo_TransformChanged(CameraOrigin origin)
+    {
+        if (selectedPreviewActor is null)
+        {
+            return;
+        }
+        selectedPreviewActor.Origin = origin;
+        updatingPreviewActorControls = true;
+        SetPreviewActorOriginFields(origin);
+        UpdatePreviewActorRotationDialIndicator();
+        updatingPreviewActorControls = false;
+        SavePreviewActorLayout();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void UseSelectedKeyframeForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedKeyframe is { } keyframe)
+        {
+            SetSelectedPreviewActorOrigin(new CameraOrigin(keyframe.Location, keyframe.Rotation));
+        }
+    }
+
+    private void UseViewportLocationForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedPreviewActor is not null)
+        {
+            SetSelectedPreviewActorOrigin(new CameraOrigin(RenderContext.Camera.Position, selectedPreviewActor.Origin.Rotation));
+        }
+    }
+
+    private void UseViewportTransformForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        const float radiansToDegrees = 180f / MathF.PI;
+        SetSelectedPreviewActorOrigin(new CameraOrigin(RenderContext.Camera.Position,
+            new Vector3(RenderContext.Camera.Roll, RenderContext.Camera.Pitch, RenderContext.Camera.Yaw) * radiansToDegrees));
+    }
+
+    private void ResetPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedPreviewActor is null)
+        {
+            return;
+        }
+        selectedPreviewActor.ModelName = GetDefaultPreviewModelName(previewActorGame);
+        CameraOrigin origin = SelectedKeyframe is null
+            ? new CameraOrigin(RenderContext.Camera.Position, Vector3.Zero)
+            : new CameraOrigin(SelectedKeyframe.Location, SelectedKeyframe.Rotation);
+        SetSelectedPreviewActorOrigin(origin);
+        LoadSelectedPreviewActorModel();
     }
 }
