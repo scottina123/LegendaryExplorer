@@ -3664,7 +3664,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 .OrderBy(export => export.UIndex)
                 .ToList();
 
-            Task.Run(() => MoveTexturesToAnotherTfcInternal(sourceTfcName, targetTfc, texturesToMove)).ContinueWithOnUIThread(task =>
+            Task.Run(() => MoveTexturesToAnotherTfcInternal(sourceTfcName, targetTfc, texturesToMove, GetDlcCookedTfcPath(targetTfc))).ContinueWithOnUIThread(task =>
             {
                 IsBusy = false;
 
@@ -3713,7 +3713,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             });
         }
 
-        private TextureTfcMoveResult MoveTexturesToAnotherTfcInternal(string sourceTfcName, string targetTfcName, List<ExportEntry> texturesToMove)
+        private TextureTfcMoveResult MoveTexturesToAnotherTfcInternal(string sourceTfcName, string targetTfcName, List<ExportEntry> texturesToMove, string targetTfcPath)
         {
             string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveTexturesBetweenTfcs", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDirectory);
@@ -3724,6 +3724,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             try
             {
+                if (!string.IsNullOrWhiteSpace(targetTfcPath))
+                {
+                    EnsureTfcFileExists(targetTfcPath);
+                }
+
                 foreach (ExportEntry textureExport in texturesToMove)
                 {
                     try
@@ -3735,7 +3740,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                         var props = textureExport.GetProperties();
                         TextureImage image = TextureImage.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
-                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName);
+                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName, forcedTFCPath: targetTfcPath);
 
                         movedCount++;
                         messages.Add(new EntryStringPair(textureExport,
@@ -3772,6 +3777,46 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             return new TextureTfcMoveResult(movedCount, failedCount, messages);
+        }
+
+        private string GetDlcCookedTfcPath(string targetTfcName)
+        {
+            string cookedFolder = GetDlcCookedFolder();
+            return string.IsNullOrWhiteSpace(cookedFolder) || string.IsNullOrWhiteSpace(targetTfcName)
+                ? null
+                : Path.Combine(cookedFolder, $"{targetTfcName}.tfc");
+        }
+
+        private string GetDlcCookedFolder()
+        {
+            string filePath = Pcc?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return null;
+            }
+
+            string cookedName = MEDirectories.CookedName(Pcc.Game);
+            for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
+            {
+                if (directory.Name.Equals(cookedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return directory.FullName;
+                }
+            }
+
+            return Path.GetDirectoryName(filePath);
+        }
+
+        private static void EnsureTfcFileExists(string targetTfcPath)
+        {
+            if (File.Exists(targetTfcPath))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(targetTfcPath));
+            using var fs = new FileStream(targetTfcPath, FileMode.CreateNew, FileAccess.Write);
+            fs.WriteGuid(Guid.NewGuid());
         }
 
         private string GetPreferredTextureTfcName()

@@ -805,7 +805,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             pew.BusyText = "Moving large package stored textures to TFC";
             pew.IsBusy = true;
 
-            Task.Run(() => MoveTexturesToTfc(candidateTextures, selectedTfcName))
+            Task.Run(() => MoveTexturesToTfc(candidateTextures, selectedTfcName, pew.Pcc))
                 .ContinueWithOnUIThread(task =>
                 {
                     pew.IsBusy = false;
@@ -854,6 +854,122 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                         "The bulk texture move completed with warnings or failures.",
                         pew).Show();
                 });
+        }
+
+        public static void MoveDlcModTextureReferencesToCurrentDlcTfc(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            string targetTfcName = GetPreferredTextureTfcName(pew.Pcc);
+            if (string.IsNullOrWhiteSpace(targetTfcName))
+            {
+                MessageBox.Show(pew,
+                    "Could not determine the current DLC TFC name for the current package.",
+                    "Move DLC MOD textures to current DLC TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            List<ExportEntry> texturesToMove = FindDlcModTextureCacheUsages(pew.Pcc, targetTfcName);
+            if (texturesToMove.Count == 0)
+            {
+                MessageBox.Show(pew,
+                    $"No textures referencing another Textures_DLC_MOD TFC were found in the current package.",
+                    "Move DLC MOD textures to current DLC TFC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (MessageBox.Show(pew,
+                    $"This will move {texturesToMove.Count} texture{(texturesToMove.Count == 1 ? string.Empty : "s")} referencing another Textures_DLC_MOD TFC into '{targetTfcName}'.\n\nContinue?",
+                    "Move DLC MOD textures to current DLC TFC",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            pew.BusyText = "Moving DLC MOD textures to current DLC TFC";
+            pew.IsBusy = true;
+
+            Task.Run(() => MoveTexturesToTfc(texturesToMove, targetTfcName, pew.Pcc))
+                .ContinueWithOnUIThread(task =>
+                {
+                    pew.IsBusy = false;
+
+                    if (task.Exception != null)
+                    {
+                        MessageBox.Show(pew,
+                            task.Exception.FlattenException(),
+                            "Move DLC MOD textures to current DLC TFC",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
+
+                    TextureMoveSummary summary = task.Result;
+                    if (summary.Failures.Count == 0)
+                    {
+                        MessageBox.Show(pew,
+                            $"Moved {summary.MovedCount} texture{(summary.MovedCount == 1 ? string.Empty : "s")} to '{targetTfcName}'.",
+                            "Move DLC MOD textures to current DLC TFC",
+                            MessageBoxButton.OK,
+                            summary.MovedCount > 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    var lines = new List<string>
+                    {
+                        $"Moved {summary.MovedCount} texture{(summary.MovedCount == 1 ? string.Empty : "s")}",
+                        $"Failed to move {summary.FailedCount} texture{(summary.FailedCount == 1 ? string.Empty : "s")}."
+                    };
+
+                    if (summary.Messages.Count > 0)
+                    {
+                        lines.Add(string.Empty);
+                        lines.AddRange(summary.Messages);
+                    }
+
+                    lines.Add(string.Empty);
+                    lines.AddRange(summary.Failures);
+
+                    new ListDialog(lines,
+                        "Move DLC MOD textures to current DLC TFC",
+                        "The DLC MOD texture move completed with warnings or failures.",
+                        pew).Show();
+                });
+        }
+
+        private static List<ExportEntry> FindDlcModTextureCacheUsages(IMEPackage package, string targetTfcName)
+        {
+            if (package == null || package.Game <= MEGame.ME1 || string.IsNullOrWhiteSpace(targetTfcName))
+            {
+                return [];
+            }
+
+            var matches = new List<ExportEntry>();
+            foreach (ExportEntry export in package.Exports.Where(exp => exp.IsTexture()))
+            {
+                try
+                {
+                    if (export.GetProperty<NameProperty>("TextureFileCacheName") is { } tfcProp
+                        && tfcProp.Value.Name.StartsWith("Textures_DLC_MOD", StringComparison.OrdinalIgnoreCase)
+                        && !tfcProp.Value.Name.Equals(targetTfcName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches.Add(export);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return matches;
         }
 
         public static void AddSpeakerWithSharedFXAToAllDialogues(PackageEditorWindow pew)
@@ -2093,7 +2209,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
         }
 
-        private static TextureMoveSummary MoveTexturesToTfc(List<ExportEntry> textures, string targetTfcName)
+        private static TextureMoveSummary MoveTexturesToTfc(List<ExportEntry> textures, string targetTfcName, IMEPackage package)
         {
             string tempDirectory = Path.Combine(Path.GetTempPath(), "LegendaryExplorer", "MoveLargePackageStoredTexturesToTfc", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDirectory);
@@ -2102,9 +2218,15 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             int failedCount = 0;
             var messages = new List<string>();
             var failures = new List<string>();
+            string targetTfcPath = GetDlcCookedTfcPath(package, targetTfcName);
 
             try
             {
+                if (!string.IsNullOrWhiteSpace(targetTfcPath))
+                {
+                    EnsureTfcFileExists(targetTfcPath);
+                }
+
                 foreach (ExportEntry textureExport in textures)
                 {
                     try
@@ -2115,7 +2237,7 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
 
                         var props = textureExport.GetProperties();
                         var image = TextureImage.LoadFromFile(tempTexturePath, LegendaryExplorerCore.Textures.PixelFormat.ARGB);
-                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName);
+                        List<string> replaceMessages = texture.Replace(image, props, tempTexturePath, forcedTFCName: targetTfcName, forcedTFCPath: targetTfcPath);
 
                         movedCount++;
                         messages.Add($"Moved #{textureExport.UIndex} {textureExport.InstancedFullPath} to '{targetTfcName}'.");
@@ -2143,6 +2265,46 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             }
 
             return new TextureMoveSummary(movedCount, failedCount, messages, failures);
+        }
+
+        private static string GetDlcCookedTfcPath(IMEPackage package, string targetTfcName)
+        {
+            string cookedFolder = GetDlcCookedFolder(package);
+            return string.IsNullOrWhiteSpace(cookedFolder) || string.IsNullOrWhiteSpace(targetTfcName)
+                ? null
+                : Path.Combine(cookedFolder, $"{targetTfcName}.tfc");
+        }
+
+        private static string GetDlcCookedFolder(IMEPackage package)
+        {
+            string filePath = package?.FilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return null;
+            }
+
+            string cookedName = MEDirectories.CookedName(package.Game);
+            for (DirectoryInfo directory = Directory.GetParent(filePath); directory != null; directory = directory.Parent)
+            {
+                if (directory.Name.Equals(cookedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return directory.FullName;
+                }
+            }
+
+            return Path.GetDirectoryName(filePath);
+        }
+
+        private static void EnsureTfcFileExists(string targetTfcPath)
+        {
+            if (File.Exists(targetTfcPath))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(targetTfcPath));
+            using var fs = new FileStream(targetTfcPath, FileMode.CreateNew, FileAccess.Write);
+            fs.WriteGuid(Guid.NewGuid());
         }
 
         private static string GetPreferredTextureTfcName(IMEPackage package)

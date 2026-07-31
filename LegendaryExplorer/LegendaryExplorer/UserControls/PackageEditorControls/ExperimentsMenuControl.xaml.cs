@@ -917,6 +917,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             PackageEditorExperimentsScottina.MoveLargePackageStoredTexturesToTfc(GetPEWindow());
         }
 
+        private void MoveDlcModTextureReferencesToCurrentDlcTfc_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorExperimentsScottina.MoveDlcModTextureReferencesToCurrentDlcTfc(GetPEWindow());
+        }
+
         private void ReindexAllDuplicateIndicesInPackage_Click(object sender, RoutedEventArgs e)
         {
             PackageEditorExperimentsScottina.ReindexAllDuplicateIndicesInPackage(GetPEWindow());
