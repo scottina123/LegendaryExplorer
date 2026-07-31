@@ -12057,18 +12057,9 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            ExportEntry directorTrack = Pcc?.Exports.FirstOrDefault(export =>
-                export.ClassName == "InterpTrackDirector" && export.IsDescendantOf(interpData));
-            if (directorTrack is null)
+            if (CameraPresetDialog.GenerateForInterpData(this, interpData, actorAnchorContext: GetCameraActorAnchorContext()))
             {
-                MessageBox.Show("This node's InterpData has no Director track.", "No Director Track",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (CameraPresetDialog.GenerateForDirector(this, directorTrack, actorAnchorContext: GetCameraActorAnchorContext()))
-            {
-                RefreshSelectedNodeAfterInterpMutation(directorTrack.UIndex);
+                RefreshSelectedNodeAfterInterpMutation(interpData.UIndex);
             }
         }
 

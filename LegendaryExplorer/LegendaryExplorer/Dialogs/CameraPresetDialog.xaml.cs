@@ -38,7 +38,7 @@ public partial class CameraPresetDialog : Window
     private readonly IMEPackage _package;
     private readonly CameraActorAnchorContext _actorAnchorContext;
     private readonly ExportEntry _selectedTrackMove;
-    private readonly ExportEntry _selectedDirectorTrack;
+    private ExportEntry _selectedDirectorTrack;
     private readonly ExportEntry _interpData;
     private AssetDB _previewAssetDatabase;
     private List<(string FileName, string ContentDir)> _previewAssetFiles = [];
@@ -604,6 +604,40 @@ public partial class CameraPresetDialog : Window
         {
             Owner = owner
         };
+        return dialog.ShowDialog() == true;
+    }
+
+    public static bool GenerateForInterpData(Window owner, ExportEntry interpData,
+        Func<CameraOrigin?> getViewportOrigin = null, Action<GeneratedCameraKey> previewCamera = null,
+        CameraActorAnchorContext actorAnchorContext = null)
+    {
+        if (interpData?.ClassName != "InterpData")
+        {
+            return false;
+        }
+
+        ExportEntry directorTrack = FindDirectorTrack(interpData);
+        if (directorTrack is not null)
+        {
+            return GenerateForDirector(owner, directorTrack, getViewportOrigin, previewCamera, actorAnchorContext);
+        }
+
+        CameraPresetDialog dialog = null;
+        dialog = new CameraPresetDialog(
+            () => dialog?._selectedDirectorTrack is null
+                ? null
+                : GetDirectorOrigin(dialog._selectedDirectorTrack, interpData),
+            getViewportOrigin, previewCamera,
+            maximumEndTime: interpData.GetProperty<FloatProperty>("InterpLength")?.Value,
+            package: interpData.FileRef, actorAnchorContext: actorAnchorContext, interpData: interpData)
+        {
+            Owner = owner
+        };
+        dialog.SingleCamTab.Visibility = Visibility.Collapsed;
+        dialog.MulticamTab.Visibility = Visibility.Visible;
+        dialog.CameraModeTabs.SelectedIndex = 1;
+        dialog.RefreshMulticamList();
+        dialog.SelectFirstMulticamPreset();
         return dialog.ShowDialog() == true;
     }
 
@@ -1366,15 +1400,29 @@ public partial class CameraPresetDialog : Window
             MessageBox.Show("Select a multicam preset.", "No Preset Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        if (_selectedDirectorTrack is null || _interpData is null)
+        if (_interpData is null)
         {
-            MessageBox.Show("Select a Director track as the multicam destination.", "No Director Selected",
+            MessageBox.Show("Select an InterpData as the multicam destination.", "No InterpData Selected",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (!TryResolveGenerationOrigin(true, out CameraOrigin origin))
         {
             return;
+        }
+
+        if (_selectedDirectorTrack is null)
+        {
+            ExportEntry directorGroup = MatineeHelper.AddNewGroupDirectorToInterpData(_interpData);
+            _selectedDirectorTrack = directorGroup?.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")?
+                .Select(reference => directorGroup.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+                .FirstOrDefault(track => track?.ClassName == "InterpTrackDirector");
+            if (_selectedDirectorTrack is null)
+            {
+                MessageBox.Show("The Director group was created, but its Director track could not be resolved.",
+                    "Unable to Create Director", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
         }
 
         float destinationDuration = _maximumEndTime ?? _selectedMulticamPreset.Duration;
@@ -1497,6 +1545,15 @@ public partial class CameraPresetDialog : Window
 
         return null;
     }
+
+    private static ExportEntry FindDirectorTrack(ExportEntry interpData) =>
+        interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups")?
+            .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+            .Where(group => group?.ClassName is "InterpGroupDirector" or "InterpDirector")
+            .SelectMany(group => (IEnumerable<ObjectProperty>)group.GetProperty<ArrayProperty<ObjectProperty>>("InterpTracks")
+                ?? Enumerable.Empty<ObjectProperty>())
+            .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry track) ? track : null)
+            .FirstOrDefault(track => track?.ClassName == "InterpTrackDirector");
 
     private static CameraOrigin? GetDirectorOrigin(ExportEntry directorTrack, ExportEntry interpData)
     {

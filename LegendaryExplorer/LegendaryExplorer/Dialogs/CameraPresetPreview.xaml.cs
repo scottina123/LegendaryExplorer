@@ -229,7 +229,6 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         if (_multicamPreset is not null)
         {
             RenderActor();
-            DrawMulticamPaths();
             _renderContext.DrawUI();
             return;
         }
@@ -248,67 +247,6 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _actorModel.UpdateLocalToWorld(Matrix4x4.CreateTranslation(_sceneOrigin));
         _actorModel.Render(RenderPass.Base, _renderContext, 0);
         _actorModel.Render(RenderPass.Hair, _renderContext, 0);
-    }
-
-    private void DrawMulticamPaths()
-    {
-        if (_multicamKeys is null)
-        {
-            return;
-        }
-
-        Vector4[] colors =
-        [
-            new(0.2f, 0.65f, 1f, 1f), new(1f, 0.5f, 0.2f, 1f),
-            new(0.35f, 0.9f, 0.45f, 1f), new(0.85f, 0.35f, 0.9f, 1f)
-        ];
-        int groupIndex = 0;
-        foreach ((string groupName, IReadOnlyList<GeneratedCameraKey> keys) in _multicamKeys)
-        {
-            Vector4 color = colors[groupIndex++ % colors.Length];
-            foreach (GeneratedCameraKey key in keys)
-            {
-                DrawCube(key.Location, 7, color);
-            }
-            for (int keyIndex = 1; keyIndex < keys.Count; keyIndex++)
-            {
-                for (int sample = 1; sample < 8; sample++)
-                {
-                    DrawCube(Vector3.Lerp(keys[keyIndex - 1].Location, keys[keyIndex].Location, sample / 8f), 2.5f, color);
-                }
-            }
-
-            if (_multicamPositionCurves.TryGetValue(groupName, out InterpCurve<Vector3> positionCurve))
-            {
-                float cameraTime = Math.Clamp(_elapsed, keys[0].TimeOffset, keys[^1].TimeOffset);
-                DrawCube(positionCurve.Eval(cameraTime, keys[0].Location), 12, color);
-            }
-        }
-    }
-
-    private void DrawCube(Vector3 center, float halfSize, Vector4 color)
-    {
-        var cube = _renderContext.Primitives.BuildMesh(color, 0, Matrix4x4.CreateTranslation(center));
-        cube.AddVertex(-halfSize, -halfSize, -halfSize);
-        cube.AddVertex(halfSize, -halfSize, -halfSize);
-        cube.AddVertex(halfSize, halfSize, -halfSize);
-        cube.AddVertex(-halfSize, halfSize, -halfSize);
-        cube.AddVertex(-halfSize, -halfSize, halfSize);
-        cube.AddVertex(halfSize, -halfSize, halfSize);
-        cube.AddVertex(halfSize, halfSize, halfSize);
-        cube.AddVertex(-halfSize, halfSize, halfSize);
-        cube.AddTriangle(0, 2, 1);
-        cube.AddTriangle(0, 3, 2);
-        cube.AddTriangle(4, 5, 6);
-        cube.AddTriangle(4, 6, 7);
-        cube.AddTriangle(0, 1, 5);
-        cube.AddTriangle(0, 5, 4);
-        cube.AddTriangle(1, 2, 6);
-        cube.AddTriangle(1, 6, 5);
-        cube.AddTriangle(2, 3, 7);
-        cube.AddTriangle(2, 7, 6);
-        cube.AddTriangle(3, 0, 4);
-        cube.AddTriangle(3, 4, 7);
     }
 
     public void Dispose()
