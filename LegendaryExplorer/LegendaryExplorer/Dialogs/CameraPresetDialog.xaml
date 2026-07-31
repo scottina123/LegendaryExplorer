@@ -321,20 +321,98 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Margin="8">
-                    <TextBlock Text="Preview Actor" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Model" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <ComboBox x:Name="PreviewActorComboBox" Grid.Column="1"
-                                  IsEditable="True" IsTextSearchEnabled="True" DisplayMemberPath="DisplayString"
-                                  SelectionChanged="PreviewActorModel_SelectionChanged"/>
+                <Expander Header="Preview Actors" IsExpanded="True" Margin="8">
+                    <Grid MaxHeight="330">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <DockPanel Margin="0,0,0,4">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="Add" Click="AddPreviewActor_Click" Padding="8,3" Margin="2"/>
+                                <Button x:Name="RemovePreviewActorButton" Content="Remove" Click="RemovePreviewActor_Click" Padding="8,3" Margin="2"/>
+                                <Button Content="Clear" Click="ClearPreviewActors_Click" Padding="8,3" Margin="2"/>
+                            </StackPanel>
+                            <ListBox x:Name="PreviewActorListBox" Height="62" DisplayMemberPath="DisplayName"
+                                     SelectionChanged="PreviewActorListBox_SelectionChanged"
+                                     MouseDoubleClick="PreviewActorListBox_MouseDoubleClick"/>
+                        </DockPanel>
+                        <Grid Grid.Row="1" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Model" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="PreviewActorComboBox" Grid.Column="1" IsEditable="True"
+                                      IsTextSearchEnabled="True" DisplayMemberPath="DisplayString"
+                                      SelectionChanged="PreviewActorModel_SelectionChanged"/>
+                        </Grid>
+                        <Grid Grid.Row="2" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Anchor mode" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="PreviewActorAnchorModeComboBox" Grid.Column="1" SelectedIndex="0"
+                                      SelectionChanged="PreviewActorAnchorMode_SelectionChanged">
+                                <ComboBoxItem Content="Manual Origin" Tag="ManualOrigin"/>
+                                <ComboBoxItem Content="Single Actor" Tag="SingleActor"/>
+                                <ComboBoxItem Content="Multiple Actors" Tag="MultipleActors"/>
+                            </ComboBox>
+                        </Grid>
+                        <Grid x:Name="PreviewActorSingleAnchorPanel" Grid.Row="3" Visibility="Collapsed" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Actor tag" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="PreviewActorSingleTagComboBox" Grid.Column="1" IsEditable="True"
+                                      IsTextSearchEnabled="True" SelectionChanged="PreviewActorAnchorValue_Changed"
+                                      LostKeyboardFocus="PreviewActorAnchorValue_Changed"/>
+                        </Grid>
+                        <Grid x:Name="PreviewActorMultipleAnchorPanel" Grid.Row="3" Visibility="Collapsed" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Actor tags" VerticalAlignment="Center"/>
+                            <TextBox x:Name="PreviewActorTagsTextBox" Grid.Column="1" Padding="3"
+                                     ToolTip="Actor tags separated by commas, semicolons, or new lines"
+                                     TextChanged="PreviewActorAnchorValue_Changed"/>
+                            <TextBlock Grid.Row="1" Text="Primary actor" VerticalAlignment="Center" Margin="0,4,0,0"/>
+                            <ComboBox x:Name="PreviewActorPrimaryTagComboBox" Grid.Row="1" Grid.Column="1" Margin="0,4,0,0"
+                                      IsEditable="True" IsTextSearchEnabled="True"
+                                      SelectionChanged="PreviewActorAnchorValue_Changed"
+                                      LostKeyboardFocus="PreviewActorAnchorValue_Changed"/>
+                        </Grid>
+                        <UniformGrid Grid.Row="4" Columns="3" Margin="0,0,0,4">
+                            <StackPanel Margin="2"><TextBlock Text="Origin X"/><TextBox x:Name="PreviewActorXTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                            <StackPanel Margin="2"><TextBlock Text="Origin Y"/><TextBox x:Name="PreviewActorYTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                            <StackPanel Margin="2"><TextBlock Text="Origin Z"/><TextBox x:Name="PreviewActorZTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                            <StackPanel Margin="2"><TextBlock Text="Roll (X)"/><TextBox x:Name="PreviewActorRollTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                            <StackPanel Margin="2"><TextBlock Text="Pitch (Y)"/><TextBox x:Name="PreviewActorPitchTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                            <StackPanel Margin="2"><TextBlock Text="Yaw (Z)"/><TextBox x:Name="PreviewActorYawTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
+                        </UniformGrid>
+                        <StackPanel Grid.Row="5">
+                            <WrapPanel>
+                                <Button Content="Apply Actor Origin" Click="ApplyPreviewActorOrigin_Click" Padding="7,3" Margin="2"/>
+                                <Button Content="Use Camera Anchor" Click="UseCameraAnchorForPreviewActor_Click" Padding="7,3" Margin="2"/>
+                                <Button Content="Use Viewport Location" Click="UseViewportLocationForPreviewActor_Click" Padding="7,3" Margin="2"/>
+                                <Button Content="Use Viewport Transform" Click="UseViewportTransformForPreviewActor_Click" Padding="7,3" Margin="2"/>
+                                <Button Content="Reset Actor" Click="ResetPreviewActor_Click" Padding="7,3" Margin="2"/>
+                            </WrapPanel>
+                            <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="2,2,0,0" Opacity="0.7" TextWrapping="Wrap"/>
+                        </StackPanel>
                     </Grid>
-                    <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="0,4,0,0" Opacity="0.7" TextWrapping="Wrap"/>
-                </StackPanel>
+                </Expander>
                 <local:CameraPresetPreview x:Name="CameraPreviewControl" Grid.Row="1"/>
             </Grid>
         </Border>

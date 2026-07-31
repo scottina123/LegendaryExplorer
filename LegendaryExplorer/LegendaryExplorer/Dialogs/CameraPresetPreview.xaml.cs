@@ -15,7 +15,8 @@ namespace LegendaryExplorer.Dialogs;
 public partial class CameraPresetPreview : UserControl, IDisposable
 {
     private readonly LevelEditorRenderContext _renderContext;
-    private ModelPreview<WorldVertex> _actorModel;
+    private readonly List<ModelPreview<WorldVertex>> _actorModels = [];
+    private IReadOnlyList<CameraOrigin> _actorTransforms = [];
     private IReadOnlyList<GeneratedCameraKey> _keys = [];
     private InterpCurve<Vector3> _positionCurve;
     private InterpCurve<Vector3> _rotationCurve;
@@ -45,16 +46,69 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         SceneViewer.Context = _renderContext;
     }
 
-    public void LoadActorModel(ExportEntry skeletalMeshExport)
+    public void LoadActorModel(int actorIndex, ExportEntry skeletalMeshExport)
     {
-        if (skeletalMeshExport is null)
+        if (actorIndex < 0 || skeletalMeshExport is null)
         {
             return;
         }
 
         ModelPreview<WorldVertex> model = new(_renderContext, skeletalMeshExport.GetBinaryData<SkeletalMesh>());
-        _actorModel?.Dispose();
-        _actorModel = model;
+        while (_actorModels.Count <= actorIndex)
+        {
+            _actorModels.Add(null);
+        }
+        _actorModels[actorIndex]?.Dispose();
+        _actorModels[actorIndex] = model;
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void RemoveActorModel(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= _actorModels.Count)
+        {
+            return;
+        }
+        _actorModels[actorIndex]?.Dispose();
+        _actorModels.RemoveAt(actorIndex);
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void ClearActorModels()
+    {
+        foreach (ModelPreview<WorldVertex> actorModel in _actorModels)
+        {
+            actorModel?.Dispose();
+        }
+        _actorModels.Clear();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void SetActorTransforms(IReadOnlyList<CameraOrigin> actorTransforms)
+    {
+        _actorTransforms = actorTransforms ?? [];
+        SceneViewer.MarkRenderDirty();
+    }
+
+    public void FocusActor(int actorIndex)
+    {
+        if (actorIndex < 0 || actorIndex >= _actorModels.Count || actorIndex >= _actorTransforms.Count
+            || _actorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+        {
+            return;
+        }
+
+        CameraOrigin transform = _actorTransforms[actorIndex];
+        Matrix4x4 localToWorld = CreateActorTransform(transform);
+        BoxSphereBounds bounds = actorModel.LODs[0].Mesh.BaseBounds.TransformBy(localToWorld);
+        float distance = MathF.Max(bounds.SphereRadius, 50) * 2;
+        (float sin, float cos) = MathF.SinCos(MathF.PI / 2.5f);
+        _isDynamic = false;
+        _renderContext.ForceContinuousRendering = false;
+        _renderContext.Camera.Position = new Vector3(bounds.Origin.X, bounds.Origin.Y + sin * distance,
+            bounds.Origin.Z + cos * distance);
+        _renderContext.Camera.OrientTowards(bounds.Origin);
+        _renderContext.Camera.FocusDepth = 0;
         SceneViewer.MarkRenderDirty();
     }
 
@@ -228,25 +282,40 @@ public partial class CameraPresetPreview : UserControl, IDisposable
     {
         if (_multicamPreset is not null)
         {
-            RenderActor();
+            RenderActors();
             _renderContext.DrawUI();
             return;
         }
-        RenderActor();
+        RenderActors();
 
         _renderContext.DrawUI();
     }
 
-    private void RenderActor()
+    private void RenderActors()
     {
-        if (_actorModel is null)
+        int actorCount = Math.Min(_actorModels.Count, _actorTransforms.Count);
+        for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
         {
-            return;
+            ModelPreview<WorldVertex> actorModel = _actorModels[actorIndex];
+            if (actorModel is null)
+            {
+                continue;
+            }
+            CameraOrigin transform = _actorTransforms[actorIndex];
+            actorModel.UpdateLocalToWorld(CreateActorTransform(transform));
+            actorModel.Render(RenderPass.Base, _renderContext, 0);
+            actorModel.Render(RenderPass.Hair, _renderContext, 0);
         }
+    }
 
-        _actorModel.UpdateLocalToWorld(Matrix4x4.CreateTranslation(_sceneOrigin));
-        _actorModel.Render(RenderPass.Base, _renderContext, 0);
-        _actorModel.Render(RenderPass.Hair, _renderContext, 0);
+    private static Matrix4x4 CreateActorTransform(CameraOrigin transform)
+    {
+        const float degreesToRadians = MathF.PI / 180f;
+        return Matrix4x4.CreateFromYawPitchRoll(
+                   transform.Rotation.Z * degreesToRadians,
+                   transform.Rotation.Y * degreesToRadians,
+                   transform.Rotation.X * degreesToRadians)
+               * Matrix4x4.CreateTranslation(transform.Location);
     }
 
     public void Dispose()
@@ -260,7 +329,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _renderContext.ForceContinuousRendering = false;
         _renderContext.RenderScene -= RenderScene;
         _renderContext.UpdateScene -= UpdateScene;
-        _actorModel?.Dispose();
+        ClearActorModels();
         SceneViewer.Dispose();
     }
 }

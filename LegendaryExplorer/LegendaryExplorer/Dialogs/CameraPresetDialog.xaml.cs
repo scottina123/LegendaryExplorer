@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -17,6 +18,7 @@ using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.Win32;
+using Newtonsoft.Json;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.Dialogs;
@@ -25,11 +27,43 @@ public partial class CameraPresetDialog : Window
 {
     private sealed record PresetSearchResult(CameraPreset Preset, string Name, string CategoryDisplay);
 
+    private sealed class PreviewActorConfiguration
+    {
+        public string DisplayName { get; set; }
+        public string ModelName { get; set; }
+        public CameraAnchorMode AnchorMode { get; set; }
+        public string SingleActorTag { get; set; }
+        public string ActorTags { get; set; }
+        public string PrimaryActorTag { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public float Roll { get; set; }
+        public float Pitch { get; set; }
+        public float Yaw { get; set; }
+
+        public CameraOrigin Origin
+        {
+            get => new(new Vector3(X, Y, Z), new Vector3(Roll, Pitch, Yaw));
+            set
+            {
+                X = value.Location.X;
+                Y = value.Location.Y;
+                Z = value.Location.Z;
+                Roll = value.Rotation.X;
+                Pitch = value.Rotation.Y;
+                Yaw = value.Rotation.Z;
+            }
+        }
+    }
+
     private static readonly Dictionary<string, string> SessionBranchChoices = new(StringComparer.Ordinal);
 
     private static string SavedOriginPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetOriginV2.txt");
     private static string SavedPresetPath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetSelection.txt");
     private static string SavedDistanceScalePath => Path.Combine(AppDirectories.AppDataFolder, "CameraPresetDistanceScale.txt");
+    private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
+        $"CameraPresetPreviewActors_{_package?.Game ?? MEGame.Unknown}.json");
 
     private readonly Func<CameraOrigin?> _getTrackKeyOrigin;
     private readonly Func<CameraOrigin?> _getViewportOrigin;
@@ -42,6 +76,9 @@ public partial class CameraPresetDialog : Window
     private readonly ExportEntry _interpData;
     private AssetDB _previewAssetDatabase;
     private List<(string FileName, string ContentDir)> _previewAssetFiles = [];
+    private readonly ObservableCollection<PreviewActorConfiguration> _previewActors = [];
+    private PreviewActorConfiguration _selectedPreviewActor;
+    private bool _updatingPreviewActorControls;
     private CameraPreset _selectedPreset;
     private MulticamCameraPreset _selectedMulticamPreset;
     private bool _updatingCameraSpeed;
@@ -90,6 +127,7 @@ public partial class CameraPresetDialog : Window
         SetOrigin(LoadSavedOrigin());
         SetDistanceScale(LoadSavedDistanceScale());
         InitializeActorAnchorControls();
+        InitializePreviewActorLayout();
         foreach (TextBox textBox in new[]
         {
             OriginXTextBox, OriginYTextBox, OriginZTextBox, OriginRollTextBox, OriginPitchTextBox, OriginYawTextBox,
@@ -152,20 +190,23 @@ public partial class CameraPresetDialog : Window
             _previewAssetFiles = database.FileList
                 .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
                 .ToList();
-            PreviewActorSelector.ItemsSource = meshes;
+            PreviewActorComboBox.ItemsSource = meshes;
 
-            string defaultMeshName = game switch
+            string defaultMeshName = GetDefaultPreviewModelName(game);
+            foreach (PreviewActorConfiguration actor in _previewActors)
             {
-                MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
-                MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
-                _ => "QRN_ARM_TLIa_MDL"
-            };
-            MeshRecord defaultMesh = meshes.FirstOrDefault(mesh =>
-                string.Equals(mesh.MeshName, defaultMeshName, StringComparison.OrdinalIgnoreCase));
-            if (defaultMesh is not null)
-            {
-                PreviewActorSelector.SelectedItem = defaultMesh;
+                MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+                    actor.ModelName, StringComparison.OrdinalIgnoreCase))
+                    ?? meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+                        defaultMeshName, StringComparison.OrdinalIgnoreCase));
+                if (mesh is null)
+                {
+                    continue;
+                }
+                actor.ModelName = mesh.MeshName;
+                TryLoadPreviewActorModel(_previewActors.IndexOf(actor), mesh, out _);
             }
+            SynchronizePreviewActorControls();
             SetPreviewActorStatus(meshes.Count == 0
                 ? $"The {game} Asset Database contains no skeletal meshes."
                 : $"{meshes.Count:N0} skeletal actor models available.");
@@ -186,22 +227,25 @@ public partial class CameraPresetDialog : Window
 
     private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox { SelectedItem: MeshRecord meshRecord } comboBox)
+        if (_updatingPreviewActorControls || _selectedPreviewActor is null
+            || sender is not ComboBox { SelectedItem: MeshRecord meshRecord })
         {
             return;
         }
 
-        if (!TryLoadPreviewActorModel(meshRecord, out string error))
+        int actorIndex = _previewActors.IndexOf(_selectedPreviewActor);
+        if (!TryLoadPreviewActorModel(actorIndex, meshRecord, out string error))
         {
             SetPreviewActorStatus(error);
             return;
         }
 
-        SetPreviewActorStatus($"Actor: {meshRecord.MeshName}");
+        _selectedPreviewActor.ModelName = meshRecord.MeshName;
+        SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName}: {meshRecord.MeshName}");
         RefreshLivePreview();
     }
 
-    private bool TryLoadPreviewActorModel(MeshRecord meshRecord, out string error)
+    private bool TryLoadPreviewActorModel(int actorIndex, MeshRecord meshRecord, out string error)
     {
         error = null;
         if (_package is null || _previewAssetDatabase is null)
@@ -246,7 +290,7 @@ public partial class CameraPresetDialog : Window
 
             try
             {
-                CameraPreviewControl.LoadActorModel(meshExport);
+                CameraPreviewControl.LoadActorModel(actorIndex, meshExport);
                 return true;
             }
             catch (Exception exception)
@@ -258,6 +302,404 @@ public partial class CameraPresetDialog : Window
 
         error = $"No installed package containing {meshRecord.MeshName} could be resolved.";
         return false;
+    }
+
+    private static string GetDefaultPreviewModelName(MEGame game) => game switch
+    {
+        MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
+        MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
+        _ => "QRN_ARM_TLIa_MDL"
+    };
+
+    private void InitializePreviewActorLayout()
+    {
+        PreviewActorListBox.ItemsSource = _previewActors;
+        string[] actorTags = _actorAnchorContext?.ActorTags?
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+        PreviewActorSingleTagComboBox.ItemsSource = actorTags;
+        PreviewActorPrimaryTagComboBox.ItemsSource = actorTags;
+        LoadPreviewActorLayout();
+    }
+
+    private void LoadPreviewActorLayout()
+    {
+        try
+        {
+            if (File.Exists(SavedPreviewActorsPath))
+            {
+                List<PreviewActorConfiguration> actors = JsonConvert.DeserializeObject<List<PreviewActorConfiguration>>(
+                    File.ReadAllText(SavedPreviewActorsPath));
+                if (actors is { Count: > 0 })
+                {
+                    foreach (PreviewActorConfiguration actor in actors)
+                    {
+                        actor.AnchorMode = Enum.IsDefined(actor.AnchorMode)
+                            ? actor.AnchorMode : CameraAnchorMode.ManualOrigin;
+                        actor.ModelName ??= GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown);
+                        _previewActors.Add(actor);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            SetPreviewActorStatus($"Saved actor layout could not be loaded: {exception.Message}");
+        }
+
+        if (_previewActors.Count == 0)
+        {
+            AddDefaultPreviewActor();
+            return;
+        }
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedIndex = 0;
+        UpdatePreviewActorTransforms();
+    }
+
+    private void SavePreviewActorLayout()
+    {
+        try
+        {
+            File.WriteAllText(SavedPreviewActorsPath,
+                JsonConvert.SerializeObject(_previewActors.ToList(), Formatting.Indented));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            SetPreviewActorStatus($"Actor layout could not be saved: {exception.Message}");
+        }
+    }
+
+    private void AddDefaultPreviewActor()
+    {
+        CameraOrigin origin = TryReadOrigin(out CameraOrigin cameraOrigin) ? cameraOrigin : default;
+        var actor = new PreviewActorConfiguration
+        {
+            AnchorMode = CameraAnchorMode.ManualOrigin,
+            ModelName = GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown),
+            Origin = origin
+        };
+        _previewActors.Add(actor);
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedItem = actor;
+    }
+
+    private void AddPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        AddDefaultPreviewActor();
+        LoadSelectedPreviewActorModel();
+        RefreshLivePreview();
+    }
+
+    private void RemovePreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPreviewActor is null || _previewActors.Count <= 1)
+        {
+            return;
+        }
+
+        int removedIndex = _previewActors.IndexOf(_selectedPreviewActor);
+        _previewActors.RemoveAt(removedIndex);
+        CameraPreviewControl.RemoveActorModel(removedIndex);
+        RenumberPreviewActors();
+        PreviewActorListBox.SelectedIndex = Math.Min(removedIndex, _previewActors.Count - 1);
+        RefreshLivePreview();
+    }
+
+    private void ClearPreviewActors_Click(object sender, RoutedEventArgs e)
+    {
+        _previewActors.Clear();
+        CameraPreviewControl.ClearActorModels();
+        AddDefaultPreviewActor();
+        LoadSelectedPreviewActorModel();
+        SetPreviewActorStatus("Preview actors reset to one Tali actor at the camera anchor.");
+        RefreshLivePreview();
+    }
+
+    private void RenumberPreviewActors()
+    {
+        for (int index = 0; index < _previewActors.Count; index++)
+        {
+            _previewActors[index].DisplayName = $"Actor {index + 1}";
+        }
+        PreviewActorListBox.Items.Refresh();
+        RemovePreviewActorButton.IsEnabled = _previewActors.Count > 1;
+        CameraPreviewControl.SetActorTransforms(_previewActors.Select(actor => actor.Origin).ToArray());
+    }
+
+    private void PreviewActorListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        _selectedPreviewActor = PreviewActorListBox.SelectedItem as PreviewActorConfiguration;
+        SynchronizePreviewActorControls();
+    }
+
+    private void PreviewActorListBox_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        int actorIndex = PreviewActorListBox.SelectedIndex;
+        if (actorIndex >= 0)
+        {
+            CameraPreviewControl.FocusActor(actorIndex);
+        }
+    }
+
+    private void SynchronizePreviewActorControls()
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return;
+        }
+
+        _updatingPreviewActorControls = true;
+        PreviewActorAnchorModeComboBox.SelectedIndex = (int)_selectedPreviewActor.AnchorMode;
+        PreviewActorSingleTagComboBox.Text = _selectedPreviewActor.SingleActorTag ?? string.Empty;
+        PreviewActorTagsTextBox.Text = _selectedPreviewActor.ActorTags ?? string.Empty;
+        PreviewActorPrimaryTagComboBox.Text = _selectedPreviewActor.PrimaryActorTag ?? string.Empty;
+        SetPreviewActorOriginFields(_selectedPreviewActor.Origin);
+        if (PreviewActorComboBox.ItemsSource is IEnumerable<MeshRecord> meshes)
+        {
+            PreviewActorComboBox.SelectedItem = meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName,
+                _selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
+        }
+        UpdatePreviewActorAnchorPanels();
+        _updatingPreviewActorControls = false;
+    }
+
+    private void PreviewActorAnchorMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingPreviewActorControls || _selectedPreviewActor is null)
+        {
+            return;
+        }
+        _selectedPreviewActor.AnchorMode = GetPreviewActorAnchorMode();
+        UpdatePreviewActorAnchorPanels();
+        ResolveSelectedPreviewActorAnchor(false);
+    }
+
+    private void ApplyPreviewActorOrigin_Click(object sender, RoutedEventArgs e)
+    {
+        if (ResolveSelectedPreviewActorAnchor(true))
+        {
+            _selectedPreviewActor.AnchorMode = CameraAnchorMode.ManualOrigin;
+            SynchronizePreviewActorControls();
+            SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName} actor origin applied for manual editing.");
+        }
+    }
+
+    private bool ResolveSelectedPreviewActorAnchor(bool showErrors)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return false;
+        }
+        if (_selectedPreviewActor.AnchorMode == CameraAnchorMode.ManualOrigin)
+        {
+            return true;
+        }
+        if (_actorAnchorContext is null)
+        {
+            if (showErrors)
+            {
+                MessageBox.Show("Actor anchor modes require a selected conversation node in the Dialogue Editor.",
+                    "Actor Anchor Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        string[] actorTags = _selectedPreviewActor.AnchorMode == CameraAnchorMode.SingleActor
+            ? string.IsNullOrWhiteSpace(_selectedPreviewActor.SingleActorTag)
+                ? [] : [_selectedPreviewActor.SingleActorTag.Trim()]
+            : (_selectedPreviewActor.ActorTags ?? string.Empty)
+                .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        int minimumActors = _selectedPreviewActor.AnchorMode == CameraAnchorMode.MultipleActors ? 2 : 1;
+        if (actorTags.Length < minimumActors)
+        {
+            if (showErrors)
+            {
+                MessageBox.Show(minimumActors == 2 ? "Enter at least two actor tags." : "Select or enter an actor tag.",
+                    "Actor Anchor Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        IReadOnlyList<ActorSceneStatePath> paths = CameraActorSceneStateResolver.ResolvePaths(_actorAnchorContext, actorTags);
+        ActorSceneStatePath[] completePaths = paths.Where(candidate =>
+            actorTags.All(candidate.ActorTransforms.ContainsKey)).ToArray();
+        ActorSceneStatePath path = SelectActorSceneStatePath(completePaths, actorTags, showErrors);
+        if (path is null)
+        {
+            if (showErrors && completePaths.Length == 0)
+            {
+                MessageBox.Show($"No matching actor transforms were found for: {string.Join(", ", actorTags)}.",
+                    "Actor Transform Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return false;
+        }
+
+        ActorAnchorResolution resolution = CameraActorAnchorResolver.Resolve(path, actorTags,
+            _selectedPreviewActor.PrimaryActorTag);
+        if (resolution is null)
+        {
+            return false;
+        }
+        _selectedPreviewActor.Origin = resolution.Origin;
+        _updatingPreviewActorControls = true;
+        SetPreviewActorOriginFields(resolution.Origin);
+        _updatingPreviewActorControls = false;
+        UpdatePreviewActorTransforms();
+        SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName} resolved from {resolution.Path.PathId}.");
+        return true;
+    }
+
+    private CameraAnchorMode GetPreviewActorAnchorMode() =>
+        PreviewActorAnchorModeComboBox.SelectedItem is ComboBoxItem { Tag: string tag }
+        && Enum.TryParse(tag, out CameraAnchorMode mode)
+            ? mode
+            : CameraAnchorMode.ManualOrigin;
+
+    private void UpdatePreviewActorAnchorPanels()
+    {
+        CameraAnchorMode mode = GetPreviewActorAnchorMode();
+        PreviewActorSingleAnchorPanel.Visibility = mode == CameraAnchorMode.SingleActor
+            ? Visibility.Visible : Visibility.Collapsed;
+        PreviewActorMultipleAnchorPanel.Visibility = mode == CameraAnchorMode.MultipleActors
+            ? Visibility.Visible : Visibility.Collapsed;
+        bool manual = mode == CameraAnchorMode.ManualOrigin;
+        foreach (TextBox textBox in GetPreviewActorTransformTextBoxes())
+        {
+            textBox.IsReadOnly = !manual;
+        }
+    }
+
+    private void PreviewActorAnchorValue_Changed(object sender, EventArgs e)
+    {
+        if (_updatingPreviewActorControls || _selectedPreviewActor is null)
+        {
+            return;
+        }
+        _selectedPreviewActor.SingleActorTag = PreviewActorSingleTagComboBox.Text.Trim();
+        _selectedPreviewActor.ActorTags = PreviewActorTagsTextBox.Text;
+        _selectedPreviewActor.PrimaryActorTag = PreviewActorPrimaryTagComboBox.Text.Trim();
+        ResolveSelectedPreviewActorAnchor(false);
+    }
+
+    private void PreviewActorTransform_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingPreviewActorControls || _selectedPreviewActor is null
+            || _selectedPreviewActor.AnchorMode != CameraAnchorMode.ManualOrigin
+            || !TryReadPreviewActorOrigin(out CameraOrigin origin))
+        {
+            return;
+        }
+        _selectedPreviewActor.Origin = origin;
+        UpdatePreviewActorTransforms();
+    }
+
+    private TextBox[] GetPreviewActorTransformTextBoxes() =>
+    [
+        PreviewActorXTextBox, PreviewActorYTextBox, PreviewActorZTextBox,
+        PreviewActorRollTextBox, PreviewActorPitchTextBox, PreviewActorYawTextBox
+    ];
+
+    private bool TryReadPreviewActorOrigin(out CameraOrigin origin)
+    {
+        origin = default;
+        if (!TryReadFloat(PreviewActorXTextBox, out float x)
+            || !TryReadFloat(PreviewActorYTextBox, out float y)
+            || !TryReadFloat(PreviewActorZTextBox, out float z)
+            || !TryReadFloat(PreviewActorRollTextBox, out float roll)
+            || !TryReadFloat(PreviewActorPitchTextBox, out float pitch)
+            || !TryReadFloat(PreviewActorYawTextBox, out float yaw))
+        {
+            return false;
+        }
+        origin = new CameraOrigin(new Vector3(x, y, z), new Vector3(roll, pitch, yaw));
+        return true;
+    }
+
+    private void SetPreviewActorOriginFields(CameraOrigin origin)
+    {
+        PreviewActorXTextBox.Text = Format(origin.Location.X);
+        PreviewActorYTextBox.Text = Format(origin.Location.Y);
+        PreviewActorZTextBox.Text = Format(origin.Location.Z);
+        PreviewActorRollTextBox.Text = Format(origin.Rotation.X);
+        PreviewActorPitchTextBox.Text = Format(origin.Rotation.Y);
+        PreviewActorYawTextBox.Text = Format(origin.Rotation.Z);
+    }
+
+    private void SetSelectedPreviewActorOrigin(CameraOrigin origin, bool useManualMode)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return;
+        }
+        _selectedPreviewActor.Origin = origin;
+        if (useManualMode)
+        {
+            _selectedPreviewActor.AnchorMode = CameraAnchorMode.ManualOrigin;
+        }
+        SynchronizePreviewActorControls();
+        UpdatePreviewActorTransforms();
+    }
+
+    private void UseCameraAnchorForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (TryResolveGenerationOrigin(true, out CameraOrigin origin))
+        {
+            SetSelectedPreviewActorOrigin(origin, true);
+        }
+    }
+
+    private void UseViewportLocationForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_getViewportOrigin?.Invoke() is CameraOrigin viewport)
+        {
+            CameraOrigin current = _selectedPreviewActor?.Origin ?? default;
+            SetSelectedPreviewActorOrigin(new CameraOrigin(viewport.Location, current.Rotation), true);
+        }
+    }
+
+    private void UseViewportTransformForPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_getViewportOrigin?.Invoke() is CameraOrigin viewport)
+        {
+            SetSelectedPreviewActorOrigin(viewport, true);
+        }
+    }
+
+    private void ResetPreviewActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            return;
+        }
+        CameraOrigin origin = TryResolveGenerationOrigin(false, out CameraOrigin resolved) ? resolved : default;
+        _selectedPreviewActor.ModelName = GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown);
+        SetSelectedPreviewActorOrigin(origin, true);
+        LoadSelectedPreviewActorModel();
+    }
+
+    private void LoadSelectedPreviewActorModel()
+    {
+        if (_selectedPreviewActor is null || PreviewActorComboBox.ItemsSource is not IEnumerable<MeshRecord> meshes)
+        {
+            return;
+        }
+        MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
+            _selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
+        if (mesh is not null)
+        {
+            TryLoadPreviewActorModel(_previewActors.IndexOf(_selectedPreviewActor), mesh, out _);
+        }
+    }
+
+    private void UpdatePreviewActorTransforms()
+    {
+        CameraPreviewControl.SetActorTransforms(_previewActors.Select(actor => actor.Origin).ToArray());
+        RefreshLivePreview();
     }
 
     private void SaveMulticamPreset_Click(object sender, RoutedEventArgs e)
@@ -499,6 +941,7 @@ public partial class CameraPresetDialog : Window
         {
             SaveDistanceScale(distanceScale);
         }
+        SavePreviewActorLayout();
 
         CameraPreviewControl.Dispose();
         base.OnClosed(e);
