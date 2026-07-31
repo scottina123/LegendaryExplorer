@@ -103,6 +103,8 @@ public partial class CameraPresetDialog : Window
     private bool _cameraOriginRotationDialDragging;
     private double _cameraOriginRotationDialAngleAccumulator;
     private double _cameraOriginRotationDialPreviousAngle;
+    private double _parameterScrubAccumulator;
+    private double _parameterScrubPreviousHorizontalChange;
 
     private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
     private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
@@ -1948,6 +1950,42 @@ public partial class CameraPresetDialog : Window
         {
             RefreshLivePreview();
         }
+    }
+
+    private void ParameterScrub_DragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+    {
+        _parameterScrubAccumulator = 0;
+        _parameterScrubPreviousHorizontalChange = 0;
+    }
+
+    private void ParameterScrub_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag } || !double.IsFinite(e.HorizontalChange))
+        {
+            return;
+        }
+
+        string[] parts = tag.Split('|');
+        if (parts.Length != 2 || FindName(parts[0]) is not TextBox textBox
+            || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float increment)
+            || !float.TryParse(textBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+        {
+            return;
+        }
+
+        double horizontalChange = e.HorizontalChange - _parameterScrubPreviousHorizontalChange;
+        _parameterScrubPreviousHorizontalChange = e.HorizontalChange;
+        _parameterScrubAccumulator += horizontalChange;
+        double dragStep = SystemParameters.MinimumHorizontalDragDistance;
+        int stepCount = (int)(_parameterScrubAccumulator / dragStep);
+        if (stepCount == 0)
+        {
+            return;
+        }
+
+        _parameterScrubAccumulator -= stepCount * dragStep;
+        textBox.Text = Format(value + stepCount * increment);
+        textBox.CaretIndex = textBox.Text.Length;
     }
 
     private void RefreshLivePreview()

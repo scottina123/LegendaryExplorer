@@ -15,6 +15,37 @@
             <Style x:Key="MulticamPresetListStyle" TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
                 <Setter Property="ItemTemplate" Value="{StaticResource MulticamPresetItemTemplate}"/>
             </Style>
+            <Style x:Key="ParameterScrubThumbStyle" TargetType="Thumb">
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="Cursor" Value="SizeWE"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Grid Background="Transparent">
+                                <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                        Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                        BorderThickness="1"/>
+                                <Ellipse x:Name="Ellipse" Width="14" Height="14" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                         Fill="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                                         Stroke="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                         StrokeThickness="1"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Ellipse" Property="Fill" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                </Trigger>
+                                <Trigger Property="IsDragging" Value="True">
+                                    <Setter TargetName="Ellipse" Property="Fill" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Ellipse" Property="Fill" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="820"/>
@@ -270,7 +301,7 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <TextBlock Text="Forward distance" Margin="3,6"/>
-                        <TextBox x:Name="ForwardDistanceTextBox" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Column="1" Margin="3"><TextBox x:Name="ForwardDistanceTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="ForwardDistanceTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=ForwardDistanceTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="1" Text="Distance scale (%)" Margin="3,6"/>
                         <Grid Grid.Row="1" Grid.Column="1" Margin="3">
                             <Grid.ColumnDefinitions>
@@ -288,19 +319,19 @@
                             <TextBlock Grid.Column="2" Text="%" VerticalAlignment="Center"/>
                         </Grid>
                         <TextBlock Grid.Row="2" Text="Side offset (local right)" Margin="3,6"/>
-                        <TextBox x:Name="SideOffsetTextBox" Grid.Row="2" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Margin="3"><TextBox x:Name="SideOffsetTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="SideOffsetTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=SideOffsetTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="3" Text="Height offset (local up)" Margin="3,6"/>
-                        <TextBox x:Name="HeightOffsetTextBox" Grid.Row="3" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="3"><TextBox x:Name="HeightOffsetTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="HeightOffsetTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=HeightOffsetTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="4" Text="Look-at height" Margin="3,6"/>
-                        <TextBox x:Name="LookAtHeightTextBox" Grid.Row="4" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="3"><TextBox x:Name="LookAtHeightTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="LookAtHeightTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=LookAtHeightTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="5" Text="Local roll (X)" Margin="3,6"/>
-                        <TextBox x:Name="LocalRollTextBox" Grid.Row="5" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" Margin="3"><TextBox x:Name="LocalRollTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="LocalRollTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=LocalRollTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="6" Text="Local pitch (Y)" Margin="3,6"/>
-                        <TextBox x:Name="LocalPitchTextBox" Grid.Row="6" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="6" Grid.Column="1" Margin="3"><TextBox x:Name="LocalPitchTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="LocalPitchTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=LocalPitchTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="7" Text="Local yaw (Z)" Margin="3,6"/>
-                        <TextBox x:Name="LocalYawTextBox" Grid.Row="7" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="7" Grid.Column="1" Margin="3"><TextBox x:Name="LocalYawTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="LocalYawTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=LocalYawTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="8" Text="Duration (seconds)" Margin="3,6"/>
-                        <TextBox x:Name="DurationTextBox" Grid.Row="8" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="8" Grid.Column="1" Margin="3"><TextBox x:Name="DurationTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="DurationTextBox|0.1" IsEnabled="{Binding IsEnabled, ElementName=DurationTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust by 0.1 seconds"/></StackPanel>
                         <TextBlock Grid.Row="9" Text="Movement speed" Margin="3,6"/>
                         <Grid Grid.Row="9" Grid.Column="1" Margin="3">
                             <Grid.ColumnDefinitions>
@@ -320,9 +351,9 @@
                         <TextBlock Grid.Row="10" Text="Generated key count" Margin="3,6"/>
                         <TextBox x:Name="KeyCountTextBox" Grid.Row="10" Grid.Column="1" Margin="3" Padding="4" IsReadOnly="True"/>
                         <TextBlock Grid.Row="11" Text="Movement amount" Margin="3,6"/>
-                        <TextBox x:Name="MovementAmountTextBox" Grid.Row="11" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="11" Grid.Column="1" Margin="3"><TextBox x:Name="MovementAmountTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="MovementAmountTextBox|1" IsEnabled="{Binding IsEnabled, ElementName=MovementAmountTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust"/></StackPanel>
                         <TextBlock Grid.Row="12" Text="Start time (seconds)" Margin="3,6"/>
-                        <TextBox x:Name="StartTimeTextBox" Grid.Row="12" Grid.Column="1" Margin="3" Padding="4"/>
+                        <StackPanel Grid.Row="12" Grid.Column="1" Margin="3"><TextBox x:Name="StartTimeTextBox" Padding="4"/><Thumb Style="{StaticResource ParameterScrubThumbStyle}" Tag="StartTimeTextBox|0.1" IsEnabled="{Binding IsEnabled, ElementName=StartTimeTextBox}" DragStarted="ParameterScrub_DragStarted" DragDelta="ParameterScrub_DragDelta" ToolTip="Drag horizontally to adjust by 0.1 seconds"/></StackPanel>
                     </Grid>
                 </ScrollViewer>
                 <ScrollViewer x:Name="MulticamDetailsPanel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
