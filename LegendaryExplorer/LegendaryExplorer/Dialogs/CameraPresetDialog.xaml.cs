@@ -1737,6 +1737,18 @@ public partial class CameraPresetDialog : Window
         }
     }
 
+    private void UseSelectedPreviewActorLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPreviewActor is null)
+        {
+            StatusTextBlock.Text = "Select a preview actor before using its location as the camera origin.";
+            return;
+        }
+
+        SetOrigin(_selectedPreviewActor.Origin);
+        StatusTextBlock.Text = $"Camera origin set to {_selectedPreviewActor.DisplayName}'s location and rotation.";
+    }
+
     private void CopyOrigin_Click(object sender, RoutedEventArgs e)
     {
         if (!TryReadOrigin(out CameraOrigin origin))

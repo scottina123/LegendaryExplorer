@@ -118,6 +118,7 @@
                     <Button x:Name="UseOtherTrackKeyButton" Content="Choose TrackMove Key from PCC" Click="UseOtherTrackKey_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseViewportLocationButton" Content="Use Current Viewport Camera Location" Click="UseViewportLocation_Click" Margin="3" Padding="8,4"/>
                     <Button x:Name="UseViewportTransformButton" Content="Use Current Viewport Camera Location and Rotation" Click="UseViewportTransform_Click" Margin="3" Padding="8,4"/>
+                    <Button Content="Use Selected Preview Actor Transform" Click="UseSelectedPreviewActorLocation_Click" Margin="3" Padding="8,4"/>
                     <Button Content="Copy Origin" Click="CopyOrigin_Click" Margin="3" Padding="8,4"/>
                     <Button Content="Paste Origin" Click="PasteOrigin_Click" Margin="3" Padding="8,4"/>
                     <Button Content="Reset Origin to Zero" Click="ResetOrigin_Click" Margin="3" Padding="8,4"/>
