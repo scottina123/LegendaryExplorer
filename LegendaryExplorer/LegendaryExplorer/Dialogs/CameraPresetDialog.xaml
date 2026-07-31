@@ -320,9 +320,25 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Expander Header="Preview Actors" IsExpanded="True" Margin="8">
+                <WrapPanel Margin="8,8,8,0">
+                    <Button Content="Open Level" Click="OpenPreviewLevel_Click" Padding="7,3" Margin="2"
+                            ToolTip="Replace the level backdrop"/>
+                    <Button Content="Add Level" Click="AddPreviewLevel_Click" Padding="7,3" Margin="2"
+                            ToolTip="Add another level file to the backdrop"/>
+                    <Button Content="Unload Level" Click="UnloadPreviewLevel_Click" Padding="7,3" Margin="2"
+                            ToolTip="Unload all level backdrop files"/>
+                    <Button x:Name="PreviewRecentLevelsButton" Content="Recent Levels" Click="PreviewRecentLevelsButton_Click"
+                            Padding="7,3" Margin="2" ToolTip="Open a recent level backdrop">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="PreviewRecentLevelsMenu" Opened="PreviewRecentLevelsMenu_Opened"/>
+                        </Button.ContextMenu>
+                    </Button>
+                    <TextBlock x:Name="PreviewLevelStatusTextBlock" Margin="8,0,0,0" VerticalAlignment="Center" Opacity="0.7"/>
+                </WrapPanel>
+                <Expander Grid.Row="1" Header="Preview Actors" IsExpanded="True" Margin="8">
                     <Grid MaxHeight="330">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -414,7 +430,7 @@
                         </StackPanel>
                     </Grid>
                 </Expander>
-                <local:CameraPresetPreview x:Name="CameraPreviewControl" Grid.Row="1"/>
+                <local:CameraPresetPreview x:Name="CameraPreviewControl" Grid.Row="2"/>
             </Grid>
         </Border>
     </Grid>

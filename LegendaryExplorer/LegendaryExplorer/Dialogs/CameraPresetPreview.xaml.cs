@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
@@ -9,13 +11,16 @@ using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
+using LegendaryExplorerCore.Unreal.ObjectInfo;
 
 namespace LegendaryExplorer.Dialogs;
 
-public partial class CameraPresetPreview : UserControl, IDisposable
+public partial class CameraPresetPreview : UserControl, IDisposable, IActorEditorContext
 {
     private readonly LevelEditorRenderContext _renderContext;
     private readonly List<ModelPreview<WorldVertex>> _actorModels = [];
+    private readonly List<IMEPackage> _levelPackages = [];
+    private readonly List<string> _levelPaths = [];
     private IReadOnlyList<CameraOrigin> _actorTransforms = [];
     private IReadOnlyList<GeneratedCameraKey> _keys = [];
     private InterpCurve<Vector3> _positionCurve;
@@ -33,6 +38,11 @@ public partial class CameraPresetPreview : UserControl, IDisposable
     private Action<GeneratedCameraKey> _activeCameraChanged;
     private string _activeMulticamGroupName;
 
+    public LevelEditorRenderContext RenderContext => _renderContext;
+    public bool IsApplyingUndoRedo => false;
+    public IReadOnlyList<string> LevelPaths => _levelPaths;
+    public MEGame LevelGame => _levelPackages.Count > 0 ? _levelPackages[0].Game : MEGame.Unknown;
+
     public CameraPresetPreview()
     {
         InitializeComponent();
@@ -44,6 +54,106 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _renderContext.RenderScene += RenderScene;
         _renderContext.UpdateScene += UpdateScene;
         SceneViewer.Context = _renderContext;
+    }
+
+    public async Task LoadLevelAsync(string path, bool replace)
+    {
+        if (replace)
+        {
+            UnloadLevels();
+        }
+
+        path = Path.GetFullPath(path);
+        if (_levelPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await Task.Delay(1).ConfigureAwait(true);
+        IMEPackage package = MEPackageHandler.OpenMEPackage(path);
+        try
+        {
+            ExportEntry levelExport = package.Exports.FirstOrDefault(export => export.ClassName == "Level");
+            if (levelExport is null)
+            {
+                throw new InvalidDataException($"{Path.GetFileName(path)} is not a level file.");
+            }
+
+            Level level = levelExport.GetBinaryData<Level>();
+            List<ActorProxy> actors = LoadLevelActors(level);
+            _levelPackages.Add(package);
+            _levelPaths.Add(path);
+            _renderContext.LoadActors(actors);
+            SceneViewer.SetShouldRender(true);
+            SceneViewer.MarkRenderDirty();
+        }
+        catch
+        {
+            package.Dispose();
+            throw;
+        }
+    }
+
+    private List<ActorProxy> LoadLevelActors(Level level)
+    {
+        var actors = new List<ActorProxy>();
+        IEnumerable<ExportEntry> actorExports = level.Actors
+            .Where(level.Export.FileRef.IsUExport)
+            .Select(level.Export.FileRef.GetUExport);
+        foreach (ExportEntry actorExport in actorExports)
+        {
+            if (actorExport.ClassName == "StaticMeshCollectionActor")
+            {
+                var collection = actorExport.GetBinaryData<StaticMeshCollectionActor>();
+                for (int index = 0; index < collection.Components.Count; index++)
+                {
+                    if (level.Export.FileRef.TryGetUExport(collection.Components[index], out ExportEntry component))
+                    {
+                        actors.Add(new StaticMeshComponentActorProxy(this, component, collection, index));
+                    }
+                }
+            }
+            else if (actorExport.ClassName == "StaticLightCollectionActor")
+            {
+                var collection = actorExport.GetBinaryData<StaticLightCollectionActor>();
+                for (int index = 0; index < collection.Components.Count; index++)
+                {
+                    if (!level.Export.FileRef.TryGetUExport(collection.Components[index], out ExportEntry lightExport))
+                    {
+                        continue;
+                    }
+
+                    ActorProxy light = GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "SpotLightComponent", lightExport.Game)
+                        ? new SpotLightComponentActorProxy(this, lightExport, collection, index)
+                        : GlobalUnrealObjectInfo.IsA(lightExport.ClassName, "DirectionalLightComponent", lightExport.Game)
+                            ? new DirectionalLightComponentActorProxy(this, lightExport, collection, index)
+                            : new PointLightComponentActorProxy(this, lightExport, collection, index);
+                    actors.Add(light);
+                }
+            }
+            else if (ActorProxy.Create(this, actorExport) is { } actor)
+            {
+                actors.Add(actor);
+            }
+        }
+
+        foreach (ActorProxy actor in actors)
+        {
+            actor.ResolveAttachment(actors);
+        }
+        return actors.OrderBy(actor => actor.Export.UIndex).ToList();
+    }
+
+    public void UnloadLevels()
+    {
+        _renderContext.UnloadLevel();
+        foreach (IMEPackage package in _levelPackages)
+        {
+            package.Dispose();
+        }
+        _levelPackages.Clear();
+        _levelPaths.Clear();
+        SceneViewer.MarkRenderDirty();
     }
 
     public void LoadActorModel(int actorIndex, ExportEntry skeletalMeshExport)
@@ -280,6 +390,13 @@ public partial class CameraPresetPreview : UserControl, IDisposable
 
     private void RenderScene(object sender, EventArgs e)
     {
+        foreach (RenderPass pass in new[] { RenderPass.Base, RenderPass.Hair })
+        {
+            foreach (ActorProxy actor in _renderContext.DrawList_3D)
+            {
+                actor.Render(_renderContext, pass);
+            }
+        }
         if (_multicamPreset is not null)
         {
             RenderActors();
@@ -329,6 +446,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable
         _renderContext.ForceContinuousRendering = false;
         _renderContext.RenderScene -= RenderScene;
         _renderContext.UpdateScene -= UpdateScene;
+        UnloadLevels();
         ClearActorModels();
         SceneViewer.Dispose();
     }

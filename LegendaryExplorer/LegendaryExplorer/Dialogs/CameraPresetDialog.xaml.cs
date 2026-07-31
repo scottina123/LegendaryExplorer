@@ -13,6 +13,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
+using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Matinee;
 using LegendaryExplorerCore.Packages;
@@ -26,6 +27,9 @@ namespace LegendaryExplorer.Dialogs;
 public partial class CameraPresetDialog : Window
 {
     private sealed record PresetSearchResult(CameraPreset Preset, string Name, string CategoryDisplay);
+
+    private static readonly object PreviewLevelPathsLock = new();
+    private static readonly List<string> PreviewLevelPaths = [];
 
     private sealed class PreviewActorConfiguration
     {
@@ -87,6 +91,9 @@ public partial class CameraPresetDialog : Window
     private bool _updatingPresetSelection;
 
     private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
+    private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
+    private ContextMenu PreviewRecentLevelsContextMenu => PreviewRecentLevelsButtonControl?.ContextMenu;
+    private TextBlock PreviewLevelStatus => FindName("PreviewLevelStatusTextBlock") as TextBlock;
 
     public IReadOnlyList<GeneratedCameraKey> GeneratedKeys { get; private set; }
     public float GeneratedStartTime { get; private set; }
@@ -153,6 +160,181 @@ public partial class CameraPresetDialog : Window
             CameraModeTabs.SelectedItem = SingleCamTab;
         }
         _ = InitializePreviewActorModelsAsync();
+        _ = RestorePreviewLevelsAsync();
+    }
+
+    private static string RecentLevelSetsFile => Path.Combine(
+        Directory.CreateDirectory(Path.Combine(AppDirectories.AppDataFolder, "LevelEditor")).FullName,
+        "RECENTSETS");
+
+    private async Task RestorePreviewLevelsAsync()
+    {
+        List<string> paths;
+        lock (PreviewLevelPathsLock)
+        {
+            paths = PreviewLevelPaths.Where(File.Exists).ToList();
+        }
+
+        foreach (string path in paths)
+        {
+            await LoadPreviewLevelAsync(path, replace: false, updateSession: false).ConfigureAwait(true);
+        }
+    }
+
+    private async void OpenPreviewLevel_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = AppDirectories.GetOpenPackageDialog();
+        if (DirectoryMemory.ShowDialog(dialog) == true)
+        {
+            await LoadPreviewLevelAsync(dialog.FileName, replace: true).ConfigureAwait(true);
+        }
+    }
+
+    private async void AddPreviewLevel_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = AppDirectories.GetOpenPackageDialog();
+        if (DirectoryMemory.ShowDialog(dialog) == true)
+        {
+            await LoadPreviewLevelAsync(dialog.FileName, replace: false).ConfigureAwait(true);
+        }
+    }
+
+    private void UnloadPreviewLevel_Click(object sender, RoutedEventArgs e)
+    {
+        CameraPreviewControl.UnloadLevels();
+        UpdatePreviewLevelSession();
+        UpdatePreviewLevelStatus();
+    }
+
+    private void PreviewRecentLevelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        PreviewRecentLevelsContextMenu.PlacementTarget = PreviewRecentLevelsButtonControl;
+        PreviewRecentLevelsContextMenu.IsOpen = true;
+    }
+
+    private void PreviewRecentLevelsMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        PreviewRecentLevelsContextMenu.Items.Clear();
+        List<RecentFileSet> recentSets = LoadRecentLevelSets();
+        if (recentSets.Count == 0)
+        {
+            PreviewRecentLevelsContextMenu.Items.Add(new MenuItem { Header = "No recent levels", IsEnabled = false });
+            return;
+        }
+
+        foreach (RecentFileSet set in recentSets)
+        {
+            var item = new MenuItem
+            {
+                Header = set.DisplayName.Replace("_", "__"),
+                ToolTip = set.TooltipText,
+                Tag = set
+            };
+            item.Click += PreviewRecentLevel_Click;
+            PreviewRecentLevelsContextMenu.Items.Add(item);
+        }
+    }
+
+    private async void PreviewRecentLevel_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: RecentFileSet set })
+        {
+            return;
+        }
+
+        List<string> paths = set.FilePaths.Where(File.Exists).ToList();
+        if (paths.Count == 0)
+        {
+            MessageBox.Show("None of the recent level files exist anymore.");
+            return;
+        }
+
+        for (int index = 0; index < paths.Count; index++)
+        {
+            await LoadPreviewLevelAsync(paths[index], replace: index == 0).ConfigureAwait(true);
+        }
+    }
+
+    private async Task LoadPreviewLevelAsync(string path, bool replace, bool updateSession = true)
+    {
+        PreviewLevelStatus.Text = $"Loading {Path.GetFileName(path)}...";
+        try
+        {
+            await CameraPreviewControl.LoadLevelAsync(path, replace).ConfigureAwait(true);
+            if (updateSession)
+            {
+                UpdatePreviewLevelSession();
+            }
+            RecordRecentLevelSet();
+            UpdatePreviewLevelStatus();
+        }
+        catch (Exception exception)
+        {
+            PreviewLevelStatus.Text = $"Failed to load {Path.GetFileName(path)}.";
+            MessageBox.Show($"Unable to open level file:\n{exception.Message}");
+        }
+    }
+
+    private void UpdatePreviewLevelSession()
+    {
+        lock (PreviewLevelPathsLock)
+        {
+            PreviewLevelPaths.Clear();
+            PreviewLevelPaths.AddRange(CameraPreviewControl.LevelPaths);
+        }
+    }
+
+    private void UpdatePreviewLevelStatus()
+    {
+        int count = CameraPreviewControl.LevelPaths.Count;
+        PreviewLevelStatus.Text = $"{count} level backdrop file(s).";
+    }
+
+    private static List<RecentFileSet> LoadRecentLevelSets()
+    {
+        if (!File.Exists(RecentLevelSetsFile))
+        {
+            return [];
+        }
+
+        try
+        {
+            List<RecentFileSet> sets = JsonConvert.DeserializeObject<List<RecentFileSet>>(
+                File.ReadAllText(RecentLevelSetsFile)) ?? [];
+            foreach (RecentFileSet set in sets)
+            {
+                set.FilePaths.RemoveAll(path => !File.Exists(path));
+                set.ReadOnlyFilePaths.RemoveAll(path => !File.Exists(path));
+            }
+            return sets.Where(set => set.FilePaths.Count > 0).ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private void RecordRecentLevelSet()
+    {
+        if (CameraPreviewControl.LevelPaths.Count == 0)
+        {
+            return;
+        }
+
+        List<RecentFileSet> sets = LoadRecentLevelSets();
+        sets.RemoveAll(set => set.FilePaths.Count > 0
+            && set.FilePaths[0].Equals(CameraPreviewControl.LevelPaths[0], StringComparison.OrdinalIgnoreCase));
+        sets.Insert(0, new RecentFileSet
+        {
+            Game = CameraPreviewControl.LevelGame,
+            FilePaths = [.. CameraPreviewControl.LevelPaths],
+            ReadOnlyFilePaths = []
+        });
+        if (sets.Count > 10)
+        {
+            sets.RemoveRange(10, sets.Count - 10);
+        }
+        File.WriteAllText(RecentLevelSetsFile, JsonConvert.SerializeObject(sets, Formatting.Indented));
     }
 
     private async Task InitializePreviewActorModelsAsync()
