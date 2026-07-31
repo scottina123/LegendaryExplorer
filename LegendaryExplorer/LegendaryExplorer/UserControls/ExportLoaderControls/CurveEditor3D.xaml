@@ -250,6 +250,9 @@
                                 </StackPanel>
                             </Grid>
                             <WrapPanel>
+                                <Button Content="Play Actor on Track" Click="PlayActor_Click" Loaded="PlayActorButton_Loaded"
+                                        IsEnabled="False" Padding="7,3" Margin="2"
+                                        ToolTip="Move the selected actor along this InterpTrackMove while leaving the viewport camera stationary"/>
                                 <Button Content="Use Selected Key" Click="UseSelectedKeyframeForPreviewActor_Click" Padding="7,3" Margin="2"/>
                                 <Button Content="Use Viewport Location" Click="UseViewportLocationForPreviewActor_Click" Padding="7,3" Margin="2"/>
                                 <Button Content="Use Viewport Transform" Click="UseViewportTransformForPreviewActor_Click" Padding="7,3" Margin="2"/>

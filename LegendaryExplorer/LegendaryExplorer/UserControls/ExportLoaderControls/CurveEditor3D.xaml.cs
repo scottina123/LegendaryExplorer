@@ -126,9 +126,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool eventsAttached;
     private bool hasSnappedInitialCamera;
     private bool isPlayingMove;
+    private bool isPlayingActor;
     private bool sessionLevelsRestored;
     private bool trajectorySamplesDirty;
     private Button playMoveButton;
+    private Button playActorButton;
+    private PreviewActorConfiguration playbackActor;
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
@@ -799,6 +802,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        if (isPlayingActor && ReferenceEquals(playbackActor, selectedPreviewActor))
+        {
+            StopPlayback();
+        }
+
         int removedIndex = previewActors.IndexOf(selectedPreviewActor);
         previewActors.RemoveAt(removedIndex);
         RemovePreviewActorModel(removedIndex);
@@ -809,6 +817,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ClearPreviewActors_Click(object sender, RoutedEventArgs e)
     {
+        if (isPlayingActor)
+        {
+            StopPlayback();
+        }
         previewActors.Clear();
         ClearPreviewActorModels();
         RenumberPreviewActors();
@@ -1790,12 +1802,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         UpdatePlaybackButton();
     }
 
+    private void PlayActorButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        playActorButton = (Button)sender;
+        UpdatePlaybackButton();
+    }
+
     private void PlayMove_Click(object sender, RoutedEventArgs e)
     {
         if (isPlayingMove)
         {
+            bool wasPlayingCamera = !isPlayingActor;
             StopPlayback();
-            return;
+            if (wasPlayingCamera)
+            {
+                return;
+            }
         }
 
         if (model.Keyframes.Count == 0)
@@ -1817,9 +1839,52 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RenderContext.TransformWidget.Attach = null;
         playbackElapsed = 0f;
+        isPlayingActor = false;
+        playbackActor = null;
         isPlayingMove = true;
         RenderContext.ForceContinuousRendering = true;
         ApplyCameraAtTime(playbackStartTime);
+        SceneViewer.Focus();
+    }
+
+    private void PlayActor_Click(object sender, RoutedEventArgs e)
+    {
+        if (isPlayingMove)
+        {
+            bool wasPlayingActor = isPlayingActor;
+            StopPlayback();
+            if (wasPlayingActor)
+            {
+                return;
+            }
+        }
+
+        if (selectedPreviewActor is null || model.Keyframes.Count == 0)
+        {
+            return;
+        }
+
+        playbackStartTime = model.Keyframes[0].Time;
+        playbackEndTime = model.Keyframes[^1].Time;
+        playbackActor = selectedPreviewActor;
+        if (playbackEndTime <= playbackStartTime)
+        {
+            ApplyActorAtTime(playbackStartTime);
+            SavePreviewActorLayout();
+            playbackActor = null;
+            return;
+        }
+
+        if (playActorButton is not null)
+        {
+            playActorButton.Content = "Stop Actor";
+        }
+        RenderContext.TransformWidget.Attach = null;
+        playbackElapsed = 0f;
+        isPlayingActor = true;
+        isPlayingMove = true;
+        RenderContext.ForceContinuousRendering = true;
+        ApplyActorAtTime(playbackStartTime);
         SceneViewer.Focus();
     }
 
@@ -1834,12 +1899,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         float time = playbackStartTime + playbackElapsed;
         if (time >= playbackEndTime)
         {
-            ApplyCameraAtTime(playbackEndTime);
+            ApplyPlaybackAtTime(playbackEndTime);
             StopPlayback();
             return;
         }
 
-        ApplyCameraAtTime(time);
+        ApplyPlaybackAtTime(time);
+    }
+
+    private void ApplyPlaybackAtTime(float time)
+    {
+        if (isPlayingActor)
+        {
+            ApplyActorAtTime(time);
+        }
+        else
+        {
+            ApplyCameraAtTime(time);
+        }
     }
 
     private void ApplyCameraAtTime(float time)
@@ -1856,6 +1933,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         SceneStatus = $"Playing camera at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         UpdateCameraPositionText();
         UpdateCameraRotationText();
+        SceneViewer.MarkRenderDirty();
+    }
+
+    private void ApplyActorAtTime(float time)
+    {
+        if (playbackActor is null)
+        {
+            return;
+        }
+
+        Vector3 location = model.PositionTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        Vector3 rotation = model.RotationTrack?.Eval(time, Vector3.Zero) ?? Vector3.Zero;
+        playbackActor.Origin = new CameraOrigin(location, rotation);
+        if (ReferenceEquals(selectedPreviewActor, playbackActor))
+        {
+            updatingPreviewActorControls = true;
+            SetPreviewActorOriginFields(playbackActor.Origin);
+            UpdatePreviewActorRotationDialIndicator();
+            updatingPreviewActorControls = false;
+        }
+        PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
+        SceneStatus = $"Playing {playbackActor.DisplayName} at InVal {time:0.###} / {playbackEndTime:0.###}; {levelPaths.Count} level backdrop file(s).";
         SceneViewer.MarkRenderDirty();
     }
 
@@ -1890,12 +1989,27 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         isPlayingMove = false;
+        bool stoppedActorPlayback = isPlayingActor;
+        isPlayingActor = false;
         playbackElapsed = 0f;
         PlaybackKeyframeStatus = "Not playing";
         RenderContext.ForceContinuousRendering = false;
         if (playMoveButton is not null)
         {
             playMoveButton.Content = "Play";
+        }
+        if (playActorButton is not null)
+        {
+            playActorButton.Content = "Play Actor on Track";
+        }
+        if (stoppedActorPlayback && playbackActor is not null)
+        {
+            SavePreviewActorLayout();
+        }
+        playbackActor = null;
+        if (previewActorWidgetActive && selectedPreviewActor is not null)
+        {
+            previewActorWidgetTarget.SetTransform(selectedPreviewActor.Origin);
         }
         RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
         if (restoreStatus)
@@ -1907,15 +2021,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void UpdatePlaybackButton()
     {
-        if (playMoveButton is null)
+        if (playMoveButton is not null)
         {
-            return;
+            playMoveButton.IsEnabled = model.Keyframes.Count > 0;
+            if (!isPlayingMove)
+            {
+                playMoveButton.Content = "Play";
+            }
         }
-
-        playMoveButton.IsEnabled = model.Keyframes.Count > 0;
-        if (!isPlayingMove)
+        if (playActorButton is not null)
         {
-            playMoveButton.Content = "Play";
+            playActorButton.IsEnabled = model.Keyframes.Count > 0 && selectedPreviewActor is not null;
+            if (!isPlayingMove)
+            {
+                playActorButton.Content = "Play Actor on Track";
+            }
         }
     }
 
@@ -2403,6 +2523,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         selectedPreviewActor = PreviewActorListBox.SelectedItem as PreviewActorConfiguration;
         SynchronizePreviewActorControls();
         SelectPreviewActor(PreviewActorListBox.SelectedIndex);
+        UpdatePlaybackButton();
     }
 
     private void PreviewActorListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -2421,7 +2542,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         previewActorWidgetTarget.SetTransform(previewActors[actorIndex].Origin);
         previewActorWidgetActive = true;
-        RenderContext.TransformWidget.Attach = previewActorWidgetTarget;
+        RenderContext.TransformWidget.Attach = isPlayingMove ? null : previewActorWidgetTarget;
         SceneViewer.MarkRenderDirty();
     }
 
