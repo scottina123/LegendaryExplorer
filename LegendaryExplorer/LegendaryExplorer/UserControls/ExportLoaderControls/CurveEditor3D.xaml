@@ -210,6 +210,19 @@
                                           SelectionChanged="PreviewActorGesture_SelectionChanged"
                                           ToolTip="Session-only gesture assignment for actor-on-track playback"/>
                             </Grid>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Track" VerticalAlignment="Center"/>
+                                <DockPanel Grid.Column="1">
+                                    <Button x:Name="PreviewActorTrackMoveButton" DockPanel.Dock="Right" Content="Attach..."
+                                            Click="PreviewActorTrackMove_Click" Padding="7,3" Margin="4,0,0,0"/>
+                                    <TextBlock x:Name="PreviewActorTrackMoveTextBlock" VerticalAlignment="Center"
+                                               TextWrapping="Wrap" ToolTip="TrackMove used for actor playback"/>
+                                </DockPanel>
+                            </Grid>
                             <UniformGrid Columns="3" Margin="0,0,0,4">
                                 <StackPanel Margin="2"><TextBlock Text="Origin X"/><TextBox x:Name="PreviewActorXTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
                                 <StackPanel Margin="2"><TextBlock Text="Origin Y"/><TextBox x:Name="PreviewActorYTextBox" Padding="3" TextChanged="PreviewActorTransform_TextChanged"/></StackPanel>
@@ -264,7 +277,7 @@
                                 </StackPanel>
                             </Grid>
                             <WrapPanel>
-                                <Button Content="Play Actor on Track" Click="PlayActor_Click" Loaded="PlayActorButton_Loaded"
+                                <Button Content="Play Actors on Tracks" Click="PlayActor_Click" Loaded="PlayActorButton_Loaded"
                                         IsEnabled="False" Padding="7,3" Margin="2"
                                         ToolTip="Move the selected actor along this InterpTrackMove while leaving the viewport camera stationary"/>
                                 <Button Content="Use Selected Key" Click="UseSelectedKeyframeForPreviewActor_Click" Padding="7,3" Margin="2"/>
@@ -318,7 +331,7 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding TrackMove.InstancedFullPath}"/>
+                                <TextBlock Text="{Binding TabDisplayName}" ToolTip="{Binding TrackMove.InstancedFullPath}"/>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
