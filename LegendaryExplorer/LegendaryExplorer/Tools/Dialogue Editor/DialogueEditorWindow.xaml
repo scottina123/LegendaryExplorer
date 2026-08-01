@@ -18,6 +18,7 @@
         mc:Ignorable="d"
         Loaded="DialogueEditorWPF_Loaded"
         Closing="DialogueEditorWPF_Closing"
+        PreviewMouseDown="DialogueEditorWPF_PreviewMouseDown"
         Icon="pack://application:,,,/Tools/Icons/16x16/DialogueEditor_Icon_16.ico"
         Title="Dialogue Editor" Height="750" Width="1300" MinWidth="900" MinHeight="300"
         DataContext="{Binding RelativeSource={RelativeSource Self}}">
@@ -543,19 +544,33 @@
                           ToolTip="Add every non-trash export in the current package to an ObjectReferencer"
                           Click="AddAllToReferencer_MenuItem_Click"
                           ContextMenu="{StaticResource addAllToReferencerContextMenu}" />
-                <MenuItem HorizontalAlignment="Right" Style="{StaticResource GotoBoxHostMenuItemStyle}">
+                <MenuItem HorizontalAlignment="Right" Style="{StaticResource GotoBoxHostMenuItemStyle}"
+                          Visibility="{Binding SelectedConv, Converter={StaticResource NullVisibilityConverter}}">
                     <MenuItem.Header>
-                        <ComboBox Name="GotoBox" Text="Go to: (Ctrl+G)" ItemsSource="{Binding CurrentObjects}"
-                                  DisplayMemberPath="ListName" IsEditable="True" Width="320"
-                                  SelectionChanged="GotoBox_SelectionChanged" ToolTip="Pick a Node to go to"
-                                  IsEnabled="true" HorizontalAlignment="Right" HorizontalContentAlignment="Left"
-                                  Visibility="{Binding SelectedConv, Converter={StaticResource NullVisibilityConverter}}">
-                            <ComboBox.ItemContainerStyle>
-                                <Style TargetType="ComboBoxItem">
-                                    <Setter Property="Width" Value="300" />
-                                </Style>
-                            </ComboBox.ItemContainerStyle>
-                        </ComboBox>
+                        <Grid>
+                            <Button Name="GotoButton" Content="Go to: (Ctrl+G)" Width="320"
+                                    HorizontalContentAlignment="Left" Click="GotoButton_Click"
+                                    ToolTip="Search for a node to go to" />
+                            <Popup Name="GotoPopup" PlacementTarget="{Binding ElementName=GotoButton}"
+                                   Placement="Bottom" StaysOpen="False" Opened="GotoPopup_Opened">
+                                <Border Width="320" MaxHeight="500" Padding="6"
+                                        Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                        BorderThickness="1">
+                                    <DockPanel>
+                                        <TextBox Name="GotoSearchBox" DockPanel.Dock="Top" Margin="0,0,0,6"
+                                                 TextChanged="GotoSearchBox_TextChanged"
+                                                 KeyDown="GotoSearchBox_KeyDown"
+                                                 ToolTip="Filter nodes" />
+                                        <ListBox Name="GotoList" ItemsSource="{Binding CurrentObjects}"
+                                                 DisplayMemberPath="ListName"
+                                                 SelectionChanged="GotoList_SelectionChanged"
+                                                 KeyDown="GotoList_KeyDown"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                                    </DockPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
                     </MenuItem.Header>
                 </MenuItem>
             </Menu>

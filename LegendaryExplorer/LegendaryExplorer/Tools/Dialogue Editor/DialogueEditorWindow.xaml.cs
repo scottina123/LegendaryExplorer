@@ -62,6 +62,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using static LegendaryExplorer.Tools.TlkManagerNS.TLKManagerWPF;
@@ -12283,20 +12284,90 @@ namespace LegendaryExplorer.DialogueEditor
             graphEditor.AllowDragging();
             Focus(); //this will make window bindings work, as context menu is not part of the visual tree, and focus will be on there if the user clicked it.
         }
-        private void GotoBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void GotoButton_Click(object sender, RoutedEventArgs e)
         {
-            if (e.AddedItems != e.RemovedItems)
+            GotoPopup.IsOpen = !GotoPopup.IsOpen;
+        }
+
+        private void DialogueEditorWPF_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (GotoPopup.IsOpen && !GotoButton.IsMouseOver)
             {
-                if (GotoBox.SelectedItem is DiagNode dnode)
-                {
-                    DialogueNode_Selected(dnode);
-                }
-                if (GotoBox.SelectedItem is DObj o)
-                {
-                    graphEditor.Camera.AnimateViewToCenterBounds(o.GlobalFullBounds, false, 100);
-                    graphEditor.Refresh();
-                }
+                GotoPopup.IsOpen = false;
             }
+        }
+
+        private void GotoPopup_Opened(object sender, EventArgs e)
+        {
+            GotoSearchBox.Clear();
+            GotoList.SelectedItem = null;
+            GotoSearchBox.Focus();
+        }
+
+        private void GotoSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ICollectionView view = CollectionViewSource.GetDefaultView(GotoList.ItemsSource);
+            string searchText = GotoSearchBox.Text;
+            view.Filter = item => string.IsNullOrWhiteSpace(searchText)
+                                  || item is DObj obj
+                                  && obj.ListName.Contains(searchText, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private void GotoSearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                GotoPopup.IsOpen = false;
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Down && GotoList.Items.Count > 0)
+            {
+                GotoList.SelectedIndex = 0;
+                GotoList.Focus();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && GotoList.Items.Count > 0)
+            {
+                GoToObject(GotoList.SelectedItem ?? GotoList.Items[0]);
+                e.Handled = true;
+            }
+        }
+
+        private void GotoList_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                GotoPopup.IsOpen = false;
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && GotoList.SelectedItem != null)
+            {
+                GoToObject(GotoList.SelectedItem);
+                e.Handled = true;
+            }
+        }
+
+        private void GotoList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (GotoList.SelectedItem != null)
+            {
+                GoToObject(GotoList.SelectedItem);
+            }
+        }
+
+        private void GoToObject(object selectedItem)
+        {
+            if (selectedItem is DiagNode dnode)
+            {
+                DialogueNode_Selected(dnode);
+            }
+            if (selectedItem is DObj o)
+            {
+                graphEditor.Camera.AnimateViewToCenterBounds(o.GlobalFullBounds, false, 100);
+                graphEditor.Refresh();
+            }
+
+            GotoPopup.IsOpen = false;
         }
         private void UpdateLayoutDefaults(object obj)
         {
@@ -12942,15 +13013,7 @@ namespace LegendaryExplorer.DialogueEditor
         }
         private void GoToBoxOpen()
         {
-            if (!GotoBox.IsDropDownOpen)
-            {
-                GotoBox.IsDropDownOpen = true;
-                Keyboard.Focus(GotoBox);
-            }
-            else
-            {
-                GotoBox.IsDropDownOpen = false;
-            }
+            GotoPopup.IsOpen = !GotoPopup.IsOpen;
         }
         private static void LoadTLKManager()
         {
