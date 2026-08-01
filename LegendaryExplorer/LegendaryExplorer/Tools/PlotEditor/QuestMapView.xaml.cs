@@ -29,6 +29,20 @@ namespace LegendaryExplorer.Tools.PlotEditor
             MoveQuestGoalDownCommand = new GenericCommand(MoveQuestGoalDown, CanMoveQuestGoalDown);
 			InitializeComponent();
             SetFromQuestMap(new BioQuestMap(), MEGame.Unknown);
+		}
+
+        private void FindTlkString_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            int? selectedStringRef = CodexMapView.package != null
+                ? TlkStringRefSelector.SelectStringRef(System.Windows.Window.GetWindow(this), CodexMapView.package)
+                : TlkStringRefSelector.SelectStringRef(System.Windows.Window.GetWindow(this), _currentGame);
+
+            if (selectedStringRef is int stringRef
+                && sender is System.Windows.Controls.Button { Tag: Xceed.Wpf.Toolkit.IntegerUpDown editor })
+            {
+                editor.Value = stringRef;
+                editor.Text = stringRef.ToString();
+            }
         }
 
         private ObservableCollection<KeyValuePair<int, BioQuest>> _quests;

@@ -248,16 +248,22 @@
                     IsEnabled="{Binding IsSelectedCodexSectionEditable}" />
 
                 <Label Content="Title:" Grid.Column="0" Grid.Row="1" />
-                <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1" Margin="0,5"
-                    Value="{Binding Path=SelectedCodexSection.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"
-                    IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal">
+                    <xctk:IntegerUpDown x:Name="CodexSectionTitleTlk" Margin="0,5"
+                        Value="{Binding Path=SelectedCodexSection.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"
+                        IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                    <Button Margin="5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=CodexSectionTitleTlk}" ToolTip="Find a StringRef by text in the loaded TLKs" IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                </StackPanel>
                 <TextBox Name="txt_cdxSecTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          VerticalAlignment="Center" Margin="10,5" Padding="3,3" HorizontalContentAlignment="Left"/>
 
                 <Label Content="Description:" Grid.Column="0" Grid.Row="2" />
-                <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2" Margin="0,5"
-                    Value="{Binding Path=SelectedCodexSection.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"
-                    IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                <StackPanel Grid.Column="1" Grid.Row="2" Orientation="Horizontal">
+                    <xctk:IntegerUpDown x:Name="CodexSectionDescriptionTlk" Margin="0,5"
+                        Value="{Binding Path=SelectedCodexSection.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"
+                        IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                    <Button Margin="5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=CodexSectionDescriptionTlk}" ToolTip="Find a StringRef by text in the loaded TLKs" IsEnabled="{Binding IsSelectedCodexSectionEditable}"/>
+                </StackPanel>
                 <TextBox Name="txt_cdxSecDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          Grid.RowSpan="5" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" MaxLines="8" Padding="3,3" Margin="10,5"
                          HorizontalContentAlignment="Left" VerticalScrollBarVisibility="Auto"/>
@@ -315,14 +321,20 @@
                     Text="{Binding Path=SelectedCodexPage.Value.InstanceVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" />
 
                 <Label Content="Title:" Grid.Column="0" Grid.Row="1" />
-                <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1" Margin="0,5"
-                    Value="{Binding Path=SelectedCodexPage.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
+                <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal">
+                    <xctk:IntegerUpDown x:Name="CodexPageTitleTlk" Margin="0,5"
+                        Value="{Binding Path=SelectedCodexPage.Value.Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
+                    <Button Margin="5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=CodexPageTitleTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                </StackPanel>
                 <TextBox Name="txt_cdxPgeTitle" Grid.Column="2" Grid.Row="1" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          VerticalAlignment="Center" Padding="3,3" Margin="10,5" HorizontalContentAlignment="Left"/>
 
                 <Label Content="Description:" Grid.Column="0" Grid.Row="2" />
-                <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2" Margin="0,5"
-                    Value="{Binding Path=SelectedCodexPage.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
+                <StackPanel Grid.Column="1" Grid.Row="2" Orientation="Horizontal">
+                    <xctk:IntegerUpDown x:Name="CodexPageDescriptionTlk" Margin="0,5"
+                        Value="{Binding Path=SelectedCodexPage.Value.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" ValueChanged="txt_ValueChanged"/>
+                    <Button Margin="5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=CodexPageDescriptionTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                </StackPanel>
                 <TextBox Name="txt_cdxPgeDesc" Grid.Column="2" Grid.Row="2" IsReadOnly="True" Style="{StaticResource ResolvedCodexTextBoxStyle}"
                          Grid.RowSpan="3" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"
                          HorizontalContentAlignment="Left" VerticalScrollBarVisibility="Auto"/>

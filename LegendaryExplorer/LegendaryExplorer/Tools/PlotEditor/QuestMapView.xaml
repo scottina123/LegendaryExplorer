@@ -204,9 +204,12 @@
                                         <Label Grid.Column="0" Grid.Row="1" Content="Name"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1"
-											Text="{Binding Path=SelectedQuestGoal.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                        <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestGoalNameTlk"
+											    Text="{Binding Path=SelectedQuestGoal.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestGoalNameTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
                                         <TextBox Name="txt_goalName" Grid.Column="2" Grid.Row="1" Text="Name String" IsReadOnly="True"
                                                  TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Center" Padding="3,3" Margin="10,5"/>
 
@@ -214,9 +217,12 @@
                                         <Label Grid.Column="0" Grid.Row="2" Content="Description"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="2"
-											Text="{Binding Path=SelectedQuestGoal.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                        <StackPanel Grid.Column="1" Grid.Row="2" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestGoalDescriptionTlk"
+											    Text="{Binding Path=SelectedQuestGoal.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestGoalDescriptionTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
                                         <TextBox Name="txt_goalDesc" Grid.Column="2" Grid.Row="2" Text="Description String" IsReadOnly="True" MaxLines="5"
                                                  VerticalScrollBarVisibility="Auto"
                                                  Grid.RowSpan="5" TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"/>
@@ -336,9 +342,12 @@
 										<Label Grid.Column="0" Grid.Row="2" Content="Name"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-										<xctk:IntegerUpDown Grid.Column="1" Grid.Row="2"
-											Text="{Binding Path=SelectedQuestPlotItem.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged" />
+										<StackPanel Grid.Column="1" Grid.Row="2" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestPlotItemNameTlk"
+											    Text="{Binding Path=SelectedQuestPlotItem.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="100" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged" />
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestPlotItemNameTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
 
                                         <TextBox Name="txt_PlotitmDesc" Grid.Column="2" Grid.Row="2" Text="Description String" IsReadOnly="True"
                                                  TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Center" Padding="3,3" Margin="10,5"/>
@@ -441,9 +450,12 @@
                                         <Label Grid.Column="0" Grid.Row="0" Content="Name"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="0"
-											Text="{Binding Path=SelectedQuestTask.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                        <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestTaskNameTlk"
+											    Text="{Binding Path=SelectedQuestTask.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestTaskNameTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
                                         <TextBox Name="txt_taskName" Grid.Column="2" Grid.Row="0" Text="Name String" IsReadOnly="True"
                                                  TextAlignment="Left" VerticalAlignment="Center" Padding="3,3" Margin="10,5"/>
 
@@ -451,9 +463,12 @@
                                         <Label Grid.Column="0" Grid.Row="1" Content="Description"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-                                        <xctk:IntegerUpDown Grid.Column="1" Grid.Row="1"
-											Text="{Binding Path=SelectedQuestTask.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                        <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestTaskDescriptionTlk"
+											    Text="{Binding Path=SelectedQuestTask.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" ValueChanged="txt_ValueChanged"/>
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestTaskDescriptionTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
 
                                         <TextBox Name="txt_taskDesc" Grid.Column="2" Grid.Row="1" Grid.RowSpan="3" Text="Description String" IsReadOnly="True"
                                                  TextAlignment="Left" TextWrapping="Wrap" VerticalAlignment="Top" Padding="3,3" Margin="10,5"/>
@@ -462,9 +477,12 @@
 										<Label Grid.Column="0" Grid.Row="2" Content="Planet Name"
 											Margin="0,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
 
-										<xctk:IntegerUpDown Grid.Column="1" Grid.Row="2"
-											Text="{Binding Path=SelectedQuestTask.PlanetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-											Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
+										<StackPanel Grid.Column="1" Grid.Row="2" Orientation="Horizontal">
+                                            <xctk:IntegerUpDown x:Name="QuestTaskPlanetNameTlk"
+											    Text="{Binding Path=SelectedQuestTask.PlanetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+											    Width="150" Margin="5,5" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                            <Button Margin="0,5" Padding="5,0" Content="..." Click="FindTlkString_Click" Tag="{Binding ElementName=QuestTaskPlanetNameTlk}" ToolTip="Find a StringRef by text in the loaded TLKs"/>
+                                        </StackPanel>
 
 										<!-- Task Plot Item Indices -->
 										<Label Grid.Column="0" Grid.Row="3" Content="Plot Item Indices"

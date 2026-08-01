@@ -55,6 +55,16 @@ namespace LegendaryExplorer.Tools.PlotEditor
             InitializeComponent();
             Unloaded += CodexMapView_Unloaded;
             SetFromCodexMap(new BioCodexMap());
+		}
+
+        private void FindTlkString_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Button { Tag: Xceed.Wpf.Toolkit.IntegerUpDown editor }
+                && TlkStringRefSelector.SelectStringRef(Window.GetWindow(this), package) is int stringRef)
+            {
+                editor.Value = stringRef;
+                editor.Text = stringRef.ToString();
+            }
         }
 
         private ObservableCollection<KeyValuePair<int, BioCodexPage>> _codexPages;
