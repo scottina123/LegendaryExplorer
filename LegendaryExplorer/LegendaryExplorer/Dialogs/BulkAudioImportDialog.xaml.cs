@@ -169,6 +169,11 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
+        private void RadioEffectCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            VolumeTextBox.Text = RadioEffectCheckBox.IsChecked == true ? "0" : "-10";
+        }
+
         private void RemoveSelectedButton_Click(object sender, RoutedEventArgs e)
         {
             var selectedItems = WavFilesListBox.SelectedItems.Cast<string>().ToList();

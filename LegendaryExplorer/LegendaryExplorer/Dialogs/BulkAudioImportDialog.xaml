@@ -55,6 +55,7 @@
                           Content="Loop imported audio infinitely" ToolTip="When checked, each Sound node will have looping enabled with an infinite loop count."/>
                 <Label Grid.Row="6" Grid.Column="0" Content="Radio Effect:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="6" Grid.Column="1" x:Name="RadioEffectCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
+                          Checked="RadioEffectCheckBox_CheckedChanged" Unchecked="RadioEffectCheckBox_CheckedChanged"
                           Content="Apply Dual_Filters_Radio_Comm effect" ToolTip="When checked, applies the Wwise Parametric EQ radio communication filter to the ActorMixer, simulating audio heard through a radio."/>
                 <Label Grid.Row="7" Grid.Column="0" x:Name="CreateFaceFXAssetsLabel" Content="FaceFX Assets:" VerticalAlignment="Center"/>
                 <CheckBox Grid.Row="7" Grid.Column="1" x:Name="CreateFaceFXAssetsCheckBox" IsChecked="False" VerticalAlignment="Center" Margin="5,4"
