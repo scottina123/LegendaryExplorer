@@ -4672,6 +4672,13 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     }
                 }
 
+                if (contextMenu.GetChild("cameraPresetsMenuItem") is MenuItem cameraPresetsMenuItem)
+                {
+                    cameraPresetsMenuItem.Visibility = TryResolveInterpData(obj, out _)
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
+
                 if (contextMenu.GetChild("plotEditorMenuItem") is MenuItem plotEditorMenuItem)
                 {
                     if (obj is SAction sAction &&
@@ -4937,6 +4944,31 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 graphEditor.DisableDragging();
             }
         }
+
+        private bool TryResolveInterpData(SObj obj, out ExportEntry interpData)
+        {
+            interpData = null;
+            if (obj?.Export?.ClassName == "InterpData")
+            {
+                interpData = obj.Export;
+                return true;
+            }
+
+            if (obj is not SAction { Export.ClassName: "SeqAct_Interp" } action
+                || action.Varlinks.Count == 0
+                || action.Varlinks[0].Links.Count == 0
+                || !Pcc.TryGetUExport(action.Varlinks[0].Links[0], out ExportEntry linkedExport)
+                || linkedExport.ClassName != "InterpData")
+            {
+                return false;
+            }
+
+            interpData = linkedExport;
+            return true;
+        }
+
+        private bool TryGetSelectedInterpData(out ExportEntry interpData) =>
+            TryResolveInterpData(CurrentObjects_ListBox.SelectedItem as SObj, out interpData);
 
         private bool IsCopiedConnectionsFromCurrentPackage(string sourceFilePath)
         {
@@ -6225,6 +6257,74 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                     dialog.ShowDialog();
                 }
             }
+        }
+
+        private void ApplySingleCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetSelectedInterpData(out ExportEntry interpData))
+            {
+                return;
+            }
+
+            ExportEntry group = SelectCameraGroup(interpData, "Choose the group whose camera track should be modified:",
+                "Apply Single-Camera Preset");
+            if (group is not null && CameraPresetDialog.GenerateForGroup(this, group))
+            {
+                RefreshInterpDataTreePreserveState(group.UIndex);
+            }
+        }
+
+        private void ApplyMulticamCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (TryGetSelectedInterpData(out ExportEntry interpData)
+                && CameraPresetDialog.GenerateForInterpData(this, interpData))
+            {
+                RefreshInterpDataTreePreserveState(interpData.UIndex);
+            }
+        }
+
+        private void SaveSingleCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetSelectedInterpData(out ExportEntry interpData))
+            {
+                return;
+            }
+
+            ExportEntry group = SelectCameraGroup(interpData, "Choose the group whose camera track should be saved:",
+                "Save Single-Camera Preset");
+            if (group is not null)
+            {
+                CameraPresetDialog.SaveGroupAsPreset(this, group);
+            }
+        }
+
+        private void SaveMulticamCameraPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (TryGetSelectedInterpData(out ExportEntry interpData))
+            {
+                CameraPresetDialog.SaveInterpDataAsMulticamPreset(this, interpData);
+            }
+        }
+
+        private ExportEntry SelectCameraGroup(ExportEntry interpData, string prompt, string title)
+        {
+            ExportEntry[] groups = interpData.GetProperty<ArrayProperty<ObjectProperty>>("InterpGroups")?
+                .Select(reference => interpData.FileRef.TryGetUExport(reference.Value, out ExportEntry group) ? group : null)
+                .Where(group => group?.ClassName == "InterpGroup")
+                .ToArray() ?? [];
+            if (groups.Length == 0)
+            {
+                MessageBox.Show("This InterpData has no camera-compatible groups.", "No Interp Groups",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+
+            var choices = groups.ToDictionary(
+                group => $"{group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced} ({group.UIndex})",
+                group => group,
+                StringComparer.Ordinal);
+            string selectedGroup = StringSelectorDialog.GetValue(this, prompt, title, choices.Keys);
+            return choices.GetValueOrDefault(selectedGroup);
         }
 
         private void OpenInDialogueEditor_Clicked(object sender, RoutedEventArgs e)

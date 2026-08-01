@@ -126,6 +126,15 @@
             <MenuItem Header="Open Gesture Animation Importer" Click="OpenGestureAnimationImporter_Clicked" Name="gestureAnimationImporterMenuItem"/>
             <MenuItem Header="Open in Interp Editor" Click="OpenInInterpViewer_Clicked" Name="interpViewerMenuItem"/>
             <MenuItem Header="Bulk Edit InterpGroups" Click="BulkEditInterpGroups_Clicked" Name="bulkEditInterpGroupsMenuItem" ToolTip="Bulk edit InterpGroup properties for this InterpData"/>
+            <MenuItem Header="Camera Presets" Name="cameraPresetsMenuItem">
+                <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
+                <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this InterpData's Director track"/>
+                <Separator/>
+                <MenuItem Header="Save as Preset">
+                    <MenuItem Header="Single Camera..." Click="SaveSingleCameraPreset_Click" ToolTip="Choose an Interp group and save its camera track as a preset"/>
+                    <MenuItem Header="Multicam..." Click="SaveMulticamCameraPreset_Click" ToolTip="Save the complete Director camera sequence as a multicam preset"/>
+                </MenuItem>
+            </MenuItem>
             <MenuItem Header="Open in Dialogue Editor" Click="OpenInDialogueEditor_Clicked" Name="dialogueEditorMenuItem"/>
             <MenuItem Header="Open Referenced State Event in Plot Editor" Name="plotEditorMenuItem" Click="PlotEditorMenuItem_Click"/>
             <MenuItem Header="Open Conditional in Conditionals Editor" Name="conditionalsEditorMenuItem" Click="ConditionalsEditorMenuItem_Click"/>
