@@ -1136,6 +1136,12 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 properties.AddOrReplaceProp(new IntProperty(0, "m_nIndex"));
             }
 
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_eBlackScreenAction", info.ClassName, info) is { Reference: { } blackScreenActionType })
+            {
+                properties.AddOrReplaceProp(new EnumProperty("BlackScreenAction_TurnBlackOn", blackScreenActionType,
+                    Pcc.Game, "m_eBlackScreenAction"));
+            }
+
             if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "m_nmKismetBoolVarName", info.ClassName, info) != null)
             {
                 properties.AddOrReplaceProp(new NameProperty("None", "m_nmKismetBoolVarName"));
