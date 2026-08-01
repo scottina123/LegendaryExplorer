@@ -249,6 +249,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
     private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
     private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
+    private readonly ObservableCollection<TrackMovePlaybackOption> keyframeTrackMoves = [];
     private AssetDB previewAssetDatabase;
     private List<MeshRecord> previewActorMeshes = [];
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
@@ -282,6 +283,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackCurrentTime;
     private TrackMovePlaybackOption selectedExtraTrackMove;
     private DirectorPlaybackOption selectedDirectorPlayback;
+    private TrackMovePlaybackOption primaryTrackMove;
+    private CurveEditor3DModel registeredKeyframeModel;
+    private bool updatingKeyframeTrackTabs;
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
     private bool showCollision = Settings.LevelEditor_ShowCollision;
@@ -326,6 +330,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
         $"CurveEditor3DPreviewActors_{previewActorGame}.json");
 
+    private CurveEditor3DModel ActiveModel
+        => (KeyframeTrackMoveTabs?.SelectedItem as TrackMovePlaybackOption)?.Model ?? model;
+
+    private ExportEntry ActiveTrackMoveExport => ActiveModel.Export ?? CurrentLoadedExport;
+
     public CurveEditor3D() : base("3D Curve Editor")
     {
         RenderContext = new LevelEditorRenderContext();
@@ -343,6 +352,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorGestureComboBox.ItemsSource = availableGestureTracks;
         ExtraTrackMoveComboBox.ItemsSource = availableExtraTrackMoves;
         DirectorTrackComboBox.ItemsSource = availableDirectorTracks;
+        KeyframeTrackMoveTabs.ItemsSource = keyframeTrackMoves;
         ConfigureKeyframeContextMenu();
         SceneViewer.Context = RenderContext;
         RenderContext.EnableTransformWidget();
@@ -657,13 +667,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         StopPlayback(false);
         UnregisterKeyframes();
         CurrentLoadedExport = exportEntry;
+        model.Load(exportEntry);
         RefreshAvailableGestureTracks(exportEntry);
         RefreshMulticamPlaybackOptions(exportEntry);
         InitializePreviewActorLayout(exportEntry.Game);
-        model.Load(exportEntry);
         trajectorySamplesDirty = true;
-        KeyframeList.ItemsSource = model.Keyframes;
-        RegisterKeyframes();
         SelectedKeyframe = selectedKeyframeTime.HasValue && model.Keyframes.Count > 0
             ? model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - selectedKeyframeTime.Value))
             : model.Keyframes.FirstOrDefault();
@@ -695,8 +703,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         availableGestureTracks.Clear();
         availableExtraTrackMoves.Clear();
         availableDirectorTracks.Clear();
+        keyframeTrackMoves.Clear();
         selectedExtraTrackMove = null;
         selectedDirectorPlayback = null;
+        primaryTrackMove = null;
         playExtraTrackMove = false;
         playDirectorMulticam = false;
         UpdatePlaybackButton();
@@ -771,6 +781,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void RefreshMulticamPlaybackOptions(ExportEntry trackMove)
     {
         updatingMulticamControls = true;
+        primaryTrackMove = null;
         availableExtraTrackMoves.Clear();
         availableExtraTrackMoves.Add(TrackMovePlaybackOption.None);
         availableDirectorTracks.Clear();
@@ -789,8 +800,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     continue;
                 }
 
-                var trackModel = new CurveEditor3DModel();
-                trackModel.Load(groupTrackMove);
+                CurveEditor3DModel trackModel = groupTrackMove == trackMove ? model : new CurveEditor3DModel();
+                if (trackModel != model)
+                {
+                    trackModel.Load(groupTrackMove);
+                    trackModel.Changed += Model_Changed;
+                }
                 if (trackModel.Keyframes.Count == 0)
                 {
                     continue;
@@ -808,6 +823,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 if (groupTrackMove != trackMove)
                 {
                     availableExtraTrackMoves.Add(option);
+                }
+                else
+                {
+                    primaryTrackMove = option;
                 }
                 cameraOptionsByGroup[groupName] = option;
             }
@@ -837,7 +856,53 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove?.TrackMove is not null;
         playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback?.Cuts.Count > 0;
         updatingMulticamControls = false;
+        primaryTrackMove ??= new TrackMovePlaybackOption
+        {
+            DisplayName = trackMove.GetProperty<StrProperty>("TrackTitle")?.Value ?? trackMove.ObjectName.Instanced,
+            Group = trackMove.Parent as ExportEntry,
+            TrackMove = trackMove,
+            Model = model,
+        };
+        RefreshKeyframeTrackMoveTabs();
     }
+
+    private void RefreshKeyframeTrackMoveTabs()
+    {
+        ExportEntry previouslySelectedTrack = (KeyframeTrackMoveTabs.SelectedItem as TrackMovePlaybackOption)?.TrackMove;
+        List<TrackMovePlaybackOption> tabs = [];
+        AddDistinctTrackMove(tabs, primaryTrackMove);
+        AddDistinctTrackMove(tabs, selectedExtraTrackMove);
+        if (selectedDirectorPlayback is not null)
+        {
+            foreach (TrackMovePlaybackOption camera in selectedDirectorPlayback.Cuts.Select(cut => cut.Camera))
+            {
+                AddDistinctTrackMove(tabs, camera);
+            }
+        }
+
+        updatingKeyframeTrackTabs = true;
+        keyframeTrackMoves.Clear();
+        foreach (TrackMovePlaybackOption tab in tabs)
+        {
+            keyframeTrackMoves.Add(tab);
+        }
+
+        KeyframeTrackMoveTabs.SelectedItem = tabs.FirstOrDefault(tab => IsSameExport(tab.TrackMove, previouslySelectedTrack))
+                                                 ?? primaryTrackMove;
+        updatingKeyframeTrackTabs = false;
+        ActivateSelectedTrackMove();
+    }
+
+    private static void AddDistinctTrackMove(List<TrackMovePlaybackOption> tabs, TrackMovePlaybackOption option)
+    {
+        if (option?.TrackMove is not null && tabs.All(tab => !IsSameExport(tab.TrackMove, option.TrackMove)))
+        {
+            tabs.Add(option);
+        }
+    }
+
+    private static bool IsSameExport(ExportEntry left, ExportEntry right)
+        => left is not null && right is not null && left.FileRef == right.FileRef && left.UIndex == right.UIndex;
 
     private static ExportEntry FindOwningInterpData(ExportEntry track)
         => track?.Parent is ExportEntry interpGroup && interpGroup.Parent is ExportEntry interpData ? interpData : null;
@@ -1523,7 +1588,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             locationScrubAxes.Contains('Z') ? delta : 0);
         if (LocationScrubAllKeysCheckBox.IsChecked == true)
         {
-            model.TranslateAllKeyframes(locationDelta);
+            ActiveModel.TranslateAllKeyframes(locationDelta);
         }
         else
         {
@@ -1587,7 +1652,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             rotationDialAxis is nameof(CurveEditor3DKeyframe.Yaw) or "All" ? rotationDelta : 0);
         if (RotationDialAllKeysCheckBox.IsChecked == true)
         {
-            model.RotateAllKeyframes(rotationDeltaVector);
+            ActiveModel.RotateAllKeyframes(rotationDeltaVector);
         }
         else
         {
@@ -1876,7 +1941,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        if (model.HasKeyframeAtTime(inVal, keyframe))
+        if (ActiveModel.HasKeyframeAtTime(inVal, keyframe))
         {
             MessageBox.Show("A keyframe already exists at this InVal.");
             return;
@@ -1913,7 +1978,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        CurveEditor3DKeyframe newKeyframe = model.AddKeyframe(keyframe, inVal.Value);
+        CurveEditor3DKeyframe newKeyframe = ActiveModel.AddKeyframe(keyframe, inVal.Value);
         if (newKeyframe is null)
         {
             return;
@@ -1921,7 +1986,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         RenderContext.AddHitProxy(newKeyframe);
         SelectedKeyframe = newKeyframe;
-        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {model.Keyframes.Count} trajectory keyframe(s).";
+        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {ActiveModel.Keyframes.Count} trajectory keyframe(s).";
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
     }
@@ -1941,7 +2006,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     return (false, "Enter a valid finite number.");
                 }
 
-                if (model.HasKeyframeAtTime(value))
+                if (ActiveModel.HasKeyframeAtTime(value))
                 {
                     return (false, "A keyframe already exists at this InVal.");
                 }
@@ -1969,13 +2034,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void AddKeyframeAfterLast_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        float? inVal = PromptForKeyframeInVal(model.Keyframes[^1].Time + 1f);
+        float? inVal = PromptForKeyframeInVal(ActiveModel.Keyframes[^1].Time + 1f);
         if (inVal is null)
         {
             return;
         }
 
-        CurveEditor3DKeyframe newKeyframe = model.AddKeyframeAfterLast(pendingViewportKeyframeLocation, inVal.Value);
+        CurveEditor3DKeyframe newKeyframe = ActiveModel.AddKeyframeAfterLast(pendingViewportKeyframeLocation, inVal.Value);
         if (newKeyframe is null)
         {
             return;
@@ -1983,7 +2048,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         RenderContext.AddHitProxy(newKeyframe);
         SelectedKeyframe = newKeyframe;
-        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {model.Keyframes.Count} trajectory keyframe(s).";
+        SceneStatus = $"Added keyframe at InVal {newKeyframe.Time:0.###}; {ActiveModel.Keyframes.Count} trajectory keyframe(s).";
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
     }
@@ -1997,8 +2062,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         RenderContext.RemoveHitProxy(keyframe);
-        SelectedKeyframe = model.DeleteKeyframe(keyframe);
-        SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        SelectedKeyframe = ActiveModel.DeleteKeyframe(keyframe);
+        SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
     }
@@ -2006,7 +2071,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void ShiftInterpTrack_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        if (CurrentLoadedExport is null)
+        if (ActiveTrackMoveExport is not { } activeExport)
         {
             return;
         }
@@ -2021,51 +2086,51 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         float selectedTime = SelectedKeyframe?.Time ?? 0f;
-        PackageEditorExperimentsM.ShiftInterpTrackMove(CurrentLoadedExport, dialog.Parameters);
+        PackageEditorExperimentsM.ShiftInterpTrackMove(activeExport, dialog.Parameters);
         ReloadCurrentExport(selectedTime + dialog.Parameters.TimeOffset);
-        SceneStatus = $"Shifted {model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        SceneStatus = $"Shifted {ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
     private void ApplyPosTrackInterpModeToAll_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        if (SelectedKeyframe is not { } keyframe || model.Keyframes.Count == 0)
+        if (SelectedKeyframe is not { } keyframe || ActiveModel.Keyframes.Count == 0)
         {
             return;
         }
 
-        model.SetAllPosTrackInterpModes(keyframe.PosTrackInterpMode);
+        ActiveModel.SetAllPosTrackInterpModes(keyframe.PosTrackInterpMode);
         RefreshKeyframePanel();
         trajectorySamplesDirty = true;
-        SceneStatus = $"Set PosTrack InterpMode to {keyframe.PosTrackInterpMode} for {model.Keyframes.Count} keyframe(s).";
+        SceneStatus = $"Set PosTrack InterpMode to {keyframe.PosTrackInterpMode} for {ActiveModel.Keyframes.Count} keyframe(s).";
         SceneViewer.MarkRenderDirty();
     }
 
     private void ApplyEulerTrackInterpModeToAll_Click(object sender, RoutedEventArgs e)
     {
         StopPlayback();
-        if (SelectedKeyframe is not { } keyframe || model.Keyframes.Count == 0)
+        if (SelectedKeyframe is not { } keyframe || ActiveModel.Keyframes.Count == 0)
         {
             return;
         }
 
-        model.SetAllEulerTrackInterpModes(keyframe.EulerTrackInterpMode);
+        ActiveModel.SetAllEulerTrackInterpModes(keyframe.EulerTrackInterpMode);
         RefreshKeyframePanel();
         trajectorySamplesDirty = true;
-        SceneStatus = $"Set EulerTrack InterpMode to {keyframe.EulerTrackInterpMode} for {model.Keyframes.Count} keyframe(s).";
+        SceneStatus = $"Set EulerTrack InterpMode to {keyframe.EulerTrackInterpMode} for {ActiveModel.Keyframes.Count} keyframe(s).";
         SceneViewer.MarkRenderDirty();
     }
 
     private void ReloadCurrentExport(float preferredSelectionTime)
     {
         UnregisterKeyframes();
-        model.Load(CurrentLoadedExport);
+        ActiveModel.Load(ActiveTrackMoveExport);
         trajectorySamplesDirty = true;
-        KeyframeList.ItemsSource = model.Keyframes;
+        KeyframeList.ItemsSource = ActiveModel.Keyframes;
         RegisterKeyframes();
-        SelectedKeyframe = model.Keyframes.Count == 0
+        SelectedKeyframe = ActiveModel.Keyframes.Count == 0
             ? null
-            : model.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - preferredSelectionTime));
+            : ActiveModel.Keyframes.MinBy(keyframe => MathF.Abs(keyframe.Time - preferredSelectionTime));
         RefreshKeyframePanel();
         SceneViewer.MarkRenderDirty();
     }
@@ -2124,7 +2189,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         var addItem = new MenuItem
         {
             Header = "Add Keyframe",
-            IsEnabled = model.Keyframes.Count > 0
+            IsEnabled = ActiveModel.Keyframes.Count > 0
         };
         addItem.Click += AddKeyframeAfterLast_Click;
         menu.Items.Add(addItem);
@@ -2133,12 +2198,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private Vector3 GetViewportKeyframeLocation(Point viewportPoint, Vector3? depthReference = null)
     {
-        if (depthReference is null && model.Keyframes.Count == 0)
+        if (depthReference is null && ActiveModel.Keyframes.Count == 0)
         {
             return RenderContext.Camera.Position + RenderContext.Camera.CameraForward * 100f;
         }
 
-        Vector3 referenceLocation = depthReference ?? model.Keyframes[^1].Location;
+        Vector3 referenceLocation = depthReference ?? ActiveModel.Keyframes[^1].Location;
         float width = MathF.Max(RenderContext.Width, 1f);
         float height = MathF.Max(RenderContext.Height, 1f);
         float normalizedX = ((float)viewportPoint.X / width * 2f) - 1f;
@@ -2237,7 +2302,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (model.Keyframes.Count == 0)
+        if (ActiveModel.Keyframes.Count == 0)
         {
             return;
         }
@@ -2277,7 +2342,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (selectedPreviewActor is null || model.Keyframes.Count == 0)
+        if (selectedPreviewActor is null || ActiveModel.Keyframes.Count == 0)
         {
             return;
         }
@@ -2287,7 +2352,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         playbackActorOriginalOrigin = playbackActor.Origin;
         playbackActorZOffset = ActorPlaybackTrackZCheckBox.IsChecked == true
             ? 0f
-            : playbackActorOriginalOrigin.Location.Z - EvaluateTrackMove(model, model.Keyframes[0].Time).Location.Z;
+            : playbackActorOriginalOrigin.Location.Z - EvaluateTrackMove(ActiveModel, ActiveModel.Keyframes[0].Time).Location.Z;
         hasPlaybackActorOriginalOrigin = true;
         if (playbackEndTime <= playbackStartTime)
         {
@@ -2347,8 +2412,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void SetPlaybackRangeForCurrentMode()
     {
-        playbackStartTime = model.Keyframes[0].Time;
-        playbackEndTime = model.Keyframes[^1].Time;
+        playbackStartTime = ActiveModel.Keyframes[0].Time;
+        playbackEndTime = ActiveModel.Keyframes[^1].Time;
 
         if (playExtraTrackMove && selectedExtraTrackMove?.Model.Keyframes is { Count: > 0 } extraKeys)
         {
@@ -2392,7 +2457,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        return EvaluateTrackMove(model, time);
+        return EvaluateTrackMove(ActiveModel, time);
     }
 
     private static CameraOrigin EvaluateTrackMove(CurveEditor3DModel trackModel, float time)
@@ -2437,8 +2502,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        float actorTrackTime = Math.Clamp(time, model.Keyframes[0].Time, model.Keyframes[^1].Time);
-        CameraOrigin trackOrigin = EvaluateTrackMove(model, actorTrackTime);
+        float actorTrackTime = Math.Clamp(time, ActiveModel.Keyframes[0].Time, ActiveModel.Keyframes[^1].Time);
+        CameraOrigin trackOrigin = EvaluateTrackMove(ActiveModel, actorTrackTime);
         Vector3 actorLocation = trackOrigin.Location;
         actorLocation.Z += playbackActorZOffset;
         playbackActor.Origin = new CameraOrigin(actorLocation, trackOrigin.Rotation);
@@ -2484,7 +2549,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private string GetPlaybackKeyframeStatus(float time)
     {
-        int keyframeCount = model.Keyframes.Count;
+        int keyframeCount = ActiveModel.Keyframes.Count;
         if (keyframeCount == 0)
         {
             return "Not playing";
@@ -2493,7 +2558,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         int currentIndex = 0;
         for (int i = 1; i < keyframeCount; i++)
         {
-            if (model.Keyframes[i].Time > time)
+            if (ActiveModel.Keyframes[i].Time > time)
             {
                 break;
             }
@@ -2501,7 +2566,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             currentIndex = i;
         }
 
-        CurveEditor3DKeyframe currentKeyframe = model.Keyframes[currentIndex];
+        CurveEditor3DKeyframe currentKeyframe = ActiveModel.Keyframes[currentIndex];
         return $"Keyframe {currentIndex + 1} of {keyframeCount} (InVal {currentKeyframe.Time:0.###})";
     }
 
@@ -2539,7 +2604,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.TransformWidget.Attach = previewActorWidgetActive ? previewActorWidgetTarget : SelectedKeyframe;
         if (restoreStatus)
         {
-            SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+            SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         }
         SceneViewer?.MarkRenderDirty();
     }
@@ -2577,7 +2642,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         if (playMoveButton is not null)
         {
-            playMoveButton.IsEnabled = model.Keyframes.Count > 0;
+            playMoveButton.IsEnabled = ActiveModel.Keyframes.Count > 0;
             if (!isPlayingMove)
             {
                 playMoveButton.Content = "Play";
@@ -2585,7 +2650,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (playActorButton is not null)
         {
-            playActorButton.IsEnabled = model.Keyframes.Count > 0 && selectedPreviewActor is not null;
+            playActorButton.IsEnabled = ActiveModel.Keyframes.Count > 0 && selectedPreviewActor is not null;
             if (!isPlayingMove)
             {
                 playActorButton.Content = "Play Actor on Track";
@@ -2602,6 +2667,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         selectedExtraTrackMove = ExtraTrackMoveComboBox.SelectedItem as TrackMovePlaybackOption ?? TrackMovePlaybackOption.None;
         playExtraTrackMove = ExtraTrackMoveCheckBox.IsChecked == true && selectedExtraTrackMove.TrackMove is not null;
+        RefreshKeyframeTrackMoveTabs();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void KeyframeTrackMoveTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!updatingKeyframeTrackTabs)
+        {
+            ActivateSelectedTrackMove();
+        }
+    }
+
+    private void ActivateSelectedTrackMove()
+    {
+        StopPlayback(false);
+        UnregisterKeyframes();
+        trajectorySamplesDirty = true;
+        KeyframeList.ItemsSource = ActiveModel.Keyframes;
+        RegisterKeyframes();
+        SelectedKeyframe = ActiveModel.Keyframes.FirstOrDefault();
+        UpdatePlaybackButton();
+        SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -2614,6 +2701,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         selectedDirectorPlayback = DirectorTrackComboBox.SelectedItem as DirectorPlaybackOption ?? DirectorPlaybackOption.None;
         playDirectorMulticam = DirectorMulticamCheckBox.IsChecked == true && selectedDirectorPlayback.Cuts.Count > 0;
+        RefreshKeyframeTrackMoveTabs();
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -2654,7 +2742,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         if (!isPlayingMove)
         {
-            DrawTrajectory();
+            DrawTrajectory(ActiveModel);
         }
         RenderPreviewActors();
         RenderContext.DrawUI();
@@ -2745,9 +2833,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Primitives.AddLine(bottomLeft, topLeft, color, 0);
     }
 
-    private void DrawTrajectory()
+    private void DrawTrajectory(CurveEditor3DModel activeModel)
     {
-        IReadOnlyList<Vector3> samples = GetTrajectorySamples();
+        IReadOnlyList<Vector3> samples = GetTrajectorySamples(activeModel);
         Vector4 pathColor = new(1f, 0.65f, 0.05f, 1f);
         for (int i = 1; i < samples.Count; i++)
         {
@@ -2755,22 +2843,22 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         Vector4 connectorColor = new(1f, 0.85f, 0.2f, 1f);
-        for (int i = 1; i < model.Keyframes.Count; i++)
+        for (int i = 1; i < activeModel.Keyframes.Count; i++)
         {
-            RenderContext.Primitives.AddLine(model.Keyframes[i - 1].Location, model.Keyframes[i].Location, connectorColor, 0);
+            RenderContext.Primitives.AddLine(activeModel.Keyframes[i - 1].Location, activeModel.Keyframes[i].Location, connectorColor, 0);
         }
 
-        foreach (CurveEditor3DKeyframe keyframe in model.Keyframes)
+        foreach (CurveEditor3DKeyframe keyframe in activeModel.Keyframes)
         {
             DrawKeyframe(keyframe);
         }
     }
 
-    private IReadOnlyList<Vector3> GetTrajectorySamples()
+    private IReadOnlyList<Vector3> GetTrajectorySamples(CurveEditor3DModel activeModel)
     {
         if (trajectorySamplesDirty)
         {
-            trajectorySamples = model.SampleTrajectory();
+            trajectorySamples = activeModel.SampleTrajectory();
             trajectorySamplesDirty = false;
         }
 
@@ -2817,7 +2905,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RegisterKeyframes()
     {
-        foreach (CurveEditor3DKeyframe keyframe in model.Keyframes)
+        registeredKeyframeModel = ActiveModel;
+        foreach (CurveEditor3DKeyframe keyframe in registeredKeyframeModel.Keyframes)
         {
             RenderContext.AddHitProxy(keyframe);
         }
@@ -2825,10 +2914,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void UnregisterKeyframes()
     {
-        foreach (CurveEditor3DKeyframe keyframe in model.Keyframes)
+        if (registeredKeyframeModel is null)
+        {
+            return;
+        }
+
+        foreach (CurveEditor3DKeyframe keyframe in registeredKeyframeModel.Keyframes)
         {
             RenderContext.RemoveHitProxy(keyframe);
         }
+        registeredKeyframeModel = null;
     }
 
     private async void OpenLevel_Click(object sender, RoutedEventArgs e)
@@ -2853,7 +2948,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         CloseLevels();
         UpdateSessionLevelPaths();
-        SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+        SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
     }
 
     private void RecentLevelsButton_Click(object sender, RoutedEventArgs e)
@@ -2941,7 +3036,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 UpdateSessionLevelPaths();
             }
             RecordRecentSet();
-            SceneStatus = $"{model.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
+            SceneStatus = $"{ActiveModel.Keyframes.Count} trajectory keyframe(s); {levelPaths.Count} level backdrop file(s).";
             SceneViewer.SetShouldRender(true);
             SceneViewer.MarkRenderDirty();
         }
@@ -3013,7 +3108,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         levelPackages.Clear();
         levelPaths.Clear();
 
-        foreach (CurveEditor3DKeyframe keyframe in model.Keyframes)
+        foreach (CurveEditor3DKeyframe keyframe in ActiveModel.Keyframes)
         {
             keyframe.HitID = 0;
         }
