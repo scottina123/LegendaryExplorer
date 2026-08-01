@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal.Animation;
@@ -30,10 +32,15 @@ public class SkinnedMeshRenderer
     /// Resolves chunk-local bone indices to skeleton-wide indices via chunk.BoneMap.
     /// </summary>
     public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel)
+        => BuildFromSkeletalMesh(game, lodModel, null, null);
+
+    public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel, MeshBone[] sourceSkeleton,
+        MeshBone[] animationSkeleton)
     {
         bool isME1 = game == MEGame.ME1;
         int vertexCount = isME1 ? lodModel.ME1VertexBufferGPUSkin.Length : (int)lodModel.NumVertices;
         _skinVertices = new SkinVertex[vertexCount];
+        int[] boneMap = BuildAnimationBoneMap(sourceSkeleton, animationSkeleton);
 
         if (isME1)
         {
@@ -46,7 +53,7 @@ public class SkinnedMeshRenderer
                 skinVert.BindPosition = sv.Position;
                 skinVert.BindNormal = (Vector3)sv.TangentZ;
                 skinVert.UV = sv.UV;
-                ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk);
+                ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk, boneMap);
             }
         }
         else
@@ -60,7 +67,7 @@ public class SkinnedMeshRenderer
                 skinVert.BindPosition = gv.Position;
                 skinVert.BindNormal = (Vector3)gv.TangentZ;
                 skinVert.UV = gv.UV;
-                ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk);
+                ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
             }
         }
     }
@@ -78,13 +85,14 @@ public class SkinnedMeshRenderer
         return lodModel.Chunks[0];
     }
 
-    private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights, SkelMeshChunk chunk)
+    private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights,
+        SkelMeshChunk chunk, int[] boneMap)
     {
         // Resolve chunk-local bone indices to skeleton-wide indices via BoneMap
-        skinVert.Bone0 = bones[0] < chunk.BoneMap.Length ? chunk.BoneMap[bones[0]] : 0;
-        skinVert.Bone1 = bones[1] < chunk.BoneMap.Length ? chunk.BoneMap[bones[1]] : 0;
-        skinVert.Bone2 = bones[2] < chunk.BoneMap.Length ? chunk.BoneMap[bones[2]] : 0;
-        skinVert.Bone3 = bones[3] < chunk.BoneMap.Length ? chunk.BoneMap[bones[3]] : 0;
+        skinVert.Bone0 = ResolveBoneIndex(bones[0], chunk, boneMap);
+        skinVert.Bone1 = ResolveBoneIndex(bones[1], chunk, boneMap);
+        skinVert.Bone2 = ResolveBoneIndex(bones[2], chunk, boneMap);
+        skinVert.Bone3 = ResolveBoneIndex(bones[3], chunk, boneMap);
 
         // Normalize weights (byte -> float)
         float w0 = weights[0] / 255f;
@@ -106,6 +114,37 @@ public class SkinnedMeshRenderer
             skinVert.Weight2 = 0f;
             skinVert.Weight3 = 0f;
         }
+    }
+
+    private static int ResolveBoneIndex(byte influenceBone, SkelMeshChunk chunk, int[] boneMap)
+    {
+        int sourceIndex = influenceBone < chunk.BoneMap.Length ? chunk.BoneMap[influenceBone] : 0;
+        return boneMap is not null && sourceIndex < boneMap.Length ? boneMap[sourceIndex] : sourceIndex;
+    }
+
+    private static int[] BuildAnimationBoneMap(MeshBone[] sourceSkeleton, MeshBone[] animationSkeleton)
+    {
+        if (sourceSkeleton is null || animationSkeleton is null || ReferenceEquals(sourceSkeleton, animationSkeleton))
+        {
+            return null;
+        }
+
+        Dictionary<string, int> animationBones = animationSkeleton
+            .Select((bone, index) => (Name: bone.Name.Name, Index: index))
+            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
+        int[] map = new int[sourceSkeleton.Length];
+        for (int sourceIndex = 0; sourceIndex < sourceSkeleton.Length; sourceIndex++)
+        {
+            int candidate = sourceIndex;
+            while (candidate >= 0 && candidate < sourceSkeleton.Length
+                   && !animationBones.TryGetValue(sourceSkeleton[candidate].Name.Name, out map[sourceIndex]))
+            {
+                int parent = sourceSkeleton[candidate].ParentIndex;
+                candidate = parent == candidate ? -1 : parent;
+            }
+        }
+        return map;
     }
 
     /// <summary>
@@ -147,7 +186,7 @@ public class SkinnedMeshRenderer
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)
     {
-        var m = matrices[b0] * w0;
+        var m = matrices[b0 < matrices.Length ? b0 : 0] * w0;
         if (w1 > 0 && b1 < matrices.Length) m += matrices[b1] * w1;
         if (w2 > 0 && b2 < matrices.Length) m += matrices[b2] * w2;
         if (w3 > 0 && b3 < matrices.Length) m += matrices[b3] * w3;

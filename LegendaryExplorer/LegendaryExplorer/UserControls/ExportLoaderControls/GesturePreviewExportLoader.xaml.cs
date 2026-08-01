@@ -69,6 +69,9 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
     private readonly List<(string FileName, string ContentDir)> _databaseFiles = [];
     private readonly PackageCache _packageCache = new();
+    private AssetDB _meshDatabase;
+    private List<MeshRecord> _previewMeshes = [];
+    private bool _updatingPreviewModels;
     private CancellationTokenSource _databaseLoadCancellationTokenSource;
     private List<GestureAnimationItem> _animations = [];
     private GestureAnimationItem _selectedAnimation;
@@ -358,14 +361,9 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             _databaseFiles.Clear();
             _databaseFiles.AddRange(database.FileList.Select(file => (file.FileName, database.ContentDir[file.DirectoryKey])));
             List<MeshRecord> meshes = database.Meshes.Where(mesh => mesh.IsSkeleton).ToList();
-            PreviewMeshComboBox.ItemsSource = meshes;
-            string defaultMesh = game switch
-            {
-                MEGame.ME1 or MEGame.LE1 => "QRN_FAC_ARM_LGTa_MDL",
-                MEGame.ME2 or MEGame.LE2 => "QRN_TLI_LGTa_MDL",
-                _ => "QRN_ARM_TLIa_MDL",
-            };
-            PreviewMeshComboBox.SelectedItem = meshes.FirstOrDefault(mesh => mesh.MeshName == defaultMesh) ?? meshes.FirstOrDefault();
+            _meshDatabase = database;
+            _previewMeshes = meshes;
+            ResetPreviewModels(game);
         }
         catch (OperationCanceledException)
         {
@@ -376,12 +374,70 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         }
     }
 
-    private void PreviewMeshComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PreviewMeshSelect_Click(object sender, RoutedEventArgs e)
     {
-        if (PreviewMeshComboBox.SelectedItem is not MeshRecord mesh)
+        if (_updatingPreviewModels || sender is not Button { Tag: string componentName }
+            || !Enum.TryParse(componentName, out PreviewActorModelComponent component))
         {
             return;
         }
+        string current = GetPreviewMeshTextBox(component).Text;
+        MeshRecord mesh = PreviewActorModelDefaults.SelectMesh(this, _previewMeshes, component, current);
+        if (mesh is null) return;
+        GetPreviewMeshTextBox(component).Text = mesh.MeshName;
+        if (PreviewActorModelDefaults.IsNone(mesh))
+        {
+            AnimPreviewControl.ClearSkeletalMesh(component);
+        }
+        else
+        {
+            LoadPreviewMesh(mesh, component, false);
+        }
+    }
+
+    private void ResetPreviewModels_Click(object sender, RoutedEventArgs e)
+    {
+        if (CurrentLoadedExport is not null)
+        {
+            ResetPreviewModels(CurrentLoadedExport.Game);
+        }
+    }
+
+    private void ResetPreviewModels(MEGame game)
+    {
+        _updatingPreviewModels = true;
+        try
+        {
+            foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+            {
+                MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(_previewMeshes, _meshDatabase, component, game);
+                GetPreviewMeshTextBox(component).Text = mesh?.MeshName ?? PreviewActorModelDefaults.NoneMeshName;
+                if (mesh is not null)
+                {
+                    LoadPreviewMesh(mesh, component, true);
+                }
+                else
+                {
+                    AnimPreviewControl.ClearSkeletalMesh(component);
+                }
+            }
+        }
+        finally
+        {
+            _updatingPreviewModels = false;
+        }
+    }
+
+    private TextBox GetPreviewMeshTextBox(PreviewActorModelComponent component) => component switch
+    {
+        PreviewActorModelComponent.Body => PreviewMeshTextBox,
+        PreviewActorModelComponent.Head => PreviewHeadMeshTextBox,
+        PreviewActorModelComponent.Hair => PreviewHairMeshTextBox,
+        _ => throw new ArgumentOutOfRangeException(nameof(component))
+    };
+
+    private void LoadPreviewMesh(MeshRecord mesh, PreviewActorModelComponent component, bool baseGameOnly)
+    {
 
         string rootPath = MEDirectories.GetDefaultGamePath(CurrentLoadedExport.Game);
         if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
@@ -392,7 +448,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
         try
         {
-            foreach (MeshUsage usage in mesh.Usages)
+            foreach (MeshUsage usage in PreviewActorModelDefaults.GetUsages(mesh, _meshDatabase, baseGameOnly))
             {
                 if (usage.FileKey < 0 || usage.FileKey >= _databaseFiles.Count)
                 {
@@ -410,8 +466,11 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 using IMEPackage meshPackage = MEPackageHandler.OpenMEPackage(filePath);
                 if (meshPackage.TryGetUExport(usage.UIndex, out ExportEntry meshExport))
                 {
-                    AnimPreviewControl.LoadSkeletalMesh(meshExport);
-                    PlayAllAnimations();
+                    AnimPreviewControl.LoadSkeletalMesh(component, meshExport);
+                    if (component is PreviewActorModelComponent.Body)
+                    {
+                        PlayAllAnimations();
+                    }
                     return;
                 }
             }
@@ -618,7 +677,11 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         _databaseLoadCancellationTokenSource?.Cancel();
         _animations = [];
         AnimationListBox.ItemsSource = null;
-        PreviewMeshComboBox.ItemsSource = null;
+        PreviewMeshTextBox.Clear();
+        PreviewHeadMeshTextBox.Clear();
+        PreviewHairMeshTextBox.Clear();
+        _meshDatabase = null;
+        _previewMeshes = [];
         SelectedAnimation = null;
         TrackPropertiesText = null;
         StatusText = "Load a preview mesh to play the gesture track.";

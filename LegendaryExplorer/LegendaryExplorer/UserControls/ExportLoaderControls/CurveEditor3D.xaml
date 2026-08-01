@@ -186,16 +186,19 @@
                                          MouseDoubleClick="PreviewActorListBox_MouseDoubleClick"
                                          ToolTip="Double-click an actor to focus it in the viewport"/>
                             </DockPanel>
-                            <Grid Margin="0,0,0,4">
+                            <StackPanel Margin="0,0,0,4">
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="55"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Model" VerticalAlignment="Center"/>
-                                <ComboBox x:Name="PreviewActorComboBox" Grid.Column="1" IsEditable="True"
-                                          IsTextSearchEnabled="True" DisplayMemberPath="DisplayString"
-                                          SelectionChanged="PreviewActorModel_SelectionChanged"/>
+                                <TextBlock Text="Body" VerticalAlignment="Center"/>
+                                <DockPanel Grid.Column="1"><Button DockPanel.Dock="Right" Content="Select..." Tag="Body" Click="PreviewActorModel_Select_Click"/><TextBox x:Name="PreviewActorTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
                             </Grid>
+                            <Grid Margin="0,3,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="55"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Head" VerticalAlignment="Center"/><DockPanel Grid.Column="1"><Button DockPanel.Dock="Right" Content="Select..." Tag="Head" Click="PreviewActorModel_Select_Click"/><TextBox x:Name="PreviewActorHeadTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel></Grid>
+                            <Grid Margin="0,3,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="55"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Hair" VerticalAlignment="Center"/><DockPanel Grid.Column="1"><Button DockPanel.Dock="Right" Content="Select..." Tag="Hair" Click="PreviewActorModel_Select_Click"/><TextBox x:Name="PreviewActorHairTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel></Grid>
+                            <Button Content="Reset Models" HorizontalAlignment="Right" Click="ResetPreviewActorModels_Click" Padding="7,3" Margin="2"/>
+                            </StackPanel>
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="55"/>

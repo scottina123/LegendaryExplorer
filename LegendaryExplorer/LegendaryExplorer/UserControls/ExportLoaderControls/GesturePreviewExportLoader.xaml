@@ -15,15 +15,21 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="240"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock VerticalAlignment="Center" Text="Mesh:"/>
-            <ComboBox x:Name="PreviewMeshComboBox"
-                      Grid.Column="1"
-                      Margin="5,0,12,0"
-                      DisplayMemberPath="DisplayString"
-                      SelectionChanged="PreviewMeshComboBox_SelectionChanged"/>
-            <Button Grid.Column="2"
+            <TextBlock VerticalAlignment="Center" Text="Body:"/>
+            <DockPanel Grid.Column="1" Margin="5,0,12,0"><Button DockPanel.Dock="Right" Content="Select..." Tag="Body" Click="PreviewMeshSelect_Click"/><TextBox x:Name="PreviewMeshTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+            <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Head:"/>
+            <DockPanel Grid.Column="3" Margin="5,0,12,0"><Button DockPanel.Dock="Right" Content="Select..." Tag="Head" Click="PreviewMeshSelect_Click"/><TextBox x:Name="PreviewHeadMeshTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+            <TextBlock Grid.Column="4" VerticalAlignment="Center" Text="Hair:"/>
+            <DockPanel Grid.Column="5" Margin="5,0,12,0"><Button DockPanel.Dock="Right" Content="Select..." Tag="Hair" Click="PreviewMeshSelect_Click"/><TextBox x:Name="PreviewHairMeshTextBox" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+            <Button Grid.Column="6" Padding="8,2" Margin="0,0,5,0"
+                    Click="ResetPreviewModels_Click" Content="Reset Models"/>
+            <Button Grid.Column="7"
                     Padding="8,2"
                     Click="PlayAll_Click"
                     Content="Play All"/>

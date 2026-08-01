@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Numerics;
 using System.Windows;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ using FontAwesome5;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.UserControls.Interfaces;
 using LegendaryExplorer.UserControls.ExportLoaderControls.TextureViewer;
 using LegendaryExplorerCore.Gammtek;
@@ -26,6 +28,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls;
 /// </summary>
 public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase, ISceneRenderContextConfigurable
 {
+    private sealed class PreviewMeshComponent : IDisposable
+    {
+        public LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex> Preview { get; init; }
+        public LegacySkinnedMeshRenderer Renderer { get; init; }
+
+        public void Dispose() => Preview?.Dispose();
+    }
+
     public sealed class AnimationTimelineClip
     {
         public ExportEntry AnimationExport { get; init; }
@@ -46,6 +56,7 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
     private LegacySkinnedMeshRenderer _skinnedRenderer;
     private AnimPlayer _animPlayer;
     private SkeletalMesh _skm;
+    private readonly Dictionary<PreviewActorModelComponent, PreviewMeshComponent> _additionalMeshComponents = [];
     private bool _previewInitialized;
     private ExportEntry _lastAnimExport;
     private FaceFXAsset _lastFxActor;
@@ -311,9 +322,19 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
 
     public void LoadSkeletalMesh(ExportEntry skeletalMeshExport)
     {
+        LoadSkeletalMesh(PreviewActorModelComponent.Body, skeletalMeshExport);
+    }
+
+    public void LoadSkeletalMesh(PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+    {
         if (!_meshContext.IsReady) return;
 
-        // Dispose old preview
+        if (component is not PreviewActorModelComponent.Body)
+        {
+            LoadAdditionalSkeletalMesh(component, skeletalMeshExport);
+            return;
+        }
+
         _meshPreview?.Dispose();
         _meshPreview = null;
         _skinnedRenderer = null;
@@ -363,6 +384,54 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         catch (Exception ex)
         {
             _meshContext.ErrorText = $"Error loading mesh: {ex.Message}";
+        }
+    }
+
+    private void LoadAdditionalSkeletalMesh(PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+    {
+        try
+        {
+            var skeletalMesh = ObjectBinary.From<SkeletalMesh>(skeletalMeshExport);
+            if (skeletalMesh.LODModels.Length is 0)
+            {
+                throw new Exception("Mesh has no LODs!");
+            }
+
+            var preview = new LegacyScene3D.ModelPreview<LegacyScene3D.WorldVertex>(_meshContext.Device,
+                skeletalMesh, _meshContext.TextureCache, _packageCache);
+            var renderer = new LegacySkinnedMeshRenderer();
+            renderer.BuildFromSkeletalMesh(skeletalMeshExport.FileRef.Game, skeletalMesh.LODModels[0],
+                skeletalMesh.RefSkeleton, _skm?.RefSkeleton);
+
+            if (_additionalMeshComponents.Remove(component, out PreviewMeshComponent previousComponent))
+            {
+                previousComponent.Dispose();
+            }
+            _additionalMeshComponents[component] = new PreviewMeshComponent
+            {
+                Preview = preview,
+                Renderer = renderer
+            };
+            UpdateSkinningOneShot();
+            _meshContext.ErrorText = null;
+        }
+        catch (Exception ex)
+        {
+            _meshContext.ErrorText = $"Error loading {component.ToString().ToLowerInvariant()} mesh: {ex.Message}";
+        }
+    }
+
+    public void ClearSkeletalMesh(PreviewActorModelComponent component)
+    {
+        if (component is PreviewActorModelComponent.Body)
+        {
+            Clear();
+            return;
+        }
+
+        if (_additionalMeshComponents.Remove(component, out PreviewMeshComponent meshComponent))
+        {
+            meshComponent.Dispose();
         }
     }
 
@@ -604,6 +673,11 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         _animEndFired = false;
         _meshPreview?.Dispose();
         _meshPreview = null;
+        foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
+        {
+            meshComponent.Dispose();
+        }
+        _additionalMeshComponents.Clear();
         _skinnedRenderer = null;
         _animPlayer = null;
         _skm = null;
@@ -648,6 +722,11 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             _meshContext.RenderScene -= OnRenderScene;
         }
         _meshPreview?.Dispose();
+        foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
+        {
+            meshComponent.Dispose();
+        }
+        _additionalMeshComponents.Clear();
         _packageCache.Dispose();
         SceneViewer?.Dispose();
     }
@@ -662,6 +741,14 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         if (!_meshContext.IsReady || _meshPreview.LODs.Count == 0) return;
 
         _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
+        foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
+        {
+            if (meshComponent.Preview is { LODs.Count: > 0 })
+            {
+                meshComponent.Renderer.UpdateSkinning(_meshContext.ImmediateContext,
+                    meshComponent.Preview.LODs[0].Mesh, _animPlayer);
+            }
+        }
     }
 
     private void OnUpdateScene(object sender, float timestep)
@@ -691,6 +778,14 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
             if (isPlaying || _animPlayer is FaceFxPlayer)
             {
                 _skinnedRenderer.UpdateSkinning(_meshContext.ImmediateContext, _meshPreview.LODs[0].Mesh, _animPlayer);
+                foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
+                {
+                    if (meshComponent.Preview is { LODs.Count: > 0 })
+                    {
+                        meshComponent.Renderer.UpdateSkinning(_meshContext.ImmediateContext,
+                            meshComponent.Preview.LODs[0].Mesh, _animPlayer);
+                    }
+                }
             }
 
             if (isPlaying)
@@ -722,6 +817,10 @@ public partial class AnimationPreviewControl : NotifyPropertyChangedControlBase,
         foreach (LegacyScene3D.RenderPass renderPass in Enum.GetValues<LegacyScene3D.RenderPass>())
         {
             _meshPreview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
+            foreach (PreviewMeshComponent meshComponent in _additionalMeshComponents.Values)
+            {
+                meshComponent.Preview.Render(renderPass, _meshContext, 0, Matrix4x4.Identity);
+            }
         }
     }
 
@@ -748,10 +847,15 @@ internal sealed class LegacySkinnedMeshRenderer
     }
 
     public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel)
+        => BuildFromSkeletalMesh(game, lodModel, null, null);
+
+    public void BuildFromSkeletalMesh(MEGame game, StaticLODModel lodModel, MeshBone[] sourceSkeleton,
+        MeshBone[] animationSkeleton)
     {
         bool isME1 = game == MEGame.ME1;
         int vertexCount = isME1 ? lodModel.ME1VertexBufferGPUSkin.Length : (int)lodModel.NumVertices;
         _skinVertices = new SkinVertex[vertexCount];
+        int[] boneMap = BuildAnimationBoneMap(sourceSkeleton, animationSkeleton);
 
         if (isME1)
         {
@@ -763,7 +867,7 @@ internal sealed class LegacySkinnedMeshRenderer
                 skinVert.BindPosition = sv.Position;
                 skinVert.BindNormal = (Vector3)sv.TangentZ;
                 skinVert.UV = sv.UV;
-                ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk);
+                ResolveInfluences(ref skinVert, sv.InfluenceBones, sv.InfluenceWeights, chunk, boneMap);
             }
         }
         else
@@ -776,7 +880,7 @@ internal sealed class LegacySkinnedMeshRenderer
                 skinVert.BindPosition = gv.Position;
                 skinVert.BindNormal = (Vector3)gv.TangentZ;
                 skinVert.UV = gv.UV;
-                ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk);
+                ResolveInfluences(ref skinVert, gv.InfluenceBones, gv.InfluenceWeights, chunk, boneMap);
             }
         }
     }
@@ -794,12 +898,13 @@ internal sealed class LegacySkinnedMeshRenderer
         return lodModel.Chunks[0];
     }
 
-    private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights, SkelMeshChunk chunk)
+    private static void ResolveInfluences(ref SkinVertex skinVert, Influences bones, Influences weights,
+        SkelMeshChunk chunk, int[] boneMap)
     {
-        skinVert.Bone0 = bones[0] < chunk.BoneMap.Length ? chunk.BoneMap[bones[0]] : 0;
-        skinVert.Bone1 = bones[1] < chunk.BoneMap.Length ? chunk.BoneMap[bones[1]] : 0;
-        skinVert.Bone2 = bones[2] < chunk.BoneMap.Length ? chunk.BoneMap[bones[2]] : 0;
-        skinVert.Bone3 = bones[3] < chunk.BoneMap.Length ? chunk.BoneMap[bones[3]] : 0;
+        skinVert.Bone0 = ResolveBoneIndex(bones[0], chunk, boneMap);
+        skinVert.Bone1 = ResolveBoneIndex(bones[1], chunk, boneMap);
+        skinVert.Bone2 = ResolveBoneIndex(bones[2], chunk, boneMap);
+        skinVert.Bone3 = ResolveBoneIndex(bones[3], chunk, boneMap);
 
         float w0 = weights[0] / 255f;
         float w1 = weights[1] / 255f;
@@ -820,6 +925,37 @@ internal sealed class LegacySkinnedMeshRenderer
             skinVert.Weight2 = 0f;
             skinVert.Weight3 = 0f;
         }
+    }
+
+    private static int ResolveBoneIndex(byte influenceBone, SkelMeshChunk chunk, int[] boneMap)
+    {
+        int sourceIndex = influenceBone < chunk.BoneMap.Length ? chunk.BoneMap[influenceBone] : 0;
+        return boneMap is not null && sourceIndex < boneMap.Length ? boneMap[sourceIndex] : sourceIndex;
+    }
+
+    private static int[] BuildAnimationBoneMap(MeshBone[] sourceSkeleton, MeshBone[] animationSkeleton)
+    {
+        if (sourceSkeleton is null || animationSkeleton is null || ReferenceEquals(sourceSkeleton, animationSkeleton))
+        {
+            return null;
+        }
+
+        Dictionary<string, int> animationBones = animationSkeleton
+            .Select((bone, index) => (Name: bone.Name.Name, Index: index))
+            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
+        int[] map = new int[sourceSkeleton.Length];
+        for (int sourceIndex = 0; sourceIndex < sourceSkeleton.Length; sourceIndex++)
+        {
+            int candidate = sourceIndex;
+            while (candidate >= 0 && candidate < sourceSkeleton.Length
+                   && !animationBones.TryGetValue(sourceSkeleton[candidate].Name.Name, out map[sourceIndex]))
+            {
+                int parent = sourceSkeleton[candidate].ParentIndex;
+                candidate = parent == candidate ? -1 : parent;
+            }
+        }
+        return map;
     }
 
     public void UpdateSkinning(SharpDX.Direct3D11.DeviceContext context, LegacyScene3D.Mesh<LegacyScene3D.WorldVertex> mesh, AnimPlayer animPlayer)
@@ -856,7 +992,7 @@ internal sealed class LegacySkinnedMeshRenderer
 
     private static Matrix4x4 BlendMatrix(Matrix4x4[] matrices, int b0, float w0, int b1, float w1, int b2, float w2, int b3, float w3)
     {
-        var m = matrices[b0] * w0;
+        var m = matrices[b0 < matrices.Length ? b0 : 0] * w0;
         if (w1 > 0 && b1 < matrices.Length) m += matrices[b1] * w1;
         if (w2 > 0 && b2 < matrices.Length) m += matrices[b2] * w2;
         if (w3 > 0 && b3 < matrices.Length) m += matrices[b3] * w3;

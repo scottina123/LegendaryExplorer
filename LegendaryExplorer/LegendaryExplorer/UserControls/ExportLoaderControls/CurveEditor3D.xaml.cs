@@ -63,6 +63,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 NotifyTransformChanged();
             }
         }
+
         public float DrawScale { get; set; } = 1;
         public Vector3 DrawScale3D { get; set; } = Vector3.One;
         public bool IsReadOnly => false;
@@ -78,6 +79,38 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         private void NotifyTransformChanged()
         {
             TransformChanged?.Invoke(new CameraOrigin(location, rotation.GetDegreesVector()));
+        }
+    }
+
+    private sealed class ActorModelSet : IDisposable
+    {
+        public sealed class Component : IDisposable
+        {
+            public ModelPreview<WorldVertex> Model { get; init; }
+            public SkinnedMeshRenderer Renderer { get; init; }
+            public void Dispose() => Model?.Dispose();
+        }
+
+        private readonly Dictionary<PreviewActorModelComponent, Component> components = [];
+        public ModelPreview<WorldVertex> Body => components.GetValueOrDefault(PreviewActorModelComponent.Body)?.Model;
+        public IEnumerable<Component> Components => components.Values;
+
+        public void Set(PreviewActorModelComponent component, ModelPreview<WorldVertex> model,
+            SkinnedMeshRenderer renderer)
+        {
+            if (components.Remove(component, out Component previous)) previous.Dispose();
+            components[component] = new Component { Model = model, Renderer = renderer };
+        }
+
+        public void Remove(PreviewActorModelComponent component)
+        {
+            if (components.Remove(component, out Component previous)) previous.Dispose();
+        }
+
+        public void Dispose()
+        {
+            foreach (Component component in components.Values) component.Dispose();
+            components.Clear();
         }
     }
 
@@ -148,6 +181,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         public string DisplayName { get; set; }
         public string ModelName { get; set; }
+        public string HeadModelName { get; set; }
+        public string HairModelName { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
         public float Z { get; set; }
@@ -206,7 +241,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<ActorProxy> levelActors = [];
     private readonly List<string> levelPaths = [];
     private readonly ObservableCollection<PreviewActorConfiguration> previewActors = [];
-    private readonly List<ModelPreview<WorldVertex>> previewActorModels = [];
+    private readonly List<ActorModelSet> previewActorModels = [];
     private readonly PreviewActorWidgetTarget previewActorWidgetTarget = new();
     private readonly PackageCache previewActorGesturePackageCache = new();
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
@@ -215,6 +250,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly ObservableCollection<TrackMovePlaybackOption> availableExtraTrackMoves = [];
     private readonly ObservableCollection<DirectorPlaybackOption> availableDirectorTracks = [];
     private AssetDB previewAssetDatabase;
+    private List<MeshRecord> previewActorMeshes = [];
     private List<(string FileName, string ContentDir)> previewAssetFiles = [];
     private PreviewActorConfiguration selectedPreviewActor;
     private MEGame previewActorGame = MEGame.Unknown;
@@ -940,22 +976,28 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             previewAssetFiles = database.FileList
                 .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
                 .ToList();
-            PreviewActorComboBox.ItemsSource = meshes;
+            previewActorMeshes = meshes;
 
-            string defaultMeshName = GetDefaultPreviewModelName(game);
             for (int actorIndex = 0; actorIndex < previewActors.Count; actorIndex++)
             {
                 PreviewActorConfiguration actor = previewActors[actorIndex];
-                MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-                    actor.ModelName, StringComparison.OrdinalIgnoreCase))
-                    ?? meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-                        defaultMeshName, StringComparison.OrdinalIgnoreCase));
-                if (mesh is null)
+                foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
                 {
-                    continue;
+                    if (component is not PreviewActorModelComponent.Body
+                        && string.IsNullOrEmpty(GetPreviewActorModelName(actor, component)))
+                    {
+                        previewActorModels.ElementAtOrDefault(actorIndex)?.Remove(component);
+                        continue;
+                    }
+                    MeshRecord mesh = FindConfiguredPreviewActorMesh(meshes, actor, component)
+                        ?? PreviewActorModelDefaults.FindDefaultMesh(meshes, database, component, game);
+                    if (mesh is null)
+                    {
+                        continue;
+                    }
+                    SetPreviewActorModelName(actor, component, mesh.MeshName);
+                    TryLoadPreviewActorModel(actorIndex, component, mesh, false, out _);
                 }
-                actor.ModelName = mesh.MeshName;
-                TryLoadPreviewActorModel(actorIndex, mesh, out _);
             }
             SynchronizePreviewActorControls();
             SetPreviewActorStatus(meshes.Count == 0
@@ -973,7 +1015,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorStatusTextBlock.Text = status;
     }
 
-    private bool TryLoadPreviewActorModel(int actorIndex, MeshRecord meshRecord, out string error)
+    private bool TryLoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component,
+        MeshRecord meshRecord, bool baseGameOnly, out string error)
     {
         error = null;
         if (CurrentLoadedExport is null || previewAssetDatabase is null)
@@ -989,7 +1032,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return false;
         }
 
-        foreach (MeshUsage usage in meshRecord.Usages)
+        foreach (MeshUsage usage in PreviewActorModelDefaults.GetUsages(meshRecord, previewAssetDatabase, baseGameOnly))
         {
             if (usage.FileKey < 0 || usage.FileKey >= previewAssetFiles.Count)
             {
@@ -1018,7 +1061,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             try
             {
-                LoadPreviewActorModel(actorIndex, meshExport);
+                LoadPreviewActorModel(actorIndex, component, meshExport);
                 return true;
             }
             catch (Exception exception)
@@ -1031,13 +1074,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         error = $"No installed package containing {meshRecord.MeshName} could be resolved.";
         return false;
     }
-
-    private static string GetDefaultPreviewModelName(MEGame game) => game switch
-    {
-        MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
-        MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
-        _ => "QRN_ARM_TLIa_MDL"
-    };
 
     private void InitializePreviewActorLayout(MEGame game)
     {
@@ -1053,7 +1089,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         previewActorGame = game;
         previewAssetDatabase = null;
         previewAssetFiles = [];
-        PreviewActorComboBox.ItemsSource = null;
+        PreviewActorTextBox.Clear();
+        PreviewActorHeadTextBox.Clear();
+        PreviewActorHairTextBox.Clear();
         LoadPreviewActorLayout();
         _ = InitializePreviewActorModelsAsync();
     }
@@ -1070,7 +1108,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     foreach (PreviewActorConfiguration actor in actors)
                     {
-                        actor.ModelName ??= GetDefaultPreviewModelName(previewActorGame);
+                        actor.ModelName ??= PreviewActorModelDefaults.BodyMeshName;
+                        actor.HeadModelName ??= PreviewActorModelDefaults.HeadMeshName;
+                        actor.HairModelName ??= PreviewActorModelDefaults.HairMeshName;
                         previewActors.Add(actor);
                     }
                 }
@@ -1111,7 +1151,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             : new CameraOrigin(SelectedKeyframe.Location, SelectedKeyframe.Rotation);
         var actor = new PreviewActorConfiguration
         {
-            ModelName = GetDefaultPreviewModelName(previewActorGame),
+            ModelName = PreviewActorModelDefaults.BodyMeshName,
+            HeadModelName = PreviewActorModelDefaults.HeadMeshName,
+            HairModelName = PreviewActorModelDefaults.HairMeshName,
             Origin = origin
         };
         previewActors.Add(actor);
@@ -1173,38 +1215,79 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RemovePreviewActorButton.IsEnabled = previewActors.Count > 0;
     }
 
-    private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PreviewActorModel_Select_Click(object sender, RoutedEventArgs e)
     {
         if (updatingPreviewActorControls || selectedPreviewActor is null
-            || sender is not ComboBox { SelectedItem: MeshRecord meshRecord })
+            || sender is not Button { Tag: string componentName }
+            || !Enum.TryParse(componentName, out PreviewActorModelComponent component))
         {
             return;
         }
+        MeshRecord meshRecord = PreviewActorModelDefaults.SelectMesh(this, previewActorMeshes, component,
+            GetPreviewActorModelName(selectedPreviewActor, component));
+        if (meshRecord is null) return;
 
         int actorIndex = previewActors.IndexOf(selectedPreviewActor);
-        if (!TryLoadPreviewActorModel(actorIndex, meshRecord, out string error))
+        if (PreviewActorModelDefaults.IsNone(meshRecord))
+        {
+            previewActorModels.ElementAtOrDefault(actorIndex)?.Remove(component);
+            SetPreviewActorModelName(selectedPreviewActor, component, string.Empty);
+            SetPreviewActorStatus($"{selectedPreviewActor.DisplayName} {component.ToString().ToLowerInvariant()}: None");
+            SavePreviewActorLayout();
+            SceneViewer.MarkRenderDirty();
+            return;
+        }
+        if (!TryLoadPreviewActorModel(actorIndex, component, meshRecord, false, out string error))
         {
             SetPreviewActorStatus(error);
             return;
         }
 
-        selectedPreviewActor.ModelName = meshRecord.MeshName;
-        SetPreviewActorStatus($"{selectedPreviewActor.DisplayName}: {meshRecord.MeshName}");
+        SetPreviewActorModelName(selectedPreviewActor, component, meshRecord.MeshName);
+        SetPreviewActorStatus($"{selectedPreviewActor.DisplayName} {component.ToString().ToLowerInvariant()}: {meshRecord.MeshName}");
         SavePreviewActorLayout();
         SceneViewer.MarkRenderDirty();
     }
 
     private void LoadSelectedPreviewActorModel()
     {
-        if (selectedPreviewActor is null || PreviewActorComboBox.ItemsSource is not IEnumerable<MeshRecord> meshes)
+        if (selectedPreviewActor is null || previewActorMeshes.Count == 0)
         {
             return;
         }
-        MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-            selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
-        if (mesh is not null)
+        int actorIndex = previewActors.IndexOf(selectedPreviewActor);
+        foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
         {
-            TryLoadPreviewActorModel(previewActors.IndexOf(selectedPreviewActor), mesh, out _);
+            MeshRecord mesh = FindConfiguredPreviewActorMesh(previewActorMeshes, selectedPreviewActor, component);
+            if (mesh is not null)
+            {
+                TryLoadPreviewActorModel(actorIndex, component, mesh, false, out _);
+            }
+        }
+    }
+
+    private static MeshRecord FindConfiguredPreviewActorMesh(IEnumerable<MeshRecord> meshes,
+        PreviewActorConfiguration actor, PreviewActorModelComponent component) =>
+        meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName, GetPreviewActorModelName(actor, component),
+            StringComparison.OrdinalIgnoreCase));
+
+    private static string GetPreviewActorModelName(PreviewActorConfiguration actor,
+        PreviewActorModelComponent component) => component switch
+    {
+        PreviewActorModelComponent.Body => actor.ModelName,
+        PreviewActorModelComponent.Head => actor.HeadModelName,
+        PreviewActorModelComponent.Hair => actor.HairModelName,
+        _ => null
+    };
+
+    private static void SetPreviewActorModelName(PreviewActorConfiguration actor,
+        PreviewActorModelComponent component, string modelName)
+    {
+        switch (component)
+        {
+            case PreviewActorModelComponent.Body: actor.ModelName = modelName; break;
+            case PreviewActorModelComponent.Head: actor.HeadModelName = modelName; break;
+            case PreviewActorModelComponent.Hair: actor.HairModelName = modelName; break;
         }
     }
 
@@ -2582,15 +2665,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         int actorCount = Math.Min(previewActorModels.Count, previewActors.Count);
         for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
         {
-            ModelPreview<WorldVertex> actorModel = previewActorModels[actorIndex];
-            if (actorModel is null)
+            ActorModelSet actorModels = previewActorModels[actorIndex];
+            if (actorModels is null)
             {
                 continue;
             }
             UpdatePreviewActorSkinning(previewActors[actorIndex]);
-            actorModel.UpdateLocalToWorld(CreatePreviewActorTransform(previewActors[actorIndex].Origin));
-            actorModel.Render(RenderPass.Base, RenderContext, 0);
-            actorModel.Render(RenderPass.Hair, RenderContext, 0);
+            Matrix4x4 transform = CreatePreviewActorTransform(previewActors[actorIndex].Origin);
+            foreach (ActorModelSet.Component component in actorModels.Components)
+            {
+                ModelPreview<WorldVertex> actorModel = component.Model;
+                actorModel.UpdateLocalToWorld(transform);
+                actorModel.Render(RenderPass.Base, RenderContext, 0);
+                actorModel.Render(RenderPass.Hair, RenderContext, 0);
+            }
         }
     }
 
@@ -3041,7 +3129,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         File.WriteAllText(RecentSetsFile, JsonConvert.SerializeObject(sets, Formatting.Indented));
     }
 
-    private void LoadPreviewActorModel(int actorIndex, ExportEntry skeletalMeshExport)
+    private void LoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
     {
         if (actorIndex < 0 || skeletalMeshExport is null)
         {
@@ -3052,18 +3140,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ModelPreview<WorldVertex> modelPreview = new(RenderContext, skeletalMesh);
         while (previewActorModels.Count <= actorIndex)
         {
-            previewActorModels.Add(null);
+            previewActorModels.Add(new ActorModelSet());
         }
-        previewActorModels[actorIndex]?.Dispose();
-        previewActorModels[actorIndex] = modelPreview;
-        if (actorIndex < previewActors.Count && skeletalMesh.LODModels.Length > 0)
+        SkeletalMesh bodySkeleton = component is PreviewActorModelComponent.Body
+            ? skeletalMesh
+            : previewActorAnimationStates.GetValueOrDefault(previewActors[actorIndex])?.SkeletalMesh;
+        var componentRenderer = new SkinnedMeshRenderer();
+        componentRenderer.BuildFromSkeletalMesh(skeletalMeshExport.Game, skeletalMesh.LODModels[0],
+            skeletalMesh.RefSkeleton, bodySkeleton?.RefSkeleton);
+        previewActorModels[actorIndex].Set(component, modelPreview, componentRenderer);
+        if (component is PreviewActorModelComponent.Body && actorIndex < previewActors.Count && skeletalMesh.LODModels.Length > 0)
         {
-            var renderer = new SkinnedMeshRenderer();
-            renderer.BuildFromSkeletalMesh(skeletalMeshExport.Game, skeletalMesh.LODModels[0]);
             var animationState = new PreviewActorAnimationState
             {
                 SkeletalMesh = skeletalMesh,
-                Renderer = renderer,
+                Renderer = componentRenderer,
                 Player = new AnimSequencePlayer(skeletalMesh),
             };
             previewActorAnimationStates[previewActors[actorIndex]] = animationState;
@@ -3089,7 +3180,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ClearPreviewActorModels()
     {
-        foreach (ModelPreview<WorldVertex> actorModel in previewActorModels)
+        foreach (ActorModelSet actorModel in previewActorModels)
         {
             actorModel?.Dispose();
         }
@@ -3129,7 +3220,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void FocusPreviewActor(int actorIndex)
     {
         if (actorIndex < 0 || actorIndex >= previewActorModels.Count || actorIndex >= previewActors.Count
-            || previewActorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+            || previewActorModels[actorIndex]?.Body is not { LODs.Count: > 0 } actorModel)
         {
             return;
         }
@@ -3157,11 +3248,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         updatingPreviewActorControls = true;
         SetPreviewActorOriginFields(selectedPreviewActor.Origin);
-        if (PreviewActorComboBox.ItemsSource is IEnumerable<MeshRecord> meshes)
-        {
-            PreviewActorComboBox.SelectedItem = meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName,
-                selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
-        }
+        PreviewActorTextBox.Text = selectedPreviewActor.ModelName;
+        PreviewActorHeadTextBox.Text = string.IsNullOrEmpty(selectedPreviewActor.HeadModelName) ? PreviewActorModelDefaults.NoneMeshName : selectedPreviewActor.HeadModelName;
+        PreviewActorHairTextBox.Text = string.IsNullOrEmpty(selectedPreviewActor.HairModelName) ? PreviewActorModelDefaults.NoneMeshName : selectedPreviewActor.HairModelName;
         PreviewActorGestureComboBox.Items.Refresh();
         PreviewActorGestureComboBox.SelectedItem = previewActorGestureAssignments.GetValueOrDefault(selectedPreviewActor)
                                                 ?? GestureTrackOption.None;
@@ -3233,14 +3322,21 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         int actorIndex = previewActors.IndexOf(actor);
         if (actorIndex < 0 || actorIndex >= previewActorModels.Count
             || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState)
-            || previewActorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+            || previewActorModels[actorIndex]?.Body is not { LODs.Count: > 0 } actorModel)
         {
             return;
         }
 
         if (animationState.Renderer.NeedsUpdate)
         {
-            animationState.Renderer.UpdateSkinning(RenderContext.ImmediateContext, actorModel.LODs[0].Mesh, animationState.Player);
+            foreach (ActorModelSet.Component component in previewActorModels[actorIndex].Components)
+            {
+                if (component.Model is { LODs.Count: > 0 })
+                {
+                    component.Renderer.UpdateSkinning(RenderContext.ImmediateContext,
+                        component.Model.LODs[0].Mesh, animationState.Player);
+                }
+            }
         }
     }
 
@@ -3489,11 +3585,37 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             return;
         }
-        selectedPreviewActor.ModelName = GetDefaultPreviewModelName(previewActorGame);
+        ResetSelectedPreviewActorModels();
         CameraOrigin origin = SelectedKeyframe is null
             ? new CameraOrigin(RenderContext.Camera.Position, Vector3.Zero)
             : new CameraOrigin(SelectedKeyframe.Location, SelectedKeyframe.Rotation);
         SetSelectedPreviewActorOrigin(origin);
         LoadSelectedPreviewActorModel();
+    }
+
+    private void ResetPreviewActorModels_Click(object sender, RoutedEventArgs e)
+    {
+        ResetSelectedPreviewActorModels();
+        LoadSelectedPreviewActorModel();
+        SynchronizePreviewActorControls();
+        SavePreviewActorLayout();
+    }
+
+    private void ResetSelectedPreviewActorModels()
+    {
+        if (selectedPreviewActor is null || previewAssetDatabase is null
+            || previewActorMeshes.Count == 0)
+        {
+            return;
+        }
+        foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+        {
+            MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(previewActorMeshes, previewAssetDatabase, component, previewActorGame);
+            if (mesh is not null)
+            {
+                SetPreviewActorModelName(selectedPreviewActor, component, mesh.MeshName);
+                TryLoadPreviewActorModel(previewActors.IndexOf(selectedPreviewActor), component, mesh, true, out _);
+            }
+        }
     }
 }

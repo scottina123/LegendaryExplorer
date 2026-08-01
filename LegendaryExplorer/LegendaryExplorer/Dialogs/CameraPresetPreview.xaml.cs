@@ -11,6 +11,7 @@ using System.Windows.Input;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.InterpEditor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -24,6 +25,49 @@ namespace LegendaryExplorer.Dialogs;
 
 public partial class CameraPresetPreview : UserControl, IDisposable, IActorEditorContext, ISceneRenderContextConfigurable
 {
+    private sealed class ActorModelSet : IDisposable
+    {
+        private readonly Dictionary<PreviewActorModelComponent, ModelPreview<WorldVertex>> _models = [];
+
+        public ModelPreview<WorldVertex> Body => Get(PreviewActorModelComponent.Body);
+        public IEnumerable<ModelPreview<WorldVertex>> Models => _models.Values;
+
+        public ModelPreview<WorldVertex> Get(PreviewActorModelComponent component) =>
+            _models.GetValueOrDefault(component);
+
+        public void Set(PreviewActorModelComponent component, ModelPreview<WorldVertex> model)
+        {
+            if (_models.Remove(component, out ModelPreview<WorldVertex> previousModel))
+            {
+                previousModel.Dispose();
+            }
+            _models[component] = model;
+        }
+
+        public void Remove(PreviewActorModelComponent component)
+        {
+            if (_models.Remove(component, out ModelPreview<WorldVertex> model)) model.Dispose();
+        }
+
+        public void Dispose()
+        {
+            foreach (ModelPreview<WorldVertex> model in _models.Values)
+            {
+                model.Dispose();
+            }
+            _models.Clear();
+        }
+    }
+
+    public void ClearActorModel(int actorIndex, PreviewActorModelComponent component)
+    {
+        if (actorIndex >= 0 && actorIndex < _actorModels.Count)
+        {
+            _actorModels[actorIndex]?.Remove(component);
+            SceneViewer.MarkRenderDirty();
+        }
+    }
+
     private static readonly RenderPass[] BaseRenderPasses = [RenderPass.Base, RenderPass.Hair];
 
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
@@ -70,7 +114,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
 
     private readonly LevelEditorRenderContext _renderContext;
     private readonly PreviewActorWidgetTarget _actorWidgetTarget = new();
-    private readonly List<ModelPreview<WorldVertex>> _actorModels = [];
+    private readonly List<ActorModelSet> _actorModels = [];
     private readonly List<IMEPackage> _levelPackages = [];
     private readonly List<string> _levelPaths = [];
     private IReadOnlyList<CameraOrigin> _actorTransforms = [];
@@ -470,6 +514,11 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
 
     public void LoadActorModel(int actorIndex, ExportEntry skeletalMeshExport)
     {
+        LoadActorModel(actorIndex, PreviewActorModelComponent.Body, skeletalMeshExport);
+    }
+
+    public void LoadActorModel(int actorIndex, PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+    {
         if (actorIndex < 0 || skeletalMeshExport is null)
         {
             return;
@@ -478,10 +527,9 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         ModelPreview<WorldVertex> model = new(_renderContext, skeletalMeshExport.GetBinaryData<SkeletalMesh>());
         while (_actorModels.Count <= actorIndex)
         {
-            _actorModels.Add(null);
+            _actorModels.Add(new ActorModelSet());
         }
-        _actorModels[actorIndex]?.Dispose();
-        _actorModels[actorIndex] = model;
+        _actorModels[actorIndex].Set(component, model);
         SceneViewer.MarkRenderDirty();
     }
 
@@ -498,7 +546,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
 
     public void ClearActorModels()
     {
-        foreach (ModelPreview<WorldVertex> actorModel in _actorModels)
+        foreach (ActorModelSet actorModel in _actorModels)
         {
             actorModel?.Dispose();
         }
@@ -515,7 +563,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     public void FocusActor(int actorIndex)
     {
         if (actorIndex < 0 || actorIndex >= _actorModels.Count || actorIndex >= _actorTransforms.Count
-            || _actorModels[actorIndex] is not { LODs.Count: > 0 } actorModel)
+            || _actorModels[actorIndex].Body is not { LODs.Count: > 0 } actorModel)
         {
             return;
         }
@@ -732,15 +780,19 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         int actorCount = Math.Min(_actorModels.Count, _actorTransforms.Count);
         for (int actorIndex = 0; actorIndex < actorCount; actorIndex++)
         {
-            ModelPreview<WorldVertex> actorModel = _actorModels[actorIndex];
-            if (actorModel is null)
+            ActorModelSet actorModels = _actorModels[actorIndex];
+            if (actorModels.Body is null)
             {
                 continue;
             }
             CameraOrigin transform = _actorTransforms[actorIndex];
-            actorModel.UpdateLocalToWorld(CreateActorTransform(transform));
-            actorModel.Render(RenderPass.Base, _renderContext, 0);
-            actorModel.Render(RenderPass.Hair, _renderContext, 0);
+            Matrix4x4 localToWorld = CreateActorTransform(transform);
+            foreach (ModelPreview<WorldVertex> actorModel in actorModels.Models)
+            {
+                actorModel.UpdateLocalToWorld(localToWorld);
+                actorModel.Render(RenderPass.Base, _renderContext, 0);
+                actorModel.Render(RenderPass.Hair, _renderContext, 0);
+            }
         }
     }
 

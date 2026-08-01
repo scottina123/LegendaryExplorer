@@ -430,6 +430,7 @@ namespace LegendaryExplorer.Dialogs
         private IMEPackage _favoriteGestureTrackPreviewPcc;
         private readonly PackageCache _ambPerfPreviewPackageCache = new();
         private List<MeshRecord> _skeletonMeshes;
+        private bool _updatingPreviewModels;
         private GesturePreviewExportLoader _favoriteGestureTrackPreviewControl;
 
         public GestureAnimationImporterDialog(ExportEntry gestureTrackExport, Window owner)
@@ -593,8 +594,9 @@ namespace LegendaryExplorer.Dialogs
             AvailableAnimationSources.ClearEx();
             SelectedAnimationSource = null;
             FilteredAnimations.ReplaceAll(_allAnimations);
-            PreviewMeshComboBox.ItemsSource = null;
-            PreviewMeshComboBox.SelectedItem = null;
+            PreviewMeshTextBox.Clear();
+            PreviewHeadMeshTextBox.Clear();
+            PreviewHairMeshTextBox.Clear();
             AnimPreviewControl.ClearAnimation();
             _allGestureTracks = [];
             SelectedGestureTrack = null;
@@ -609,8 +611,9 @@ namespace LegendaryExplorer.Dialogs
                 AvailableAmbPerfSources.ClearEx();
                 SelectedAmbPerfSource = null;
                 FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
-                AmbPerfMeshComboBox.ItemsSource = null;
-                AmbPerfMeshComboBox.SelectedItem = null;
+                AmbPerfMeshTextBox.Clear();
+                AmbPerfHeadMeshTextBox.Clear();
+                AmbPerfHairMeshTextBox.Clear();
                 AmbPerfPreviewControl.ClearAnimation();
             }
         }
@@ -664,19 +667,8 @@ namespace LegendaryExplorer.Dialogs
 
             // Set up skeleton mesh list for animation preview
             _skeletonMeshes = _db.Meshes.Where(m => m.IsSkeleton).ToList();
-            PreviewMeshComboBox.ItemsSource = _skeletonMeshes;
-
-            string defaultMesh = game switch
-            {
-                MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
-                MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
-                _ => "QRN_ARM_TLIa_MDL"
-            };
-            int meshIdx = _skeletonMeshes.FindIndex(mr => mr.MeshName == defaultMesh);
-            if (meshIdx >= 0)
-            {
-                PreviewMeshComboBox.SelectedIndex = meshIdx;
-            }
+            ResetPreviewModels(AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox,
+                PreviewHairMeshTextBox, game);
 
             // Load ambient performances for targets that expose m_pPerfGameData
             if (UsesDefaultPoseSetTarget)
@@ -684,11 +676,8 @@ namespace LegendaryExplorer.Dialogs
                 _allAmbPerfs = _db.Animations.Where(a => a.IsAmbPerf).ToList();
                 FilteredAmbPerfs.ReplaceAll(_allAmbPerfs);
                 AmbPerfStatusText = $"{_allAmbPerfs.Count} {game} ambient performances loaded.";
-                AmbPerfMeshComboBox.ItemsSource = _skeletonMeshes;
-                if (meshIdx >= 0)
-                {
-                    AmbPerfMeshComboBox.SelectedIndex = meshIdx;
-                }
+                ResetPreviewModels(AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox,
+                    AmbPerfHairMeshTextBox, game);
             }
         }
 
@@ -1075,21 +1064,73 @@ namespace LegendaryExplorer.Dialogs
             LoadAnimationPreview(SelectedAnimation, AnimPreviewControl);
         }
 
-        private void PreviewMesh_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void PreviewMesh_Select_Click(object sender, RoutedEventArgs e)
         {
-            LoadPreviewMesh(PreviewMeshComboBox.SelectedItem as MeshRecord, AnimPreviewControl);
+            SelectPreviewMesh(sender, AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox, PreviewHairMeshTextBox);
+        }
+
+        private void SelectPreviewMesh(object sender, AnimationPreviewControl previewControl, params TextBox[] textBoxes)
+        {
+            if (_updatingPreviewModels || sender is not Button { Tag: string componentName }
+                || !Enum.TryParse(componentName, out PreviewActorModelComponent component)) return;
+            MeshRecord mesh = PreviewActorModelDefaults.SelectMesh(this, _skeletonMeshes, component, textBoxes[(int)component].Text);
+            if (mesh is null) return;
+            textBoxes[(int)component].Text = mesh.MeshName;
+            if (PreviewActorModelDefaults.IsNone(mesh)) previewControl.ClearSkeletalMesh(component);
+            else LoadPreviewMesh(mesh, previewControl, component);
+        }
+
+        private void ResetPreviewModels_Click(object sender, RoutedEventArgs e) =>
+            ResetPreviewModels(AnimPreviewControl, PreviewMeshTextBox, PreviewHeadMeshTextBox,
+                PreviewHairMeshTextBox, _selectedAnimSourceGame);
+
+        private void ResetAmbPerfModels_Click(object sender, RoutedEventArgs e) =>
+            ResetPreviewModels(AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox,
+                AmbPerfHairMeshTextBox, _selectedAnimSourceGame);
+
+        private void ResetPreviewModels(AnimationPreviewControl previewControl, TextBox bodyTextBox,
+            TextBox headTextBox, TextBox hairTextBox, MEGame game)
+        {
+            if (_db is null)
+            {
+                return;
+            }
+
+            _updatingPreviewModels = true;
+            try
+            {
+                TextBox[] textBoxes = [bodyTextBox, headTextBox, hairTextBox];
+                foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+                {
+                    MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(_skeletonMeshes, _db, component, game);
+                    textBoxes[(int)component].Text = mesh?.MeshName ?? PreviewActorModelDefaults.NoneMeshName;
+                    if (mesh is not null)
+                    {
+                        LoadPreviewMesh(mesh, previewControl, component, true);
+                    }
+                    else
+                    {
+                        previewControl.ClearSkeletalMesh(component);
+                    }
+                }
+            }
+            finally
+            {
+                _updatingPreviewModels = false;
+            }
         }
 
         /// <summary>
         /// Resolves a MeshRecord from the database and loads it into the given preview control.
         /// </summary>
-        private void LoadPreviewMesh(MeshRecord meshRecord, AnimationPreviewControl previewControl)
+        private void LoadPreviewMesh(MeshRecord meshRecord, AnimationPreviewControl previewControl,
+            PreviewActorModelComponent component = PreviewActorModelComponent.Body, bool baseGameOnly = false)
         {
             if (meshRecord == null || !meshRecord.Usages.Any()) return;
 
             string filePath = null;
             int uIndex = 0;
-            foreach (var (fileKey, tempUIndex, _) in meshRecord.Usages)
+            foreach (var (fileKey, tempUIndex, _) in PreviewActorModelDefaults.GetUsages(meshRecord, _db, baseGameOnly))
             {
                 filePath = GetFilePath(fileKey);
                 if (filePath != null)
@@ -1108,7 +1149,7 @@ namespace LegendaryExplorer.Dialogs
             using var meshPackage = MEPackageHandler.OpenMEPackage(filePath);
             if (meshPackage.IsUExport(uIndex))
             {
-                previewControl.LoadSkeletalMesh(meshPackage.GetUExport(uIndex));
+                previewControl.LoadSkeletalMesh(component, meshPackage.GetUExport(uIndex));
             }
         }
 
@@ -2025,8 +2066,7 @@ namespace LegendaryExplorer.Dialogs
                     LoadPreviewMesh(meshCombo.SelectedItem as MeshRecord, pickerPreview);
                 };
                 // Set to the same mesh as the main preview if available
-                if (PreviewMeshComboBox.SelectedIndex >= 0)
-                    meshCombo.SelectedIndex = PreviewMeshComboBox.SelectedIndex;
+                meshCombo.SelectedItem = _skeletonMeshes.FirstOrDefault(mesh => mesh.MeshName == PreviewMeshTextBox.Text);
             }
 
             // Left panel: preview
@@ -2136,7 +2176,7 @@ namespace LegendaryExplorer.Dialogs
                 sourcePackageCombo.ItemsSource = null;
                 sourcePackageCombo.SelectedItem = null;
                 meshCombo.ItemsSource = _skeletonMeshes;
-                meshCombo.SelectedItem = PreviewMeshComboBox.SelectedItem as MeshRecord;
+                meshCombo.SelectedItem = _skeletonMeshes?.FirstOrDefault(mesh => mesh.MeshName == PreviewMeshTextBox.Text);
                 if (meshCombo.SelectedItem is MeshRecord selectedMesh)
                 {
                     pickerWindow.Dispatcher.BeginInvoke(new Action(() =>
@@ -2713,9 +2753,9 @@ namespace LegendaryExplorer.Dialogs
             }
         }
 
-        private void AmbPerfMesh_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void AmbPerfMesh_Select_Click(object sender, RoutedEventArgs e)
         {
-            LoadPreviewMesh(AmbPerfMeshComboBox.SelectedItem as MeshRecord, AmbPerfPreviewControl);
+            SelectPreviewMesh(sender, AmbPerfPreviewControl, AmbPerfMeshTextBox, AmbPerfHeadMeshTextBox, AmbPerfHairMeshTextBox);
         }
 
         private void LoadAmbPerfPreview(AnimationRecord anim)

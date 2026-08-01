@@ -35,6 +35,8 @@ public partial class CameraPresetDialog : Window
     {
         public string DisplayName { get; set; }
         public string ModelName { get; set; }
+        public string HeadModelName { get; set; }
+        public string HairModelName { get; set; }
         public CameraAnchorMode AnchorMode { get; set; }
         public string SingleActorTag { get; set; }
         public string ActorTags { get; set; }
@@ -106,7 +108,8 @@ public partial class CameraPresetDialog : Window
     private double _parameterScrubAccumulator;
     private double _parameterScrubPreviousHorizontalChange;
 
-    private ComboBox PreviewActorSelector => FindName("PreviewActorComboBox") as ComboBox;
+    private TextBox PreviewActorSelector => FindName("PreviewActorTextBox") as TextBox;
+    private List<MeshRecord> _previewActorMeshes = [];
     private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
     private ContextMenu PreviewRecentLevelsContextMenu => PreviewRecentLevelsButtonControl?.ContextMenu;
     private TextBlock PreviewLevelStatus => FindName("PreviewLevelStatusTextBlock") as TextBlock;
@@ -396,21 +399,28 @@ public partial class CameraPresetDialog : Window
             _previewAssetFiles = database.FileList
                 .Select(file => (file.FileName, database.ContentDir[file.DirectoryKey]))
                 .ToList();
-            PreviewActorComboBox.ItemsSource = meshes;
+            _previewActorMeshes = meshes;
 
-            string defaultMeshName = GetDefaultPreviewModelName(game);
-            foreach (PreviewActorConfiguration actor in _previewActors)
+            for (int actorIndex = 0; actorIndex < _previewActors.Count; actorIndex++)
             {
-                MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-                    actor.ModelName, StringComparison.OrdinalIgnoreCase))
-                    ?? meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-                        defaultMeshName, StringComparison.OrdinalIgnoreCase));
-                if (mesh is null)
+                PreviewActorConfiguration actor = _previewActors[actorIndex];
+                foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
                 {
-                    continue;
+                    if (component is not PreviewActorModelComponent.Body
+                        && string.IsNullOrEmpty(GetPreviewActorModelName(actor, component)))
+                    {
+                        CameraPreviewControl.ClearActorModel(actorIndex, component);
+                        continue;
+                    }
+                    MeshRecord mesh = FindConfiguredPreviewActorMesh(meshes, actor, component)
+                        ?? PreviewActorModelDefaults.FindDefaultMesh(meshes, database, component, game);
+                    if (mesh is null)
+                    {
+                        continue;
+                    }
+                    SetPreviewActorModelName(actor, component, mesh.MeshName);
+                    TryLoadPreviewActorModel(actorIndex, component, mesh, false, out _);
                 }
-                actor.ModelName = mesh.MeshName;
-                TryLoadPreviewActorModel(_previewActors.IndexOf(actor), mesh, out _);
             }
             SynchronizePreviewActorControls();
             SetPreviewActorStatus(meshes.Count == 0
@@ -431,27 +441,40 @@ public partial class CameraPresetDialog : Window
         }
     }
 
-    private void PreviewActorModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PreviewActorModel_Select_Click(object sender, RoutedEventArgs e)
     {
         if (_updatingPreviewActorControls || _selectedPreviewActor is null
-            || sender is not ComboBox { SelectedItem: MeshRecord meshRecord })
+            || sender is not Button { Tag: string componentName }
+            || !Enum.TryParse(componentName, out PreviewActorModelComponent component))
         {
             return;
         }
+        MeshRecord meshRecord = PreviewActorModelDefaults.SelectMesh(this, _previewActorMeshes, component,
+            GetPreviewActorModelName(_selectedPreviewActor, component));
+        if (meshRecord is null) return;
 
         int actorIndex = _previewActors.IndexOf(_selectedPreviewActor);
-        if (!TryLoadPreviewActorModel(actorIndex, meshRecord, out string error))
+        if (PreviewActorModelDefaults.IsNone(meshRecord))
+        {
+            CameraPreviewControl.ClearActorModel(actorIndex, component);
+            SetPreviewActorModelName(_selectedPreviewActor, component, string.Empty);
+            SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName} {component.ToString().ToLowerInvariant()}: None");
+            RefreshLivePreview();
+            return;
+        }
+        if (!TryLoadPreviewActorModel(actorIndex, component, meshRecord, false, out string error))
         {
             SetPreviewActorStatus(error);
             return;
         }
 
-        _selectedPreviewActor.ModelName = meshRecord.MeshName;
-        SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName}: {meshRecord.MeshName}");
+        SetPreviewActorModelName(_selectedPreviewActor, component, meshRecord.MeshName);
+        SetPreviewActorStatus($"{_selectedPreviewActor.DisplayName} {component.ToString().ToLowerInvariant()}: {meshRecord.MeshName}");
         RefreshLivePreview();
     }
 
-    private bool TryLoadPreviewActorModel(int actorIndex, MeshRecord meshRecord, out string error)
+    private bool TryLoadPreviewActorModel(int actorIndex, PreviewActorModelComponent component,
+        MeshRecord meshRecord, bool baseGameOnly, out string error)
     {
         error = null;
         if (_package is null || _previewAssetDatabase is null)
@@ -467,7 +490,7 @@ public partial class CameraPresetDialog : Window
             return false;
         }
 
-        foreach (MeshUsage usage in meshRecord.Usages)
+        foreach (MeshUsage usage in PreviewActorModelDefaults.GetUsages(meshRecord, _previewAssetDatabase, baseGameOnly))
         {
             if (usage.FileKey < 0 || usage.FileKey >= _previewAssetFiles.Count)
             {
@@ -496,7 +519,7 @@ public partial class CameraPresetDialog : Window
 
             try
             {
-                CameraPreviewControl.LoadActorModel(actorIndex, meshExport);
+                CameraPreviewControl.LoadActorModel(actorIndex, component, meshExport);
                 return true;
             }
             catch (Exception exception)
@@ -509,13 +532,6 @@ public partial class CameraPresetDialog : Window
         error = $"No installed package containing {meshRecord.MeshName} could be resolved.";
         return false;
     }
-
-    private static string GetDefaultPreviewModelName(MEGame game) => game switch
-    {
-        MEGame.LE1 or MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
-        MEGame.LE2 or MEGame.ME2 => "QRN_TLI_LGTa_MDL",
-        _ => "QRN_ARM_TLIa_MDL"
-    };
 
     private void InitializePreviewActorLayout()
     {
@@ -544,7 +560,9 @@ public partial class CameraPresetDialog : Window
                     {
                         actor.AnchorMode = Enum.IsDefined(actor.AnchorMode)
                             ? actor.AnchorMode : CameraAnchorMode.ManualOrigin;
-                        actor.ModelName ??= GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown);
+                        actor.ModelName ??= PreviewActorModelDefaults.BodyMeshName;
+                        actor.HeadModelName ??= PreviewActorModelDefaults.HeadMeshName;
+                        actor.HairModelName ??= PreviewActorModelDefaults.HairMeshName;
                         _previewActors.Add(actor);
                     }
                 }
@@ -584,7 +602,9 @@ public partial class CameraPresetDialog : Window
         var actor = new PreviewActorConfiguration
         {
             AnchorMode = CameraAnchorMode.ManualOrigin,
-            ModelName = GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown),
+            ModelName = PreviewActorModelDefaults.BodyMeshName,
+            HeadModelName = PreviewActorModelDefaults.HeadMeshName,
+            HairModelName = PreviewActorModelDefaults.HairMeshName,
             Origin = origin
         };
         _previewActors.Add(actor);
@@ -620,7 +640,7 @@ public partial class CameraPresetDialog : Window
         CameraPreviewControl.ClearActorModels();
         AddDefaultPreviewActor();
         LoadSelectedPreviewActorModel();
-        SetPreviewActorStatus("Preview actors reset to one Tali actor at the camera anchor.");
+        SetPreviewActorStatus("Preview actors reset to one Miranda actor at the camera anchor.");
         RefreshLivePreview();
     }
 
@@ -664,11 +684,9 @@ public partial class CameraPresetDialog : Window
         PreviewActorTagsTextBox.Text = _selectedPreviewActor.ActorTags ?? string.Empty;
         PreviewActorPrimaryTagComboBox.Text = _selectedPreviewActor.PrimaryActorTag ?? string.Empty;
         SetPreviewActorOriginFields(_selectedPreviewActor.Origin);
-        if (PreviewActorComboBox.ItemsSource is IEnumerable<MeshRecord> meshes)
-        {
-            PreviewActorComboBox.SelectedItem = meshes.FirstOrDefault(mesh => string.Equals(mesh.MeshName,
-                _selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
-        }
+        PreviewActorTextBox.Text = _selectedPreviewActor.ModelName;
+        PreviewActorHeadTextBox.Text = string.IsNullOrEmpty(_selectedPreviewActor.HeadModelName) ? PreviewActorModelDefaults.NoneMeshName : _selectedPreviewActor.HeadModelName;
+        PreviewActorHairTextBox.Text = string.IsNullOrEmpty(_selectedPreviewActor.HairModelName) ? PreviewActorModelDefaults.NoneMeshName : _selectedPreviewActor.HairModelName;
         UpdatePreviewActorAnchorPanels();
         UpdatePreviewActorRotationDialIndicator();
         _updatingPreviewActorControls = false;
@@ -1066,22 +1084,77 @@ public partial class CameraPresetDialog : Window
             return;
         }
         CameraOrigin origin = TryResolveGenerationOrigin(false, out CameraOrigin resolved) ? resolved : default;
-        _selectedPreviewActor.ModelName = GetDefaultPreviewModelName(_package?.Game ?? MEGame.Unknown);
+        ResetSelectedPreviewActorModels();
         SetSelectedPreviewActorOrigin(origin, true);
-        LoadSelectedPreviewActorModel();
+    }
+
+    private void ResetPreviewActorModels_Click(object sender, RoutedEventArgs e) => ResetSelectedPreviewActorModels();
+
+    private void ResetSelectedPreviewActorModels()
+    {
+        if (_selectedPreviewActor is null || _previewActorMeshes.Count == 0)
+        {
+            return;
+        }
+
+        List<MeshRecord> meshes = _previewActorMeshes;
+        int actorIndex = _previewActors.IndexOf(_selectedPreviewActor);
+        foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+        {
+            MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(meshes, _previewAssetDatabase, component,
+                _package?.Game ?? MEGame.Unknown);
+            if (mesh is null)
+            {
+                continue;
+            }
+            SetPreviewActorModelName(_selectedPreviewActor, component, mesh.MeshName);
+            TryLoadPreviewActorModel(actorIndex, component, mesh, true, out _);
+        }
+        SynchronizePreviewActorControls();
+        SavePreviewActorLayout();
+        RefreshLivePreview();
     }
 
     private void LoadSelectedPreviewActorModel()
     {
-        if (_selectedPreviewActor is null || PreviewActorComboBox.ItemsSource is not IEnumerable<MeshRecord> meshes)
+        if (_selectedPreviewActor is null || _previewActorMeshes.Count == 0)
         {
             return;
         }
-        MeshRecord mesh = meshes.FirstOrDefault(item => string.Equals(item.MeshName,
-            _selectedPreviewActor.ModelName, StringComparison.OrdinalIgnoreCase));
-        if (mesh is not null)
+        int actorIndex = _previewActors.IndexOf(_selectedPreviewActor);
+        foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
         {
-            TryLoadPreviewActorModel(_previewActors.IndexOf(_selectedPreviewActor), mesh, out _);
+            MeshRecord mesh = FindConfiguredPreviewActorMesh(_previewActorMeshes, _selectedPreviewActor, component);
+            if (mesh is not null)
+            {
+                TryLoadPreviewActorModel(actorIndex, component, mesh, false, out _);
+            }
+        }
+    }
+
+    private static MeshRecord FindConfiguredPreviewActorMesh(IEnumerable<MeshRecord> meshes,
+        PreviewActorConfiguration actor, PreviewActorModelComponent component) =>
+        meshes.FirstOrDefault(item => string.Equals(item.MeshName, GetPreviewActorModelName(actor, component),
+            StringComparison.OrdinalIgnoreCase));
+
+    private static string GetPreviewActorModelName(PreviewActorConfiguration actor,
+        PreviewActorModelComponent component) => component switch
+    {
+        PreviewActorModelComponent.Body => actor.ModelName,
+        PreviewActorModelComponent.Head => actor.HeadModelName,
+        PreviewActorModelComponent.Hair => actor.HairModelName,
+        _ => throw new ArgumentOutOfRangeException(nameof(component))
+    };
+
+    private static void SetPreviewActorModelName(PreviewActorConfiguration actor,
+        PreviewActorModelComponent component, string modelName)
+    {
+        switch (component)
+        {
+            case PreviewActorModelComponent.Body: actor.ModelName = modelName; break;
+            case PreviewActorModelComponent.Head: actor.HeadModelName = modelName; break;
+            case PreviewActorModelComponent.Hair: actor.HairModelName = modelName; break;
+            default: throw new ArgumentOutOfRangeException(nameof(component));
         }
     }
 

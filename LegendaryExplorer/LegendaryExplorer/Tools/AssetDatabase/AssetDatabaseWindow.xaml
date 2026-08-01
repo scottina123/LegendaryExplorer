@@ -1234,9 +1234,26 @@
                                 <DockPanel MinWidth="350" Margin="3">
                                     <ToggleButton x:Name="btn_AnimPreviewToggle" Content="Toggle Animation Preview" MaxHeight="30" ClickMode="Release" 
                                                   Click="btn_AnimPreviewToggle_Click" IsChecked="False" DockPanel.Dock="Bottom"/>
-                                    <ComboBox x:Name="cbx_AnimPreviewMesh" DockPanel.Dock="Top" Margin="0,0,0,3"
-                                              DisplayMemberPath="MeshName"
-                                              SelectionChanged="AnimPreview_MeshSelectionChanged"/>
+                                    <Grid DockPanel.Dock="Top" Margin="0,0,0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="45"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="Body:" VerticalAlignment="Center"/>
+                                        <DockPanel Grid.Column="1" Margin="0,0,3,3"><Button DockPanel.Dock="Right" Content="Select..." Tag="Body" Click="AnimPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_AnimPreviewMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                        <Button Grid.Column="2" Grid.RowSpan="3" Content="Reset Models" Padding="6,2"
+                                                Click="ResetAnimPreviewModels_Click"/>
+                                        <TextBlock Grid.Row="1" Text="Head:" VerticalAlignment="Center"/>
+                                        <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,0,3,3"><Button DockPanel.Dock="Right" Content="Select..." Tag="Head" Click="AnimPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_AnimPreviewHeadMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                        <TextBlock Grid.Row="2" Text="Hair:" VerticalAlignment="Center"/>
+                                        <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,0,3,0"><Button DockPanel.Dock="Right" Content="Select..." Tag="Hair" Click="AnimPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_AnimPreviewHairMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                    </Grid>
                                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,3" Visibility="Collapsed">
                                         <TextBlock Text="AmbPerf Master PCC: " VerticalAlignment="Center" DockPanel.Dock="Left"/>
                                         <Button Content="Clear" DockPanel.Dock="Right" Margin="3,0,0,0" Padding="4,1"

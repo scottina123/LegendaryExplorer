@@ -864,6 +864,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
+        private bool _updatingAnimPreviewModels;
+        private List<MeshRecord> _animPreviewMeshes = [];
+        private readonly Dictionary<PreviewActorModelComponent, MeshRecord> _selectedAnimPreviewMeshes = [];
         private IMEPackage gesturePreviewPcc;
         private readonly PackageCache _animPreviewPackageCache = new();
         private IMEPackage _ambPerfMasterPcc;
@@ -983,6 +986,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 IAssetSpecification<ParticleSysRecord> => 6,
                 _ => -1
             };
+
             return currentView == tabIndex;
         }
 
@@ -1016,6 +1020,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             {
                 Interval = TimeSpan.FromMilliseconds(180)
             };
+
             _lineSearchDebounceTimer.Tick += (_, _) =>
             {
                 _lineSearchDebounceTimer.Stop();
@@ -4948,19 +4953,40 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             return null;
         }
 
-        private void AnimPreview_MeshSelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void AnimPreview_SelectMesh_Click(object sender, RoutedEventArgs e)
         {
-            LoadSkeletalMeshForAnimPreview();
+            if (sender is not Button { Tag: string componentName }
+                || !Enum.TryParse(componentName, out PreviewActorModelComponent component)) return;
+            _selectedAnimPreviewMeshes.TryGetValue(component, out MeshRecord current);
+            MeshRecord selected = PreviewActorModelDefaults.SelectMesh(this, _animPreviewMeshes, component, current?.MeshName);
+            if (selected is null) return;
+            _selectedAnimPreviewMeshes[component] = selected;
+            GetAnimPreviewMeshTextBox(component).Text = selected.MeshName;
+            LoadSkeletalMeshForAnimPreview(component, false);
         }
 
         private void LoadSkeletalMeshForAnimPreview()
         {
-            if (cbx_AnimPreviewMesh.SelectedItem is MeshRecord meshRecord && meshRecord.Usages.Any())
+            foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
             {
+                LoadSkeletalMeshForAnimPreview(component, false);
+            }
+        }
+
+        private void LoadSkeletalMeshForAnimPreview(PreviewActorModelComponent component, bool baseGameOnly)
+        {
+            if (_selectedAnimPreviewMeshes.TryGetValue(component, out MeshRecord meshRecord))
+            {
+                if (PreviewActorModelDefaults.IsNone(meshRecord))
+                {
+                    AnimPreviewControl.ClearSkeletalMesh(component);
+                    return;
+                }
+                if (!meshRecord.Usages.Any()) return;
                 string filePath = null;
                 int uIndex = 0;
                 // find the first usage that we can actually resolve. This will skip over mods that have been removed since the database was generated
-                foreach (var (fileKey, tempUIndex, _) in meshRecord.Usages)
+                foreach (var (fileKey, tempUIndex, _) in PreviewActorModelDefaults.GetUsages(meshRecord, CurrentDataBase, baseGameOnly))
                 {
                     filePath = GetFilePath(fileKey);
                     if (filePath != null)
@@ -4973,15 +4999,61 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 // in case we can't find a resolvable usage, clear the animation preview
                 if (filePath == null)
                 {
-                    AnimPreviewControl.Clear();
+                    AnimPreviewControl.ClearSkeletalMesh(component);
                     return;
                 }
 
                 using var meshPackage = MEPackageHandler.OpenMEPackage(filePath);
                 if (meshPackage.IsUExport(uIndex))
                 {
-                    AnimPreviewControl.LoadSkeletalMesh(meshPackage.GetUExport(uIndex));
+                    AnimPreviewControl.LoadSkeletalMesh(component, meshPackage.GetUExport(uIndex));
                 }
+            }
+        }
+
+        private TextBox GetAnimPreviewMeshTextBox(PreviewActorModelComponent component) => component switch
+        {
+            PreviewActorModelComponent.Body => txt_AnimPreviewMesh,
+            PreviewActorModelComponent.Head => txt_AnimPreviewHeadMesh,
+            PreviewActorModelComponent.Hair => txt_AnimPreviewHairMesh,
+            _ => throw new ArgumentOutOfRangeException(nameof(component))
+        };
+
+        private void SetAnimPreviewMeshItems(IReadOnlyList<MeshRecord> meshes)
+        {
+            _animPreviewMeshes = meshes.ToList();
+            _selectedAnimPreviewMeshes.Clear();
+        }
+
+        private void ResetAnimPreviewModels_Click(object sender, RoutedEventArgs e)
+        {
+            ResetAnimPreviewModels();
+        }
+
+        private void ResetAnimPreviewModels()
+        {
+            List<MeshRecord> meshes = CurrentDataBase.Meshes.Where(mesh => mesh.IsSkeleton).ToList();
+            _updatingAnimPreviewModels = true;
+            try
+            {
+                foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+                {
+                    MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(meshes, CurrentDataBase, component, CurrentGame);
+                    _selectedAnimPreviewMeshes[component] = mesh;
+                    GetAnimPreviewMeshTextBox(component).Text = mesh?.MeshName ?? PreviewActorModelDefaults.NoneMeshName;
+                    if (mesh is not null)
+                    {
+                        LoadSkeletalMeshForAnimPreview(component, true);
+                    }
+                    else
+                    {
+                        AnimPreviewControl.ClearSkeletalMesh(component);
+                    }
+                }
+            }
+            finally
+            {
+                _updatingAnimPreviewModels = false;
             }
         }
 
@@ -5910,22 +5982,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     viewA.Filter = AssetFilters.AnimationFilter.Filter;
                     lstbx_Anims.ItemsSource = viewA;
                     List<MeshRecord> meshRecords = CurrentDataBase.Meshes.Where(m => m.IsSkeleton).ToList();
-                    cbx_AnimPreviewMesh.ItemsSource = meshRecords;
-
-                    //Tali
-                    string defaultMesh = CurrentGame switch
-                    {
-                        MEGame.LE1 => "QRN_FAC_ARM_LGTa_MDL",
-                        MEGame.ME1 => "QRN_FAC_ARM_LGTa_MDL",
-                        MEGame.LE2 => "QRN_TLI_LGTa_MDL",
-                        MEGame.ME2 => "QRN_TLI_LGTa_MDL",
-                        //LE3/ME3
-                        _ => "QRN_ARM_TLIa_MDL"
-                    };
-                    if (meshRecords.FindIndex(mr => mr.MeshName == defaultMesh) is int idx and > 0)
-                    {
-                        cbx_AnimPreviewMesh.SelectedIndex = idx;
-                    }
+                    SetAnimPreviewMeshItems(meshRecords);
+                    ResetAnimPreviewModels();
                     break;
                 case 6: //Particles
                     ICollectionView viewP = CollectionViewSource.GetDefaultView(CurrentDataBase.Particles);
