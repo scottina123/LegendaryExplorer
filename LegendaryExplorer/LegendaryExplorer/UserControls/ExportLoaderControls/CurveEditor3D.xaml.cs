@@ -1308,16 +1308,17 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        if (isPlayingActor && playbackActors.Any(state => ReferenceEquals(state.Actor, selectedPreviewActor)))
+        PreviewActorConfiguration actorToRemove = selectedPreviewActor;
+        if (isPlayingActor && playbackActors.Any(state => ReferenceEquals(state.Actor, actorToRemove)))
         {
             StopPlayback();
         }
 
-        int removedIndex = previewActors.IndexOf(selectedPreviewActor);
-        previewActorAnimationStates.Remove(selectedPreviewActor);
+        int removedIndex = previewActors.IndexOf(actorToRemove);
+        previewActorAnimationStates.Remove(actorToRemove);
+        previewActorGestureAssignments.Remove(actorToRemove);
+        previewActorTrackAssignments.Remove(actorToRemove);
         previewActors.RemoveAt(removedIndex);
-        previewActorGestureAssignments.Remove(selectedPreviewActor);
-        previewActorTrackAssignments.Remove(selectedPreviewActor);
         RemovePreviewActorModel(removedIndex);
         RenumberPreviewActors();
         PreviewActorListBox.SelectedIndex = Math.Min(removedIndex, previewActors.Count - 1);
