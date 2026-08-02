@@ -57,6 +57,7 @@ using LegendaryExplorer.Tools.PackageEditor.Experiments;
 using LegendaryExplorer.Tools.ObjectReferenceViewer;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Libraries;
+using LegendaryExplorer.UserControls.PackageEditorControls;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Matinee;
 using Xceed.Wpf.Toolkit;
@@ -88,6 +89,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private TabControl floatingToolboxTabs;
         private TabItem floatingSceneShopTab;
         private TabItem floatingCustomSequencesTab;
+        private List<MenuItem> experimentMenuItems;
         public ObservableCollectionExtended<SObj> CurrentObjects { get; } = new();
         public ObservableCollectionExtended<SObj> SelectedObjects { get; } = new();
         public ObservableCollectionExtended<ExportEntry> SequenceExports { get; } = new();
@@ -290,6 +292,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             DataContext = this;
             StatusText = "Select package file to load";
             InitializeComponent();
+            InitializeExperimentsBrowser();
 
             RecentsController.InitRecentControl(Toolname, Recents_MenuItem, x => LoadFile(x));
 
@@ -339,6 +342,32 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             ClrPcker_VarLink.SelectedColor = VarLinkColor.ToWPFColor();
 
             LoadRememberedCustomSequenceObjectSources();
+        }
+
+        private void InitializeExperimentsBrowser()
+        {
+            experimentMenuItems = ExperimentsMenuItem.Items.OfType<MenuItem>().ToList();
+            foreach (MenuItem menuItem in experimentMenuItems)
+            {
+                menuItem.DataContext = this;
+            }
+
+            ExperimentsMenuItem.Items.Clear();
+            ExperimentsMenuItem.Click += ExperimentsMenuItem_Click;
+        }
+
+        private void ExperimentsMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            IReadOnlyList<ExperimentBrowserItem> experiments = ExperimentBrowserCatalog.Create(
+                experimentMenuItems,
+                menuItem => menuItem.Items.OfType<MenuItem>().Any()
+                    ? ExperimentBrowserCatalog.GetHeader(menuItem)
+                    : "General");
+            var browser = new ExperimentsBrowserWindow(this, "Sequence Editor Experiments", experiments);
+            if (browser.ShowDialog() == true)
+            {
+                browser.SelectedExperiment?.Invoke();
+            }
         }
         
         /// <summary>

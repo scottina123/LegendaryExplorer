@@ -203,7 +203,7 @@
                                           HorizontalAlignment="Stretch" />
                     </MenuItem>
                 </MenuItem>
-                <MenuItem Header="Experiments" Padding="4">
+                <MenuItem x:Name="ExperimentsMenuItem" Header="Experiments" Padding="4">
                     <MenuItem Header="Connect GPS (requires interop)" Click="ConnectGPS_Clicked"/>
                     <MenuItem Header="Flip level upside down" Command="{Binding FlipLevelCommand}" />
                     <MenuItem Header="Build linear pathfinding chain from path logger (ASI)"

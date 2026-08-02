@@ -8,6 +8,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.Sequence_Editor;
+using LegendaryExplorer.UserControls.PackageEditorControls;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
@@ -118,6 +119,7 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
         private readonly PathingGraphEditor graphEditor;
         private bool AllowRefresh;
+        private List<MenuItem> experimentMenuItems;
         public readonly PathingZoomController zoomController;
 
         private string FileQueuedForLoad;
@@ -628,8 +630,32 @@ namespace LegendaryExplorer.Tools.PathfindingEditor
 
             AvailableNodeChangeableTypes.Sort(x => x.DisplayString);
             InitializeComponent();
+            InitializeExperimentsBrowser();
             pathfindingMouseListener = new PathfindingMouseListener(this); //Must be member so we can release reference
             graphEditor.AddInputEventListener(pathfindingMouseListener);
+        }
+
+        private void InitializeExperimentsBrowser()
+        {
+            experimentMenuItems = ExperimentsMenuItem.Items.OfType<MenuItem>().ToList();
+            foreach (MenuItem menuItem in experimentMenuItems)
+            {
+                menuItem.DataContext = this;
+            }
+
+            ExperimentsMenuItem.Items.Clear();
+            ExperimentsMenuItem.Click += ExperimentsMenuItem_Click;
+        }
+
+        private void ExperimentsMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            IReadOnlyList<ExperimentBrowserItem> experiments = ExperimentBrowserCatalog.Create(
+                experimentMenuItems, _ => "General");
+            var browser = new ExperimentsBrowserWindow(this, "Pathfinding Editor Experiments", experiments);
+            if (browser.ShowDialog() == true)
+            {
+                browser.SelectedExperiment?.Invoke();
+            }
         }
 
         private PlayerGPSNode PlayerGPSObject;

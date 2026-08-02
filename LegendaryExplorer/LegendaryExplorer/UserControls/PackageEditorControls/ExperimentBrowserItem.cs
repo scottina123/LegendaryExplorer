@@ -59,6 +59,11 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
             }
             else
             {
+                if (_menuItem.IsCheckable)
+                {
+                    _menuItem.IsChecked = !_menuItem.IsChecked;
+                }
+
                 _menuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, _menuItem));
             }
         }
