@@ -91,6 +91,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private CancellationTokenSource _entrySearchCancellationTokenSource;
 
         private TextBox _inlineObjectNameEditor;
+        private IntegerUpDown _inlineObjectNameIndexEditor;
+        private Panel _inlineObjectNameEditorPanel;
         private TextBlock _inlineObjectNameDisplay;
         private TreeViewEntry _inlineObjectNameNode;
         private bool _isEndingInlineObjectNameEdit;
@@ -6302,7 +6304,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void TreeEntryContainer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (_inlineObjectNameEditor?.IsMouseOver == true)
+            if (_inlineObjectNameEditor?.IsMouseOver == true || _inlineObjectNameIndexEditor?.IsMouseOver == true)
             {
                 return;
             }
@@ -6362,18 +6364,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
             SetTreeMultiSelection([clickedNode], clickedNode, updatePrimarySelection: true);
         }
 
-        private void ObjectNameDisplay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void RenameObject_Click(object sender, RoutedEventArgs e)
         {
-            if (e.ClickCount != 3
-                || sender is not TextBlock { DataContext: TreeViewEntry { Entry: not null } node, Parent: Panel parent } display
-                || node.UIndex == 0
-                || parent.Children.OfType<TextBox>().FirstOrDefault() is not { } editor)
-            {
-                return;
-            }
-
-            e.Handled = true;
-            if (_inlineObjectNameEditor == editor)
+            if (sender is not MenuItem { Parent: ContextMenu contextMenu }
+                || !TryGetContextMenuEntry(contextMenu, out var entry)
+                || entry is null
+                || contextMenu.PlacementTarget is not FrameworkElement { DataContext: TreeViewEntry node } placementTarget)
             {
                 return;
             }
@@ -6383,23 +6379,35 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
-            _inlineObjectNameEditor = editor;
+            TextBlock display = FindVisualChildByName<TextBlock>(placementTarget, "ObjectNameDisplay");
+            Panel editorPanel = FindVisualChildByName<Panel>(placementTarget, "ObjectNameEditorPanel");
+            TextBox nameEditor = FindVisualChildByName<TextBox>(placementTarget, "ObjectNameEditor");
+            IntegerUpDown indexEditor = FindVisualChildByName<IntegerUpDown>(placementTarget, "ObjectNameIndexEditor");
+            if (display is null || editorPanel is null || nameEditor is null || indexEditor is null)
+            {
+                return;
+            }
+
+            _inlineObjectNameEditor = nameEditor;
+            _inlineObjectNameIndexEditor = indexEditor;
+            _inlineObjectNameEditorPanel = editorPanel;
             _inlineObjectNameDisplay = display;
             _inlineObjectNameNode = node;
 
-            editor.Text = node.Entry.ObjectName.Instanced;
+            nameEditor.Text = entry.ObjectName.Name;
+            indexEditor.Value = entry.ObjectName.Number > 0 ? entry.ObjectName.Number - 1 : null;
             display.Visibility = Visibility.Collapsed;
-            editor.Visibility = Visibility.Visible;
+            editorPanel.Visibility = Visibility.Visible;
             Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
             {
-                editor.Focus();
-                editor.CaretIndex = editor.Text.Length;
+                nameEditor.Focus();
+                nameEditor.SelectAll();
             }));
         }
 
         private void ObjectNameEditor_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (sender != _inlineObjectNameEditor)
+            if (sender != _inlineObjectNameEditor && sender != _inlineObjectNameIndexEditor)
             {
                 return;
             }
@@ -6417,10 +6425,19 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ObjectNameEditor_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
-            if (sender == _inlineObjectNameEditor && !_isEndingInlineObjectNameEdit)
+            if (_isEndingInlineObjectNameEdit)
             {
-                EndInlineObjectNameEdit(commit: true);
+                return;
             }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                if (_inlineObjectNameEditor?.IsKeyboardFocusWithin != true
+                    && _inlineObjectNameIndexEditor?.IsKeyboardFocusWithin != true)
+                {
+                    EndInlineObjectNameEdit(commit: true);
+                }
+            }));
         }
 
         private bool EndInlineObjectNameEdit(bool commit)
@@ -6444,20 +6461,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
             _isEndingInlineObjectNameEdit = true;
             try
             {
-                TextBox editor = _inlineObjectNameEditor;
+                TextBox nameEditor = _inlineObjectNameEditor;
+                IntegerUpDown indexEditor = _inlineObjectNameIndexEditor;
+                Panel editorPanel = _inlineObjectNameEditorPanel;
                 TextBlock display = _inlineObjectNameDisplay;
                 TreeViewEntry node = _inlineObjectNameNode;
-                string editedName = editor.Text.Trim();
 
                 _inlineObjectNameEditor = null;
+                _inlineObjectNameIndexEditor = null;
+                _inlineObjectNameEditorPanel = null;
                 _inlineObjectNameDisplay = null;
                 _inlineObjectNameNode = null;
-                editor.Visibility = Visibility.Collapsed;
+                editorPanel.Visibility = Visibility.Collapsed;
                 display.Visibility = Visibility.Visible;
 
                 if (commit)
                 {
-                    NameReference newName = NameReference.FromInstancedString(editedName);
+                    NameReference newName = new(nameEditor.Text.Trim(), indexEditor.Value is { } uiIndex ? uiIndex + 1 : 0);
                     if (node.Entry.ObjectName != newName)
                     {
                         node.Entry.ObjectName = newName;
@@ -6471,6 +6491,25 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 _isEndingInlineObjectNameEdit = false;
             }
+        }
+
+        private static T FindVisualChildByName<T>(DependencyObject parent, string name) where T : FrameworkElement
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T element && element.Name == name)
+                {
+                    return element;
+                }
+
+                if (FindVisualChildByName<T>(child, name) is { } descendant)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
         }
 
         private void TreeEntryContainer_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -7977,7 +8016,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             var copyFullPathMenuItem = contextMenu.Items
                 .OfType<MenuItem>()
                 .FirstOrDefault(item => Equals(item.Tag, "CopyFullPath"));
-            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null)
+            var renameObjectMenuItem = contextMenu.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => Equals(item.Tag, "RenameObject"));
+            if (changeLinksMenuItem is null && matchMicMenuItem is null && restoreMaterialMenuItem is null && addMissingTexturesMenuItem is null && stripLightmapMenuItem is null && stripShadowmapMenuItem is null && copyFullPathMenuItem is null && renameObjectMenuItem is null)
             {
                 return;
             }
@@ -7985,6 +8027,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
             bool hasEntry = TryGetContextMenuEntry(contextMenu, out var entry);
             ExportEntry export = entry as ExportEntry;
             bool hasExport = export is not null;
+
+            if (renameObjectMenuItem is not null)
+            {
+                renameObjectMenuItem.Visibility = CurrentView == CurrentViewMode.Tree && hasEntry
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
 
             if (changeLinksMenuItem is not null)
             {
