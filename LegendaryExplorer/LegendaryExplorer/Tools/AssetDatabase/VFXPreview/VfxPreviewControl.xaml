@@ -1,0 +1,34 @@
+<UserControl x:Class="LegendaryExplorer.Tools.AssetDatabase.VFXPreview.VfxPreviewControl"
+             x:Name="root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:scene3d="clr-namespace:LegendaryExplorer.Tools.LevelEditor.Scene3D">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <WrapPanel Margin="2">
+            <Button Content="Play" Click="Play_Click" Padding="6,2" Margin="1"/>
+            <Button Content="Pause" Click="Pause_Click" Padding="6,2" Margin="1"/>
+            <Button Content="Restart" Click="Restart_Click" Padding="6,2" Margin="1"/>
+            <Button Content="Focus" Click="Focus_Click" Padding="6,2" Margin="1,1,8,1"/>
+            <CheckBox Content="Loop" IsChecked="{Binding Loop, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+            <ComboBox Width="90" ItemsSource="{Binding ShadingModes, ElementName=root}" SelectedItem="{Binding ShadingMode, ElementName=root}" Margin="4,1"/>
+            <ComboBox Width="120" ItemsSource="{Binding Backgrounds, ElementName=root}" SelectedItem="{Binding Background, ElementName=root}" Margin="1"/>
+            <CheckBox Content="Axis" IsChecked="{Binding ShowAxis, ElementName=root}" VerticalAlignment="Center" Margin="4,2"/>
+            <CheckBox Content="Grid" IsChecked="{Binding ShowGrid, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+            <CheckBox Content="Ground" IsChecked="{Binding ShowGround, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+            <CheckBox Content="Bounds" IsChecked="{Binding ShowBounds, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+            <CheckBox Content="Origin" IsChecked="{Binding ShowOrigin, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+        </WrapPanel>
+        <Border Grid.Row="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1">
+            <scene3d:SceneRenderControl x:Name="Viewport" Focusable="True"/>
+        </Border>
+        <StackPanel Grid.Row="2" Margin="3,1">
+            <TextBlock Text="{Binding StatusText, ElementName=root}" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+            <TextBlock Text="{Binding WarningText, ElementName=root}" Foreground="DarkOrange" TextWrapping="Wrap" MaxHeight="48" ToolTip="{Binding WarningText, ElementName=root}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

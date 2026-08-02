@@ -45,6 +45,8 @@ public class PreviewTextureCache : IDisposable
         public DateTime LastUsageTime = DateTime.Now;
 
         public readonly bool IsTextureCube;
+        public int Width => Texture?.Description.Width ?? 1;
+        public int Height => Texture?.Description.Height ?? 1;
 
         /// <summary>
         /// Creates a new cache entry for the given texture.
@@ -356,7 +358,7 @@ public class PreviewTextureCache : IDisposable
                 }
                 try
                 {
-                    entry = textureExport.ClassName is "FlipBookTextureEntry" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
+                    entry = textureExport.ClassName is "TextureFlipBook" ? new FlipBookTextureEntry(RenderContext, textureExport) : new TextureEntry(RenderContext, textureExport);
                     AssetCache.Add(entry.InstanceFullPath, entry);
                     return entry;
                 }

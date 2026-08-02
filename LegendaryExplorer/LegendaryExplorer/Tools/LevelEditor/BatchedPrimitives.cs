@@ -42,11 +42,14 @@ public class BatchedPrimitives
         return new MeshBuilder(this, color, hitId, localToWorld);
     }
 
-    public void Render(LevelEditorRenderContext context)
+    public void Render(MeshRenderContext context, bool clearDepth = true)
     {
         if (LineVerts.Count is 0 && MeshVerts.Count is 0) return; 
 
-        context.ClearDepthBuffer();
+        if (clearDepth)
+        {
+            context.ClearDepthBuffer();
+        }
         context.RenderFlags |= RenderContext.ShaderFlags.PrimitiveRendering;
         context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState, context.GetWorldConstants(Matrix4x4.Identity));
         context.DefaultEffect.PrepPrimitiveBuffers(context, CollectionsMarshal.AsSpan(LineVerts), CollectionsMarshal.AsSpan(MeshVerts), CollectionsMarshal.AsSpan(MeshIndices));

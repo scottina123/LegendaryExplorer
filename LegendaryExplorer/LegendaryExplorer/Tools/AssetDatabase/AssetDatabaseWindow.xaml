@@ -13,6 +13,7 @@
         xmlns:controls="clr-namespace:LegendaryExplorer.SharedUI.Controls"
         xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
         xmlns:assetDbFilters="clr-namespace:LegendaryExplorer.Tools.AssetDatabase.Filters"
+        xmlns:vfxPreview="clr-namespace:LegendaryExplorer.Tools.AssetDatabase.VFXPreview"
         xmlns:materialEditor="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor"
         Loaded="AssetDB_Loaded"
         Closing="AssetDB_Closing"
@@ -1283,9 +1284,10 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition MinWidth="300" Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition MinWidth="260" Width="*"/>
+                                <ColumnDefinition MinWidth="180" Width="0.7*"/>
+                                <ColumnDefinition MinWidth="420" Width="2*"/>
+                                <ColumnDefinition MinWidth="220" Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Particle Systems and Receiver Effects (Visual Effects)" Style="{StaticResource ColumnHeaderStyle}" ToolTip="Particle systems (Grey is DLC only)" Grid.Row="0" Grid.Column="0"/>
                             <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="4,2" LastChildFill="False">
@@ -1296,7 +1298,7 @@
                                           SelectedItem="{Binding SelectedVfxTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
                             </DockPanel>
-                            <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="300" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="2" Grid.Column="0">
+                            <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="260" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="2" Grid.Column="0" SelectionChanged="VFX_SelectionChanged">
                                 <controls:ListBoxScroll.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Add to Import Queue" Command="{Binding AddToImportQueueCommand}" ToolTip="Add this VFX to the import queue."
@@ -1332,7 +1334,9 @@
                                     <TextBlock Text="{Binding Path=SelectedItem.IsDLCOnly, ElementName=lstbx_Particles}" />
                                 </StackPanel>
                             </Border>
-                            <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                            <TextBlock Text="Preview" Style="{StaticResource ColumnHeaderStyle}" ToolTip="In-process VFX preview" Grid.Row="0" Grid.Column="2"/>
+                            <vfxPreview:VfxPreviewControl x:Name="VfxPreview" Grid.Row="2" Grid.Column="2"/>
+                            <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"
                                                            FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Particles}"
                                                            HeaderToolTip="Every file that uses this effect&#x0a;Right click to open in Package Editor"/>

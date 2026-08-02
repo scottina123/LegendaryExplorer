@@ -864,6 +864,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private IMEPackage textPcc;
         private IMEPackage audioPcc;
         private IMEPackage animPcc;
+        private IMEPackage vfxPreviewPcc;
         private bool _updatingAnimPreviewModels;
         private List<MeshRecord> _animPreviewMeshes = [];
         private readonly Dictionary<PreviewActorModelComponent, MeshRecord> _selectedAnimPreviewMeshes = [];
@@ -1166,12 +1167,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             AnimPreviewControl?.Dispose();
             GesturePreviewControl?.UnloadExport();
             GesturePreviewControl?.Dispose();
+            VfxPreview?.UnloadExport();
 
             audioPcc?.Dispose();
             meshPcc?.Dispose();
             textPcc?.Dispose();
             animPcc?.Dispose();
             gesturePreviewPcc?.Dispose();
+            vfxPreviewPcc?.Dispose();
             _animPreviewPackageCache.Dispose();
             _ambPerfMasterPcc?.Dispose();
 
@@ -1180,6 +1183,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             textPcc = null;
             animPcc = null;
             gesturePreviewPcc = null;
+            vfxPreviewPcc = null;
             _ambPerfMasterPcc = null;
             AmbPerfMasterPccPath = null;
 
@@ -1187,6 +1191,49 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             dbworker.RunWorkerCompleted -= dbworker_LineWorkCompleted;
 
             ClearDataBase();
+        }
+
+        private void VFX_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            VfxPreview?.UnloadExport();
+            vfxPreviewPcc?.Dispose();
+            vfxPreviewPcc = null;
+
+            if (lstbx_Particles.SelectedItem is not ParticleSysRecord record)
+            {
+                return;
+            }
+
+            ParticleSysUsage usage = record.Usages
+                .OrderBy(candidate => candidate.IsInMod)
+                .ThenBy(candidate => candidate.IsInDLC)
+                .FirstOrDefault();
+            if (usage is null)
+            {
+                return;
+            }
+
+            string filePath = GetFilePath(usage.FileKey);
+            if (!File.Exists(filePath))
+            {
+                return;
+            }
+
+            try
+            {
+                vfxPreviewPcc = MEPackageHandler.OpenMEPackage(filePath);
+                if (vfxPreviewPcc.TryGetUExport(usage.UIndex, out ExportEntry export))
+                {
+                    VfxPreview.LoadExport(export);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Unable to preview VFX {record.PSName}: {exception.FlattenException()}");
+                VfxPreview.UnloadExport();
+                vfxPreviewPcc?.Dispose();
+                vfxPreviewPcc = null;
+            }
         }
 
         #endregion
