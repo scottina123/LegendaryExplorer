@@ -599,9 +599,16 @@ namespace LegendaryExplorer.SharedUI
 
                         if (ee.ParentName == "PersistentLevel" && ee.ClassName == "SFXStuntActor" && ee.Archetype is ExportEntry archetype)
                         {
+                            string archetypeSubtext = archetype.ObjectName.Instanced;
+                            var inheritedTag = archetype.GetProperty<NameProperty>("Tag", DefaultsLookupCache);
+                            if (inheritedTag != null && inheritedTag.Value.Name != "None")
+                            {
+                                archetypeSubtext += $"\nInherited: {inheritedTag.Value.Instanced}";
+                            }
+
                             _subtext = _subtext != null
-                                ? $"{_subtext}\n{archetype.ObjectName.Instanced}"
-                                : archetype.ObjectName.Instanced;
+                                ? $"{_subtext}\n{archetypeSubtext}"
+                                : archetypeSubtext;
                         }
                     }
 
