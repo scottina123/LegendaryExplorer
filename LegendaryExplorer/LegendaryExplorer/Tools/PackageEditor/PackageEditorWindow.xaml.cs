@@ -502,6 +502,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
         public ICommand SearchStringRefsCommand { get; set; }
         public ICommand FindAllClassInstancesCommand { get; set; }
         public ICommand GotoCommand { get; set; }
+        public ICommand GoToLastExportCommand { get; set; }
         public ICommand TabRightCommand { get; set; }
         public ICommand TabLeftCommand { get; set; }
         public ICommand FindReferencesCommand { get; set; }
@@ -596,6 +597,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             FindCommand = new GenericCommand(FocusSearch, PackageIsLoaded);
             SearchStringRefsCommand = new GenericCommand(SearchStringRefs, PackageIsLoaded);
             GotoCommand = new GenericCommand(FocusGoto, PackageIsLoaded);
+            GoToLastExportCommand = new GenericCommand(GoToLastExport, () => Pcc?.Exports.Count > 0);
             TabRightCommand = new GenericCommand(TabRight, PackageIsLoaded);
             TabLeftCommand = new GenericCommand(TabLeft, PackageIsLoaded);
 
@@ -6656,6 +6658,17 @@ namespace LegendaryExplorer.Tools.PackageEditor
             {
                 GoToNumber(n);
             }
+        }
+
+        private void GoToLastExport()
+        {
+            if (Pcc?.Exports.LastOrDefault() is not { } lastExport)
+            {
+                return;
+            }
+
+            CurrentView = CurrentViewMode.Tree;
+            GoToNumber(lastExport.UIndex);
         }
 
         /// <summary>
