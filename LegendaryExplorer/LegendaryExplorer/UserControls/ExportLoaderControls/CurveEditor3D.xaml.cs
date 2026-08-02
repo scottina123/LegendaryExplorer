@@ -432,7 +432,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private Vector3 pendingViewportKeyframeLocation;
     private Vector3 pendingViewportSelectedKeyframeLocation;
     private bool showCollision = Settings.LevelEditor_ShowCollision;
-    private bool showLightIcons = Settings.LevelEditor_ShowLightIcons;
+    private bool showLightIcons;
     private bool showVolumes = Settings.LevelEditor_ShowVolumes;
     private bool showVolumetrics;
     private bool unlit = Settings.LevelEditor_Unlit;
@@ -3438,7 +3438,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             DrawTrajectory(ActiveModel);
         }
         RenderPreviewActors();
-        DrawAdditionalCameraActors();
         RenderContext.DrawUI();
     }
 
@@ -3468,68 +3467,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         return Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
-    }
-
-    private void DrawAdditionalCameraActors()
-    {
-        if (dialogueNodePreview is not null)
-        {
-            return;
-        }
-
-        if (!isPlayingMove)
-        {
-            return;
-        }
-
-        if (playExtraTrackMove && selectedExtraTrackMove?.Model is not null)
-        {
-            DrawCameraActor(EvaluateTrackMove(selectedExtraTrackMove.Model, playbackCurrentTime), new Vector4(0.2f, 0.85f, 1f, 1f));
-        }
-
-        if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
-        {
-            foreach (TrackMovePlaybackOption camera in cuts.Select(cut => cut.Camera).Distinct())
-            {
-                if (camera?.Model is not null)
-                {
-                    DrawCameraActor(EvaluateTrackMove(camera.Model, playbackCurrentTime), new Vector4(1f, 0.25f, 0.9f, 1f));
-                }
-            }
-        }
-    }
-
-    private void DrawCameraActor(CameraOrigin origin, Vector4 color)
-    {
-        const float bodyHalfSize = 18f;
-        const float frustumLength = 85f;
-        const float frustumHalfWidth = 38f;
-        const float frustumHalfHeight = 24f;
-
-        Quaternion orientation = Rotator.FromDegreesVector(origin.Rotation).ToQuaternion();
-        Vector3 forward = Vector3.Transform(Vector3.UnitX, orientation);
-        Vector3 right = Vector3.Transform(Vector3.UnitY, orientation);
-        Vector3 up = Vector3.Transform(Vector3.UnitZ, orientation);
-        Vector3 position = origin.Location;
-
-        Vector3 nearForward = position + forward * bodyHalfSize;
-        Vector3 farCenter = position + forward * frustumLength;
-        Vector3 topLeft = farCenter - right * frustumHalfWidth + up * frustumHalfHeight;
-        Vector3 topRight = farCenter + right * frustumHalfWidth + up * frustumHalfHeight;
-        Vector3 bottomLeft = farCenter - right * frustumHalfWidth - up * frustumHalfHeight;
-        Vector3 bottomRight = farCenter + right * frustumHalfWidth - up * frustumHalfHeight;
-
-        RenderContext.Primitives.AddLine(position - right * bodyHalfSize, position + right * bodyHalfSize, color, 0);
-        RenderContext.Primitives.AddLine(position - up * bodyHalfSize, position + up * bodyHalfSize, color, 0);
-        RenderContext.Primitives.AddLine(position, nearForward, color, 0);
-        RenderContext.Primitives.AddLine(nearForward, topLeft, color, 0);
-        RenderContext.Primitives.AddLine(nearForward, topRight, color, 0);
-        RenderContext.Primitives.AddLine(nearForward, bottomLeft, color, 0);
-        RenderContext.Primitives.AddLine(nearForward, bottomRight, color, 0);
-        RenderContext.Primitives.AddLine(topLeft, topRight, color, 0);
-        RenderContext.Primitives.AddLine(topRight, bottomRight, color, 0);
-        RenderContext.Primitives.AddLine(bottomRight, bottomLeft, color, 0);
-        RenderContext.Primitives.AddLine(bottomLeft, topLeft, color, 0);
     }
 
     private void DrawTrajectory(CurveEditor3DModel activeModel)
