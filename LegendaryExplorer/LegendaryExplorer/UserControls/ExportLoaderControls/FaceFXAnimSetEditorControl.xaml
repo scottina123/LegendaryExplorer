@@ -16,9 +16,6 @@
     <exportLoaderControls:ExportLoaderControl.Resources>
         <Converters:NullVisibilityConverter x:Key="NullVisibilityConverter"/>
     </exportLoaderControls:ExportLoaderControl.Resources>
-    <exportLoaderControls:ExportLoaderControl.InputBindings>
-        <KeyBinding Command="{Binding AddKeyWithZeroWeightCommand}" Key="G" />
-    </exportLoaderControls:ExportLoaderControl.InputBindings>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Name="linesColumnDef" Width="310"/>
@@ -35,6 +32,7 @@
         <Label Content="Lines"/>
         <Grid Grid.Row="1" Grid.Column="0" Grid.RowSpan="2">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition/>
                 <RowDefinition Height="155"/>
@@ -63,7 +61,10 @@
                     </MenuItem>
                 </MenuItem>
             </Menu>
-            <ListBox x:Name="linesListBox" Grid.Row="1"  ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLineEntry}"
+            <sharedUiControls:SearchBox x:Name="lineSearchBox" Grid.Row="1" Margin="0,0,0,4"
+                                        WatermarkText="Filter by TLK ID or text"
+                                        TextChanged="LineSearchBox_OnTextChanged"/>
+            <ListBox x:Name="linesListBox" Grid.Row="2" ItemsSource="{Binding LinesView}" SelectedItem="{Binding SelectedLineEntry}"
              AllowDrop="True" PreviewMouseLeftButtonDown="linesListBox_PreviewMouseLeftButtonDown" MouseMove="linesListBox_MouseMove"
              DragEnter="linesListBox_DragEnter" Drop="linesListBox_Drop" HorizontalContentAlignment="Stretch" PreviewMouseRightButtonDown="linesListBox_PreviewMouseRightButtonDown">
                 <ListBox.ContextMenu>
@@ -118,7 +119,7 @@
                     </Style>
                 </ListBox.Style>
             </ListBox>
-            <TreeView Name="treeView" ItemsSource="{Binding TreeNodes}" DisplayMemberPath="Header" Grid.Row="2" Margin="0,5,0,0">
+            <TreeView Name="treeView" ItemsSource="{Binding TreeNodes}" DisplayMemberPath="Header" Grid.Row="3" Margin="0,5,0,0">
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="{x:Type TreeViewItem}">
                         <EventSetter Event="MouseDoubleClick" Handler="OnTreeItemMouseDoubleClick" />
@@ -199,7 +200,11 @@
             </Grid.ColumnDefinitions>
             <TabControl Grid.Column="0">
                 <TabItem Header="Graph">
-                    <sharedToolControls:CurveGraph x:Name="graph" KeyDown="Graph_KeyDown"/>
+                    <sharedToolControls:CurveGraph x:Name="graph" KeyDown="Graph_KeyDown">
+                        <sharedToolControls:CurveGraph.InputBindings>
+                            <KeyBinding Command="{Binding AddKeyWithZeroWeightCommand}" Key="G" />
+                        </sharedToolControls:CurveGraph.InputBindings>
+                    </sharedToolControls:CurveGraph>
                 </TabItem>
             </TabControl>
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>

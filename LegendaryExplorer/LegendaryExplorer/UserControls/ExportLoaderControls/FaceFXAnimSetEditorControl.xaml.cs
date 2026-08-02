@@ -86,6 +86,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             InitializeComponent();
             DataContext = this;
+            LinesView = CollectionViewSource.GetDefaultView(Lines);
+            LinesView.Filter = FilterLine;
             AnimationsView = CollectionViewSource.GetDefaultView(Animations);
             AnimationsView.Filter = FilterAnimation;
             AddKeyWithZeroWeightCommand = new GenericCommand(() => graph.AddKeyAtZero_MousePosition());
@@ -113,6 +115,20 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         }
 
         public ObservableCollectionExtended<FaceFXLineEntry> Lines { get; } = new();
+        public ICollectionView LinesView { get; }
+
+        private string _lineFilterText;
+        public string LineFilterText
+        {
+            get => _lineFilterText;
+            set
+            {
+                if (SetProperty(ref _lineFilterText, value))
+                {
+                    LinesView.Refresh();
+                }
+            }
+        }
 
         FaceFXLineEntry _selectedLineEntry;
 
@@ -271,6 +287,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             return string.IsNullOrWhiteSpace(AnimationFilterText)
                    || animation.Name.Contains(AnimationFilterText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool FilterLine(object item)
+        {
+            if (item is not FaceFXLineEntry line)
+            {
+                return false;
+            }
+
+            return string.IsNullOrWhiteSpace(LineFilterText)
+                   || line.TLKID.ToString(CultureInfo.InvariantCulture).Contains(LineFilterText, StringComparison.OrdinalIgnoreCase)
+                   || line.Line.ID.Contains(LineFilterText, StringComparison.OrdinalIgnoreCase)
+                   || line.TLKString?.Contains(LineFilterText, StringComparison.OrdinalIgnoreCase) == true;
+        }
+
+        private void LineSearchBox_OnTextChanged(SharedUI.Controls.SearchBox sender, string newText)
+        {
+            LineFilterText = newText?.Trim();
         }
 
         private void AnimationSearchBox_OnTextChanged(SharedUI.Controls.SearchBox sender, string newText)
