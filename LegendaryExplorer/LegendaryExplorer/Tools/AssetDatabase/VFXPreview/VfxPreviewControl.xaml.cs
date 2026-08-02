@@ -1,4 +1,6 @@
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorer.Misc;
+using LegendaryExplorer.Misc.AppSettings;
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -103,8 +105,29 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
             Interval = TimeSpan.FromMilliseconds(200)
         };
         statusTimer.Tick += StatusTimer_Tick;
-        Loaded += (_, _) => statusTimer.Start();
-        Unloaded += (_, _) => statusTimer.Stop();
+        Loaded += VfxPreviewControl_Loaded;
+        Unloaded += VfxPreviewControl_Unloaded;
+    }
+
+    private void VfxPreviewControl_Loaded(object sender, RoutedEventArgs e)
+    {
+        RenderContext.ApplyTheme(Settings.Global_DarkMode_Enabled);
+        ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
+        ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
+        statusTimer.Start();
+        Viewport.MarkRenderDirty();
+    }
+
+    private void VfxPreviewControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
+        statusTimer.Stop();
+    }
+
+    private void ThemeManager_ThemeChanged(object sender, bool isDarkMode)
+    {
+        RenderContext.ApplyTheme(isDarkMode);
+        Viewport.MarkRenderDirty();
     }
 
     public void LoadExport(ExportEntry export)

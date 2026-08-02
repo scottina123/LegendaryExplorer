@@ -24,6 +24,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
+    private bool isDarkMode;
 
     public VfxSimulation Simulation { get; } = new();
     public bool ShowAxis { get; set; } = true;
@@ -39,12 +40,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         set
         {
             background = value;
-            BackgroundColor = value switch
-            {
-                VfxPreviewBackground.Transparent => Color.FromArgb(0, 0, 0, 0),
-                VfxPreviewBackground.Black => Color.FromRgb(0, 0, 0),
-                _ => Color.FromRgb(0x66, 0x66, 0x66)
-            };
+            UpdateBackgroundColor();
         }
     }
 
@@ -77,6 +73,23 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         SceneLights.Add(new SceneLight(new Vector3(-200, -200, 300), 1200, Vector3.One, 1.25f, false, Vector3.Zero, 0, 0));
         SceneLights.Add(new SceneLight(new Vector3(250, 100, 100), 900, new Vector3(0.55f, 0.65f, 1), 0.6f, false, Vector3.Zero, 0, 0));
         RenderScene += RenderPreview;
+    }
+
+    public void ApplyTheme(bool darkMode)
+    {
+        isDarkMode = darkMode;
+        UpdateBackgroundColor();
+    }
+
+    private void UpdateBackgroundColor()
+    {
+        BackgroundColor = background switch
+        {
+            VfxPreviewBackground.Transparent => Color.FromArgb(0, 0, 0, 0),
+            VfxPreviewBackground.Black => Color.FromRgb(0, 0, 0),
+            _ when isDarkMode => Color.FromRgb(0x1E, 0x1E, 0x1E),
+            _ => Color.FromRgb(0x66, 0x66, 0x66)
+        };
     }
 
     public override void CreateResources()

@@ -1195,9 +1195,36 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private void VFX_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            VfxPreview?.UnloadExport();
-            vfxPreviewPcc?.Dispose();
-            vfxPreviewPcc = null;
+            if (VfxPreviewEnabledCheckBox?.IsChecked == true)
+            {
+                LoadVfxPreview();
+            }
+            else
+            {
+                UnloadVfxPreview();
+            }
+        }
+
+        private void VfxPreviewEnabled_Changed(object sender, RoutedEventArgs e)
+        {
+            if (VfxPreviewEnabledCheckBox.IsChecked == true)
+            {
+                LoadVfxPreview();
+            }
+            else
+            {
+                UnloadVfxPreview();
+            }
+        }
+
+        private void LoadVfxPreview()
+        {
+            UnloadVfxPreview();
+
+            if (VfxPreviewEnabledCheckBox?.IsChecked != true)
+            {
+                return;
+            }
 
             if (lstbx_Particles.SelectedItem is not ParticleSysRecord record)
             {
@@ -1234,6 +1261,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 vfxPreviewPcc?.Dispose();
                 vfxPreviewPcc = null;
             }
+        }
+
+        private void UnloadVfxPreview()
+        {
+            VfxPreview?.UnloadExport();
+            vfxPreviewPcc?.Dispose();
+            vfxPreviewPcc = null;
         }
 
         #endregion

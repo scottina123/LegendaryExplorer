@@ -1297,6 +1297,13 @@
                                           ItemsSource="{Binding VfxTypeFilters}"
                                           SelectedItem="{Binding SelectedVfxTypeFilter, Mode=TwoWay}"
                                           IsTextSearchEnabled="True"/>
+                                <CheckBox x:Name="VfxPreviewEnabledCheckBox"
+                                          Content="Enable preview"
+                                          IsChecked="False"
+                                          VerticalAlignment="Center"
+                                          Margin="12,0,0,0"
+                                          Checked="VfxPreviewEnabled_Changed"
+                                          Unchecked="VfxPreviewEnabled_Changed"/>
                             </DockPanel>
                             <controls:ListBoxScroll x:Name="lstbx_Particles" DockPanel.Dock="Left" MinWidth="260" ItemsSource="{Binding Path=CurrentDataBase.Particles}" Grid.Row="2" Grid.Column="0" SelectionChanged="VFX_SelectionChanged">
                                 <controls:ListBoxScroll.ContextMenu>
