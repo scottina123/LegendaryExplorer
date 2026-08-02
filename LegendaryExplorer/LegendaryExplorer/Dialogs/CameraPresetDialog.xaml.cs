@@ -109,6 +109,7 @@ public partial class CameraPresetDialog : Window
     private double _parameterScrubPreviousHorizontalChange;
 
     private TextBox PreviewActorSelector => FindName("PreviewActorTextBox") as TextBox;
+    private Button UseStageBoneOriginButtonControl => FindName("UseStageBoneOriginButton") as Button;
     private List<MeshRecord> _previewActorMeshes = [];
     private Button PreviewRecentLevelsButtonControl => FindName("PreviewRecentLevelsButton") as Button;
     private ContextMenu PreviewRecentLevelsContextMenu => PreviewRecentLevelsButtonControl?.ContextMenu;
@@ -150,6 +151,7 @@ public partial class CameraPresetDialog : Window
         SaveMulticamPresetButton.IsEnabled = _selectedDirectorTrack is not null && _interpData is not null;
         UseTrackKeyButton.IsEnabled = _getTrackKeyOrigin?.Invoke() is not null;
         UseOtherTrackKeyButton.IsEnabled = _package is not null;
+        UseStageBoneOriginButtonControl.IsEnabled = _package is not null;
         bool hasViewport = _getViewportOrigin?.Invoke() is not null;
         UseViewportLocationButton.IsEnabled = hasViewport;
         UseViewportTransformButton.IsEnabled = hasViewport;
@@ -1401,7 +1403,8 @@ public partial class CameraPresetDialog : Window
             maximumEndTime,
             export.FileRef,
             actorAnchorContext,
-            export)
+            export,
+            interpData: FindOwningInterpData(export))
         {
             Owner = owner
         };
@@ -1437,7 +1440,8 @@ public partial class CameraPresetDialog : Window
             interpData?.GetProperty<FloatProperty>("InterpLength")?.Value,
             group.FileRef,
             actorAnchorContext,
-            trackMove)
+            trackMove,
+            interpData: interpData)
         {
             Owner = owner
         };
@@ -2454,6 +2458,30 @@ public partial class CameraPresetDialog : Window
         }
     }
 
+    private void UseStageBoneOrigin_Click(object sender, RoutedEventArgs e)
+    {
+        if (TrySelectStageBoneOrigin(out CameraOrigin origin, true))
+        {
+            SetOrigin(origin);
+        }
+    }
+
+    private bool TrySelectStageBoneOrigin(out CameraOrigin origin, bool showErrors)
+    {
+        ExportEntry contextExport = _interpData ?? _selectedTrackMove ?? _selectedDirectorTrack;
+        bool resolved = StageBoneOriginResolver.TrySelectOrigin(this, _package, contextExport,
+            _actorAnchorContext?.Conversation, out origin, out string message);
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            StatusTextBlock.Text = message;
+        }
+        if (!resolved && showErrors && !string.IsNullOrWhiteSpace(message))
+        {
+            MessageBox.Show(this, message, "Stage Origin Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        return resolved;
+    }
+
     private void UseSelectedPreviewActorLocation_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedPreviewActor is null)
@@ -2825,8 +2853,14 @@ public partial class CameraPresetDialog : Window
             {
                 string unresolved = string.Join(", ", actorTags.Where(tag =>
                     paths.All(pathCandidate => !pathCandidate.ActorTransforms.ContainsKey(tag))));
-                MessageBox.Show($"No matching TrackMove or initial actor transform was found for: {unresolved}.",
-                    "Actor Transform Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxResult useStage = MessageBox.Show(this,
+                    $"No matching TrackMove or initial actor transform was found for: {unresolved}.{Environment.NewLine}{Environment.NewLine}Use a linked BioStage bone origin instead?",
+                    "Actor Transform Not Found", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (useStage == MessageBoxResult.Yes && TrySelectStageBoneOrigin(out origin, true))
+                {
+                    SetResolvedOriginDisplay(origin);
+                    return true;
+                }
             }
             return false;
         }

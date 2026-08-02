@@ -16,7 +16,8 @@ public enum CameraAnchorMode
 {
     ManualOrigin,
     SingleActor,
-    MultipleActors
+    MultipleActors,
+    StageBoneOrigin
 }
 
 public sealed record CameraActorAnchorContext(

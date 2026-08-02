@@ -127,6 +127,11 @@ namespace LegendaryExplorer.DialogueEditor
                 origin = selection.ManualOrigin;
                 return true;
             }
+            if (selection.Mode == CameraAnchorMode.StageBoneOrigin)
+            {
+                origin = selection.ManualOrigin;
+                return true;
+            }
             if (selection.DestinationNode == null)
             {
                 MessageBox.Show("Select a destination conversation node for actor-based camera origin resolution.",
@@ -142,8 +147,18 @@ namespace LegendaryExplorer.DialogueEditor
                 .ToArray();
             if (paths.Length == 0)
             {
-                MessageBox.Show($"No matching TrackMove or initial actor transform was found for: {string.Join(", ", selection.ActorTags)}.",
-                    "Actor Transform Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxResult useStage = MessageBox.Show(this,
+                    $"No matching TrackMove or initial actor transform was found for: {string.Join(", ", selection.ActorTags)}.{Environment.NewLine}{Environment.NewLine}Use a linked BioStage bone origin instead?",
+                    "Actor Transform Not Found", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (useStage == MessageBoxResult.Yes)
+                {
+                    if (TrySelectCrossEditorStageOrigin(selection.DestinationNode, out origin, true))
+                    {
+                        selection.Mode = CameraAnchorMode.StageBoneOrigin;
+                        selection.ManualOrigin = origin;
+                        return true;
+                    }
+                }
                 return false;
             }
 
@@ -168,6 +183,20 @@ namespace LegendaryExplorer.DialogueEditor
             }
             origin = resolution.Origin;
             return true;
+        }
+
+        private bool TrySelectCrossEditorStageOrigin(DialogueNodeExtended destinationNode, out CameraOrigin origin,
+            bool showErrors)
+        {
+            ExportEntry contextExport = destinationNode?.InterpData ?? SelectedConv?.Export;
+            bool resolved = StageBoneOriginResolver.TrySelectOrigin(this, Pcc, contextExport, SelectedConv,
+                out origin, out string message);
+            if (!resolved && showErrors && !string.IsNullOrWhiteSpace(message))
+            {
+                MessageBox.Show(this, message, "Stage Origin Unavailable", MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            return resolved;
         }
 
         private static string FormatActorPathChoice(ActorSceneStatePath path) =>
@@ -249,9 +278,9 @@ namespace LegendaryExplorer.DialogueEditor
         private sealed class CrossEditorCameraOriginSelection
         {
             internal bool Recenter { get; init; }
-            internal CameraAnchorMode Mode { get; init; }
+            internal CameraAnchorMode Mode { get; set; }
             internal DialogueNodeExtended DestinationNode { get; init; }
-            internal CameraOrigin ManualOrigin { get; init; }
+            internal CameraOrigin ManualOrigin { get; set; }
             internal string[] ActorTags { get; init; } = [];
             internal string PrimaryActorTag { get; init; }
         }
@@ -11496,7 +11525,7 @@ namespace LegendaryExplorer.DialogueEditor
             };
             var originModeComboBox = new ComboBox
             {
-                ItemsSource = new[] { "Custom origin", "Actor focus", "Multi-actor focus" },
+                ItemsSource = new[] { "Custom origin", "Actor focus", "Multi-actor focus", "Stage bone location" },
                 SelectedIndex = 0,
                 MinWidth = 360,
                 Margin = new Thickness(8, 4, 0, 4),
@@ -11595,6 +11624,7 @@ namespace LegendaryExplorer.DialogueEditor
             TextBox originRollTextBox = CreateOriginTextBox();
             TextBox originPitchTextBox = CreateOriginTextBox();
             TextBox originYawTextBox = CreateOriginTextBox();
+            bool stageOriginSelected = false;
             var singleActorPanel = new Grid { Visibility = Visibility.Collapsed };
             singleActorPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             singleActorPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -11620,10 +11650,12 @@ namespace LegendaryExplorer.DialogueEditor
             {
                 bool enabled = recenterCheckBox.IsChecked == true;
                 bool custom = originModeComboBox.SelectedIndex == 0;
+                bool actorBased = originModeComboBox.SelectedIndex is 1 or 2;
                 originModeComboBox.IsEnabled = enabled;
                 applyActorOriginButton.IsEnabled = enabled && !custom;
+                applyActorOriginButton.Content = originModeComboBox.SelectedIndex == 3 ? "Choose Stage and Bone" : "Apply Actor Origin";
                 chooseTrackMoveOriginButton.IsEnabled = enabled && custom;
-                originNodePanel.IsEnabled = enabled && !custom;
+                originNodePanel.IsEnabled = enabled && actorBased;
                 singleActorPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
                 multipleActorsPanel.Visibility = enabled && originModeComboBox.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
                 actorListBox.IsEnabled = enabled && originModeComboBox.SelectedIndex == 2;
@@ -11639,6 +11671,17 @@ namespace LegendaryExplorer.DialogueEditor
             originModeComboBox.SelectionChanged += (_, _) => UpdateCameraOriginControls();
             applyActorOriginButton.Click += (_, _) =>
             {
+                if (originModeComboBox.SelectedIndex == 3)
+                {
+                    DialogueNodeExtended stageDestinationNode = (originNodeListBox.SelectedItem as CrossEditorNodeOption)?.Node;
+                    if (TrySelectCrossEditorStageOrigin(stageDestinationNode, out CameraOrigin stageOrigin, true))
+                    {
+                        SetCameraOrigin(stageOrigin);
+                        stageOriginSelected = true;
+                    }
+                    return;
+                }
+
                 string[] selectedActorTags = GetSelectedCameraActorTags();
                 int requiredActors = originModeComboBox.SelectedIndex == 2 ? 2 : 1;
                 if (selectedActorTags.Length < requiredActors)
@@ -11667,6 +11710,11 @@ namespace LegendaryExplorer.DialogueEditor
                 if (TryResolveCrossEditorCameraOrigin(selection, out CameraOrigin resolvedOrigin))
                 {
                     SetCameraOrigin(resolvedOrigin);
+                    if (selection.Mode == CameraAnchorMode.StageBoneOrigin)
+                    {
+                        originModeComboBox.SelectedIndex = 3;
+                        stageOriginSelected = true;
+                    }
                 }
             };
             var copyModeComboBox = new ComboBox
@@ -11793,7 +11841,7 @@ namespace LegendaryExplorer.DialogueEditor
                 string[] selectedActorTags = GetSelectedCameraActorTags();
                 int requiredActors = originModeComboBox.SelectedIndex == 2 ? 2 : 1;
                 if (recenterCheckBox.IsChecked == true
-                    && originModeComboBox.SelectedIndex > 0
+                    && originModeComboBox.SelectedIndex is 1 or 2
                     && selectedActorTags.Length < requiredActors)
                 {
                     MessageBox.Show(requiredActors == 2
@@ -11803,11 +11851,19 @@ namespace LegendaryExplorer.DialogueEditor
                     return;
                 }
                 if (recenterCheckBox.IsChecked == true
-                    && originModeComboBox.SelectedIndex > 0
+                    && originModeComboBox.SelectedIndex is 1 or 2
                     && originNodeListBox.SelectedItem is not CrossEditorNodeOption)
                 {
                     MessageBox.Show("Select a destination conversation node to resolve actor transforms.",
                         "Destination Node Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (recenterCheckBox.IsChecked == true
+                    && originModeComboBox.SelectedIndex == 3
+                    && !stageOriginSelected)
+                {
+                    MessageBox.Show("Choose the linked BioStage and RefSkeleton bone before continuing.",
+                        "Stage Origin Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 dialog.DialogResult = true;
