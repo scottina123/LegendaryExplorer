@@ -371,7 +371,8 @@
                         </StackPanel>
                     </GroupBox>
                     <ListBox x:Name="KeyframeList" Margin="0,4,0,10" MaxHeight="220"
-                             SelectionChanged="KeyframeList_SelectionChanged">
+                             SelectionChanged="KeyframeList_SelectionChanged"
+                             MouseDoubleClick="KeyframeList_MouseDoubleClick">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Margin="2">

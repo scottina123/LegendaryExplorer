@@ -2001,6 +2001,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
+    private void KeyframeList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(KeyframeList, e.OriginalSource as DependencyObject) is not ListBoxItem
+            { DataContext: CurveEditor3DKeyframe keyframe })
+        {
+            return;
+        }
+
+        StopPlayback();
+        SelectedKeyframe = keyframe;
+        SnapCameraToKey(keyframe);
+        e.Handled = true;
+    }
+
     private void ApplyKeyframeInVal_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedKeyframe is not { } keyframe)
