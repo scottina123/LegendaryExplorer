@@ -103,6 +103,9 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         private int suppressInterpreterUnloadDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
         private DispatcherOperation pendingInterpDataEditorsReload;
+        private bool isEmbedded;
+        private bool isEmbeddedContentLoaded;
+        private bool isDisposed;
 
         public bool UseSavedViews
         {
@@ -428,6 +431,58 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
         public SequenceEditorWPF(IMEPackage package) : this()
         {
             PackageQueuedForLoad = package;
+        }
+
+        public FrameworkElement TakeContentForEmbedding()
+        {
+            if (Content is not FrameworkElement content)
+            {
+                return null;
+            }
+
+            isEmbedded = true;
+            Content = null;
+            content.DataContext = this;
+            content.Loaded += EmbeddedContent_Loaded;
+            content.Unloaded += EmbeddedContent_Unloaded;
+            return content;
+        }
+
+        private void EmbeddedContent_Loaded(object sender, RoutedEventArgs e)
+        {
+            isEmbeddedContentLoaded = true;
+            if (ExportQueuedForFocusing is ExportEntry export)
+            {
+                ExportQueuedForFocusing = null;
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => GoToExport(export)));
+            }
+        }
+
+        private void EmbeddedContent_Unloaded(object sender, RoutedEventArgs e)
+        {
+            isEmbeddedContentLoaded = false;
+        }
+
+        public void LoadEmbeddedPackage(IMEPackage package, ExportEntry exportToFocus = null)
+        {
+            if (package == null)
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(Pcc, package))
+            {
+                LoadFile(package.FilePath, () => RegisterPackage(package));
+            }
+
+            if (exportToFocus != null)
+            {
+                GoToExport(exportToFocus);
+            }
+            else
+            {
+                ExportQueuedForFocusing = null;
+            }
         }
 
         public ICommand OpenCommand { get; set; }
@@ -5714,6 +5769,18 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             if (e.Cancel)
                 return;
 
+            DisposeEmbeddedContent();
+        }
+
+        public void DisposeEmbeddedContent()
+        {
+            if (isDisposed)
+            {
+                return;
+            }
+
+            isDisposed = true;
+
             if (AutoSaveView_MenuItem.IsChecked)
                 saveView();
 
@@ -5745,6 +5812,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
             GraphHost.Child = null; //This seems to be required to clear OnChildGotFocus handler from WinFormsHost
             GraphHost.Dispose();
             DataContext = null;
+            UnLoadMEPackage();
             DispatcherHelper.EmptyQueue();
             RecentsController?.Dispose();
         }
@@ -6461,7 +6529,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
                 ExportEntry exp = Pcc.GetUExport(UIndex);
                 if (exp != null)
                 {
-                    if (!IsLoaded)
+                    if (!IsLoaded && !(isEmbedded && isEmbeddedContentLoaded))
                     {
                         ExportQueuedForFocusing = exp;
                     }
@@ -6475,7 +6543,7 @@ namespace LegendaryExplorer.Tools.Sequence_Editor
 
         private void GoToExport(ExportEntry expToNavigateTo, bool goIntoSequences = true)
         {
-            if (!IsLoaded)
+            if (!IsLoaded && !(isEmbedded && isEmbeddedContentLoaded))
             {
                 // Do not try to navigate if UI has not finished loading
                 ExportQueuedForFocusing = expToNavigateTo;

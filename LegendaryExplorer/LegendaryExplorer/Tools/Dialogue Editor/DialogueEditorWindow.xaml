@@ -824,6 +824,7 @@
                                   Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}}" />
                     <!--Tab Control -->
                     <TabControl x:Name="BottomViewportTabControl" TabStripPlacement="Left" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="2"
+                                SelectionChanged="BottomViewportTabControl_SelectionChanged"
                                 Style="{StaticResource ScrollableLeftTabControlStyle}"
                                 Visibility="{Binding Pcc, Converter={StaticResource NullVisibilityConverter}, RelativeSource={RelativeSource AncestorType=Window}}">
                         <TabControl.Resources>
@@ -845,6 +846,9 @@
                         <TabItem Header="Properties">
                             <exportLoaderControls:InterpreterExportLoader x:Name="Properties_InterpreterWPF"
                                                                           HideHexBox="True" />
+                        </TabItem>
+                        <TabItem x:Name="SequenceEditorTab" Header="Sequence Editor">
+                            <ContentControl x:Name="SequenceEditorHost" />
                         </TabItem>
                         <TabItem Header="InterpData">
                             <Grid>

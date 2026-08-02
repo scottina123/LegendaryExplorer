@@ -623,6 +623,7 @@ namespace LegendaryExplorer.DialogueEditor
         private int suppressedPackageUpdateDepth;
         private int suppressInterpDataInterpreterUnloadDepth;
         private DispatcherOperation pendingInterpDataEditorsReload;
+        private SequenceEditorWPF embeddedSequenceEditor;
         private bool NoUIRefresh; //stops graph refresh on update.
         // FOR GRAPHING
         public ObservableCollectionExtended<DObj> CurrentObjects { get; } = new();
@@ -1073,6 +1074,30 @@ namespace LegendaryExplorer.DialogueEditor
                 ?? fallbackTab;
         }
 
+        private void BottomViewportTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source == BottomViewportTabControl && BottomViewportTabControl.SelectedItem == SequenceEditorTab)
+            {
+                UpdateEmbeddedSequenceEditor();
+            }
+        }
+
+        private void UpdateEmbeddedSequenceEditor()
+        {
+            if (Pcc == null || SequenceEditorTab?.IsSelected != true)
+            {
+                return;
+            }
+
+            if (embeddedSequenceEditor == null)
+            {
+                embeddedSequenceEditor = new SequenceEditorWPF();
+                SequenceEditorHost.Content = embeddedSequenceEditor.TakeContentForEmbedding();
+            }
+
+            embeddedSequenceEditor.LoadEmbeddedPackage(Pcc, SelectedDialogueNode?.InterpData);
+        }
+
         public DialogueEditorWindow(ExportEntry export) : this()
         {
             FileQueuedForLoad = export.FileRef.FilePath;
@@ -1440,6 +1465,8 @@ namespace LegendaryExplorer.DialogueEditor
                 {
                     FFXAnimsets.Add(exp);
                 }
+
+                UpdateEmbeddedSequenceEditor();
             }
             catch (Exception ex)
             {
@@ -4401,6 +4428,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             SelectedDialogueNode = null;
             MirrorDialogueNode = null;
+            UpdateEmbeddedSequenceEditor();
 
             EndInlineLineStrRefEdit(false);
             EndInlinePlotFieldEdit(false);
@@ -8411,6 +8439,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             RefreshExportLoaders();
+            UpdateEmbeddedSequenceEditor();
 
             if (SelectedDialogueNode.FiresConditional)
                 Node_Text_Cnd.Text = "Conditional: ";
