@@ -4,18 +4,20 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:exportLoaderControls="clr-namespace:LegendaryExplorer.UserControls.ExportLoaderControls"
-             xmlns:Converters="clr-namespace:LegendaryExplorer.SharedUI.Converters"
+             xmlns:vfxPreview="clr-namespace:LegendaryExplorer.Tools.AssetDatabase.VFXPreview"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
-    <UserControl.Resources>
-        <Converters:NullEnabledConverter x:Key="NullEnabledConverter"/>
-        <Converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-    </UserControl.Resources>
-    <TreeView ItemsSource="{Binding ParticleNodes}">
-        <TreeView.Resources>
-            <HierarchicalDataTemplate DataType="{x:Type exportLoaderControls:ParticleSystemExportLoader+ParticleSystemNode}" ItemsSource="{Binding Children}">
-                <TextBlock Text="{Binding Header}"/>
-            </HierarchicalDataTemplate>
-        </TreeView.Resources>
-    </TreeView>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <CheckBox x:Name="VfxPreviewEnabledCheckBox"
+                  Content="Enable preview"
+                  IsChecked="False"
+                  Margin="6,4"
+                  Checked="VfxPreviewEnabled_Changed"
+                  Unchecked="VfxPreviewEnabled_Changed"/>
+        <vfxPreview:VfxPreviewControl x:Name="VfxPreview" Grid.Row="1"/>
+    </Grid>
 </exportLoaderControls:ExportLoaderControl>

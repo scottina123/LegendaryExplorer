@@ -758,7 +758,7 @@
                     </TabItem>
                     <TabItem Name="ParticleSystem_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
-                            <TextBlock Text="Particle System" ToolTip="View information about this particle system"/>
+                            <TextBlock Text="Particle System" ToolTip="Preview this particle system in 3D"/>
                         </TabItem.Header>
                         <exportLoaderControls:ParticleSystemExportLoader x:Name="ParticleSystemTab_ParticleSystemLoader"/>
                     </TabItem>
