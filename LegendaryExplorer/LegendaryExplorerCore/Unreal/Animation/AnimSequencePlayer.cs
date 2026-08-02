@@ -391,7 +391,12 @@ public class AnimSequencePlayer : AnimPlayer
             float weight = Math.Max(0, clip.Weight);
             if (clip.BlendInDuration > 0)
             {
-                weight *= Math.Clamp(clipTime / clip.BlendInDuration, 0, 1);
+                float blendProgress = clipTime / clip.BlendInDuration;
+                if (clip.StartTime == _scheduledStartTime && clipTime == 0)
+                {
+                    blendProgress = Math.Min(1, (1f / 60f) / clip.BlendInDuration);
+                }
+                weight *= Math.Clamp(blendProgress, 0, 1);
             }
             if (clip.BlendOutDuration > 0)
             {
