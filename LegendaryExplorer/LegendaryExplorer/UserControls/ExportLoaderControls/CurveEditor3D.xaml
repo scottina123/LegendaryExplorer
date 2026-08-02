@@ -176,11 +176,7 @@
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Dialogue Actors" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <DockPanel>
-                            <TextBlock Text="Conversation Timeline" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <Button DockPanel.Dock="Right" Content="Save Preset..." Padding="7,2"
-                                    Click="SaveDialoguePreviewPreset_Click"/>
-                        </DockPanel>
+                        <TextBlock Text="Conversation Timeline" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" Margin="0,5,0,2">
                             <Button x:Name="DialogueTimelinePlayButton" Content="Play" Width="52" Padding="5,2"
                                     Click="DialogueTimelinePlayPause_Click"/>

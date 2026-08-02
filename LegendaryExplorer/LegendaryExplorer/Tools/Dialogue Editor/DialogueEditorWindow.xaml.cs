@@ -5765,48 +5765,28 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            var presetManager = new DialoguePreviewPresetManager(SelectedConv, startNode,
-                levelPicker.SelectedLevelPaths) { Owner = this };
-            if (presetManager.ShowDialog() != true || presetManager.SelectedPreset is not { } preset)
+            List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
+                SelectedConv, startNode);
+            ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(startNode.InterpData)
+                ?? SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
+                    .Select(node => CurveEditor3D.FindDialoguePreviewTrackMove(node.InterpData))
+                    .FirstOrDefault(track => track is not null);
+            if (previewTrackMove is null)
             {
+                MessageBox.Show(this, "No node in this BioConversation has a TrackMove that can initialize the 3D preview.",
+                    "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            DialoguePreviewPresetSnapshot snapshot = null;
-            try
+            var preview = new CurveEditor3D();
+            preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
+                levelPicker.SelectedLevelPaths);
+            var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
-                snapshot = DialoguePreviewPresetLibrary.OpenSnapshot(preset);
-                List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
-                    snapshot.Conversation, snapshot.StartNode);
-                ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(snapshot.StartNode.InterpData)
-                    ?? snapshot.Conversation.EntryList.Concat(snapshot.Conversation.ReplyList)
-                        .Select(node => CurveEditor3D.FindDialoguePreviewTrackMove(node.InterpData))
-                        .FirstOrDefault(track => track is not null);
-                if (previewTrackMove is null)
-                {
-                    MessageBox.Show(this, "No node in this BioConversation has a TrackMove that can initialize the 3D preview.",
-                        "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
-                    snapshot.Dispose();
-                    return;
-                }
-
-                var preview = new CurveEditor3D();
-                preview.ConfigureDialogueConversationPreview(snapshot.Conversation, snapshot.StartNode, actors,
-                    preset.LevelPaths, preset);
-                var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
-                {
-                    Owner = this,
-                    Title = $"Dialogue Conversation Preview - {preset.Name}"
-                };
-                window.Closed += (_, _) => snapshot.Dispose();
-                window.Show();
-            }
-            catch (Exception exception)
-            {
-                snapshot?.Dispose();
-                MessageBox.Show(this, $"The dialogue preview preset could not be opened.\n\n{exception.Message}",
-                    "Open Dialogue Preview Preset", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+                Owner = this,
+                Title = $"Dialogue Conversation Preview - {SelectedConv.Export.ObjectName.Instanced} - {(startNode.IsReply ? "R" : "E")}{startNode.NodeCount}"
+            };
+            window.Show();
         }
 
         private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(

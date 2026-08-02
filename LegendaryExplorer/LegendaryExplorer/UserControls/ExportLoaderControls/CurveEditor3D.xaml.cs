@@ -16,7 +16,6 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
-using LegendaryExplorer.Tools.Dialogue_Editor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
@@ -49,6 +48,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     public sealed record DialogueNodePreviewActor(string ActorTag, CameraOrigin Origin);
     public sealed record DialoguePreviewRecentLevelSet(string DisplayName, IReadOnlyList<string> FilePaths);
+    public sealed record DialogueNodeReference(bool IsReply, int Index);
 
     private sealed record DialogueNodePreviewConfiguration(
         ConversationExtended Conversation,
@@ -60,7 +60,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     public sealed class DialogueTimelineSegment
     {
         public DialogueNodeExtended Node { get; init; }
-        public DialoguePreviewNodeReference Reference { get; init; }
+        public DialogueNodeReference Reference { get; init; }
         public float StartTime { get; init; }
         public float Duration { get; init; }
         public float EndTime => StartTime + Duration;
@@ -73,7 +73,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         public DialogueNodeExtended Source { get; init; }
         public DialogueNodeExtended Target { get; init; }
-        public DialoguePreviewNodeReference TargetReference { get; init; }
+        public DialogueNodeReference TargetReference { get; init; }
         public string BranchKey { get; init; }
         public string Category { get; init; }
         public string NodeLabel => $"{(Target.IsReply ? "R" : "E")}{Target.NodeCount}";
@@ -448,7 +448,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<ActorDirectionTrack> actorDirectionTracks = [];
     private readonly ObservableCollection<DialogueTimelineSegment> dialogueTimelineSegments = [];
     private readonly ObservableCollection<DialogueBranchOption> dialogueBranchOptions = [];
-    private readonly Dictionary<string, DialoguePreviewNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DialogueNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
@@ -462,7 +462,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private DirectorPlaybackOption selectedDirectorPlayback;
     private TrackMovePlaybackOption primaryTrackMove;
     private DialogueNodePreviewConfiguration dialogueNodePreview;
-    private DialoguePreviewPreset dialoguePreviewPreset;
+    private bool isDialogueConversationPreview;
     private CurveEditor3DModel registeredKeyframeModel;
     private bool updatingKeyframeTrackTabs;
     private Vector3 pendingViewportKeyframeLocation;
@@ -590,6 +590,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
+        isDialogueConversationPreview = false;
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths,
             GetDialoguePreviewVoStartTime(node.InterpData));
         BuildDialogueTimeline(node);
@@ -598,19 +599,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     }
 
     public void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
-        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths, DialoguePreviewPreset preset)
+        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths)
     {
-        dialoguePreviewPreset = preset;
         dialogueBranchSelections.Clear();
-        if (preset?.BranchSelections is not null)
-        {
-            foreach ((string key, DialoguePreviewNodeReference value) in preset.BranchSelections)
-            {
-                dialogueBranchSelections[key] = value;
-            }
-        }
-
         ConfigureDialogueNodePreview(conversation, startNode, actors, levelPaths);
+        isDialogueConversationPreview = true;
     }
 
     private void BuildDialogueTimeline(DialogueNodeExtended startNode)
@@ -624,10 +617,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         float timelineTime = 0;
         DialogueNodeExtended current = startNode;
-        var visited = new HashSet<DialoguePreviewNodeReference>();
+        var visited = new HashSet<DialogueNodeReference>();
         for (int nodeCount = 0; current is not null && nodeCount < 512; nodeCount++)
         {
-            DialoguePreviewNodeReference currentReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, current);
+            DialogueNodeReference currentReference = GetDialogueNodeReference(conversation, current);
             if (!visited.Add(currentReference))
             {
                 break;
@@ -655,7 +648,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
 
             string branchKey = GetDialogueBranchKey(currentReference);
-            if (dialogueBranchSelections.TryGetValue(branchKey, out DialoguePreviewNodeReference selectedReference)
+            if (dialogueBranchSelections.TryGetValue(branchKey, out DialogueNodeReference selectedReference)
                 && outgoing.FirstOrDefault(option => option.TargetReference == selectedReference) is { } selected)
             {
                 current = selected.Target;
@@ -681,7 +674,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ConversationExtended conversation,
         DialogueNodeExtended source)
     {
-        DialoguePreviewNodeReference sourceReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, source);
+        DialogueNodeReference sourceReference = GetDialogueNodeReference(conversation, source);
         string branchKey = GetDialogueBranchKey(sourceReference);
         if (source.IsReply)
         {
@@ -692,7 +685,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 {
                     Source = source,
                     Target = target,
-                    TargetReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, target),
+                    TargetReference = GetDialogueNodeReference(conversation, target),
                     BranchKey = branchKey
                 })
                 .ToList() ?? [];
@@ -705,14 +698,24 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 Source = source,
                 Target = conversation.ReplyList[item.Index],
-                TargetReference = new DialoguePreviewNodeReference(true, item.Index),
+                TargetReference = new DialogueNodeReference(true, item.Index),
                 BranchKey = branchKey,
                 Category = GetDialogueReplyCategoryLabel(item.Link.GetProp<EnumProperty>("Category")?.Value.Name)
             })
             .ToList() ?? [];
     }
 
-    private static string GetDialogueBranchKey(DialoguePreviewNodeReference reference) =>
+    private static DialogueNodeReference GetDialogueNodeReference(
+        ConversationExtended conversation,
+        DialogueNodeExtended node)
+    {
+        int index = node.IsReply ? conversation.ReplyList.IndexOf(node) : conversation.EntryList.IndexOf(node);
+        return index >= 0
+            ? new DialogueNodeReference(node.IsReply, index)
+            : throw new InvalidOperationException("The dialogue node is not part of the selected BioConversation.");
+    }
+
+    private static string GetDialogueBranchKey(DialogueNodeReference reference) =>
         $"{(reference.IsReply ? 'R' : 'E')}:{reference.Index}";
 
     private static string GetDialogueReplyCategoryLabel(string category) => category switch
@@ -1521,7 +1524,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 await LoadDialoguePreviewLevelsAsync().ConfigureAwait(true);
                 ConfigureDialoguePreviewPlayback();
-                if (dialoguePreviewPreset is not null)
+                if (isDialogueConversationPreview)
                 {
                     ApplyDialogueTimelineAtTime(0, reconstruct: true);
                 }
@@ -1591,7 +1594,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         updatingMulticamControls = false;
         updatingActorPlaybackZControls = true;
         ActorPlaybackTrackZCheckBox.IsChecked = false;
-        ActorPlaybackShiftZCheckBox.IsChecked = true;
+        ActorPlaybackShiftZCheckBox.IsChecked = false;
         updatingActorPlaybackZControls = false;
         BuildActorDirectionTracks();
         RefreshKeyframeTrackMoveTabs();
@@ -3292,7 +3295,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void DialogueTimelineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (!updatingDialogueTimelineSlider && dialoguePreviewPreset is not null)
+        if (!updatingDialogueTimelineSlider && isDialogueConversationPreview)
         {
             ApplyDialogueTimelineAtTime((float)e.NewValue, reconstruct: e.NewValue < dialogueTimelineCurrentTime);
         }
@@ -3317,10 +3320,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         bool resume = resumeDialogueTimelineAfterBranch;
         dialogueBranchSelections[option.BranchKey] = option.TargetReference;
-        if (dialoguePreviewPreset is not null)
-        {
-            DialoguePreviewPresetLibrary.UpdateSelections(dialoguePreviewPreset, dialogueBranchSelections);
-        }
         BuildDialogueTimeline(startNode);
         DialogueTimelineSegment targetSegment = dialogueTimelineSegments.FirstOrDefault(segment => segment.Reference == option.TargetReference);
         ApplyDialogueTimelineAtTime(targetSegment?.StartTime ?? dialogueTimelineCurrentTime, reconstruct: false);
@@ -3333,35 +3332,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 playButton.Content = "Pause";
             }
             RenderContext.ForceContinuousRendering = true;
-        }
-    }
-
-    private void SaveDialoguePreviewPreset_Click(object sender, RoutedEventArgs e)
-    {
-        if (dialogueNodePreview?.Conversation is not { } conversation
-            || dialogueTimelineSegments.FirstOrDefault()?.Node is not { } startNode)
-        {
-            return;
-        }
-
-        string defaultName = dialoguePreviewPreset?.Name ?? conversation.Export.ObjectName.Name;
-        string name = PromptDialog.Prompt(Window.GetWindow(this), "Preset name:",
-            "Save Dialogue Preview Preset", defaultName)?.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
-
-        try
-        {
-            dialoguePreviewPreset = DialoguePreviewPresetLibrary.Capture(conversation, startNode, name,
-                dialogueNodePreview.LevelPaths, dialogueBranchSelections);
-            SceneStatus = $"Saved dialogue preview preset '{name}'.";
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(Window.GetWindow(this), $"The preset could not be saved.\n\n{exception.Message}",
-                "Save Dialogue Preview Preset", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
