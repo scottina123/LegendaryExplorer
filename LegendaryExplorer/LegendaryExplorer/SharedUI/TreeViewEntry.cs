@@ -604,7 +604,9 @@ namespace LegendaryExplorer.SharedUI
                                 : gameName;
                         }
 
-                        if (ee.ParentName == "PersistentLevel" && ee.ClassName == "SFXStuntActor" && ee.Archetype is ExportEntry archetype)
+                        if (ee.ParentName == "PersistentLevel"
+                            && ee.ClassName is "SFXStuntActor" or "BioStage"
+                            && ee.Archetype is ExportEntry archetype)
                         {
                             string archetypeSubtext = archetype.ObjectName.Instanced;
                             var inheritedTag = archetype.GetProperty<NameProperty>("Tag", DefaultsLookupCache);
