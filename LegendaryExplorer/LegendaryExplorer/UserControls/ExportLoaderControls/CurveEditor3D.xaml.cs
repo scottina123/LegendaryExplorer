@@ -25,6 +25,7 @@ using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Dialogue;
 using LegendaryExplorerCore.Misc;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.SharpDX;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Animation;
@@ -39,6 +40,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorContext, ISceneRenderContextConfigurable
 {
+    private enum DialoguePreviewAudioGender
+    {
+        Male,
+        Female
+    }
+
     public sealed record DialogueNodePreviewActor(string ActorTag, CameraOrigin Origin);
     public sealed record DialoguePreviewRecentLevelSet(string DisplayName, IReadOnlyList<string> FilePaths);
 
@@ -146,9 +153,49 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private sealed class PreviewActorAnimationState
     {
+        public sealed class LayeredAnimationPlayer : AnimPlayer
+        {
+            public AnimSequencePlayer GesturePlayer { get; }
+            public FaceFxPlayer FaceFxPlayer { get; }
+            public override bool HasAnimation => GesturePlayer.HasAnimation || FaceFxPlayer.HasAnimation;
+            public override float Duration => Math.Max(GesturePlayer.Duration, FaceFxPlayer.Duration);
+            public override float StartTime => Math.Min(GesturePlayer.StartTime, FaceFxPlayer.StartTime);
+            public override float EndTime => Math.Max(GesturePlayer.EndTime, FaceFxPlayer.EndTime);
+
+            public LayeredAnimationPlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
+            {
+                GesturePlayer = new AnimSequencePlayer(skeletalMesh);
+                FaceFxPlayer = new FaceFxPlayer(skeletalMesh);
+            }
+
+            public override void SetCurrentTime(float time)
+            {
+                CurrentTime = time;
+                GesturePlayer.SetCurrentTime(time);
+                FaceFxPlayer.SetCurrentTime(time);
+            }
+
+            public override Matrix4x4[] ComputeSkinningMatrices()
+            {
+                Matrix4x4[] gestureMatrices = GesturePlayer.HasAnimation
+                    ? GesturePlayer.ComputeSkinningMatrices()
+                    : null;
+                Matrix4x4[] faceMatrices = FaceFxPlayer.HasAnimation
+                    ? FaceFxPlayer.ComputeSkinningMatrices()
+                    : null;
+                for (int index = 0; index < _skinningMatrices.Length; index++)
+                {
+                    Matrix4x4 gesture = gestureMatrices?.ElementAtOrDefault(index) ?? Matrix4x4.Identity;
+                    Matrix4x4 face = faceMatrices?.ElementAtOrDefault(index) ?? Matrix4x4.Identity;
+                    _skinningMatrices[index] = face * gesture;
+                }
+                return _skinningMatrices;
+            }
+        }
+
         public SkeletalMesh SkeletalMesh { get; init; }
         public SkinnedMeshRenderer Renderer { get; init; }
-        public AnimSequencePlayer Player { get; init; }
+        public LayeredAnimationPlayer Player { get; init; }
         public bool HasTimeline => Player?.HasAnimation == true;
 
         public void SetTimeline(IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache)
@@ -178,7 +225,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 });
             }
 
-            Player.SetAnimationTimeline(scheduledClips, packageCache);
+            Player.GesturePlayer.SetAnimationTimeline(scheduledClips, packageCache);
+            Renderer.NeedsUpdate = true;
+        }
+
+        public void SetFaceFx(FaceFXAsset asset, FaceFXAnimSet animSet, FaceFXLine line)
+        {
+            Player.FaceFxPlayer.FxActor = asset;
+            Player.FaceFxPlayer.AnimSet = animSet;
+            Player.FaceFxPlayer.SetFaceFXLine(line);
             Renderer.NeedsUpdate = true;
         }
 
@@ -190,7 +245,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         public void Clear()
         {
-            Player.SetAnimation(null);
+            Player.GesturePlayer.SetAnimation(null);
             Renderer.NeedsUpdate = true;
         }
     }
@@ -203,6 +258,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public string ModelName { get; set; }
         public string HeadModelName { get; set; }
         public string HairModelName { get; set; }
+        public DialoguePreviewAudioGender AudioGender { get; set; }
+        public string FaceFxAssetName { get; set; } = "SFX_HumanFemale_FaceFX";
         public float X { get; set; }
         public float Y { get; set; }
         public float Z { get; set; }
@@ -270,9 +327,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private readonly List<ActorProxy> levelActors = [];
     private readonly List<string> levelPaths = [];
     private readonly ObservableCollection<PreviewActorConfiguration> previewActors = [];
+    private readonly ObservableCollection<string> dialoguePreviewFaceFxAssetNames = ["SFX_HumanFemale_FaceFX"];
     private readonly List<ActorModelSet> previewActorModels = [];
     private readonly PreviewActorWidgetTarget previewActorWidgetTarget = new();
     private readonly PackageCache previewActorGesturePackageCache = new();
+    private IMEPackage dialoguePreviewFaceFxPackage;
+    private readonly Dictionary<PreviewActorConfiguration, FaceFXAnimSet> dialoguePreviewFaceFxAnimSets = [];
     private readonly ObservableCollection<GestureTrackOption> availableGestureTracks = [];
     private readonly Dictionary<PreviewActorConfiguration, GestureTrackOption> previewActorGestureAssignments = [];
     private readonly Dictionary<PreviewActorConfiguration, PreviewActorAnimationState> previewActorAnimationStates = [];
@@ -381,6 +441,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         LoadCommands();
         InitializeComponent();
         PreviewActorListBox.ItemsSource = previewActors;
+        DialoguePreviewActorListBox.ItemsSource = previewActors;
+        DialoguePreviewAudioGenderComboBox.ItemsSource = Enum.GetValues<DialoguePreviewAudioGender>();
+        DialoguePreviewFaceFxAssetComboBox.ItemsSource = dialoguePreviewFaceFxAssetNames;
         PreviewActorGestureComboBox.ItemsSource = availableGestureTracks;
         ExtraTrackMoveComboBox.ItemsSource = availableExtraTrackMoves;
         DirectorTrackComboBox.ItemsSource = availableDirectorTracks;
@@ -438,6 +501,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths);
+        DialoguePreviewActorPanel.Visibility = Visibility.Visible;
+        DialoguePreviewActorPanelSplitter.Visibility = Visibility.Visible;
     }
 
     public static IReadOnlyList<DialoguePreviewRecentLevelSet> GetDialoguePreviewRecentLevelSets() =>
@@ -1243,6 +1308,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ConfigureDialoguePreviewPlayback()
     {
+        LoadDialoguePreviewFaceFxAssets();
         foreach (PreviewActorConfiguration actor in previewActors)
         {
             GestureTrackOption gesture = availableGestureTracks
@@ -1255,6 +1321,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 previewActorGestureAssignments[actor] = gesture;
                 ApplyAssignedGestureToActor(actor);
+            }
+            if (IsDialogueNodeSpeaker(actor))
+            {
+                ApplyDialoguePreviewFaceFx(actor);
             }
         }
 
@@ -1283,6 +1353,79 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         BuildActorDirectionTracks();
         RefreshKeyframeTrackMoveTabs();
     }
+
+    private void LoadDialoguePreviewFaceFxAssets()
+    {
+        dialoguePreviewFaceFxPackage?.Dispose();
+        dialoguePreviewFaceFxPackage = null;
+        dialoguePreviewFaceFxAssetNames.Clear();
+        string cookedPath = MEDirectories.GetCookedPath(CurrentLoadedExport.Game);
+        string packagePath = Directory.Exists(cookedPath)
+            ? Directory.EnumerateFiles(cookedPath, "BIOG_FaceFX_Assets.*", SearchOption.TopDirectoryOnly).FirstOrDefault()
+            : null;
+        if (packagePath is null)
+        {
+            dialoguePreviewFaceFxAssetNames.Add("SFX_HumanFemale_FaceFX");
+            return;
+        }
+
+        dialoguePreviewFaceFxPackage = MEPackageHandler.OpenMEPackage(packagePath);
+        foreach (string assetName in dialoguePreviewFaceFxPackage.Exports
+                     .Where(export => export.ClassName == "FaceFXAsset" && !export.IsDefaultObject)
+                     .Select(export => export.ObjectNameString)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Order(StringComparer.OrdinalIgnoreCase))
+        {
+            dialoguePreviewFaceFxAssetNames.Add(assetName);
+        }
+        DialoguePreviewFaceFxAssetComboBox.Items.Refresh();
+    }
+
+    private void ApplyDialoguePreviewFaceFx(PreviewActorConfiguration actor)
+    {
+        if (!IsDialogueNodeSpeaker(actor)
+            || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState)
+            || dialoguePreviewFaceFxPackage is null)
+        {
+            return;
+        }
+
+        ExportEntry assetExport = dialoguePreviewFaceFxPackage.Exports.FirstOrDefault(export =>
+            export.ClassName == "FaceFXAsset"
+            && export.ObjectNameString.Equals(actor.FaceFxAssetName, StringComparison.OrdinalIgnoreCase));
+        IEntry animSetEntry = actor.AudioGender == DialoguePreviewAudioGender.Female
+            ? dialogueNodePreview.Node.SpeakerTag?.FaceFX_Female
+            : dialogueNodePreview.Node.SpeakerTag?.FaceFX_Male;
+        ExportEntry animSetExport = animSetEntry switch
+        {
+            ExportEntry export => export,
+            ImportEntry import => EntryImporter.ResolveImport(import, previewActorGesturePackageCache),
+            _ => null,
+        };
+        string lineName = actor.AudioGender == DialoguePreviewAudioGender.Female
+            ? dialogueNodePreview.Node.FaceFX_Female
+            : dialogueNodePreview.Node.FaceFX_Male;
+        if (assetExport is null || animSetExport is null || string.IsNullOrWhiteSpace(lineName))
+        {
+            return;
+        }
+
+        FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
+        FaceFXLine line = animSet.Lines.FirstOrDefault(candidate =>
+            candidate.NameAsString.Equals(lineName, StringComparison.OrdinalIgnoreCase));
+        if (line is null)
+        {
+            return;
+        }
+
+        dialoguePreviewFaceFxAnimSets[actor] = animSet;
+        animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line);
+        UpdatePreviewActorSkinning(actor);
+    }
+
+    private bool IsDialogueNodeSpeaker(PreviewActorConfiguration actor) =>
+        dialogueNodePreview?.Node.SpeakerTag is { } speaker
+        && actor.ActorTag.Equals(speaker.SpeakerName, StringComparison.OrdinalIgnoreCase);
 
     private void ActorPlaybackZOption_Changed(object sender, RoutedEventArgs e)
     {
@@ -1519,12 +1662,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 ModelName = isPlayer ? "HMF_ARM_CTHb_MDL" : PreviewActorModelDefaults.BodyMeshName,
                 HeadModelName = isPlayer ? "HMF_HED_PROShepard_MDL" : PreviewActorModelDefaults.HeadMeshName,
                 HairModelName = isPlayer ? "HMF_HIR_PROShepard_MDL" : PreviewActorModelDefaults.HairMeshName,
+                AudioGender = isPlayer ? DialoguePreviewAudioGender.Female : DialoguePreviewAudioGender.Male,
+                FaceFxAssetName = "SFX_HumanFemale_FaceFX",
                 Origin = previewActor.Origin,
             });
         }
 
         AssignDialoguePreviewTrackMoves();
         PreviewActorListBox.SelectedIndex = previewActors.Count > 0 ? 0 : -1;
+        PreviewActorConfiguration speakingActor = previewActors.FirstOrDefault(IsDialogueNodeSpeaker);
+        if (speakingActor is not null)
+        {
+            PreviewActorListBox.SelectedItem = speakingActor;
+        }
+        DialoguePreviewActorListBox.SelectedIndex = PreviewActorListBox.SelectedIndex;
         PreviewActorGestureComboBox.Items.Refresh();
     }
 
@@ -2817,6 +2968,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         isPlayingMove = true;
         RenderContext.ForceContinuousRendering = true;
         ApplyActorsAtTime(playbackStartTime);
+        StartDialoguePreviewAudio(playbackStartTime);
         SceneViewer.Focus();
     }
 
@@ -3072,6 +3224,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         if (stoppedActorPlayback)
         {
+            DialoguePreviewSoundpanel.StopPlaying();
             RestorePlaybackActorOrigins();
         }
         playbackActors.Clear();
@@ -3734,7 +3887,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 SkeletalMesh = skeletalMesh,
                 Renderer = componentRenderer,
-                Player = new AnimSequencePlayer(skeletalMesh),
+                Player = new PreviewActorAnimationState.LayeredAnimationPlayer(skeletalMesh),
             };
             previewActorAnimationStates[previewActors[actorIndex]] = animationState;
             ApplyAssignedGestureToActor(previewActors[actorIndex]);
@@ -3767,6 +3920,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private void PreviewActorListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         selectedPreviewActor = PreviewActorListBox.SelectedItem as PreviewActorConfiguration;
+        if (!ReferenceEquals(DialoguePreviewActorListBox.SelectedItem, selectedPreviewActor))
+        {
+            DialoguePreviewActorListBox.SelectedItem = selectedPreviewActor;
+        }
         SynchronizePreviewActorControls();
         UpdatePreviewActorTrackAssignmentControls();
         SelectPreviewActor(PreviewActorListBox.SelectedIndex);
@@ -3830,9 +3987,87 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         PreviewActorGestureComboBox.Items.Refresh();
         PreviewActorGestureComboBox.SelectedItem = previewActorGestureAssignments.GetValueOrDefault(selectedPreviewActor)
                                                 ?? GestureTrackOption.None;
+        DialoguePreviewAudioGenderComboBox.SelectedItem = selectedPreviewActor.AudioGender;
+        DialoguePreviewFaceFxAssetComboBox.Text = selectedPreviewActor.FaceFxAssetName;
+        if (dialogueNodePreview is not null)
+        {
+            LoadDialoguePreviewAudio(selectedPreviewActor);
+        }
         UpdatePreviewActorGestureStatus();
         UpdatePreviewActorRotationDialIndicator();
         updatingPreviewActorControls = false;
+    }
+
+    private void DialoguePreviewActorListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(PreviewActorListBox.SelectedItem, DialoguePreviewActorListBox.SelectedItem))
+        {
+            PreviewActorListBox.SelectedItem = DialoguePreviewActorListBox.SelectedItem;
+        }
+    }
+
+    private void DialoguePreviewAudioGender_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!updatingPreviewActorControls && selectedPreviewActor is not null
+            && DialoguePreviewAudioGenderComboBox.SelectedItem is DialoguePreviewAudioGender gender)
+        {
+            selectedPreviewActor.AudioGender = gender;
+            LoadDialoguePreviewAudio(selectedPreviewActor);
+            ApplyDialoguePreviewFaceFx(selectedPreviewActor);
+            if (isPlayingActor && IsDialogueNodeSpeaker(selectedPreviewActor))
+            {
+                StartDialoguePreviewAudio(playbackCurrentTime);
+            }
+        }
+    }
+
+    private void DialoguePreviewFaceFxAsset_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        ApplyDialoguePreviewFaceFxAssetSelection();
+
+    private void DialoguePreviewFaceFxAsset_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) =>
+        ApplyDialoguePreviewFaceFxAssetSelection();
+
+    private void ApplyDialoguePreviewFaceFxAssetSelection()
+    {
+        if (!updatingPreviewActorControls && selectedPreviewActor is not null
+            && !string.IsNullOrWhiteSpace(DialoguePreviewFaceFxAssetComboBox.Text))
+        {
+            selectedPreviewActor.FaceFxAssetName = DialoguePreviewFaceFxAssetComboBox.Text.Trim();
+            ApplyDialoguePreviewFaceFx(selectedPreviewActor);
+            if (isPlayingActor && previewActorAnimationStates.TryGetValue(selectedPreviewActor, out PreviewActorAnimationState state))
+            {
+                state.SetTime(playbackCurrentTime);
+                UpdatePreviewActorSkinning(selectedPreviewActor);
+            }
+        }
+    }
+
+    private void StartDialoguePreviewAudio(float time)
+    {
+        PreviewActorConfiguration speakingActor = previewActors.FirstOrDefault(IsDialogueNodeSpeaker);
+        if (speakingActor is null)
+        {
+            return;
+        }
+
+        LoadDialoguePreviewAudio(speakingActor);
+        DialoguePreviewSoundpanel.StopPlaying();
+        DialoguePreviewSoundpanel.StartOrPausePlaying(Math.Max(0, time));
+    }
+
+    private void LoadDialoguePreviewAudio(PreviewActorConfiguration actor)
+    {
+        ExportEntry audio = actor.AudioGender == DialoguePreviewAudioGender.Female
+            ? dialogueNodePreview?.Node.WwiseStream_Female
+            : dialogueNodePreview?.Node.WwiseStream_Male;
+        if (audio is null)
+        {
+            DialoguePreviewSoundpanel.UnloadExport();
+        }
+        else
+        {
+            DialoguePreviewSoundpanel.LoadExport(audio);
+        }
     }
 
     private void PreviewActorTrackMove_Click(object sender, RoutedEventArgs e)

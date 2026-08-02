@@ -163,15 +163,40 @@
 
         <Grid>
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="340"/>
             </Grid.ColumnDefinitions>
 
-            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="0"/>
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"/>
+            <Border x:Name="DialoguePreviewActorPanel" Grid.Column="0" Width="260" Padding="8"
+                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="0,0,1,0"
+                    Visibility="Collapsed">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Dialogue Actors" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <TextBlock Text="Audio" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="DialoguePreviewAudioGenderComboBox" Margin="0,4,0,8"
+                                  SelectionChanged="DialoguePreviewAudioGender_SelectionChanged"/>
+                        <TextBlock Text="FaceFX Asset" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="DialoguePreviewFaceFxAssetComboBox" Margin="0,4,0,0" IsEditable="True"
+                                  IsTextSearchEnabled="True" SelectionChanged="DialoguePreviewFaceFxAsset_SelectionChanged"
+                                  LostKeyboardFocus="DialoguePreviewFaceFxAsset_LostKeyboardFocus"/>
+                        <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" Margin="0,8,0,0"
+                                                         MiniPlayerMode="True"/>
+                    </StackPanel>
+                    <ListBox x:Name="DialoguePreviewActorListBox" DisplayMemberPath="DisplayName"
+                             SelectionChanged="DialoguePreviewActorListBox_SelectionChanged"/>
+                </DockPanel>
+            </Border>
+            <GridSplitter x:Name="DialoguePreviewActorPanelSplitter" Grid.Column="1" Width="5"
+                          HorizontalAlignment="Stretch" Visibility="Collapsed"/>
 
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="8">
+            <scene3D:SceneRenderControl x:Name="SceneViewer" Grid.Column="2"/>
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch"/>
+
+            <ScrollViewer Grid.Column="4" VerticalScrollBarVisibility="Auto" Padding="8">
                 <StackPanel>
                     <Expander Header="Preview Actors" IsExpanded="True" Margin="0,0,0,10">
                         <StackPanel Margin="0,6,0,0">
