@@ -63,6 +63,32 @@
                   KeyDown="SelectionListView_KeyDown"
                   ScrollViewer.CanContentScroll="True"
                   VirtualizingPanel.IsVirtualizing="True"
-                  VirtualizingPanel.VirtualizationMode="Recycling"/>
+                  VirtualizingPanel.VirtualizationMode="Recycling">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="2">
+                        <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Subtitle}"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
     </DockPanel>
 </misc:NotifyPropertyChangedWindowBase>

@@ -17,14 +17,20 @@ namespace LegendaryExplorer.Tools.InterpEditor;
 
 internal static class StageBoneOriginResolver
 {
-    private sealed record StageOption(ExportEntry Stage, ExportEntry StartConversation)
+    private sealed record StageOption(ExportEntry Stage, ExportEntry StartConversation,
+        IReadOnlyDictionary<string, string> VariableLinkSubtitles)
     {
+        public string StageSubtitle => VariableLinkSubtitles.GetValueOrDefault("Stage");
         public override string ToString() => $"{Stage.ObjectName.Instanced} ({Stage.InstancedFullPath}, StartConversation #{StartConversation.UIndex})";
     }
 
-    private sealed record BoneOption(ExportEntry Mesh, int Index, MeshBone Bone)
+    private sealed record BoneOption(ExportEntry Mesh, int Index, MeshBone Bone, string AttachmentSubtitle)
     {
-        public override string ToString() => $"{Bone.Name.Instanced} [{Index}] — {Mesh.InstancedFullPath} ({Bone.Position.X:0.###}, {Bone.Position.Y:0.###}, {Bone.Position.Z:0.###})";
+        public override string ToString()
+        {
+            string attachment = string.IsNullOrWhiteSpace(AttachmentSubtitle) ? null : $" — {AttachmentSubtitle}";
+            return $"{Bone.Name.Instanced}{attachment} [{Index}] — {Mesh.InstancedFullPath} ({Bone.Position.X:0.###}, {Bone.Position.Y:0.###}, {Bone.Position.Z:0.###})";
+        }
     }
 
     public static bool TrySelectOrigin(Window owner, IMEPackage sourcePackage, ExportEntry contextExport,
@@ -67,14 +73,14 @@ internal static class StageBoneOriginResolver
                 return false;
             }
 
-            StageOption selectedStage = Select(owner, stages, "Choose Linked BioStage",
+            StageOption selectedStage = SelectStage(owner, stages, "Choose Linked BioStage",
                 "Choose the BioStage linked to the matching StartConversation.");
             if (selectedStage is null)
             {
                 return false;
             }
 
-            List<BoneOption> bones = FindBones(selectedStage.Stage, cache);
+            List<BoneOption> bones = FindBones(selectedStage.Stage, selectedStage.VariableLinkSubtitles, cache);
             if (bones.Count == 0)
             {
                 message = $"No skeletal mesh RefSkeleton could be resolved from '{selectedStage.Stage.InstancedFullPath}'.";
@@ -126,6 +132,19 @@ internal static class StageBoneOriginResolver
         return index >= 0 ? options[index] : null;
     }
 
+    private static StageOption SelectStage(Window owner, IReadOnlyList<StageOption> options, string title, string prompt)
+    {
+        if (options.Count == 1)
+        {
+            return options[0];
+        }
+
+        StringSelectorItem[] items = options.Select((option, index) => new StringSelectorItem(
+            index.ToString(), option.ToString(), option.StageSubtitle)).ToArray();
+        string selected = StringSelectorDialog.GetValue(owner, prompt, title, items, items[0].Value);
+        return int.TryParse(selected, out int index) && index >= 0 && index < options.Count ? options[index] : null;
+    }
+
     private static List<StageOption> FindStages(IMEPackage package, string conversationName, PackageCache cache)
     {
         var stages = new List<StageOption>();
@@ -138,19 +157,88 @@ internal static class StageBoneOriginResolver
                 continue;
             }
 
-            VarLinkInfo stageLink = KismetHelper.GetVariableLinks(startConversation.GetProperties(), package)
+            List<VarLinkInfo> variableLinks = KismetHelper.GetVariableLinks(startConversation.GetProperties(), package);
+            VarLinkInfo stageLink = variableLinks
                 .FirstOrDefault(link => string.Equals(link.LinkDesc, "Stage", StringComparison.OrdinalIgnoreCase));
+            IReadOnlyDictionary<string, string> variableLinkSubtitles = ResolveVariableLinkSubtitles(variableLinks, cache);
             foreach (IEntry linkedNode in stageLink?.LinkedNodes ?? [])
             {
                 ExportEntry stage = ResolveLinkedStage(linkedNode, cache);
                 if (stage is not null && stages.All(option => option.Stage != stage))
                 {
-                    stages.Add(new StageOption(stage, startConversation));
+                    stages.Add(new StageOption(stage, startConversation, variableLinkSubtitles));
                 }
             }
         }
 
         return stages;
+    }
+
+    private static IReadOnlyDictionary<string, string> ResolveVariableLinkSubtitles(IEnumerable<VarLinkInfo> variableLinks,
+        PackageCache cache)
+    {
+        var subtitles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (VarLinkInfo variableLink in variableLinks.Where(link => !string.IsNullOrWhiteSpace(link.LinkDesc)))
+        {
+            string[] values = variableLink.LinkedNodes
+                .Select(linkedNode => ResolveVariableAttachment(linkedNode, cache))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (values.Length > 0)
+            {
+                subtitles[variableLink.LinkDesc] = string.Join(" • ", values);
+            }
+        }
+        return subtitles;
+    }
+
+    private static string ResolveVariableAttachment(IEntry linkedNode, PackageCache cache)
+    {
+        ExportEntry linkedExport = ResolveExport(linkedNode, cache);
+        if (linkedExport is null)
+        {
+            return null;
+        }
+        if (linkedExport.ClassName == "SeqVar_Player")
+        {
+            return "Player";
+        }
+
+        PropertyCollection properties = GetPropertiesIncludingArchetypes(linkedExport, cache);
+        if (properties.GetProp<NameProperty>("m_sObjectTagToFind") is { } nameTag)
+        {
+            return nameTag.Value.Instanced;
+        }
+        if (properties.GetProp<StrProperty>("m_sObjectTagToFind") is { } stringTag)
+        {
+            return stringTag.Value;
+        }
+        if (properties.GetProp<ObjectProperty>("ObjValue") is { } objectValue)
+        {
+            return FormatObjectAttachment(objectValue.ResolveToEntry(linkedExport.FileRef), cache);
+        }
+        if (linkedExport.ClassName == "BioStage")
+        {
+            return FormatObjectAttachment(linkedExport, cache);
+        }
+
+        return $"{linkedExport.ObjectName.Instanced} ({linkedExport.ClassName})";
+    }
+
+    private static string FormatObjectAttachment(IEntry entry, PackageCache cache)
+    {
+        ExportEntry export = ResolveExport(entry, cache);
+        if (export is null)
+        {
+            return entry?.ObjectName.Instanced;
+        }
+
+        string subtitle = $"#{export.UIndex} {export.ObjectName.Instanced}";
+        NameProperty tag = GetPropertiesIncludingArchetypes(export, cache).GetProp<NameProperty>("Tag");
+        return tag is not null && tag.Value != export.ObjectName
+            ? $"{subtitle} — Tag: {tag.Value.Instanced}"
+            : subtitle;
     }
 
     private static ExportEntry ResolveLinkedStage(IEntry linkedNode, PackageCache cache)
@@ -169,7 +257,8 @@ internal static class StageBoneOriginResolver
         return objectValue is null ? null : ResolveExport(objectValue.ResolveToEntry(linkedExport.FileRef), cache);
     }
 
-    private static List<BoneOption> FindBones(ExportEntry stage, PackageCache cache)
+    private static List<BoneOption> FindBones(ExportEntry stage,
+        IReadOnlyDictionary<string, string> variableLinkSubtitles, PackageCache cache)
     {
         var meshes = new HashSet<ExportEntry>();
         var visited = new HashSet<ExportEntry>();
@@ -187,7 +276,15 @@ internal static class StageBoneOriginResolver
             {
                 continue;
             }
-            bones.AddRange(skeletalMesh.RefSkeleton.Select((bone, index) => new BoneOption(mesh, index, bone)));
+            bones.AddRange(skeletalMesh.RefSkeleton.Select((bone, index) =>
+            {
+                string subtitle = variableLinkSubtitles.GetValueOrDefault(bone.Name.Instanced);
+                if (index == 0 && string.IsNullOrWhiteSpace(subtitle))
+                {
+                    subtitle = variableLinkSubtitles.GetValueOrDefault("Stage");
+                }
+                return new BoneOption(mesh, index, bone, subtitle);
+            }));
         }
         return bones;
     }

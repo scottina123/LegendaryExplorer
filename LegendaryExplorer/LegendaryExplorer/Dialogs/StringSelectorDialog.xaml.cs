@@ -10,10 +10,15 @@ using LegendaryExplorerCore.Misc;
 
 namespace LegendaryExplorer.Dialogs;
 
+public sealed record StringSelectorItem(string Value, string DisplayName, string Subtitle = null)
+{
+    public string SearchText => string.Join('\n', Value, DisplayName, Subtitle);
+}
+
 public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 {
-    public ObservableCollectionExtended<string> AllItems { get; } = [];
-    public ObservableCollectionExtended<string> FilteredItems { get; } = [];
+    public ObservableCollectionExtended<StringSelectorItem> AllItems { get; } = [];
+    public ObservableCollectionExtended<StringSelectorItem> FilteredItems { get; } = [];
 
     private string searchText;
     public string SearchText
@@ -28,8 +33,8 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
         }
     }
 
-    private string selectedItem;
-    public string SelectedItem
+    private StringSelectorItem selectedItem;
+    public StringSelectorItem SelectedItem
     {
         get => selectedItem;
         set => SetProperty(ref selectedItem, value);
@@ -39,13 +44,14 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 
     public ICommand OKCommand { get; private set; }
 
-    private StringSelectorDialog(Control owner, string promptText, string titleText, IEnumerable<string> items, string defaultValue = "", bool topMost = false)
+    private StringSelectorDialog(Control owner, string promptText, string titleText, IEnumerable<StringSelectorItem> items,
+        string defaultValue = "", bool topMost = false)
     {
         DirectionsText = promptText;
         Title = titleText;
         Topmost = topMost;
 
-        AllItems.ReplaceAll(items?.Distinct(StringComparer.OrdinalIgnoreCase) ?? []);
+        AllItems.ReplaceAll(items?.DistinctBy(item => item.Value, StringComparer.OrdinalIgnoreCase) ?? []);
 
         DataContext = this;
         LoadCommands();
@@ -68,8 +74,15 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 
     public static string GetValue(Control owner, string promptText, string titleText, IEnumerable<string> items, string defaultValue = "", bool topMost = false)
     {
+        IEnumerable<StringSelectorItem> selectorItems = items?.Select(item => new StringSelectorItem(item, item));
+        return GetValue(owner, promptText, titleText, selectorItems, defaultValue, topMost);
+    }
+
+    public static string GetValue(Control owner, string promptText, string titleText, IEnumerable<StringSelectorItem> items,
+        string defaultValue = "", bool topMost = false)
+    {
         var dlg = new StringSelectorDialog(owner, promptText, titleText, items, defaultValue, topMost);
-        return dlg.ShowDialog() == true ? dlg.SelectedItem ?? string.Empty : string.Empty;
+        return dlg.ShowDialog() == true ? dlg.SelectedItem?.Value ?? string.Empty : string.Empty;
     }
 
     private void LoadCommands()
@@ -79,7 +92,7 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 
     private bool CanAcceptSelection()
     {
-        return !string.IsNullOrWhiteSpace(SelectedItem);
+        return !string.IsNullOrWhiteSpace(SelectedItem?.Value);
     }
 
     private void AcceptSelection()
@@ -89,7 +102,7 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 
     private void SetInitialSelection(string defaultValue)
     {
-        SelectedItem = FilteredItems.FirstOrDefault(item => item.Equals(defaultValue, StringComparison.OrdinalIgnoreCase))
+        SelectedItem = FilteredItems.FirstOrDefault(item => item.Value.Equals(defaultValue, StringComparison.OrdinalIgnoreCase))
             ?? FilteredItems.FirstOrDefault();
 
         if (SelectedItem is not null)
@@ -100,11 +113,11 @@ public partial class StringSelectorDialog : NotifyPropertyChangedWindowBase
 
     private void UpdateFilteredItems()
     {
-        IEnumerable<string> items = AllItems;
+        IEnumerable<StringSelectorItem> items = AllItems;
         string search = SearchText?.Trim();
         if (!string.IsNullOrWhiteSpace(search))
         {
-            items = items.Where(item => item.Contains(search, StringComparison.OrdinalIgnoreCase));
+            items = items.Where(item => item.SearchText.Contains(search, StringComparison.OrdinalIgnoreCase));
         }
 
         FilteredItems.ReplaceAll(items);
