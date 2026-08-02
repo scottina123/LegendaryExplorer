@@ -53,7 +53,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ConversationExtended Conversation,
         DialogueNodeExtended Node,
         IReadOnlyList<DialogueNodePreviewActor> Actors,
-        IReadOnlyList<string> LevelPaths);
+        IReadOnlyList<string> LevelPaths,
+        float VoStartTime);
 
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
     {
@@ -158,10 +159,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             public AnimSequencePlayer GesturePlayer { get; }
             public FaceFxPlayer FaceFxPlayer { get; }
+            public float FaceFxTimelineOffset { get; set; }
             public override bool HasAnimation => GesturePlayer.HasAnimation || FaceFxPlayer.HasAnimation;
             public override float Duration => Math.Max(GesturePlayer.Duration, FaceFxPlayer.Duration);
-            public override float StartTime => Math.Min(GesturePlayer.StartTime, FaceFxPlayer.StartTime);
-            public override float EndTime => Math.Max(GesturePlayer.EndTime, FaceFxPlayer.EndTime);
+            public override float StartTime => Math.Min(GesturePlayer.StartTime, FaceFxTimelineOffset);
+            public override float EndTime => Math.Max(GesturePlayer.EndTime, FaceFxTimelineOffset + FaceFxPlayer.Duration);
 
             public LayeredAnimationPlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
             {
@@ -173,7 +175,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 CurrentTime = time;
                 GesturePlayer.SetCurrentTime(time);
-                FaceFxPlayer.SetCurrentTime(time);
+                FaceFxPlayer.SetCurrentTime(FaceFxPlayer.StartTime + time - FaceFxTimelineOffset);
             }
 
             public override Matrix4x4[] ComputeSkinningMatrices()
@@ -276,11 +278,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Renderer.NeedsUpdate = true;
         }
 
-        public void SetFaceFx(FaceFXAsset asset, FaceFXAnimSet animSet, FaceFXLine line)
+        public void SetFaceFx(FaceFXAsset asset, FaceFXAnimSet animSet, FaceFXLine line, float timelineOffset)
         {
             Player.FaceFxPlayer.FxActor = asset;
             Player.FaceFxPlayer.AnimSet = animSet;
             Player.FaceFxPlayer.SetFaceFXLine(line);
+            Player.FaceFxTimelineOffset = timelineOffset;
             Renderer.NeedsUpdate = true;
         }
 
@@ -419,6 +422,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackEndTime;
     private float playbackElapsed;
     private float playbackCurrentTime;
+    private bool dialoguePreviewAudioStarted;
     private TrackMovePlaybackOption selectedExtraTrackMove;
     private DirectorPlaybackOption selectedDirectorPlayback;
     private TrackMovePlaybackOption primaryTrackMove;
@@ -547,9 +551,20 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
-        dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths);
+        dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths,
+            GetDialoguePreviewVoStartTime(node.InterpData));
         DialoguePreviewActorPanel.Visibility = Visibility.Visible;
         DialoguePreviewActorPanelSplitter.Visibility = Visibility.Visible;
+    }
+
+    private static float GetDialoguePreviewVoStartTime(ExportEntry interpData)
+    {
+        ExportEntry voTrack = GetReferencedExports(interpData, "InterpGroups")
+            .Where(group => GetInterpGroupName(group).Equals("Conversation", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(group => GetReferencedExports(group, "InterpTracks"))
+            .FirstOrDefault(track => track.ClassName == "BioEvtSysTrackVOElements");
+        return voTrack?.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys")
+                   ?.FirstOrDefault()?.GetProp<FloatProperty>("fTime")?.Value ?? 0;
     }
 
     public static IReadOnlyList<DialoguePreviewRecentLevelSet> GetDialoguePreviewRecentLevelSets() =>
@@ -1469,7 +1484,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         dialoguePreviewFaceFxAnimSets[actor] = animSet;
-        animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line);
+        animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line, dialogueNodePreview.VoStartTime);
         UpdatePreviewActorSkinning(actor);
     }
 
@@ -3023,7 +3038,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         isPlayingMove = true;
         RenderContext.ForceContinuousRendering = true;
         ApplyActorsAtTime(playbackStartTime);
-        StartDialoguePreviewAudio(playbackStartTime);
+        dialoguePreviewAudioStarted = false;
+        UpdateDialoguePreviewAudio(playbackStartTime);
         SceneViewer.Focus();
     }
 
@@ -3052,6 +3068,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (isPlayingActor)
         {
             ApplyActorsAtTime(time);
+            UpdateDialoguePreviewAudio(time);
             UpdateAdditionalCameraPlayback(time);
         }
         else
@@ -3280,6 +3297,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (stoppedActorPlayback)
         {
             DialoguePreviewSoundpanel.StopPlaying();
+            dialoguePreviewAudioStarted = false;
             RestorePlaybackActorOrigins();
         }
         playbackActors.Clear();
@@ -4060,7 +4078,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ApplyDialoguePreviewFaceFx(selectedPreviewActor);
             if (isPlayingActor && IsDialogueNodeSpeaker(selectedPreviewActor))
             {
-                StartDialoguePreviewAudio(playbackCurrentTime);
+                DialoguePreviewSoundpanel.StopPlaying();
+                dialoguePreviewAudioStarted = false;
+                UpdateDialoguePreviewAudio(playbackCurrentTime);
             }
         }
     }
@@ -4096,7 +4116,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
         LoadDialoguePreviewAudio(speakingActor);
         DialoguePreviewSoundpanel.StopPlaying();
-        DialoguePreviewSoundpanel.StartOrPausePlaying(Math.Max(0, time));
+        float audioTime = Math.Max(0, time - dialogueNodePreview.VoStartTime);
+        DialoguePreviewSoundpanel.StartOrPausePlaying(audioTime);
+        dialoguePreviewAudioStarted = true;
+    }
+
+    private void UpdateDialoguePreviewAudio(float time)
+    {
+        if (dialogueNodePreview is null || dialoguePreviewAudioStarted || time < dialogueNodePreview.VoStartTime)
+        {
+            return;
+        }
+
+        StartDialoguePreviewAudio(time);
     }
 
     private void LoadDialoguePreviewAudio(PreviewActorConfiguration actor)
