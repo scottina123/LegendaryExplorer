@@ -14,6 +14,7 @@ using LegendaryExplorer.GameInterop;
 using LegendaryExplorer.MainWindow;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
+using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.PeregrineTreeView;
 using LegendaryExplorer.Tools.CustomFilesManager;
 using LegendaryExplorer.UserControls.ExportLoaderControls.ScriptEditor.IDE;
@@ -76,6 +77,7 @@ namespace LegendaryExplorer.Startup
             WindowsFormsHost.EnableWindowsFormsInterop();
 
             // WPF setup
+            ContextMenuBehavior.EnableAlphabeticalSorting();
             ToolTipService.ShowDurationProperty.OverrideMetadata(typeof(DependencyObject), new FrameworkPropertyMetadata(int.MaxValue));
             //fixes bad WPF default. Users aren't going to not want to know what a button does just because it's disabled at the moment!
             ToolTipService.ShowOnDisabledProperty.OverrideMetadata(typeof(FrameworkElement), new FrameworkPropertyMetadata(true));
