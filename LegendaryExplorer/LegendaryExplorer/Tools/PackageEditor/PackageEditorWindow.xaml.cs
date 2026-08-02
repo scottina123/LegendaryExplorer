@@ -6364,7 +6364,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void ObjectNameDisplay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ClickCount != 2
+            if (e.ClickCount != 3
                 || sender is not TextBlock { DataContext: TreeViewEntry { Entry: not null } node, Parent: Panel parent } display
                 || node.UIndex == 0
                 || parent.Children.OfType<TextBox>().FirstOrDefault() is not { } editor)
