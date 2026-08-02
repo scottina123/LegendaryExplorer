@@ -16,6 +16,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.Tools.AssetDatabase;
+using LegendaryExplorer.Tools.Dialogue_Editor;
 using LegendaryExplorer.Tools.LevelEditor;
 using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorer.Tools.PackageEditor.Experiments;
@@ -55,6 +56,32 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         IReadOnlyList<DialogueNodePreviewActor> Actors,
         IReadOnlyList<string> LevelPaths,
         float VoStartTime);
+
+    public sealed class DialogueTimelineSegment
+    {
+        public DialogueNodeExtended Node { get; init; }
+        public DialoguePreviewNodeReference Reference { get; init; }
+        public float StartTime { get; init; }
+        public float Duration { get; init; }
+        public float EndTime => StartTime + Duration;
+        public string NodeLabel => $"{(Node.IsReply ? "R" : "E")}{Node.NodeCount}";
+        public string LineLabel => string.IsNullOrWhiteSpace(Node.Line) ? $"StrRef {Node.LineStrRef}" : Node.Line;
+        public string DisplayLabel => $"{NodeLabel}  {LineLabel}";
+    }
+
+    public sealed class DialogueBranchOption
+    {
+        public DialogueNodeExtended Source { get; init; }
+        public DialogueNodeExtended Target { get; init; }
+        public DialoguePreviewNodeReference TargetReference { get; init; }
+        public string BranchKey { get; init; }
+        public string Category { get; init; }
+        public string NodeLabel => $"{(Target.IsReply ? "R" : "E")}{Target.NodeCount}";
+        public string LineLabel => string.IsNullOrWhiteSpace(Target.Line) ? $"StrRef {Target.LineStrRef}" : Target.Line;
+        public string DisplayLabel => string.IsNullOrWhiteSpace(Category)
+            ? $"{NodeLabel}: {LineLabel}"
+            : $"{Category} — {NodeLabel}: {LineLabel}";
+    }
 
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
     {
@@ -404,6 +431,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool hasSnappedInitialCamera;
     private bool isPlayingMove;
     private bool isPlayingActor;
+    private bool isPlayingDialogueTimeline;
+    private bool resumeDialogueTimelineAfterBranch;
+    private bool updatingDialogueTimelineSlider;
+    private float dialogueTimelineCurrentTime;
+    private DialogueTimelineSegment activeDialogueTimelineSegment;
     private bool updatingMulticamControls;
     private bool updatingActorPlaybackZControls;
     private bool playExtraTrackMove;
@@ -414,6 +446,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private Button playActorButton;
     private readonly List<PreviewActorPlaybackState> playbackActors = [];
     private readonly List<ActorDirectionTrack> actorDirectionTracks = [];
+    private readonly ObservableCollection<DialogueTimelineSegment> dialogueTimelineSegments = [];
+    private readonly ObservableCollection<DialogueBranchOption> dialogueBranchOptions = [];
+    private readonly Dictionary<string, DialoguePreviewNodeReference> dialogueBranchSelections = new(StringComparer.Ordinal);
     private CurveEditor3DKeyframe selectedKeyframe;
     private string currentExportName;
     private string sceneStatus = "Select an InterpTrackMove export, then optionally open a level backdrop.";
@@ -427,6 +462,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private DirectorPlaybackOption selectedDirectorPlayback;
     private TrackMovePlaybackOption primaryTrackMove;
     private DialogueNodePreviewConfiguration dialogueNodePreview;
+    private DialoguePreviewPreset dialoguePreviewPreset;
     private CurveEditor3DModel registeredKeyframeModel;
     private bool updatingKeyframeTrackTabs;
     private Vector3 pendingViewportKeyframeLocation;
@@ -469,6 +505,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool previewActorRotationDialDragging;
     private double previewActorRotationDialAngleAccumulator;
     private double previewActorRotationDialPreviousAngle;
+
+    public IEnumerable<DialogueTimelineSegment> DialogueTimelineSegments => dialogueTimelineSegments;
+    public IEnumerable<DialogueBranchOption> DialogueBranchOptions => dialogueBranchOptions;
 
     private string SavedPreviewActorsPath => Path.Combine(AppDirectories.AppDataFolder,
         $"CurveEditor3DPreviewActors_{previewActorGame}.json");
@@ -553,9 +592,141 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ArgumentNullException.ThrowIfNull(levelPaths);
         dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths,
             GetDialoguePreviewVoStartTime(node.InterpData));
+        BuildDialogueTimeline(node);
         DialoguePreviewActorPanel.Visibility = Visibility.Visible;
         DialoguePreviewActorPanelSplitter.Visibility = Visibility.Visible;
     }
+
+    public void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
+        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths, DialoguePreviewPreset preset)
+    {
+        dialoguePreviewPreset = preset;
+        dialogueBranchSelections.Clear();
+        if (preset?.BranchSelections is not null)
+        {
+            foreach ((string key, DialoguePreviewNodeReference value) in preset.BranchSelections)
+            {
+                dialogueBranchSelections[key] = value;
+            }
+        }
+
+        ConfigureDialogueNodePreview(conversation, startNode, actors, levelPaths);
+    }
+
+    private void BuildDialogueTimeline(DialogueNodeExtended startNode)
+    {
+        dialogueTimelineSegments.Clear();
+        dialogueBranchOptions.Clear();
+        if (dialogueNodePreview?.Conversation is not { } conversation || startNode is null)
+        {
+            return;
+        }
+
+        float timelineTime = 0;
+        DialogueNodeExtended current = startNode;
+        var visited = new HashSet<DialoguePreviewNodeReference>();
+        for (int nodeCount = 0; current is not null && nodeCount < 512; nodeCount++)
+        {
+            DialoguePreviewNodeReference currentReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, current);
+            if (!visited.Add(currentReference))
+            {
+                break;
+            }
+
+            float duration = GetDialogueNodeTimelineDuration(current);
+            dialogueTimelineSegments.Add(new DialogueTimelineSegment
+            {
+                Node = current,
+                Reference = currentReference,
+                StartTime = timelineTime,
+                Duration = duration
+            });
+            timelineTime += duration;
+
+            List<DialogueBranchOption> outgoing = GetDialogueBranchOptions(conversation, current);
+            if (outgoing.Count == 0)
+            {
+                break;
+            }
+            if (outgoing.Count == 1)
+            {
+                current = outgoing[0].Target;
+                continue;
+            }
+
+            string branchKey = GetDialogueBranchKey(currentReference);
+            if (dialogueBranchSelections.TryGetValue(branchKey, out DialoguePreviewNodeReference selectedReference)
+                && outgoing.FirstOrDefault(option => option.TargetReference == selectedReference) is { } selected)
+            {
+                current = selected.Target;
+                continue;
+            }
+
+            foreach (DialogueBranchOption option in outgoing)
+            {
+                dialogueBranchOptions.Add(option);
+            }
+            break;
+        }
+        UpdateDialogueTimelineControls();
+    }
+
+    private static float GetDialogueNodeTimelineDuration(DialogueNodeExtended node)
+    {
+        float interpLength = node.InterpData?.GetProperty<FloatProperty>("InterpLength")?.Value ?? node.InterpLength;
+        return MathF.Max(interpLength, 0.1f);
+    }
+
+    private static List<DialogueBranchOption> GetDialogueBranchOptions(
+        ConversationExtended conversation,
+        DialogueNodeExtended source)
+    {
+        DialoguePreviewNodeReference sourceReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, source);
+        string branchKey = GetDialogueBranchKey(sourceReference);
+        if (source.IsReply)
+        {
+            return source.NodeProp.GetProp<ArrayProperty<IntProperty>>("EntryList")?
+                .Where(reference => reference.Value >= 0 && reference.Value < conversation.EntryList.Count)
+                .Select(reference => conversation.EntryList[reference.Value])
+                .Select(target => new DialogueBranchOption
+                {
+                    Source = source,
+                    Target = target,
+                    TargetReference = DialoguePreviewPresetLibrary.GetNodeReference(conversation, target),
+                    BranchKey = branchKey
+                })
+                .ToList() ?? [];
+        }
+
+        return source.NodeProp.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?
+            .Select(link => (Link: link, Index: link.GetProp<IntProperty>("nIndex")?.Value ?? -1))
+            .Where(item => item.Index >= 0 && item.Index < conversation.ReplyList.Count)
+            .Select(item => new DialogueBranchOption
+            {
+                Source = source,
+                Target = conversation.ReplyList[item.Index],
+                TargetReference = new DialoguePreviewNodeReference(true, item.Index),
+                BranchKey = branchKey,
+                Category = GetDialogueReplyCategoryLabel(item.Link.GetProp<EnumProperty>("Category")?.Value.Name)
+            })
+            .ToList() ?? [];
+    }
+
+    private static string GetDialogueBranchKey(DialoguePreviewNodeReference reference) =>
+        $"{(reference.IsReply ? 'R' : 'E')}:{reference.Index}";
+
+    private static string GetDialogueReplyCategoryLabel(string category) => category switch
+    {
+        "REPLY_CATEGORY_DEFAULT" => "Default",
+        "REPLY_CATEGORY_AGREE" => "Agree",
+        "REPLY_CATEGORY_DISAGREE" => "Disagree",
+        "REPLY_CATEGORY_FRIENDLY" => "Friendly",
+        "REPLY_CATEGORY_HOSTILE" => "Hostile",
+        "REPLY_CATEGORY_INVESTIGATE" => "Investigate",
+        "REPLY_CATEGORY_RENEGADE_INTERRUPT" => "Renegade Interrupt",
+        "REPLY_CATEGORY_PARAGON_INTERRUPT" => "Paragon Interrupt",
+        _ => category
+    };
 
     private static float GetDialoguePreviewVoStartTime(ExportEntry interpData)
     {
@@ -1350,7 +1521,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 await LoadDialoguePreviewLevelsAsync().ConfigureAwait(true);
                 ConfigureDialoguePreviewPlayback();
-                PlayActor_Click(this, new RoutedEventArgs());
+                if (dialoguePreviewPreset is not null)
+                {
+                    ApplyDialogueTimelineAtTime(0, reconstruct: true);
+                }
+                else
+                {
+                    PlayActor_Click(this, new RoutedEventArgs());
+                }
             }
             SetPreviewActorStatus(meshes.Count == 0
                 ? $"The {game} Asset Database contains no skeletal meshes."
@@ -3045,6 +3223,19 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void UpdatePlayback(object sender, float deltaTime)
     {
+        if (isPlayingDialogueTimeline)
+        {
+            float endTime = GetDialogueTimelineEndTime();
+            float nextTime = MathF.Min(dialogueTimelineCurrentTime + deltaTime, endTime);
+            ApplyDialogueTimelineAtTime(nextTime, reconstruct: false);
+            if (nextTime >= endTime)
+            {
+                resumeDialogueTimelineAfterBranch = dialogueBranchOptions.Count > 0;
+                PauseDialogueTimeline();
+            }
+            return;
+        }
+
         if (!isPlayingMove)
         {
             return;
@@ -3060,6 +3251,253 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
 
         ApplyPlaybackAtTime(time);
+    }
+
+    private void DialogueTimelinePlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (isPlayingDialogueTimeline)
+        {
+            PauseDialogueTimeline();
+            return;
+        }
+
+        float endTime = GetDialogueTimelineEndTime();
+        if (endTime <= 0 || dialogueTimelineCurrentTime >= endTime && dialogueBranchOptions.Count > 0)
+        {
+            return;
+        }
+        if (dialogueTimelineCurrentTime >= endTime)
+        {
+            ApplyDialogueTimelineAtTime(0, reconstruct: true);
+        }
+
+        isPlayingDialogueTimeline = true;
+        if (FindName("DialogueTimelinePlayButton") is Button playButton)
+        {
+            playButton.Content = "Pause";
+        }
+        RenderContext.ForceContinuousRendering = true;
+        SceneViewer?.MarkRenderDirty();
+        SceneViewer.Focus();
+    }
+
+    private void DialogueTimelineRewind_Click(object sender, RoutedEventArgs e)
+    {
+        PauseDialogueTimeline();
+        ApplyDialogueTimelineAtTime(0, reconstruct: true);
+    }
+
+    private void DialogueTimelineSlider_PreviewMouseDown(object sender, MouseButtonEventArgs e) =>
+        PauseDialogueTimeline();
+
+    private void DialogueTimelineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!updatingDialogueTimelineSlider && dialoguePreviewPreset is not null)
+        {
+            ApplyDialogueTimelineAtTime((float)e.NewValue, reconstruct: e.NewValue < dialogueTimelineCurrentTime);
+        }
+    }
+
+    private void DialogueTimelineNode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: DialogueTimelineSegment segment })
+        {
+            PauseDialogueTimeline();
+            ApplyDialogueTimelineAtTime(segment.StartTime, reconstruct: segment.StartTime < dialogueTimelineCurrentTime);
+        }
+    }
+
+    private void DialogueBranchChoice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: DialogueBranchOption option }
+            || dialogueTimelineSegments.FirstOrDefault()?.Node is not { } startNode)
+        {
+            return;
+        }
+
+        bool resume = resumeDialogueTimelineAfterBranch;
+        dialogueBranchSelections[option.BranchKey] = option.TargetReference;
+        if (dialoguePreviewPreset is not null)
+        {
+            DialoguePreviewPresetLibrary.UpdateSelections(dialoguePreviewPreset, dialogueBranchSelections);
+        }
+        BuildDialogueTimeline(startNode);
+        DialogueTimelineSegment targetSegment = dialogueTimelineSegments.FirstOrDefault(segment => segment.Reference == option.TargetReference);
+        ApplyDialogueTimelineAtTime(targetSegment?.StartTime ?? dialogueTimelineCurrentTime, reconstruct: false);
+        resumeDialogueTimelineAfterBranch = false;
+        if (resume)
+        {
+            isPlayingDialogueTimeline = true;
+            if (FindName("DialogueTimelinePlayButton") is Button playButton)
+            {
+                playButton.Content = "Pause";
+            }
+            RenderContext.ForceContinuousRendering = true;
+        }
+    }
+
+    private void SaveDialoguePreviewPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (dialogueNodePreview?.Conversation is not { } conversation
+            || dialogueTimelineSegments.FirstOrDefault()?.Node is not { } startNode)
+        {
+            return;
+        }
+
+        string defaultName = dialoguePreviewPreset?.Name ?? conversation.Export.ObjectName.Name;
+        string name = PromptDialog.Prompt(Window.GetWindow(this), "Preset name:",
+            "Save Dialogue Preview Preset", defaultName)?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        try
+        {
+            dialoguePreviewPreset = DialoguePreviewPresetLibrary.Capture(conversation, startNode, name,
+                dialogueNodePreview.LevelPaths, dialogueBranchSelections);
+            SceneStatus = $"Saved dialogue preview preset '{name}'.";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(Window.GetWindow(this), $"The preset could not be saved.\n\n{exception.Message}",
+                "Save Dialogue Preview Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ApplyDialogueTimelineAtTime(float globalTime, bool reconstruct)
+    {
+        if (dialogueTimelineSegments.Count == 0)
+        {
+            return;
+        }
+
+        float endTime = GetDialogueTimelineEndTime();
+        globalTime = Math.Clamp(globalTime, 0, endTime);
+        DialogueTimelineSegment target = dialogueTimelineSegments
+            .FirstOrDefault(segment => globalTime < segment.EndTime)
+            ?? dialogueTimelineSegments[^1];
+
+        if (reconstruct)
+        {
+            activeDialogueTimelineSegment = null;
+            foreach (DialogueNodePreviewActor actor in dialogueNodePreview.Actors)
+            {
+                PreviewActorConfiguration configuredActor = previewActors.FirstOrDefault(candidate =>
+                    string.Equals(candidate.ActorTag, actor.ActorTag, StringComparison.OrdinalIgnoreCase));
+                if (configuredActor is not null)
+                {
+                    configuredActor.Origin = actor.Origin;
+                }
+            }
+
+            foreach (DialogueTimelineSegment segment in dialogueTimelineSegments.TakeWhile(segment => segment.StartTime < target.StartTime))
+            {
+                ActivateDialogueTimelineSegment(segment);
+                ApplyPlaybackAtTime(segment.Duration);
+            }
+        }
+
+        ActivateDialogueTimelineSegment(target);
+        float localTime = Math.Clamp(globalTime - target.StartTime, 0, target.Duration);
+        ApplyPlaybackAtTime(localTime);
+        dialogueTimelineCurrentTime = globalTime;
+        UpdateDialogueTimelineControls();
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private void ActivateDialogueTimelineSegment(DialogueTimelineSegment segment)
+    {
+        if (ReferenceEquals(activeDialogueTimelineSegment, segment))
+        {
+            return;
+        }
+
+        Dictionary<string, CameraOrigin> actorOrigins = previewActors.ToDictionary(actor => actor.ActorTag,
+            actor => actor.Origin, StringComparer.OrdinalIgnoreCase);
+        dialogueNodePreview = dialogueNodePreview with
+        {
+            Node = segment.Node,
+            VoStartTime = GetDialoguePreviewVoStartTime(segment.Node.InterpData)
+        };
+        ExportEntry trackMove = FindDialoguePreviewTrackMove(segment.Node.InterpData);
+        if (trackMove is not null)
+        {
+            LoadExport(trackMove);
+            foreach (PreviewActorConfiguration actor in previewActors)
+            {
+                if (actorOrigins.TryGetValue(actor.ActorTag, out CameraOrigin origin))
+                {
+                    actor.Origin = origin;
+                }
+            }
+            ConfigureDialoguePreviewPlayback();
+            PrepareDialogueTimelineActorPlayback();
+        }
+        activeDialogueTimelineSegment = segment;
+    }
+
+    private void PrepareDialogueTimelineActorPlayback()
+    {
+        playbackActors.Clear();
+        foreach (PreviewActorConfiguration actor in previewActors)
+        {
+            previewActorTrackAssignments.TryGetValue(actor, out TrackMovePlaybackOption trackMove);
+            CameraOrigin originalOrigin = actor.Origin;
+            playbackActors.Add(new PreviewActorPlaybackState
+            {
+                Actor = actor,
+                TrackMove = trackMove,
+                OriginalOrigin = originalOrigin,
+                ZOffset = trackMove?.Model?.Keyframes is not { Count: > 0 } keys
+                    ? ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f
+                    : ActorPlaybackTrackZCheckBox.IsChecked == true
+                        ? 0f
+                        : originalOrigin.Location.Z - EvaluateTrackMove(trackMove.Model, keys[0].Time).Location.Z
+                          + (ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f)
+            });
+        }
+        foreach (PreviewActorPlaybackState state in playbackActors)
+        {
+            ApplyAssignedGestureToActor(state.Actor);
+        }
+        isPlayingActor = playbackActors.Count > 0;
+        isPlayingMove = false;
+        dialoguePreviewAudioStarted = false;
+    }
+
+    private void PauseDialogueTimeline()
+    {
+        isPlayingDialogueTimeline = false;
+        if (FindName("DialogueTimelinePlayButton") is Button playButton)
+        {
+            playButton.Content = "Play";
+        }
+        RenderContext.ForceContinuousRendering = false;
+        DialoguePreviewSoundpanel.StopPlaying();
+        dialoguePreviewAudioStarted = false;
+        SceneViewer?.MarkRenderDirty();
+    }
+
+    private float GetDialogueTimelineEndTime() => dialogueTimelineSegments.LastOrDefault()?.EndTime ?? 0;
+
+    private void UpdateDialogueTimelineControls()
+    {
+        if (FindName("DialogueTimelineSlider") is not Slider slider
+            || FindName("DialogueTimelineTimeText") is not TextBlock timeText
+            || FindName("DialogueBranchChoicePanel") is not Border branchPanel)
+        {
+            return;
+        }
+        float endTime = GetDialogueTimelineEndTime();
+        updatingDialogueTimelineSlider = true;
+        slider.Maximum = endTime;
+        slider.Value = Math.Clamp(dialogueTimelineCurrentTime, 0, endTime);
+        updatingDialogueTimelineSlider = false;
+        timeText.Text = $"{dialogueTimelineCurrentTime:0.00} / {endTime:0.00}";
+        branchPanel.Visibility = dialogueBranchOptions.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ApplyPlaybackAtTime(float time)
@@ -3433,7 +3871,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (!isPlayingMove)
+        if (!isPlayingMove && !isPlayingDialogueTimeline)
         {
             DrawTrajectory(ActiveModel);
         }

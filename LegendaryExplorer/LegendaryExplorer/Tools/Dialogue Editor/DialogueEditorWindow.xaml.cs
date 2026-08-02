@@ -5707,6 +5707,136 @@ namespace LegendaryExplorer.DialogueEditor
             }
         }
 
+        private void PreviewDialogueConversation_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedConv is null)
+            {
+                return;
+            }
+
+            DialogueNodeExtended[] startNodes = SelectedConv.StartingList.Values
+                .Distinct()
+                .Where(index => index >= 0 && index < SelectedConv.EntryList.Count)
+                .Select(index => SelectedConv.EntryList[index])
+                .ToArray();
+            if (startNodes.Length == 0)
+            {
+                startNodes = SelectedConv.EntryList.ToArray();
+            }
+            if (startNodes.Length == 0)
+            {
+                MessageBox.Show(this, "This BioConversation has no entry nodes to preview.",
+                    "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            Dictionary<string, DialogueNodeExtended> choices = startNodes.ToDictionary(
+                node => $"E{node.NodeCount}: {(string.IsNullOrWhiteSpace(node.Line) ? $"StrRef {node.LineStrRef}" : node.Line)}",
+                node => node,
+                StringComparer.Ordinal);
+            string selectedChoice = StringSelectorDialog.GetValue(this, "Choose the entry node where playback should begin:",
+                "Conversation Preview Start Node", choices.Keys);
+            if (string.IsNullOrWhiteSpace(selectedChoice))
+            {
+                return;
+            }
+
+            OpenDialogueConversationPreview(choices[selectedChoice]);
+        }
+
+        private void PreviewDialogueConversationFromNode_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedConv is not null && SelectedDialogueNode is not null)
+            {
+                OpenDialogueConversationPreview(SelectedDialogueNode);
+            }
+        }
+
+        private void OpenDialogueConversationPreview(DialogueNodeExtended startNode)
+        {
+            if (SelectedConv is null || startNode is null)
+            {
+                return;
+            }
+
+            var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
+            if (levelPicker.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var presetManager = new DialoguePreviewPresetManager(SelectedConv, startNode,
+                levelPicker.SelectedLevelPaths) { Owner = this };
+            if (presetManager.ShowDialog() != true || presetManager.SelectedPreset is not { } preset)
+            {
+                return;
+            }
+
+            DialoguePreviewPresetSnapshot snapshot = null;
+            try
+            {
+                snapshot = DialoguePreviewPresetLibrary.OpenSnapshot(preset);
+                List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
+                    snapshot.Conversation, snapshot.StartNode);
+                ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(snapshot.StartNode.InterpData)
+                    ?? snapshot.Conversation.EntryList.Concat(snapshot.Conversation.ReplyList)
+                        .Select(node => CurveEditor3D.FindDialoguePreviewTrackMove(node.InterpData))
+                        .FirstOrDefault(track => track is not null);
+                if (previewTrackMove is null)
+                {
+                    MessageBox.Show(this, "No node in this BioConversation has a TrackMove that can initialize the 3D preview.",
+                        "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+                    snapshot.Dispose();
+                    return;
+                }
+
+                var preview = new CurveEditor3D();
+                preview.ConfigureDialogueConversationPreview(snapshot.Conversation, snapshot.StartNode, actors,
+                    preset.LevelPaths, preset);
+                var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
+                {
+                    Owner = this,
+                    Title = $"Dialogue Conversation Preview - {preset.Name}"
+                };
+                window.Closed += (_, _) => snapshot.Dispose();
+                window.Show();
+            }
+            catch (Exception exception)
+            {
+                snapshot?.Dispose();
+                MessageBox.Show(this, $"The dialogue preview preset could not be opened.\n\n{exception.Message}",
+                    "Open Dialogue Preview Preset", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(
+            ConversationExtended conversation,
+            DialogueNodeExtended startNode)
+        {
+            string[] actorTags = conversation.Speakers
+                .Select(speaker => speaker.SpeakerName)
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
+            var context = new CameraActorAnchorContext(conversation, startNode, actorTags);
+            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags)
+                .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
+                .ThenBy(path => path.PathId, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (bestPath is not null)
+            {
+                foreach ((string actorTag, ResolvedActorTransform transform) in bestPath.ActorTransforms)
+                {
+                    actorOrigins[actorTag] = new CameraOrigin(transform.Location, transform.Rotation);
+                }
+            }
+
+            return actorTags.Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
+                actorOrigins.GetValueOrDefault(tag,
+                    new CameraOrigin(new Vector3(0, index * 100, 0), Vector3.Zero)))).ToList();
+        }
+
         private void Conversations_CloneTopLevelPackage_Click(object sender, RoutedEventArgs e)
         {
             if (Conversations_ListBox.SelectedItem is not ConversationExtended conversation)

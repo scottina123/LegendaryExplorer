@@ -95,6 +95,9 @@
             <MenuItem Header="Preview Node in 3D" Click="PreviewDialogueNode_Click"
                       IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}"
                       ToolTip="Preview this node's actors, gestures, movement, facing, look-at, and cameras"/>
+            <MenuItem Header="Preview Conversation from This Node in 3D..."
+                      Click="PreviewDialogueConversationFromNode_Click"
+                      ToolTip="Open the stateful conversation preview beginning at this reply node"/>
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>
@@ -160,6 +163,9 @@
             <MenuItem Header="Preview Node in 3D" Click="PreviewDialogueNode_Click"
                       IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}"
                       ToolTip="Preview this node's actors, gestures, movement, facing, look-at, and cameras"/>
+            <MenuItem Header="Preview Conversation from This Node in 3D..."
+                      Click="PreviewDialogueConversationFromNode_Click"
+                      ToolTip="Open the stateful conversation preview beginning at this entry node"/>
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>
@@ -817,6 +823,8 @@
                                         <Image Source="{StaticResource iconSequenceEditor16}" Width="64"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
+                                <MenuItem Header="Preview Conversation in 3D..." Click="PreviewDialogueConversation_Click"
+                                          ToolTip="Select a start node and open a stateful, branching 3D conversation preview"/>
                                 <Separator />
                                 <MenuItem Header="Clone top-level package" Click="Conversations_CloneTopLevelPackage_Click" />
                                 <MenuItem Header="Multi-clone top-level package" Click="Conversations_MultiCloneTopLevelPackage_Click" />

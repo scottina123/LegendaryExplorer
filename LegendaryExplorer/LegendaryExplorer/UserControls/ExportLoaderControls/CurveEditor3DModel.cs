@@ -22,7 +22,7 @@ public sealed class CurveEditor3DModel
 
     public InterpCurveVector RotationTrack { get; private set; }
 
-    public List<CurveEditor3DKeyframe> Keyframes { get; } = [];
+    public System.Collections.ObjectModel.ObservableCollection<CurveEditor3DKeyframe> Keyframes { get; } = [];
 
     public event Action Changed;
 
@@ -296,11 +296,27 @@ public sealed class CurveEditor3DModel
         {
             lookupPoints.Add(sortedLookupPoint);
         }
-        Keyframes.Sort((left, right) => left.Time.CompareTo(right.Time));
+        SortKeyframes();
         PositionTrack.ReCalculateTangents();
         RotationTrack.ReCalculateTangents();
         WriteTracks();
         Changed?.Invoke();
+    }
+
+    private void SortKeyframes()
+    {
+        List<CurveEditor3DKeyframe> sortedKeyframes = Keyframes
+            .OrderBy(keyframe => keyframe.Time)
+            .ToList();
+
+        for (int targetIndex = 0; targetIndex < sortedKeyframes.Count; targetIndex++)
+        {
+            int currentIndex = Keyframes.IndexOf(sortedKeyframes[targetIndex]);
+            if (currentIndex != targetIndex)
+            {
+                Keyframes.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void WriteTracks()
