@@ -29,6 +29,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private bool isDarkMode;
     private bool autoFramePending;
     private int autoFrameElapsed;
+    private bool autoFrameHasPeak;
+    private Vector3 autoFramePeakMinimum;
+    private Vector3 autoFramePeakMaximum;
 
     private const float DefaultFocusDepth = 250;
     private const float MinimumFocusRadius = 10;
@@ -131,7 +134,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             return;
         }
         autoFrameElapsed += 1;
-        if (!TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum))
+        if (!TryGetPreviewBounds(false, out Vector3 minimum, out Vector3 maximum))
         {
             // Give the effect a reasonable window to start emitting (delays/warmup can hold off spawning).
             if (autoFrameElapsed > AutoFrameMaxFrames)
@@ -140,11 +143,33 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             return;
         }
+        AccumulateAutoFrameBounds(ref minimum, ref maximum);
         FrameBounds(minimum, maximum);
         if (autoFrameElapsed > AutoFrameSettleFrames)
         {
             autoFramePending = false;
         }
+    }
+
+    /// <summary>
+    /// Accumulates the largest extent seen so far during the settle window so the camera does not oscillate as
+    /// particles spawn and die, and settles on a framing that contains the effect at its widest.
+    /// </summary>
+    private void AccumulateAutoFrameBounds(ref Vector3 minimum, ref Vector3 maximum)
+    {
+        if (autoFrameHasPeak)
+        {
+            autoFramePeakMinimum = Vector3.Min(autoFramePeakMinimum, minimum);
+            autoFramePeakMaximum = Vector3.Max(autoFramePeakMaximum, maximum);
+        }
+        else
+        {
+            autoFramePeakMinimum = minimum;
+            autoFramePeakMaximum = maximum;
+            autoFrameHasPeak = true;
+        }
+        minimum = autoFramePeakMinimum;
+        maximum = autoFramePeakMaximum;
     }
 
     public override bool IsActivelyUpdating() => Simulation.IsPlaying || base.IsActivelyUpdating();
@@ -172,7 +197,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     public void Focus()
     {
-        if (TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum))
+        if (TryGetPreviewBounds(false, out Vector3 minimum, out Vector3 maximum))
         {
             FrameBounds(minimum, maximum);
             autoFramePending = false;
@@ -184,6 +209,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         Camera.FocusDepth = DefaultFocusDepth;
         autoFramePending = true;
         autoFrameElapsed = 0;
+        autoFrameHasPeak = false;
     }
 
     /// <summary>
@@ -820,8 +846,21 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     /// Combines the sprite/simulation bounds with the transformed bounds of every mesh emitter's particles.
     /// </summary>
     private bool TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum)
+        => TryGetPreviewBounds(true, out minimum, out maximum);
+
+    /// <summary>
+    /// Combines the sprite/simulation bounds with the transformed bounds of every mesh emitter's particles.
+    /// </summary>
+    /// <param name="allowFixedBounds">
+    /// When false, the authored FixedRelativeBoundingBox is ignored and only the bounds of the geometry that is
+    /// actually drawn are considered. The fixed box is a culling volume and frequently does not match the visible
+    /// extent, so camera framing must not use it.
+    /// </param>
+    private bool TryGetPreviewBounds(bool allowFixedBounds, out Vector3 minimum, out Vector3 maximum)
     {
-        bool found = Simulation.TryGetBounds(out minimum, out maximum);
+        bool found = allowFixedBounds
+            ? Simulation.TryGetBounds(out minimum, out maximum)
+            : Simulation.TryGetDynamicBounds(out minimum, out maximum);
         Matrix4x4 previewTransform = Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity;
         foreach (VfxEmitterState emitter in Simulation.Emitters)
         {
