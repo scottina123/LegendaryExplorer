@@ -17,6 +17,7 @@ public sealed class VfxSimulation
     public bool IsPlaying { get; private set; } = true;
     public bool Loop { get; set; } = true;
     public float Time { get; private set; }
+    public float SystemDelay { get; private set; }
     public int ParticleCount => emitters.Sum(emitter => emitter.Particles.Count);
 
     public void Load(VfxPreviewDefinition definition)
@@ -37,9 +38,51 @@ public sealed class VfxSimulation
         if (Definition is not null)
         {
             emitters.AddRange(Definition.Emitters.Select(definition => new VfxEmitterState(definition)));
+            foreach (VfxEmitterState emitter in emitters)
+            {
+                InitializeEmitterTiming(emitter);
+            }
+            // ParticleSystem.Delay (optionally ranged with DelayLow) offsets the whole system.
+            SystemDelay = Definition.UseSystemDelayRange
+                ? Lerp(Definition.SystemDelayLow, Definition.SystemDelay, random.NextFloat())
+                : Definition.SystemDelay;
         }
         IsPlaying = true;
+        if (Definition is { WarmupTime: > 0 })
+        {
+            AdvanceWarmup(Definition.WarmupTime);
+        }
     }
+
+    /// <summary>
+    /// ParticleSystem.WarmupTime fast-forwards the simulation so the preview opens in a settled state.
+    /// </summary>
+    private void AdvanceWarmup(float warmupTime)
+    {
+        float remaining = Math.Min(warmupTime, 10f);
+        while (remaining > 0)
+        {
+            float timestep = Math.Min(remaining, MaximumTick);
+            TickStep(timestep);
+            remaining -= timestep;
+        }
+    }
+
+    /// <summary>
+    /// Resolves the randomized emitter duration and delay described by the required module.
+    /// </summary>
+    private void InitializeEmitterTiming(VfxEmitterState emitter)
+    {
+        VfxEmitterDefinition definition = emitter.Definition;
+        emitter.CurrentDuration = definition.UseDurationRange
+            ? Lerp(definition.DurationLow, definition.Duration, random.NextFloat())
+            : definition.Duration;
+        emitter.CurrentDelay = definition.UseDelayRange
+            ? Lerp(definition.DelayLow, definition.Delay, random.NextFloat())
+            : definition.Delay;
+    }
+
+    private static float Lerp(float from, float to, float alpha) => from + ((to - from) * alpha);
 
     public void Clear()
     {
@@ -68,11 +111,20 @@ public sealed class VfxSimulation
     private void TickStep(float timestep)
     {
         Time += timestep;
+        if (Time < SystemDelay)
+        {
+            return;
+        }
         bool allFinished = true;
         foreach (VfxEmitterState emitter in emitters)
         {
             UpdateParticles(emitter, timestep);
             bool spawningFinished = SpawnParticles(emitter, timestep);
+            if (spawningFinished && emitter.Definition.KillOnCompleted)
+            {
+                // ParticleModuleRequired.bKillOnCompleted removes remaining particles once looping ends.
+                emitter.Particles.Clear();
+            }
             allFinished &= spawningFinished && emitter.Particles.Count == 0;
         }
 
@@ -100,7 +152,6 @@ public sealed class VfxSimulation
                 emitter.Particles.RemoveAt(index);
                 continue;
             }
-
             float relativeTime = particle.RelativeTime;
             Vector3 acceleration = particle.Acceleration
                 + emitter.Definition.AccelerationOverLife.Evaluate(relativeTime, particle.Random);
@@ -110,10 +161,37 @@ public sealed class VfxSimulation
                 ? velocityOverLife
                 : particle.BaseVelocity * velocityOverLife;
             particle.Position += particle.Velocity * timestep;
+            if (IsKilled(emitter.Definition, particle, relativeTime))
+            {
+                emitter.Particles.RemoveAt(index);
+                continue;
+            }
             particle.OrbitRotation += particle.OrbitRotationRate * timestep;
             particle.OrbitOffset = RotateOrbitOffset(particle.OrbitBaseOffset, particle.OrbitRotation);
-            particle.Rotation += particle.RotationRate * timestep;
+            // ParticleModuleRotationRateMultiplyLife scales the rate; ParticleModuleRotationOverLifetime
+            // either scales or offsets the resulting angle depending on its Scale flag.
+            particle.BaseRotation += particle.RotationRate
+                * emitter.Definition.RotationRateMultiplierOverLife.Evaluate(relativeTime, particle.Random)
+                * timestep;
+            float rotationOverLife = emitter.Definition.RotationOverLife.Evaluate(relativeTime, particle.Random);
+            particle.Rotation = emitter.Definition.RotationOverLifeScales
+                ? particle.BaseRotation * rotationOverLife
+                : particle.BaseRotation + rotationOverLife;
+            if (emitter.Definition.MeshEmitter is { } meshDefinition)
+            {
+                particle.MeshRotation += particle.MeshRotationRate
+                    * meshDefinition.RotationRateMultiplierOverLife.Evaluate(relativeTime, particle.Random)
+                    * timestep;
+            }
             particle.Size = particle.BaseSize * emitter.Definition.SizeOverLife.Evaluate(relativeTime, particle.Random);
+            particle.Size *= emitter.Definition.SizeScale.Evaluate(relativeTime, particle.Random);
+            particle.Size *= emitter.Definition.SizeScaleByTime.Evaluate(particle.Age, particle.Random);
+            // ParticleModuleSizeMultiplyVelocity scales each axis by the current velocity magnitude.
+            Vector3 velocityMultiplier = emitter.Definition.SizeMultiplyVelocity.Evaluate(relativeTime, particle.Random);
+            if (velocityMultiplier != Vector3.One)
+            {
+                particle.Size *= Vector3.One + ((velocityMultiplier - Vector3.One) * particle.Velocity.Length());
+            }
             float colorScaleTime = emitter.Definition.ColorScaleUsesEmitterTime
                 ? GetEmitterRelativeTime(emitter)
                 : relativeTime;
@@ -121,6 +199,7 @@ public sealed class VfxSimulation
                 * emitter.Definition.ColorOverLife.Evaluate(relativeTime, particle.Random)
                 * emitter.Definition.ColorScaleOverLife.Evaluate(colorScaleTime, particle.Random);
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
+            AdvanceRandomImage(emitter.Definition, ref particle, timestep);
             emitter.Particles[index] = particle;
         }
     }
@@ -130,20 +209,28 @@ public sealed class VfxSimulation
         VfxEmitterDefinition definition = emitter.Definition;
         float previousAge = emitter.Age;
         emitter.Age += timestep;
-        if (emitter.Age <= definition.Delay)
+        if (emitter.Age <= emitter.CurrentDelay)
         {
             return false;
         }
 
-        float previousActiveAge = Math.Max(0, previousAge - definition.Delay);
-        float activeAge = emitter.Age - definition.Delay;
-        if (definition.Duration > 0 && definition.Loops > 0 && activeAge >= definition.Duration * definition.Loops)
+        float previousActiveAge = Math.Max(0, previousAge - emitter.CurrentDelay);
+        float activeAge = emitter.Age - emitter.CurrentDelay;
+        float duration = emitter.CurrentDuration;
+        if (duration > 0 && definition.Loops > 0 && activeAge >= duration * definition.Loops)
         {
             return true;
         }
 
-        int previousCycle = definition.Duration > 0 ? (int)(previousActiveAge / definition.Duration) : 0;
-        int currentCycle = definition.Duration > 0 ? (int)(activeAge / definition.Duration) : 0;
+        int previousCycle = duration > 0 ? (int)(previousActiveAge / duration) : 0;
+        int currentCycle = duration > 0 ? (int)(activeAge / duration) : 0;
+        if (currentCycle != previousCycle && definition.RecalculateDurationEachLoop)
+        {
+            // bDurationRecalcEachLoop re-rolls the ranged duration at every loop boundary.
+            emitter.CurrentDuration = definition.UseDurationRange
+                ? Lerp(definition.DurationLow, definition.Duration, random.NextFloat())
+                : definition.Duration;
+        }
         for (int cycle = previousCycle; cycle <= currentCycle; cycle++)
         {
             if (definition.Loops > 0 && cycle >= definition.Loops)
@@ -151,9 +238,9 @@ public sealed class VfxSimulation
                 break;
             }
 
-            float segmentStart = cycle == previousCycle ? previousActiveAge - (cycle * definition.Duration) : 0;
-            float segmentEnd = cycle == currentCycle ? activeAge - (cycle * definition.Duration) : definition.Duration;
-            if (definition.Duration <= 0)
+            float segmentStart = cycle == previousCycle ? previousActiveAge - (cycle * duration) : 0;
+            float segmentEnd = cycle == currentCycle ? activeAge - (cycle * duration) : duration;
+            if (duration <= 0)
             {
                 segmentStart = previousActiveAge;
                 segmentEnd = activeAge;
@@ -161,6 +248,7 @@ public sealed class VfxSimulation
 
             SpawnBursts(emitter, cycle, segmentStart, segmentEnd);
             float rate = Math.Max(0, definition.SpawnRate.Evaluate(segmentEnd, random.NextFloat()));
+            rate += emitter.InterpolatedBurstRate;
             emitter.SpawnRemainder += rate * Math.Max(0, segmentEnd - segmentStart);
             int spawnCount = (int)(emitter.SpawnRemainder + 0.00001f);
             emitter.SpawnRemainder -= spawnCount;
@@ -181,6 +269,14 @@ public sealed class VfxSimulation
                 int count = burst.CountLow >= 0
                     ? random.NextInt(Math.Min(burst.CountLow, burst.Count), Math.Max(burst.CountLow, burst.Count) + 1)
                     : burst.Count;
+                if (emitter.Definition.BurstMethod == VfxBurstMethod.Interpolated && emitter.CurrentDuration > 0)
+                {
+                    // EPBM_Interpolated spreads the burst across the remaining emitter duration instead of
+                    // releasing everything on the burst frame.
+                    float span = Math.Max(0.0001f, emitter.CurrentDuration - burst.Time);
+                    emitter.InterpolatedBurstRate += count / span;
+                    continue;
+                }
                 Spawn(emitter, count, burst.Time);
             }
         }
@@ -196,6 +292,7 @@ public sealed class VfxSimulation
             float lifetime = Math.Max(0.001f, emitter.Definition.Lifetime.Evaluate(emitterTime, random.NextFloat()));
             Vector3 baseSize = emitter.Definition.InitialSize.Evaluate(emitterTime, random.NextFloat());
             Vector3 initialVelocity = emitter.Definition.InitialVelocity.Evaluate(emitterTime, random.NextFloat());
+            float initialRotation = emitter.Definition.InitialRotation.Evaluate(emitterTime, random.NextFloat());
             var particle = new VfxParticle
             {
                 Position = emitter.Definition.InitialLocation.Evaluate(emitterTime, random.NextFloat()),
@@ -204,11 +301,18 @@ public sealed class VfxSimulation
                 BaseSize = baseSize,
                 Size = baseSize * emitter.Definition.SizeOverLife.Evaluate(0, sample),
                 Color = emitter.Definition.InitialColor.Evaluate(0, random.NextFloat()),
-                Rotation = emitter.Definition.InitialRotation.Evaluate(emitterTime, random.NextFloat()),
+                Rotation = initialRotation,
+                BaseRotation = initialRotation,
                 RotationRate = emitter.Definition.RotationRate.Evaluate(emitterTime, random.NextFloat()),
                 Lifetime = lifetime,
-                Random = sample
+                Random = sample,
+                RandomImageChangesRemaining = emitter.Definition.RandomImageChanges
             };
+            if (emitter.Definition.MeshEmitter is { } meshDefinition)
+            {
+                particle.MeshRotation = meshDefinition.StartRotation.Evaluate(emitterTime, random.NextFloat());
+                particle.MeshRotationRate = meshDefinition.StartRotationRate.Evaluate(emitterTime, random.NextFloat());
+            }
             ApplySpawnInitializers(emitter.Definition, ref particle, emitterTime);
             particle.BaseVelocity = particle.Velocity;
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
@@ -231,6 +335,19 @@ public sealed class VfxSimulation
                 case VfxCylinderSpawnInitializer cylinder:
                     ApplyCylinderInitializer(cylinder, ref particle, emitterTime);
                     break;
+                case VfxSphereSpawnInitializer sphere:
+                    ApplySphereInitializer(sphere, ref particle, emitterTime);
+                    break;
+                case VfxRadialVelocitySpawnInitializer radial:
+                {
+                    // ParticleModuleVelocity.StartVelocityRadial pushes the particle away from the emitter origin.
+                    float magnitude = radial.Speed.Evaluate(emitterTime, random.NextFloat());
+                    Vector3 direction = particle.Position.LengthSquared() > 0.000001f
+                        ? Vector3.Normalize(particle.Position)
+                        : GetRandomUnitVector();
+                    particle.Velocity += direction * magnitude;
+                    break;
+                }
                 case VfxAccelerationSpawnInitializer acceleration:
                     particle.Acceleration += acceleration.Acceleration.Evaluate(emitterTime, random.NextFloat());
                     break;
@@ -243,6 +360,77 @@ public sealed class VfxSimulation
             }
         }
     }
+
+    /// <summary>
+    /// Applies ParticleModuleKillBox and ParticleModuleKillHeight volumes.
+    /// </summary>
+    private static bool IsKilled(VfxEmitterDefinition definition, in VfxParticle particle, float relativeTime)
+    {
+        if (definition.KillVolumes.Count == 0)
+        {
+            return false;
+        }
+
+        Vector3 position = particle.Position + particle.OrbitOffset;
+        foreach (VfxKillVolume volume in definition.KillVolumes)
+        {
+            switch (volume)
+            {
+                case VfxKillBox box:
+                {
+                    Vector3 lower = box.LowerLeftCorner.Evaluate(relativeTime, particle.Random);
+                    Vector3 upper = box.UpperRightCorner.Evaluate(relativeTime, particle.Random);
+                    Vector3 minimum = Vector3.Min(lower, upper);
+                    Vector3 maximum = Vector3.Max(lower, upper);
+                    bool inside = position.X >= minimum.X && position.X <= maximum.X
+                        && position.Y >= minimum.Y && position.Y <= maximum.Y
+                        && position.Z >= minimum.Z && position.Z <= maximum.Z;
+                    if (inside == box.KillInside)
+                    {
+                        return true;
+                    }
+                    break;
+                }
+                case VfxKillHeight height:
+                {
+                    float plane = height.Height.Evaluate(relativeTime, particle.Random);
+                    // bFloor kills particles that fall below the plane, otherwise those that rise above it.
+                    if (height.IsFloor ? position.Z < plane : position.Z > plane)
+                    {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Applies ParticleModuleRequired.RandomImageTime / RandomImageChanges by re-rolling the sub-image.
+    /// </summary>
+    private static void AdvanceRandomImage(VfxEmitterDefinition definition, ref VfxParticle particle, float timestep)
+    {
+        if (definition.RandomImageTime <= 0 || definition.RandomImageChanges <= 0)
+        {
+            return;
+        }
+
+        particle.RandomImageTimer += timestep;
+        if (particle.RandomImageTimer < definition.RandomImageTime || particle.RandomImageChangesRemaining <= 0)
+        {
+            return;
+        }
+
+        particle.RandomImageTimer -= definition.RandomImageTime;
+        particle.RandomImageChangesRemaining--;
+        int frameCount = Math.Max(1, definition.SubImagesHorizontal * definition.SubImagesVertical);
+        // Reuse the particle's stable random sample so the sequence stays deterministic per particle.
+        float sample = Fract((particle.Random * 977.13f) + (definition.RandomImageChanges - particle.RandomImageChangesRemaining));
+        particle.SubImageIndex = (int)(sample * frameCount) % frameCount;
+    }
+
+    private static float Fract(float value) => value - MathF.Floor(value);
 
     private static Vector3 RotateOrbitOffset(Vector3 offset, Vector3 rotation)
     {
@@ -319,14 +507,56 @@ public sealed class VfxSimulation
         _ => cylinder.NegativeZ
     };
 
+    /// <summary>
+    /// ParticleModuleLocationPrimitiveSphere places particles inside or on a hemisphere-masked sphere.
+    /// </summary>
+    private void ApplySphereInitializer(VfxSphereSpawnInitializer sphere, ref VfxParticle particle, float emitterTime)
+    {
+        float radius = Math.Max(0, sphere.StartRadius.Evaluate(emitterTime, random.NextFloat()));
+        Vector3 direction = GetRandomUnitVector();
+        direction = new Vector3(
+            MaskAxis(direction.X, sphere.PositiveX, sphere.NegativeX),
+            MaskAxis(direction.Y, sphere.PositiveY, sphere.NegativeY),
+            MaskAxis(direction.Z, sphere.PositiveZ, sphere.NegativeZ));
+        if (direction.LengthSquared() <= 0.000001f)
+        {
+            direction = Vector3.UnitX;
+        }
+        direction = Vector3.Normalize(direction);
+        float distance = sphere.SurfaceOnly ? radius : MathF.Cbrt(random.NextFloat()) * radius;
+        Vector3 offset = direction * distance;
+        particle.Position += sphere.StartLocation.Evaluate(emitterTime, random.NextFloat()) + offset;
+        if (sphere.Velocity)
+        {
+            particle.Velocity += direction * sphere.VelocityScale.Evaluate(emitterTime, random.NextFloat());
+        }
+    }
+
+    private static float MaskAxis(float value, bool positiveAllowed, bool negativeAllowed)
+    {
+        if (value >= 0)
+        {
+            return positiveAllowed ? value : negativeAllowed ? -value : 0;
+        }
+        return negativeAllowed ? value : positiveAllowed ? -value : 0;
+    }
+
+    private Vector3 GetRandomUnitVector()
+    {
+        float z = (random.NextFloat() * 2f) - 1f;
+        float angle = random.NextFloat() * MathF.Tau;
+        float planar = MathF.Sqrt(Math.Max(0, 1f - (z * z)));
+        return new Vector3(planar * MathF.Cos(angle), planar * MathF.Sin(angle), z);
+    }
+
     private static float GetEmitterRelativeTime(VfxEmitterState emitter)
     {
-        float activeAge = Math.Max(0, emitter.Age - emitter.Definition.Delay);
-        if (emitter.Definition.Duration <= 0)
+        float activeAge = Math.Max(0, emitter.Age - emitter.CurrentDelay);
+        if (emitter.CurrentDuration <= 0)
         {
             return activeAge;
         }
-        return (activeAge % emitter.Definition.Duration) / emitter.Definition.Duration;
+        return (activeAge % emitter.CurrentDuration) / emitter.CurrentDuration;
     }
 
     private static float EvaluateSubImageIndex(VfxEmitterState emitter, in VfxParticle particle)
@@ -399,6 +629,9 @@ public sealed class VfxEmitterState(VfxEmitterDefinition definition)
     internal HashSet<long> FiredBursts { get; } = [];
     internal float Age { get; set; }
     internal float SpawnRemainder { get; set; }
+    internal float CurrentDuration { get; set; }
+    internal float CurrentDelay { get; set; }
+    internal float InterpolatedBurstRate { get; set; }
 }
 
 internal struct VfxRandom(uint state)

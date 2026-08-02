@@ -86,11 +86,11 @@ public static class VfxBillboardMath
 
 public sealed class VfxBillboardRenderer : IDisposable
 {
-    private const int MaterialUnlitFlag = 1 << 20;
-    private const int MaterialMaskedFlag = 1 << 21;
-    private const int OpacitySourceShift = 22;
+    internal const int MaterialUnlitFlag = 1 << 20;
+    internal const int MaterialMaskedFlag = 1 << 21;
+    internal const int OpacitySourceShift = 22;
 
-    private const string Shader = """
+    internal const string ParticleShader = """
 struct VS_IN { float4 pos : POSITION0; float3 hitTestID : TANGENT0; float4 normal : NORMAL0; float4 color : COLOR1; float2 uv : TEXCOORD0; };
 struct VS_OUT { float4 pos : SV_POSITION; float4 color : COLOR1; float3 normal : NORMAL; float3 worldPos : TEXCOORD1; float2 uv : TEXCOORD0; };
 cbuffer constants { float4x4 projection; float4x4 view; float4x4 model; float3 HitTestID; int Flags; float4 AmbientColor; float4 LightPositionRadius[4]; float4 LightColorIntensity[4]; float4 LightDirectionInnerCone[4]; float4 LightOuterConeAndType[4]; };
@@ -105,7 +105,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
 
     public void CreateResources(MeshRenderContext context)
     {
-        effect = new GenericEffect<MeshRenderContext.WorldConstants>(context.Device, Shader);
+        effect = new GenericEffect<MeshRenderContext.WorldConstants>(context.Device, ParticleShader);
     }
 
     public void Render(MeshRenderContext context, VfxEmitterState emitter, ShaderResourceView texture, BlendState blendState = null, DepthStencilState depthState = null, IReadOnlyList<VfxParticle> particleSource = null, Matrix4x4 previewTransform = default)
@@ -122,8 +122,13 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
         Matrix4x4 previewSpaceTransform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
         if (particleSource is null)
         {
-            particles.Sort((left, right) => DistanceSquared(right, context.Camera.Position, previewSpaceTransform)
-                .CompareTo(DistanceSquared(left, context.Camera.Position, previewSpaceTransform)));
+            SortParticles(particles, emitter.Definition.SortMode, context.Camera.Position, previewSpaceTransform);
+        }
+
+        // ParticleModuleRequired.MaxDrawCount clamps how many particles are actually rendered.
+        if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
+        {
+            particles.RemoveRange(emitter.Definition.MaxDrawCount, particles.Count - emitter.Definition.MaxDrawCount);
         }
 
         using Texture2D textureResource = texture.Resource.QueryInterface<Texture2D>();
@@ -179,6 +184,29 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
         effect.RenderPrimitives(context, PrimitiveTopology.TriangleList, 0, indices.Count, 0);
         context.ImmediateContext.PixelShader.SetShaderResource(0, null);
         context.ImmediateContext.OutputMerger.SetDepthStencilState(null);
+    }
+
+    /// <summary>
+    /// Applies ParticleModuleRequired.SortMode. PSORTMODE_None keeps spawn order, the depth modes sort
+    /// back-to-front, and the age modes order by remaining lifetime.
+    /// </summary>
+    public static void SortParticles(List<VfxParticle> particles, VfxSortMode sortMode, Vector3 cameraPosition, Matrix4x4 transform)
+    {
+        switch (sortMode)
+        {
+            case VfxSortMode.None:
+                break;
+            case VfxSortMode.AgeOldestFirst:
+                particles.Sort((left, right) => right.Age.CompareTo(left.Age));
+                break;
+            case VfxSortMode.AgeNewestFirst:
+                particles.Sort((left, right) => left.Age.CompareTo(right.Age));
+                break;
+            default:
+                particles.Sort((left, right) => DistanceSquared(right, cameraPosition, transform)
+                    .CompareTo(DistanceSquared(left, cameraPosition, transform)));
+                break;
+        }
     }
 
     public static float DistanceSquared(in VfxParticle particle, Vector3 cameraPosition, Matrix4x4 transform = default)

@@ -28,6 +28,70 @@ public enum VfxAxisLock
     RotateZ
 }
 
+/// <summary>
+/// Which renderer an emitter is dispatched to, based on the LOD's TypeDataModule class.
+/// </summary>
+public enum VfxEmitterRenderMode
+{
+    Sprite,
+    Mesh,
+    Beam,
+    Trail,
+    Unsupported
+}
+
+/// <summary>
+/// EMeshScreenAlignment, as declared by ParticleModuleTypeDataMesh in Engine.
+/// </summary>
+public enum VfxMeshAlignment
+{
+    FaceCameraWithRoll,
+    FaceCameraWithSpin,
+    FaceCameraWithLockedAxis
+}
+
+/// <summary>
+/// EMeshCameraFacingOptions, as declared by ParticleModuleTypeDataMesh in Engine.
+/// </summary>
+public enum VfxMeshCameraFacing
+{
+    XAxisFacingNoUp,
+    XAxisFacingZUp,
+    XAxisFacingNegativeZUp,
+    XAxisFacingYUp,
+    XAxisFacingNegativeYUp,
+    LockedAxisZAxisFacing,
+    LockedAxisNegativeZAxisFacing,
+    LockedAxisYAxisFacing,
+    LockedAxisNegativeYAxisFacing,
+    VelocityAlignedZAxisFacing,
+    VelocityAlignedNegativeZAxisFacing,
+    VelocityAlignedYAxisFacing,
+    VelocityAlignedNegativeYAxisFacing
+}
+
+/// <summary>
+/// Data read from ParticleModuleTypeDataMesh and the mesh rotation modules of a mesh emitter.
+/// </summary>
+public sealed class VfxMeshEmitterDefinition
+{
+    public IEntry Mesh { get; init; }
+    /// <summary>ParticleModuleTypeDataMesh.Pitch/Yaw/Roll, in degrees.</summary>
+    public Vector3 PreRotation { get; init; }
+    public bool CameraFacing { get; init; }
+    public bool OverrideMaterial { get; init; }
+    public VfxMeshAlignment MeshAlignment { get; init; } = VfxMeshAlignment.FaceCameraWithRoll;
+    public VfxMeshCameraFacing CameraFacingOption { get; init; } = VfxMeshCameraFacing.XAxisFacingNoUp;
+    public VfxAxisLock AxisLockOption { get; init; }
+    /// <summary>ParticleModuleMeshMaterial.MeshMaterials, indexed by mesh section.</summary>
+    public IReadOnlyList<IEntry> SectionMaterialOverrides { get; init; } = [];
+    public IVfxDistribution<Vector3> StartRotation { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+    public IVfxDistribution<Vector3> StartRotationRate { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+    public IVfxDistribution<Vector3> RotationRateMultiplierOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
+    /// <summary>Local-space bounds of the resolved mesh, filled in once the mesh has been loaded for rendering.</summary>
+    public VfxBounds? LocalBounds { get; set; }
+}
+
 public enum VfxSubUVInterpolation
 {
     None,
@@ -62,6 +126,11 @@ public enum VfxOpacitySource
 public sealed class VfxParticleMaterialDefinition
 {
     public VfxBlendMode BlendMode { get; set; } = VfxBlendMode.Translucent;
+    /// <summary>
+    /// False when the owning material's BlendMode could not be read (unresolved import, missing base material, ...),
+    /// in which case <see cref="BlendMode"/> is only a guess.
+    /// </summary>
+    public bool BlendModeResolved { get; set; }
     public bool IsUnlit { get; set; }
     public bool TwoSided { get; set; }
     public bool DisableDepthTest { get; set; }
@@ -78,6 +147,27 @@ public enum VfxCylinderHeightAxis
     X,
     Y,
     Z
+}
+
+/// <summary>
+/// Mirrors EParticleSortMode on ParticleModuleRequired.
+/// </summary>
+public enum VfxSortMode
+{
+    None,
+    ViewProjectionDepth,
+    DistanceToView,
+    AgeOldestFirst,
+    AgeNewestFirst
+}
+
+/// <summary>
+/// Mirrors EParticleBurstMethod on ParticleModuleRequired / ParticleModuleSpawn.
+/// </summary>
+public enum VfxBurstMethod
+{
+    Instant,
+    Interpolated
 }
 
 public abstract record VfxSpawnInitializer;
@@ -103,6 +193,21 @@ public sealed record VfxCylinderSpawnInitializer(
     bool NegativeZ) : VfxSpawnInitializer;
 
 public sealed record VfxAccelerationSpawnInitializer(IVfxDistribution<Vector3> Acceleration) : VfxSpawnInitializer;
+
+public sealed record VfxSphereSpawnInitializer(
+    IVfxDistribution<Vector3> StartLocation,
+    IVfxDistribution<float> StartRadius,
+    IVfxDistribution<float> VelocityScale,
+    bool SurfaceOnly,
+    bool Velocity,
+    bool PositiveX,
+    bool PositiveY,
+    bool PositiveZ,
+    bool NegativeX,
+    bool NegativeY,
+    bool NegativeZ) : VfxSpawnInitializer;
+
+public sealed record VfxRadialVelocitySpawnInitializer(IVfxDistribution<float> Speed) : VfxSpawnInitializer;
 
 public sealed record VfxOrbitSpawnInitializer(
     IVfxDistribution<Vector3> Offset,
@@ -139,6 +244,12 @@ public sealed class VfxPreviewDefinition
     public IReadOnlyList<float> LodDistances { get; init; } = [];
     public IReadOnlyList<VfxLodSetting> LodSettings { get; init; } = [];
     public int SelectedLodIndex { get; init; }
+    public bool LockLowestLodToHighest { get; init; }
+    public float WarmupTime { get; init; }
+    public float SystemDelay { get; init; }
+    public float SystemDelayLow { get; init; }
+    public bool UseSystemDelayRange { get; init; }
+    public bool OrientZAxisTowardCamera { get; init; }
     public List<VfxEmitterDefinition> Emitters { get; } = [];
     public List<string> Warnings { get; } = [];
     public List<VfxPropertyCoverage> PropertyCoverage { get; } = [];
@@ -204,8 +315,20 @@ public sealed class VfxEmitterDefinition
 {
     public string Name { get; init; }
     public float Delay { get; init; }
+    public float DelayLow { get; init; }
+    public bool UseDelayRange { get; init; }
+    public bool DelayFirstLoopOnly { get; init; }
     public float Duration { get; init; }
+    public float DurationLow { get; init; }
+    public bool UseDurationRange { get; init; }
+    public bool RecalculateDurationEachLoop { get; init; }
     public int Loops { get; init; }
+    public bool KillOnDeactivate { get; init; }
+    public bool KillOnCompleted { get; init; }
+    public VfxSortMode SortMode { get; init; }
+    public VfxBurstMethod BurstMethod { get; init; }
+    public int MaxDrawCount { get; init; }
+    public bool UseMaxDrawCount { get; init; }
     public int MaxParticles { get; init; } = 4096;
     public VfxScreenAlignment ScreenAlignment { get; init; } = VfxScreenAlignment.CameraFacing;
     public VfxAxisLock AxisLock { get; init; }
@@ -218,6 +341,9 @@ public sealed class VfxEmitterDefinition
     public IVfxDistribution<float> SubUVFrameRate { get; init; } = new VfxConstantDistribution<float>(0);
     public int SubUVStartingFrame { get; init; }
     public bool SubUVUseEmitterTime { get; init; }
+    public float RandomImageTime { get; init; }
+    public int RandomImageChanges { get; init; }
+    public IVfxDistribution<float> SubImageSelect { get; init; }
     public IEntry Material { get; init; }
     public VfxParticleMaterialDefinition ParticleMaterial { get; set; } = new();
     public IVfxDistribution<float> SpawnRate { get; init; } = new VfxConstantDistribution<float>(0);
@@ -230,6 +356,12 @@ public sealed class VfxEmitterDefinition
     public IVfxDistribution<float> RotationRate { get; init; } = new VfxConstantDistribution<float>(0);
     public IVfxDistribution<Vector4> InitialColor { get; init; } = new VfxConstantDistribution<Vector4>(Vector4.One);
     public IVfxDistribution<Vector3> SizeOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
+    public IVfxDistribution<Vector3> SizeScale { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
+    public IVfxDistribution<Vector3> SizeScaleByTime { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
+    public IVfxDistribution<Vector3> SizeMultiplyVelocity { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
+    public IVfxDistribution<float> RotationOverLife { get; init; } = new VfxConstantDistribution<float>(0);
+    public bool RotationOverLifeScales { get; init; }
+    public IVfxDistribution<float> RotationRateMultiplierOverLife { get; init; } = new VfxConstantDistribution<float>(1);
     public IVfxDistribution<Vector4> ColorOverLife { get; init; } = new VfxConstantDistribution<Vector4>(Vector4.One);
     public IVfxDistribution<Vector4> ColorScaleOverLife { get; init; } = new VfxConstantDistribution<Vector4>(Vector4.One);
     public bool ColorScaleUsesEmitterTime { get; init; }
@@ -237,11 +369,30 @@ public sealed class VfxEmitterDefinition
     public bool VelocityOverLifeIsAbsolute { get; init; }
     public IVfxDistribution<Vector3> AccelerationOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
     public bool UseLocalSpace { get; init; }
-    public bool IsSpriteEmitter { get; init; } = true;
+    public IReadOnlyList<VfxKillVolume> KillVolumes { get; init; } = [];
+    public VfxEmitterRenderMode RenderMode { get; init; } = VfxEmitterRenderMode.Sprite;
+    public VfxMeshEmitterDefinition MeshEmitter { get; init; }
+    public bool IsSpriteEmitter => RenderMode == VfxEmitterRenderMode.Sprite;
     public List<VfxSpawnInitializer> SpawnInitializers { get; } = [];
 }
 
 public readonly record struct VfxBurst(float Time, int Count, int CountLow = -1);
+
+/// <summary>
+/// Describes a ParticleModuleKillBox or ParticleModuleKillHeight volume.
+/// </summary>
+public abstract record VfxKillVolume(bool IsAbsolute);
+
+public sealed record VfxKillBox(
+    IVfxDistribution<Vector3> LowerLeftCorner,
+    IVfxDistribution<Vector3> UpperRightCorner,
+    bool KillInside,
+    bool Absolute) : VfxKillVolume(Absolute);
+
+public sealed record VfxKillHeight(
+    IVfxDistribution<float> Height,
+    bool IsFloor,
+    bool Absolute) : VfxKillVolume(Absolute);
 
 public struct VfxParticle
 {
@@ -258,10 +409,15 @@ public struct VfxParticle
     public Vector4 Color;
     public float Rotation;
     public float RotationRate;
+    public Vector3 MeshRotation;
+    public Vector3 MeshRotationRate;
     public float Age;
     public float Lifetime;
     public float Random;
     public float SubImageIndex;
+    public float BaseRotation;
+    public float RandomImageTimer;
+    public int RandomImageChangesRemaining;
 
     public readonly float RelativeTime => Lifetime <= 0 ? 1 : Math.Clamp(Age / Lifetime, 0, 1);
     public readonly bool IsAlive => Age < Lifetime;

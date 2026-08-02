@@ -18,13 +18,24 @@ namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 public sealed class VfxPreviewRenderContext : MeshRenderContext
 {
     private readonly VfxBillboardRenderer billboardRenderer = new();
+    private readonly VfxMeshRenderer meshRenderer = new();
     private readonly BatchedPrimitives primitives = new();
     private readonly Dictionary<VfxEmitterDefinition, PreviewTextureCache.TextureEntry> textures = [];
+    private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
     private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
     private bool isDarkMode;
+    private bool autoFramePending;
+    private int autoFrameElapsed;
+
+    private const float DefaultFocusDepth = 250;
+    private const float MinimumFocusRadius = 10;
+    private const float MaximumFocusDepth = 100000;
+    private const float FocusPadding = 1.15f;
+    private const int AutoFrameSettleFrames = 30;
+    private const int AutoFrameMaxFrames = 300;
 
     public VfxSimulation Simulation { get; } = new();
     public bool ShowAxis { get; set; } = true;
@@ -67,7 +78,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         Camera.FirstPerson = false;
         Camera.Yaw = MathF.PI;
         Camera.Pitch = -0.15f;
-        Camera.FocusDepth = 250;
+        Camera.FocusDepth = DefaultFocusDepth;
         Background = VfxPreviewBackground.NeutralGray;
         RenderFlags |= ShaderFlags.Unlit | ShaderFlags.PreserveTextureAlpha;
         SceneLights.Add(new SceneLight(new Vector3(-200, -200, 300), 1200, Vector3.One, 1.25f, false, Vector3.Zero, 0, 0));
@@ -96,6 +107,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     {
         base.CreateResources();
         billboardRenderer.CreateResources(this);
+        meshRenderer.CreateResources(this);
         CreateBlendStates();
         CreateDepthStates();
         RefreshTextures();
@@ -105,6 +117,34 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     {
         base.Update(timestep);
         Simulation.Tick(timestep);
+        TryAutoFrame();
+    }
+
+    /// <summary>
+    /// Effects spawn nothing on the first frame, so the initial Focus() has no bounds to work with.
+    /// This re-frames once the effect has actually produced geometry, then stops so the user keeps control.
+    /// </summary>
+    private void TryAutoFrame()
+    {
+        if (!autoFramePending)
+        {
+            return;
+        }
+        autoFrameElapsed += 1;
+        if (!TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum))
+        {
+            // Give the effect a reasonable window to start emitting (delays/warmup can hold off spawning).
+            if (autoFrameElapsed > AutoFrameMaxFrames)
+            {
+                autoFramePending = false;
+            }
+            return;
+        }
+        FrameBounds(minimum, maximum);
+        if (autoFrameElapsed > AutoFrameSettleFrames)
+        {
+            autoFramePending = false;
+        }
     }
 
     public override bool IsActivelyUpdating() => Simulation.IsPlaying || base.IsActivelyUpdating();
@@ -122,7 +162,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public void Unload()
     {
         Simulation.Clear();
+        autoFramePending = false;
         textures.Clear();
+        DisposeMeshEmitters();
         RuntimeWarning = null;
         TextureCache?.ExpungeStaleCacheItems();
         PackageCache?.ReleasePackages();
@@ -130,13 +172,37 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     public void Focus()
     {
-        float radius = 100;
-        if (Simulation.TryGetBounds(out Vector3 minimum, out Vector3 maximum))
+        if (TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum))
         {
-            radius = Math.Max((maximum - minimum).Length() * 0.5f, 10);
+            FrameBounds(minimum, maximum);
+            autoFramePending = false;
+            return;
         }
+        // Nothing has spawned yet. Keep the default framing and let the auto-framing pass fix it up
+        // once the simulation produces real geometry.
         Camera.Position = Vector3.Zero;
-        Camera.FocusDepth = radius * 2.5f;
+        Camera.FocusDepth = DefaultFocusDepth;
+        autoFramePending = true;
+        autoFrameElapsed = 0;
+    }
+
+    /// <summary>
+    /// Positions the orbit camera so the given world-space bounds fill the viewport without overflowing it,
+    /// taking the camera's vertical FOV and viewport aspect into account.
+    /// </summary>
+    private void FrameBounds(Vector3 minimum, Vector3 maximum)
+    {
+        Vector3 center = (minimum + maximum) * 0.5f;
+        float radius = Math.Max((maximum - minimum).Length() * 0.5f, MinimumFocusRadius);
+
+        // Fit against whichever of the vertical/horizontal FOV is tighter so wide effects stay inside the viewport.
+        float verticalFov = Math.Clamp(Camera.FOV, 0.01f, MathF.PI - 0.01f);
+        float horizontalFov = 2f * MathF.Atan(MathF.Tan(verticalFov * 0.5f) * Math.Max(Camera.aspect, 0.0001f));
+        float limitingFov = Math.Min(verticalFov, horizontalFov);
+        float distance = radius / MathF.Tan(limitingFov * 0.5f);
+
+        Camera.Position = center;
+        Camera.FocusDepth = Math.Clamp(distance * FocusPadding, MinimumFocusRadius, MaximumFocusDepth);
     }
 
     public void Restart()
@@ -154,12 +220,13 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         Camera.Roll = 0;
         Camera.Yaw = MathF.PI;
         Camera.Pitch = -0.15f;
-        Camera.FocusDepth = 250;
+        Camera.FocusDepth = DefaultFocusDepth;
     }
 
     private void RefreshTextures()
     {
         textures.Clear();
+        DisposeMeshEmitters();
         if (!IsReady || Simulation.Definition is null)
         {
             return;
@@ -167,10 +234,16 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
         foreach (VfxEmitterDefinition emitter in Simulation.Definition.Emitters)
         {
-            if (!emitter.IsSpriteEmitter)
+            switch (emitter.RenderMode)
             {
-                RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: {"mesh particle rendering is not available in the sprite preview."}");
-                continue;
+                case VfxEmitterRenderMode.Sprite:
+                    break;
+                case VfxEmitterRenderMode.Mesh:
+                    LoadMeshEmitter(emitter);
+                    continue;
+                default:
+                    RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: {emitter.RenderMode} emitters are not rendered yet.");
+                    continue;
             }
             try
             {
@@ -182,6 +255,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 };
                 if (materialExport is null)
                 {
+                    string materialName = emitter.Material?.InstancedFullPath;
+                    RuntimeWarning = AppendWarning(RuntimeWarning, materialName is null
+                        ? $"{emitter.Name}: no material is assigned, so no sprites can be drawn."
+                        : $"{emitter.Name}: material {materialName} could not be resolved, so no sprites can be drawn.");
                     continue;
                 }
 
@@ -190,6 +267,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 IEntry textureEntry = ResolveParticleTexture(materialExport);
                 particleMaterial.Texture = textureEntry;
                 particleMaterial.OpacitySource = ResolveOpacitySource(materialExport, textureEntry, particleMaterial.BlendMode);
+                ApplyUnresolvedBlendModeFallback(particleMaterial);
                 PreviewTextureCache.TextureEntry texture = TextureCache.LoadTexture(textureEntry, PackageCache);
                 if (texture is not null)
                 {
@@ -209,11 +287,107 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         }
     }
 
+    /// <summary>
+    /// Loads the StaticMesh of a ParticleModuleTypeDataMesh emitter and resolves the material for every mesh section.
+    /// Section materials come from the mesh itself, but can be overridden per section by ParticleModuleMeshMaterial,
+    /// or wholesale by the required/emitter material when bOverrideMaterial is set.
+    /// </summary>
+    private void LoadMeshEmitter(VfxEmitterDefinition emitter)
+    {
+        VfxMeshEmitterDefinition meshDefinition = emitter.MeshEmitter;
+        if (meshDefinition?.Mesh is null)
+        {
+            RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: the mesh type data module has no mesh assigned, so nothing can be drawn.");
+            return;
+        }
+
+        try
+        {
+            VfxMeshRenderer.MeshEmitterResources resources = VfxMeshRenderer.LoadMesh(this, meshDefinition);
+            if (resources is null)
+            {
+                RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: mesh {meshDefinition.Mesh.InstancedFullPath} could not be loaded.");
+                return;
+            }
+
+            for (int index = 0; index < resources.Sections.Count; index++)
+            {
+                VfxMeshRenderer.MeshSection section = resources.Sections[index];
+                IEntry materialEntry = ResolveMeshSectionMaterial(emitter, meshDefinition, section, index);
+                ExportEntry materialExport = materialEntry switch
+                {
+                    ExportEntry export => export,
+                    ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
+                    _ => null
+                };
+                if (materialExport is null)
+                {
+                    RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: no material could be resolved for mesh section {index}.");
+                    continue;
+                }
+
+                PopulateMaterialProperties(materialExport, section.Material);
+                IEntry textureEntry = ResolveParticleTexture(materialExport);
+                section.Material.Texture = textureEntry;
+                section.Material.OpacitySource = ResolveOpacitySource(materialExport, textureEntry, section.Material.BlendMode);
+                ApplyUnresolvedBlendModeFallback(section.Material);
+                section.Texture = TextureCache.LoadTexture(textureEntry, PackageCache);
+                if (section.Texture is null)
+                {
+                    section.Material.Warning = "No supported texture could be resolved.";
+                    RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: mesh section {index}: {section.Material.Warning}");
+                    continue;
+                }
+
+                section.Material.IsSupported = true;
+                section.IsOpaque = section.Material.BlendMode is VfxBlendMode.Opaque or VfxBlendMode.Masked;
+                blendStates.TryGetValue(section.Material.BlendMode, out BlendState blendState);
+                section.BlendState = blendState;
+                depthStates.TryGetValue((!section.Material.DisableDepthTest, section.IsOpaque), out DepthStencilState depthState);
+                section.DepthState = depthState;
+            }
+
+            meshEmitters[emitter] = resources;
+        }
+        catch (Exception exception)
+        {
+            RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: mesh emitter unsupported ({exception.Message})");
+        }
+    }
+
+    private IEntry ResolveMeshSectionMaterial(VfxEmitterDefinition emitter, VfxMeshEmitterDefinition meshDefinition, VfxMeshRenderer.MeshSection section, int sectionIndex)
+    {
+        if (sectionIndex < meshDefinition.SectionMaterialOverrides.Count && meshDefinition.SectionMaterialOverrides[sectionIndex] is { } sectionOverride)
+        {
+            return sectionOverride;
+        }
+        if (meshDefinition.OverrideMaterial && emitter.Material is not null)
+        {
+            return emitter.Material;
+        }
+        if (section.Section.MaterialName is { } materialName
+            && meshDefinition.Mesh?.FileRef.FindEntry(materialName) is { } meshMaterial)
+        {
+            return meshMaterial;
+        }
+        return emitter.Material;
+    }
+
+    private void DisposeMeshEmitters()
+    {
+        foreach (VfxMeshRenderer.MeshEmitterResources resources in meshEmitters.Values)
+        {
+            resources.Dispose();
+        }
+        meshEmitters.Clear();
+    }
+
     private void PopulateMaterialProperties(ExportEntry materialExport, VfxParticleMaterialDefinition material)
     {
         ExportEntry baseMaterial = ResolveBaseMaterial(materialExport);
         PropertyCollection properties = baseMaterial?.GetProperties(packageCache: PackageCache);
         string blendMode = properties?.GetProp<EnumProperty>("BlendMode")?.Value.Name;
+        material.BlendModeResolved = blendMode is not null;
         material.BlendMode = blendMode switch
         {
             "BLEND_Opaque" => VfxBlendMode.Opaque,
@@ -360,13 +534,43 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         }
 
         if (blendMode is VfxBlendMode.Translucent or VfxBlendMode.Additive or VfxBlendMode.SoftMasked
-            && texture is ExportEntry textureExport
-            && !TextureFormatHasAlpha(textureExport.GetProperty<EnumProperty>("Format")?.Value.Name))
+            && !TextureHasAlphaChannel(texture))
         {
             return VfxOpacitySource.TextureLuminance;
         }
 
         return VfxOpacitySource.TextureAlpha;
+    }
+
+    /// <summary>
+    /// Returns false when the texture is known to carry no usable alpha channel, or when the format could not be
+    /// determined at all. Treating an unknown format as "has alpha" makes sprites render as hard opaque quads.
+    /// </summary>
+    private bool TextureHasAlphaChannel(IEntry texture)
+    {
+        ExportEntry textureExport = texture switch
+        {
+            ExportEntry export => export,
+            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
+            _ => null
+        };
+        string format = textureExport?.GetProperty<EnumProperty>("Format")?.Value.Name;
+        return format is not null && TextureFormatHasAlpha(format);
+    }
+
+    /// <summary>
+    /// When a material's BlendMode could not be read, the preview previously assumed BLEND_Translucent. Combined with a
+    /// texture that has no alpha this draws opaque squares. Particle materials in this situation are overwhelmingly
+    /// additive, so prefer that: black texels then correctly contribute nothing.
+    /// </summary>
+    private static void ApplyUnresolvedBlendModeFallback(VfxParticleMaterialDefinition material)
+    {
+        if (!material.BlendModeResolved
+            && material.BlendMode == VfxBlendMode.Translucent
+            && material.OpacitySource == VfxOpacitySource.TextureLuminance)
+        {
+            material.BlendMode = VfxBlendMode.Additive;
+        }
     }
 
     private static bool HasExpression(StructProperty input) =>
@@ -425,7 +629,15 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         var blendedParticles = new List<(VfxEmitterState Emitter, VfxParticle Particle, PreviewTextureCache.TextureEntry Texture, BlendState BlendState, DepthStencilState DepthState)>();
         foreach (VfxEmitterState emitter in Simulation.Emitters)
         {
-            if (!emitter.Definition.IsSpriteEmitter)
+            if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Mesh)
+            {
+                if (meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources meshResources))
+                {
+                    meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
+                }
+                continue;
+            }
+            if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Sprite)
             {
                 continue;
             }
@@ -443,18 +655,55 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, previewTransform: previewTransform);
                 continue;
             }
-            foreach (VfxParticle particle in emitter.Particles)
+            foreach (VfxParticle particle in GetDrawableParticles(emitter, previewTransform))
             {
                 blendedParticles.Add((emitter, particle, texture, blendState, depthState));
             }
         }
 
-        blendedParticles.Sort((left, right) => VfxBillboardRenderer.DistanceSquared(right.Particle, Camera.Position, previewTransform)
-            .CompareTo(VfxBillboardRenderer.DistanceSquared(left.Particle, Camera.Position, previewTransform)));
-        foreach ((VfxEmitterState emitter, VfxParticle particle, PreviewTextureCache.TextureEntry texture, BlendState blendState, DepthStencilState depthState) in blendedParticles)
+        // Blended particles from every emitter still have to interleave back-to-front, so the shared pass keeps a
+        // depth sort. Emitters that request an age-based order are pre-ordered in GetDrawableParticles and are
+        // excluded from this sort so their authored order survives.
+        if (!blendedParticles.Any(entry => entry.Emitter.Definition.SortMode is VfxSortMode.AgeOldestFirst or VfxSortMode.AgeNewestFirst))
         {
-            billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, [particle], previewTransform);
+            blendedParticles.Sort((left, right) => VfxBillboardRenderer.DistanceSquared(right.Particle, Camera.Position, previewTransform)
+                .CompareTo(VfxBillboardRenderer.DistanceSquared(left.Particle, Camera.Position, previewTransform)));
         }
+
+        // Draw contiguous runs that share the same emitter and render state as a single batch. Sorting stays
+        // back-to-front, but emitters with a single material no longer cost one draw call per particle.
+        var batch = new List<VfxParticle>();
+        for (int index = 0; index < blendedParticles.Count; index++)
+        {
+            (VfxEmitterState emitter, VfxParticle particle, PreviewTextureCache.TextureEntry texture, BlendState blendState, DepthStencilState depthState) = blendedParticles[index];
+            batch.Add(particle);
+            bool endOfRun = index + 1 == blendedParticles.Count
+                || blendedParticles[index + 1].Emitter != emitter
+                || blendedParticles[index + 1].Texture != texture
+                || blendedParticles[index + 1].BlendState != blendState
+                || blendedParticles[index + 1].DepthState != depthState;
+            if (!endOfRun)
+            {
+                continue;
+            }
+            billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, batch, previewTransform);
+            batch = [];
+        }
+    }
+
+    /// <summary>
+    /// Applies ParticleModuleRequired.SortMode and MaxDrawCount before an emitter's particles are queued
+    /// into the shared blended pass.
+    /// </summary>
+    private List<VfxParticle> GetDrawableParticles(VfxEmitterState emitter, Matrix4x4 previewTransform)
+    {
+        var particles = new List<VfxParticle>(emitter.Particles);
+        VfxBillboardRenderer.SortParticles(particles, emitter.Definition.SortMode, Camera.Position, previewTransform);
+        if (emitter.Definition.UseMaxDrawCount && emitter.Definition.MaxDrawCount >= 0 && particles.Count > emitter.Definition.MaxDrawCount)
+        {
+            particles.RemoveRange(emitter.Definition.MaxDrawCount, particles.Count - emitter.Definition.MaxDrawCount);
+        }
+        return particles;
     }
 
     private void CreateBlendStates()
@@ -560,11 +809,33 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             primitives.AddLine(new Vector3(0, 0, -size), new Vector3(0, 0, size), Vector4.One, 0);
         }
 
-        if (ShowBoundingBox && Simulation.TryGetBounds(out Vector3 minimum, out Vector3 maximum))
+        if (ShowBoundingBox && TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum))
         {
             AddBounds(minimum, maximum);
         }
         primitives.Render(this, false);
+    }
+
+    /// <summary>
+    /// Combines the sprite/simulation bounds with the transformed bounds of every mesh emitter's particles.
+    /// </summary>
+    private bool TryGetPreviewBounds(out Vector3 minimum, out Vector3 maximum)
+    {
+        bool found = Simulation.TryGetBounds(out minimum, out maximum);
+        Matrix4x4 previewTransform = Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity;
+        foreach (VfxEmitterState emitter in Simulation.Emitters)
+        {
+            if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Mesh
+                || !meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources resources)
+                || !VfxMeshRenderer.TryGetBounds(emitter, resources, previewTransform, Camera.Position, Camera.CameraRight, Camera.CameraUp, Camera.CameraForward, out VfxBounds meshBounds))
+            {
+                continue;
+            }
+            minimum = found ? Vector3.Min(minimum, meshBounds.Minimum) : meshBounds.Minimum;
+            maximum = found ? Vector3.Max(maximum, meshBounds.Maximum) : meshBounds.Maximum;
+            found = true;
+        }
+        return found;
     }
 
     private void AddBounds(Vector3 minimum, Vector3 maximum)
@@ -590,6 +861,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         DisposeBlendStates();
         DisposeDepthStates();
         billboardRenderer.Dispose();
+        meshRenderer.Dispose();
+        DisposeMeshEmitters();
         textures.Clear();
         base.DisposeResources();
     }

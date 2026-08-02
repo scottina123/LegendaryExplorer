@@ -22,38 +22,162 @@ public sealed class VfxSourceAdapter : IVfxSourceAdapter
 
 public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
 {
+    /// <summary>
+    /// Property names that exist purely for cooking, editor presentation, or structural traversal.
+    /// These are serialized but have no standalone visual meaning in the preview, so they must not be
+    /// reported as unsupported. Every name here was verified against the class layouts in Engine.pcc.
+    /// </summary>
     private static readonly HashSet<string> MetadataProperties = new(StringComparer.Ordinal)
     {
-        "LODValidity", "bEnabled", "Level", "PeakActiveParticles", "Modules", "RequiredModule", "SpawnModule", "TypeDataModule", "LODLevels", "Emitters"
+        // UParticleModule flags and structural references the preview walks rather than applies directly.
+        "LODValidity", "bEnabled", "bEditable", "LODDuplicate", "bSpawnModule", "bUpdateModule", "bFinalUpdateModule",
+        "bSpawnRateModule", "bCurvesAsColor", "b3DDrawMode", "bSupported3DDrawMode",
+        "Level", "PeakActiveParticles", "Modules", "RequiredModule", "SpawnModule", "TypeDataModule", "LODLevels", "Emitters",
+        // UParticleLODLevel bookkeeping caches rebuilt at runtime.
+        "SpawningModules", "SpawnModules", "UpdateModules", "OrbitModules", "EventReceiverModules", "SpawnRateModules",
+        "ModuleOffsetMap", "ModuleInstanceOffsetMap", "EventGenerator", "ModuleMapsInstanceSize", "ModuleMapsParticleSize",
+        "ModuleMapsTypeDataOffset", "ModuleMapsTypeDataInstanceOffset", "ModuleMapsCreated", "ConvertedModules",
+        // UParticleEmitter cook/runtime bookkeeping.
+        "SubUVDataOffset", "InitialAllocationCount", "bIsSoloing", "bCookedOut", "ModuleInstanceOffset", "PeakActiveParticleCount",
+        "bIsSoloEnabled",
+        // UParticleSystem cook/runtime bookkeeping with no standalone visual effect.
+        "LODDistanceCheckTime", "bRegenerateLODDuplicate", "bShouldResetPeakCounts", "bHasPhysics", "bBioDependsOnPhysics",
+        "bSkipSpawnCountCheck", "SoloTracking", "CurveEdSetup", "PreviewComponent", "SecondsBeforeInactive",
+        "LODDistanceMultiplayerBias", "UpdateTime_FPS",
+        // Editor-only presentation state.
+        "EditorLODSetting", "ThumbnailDistance", "ThumbnailWarmup", "ThumbnailImage", "ThumbnailImageOutOfDate", "ThumbnailAngle",
+        "bUseRealtimeThumbnail", "EmitterEditorColor", "EmitterRenderMode", "ModuleEditorColor", "bCollapsed",
+        "bSupportsRandomSeed", "bRequiresLoopingNotification", "bUpdateForGPUEmitter",
+        // Deterministic-seed support: the preview drives its own reproducible RNG.
+        "m_Seed", "m_bUseSeed", "m_bUpdateSeed",
+        // Non-visual gameplay/physics/perf switches.
+        "CastShadows", "DoCollisions", "bAllowMotionBlur", "DownsampleThresholdScreenFraction", "bUseLegacyEmitterTime",
+        "bScaleUV", "bDirectUV", "EmitterNormalsMode", "NormalsSphereCenter", "NormalsCylinderDirection",
+        "MacroUVPosition", "MacroUVRadius", "CustomOcclusionBounds"
     };
 
+    /// <summary>
+    /// Per-class property names the preview actually consumes. Keys are the exact class names found in
+    /// Engine.pcc; inherited names are resolved through <see cref="AppliedPropertyInheritance"/>.
+    /// </summary>
     private static readonly Dictionary<string, HashSet<string>> AppliedProperties = new(StringComparer.Ordinal)
     {
-        ["ParticleSystem"] = new(StringComparer.Ordinal) { "FixedRelativeBoundingBox", "LODDistances", "LODSettings", "UpdateTime_Delta", "bUseFixedRelativeBoundingBox" },
-        ["ParticleSpriteEmitter"] = new(StringComparer.Ordinal) { "EmitterName" },
-        ["ParticleModuleRequired"] = new(StringComparer.Ordinal) { "SpawnRate", "BurstList", "Material", "EmitterDelay", "EmitterDuration", "EmitterLoops", "ScreenAlignment", "SubImages_Horizontal", "SubImages_Vertical", "InterpolationMethod", "bUseLocalSpace" },
-        ["ParticleModuleSpawn"] = new(StringComparer.Ordinal) { "Rate", "RateScale", "BurstList", "bProcessSpawnRate", "bProcessBurstList" },
+        ["ParticleSystem"] = new(StringComparer.Ordinal)
+        {
+            "FixedRelativeBoundingBox", "bUseFixedRelativeBoundingBox", "LODDistances", "LODSettings", "UpdateTime_Delta",
+            "BioLockLowestLODToHighest", "WarmupTime", "Delay", "DelayLow", "bUseDelayRange", "bOrientZAxisTowardCamera"
+        },
+        ["ParticleEmitter"] = new(StringComparer.Ordinal) { "EmitterName", "Material" },
+        ["ParticleSpriteEmitter"] = new(StringComparer.Ordinal) { "Material" },
+        ["ParticleModuleRequired"] = new(StringComparer.Ordinal)
+        {
+            "SpawnRate", "BurstList", "Material", "ScreenAlignment", "SortMode", "ParticleBurstMethod", "InterpolationMethod",
+            "SubImages_Horizontal", "SubImages_Vertical", "RandomImageTime", "RandomImageChanges",
+            "EmitterDuration", "EmitterDurationLow", "bEmitterDurationUseRange", "bDurationRecalcEachLoop", "EmitterLoops",
+            "EmitterDelay", "EmitterDelayLow", "bEmitterDelayUseRange", "bDelayFirstLoopOnly",
+            "bUseLocalSpace", "bKillOnDeactivate", "bKillOnCompleted", "MaxDrawCount", "bUseMaxDrawCount"
+        },
+        ["ParticleModuleSpawnBase"] = new(StringComparer.Ordinal) { "bProcessSpawnRate", "bProcessBurstList" },
+        ["ParticleModuleSpawn"] = new(StringComparer.Ordinal) { "Rate", "RateScale", "BurstList", "ParticleBurstMethod" },
         ["ParticleModuleLifetime"] = new(StringComparer.Ordinal) { "Lifetime" },
-        ["ParticleModuleLocation"] = new(StringComparer.Ordinal) { "StartLocation", "StartLocationRw" },
-        ["ParticleModuleLocationDirect"] = new(StringComparer.Ordinal) { "Location", "LocationRw" },
-        ["ParticleModuleLocationPrimitiveCylinder"] = new(StringComparer.Ordinal) { "StartLocation", "StartLocationRw", "StartRadius", "StartHeight", "VelocityScale", "HeightAxis", "bSurfaceOnly", "bVelocity", "bRadialVelocity", "Positive_X", "Positive_Y", "Positive_Z", "Negative_X", "Negative_Y", "Negative_Z" },
-        ["ParticleModuleVelocity"] = new(StringComparer.Ordinal) { "StartVelocity", "StartVelocityRw" },
-        ["ParticleModuleSize"] = new(StringComparer.Ordinal) { "StartSize", "StartSizeRw" },
-        ["ParticleModuleInitialSize"] = new(StringComparer.Ordinal) { "StartSize", "StartSizeRw" },
-        ["ParticleModuleSizeMultiplyLife"] = new(StringComparer.Ordinal) { "LifeMultiplier", "LifeMultiplierRw" },
-        ["ParticleModuleColor"] = new(StringComparer.Ordinal) { "StartColor", "StartColorRw", "StartAlpha" },
-        ["ParticleModuleColorOverLife"] = new(StringComparer.Ordinal) { "ColorOverLife", "ColorOverLifeRw", "AlphaOverLife" },
-        ["ParticleModuleColorScaleOverLife"] = new(StringComparer.Ordinal) { "ColorScaleOverLifeRw", "AlphaScaleOverLife", "bEmitterTime" },
+        ["ParticleModuleLocation"] = new(StringComparer.Ordinal) { "StartLocationRw", "StartLocation" },
+        ["ParticleModuleLocationDirect"] = new(StringComparer.Ordinal) { "LocationRw", "Location" },
+        ["ParticleModuleLocationPrimitiveBase"] = new(StringComparer.Ordinal)
+        {
+            "StartLocationRw", "StartLocation", "VelocityScale", "SurfaceOnly", "Velocity",
+            "Positive_X", "Positive_Y", "Positive_Z", "Negative_X", "Negative_Y", "Negative_Z"
+        },
+        ["ParticleModuleLocationPrimitiveCylinder"] = new(StringComparer.Ordinal) { "StartRadius", "StartHeight", "HeightAxis", "RadialVelocity" },
+        ["ParticleModuleLocationPrimitiveSphere"] = new(StringComparer.Ordinal) { "StartRadius" },
+        ["ParticleModuleVelocity"] = new(StringComparer.Ordinal) { "StartVelocityRw", "StartVelocity", "StartVelocityRadial" },
+        ["ParticleModuleVelocityBase"] = new(StringComparer.Ordinal) { "bInWorldSpace" },
         ["ParticleModuleVelocityOverLifetime"] = new(StringComparer.Ordinal) { "VelOverLifeRw", "Absolute" },
-        ["ParticleModuleAcceleration"] = new(StringComparer.Ordinal) { "AccelerationRw" },
+        ["ParticleModuleSize"] = new(StringComparer.Ordinal) { "StartSizeRw", "StartSize" },
+        ["ParticleModuleSizeMultiplyLife"] = new(StringComparer.Ordinal) { "LifeMultiplierRw", "LifeMultiplier", "MultiplyX", "MultiplyY", "MultiplyZ" },
+        ["ParticleModuleSizeMultiplyVelocity"] = new(StringComparer.Ordinal) { "VelocityMultiplierRw", "MultiplyX", "MultiplyY", "MultiplyZ" },
+        ["ParticleModuleSizeScale"] = new(StringComparer.Ordinal) { "SizeScaleRw", "EnableX", "EnableY", "EnableZ" },
+        ["ParticleModuleSizeScaleByTime"] = new(StringComparer.Ordinal) { "SizeScaleByTimeRw", "bEnableX", "bEnableY", "bEnableZ" },
+        ["ParticleModuleColor"] = new(StringComparer.Ordinal) { "StartColorRw", "StartColor", "StartAlpha", "bClampAlpha" },
+        ["ParticleModuleColorOverLife"] = new(StringComparer.Ordinal) { "ColorOverLifeRw", "ColorOverLife", "AlphaOverLife", "bClampAlpha" },
+        ["ParticleModuleColorScaleOverLife"] = new(StringComparer.Ordinal) { "ColorScaleOverLifeRw", "AlphaScaleOverLife", "bEmitterTime" },
+        ["ParticleModuleAcceleration"] = new(StringComparer.Ordinal) { "AccelerationRw", "bApplyOwnerScale" },
+        ["ParticleModuleAccelerationBase"] = new(StringComparer.Ordinal) { "bAlwaysInWorldSpace" },
         ["ParticleModuleAccelerationOverLifetime"] = new(StringComparer.Ordinal) { "AccelOverLifeRw" },
-        ["ParticleModuleOrbit"] = new(StringComparer.Ordinal) { "OffsetAmountRw", "RotationAmountRw", "RotationRateAmountRw", "OffsetOptions", "RotationOptions", "RotationRateOptions" },
+        ["ParticleModuleOrbitBase"] = new(StringComparer.Ordinal) { "bUseEmitterTime" },
+        ["ParticleModuleOrbit"] = new(StringComparer.Ordinal)
+        {
+            "OffsetAmountRw", "RotationAmountRw", "RotationRateAmountRw", "OffsetOptions", "RotationOptions", "RotationRateOptions", "ChainMode"
+        },
         ["ParticleModuleRotation"] = new(StringComparer.Ordinal) { "StartRotation" },
+        ["ParticleModuleRotationOverLifetime"] = new(StringComparer.Ordinal) { "RotationOverLife", "Scale" },
         ["ParticleModuleRotationRate"] = new(StringComparer.Ordinal) { "StartRotationRate" },
+        ["ParticleModuleRotationRateMultiplyLife"] = new(StringComparer.Ordinal) { "LifeMultiplier" },
         ["ParticleModuleOrientationAxisLock"] = new(StringComparer.Ordinal) { "LockAxisFlags" },
+        ["ParticleModuleKillBox"] = new(StringComparer.Ordinal) { "LowerLeftCornerRw", "UpperRightCornerRw", "bAbsolute", "bKillInside" },
+        ["ParticleModuleKillHeight"] = new(StringComparer.Ordinal) { "Height", "bAbsolute", "bFloor" },
         ["ParticleModuleSubUV"] = new(StringComparer.Ordinal) { "SubImageIndex" },
-        ["ParticleModuleSubUVMovie"] = new(StringComparer.Ordinal) { "SubImageIndex", "FrameRate", "StartingFrame", "bUseEmitterTime" }
+        ["ParticleModuleSubUVSelect"] = new(StringComparer.Ordinal) { "SubImageSelectRw" },
+        ["ParticleModuleSubUVMovie"] = new(StringComparer.Ordinal) { "FrameRate", "StartingFrame", "bUseEmitterTime" },
+        ["ParticleModuleTypeDataMesh"] = new(StringComparer.Ordinal)
+        {
+            "Mesh", "Pitch", "Roll", "Yaw", "bCameraFacing", "bOverrideMaterial", "MeshAlignment", "AxisLockOption", "CameraFacingOption"
+        },
+        ["ParticleModuleMeshMaterial"] = new(StringComparer.Ordinal) { "MeshMaterials" },
+        ["ParticleModuleMeshRotation"] = new(StringComparer.Ordinal) { "StartRotationRw", "bInheritParent" },
+        ["ParticleModuleMeshRotationRate"] = new(StringComparer.Ordinal) { "StartRotationRateRw" },
+        ["ParticleModuleMeshRotationRateMultiplyLife"] = new(StringComparer.Ordinal) { "LifeMultiplierRw" },
+        ["ParticleModuleUberBase"] = new(StringComparer.Ordinal) { "RequiredModules" },
+        ["ParticleModuleUberLTISIVCL"] = new(StringComparer.Ordinal)
+        {
+            "Lifetime", "StartSize", "StartVelocity", "StartVelocityRadial", "ColorOverLife", "AlphaOverLife"
+        },
+        ["ParticleModuleUberLTISIVCLIL"] = new(StringComparer.Ordinal)
+        {
+            "Lifetime", "StartSize", "StartVelocity", "StartVelocityRadial", "ColorOverLife", "AlphaOverLife", "StartLocation"
+        },
+        ["ParticleModuleUberLTISIVCLILIRSSBLIRR"] = new(StringComparer.Ordinal)
+        {
+            "Lifetime", "StartSize", "StartVelocity", "StartVelocityRadial", "ColorOverLife", "AlphaOverLife", "StartLocation",
+            "StartRotation", "StartRotationRate", "SizeLifeMultiplier", "SizeMultiplyX", "SizeMultiplyY", "SizeMultiplyZ"
+        }
     };
+
+    /// <summary>
+    /// Superclass chains taken from Engine.pcc so inherited properties resolve to the base class that declares them.
+    /// </summary>
+    private static readonly Dictionary<string, string> AppliedPropertyInheritance = new(StringComparer.Ordinal)
+    {
+        ["ParticleSpriteEmitter"] = "ParticleEmitter",
+        ["ParticleModuleSpawn"] = "ParticleModuleSpawnBase",
+        ["ParticleModuleSpawnPerUnit"] = "ParticleModuleSpawnBase",
+        ["ParticleModuleLocationPrimitiveCylinder"] = "ParticleModuleLocationPrimitiveBase",
+        ["ParticleModuleLocationPrimitiveSphere"] = "ParticleModuleLocationPrimitiveBase",
+        ["ParticleModuleVelocity"] = "ParticleModuleVelocityBase",
+        ["ParticleModuleVelocityOverLifetime"] = "ParticleModuleVelocityBase",
+        ["ParticleModuleVelocityInheritParent"] = "ParticleModuleVelocityBase",
+        ["ParticleModuleAcceleration"] = "ParticleModuleAccelerationBase",
+        ["ParticleModuleAccelerationOverLifetime"] = "ParticleModuleAccelerationBase",
+        ["ParticleModuleOrbit"] = "ParticleModuleOrbitBase",
+        ["ParticleModuleSubUVMovie"] = "ParticleModuleSubUV",
+        ["ParticleModuleUberLTISIVCL"] = "ParticleModuleUberBase",
+        ["ParticleModuleUberLTISIVCLIL"] = "ParticleModuleUberBase",
+        ["ParticleModuleUberLTISIVCLILIRSSBLIRR"] = "ParticleModuleUberBase"
+    };
+
+    private static bool IsApplied(string className, string propertyName)
+    {
+        string current = className;
+        while (current is not null)
+        {
+            if (AppliedProperties.TryGetValue(current, out HashSet<string> applied) && applied.Contains(propertyName))
+            {
+                return true;
+            }
+            AppliedPropertyInheritance.TryGetValue(current, out current);
+        }
+        return false;
+    }
+
 
     private static readonly HashSet<string> SupportedModules = new(StringComparer.Ordinal)
     {
@@ -63,10 +187,14 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         "ParticleModuleLocation",
         "ParticleModuleLocationDirect",
         "ParticleModuleLocationPrimitiveCylinder",
+        "ParticleModuleLocationPrimitiveSphere",
         "ParticleModuleVelocity",
         "ParticleModuleSize",
         "ParticleModuleInitialSize",
         "ParticleModuleSizeMultiplyLife",
+        "ParticleModuleSizeMultiplyVelocity",
+        "ParticleModuleSizeScale",
+        "ParticleModuleSizeScaleByTime",
         "ParticleModuleColor",
         "ParticleModuleColorOverLife",
         "ParticleModuleColorScaleOverLife",
@@ -75,13 +203,23 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         "ParticleModuleAccelerationOverLifetime",
         "ParticleModuleOrbit",
         "ParticleModuleRotation",
+        "ParticleModuleRotationOverLifetime",
         "ParticleModuleRotationRate",
+        "ParticleModuleRotationRateMultiplyLife",
+        "ParticleModuleKillBox",
+        "ParticleModuleKillHeight",
         "ParticleModuleOrientationAxisLock",
         "ParticleModuleSubUV",
+        "ParticleModuleSubUVSelect",
         "ParticleModuleSubUVMovie",
         "ParticleModuleUberLTISIVCL",
         "ParticleModuleUberLTISIVCLIL",
-        "ParticleModuleUberLTISIVCLILIRSSBLIRR"
+        "ParticleModuleUberLTISIVCLILIRSSBLIRR",
+        "ParticleModuleTypeDataMesh",
+        "ParticleModuleMeshMaterial",
+        "ParticleModuleMeshRotation",
+        "ParticleModuleMeshRotationRate",
+        "ParticleModuleMeshRotationRateMultiplyLife"
     };
 
     public bool CanAdapt(ExportEntry export) => export?.ClassName == "ParticleSystem";
@@ -90,7 +228,13 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
     {
         IReadOnlyList<float> lodDistances = ReadLodDistances(export);
         IReadOnlyList<VfxLodSetting> lodSettings = ReadLodSettings(export);
-        int selectedLodIndex = SelectPreviewLodIndex(lodDistances, lodSettings, null);
+        bool lockLowestLodToHighest = export.GetProperty<BoolProperty>("BioLockLowestLODToHighest")?.Value == true;
+        // BioLockLowestLODToHighest pins the system to the highest-detail LOD; otherwise the editor LOD selection wins.
+        int selectedLodIndex = lockLowestLodToHighest
+            ? 0
+            : export.GetProperty<IntProperty>("EditorLODSetting") is { } editorLod
+                ? Math.Max(0, editorLod.Value)
+                : SelectPreviewLodIndex(lodDistances, lodSettings, null);
         VfxBounds? fixedLocalBounds = ReadFixedBounds(export);
         var definition = new VfxPreviewDefinition
         {
@@ -99,6 +243,12 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             LodDistances = lodDistances,
             LodSettings = lodSettings,
             SelectedLodIndex = selectedLodIndex,
+            LockLowestLodToHighest = lockLowestLodToHighest,
+            WarmupTime = Math.Max(0, export.GetProperty<FloatProperty>("WarmupTime")?.Value ?? 0),
+            SystemDelay = export.GetProperty<FloatProperty>("Delay")?.Value ?? 0,
+            SystemDelayLow = export.GetProperty<FloatProperty>("DelayLow")?.Value ?? 0,
+            UseSystemDelayRange = export.GetProperty<BoolProperty>("bUseDelayRange")?.Value == true,
+            OrientZAxisTowardCamera = export.GetProperty<BoolProperty>("bOrientZAxisTowardCamera")?.Value == true,
             FixedLocalBounds = fixedLocalBounds
         };
         RecordPropertyCoverage(export, definition);
@@ -230,18 +380,18 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
 
     private static void RecordPropertyCoverage(ExportEntry export, VfxPreviewDefinition definition)
     {
-        AppliedProperties.TryGetValue(export.ClassName, out HashSet<string> applied);
         foreach (Property property in export.GetProperties())
         {
-            VfxPropertyCoverageStatus status = MetadataProperties.Contains(property.Name.Name)
-                ? VfxPropertyCoverageStatus.Metadata
-                : applied?.Contains(property.Name.Name) == true
-                    ? VfxPropertyCoverageStatus.Applied
+            string propertyName = property.Name.Name;
+            VfxPropertyCoverageStatus status = IsApplied(export.ClassName, propertyName)
+                ? VfxPropertyCoverageStatus.Applied
+                : MetadataProperties.Contains(propertyName)
+                    ? VfxPropertyCoverageStatus.Metadata
                     : VfxPropertyCoverageStatus.Unsupported;
-            definition.PropertyCoverage.Add(new VfxPropertyCoverage(export.InstancedFullPath, export.ClassName, property.Name.Name, status));
+            definition.PropertyCoverage.Add(new VfxPropertyCoverage(export.InstancedFullPath, export.ClassName, propertyName, status));
             if (status == VfxPropertyCoverageStatus.Unsupported)
             {
-                definition.Warnings.Add($"{export.ObjectName.Instanced}.{property.Name.Name} is serialized but not applied by the preview.");
+                definition.Warnings.Add($"{export.ObjectName.Instanced}.{propertyName} is serialized but not applied by the preview.");
             }
         }
     }
@@ -276,6 +426,18 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         int subUVStartingFrame = 0;
         bool subUVUseEmitterTime = false;
         VfxAxisLock axisLock = VfxAxisLock.None;
+        IVfxDistribution<Vector3> meshStartRotation = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+        IVfxDistribution<Vector3> meshStartRotationRate = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+        IVfxDistribution<Vector3> meshRotationRateMultiplier = new VfxConstantDistribution<Vector3>(Vector3.One);
+        IVfxDistribution<Vector3> sizeScale = new VfxConstantDistribution<Vector3>(Vector3.One);
+        IVfxDistribution<Vector3> sizeScaleByTime = new VfxConstantDistribution<Vector3>(Vector3.One);
+        IVfxDistribution<Vector3> sizeMultiplyVelocity = new VfxConstantDistribution<Vector3>(Vector3.One);
+        IVfxDistribution<float> rotationOverLife = new VfxConstantDistribution<float>(0);
+        bool rotationOverLifeScales = false;
+        IVfxDistribution<float> rotationRateMultiplierOverLife = new VfxConstantDistribution<float>(1);
+        IVfxDistribution<float> subImageSelect = null;
+        var killVolumes = new List<VfxKillVolume>();
+        IReadOnlyList<IEntry> meshSectionMaterials = [];
         var spawnInitializers = new List<VfxSpawnInitializer>();
 
         foreach (ExportEntry module in modules)
@@ -295,16 +457,49 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 case "ParticleModuleVelocity":
                     velocity = ReadVectorDistribution(module, Vector3.Zero, "StartVelocityRw", "StartVelocity");
                     spawnInitializers.Add(new VfxVelocitySpawnInitializer(velocity));
+                    if (module.GetProperty<StructProperty>("StartVelocityRadial") is not null)
+                    {
+                        spawnInitializers.Add(new VfxRadialVelocitySpawnInitializer(
+                            ReadFloatDistribution(module, "StartVelocityRadial", 0)));
+                    }
                     break;
                 case "ParticleModuleLocationPrimitiveCylinder":
                     spawnInitializers.Add(ReadCylinderInitializer(module));
+                    break;
+                case "ParticleModuleLocationPrimitiveSphere":
+                    spawnInitializers.Add(ReadSphereInitializer(module));
                     break;
                 case "ParticleModuleSize":
                 case "ParticleModuleInitialSize":
                     size = ReadVectorDistribution(module, Vector3.One, "StartSizeRw", "StartSize");
                     break;
                 case "ParticleModuleSizeMultiplyLife":
-                    sizeOverLife = ReadVectorDistribution(module, Vector3.Zero, "LifeMultiplierRw", "LifeMultiplier");
+                    sizeOverLife = MaskSizeMultiplier(
+                        ReadVectorDistribution(module, Vector3.Zero, "LifeMultiplierRw", "LifeMultiplier"),
+                        module.GetProperty<BoolProperty>("MultiplyX")?.Value != false,
+                        module.GetProperty<BoolProperty>("MultiplyY")?.Value != false,
+                        module.GetProperty<BoolProperty>("MultiplyZ")?.Value != false);
+                    break;
+                case "ParticleModuleSizeScale":
+                    sizeScale = MaskSizeMultiplier(
+                        ReadVectorDistribution(module, Vector3.One, "SizeScaleRw"),
+                        module.GetProperty<BoolProperty>("EnableX")?.Value != false,
+                        module.GetProperty<BoolProperty>("EnableY")?.Value != false,
+                        module.GetProperty<BoolProperty>("EnableZ")?.Value != false);
+                    break;
+                case "ParticleModuleSizeScaleByTime":
+                    sizeScaleByTime = MaskSizeMultiplier(
+                        ReadVectorDistribution(module, Vector3.One, "SizeScaleByTimeRw"),
+                        module.GetProperty<BoolProperty>("bEnableX")?.Value != false,
+                        module.GetProperty<BoolProperty>("bEnableY")?.Value != false,
+                        module.GetProperty<BoolProperty>("bEnableZ")?.Value != false);
+                    break;
+                case "ParticleModuleSizeMultiplyVelocity":
+                    sizeMultiplyVelocity = MaskSizeMultiplier(
+                        ReadVectorDistribution(module, Vector3.One, "VelocityMultiplierRw"),
+                        module.GetProperty<BoolProperty>("MultiplyX")?.Value != false,
+                        module.GetProperty<BoolProperty>("MultiplyY")?.Value != false,
+                        module.GetProperty<BoolProperty>("MultiplyZ")?.Value != false);
                     break;
                 case "ParticleModuleColor":
                     initialColor = CombineColor(
@@ -314,7 +509,8 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 case "ParticleModuleColorOverLife":
                     colorOverLife = CombineColor(
                         ReadVectorDistribution(module, Vector3.Zero, "ColorOverLifeRw", "ColorOverLife"),
-                        ReadFloatDistribution(module, "AlphaOverLife", 1));
+                        ReadFloatDistribution(module, "AlphaOverLife", 1),
+                        module.GetProperty<BoolProperty>("bClampAlpha")?.Value != false);
                     break;
                 case "ParticleModuleColorScaleOverLife":
                     colorScaleOverLife = CombineColor(
@@ -342,11 +538,50 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 case "ParticleModuleRotationRate":
                     rotationRate = Scale(ReadFloatDistribution(module, "StartRotationRate", 0), MathF.Tau);
                     break;
+                case "ParticleModuleRotationOverLifetime":
+                    rotationOverLife = Scale(ReadFloatDistribution(module, "RotationOverLife", 0), MathF.Tau);
+                    // ParticleModuleRotationOverLifetime.Scale selects between multiplying and adding the curve.
+                    rotationOverLifeScales = module.GetProperty<BoolProperty>("Scale")?.Value != false;
+                    break;
+                case "ParticleModuleRotationRateMultiplyLife":
+                    rotationRateMultiplierOverLife = ReadFloatDistribution(module, "LifeMultiplier", 1);
+                    break;
+                case "ParticleModuleKillBox":
+                    killVolumes.Add(new VfxKillBox(
+                        ReadVectorDistribution(module, Vector3.Zero, "LowerLeftCornerRw"),
+                        ReadVectorDistribution(module, Vector3.Zero, "UpperRightCornerRw"),
+                        module.GetProperty<BoolProperty>("bKillInside")?.Value == true,
+                        module.GetProperty<BoolProperty>("bAbsolute")?.Value == true));
+                    break;
+                case "ParticleModuleKillHeight":
+                    killVolumes.Add(new VfxKillHeight(
+                        ReadFloatDistribution(module, "Height", 0),
+                        module.GetProperty<BoolProperty>("bFloor")?.Value == true,
+                        module.GetProperty<BoolProperty>("bAbsolute")?.Value == true));
+                    break;
                 case "ParticleModuleOrientationAxisLock":
                     axisLock = ParseAxisLock(module.GetProperty<EnumProperty>("LockAxisFlags")?.Value);
                     break;
+                case "ParticleModuleMeshRotation":
+                    // Mesh rotations are authored in units of full turns per axis, matching the sprite rotation modules.
+                    meshStartRotation = Scale(ReadVectorDistribution(module, Vector3.Zero, "StartRotationRw"), MathF.Tau);
+                    break;
+                case "ParticleModuleMeshRotationRate":
+                    meshStartRotationRate = Scale(ReadVectorDistribution(module, Vector3.Zero, "StartRotationRateRw"), MathF.Tau);
+                    break;
+                case "ParticleModuleMeshRotationRateMultiplyLife":
+                    meshRotationRateMultiplier = ReadVectorDistribution(module, Vector3.One, "LifeMultiplierRw");
+                    break;
+                case "ParticleModuleMeshMaterial":
+                    meshSectionMaterials = module.GetProperty<ArrayProperty<ObjectProperty>>("MeshMaterials")?
+                        .Select(reference => reference.ResolveToEntry(module.FileRef))
+                        .ToList() ?? [];
+                    break;
                 case "ParticleModuleSubUV":
                     subImageIndex = ReadFloatDistribution(module, "SubImageIndex", 0);
+                    break;
+                case "ParticleModuleSubUVSelect":
+                    subImageSelect = ReadFloatDistribution(module, "SubImageSelectRw", 0);
                     break;
                 case "ParticleModuleSubUVMovie":
                     subImageIndex = ReadFloatDistribution(module, "SubImageIndex", 0);
@@ -396,12 +631,63 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             ? ReadBursts(required)
             : processBurstList ? ReadBursts(spawn) : [];
 
+        // ParticleModuleRequired.Material is the authoritative sprite material, but a lot of BioWare content
+        // leaves it empty and relies on the legacy UParticleSpriteEmitter.Material instead.
+        IEntry material = required?.GetProperty<ObjectProperty>("Material")?.ResolveToEntry(lod.FileRef)
+            ?? emitter.GetProperty<ObjectProperty>("Material")?.ResolveToEntry(emitter.FileRef);
+        VfxEmitterRenderMode renderMode = ClassifyRenderMode(typeData);
+        VfxMeshEmitterDefinition meshEmitter = null;
+        if (renderMode == VfxEmitterRenderMode.Mesh)
+        {
+            meshEmitter = new VfxMeshEmitterDefinition
+            {
+                Mesh = typeData.GetProperty<ObjectProperty>("Mesh")?.ResolveToEntry(typeData.FileRef),
+                PreRotation = new Vector3(
+                    typeData.GetProperty<FloatProperty>("Pitch")?.Value ?? 0,
+                    typeData.GetProperty<FloatProperty>("Yaw")?.Value ?? 0,
+                    typeData.GetProperty<FloatProperty>("Roll")?.Value ?? 0),
+                CameraFacing = typeData.GetProperty<BoolProperty>("bCameraFacing")?.Value == true,
+                OverrideMaterial = typeData.GetProperty<BoolProperty>("bOverrideMaterial")?.Value == true,
+                MeshAlignment = ParseMeshAlignment(typeData.GetProperty<EnumProperty>("MeshAlignment")?.Value),
+                CameraFacingOption = ParseMeshCameraFacing(typeData.GetProperty<EnumProperty>("CameraFacingOption")?.Value),
+                AxisLockOption = ParseAxisLock(typeData.GetProperty<EnumProperty>("AxisLockOption")?.Value),
+                SectionMaterialOverrides = meshSectionMaterials,
+                StartRotation = meshStartRotation,
+                StartRotationRate = meshStartRotationRate,
+                RotationRateMultiplierOverLife = meshRotationRateMultiplier
+            };
+            if (meshEmitter.Mesh is null)
+            {
+                warnings.Add($"{emitter.ObjectName.Instanced}: the mesh type data module has no Mesh assigned, so nothing can be drawn.");
+            }
+        }
+        else if (renderMode != VfxEmitterRenderMode.Sprite)
+        {
+            warnings.Add($"{emitter.ObjectName.Instanced}: {typeData.ClassName} emitters are not rendered by the preview yet.");
+        }
+        else if (material is null)
+        {
+            warnings.Add($"{emitter.ObjectName.Instanced}: no material is assigned on the required module or the emitter, so nothing can be drawn.");
+        }
+
         var emitterDefinition = new VfxEmitterDefinition
         {
             Name = emitter.GetProperty<NameProperty>("EmitterName")?.Value.Instanced ?? emitter.ObjectName.Instanced,
             Delay = required?.GetProperty<FloatProperty>("EmitterDelay")?.Value ?? 0,
+            DelayLow = required?.GetProperty<FloatProperty>("EmitterDelayLow")?.Value ?? 0,
+            UseDelayRange = required?.GetProperty<BoolProperty>("bEmitterDelayUseRange")?.Value == true,
+            DelayFirstLoopOnly = required?.GetProperty<BoolProperty>("bDelayFirstLoopOnly")?.Value == true,
             Duration = required?.GetProperty<FloatProperty>("EmitterDuration")?.Value ?? 1,
+            DurationLow = required?.GetProperty<FloatProperty>("EmitterDurationLow")?.Value ?? 0,
+            UseDurationRange = required?.GetProperty<BoolProperty>("bEmitterDurationUseRange")?.Value == true,
+            RecalculateDurationEachLoop = required?.GetProperty<BoolProperty>("bDurationRecalcEachLoop")?.Value == true,
             Loops = required?.GetProperty<IntProperty>("EmitterLoops")?.Value ?? 0,
+            KillOnDeactivate = required?.GetProperty<BoolProperty>("bKillOnDeactivate")?.Value == true,
+            KillOnCompleted = required?.GetProperty<BoolProperty>("bKillOnCompleted")?.Value == true,
+            SortMode = ParseSortMode(required?.GetProperty<EnumProperty>("SortMode")?.Value),
+            BurstMethod = ParseBurstMethod((spawn ?? required)?.GetProperty<EnumProperty>("ParticleBurstMethod")?.Value),
+            MaxDrawCount = required?.GetProperty<IntProperty>("MaxDrawCount")?.Value ?? 0,
+            UseMaxDrawCount = required?.GetProperty<BoolProperty>("bUseMaxDrawCount")?.Value == true,
             MaxParticles = Math.Max(lod.GetProperty<IntProperty>("PeakActiveParticles")?.Value ?? 0, 4096),
             ScreenAlignment = ParseScreenAlignment(required?.GetProperty<EnumProperty>("ScreenAlignment")?.Value),
             AxisLock = axisLock,
@@ -412,7 +698,10 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             SubUVFrameRate = subUVFrameRate,
             SubUVStartingFrame = subUVStartingFrame,
             SubUVUseEmitterTime = subUVUseEmitterTime,
-            Material = required?.GetProperty<ObjectProperty>("Material")?.ResolveToEntry(lod.FileRef),
+            RandomImageTime = Math.Max(0, required?.GetProperty<FloatProperty>("RandomImageTime")?.Value ?? 0),
+            RandomImageChanges = Math.Max(0, required?.GetProperty<IntProperty>("RandomImageChanges")?.Value ?? 0),
+            SubImageSelect = subImageSelect,
+            Material = material,
             SpawnRate = spawnRate,
             Bursts = bursts,
             Lifetime = lifetime,
@@ -423,14 +712,22 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             RotationRate = rotationRate,
             InitialColor = initialColor,
             SizeOverLife = sizeOverLife,
+            SizeScale = sizeScale,
+            SizeScaleByTime = sizeScaleByTime,
+            SizeMultiplyVelocity = sizeMultiplyVelocity,
+            RotationOverLife = rotationOverLife,
+            RotationOverLifeScales = rotationOverLifeScales,
+            RotationRateMultiplierOverLife = rotationRateMultiplierOverLife,
             ColorOverLife = colorOverLife,
             ColorScaleOverLife = colorScaleOverLife,
             ColorScaleUsesEmitterTime = colorScaleUsesEmitterTime,
             VelocityOverLife = velocityOverLife,
             VelocityOverLifeIsAbsolute = velocityOverLifeIsAbsolute,
             AccelerationOverLife = accelerationOverLife,
-            UseLocalSpace = required?.GetProperty<BoolProperty>("bUseLocalSpace")?.Value == true
-            ,IsSpriteEmitter = typeData is null
+            UseLocalSpace = required?.GetProperty<BoolProperty>("bUseLocalSpace")?.Value == true,
+            KillVolumes = killVolumes,
+            RenderMode = renderMode,
+            MeshEmitter = meshEmitter
         };
         emitterDefinition.SpawnInitializers.AddRange(spawnInitializers);
         return emitterDefinition;
@@ -447,8 +744,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
     private static bool ReadOrbitUsesEmitterTime(ExportEntry module, string propertyName) =>
         module.GetProperty<StructProperty>(propertyName)?.GetProp<BoolProperty>("bUseEmitterTime")?.Value == true;
 
-    private static VfxCylinderSpawnInitializer ReadCylinderInitializer(ExportEntry module) => new(
-        ReadVectorDistribution(module, Vector3.Zero, "StartLocationRw"),
+    private static VfxCylinderSpawnInitializer ReadCylinderInitializer(ExportEntry module) => new(        ReadVectorDistribution(module, Vector3.Zero, "StartLocationRw"),
         ReadFloatDistribution(module, "StartRadius", 50),
         ReadFloatDistribution(module, "StartHeight", 50),
         ReadFloatDistribution(module, "VelocityScale", 1),
@@ -461,6 +757,19 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         module.GetProperty<BoolProperty>("SurfaceOnly")?.Value == true,
         module.GetProperty<BoolProperty>("Velocity")?.Value == true,
         module.GetProperty<BoolProperty>("RadialVelocity")?.Value != false,
+        module.GetProperty<BoolProperty>("Positive_X")?.Value != false,
+        module.GetProperty<BoolProperty>("Positive_Y")?.Value != false,
+        module.GetProperty<BoolProperty>("Positive_Z")?.Value != false,
+        module.GetProperty<BoolProperty>("Negative_X")?.Value != false,
+        module.GetProperty<BoolProperty>("Negative_Y")?.Value != false,
+        module.GetProperty<BoolProperty>("Negative_Z")?.Value != false);
+
+    private static VfxSphereSpawnInitializer ReadSphereInitializer(ExportEntry module) => new(
+        ReadVectorDistribution(module, Vector3.Zero, "StartLocationRw"),
+        ReadFloatDistribution(module, "StartRadius", 50),
+        ReadFloatDistribution(module, "VelocityScale", 1),
+        module.GetProperty<BoolProperty>("SurfaceOnly")?.Value == true,
+        module.GetProperty<BoolProperty>("Velocity")?.Value == true,
         module.GetProperty<BoolProperty>("Positive_X")?.Value != false,
         module.GetProperty<BoolProperty>("Positive_Y")?.Value != false,
         module.GetProperty<BoolProperty>("Positive_Z")?.Value != false,
@@ -577,10 +886,54 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             property.GetProp<FloatProperty>("Z")?.Value ?? fallback.Z);
 
     private static IVfxDistribution<Vector4> CombineColor(IVfxDistribution<Vector3> color, IVfxDistribution<float> alpha)
-        => new CombinedColorDistribution(color, alpha);
+        => new CombinedColorDistribution(color, alpha, false);
+
+    private static IVfxDistribution<Vector4> CombineColor(IVfxDistribution<Vector3> color, IVfxDistribution<float> alpha, bool clampAlpha)
+        => new CombinedColorDistribution(color, alpha, clampAlpha);
+
+    private static IVfxDistribution<Vector3> MaskSizeMultiplier(IVfxDistribution<Vector3> source, bool multiplyX, bool multiplyY, bool multiplyZ)
+        => multiplyX && multiplyY && multiplyZ ? source : new MaskedVectorDistribution(source, multiplyX, multiplyY, multiplyZ);
 
     private static IVfxDistribution<float> Scale(IVfxDistribution<float> source, float scale)
         => new ScaledFloatDistribution(source, scale);
+
+    private static IVfxDistribution<Vector3> Scale(IVfxDistribution<Vector3> source, float scale)
+        => new ScaledVectorDistribution(source, scale);
+
+    private static VfxEmitterRenderMode ClassifyRenderMode(ExportEntry typeData) => typeData?.ClassName switch
+    {
+        null or "ParticleModuleTypeDataSubUV" => VfxEmitterRenderMode.Sprite,
+        "ParticleModuleTypeDataMesh" or "ParticleModuleTypeDataMeshPhysX" => VfxEmitterRenderMode.Mesh,
+        "ParticleModuleTypeDataBeam" or "ParticleModuleTypeDataBeam2" => VfxEmitterRenderMode.Beam,
+        "ParticleModuleTypeDataTrail" or "ParticleModuleTypeDataTrail2"
+            or "ParticleModuleTypeDataAnimTrail" or "ParticleModuleTypeDataRibbon" => VfxEmitterRenderMode.Trail,
+        _ => VfxEmitterRenderMode.Unsupported
+    };
+
+    private static VfxMeshAlignment ParseMeshAlignment(string value) => value switch
+    {
+        "PSMA_MeshFaceCameraWithRoll" => VfxMeshAlignment.FaceCameraWithRoll,
+        "PSMA_MeshFaceCameraWithSpin" => VfxMeshAlignment.FaceCameraWithSpin,
+        "PSMA_MeshFaceCameraWithLockedAxis" => VfxMeshAlignment.FaceCameraWithLockedAxis,
+        _ => VfxMeshAlignment.FaceCameraWithRoll
+    };
+
+    private static VfxMeshCameraFacing ParseMeshCameraFacing(string value) => value switch
+    {
+        "XAxisFacing_ZUp" => VfxMeshCameraFacing.XAxisFacingZUp,
+        "XAxisFacing_NegativeZUp" => VfxMeshCameraFacing.XAxisFacingNegativeZUp,
+        "XAxisFacing_YUp" => VfxMeshCameraFacing.XAxisFacingYUp,
+        "XAxisFacing_NegativeYUp" => VfxMeshCameraFacing.XAxisFacingNegativeYUp,
+        "LockedAxis_ZAxisFacing" => VfxMeshCameraFacing.LockedAxisZAxisFacing,
+        "LockedAxis_NegativeZAxisFacing" => VfxMeshCameraFacing.LockedAxisNegativeZAxisFacing,
+        "LockedAxis_YAxisFacing" => VfxMeshCameraFacing.LockedAxisYAxisFacing,
+        "LockedAxis_NegativeYAxisFacing" => VfxMeshCameraFacing.LockedAxisNegativeYAxisFacing,
+        "VelocityAligned_ZAxisFacing" => VfxMeshCameraFacing.VelocityAlignedZAxisFacing,
+        "VelocityAligned_NegativeZAxisFacing" => VfxMeshCameraFacing.VelocityAlignedNegativeZAxisFacing,
+        "VelocityAligned_YAxisFacing" => VfxMeshCameraFacing.VelocityAlignedYAxisFacing,
+        "VelocityAligned_NegativeYAxisFacing" => VfxMeshCameraFacing.VelocityAlignedNegativeYAxisFacing,
+        _ => VfxMeshCameraFacing.XAxisFacingNoUp
+    };
 
     private static VfxScreenAlignment ParseScreenAlignment(string value) => value switch
     {
@@ -614,14 +967,51 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         _ => VfxSubUVInterpolation.None
     };
 
-    private sealed class CombinedColorDistribution(IVfxDistribution<Vector3> color, IVfxDistribution<float> alpha) : IVfxDistribution<Vector4>
+    private static VfxSortMode ParseSortMode(string value) => value switch
     {
-        public Vector4 Evaluate(float time, float random) => new(color.Evaluate(time, random), alpha.Evaluate(time, random));
+        "PSORTMODE_ViewProjDepth" => VfxSortMode.ViewProjectionDepth,
+        "PSORTMODE_DistanceToView" => VfxSortMode.DistanceToView,
+        "PSORTMODE_Age_OldestFirst" => VfxSortMode.AgeOldestFirst,
+        "PSORTMODE_Age_NewestFirst" => VfxSortMode.AgeNewestFirst,
+        _ => VfxSortMode.None
+    };
+
+    private static VfxBurstMethod ParseBurstMethod(string value) => value switch
+    {
+        "EPBM_Interpolated" => VfxBurstMethod.Interpolated,
+        _ => VfxBurstMethod.Instant
+    };
+
+    private sealed class CombinedColorDistribution(IVfxDistribution<Vector3> color, IVfxDistribution<float> alpha, bool clampAlpha) : IVfxDistribution<Vector4>
+    {
+        public Vector4 Evaluate(float time, float random)
+        {
+            float alphaValue = alpha.Evaluate(time, random);
+            return new Vector4(color.Evaluate(time, random), clampAlpha ? Math.Clamp(alphaValue, 0, 1) : alphaValue);
+        }
+    }
+
+    /// <summary>
+    /// ParticleModuleSizeMultiplyLife only applies the life multiplier to the axes whose MultiplyX/Y/Z flag is set;
+    /// the remaining axes keep their initial size.
+    /// </summary>
+    private sealed class MaskedVectorDistribution(IVfxDistribution<Vector3> source, bool useX, bool useY, bool useZ) : IVfxDistribution<Vector3>
+    {
+        public Vector3 Evaluate(float time, float random)
+        {
+            Vector3 value = source.Evaluate(time, random);
+            return new Vector3(useX ? value.X : 1, useY ? value.Y : 1, useZ ? value.Z : 1);
+        }
     }
 
     private sealed class ScaledFloatDistribution(IVfxDistribution<float> source, float scale) : IVfxDistribution<float>
     {
         public float Evaluate(float time, float random) => source.Evaluate(time, random) * scale;
+    }
+
+    private sealed class ScaledVectorDistribution(IVfxDistribution<Vector3> source, float scale) : IVfxDistribution<Vector3>
+    {
+        public Vector3 Evaluate(float time, float random) => source.Evaluate(time, random) * scale;
     }
 }
 
