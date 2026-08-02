@@ -34,7 +34,7 @@ internal static class StageBoneOriginResolver
     }
 
     public static bool TrySelectOrigin(Window owner, IMEPackage sourcePackage, ExportEntry contextExport,
-        ConversationExtended conversation, out CameraOrigin origin, out string message)
+        ConversationExtended conversation, out CameraOrigin origin, out string message, string actorLabel = null)
     {
         origin = default;
         message = null;
@@ -73,8 +73,9 @@ internal static class StageBoneOriginResolver
                 return false;
             }
 
-            StageOption selectedStage = SelectStage(owner, stages, "Choose Linked BioStage",
-                "Choose the BioStage linked to the matching StartConversation.");
+            string selectionSuffix = string.IsNullOrWhiteSpace(actorLabel) ? string.Empty : $" for {actorLabel}";
+            StageOption selectedStage = SelectStage(owner, stages, $"Choose Linked BioStage{selectionSuffix}",
+                $"Choose the BioStage linked to the matching StartConversation{selectionSuffix}.");
             if (selectedStage is null)
             {
                 return false;
@@ -87,8 +88,8 @@ internal static class StageBoneOriginResolver
                 return false;
             }
 
-            BoneOption selectedBone = Select(owner, bones, "Choose Stage Origin Bone",
-                "Choose the RefSkeleton bone whose raw Position will offset the BioStage Location.");
+            BoneOption selectedBone = Select(owner, bones, $"Choose Stage Origin Bone{selectionSuffix}",
+                $"Choose the RefSkeleton bone whose raw Position and orientation will place {actorLabel ?? "the actor"}.");
             if (selectedBone is null)
             {
                 return false;

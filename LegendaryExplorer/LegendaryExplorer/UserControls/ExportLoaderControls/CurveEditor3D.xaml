@@ -285,8 +285,14 @@
                                 <Button Content="Use Viewport Transform" Click="UseViewportTransformForPreviewActor_Click" Padding="7,3" Margin="2"/>
                                 <Button Content="Reset Actor" Click="ResetPreviewActor_Click" Padding="7,3" Margin="2"/>
                             </WrapPanel>
-                            <CheckBox x:Name="ActorPlaybackTrackZCheckBox" Content="Use TrackMove Z for actor playback" Margin="2,2,0,0"
-                                      ToolTip="Unchecked keeps the actor's user-defined Z origin while using TrackMove X/Y/rotation. Checked uses the TrackMove Z exactly."/>
+                            <StackPanel Margin="2,2,0,0">
+                                <CheckBox x:Name="ActorPlaybackTrackZCheckBox" Content="Use TrackMove Z for actor playback"
+                                          Checked="ActorPlaybackZOption_Changed" Unchecked="ActorPlaybackZOption_Changed"
+                                          ToolTip="Uses the TrackMove Z exactly during actor playback."/>
+                                <CheckBox x:Name="ActorPlaybackShiftZCheckBox" Content="Shift actors down 90 units during playback"
+                                          Checked="ActorPlaybackZOption_Changed" Unchecked="ActorPlaybackZOption_Changed"
+                                          ToolTip="Applies a playback-only -90 Z offset without changing actor origins. Mutually exclusive with TrackMove Z."/>
+                            </StackPanel>
                             <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="2,2,0,0" Opacity="0.7" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Expander>

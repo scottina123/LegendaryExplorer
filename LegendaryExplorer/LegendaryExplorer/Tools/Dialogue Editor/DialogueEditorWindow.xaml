@@ -92,6 +92,9 @@
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Bulk Edit Interp Groups" Command="{Binding BulkEditInterpGroupsCommand}" ToolTip="Bulk edit tags, actor names, and group names in the InterpData for this node." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Preview Node in 3D" Click="PreviewDialogueNode_Click"
+                      IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}"
+                      ToolTip="Preview this node's actors, gestures, movement, facing, look-at, and cameras"/>
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>
@@ -154,6 +157,9 @@
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
             <MenuItem Header="Bulk Edit Interp Groups" Command="{Binding BulkEditInterpGroupsCommand}" ToolTip="Bulk edit tags, actor names, and group names in the InterpData for this node." 
                       sharedUi:Bindings.VisibilityToEnabled="True"/>
+            <MenuItem Header="Preview Node in 3D" Click="PreviewDialogueNode_Click"
+                      IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}"
+                      ToolTip="Preview this node's actors, gestures, movement, facing, look-at, and cameras"/>
             <MenuItem Header="Camera Presets" IsEnabled="{Binding SelectedDialogueNode.InterpData, Converter={StaticResource NullEnabledConverter}}">
                 <MenuItem Header="Single Camera..." Click="ApplySingleCameraPreset_Click" ToolTip="Choose an Interp group and apply a single-camera preset"/>
                 <MenuItem Header="Multicam..." Click="ApplyMulticamCameraPreset_Click" ToolTip="Apply a multicam preset through this node's Director track"/>

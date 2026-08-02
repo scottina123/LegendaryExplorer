@@ -21,6 +21,7 @@ using LegendaryExplorer.Tools.Soundplorer;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UnrealExtensions;
 using LegendaryExplorer.UnrealExtensions.Classes;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorer.Packages;
 using LegendaryExplorerCore.Dialogue;
@@ -186,11 +187,11 @@ namespace LegendaryExplorer.DialogueEditor
         }
 
         private bool TrySelectCrossEditorStageOrigin(DialogueNodeExtended destinationNode, out CameraOrigin origin,
-            bool showErrors)
+            bool showErrors, string actorLabel = null)
         {
             ExportEntry contextExport = destinationNode?.InterpData ?? SelectedConv?.Export;
             bool resolved = StageBoneOriginResolver.TrySelectOrigin(this, Pcc, contextExport, SelectedConv,
-                out origin, out string message);
+                out origin, out string message, actorLabel);
             if (!resolved && showErrors && !string.IsNullOrWhiteSpace(message))
             {
                 MessageBox.Show(this, message, "Stage Origin Unavailable", MessageBoxButton.OK,
@@ -802,6 +803,74 @@ namespace LegendaryExplorer.DialogueEditor
         private bool LineHasInterpData()
         {
             return SelectedDialogueNode?.InterpData != null;
+        }
+
+        private void PreviewDialogueNode_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedConv is null || SelectedDialogueNode?.InterpData is not ExportEntry interpData)
+            {
+                return;
+            }
+
+            ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(interpData);
+            if (previewTrackMove is null)
+            {
+                MessageBox.Show(this,
+                    "This node has no TrackMove that can initialize the 3D preview.",
+                    "Node Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string[] actorTags = SelectedSpeakerList
+                .Select(speaker => speaker.SpeakerName)
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var actorOrigins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
+            var context = new CameraActorAnchorContext(SelectedConv, SelectedDialogueNode, actorTags);
+            ActorSceneStatePath bestPath = CameraActorSceneStateResolver.ResolvePaths(context, actorTags)
+                .OrderByDescending(path => actorTags.Count(path.ActorTransforms.ContainsKey))
+                .ThenBy(path => path.PathId, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (bestPath is not null)
+            {
+                foreach ((string actorTag, ResolvedActorTransform transform) in bestPath.ActorTransforms)
+                {
+                    actorOrigins[actorTag] = new CameraOrigin(transform.Location, transform.Rotation);
+                }
+            }
+
+            foreach (string builtInActor in actorTags.Where(tag =>
+                         tag.Equals("player", StringComparison.OrdinalIgnoreCase)
+                         || tag.Equals("owner", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!actorOrigins.ContainsKey(builtInActor)
+                    && TrySelectCrossEditorStageOrigin(SelectedDialogueNode, out CameraOrigin stageOrigin, false,
+                        builtInActor))
+                {
+                    actorOrigins[builtInActor] = stageOrigin;
+                }
+            }
+
+            List<CurveEditor3D.DialogueNodePreviewActor> actors = actorTags
+                .Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
+                    actorOrigins.GetValueOrDefault(tag,
+                        new CameraOrigin(new Vector3(0, index * 100, 0), Vector3.Zero))))
+                .ToList();
+            var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
+            if (levelPicker.ShowDialog() != true)
+            {
+                return;
+            }
+            IReadOnlyList<string> levelPaths = levelPicker.SelectedLevelPaths;
+            var preview = new CurveEditor3D();
+            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths);
+            var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
+            {
+                Owner = this,
+                Title = $"Dialogue Node Preview - {(SelectedDialogueNode.IsReply ? "Reply" : "Entry")} {SelectedDialogueNode.NodeCount}",
+            };
+            window.Show();
         }
         private bool StartCanMoveUp(object param)
         {
