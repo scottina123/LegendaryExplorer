@@ -977,6 +977,112 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             DialogueEditorExperimentsM.AddSpeakerWithSharedFXAToAllConvos(pew);
         }
 
+        public static void ImportBioConversationsFromLocInt(PackageEditorWindow pew)
+        {
+            if (pew?.Pcc == null)
+            {
+                return;
+            }
+
+            IMEPackage package = pew.Pcc;
+            if (package.Localization != MELocalization.None)
+            {
+                MessageBox.Show(pew,
+                    "Open the main, non-localized package before running this experiment.",
+                    "Import BioConversations from LOC_INT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(package.FilePath))
+            {
+                MessageBox.Show(pew,
+                    "The open package must have a file path so its linked LOC_INT package can be found.",
+                    "Import BioConversations from LOC_INT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string currentFileName = Path.GetFileName(package.FilePath);
+            string locIntFileName = currentFileName.SetUnrealLocalization(
+                package.Game, MELocalization.INT, includeLOC: true);
+            string locIntFilePath = Path.Combine(Path.GetDirectoryName(package.FilePath)!, locIntFileName);
+
+            if (!File.Exists(locIntFilePath))
+            {
+                MELoadedFiles.TryGetHighestMountedFile(package.Game, locIntFileName, out locIntFilePath);
+            }
+
+            if (string.IsNullOrWhiteSpace(locIntFilePath) || !File.Exists(locIntFilePath))
+            {
+                MessageBox.Show(pew,
+                    $"No linked LOC_INT package named '{locIntFileName}' was found.",
+                    "Import BioConversations from LOC_INT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                using IMEPackage locPackage = MEPackageHandler.OpenMEPackage(locIntFilePath);
+                List<ExportEntry> conversations = locPackage.Exports
+                    .Where(export => export.ClassName == "BioConversation")
+                    .ToList();
+
+                int addedConversationCount = 0;
+                int addedPackageCount = 0;
+
+                foreach (ExportEntry conversation in conversations)
+                {
+                    if (package.Imports.Any(import =>
+                            import.ClassName == conversation.ClassName
+                            && import.InstancedFullPath.Equals(conversation.InstancedFullPath,
+                                StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    ImportEntry parentImport = null;
+                    if (conversation.Parent is ExportEntry parentExport)
+                    {
+                        parentImport = package.Imports.FirstOrDefault(import =>
+                            import.ClassName == parentExport.ClassName
+                            && import.InstancedFullPath.Equals(parentExport.InstancedFullPath,
+                                StringComparison.OrdinalIgnoreCase));
+
+                        if (parentImport == null)
+                        {
+                            parentImport = new ImportEntry(parentExport, 0, package);
+                            package.AddImport(parentImport);
+                            addedPackageCount++;
+                        }
+                    }
+
+                    var conversationImport = new ImportEntry(conversation, parentImport?.UIndex ?? 0, package);
+                    package.AddImport(conversationImport);
+                    addedConversationCount++;
+                }
+
+                MessageBox.Show(pew,
+                    $"Scanned {conversations.Count} BioConversation export(s) in '{Path.GetFileName(locIntFilePath)}'.\n\n" +
+                    $"Added {addedConversationCount} BioConversation import(s) and {addedPackageCount} package import(s).",
+                    "Import BioConversations from LOC_INT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(pew,
+                    ex.FlattenException(),
+                    "Import BioConversations from LOC_INT",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
         public static void GenerateBlankBioConversation(PackageEditorWindow pew)
         {
             if (pew?.Pcc == null)
