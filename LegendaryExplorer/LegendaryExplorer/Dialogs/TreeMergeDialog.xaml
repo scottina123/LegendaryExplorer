@@ -117,6 +117,9 @@
                         <CheckBox Content="Use memory-safe import porting" 
                                   IsChecked="{Binding PortExportsMemorySafe}"/>
                         <TextBlock Text="Tests if imports being transferred will resolve in the destination file. If they can't be resolved in the destination file, they are ported as exports instead by resolving the import in the source file. This may significantly slow down porting." TextWrapping="Wrap"/>
+                        <CheckBox Content="Move DLC mod textures to the current DLC TFC"
+                                  IsChecked="{Binding MoveDlcModTexturesToCurrentDlcTfc}"/>
+                        <TextBlock Text="After porting, moves newly ported textures that reference another Textures_DLC_MOD TFC into the current package's DLC TFC. This option is remembered between sessions." TextWrapping="Wrap"/>
                         <CheckBox Content="Treat source file as non-global file" 
                                   IsChecked="{Binding PortGlobalsAsImports}" Visibility="{Binding IsGlobalFile, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         <TextBlock Text="When porting out of this file, port as exports rather than imports. Normally when porting out of a globally loaded file, relinked exports are converted to imports. This feature can be useful for merge mod development." 

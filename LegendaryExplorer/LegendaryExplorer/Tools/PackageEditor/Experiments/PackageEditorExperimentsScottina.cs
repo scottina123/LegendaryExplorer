@@ -98,6 +98,11 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
             List<string> Messages,
             List<string> Failures);
 
+        public sealed record DlcModTextureMoveSummary(
+            int MovedCount,
+            int FailedCount,
+            List<string> Failures);
+
         private sealed record FaceFxFolderScanSummary(
             List<string> PackageFiles,
             int FilesWithMatches,
@@ -945,6 +950,29 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 });
         }
 
+        public static DlcModTextureMoveSummary MoveDlcModTextureReferencesToCurrentDlcTfc(
+            IMEPackage package,
+            IEnumerable<ExportEntry> textureExports)
+        {
+            string targetTfcName = GetPreferredTextureTfcName(package);
+            List<ExportEntry> texturesToMove = FindDlcModTextureCacheUsages(textureExports, targetTfcName);
+            if (texturesToMove.Count == 0)
+            {
+                return new DlcModTextureMoveSummary(0, 0, []);
+            }
+
+            if (string.IsNullOrWhiteSpace(targetTfcName))
+            {
+                return new DlcModTextureMoveSummary(
+                    0,
+                    texturesToMove.Count,
+                    ["Could not determine the current DLC TFC name for the destination package."]);
+            }
+
+            TextureMoveSummary summary = MoveTexturesToTfc(texturesToMove, targetTfcName, package);
+            return new DlcModTextureMoveSummary(summary.MovedCount, summary.FailedCount, summary.Failures);
+        }
+
         private static List<ExportEntry> FindDlcModTextureCacheUsages(IMEPackage package, string targetTfcName)
         {
             if (package == null || package.Game <= MEGame.ME1 || string.IsNullOrWhiteSpace(targetTfcName))
@@ -952,14 +980,27 @@ namespace LegendaryExplorer.Tools.PackageEditor.Experiments
                 return [];
             }
 
+            return FindDlcModTextureCacheUsages(package.Exports, targetTfcName);
+        }
+
+        private static List<ExportEntry> FindDlcModTextureCacheUsages(
+            IEnumerable<ExportEntry> textureExports,
+            string targetTfcName)
+        {
+            if (textureExports == null)
+            {
+                return [];
+            }
+
             var matches = new List<ExportEntry>();
-            foreach (ExportEntry export in package.Exports.Where(exp => exp.IsTexture()))
+            foreach (ExportEntry export in textureExports.Where(exp => exp?.IsTexture() == true).Distinct())
             {
                 try
                 {
                     if (export.GetProperty<NameProperty>("TextureFileCacheName") is { } tfcProp
                         && tfcProp.Value.Name.StartsWith("Textures_DLC_MOD", StringComparison.OrdinalIgnoreCase)
-                        && !tfcProp.Value.Name.Equals(targetTfcName, StringComparison.OrdinalIgnoreCase))
+                        && (string.IsNullOrWhiteSpace(targetTfcName)
+                            || !tfcProp.Value.Name.Equals(targetTfcName, StringComparison.OrdinalIgnoreCase)))
                     {
                         matches.Add(export);
                     }

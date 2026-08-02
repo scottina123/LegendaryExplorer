@@ -46,6 +46,11 @@ namespace LegendaryExplorerCore.Packages.CloningImportingAndRelinking
         /// If imports should be tested for resolution in the destination package on port. If they fail, port as resolved source exports instead.
         /// </summary>
         public bool PortExportsMemorySafe { get; set; }
+
+        /// <summary>
+        /// If ported textures referencing another DLC mod TFC should be moved into the destination package's DLC mod TFC.
+        /// </summary>
+        public bool MoveDlcModTexturesToCurrentDlcTfc { get; set; }
     }
     public static class EntryImporter
     {

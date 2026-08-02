@@ -7200,6 +7200,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
 
                 var importedEntries = Pcc.Exports.Skip(numExports).Cast<IEntry>().ToList();
+                PackageEditorExperimentsScottina.DlcModTextureMoveSummary textureMoveSummary = null;
+                if (portingOption.MoveDlcModTexturesToCurrentDlcTfc)
+                {
+                    var portedTextures = importedEntries
+                        .OfType<ExportEntry>()
+                        .Where(export => export.IsTexture())
+                        .ToList();
+                    if (newEntry is ExportEntry newTexture
+                        && newTexture.IsTexture()
+                        && !portedTextures.Contains(newTexture))
+                    {
+                        portedTextures.Add(newTexture);
+                    }
+
+                    textureMoveSummary = PackageEditorExperimentsScottina.MoveDlcModTextureReferencesToCurrentDlcTfc(Pcc, portedTextures);
+                    relinkResults.AddRange(textureMoveSummary.Failures.Select(failure => new EntryStringPair(failure)));
+                }
+
                 TryAddToPersistentLevel(importedEntries);
                 TryAddToStreamingLevelsList(importedEntries);
 
@@ -7239,8 +7257,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 }
                 else
                 {
+                    string textureMoveMessage = textureMoveSummary?.MovedCount > 0
+                        ? $"\nMoved {textureMoveSummary.MovedCount} DLC mod texture{(textureMoveSummary.MovedCount == 1 ? string.Empty : "s")} to the current DLC TFC."
+                        : string.Empty;
                     MessageBox.Show(
-                        "Items have been ported and relinked with no reported issues.\nNote that this does not mean all binary properties were relinked, only supported ones were.");
+                        $"Items have been ported and relinked with no reported issues.\nNote that this does not mean all binary properties were relinked, only supported ones were.{textureMoveMessage}");
                 }
 
                 RefreshView();

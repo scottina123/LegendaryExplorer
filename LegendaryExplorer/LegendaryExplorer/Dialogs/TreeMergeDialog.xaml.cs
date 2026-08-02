@@ -56,6 +56,20 @@ namespace LegendaryExplorer.Dialogs
         public bool PortExportsMemorySafe { get; set; } = Settings.PackageEditor_DefaultMemorySafeImportPorting;
         public bool PortExportsAsImportsWhenPossible { get; set; }
 
+        private bool _moveDlcModTexturesToCurrentDlcTfc = Settings.PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting;
+        public bool MoveDlcModTexturesToCurrentDlcTfc
+        {
+            get => _moveDlcModTexturesToCurrentDlcTfc;
+            set
+            {
+                if (SetProperty(ref _moveDlcModTexturesToCurrentDlcTfc, value))
+                {
+                    Settings.PackageEditor_MoveDlcModTexturesToCurrentDlcTfcWhenPorting = value;
+                    Settings.Save();
+                }
+            }
+        }
+
         public TreeMergeDialog(IEntry sourceEntry, IEntry targetEntry, MEGame targetGame, PackageEditorWindow sourceWindow = null, PackageEditorWindow destWindow = null)
         {
             this.sourceEntry = sourceEntry;
@@ -220,6 +234,7 @@ namespace LegendaryExplorer.Dialogs
             tmd.PortingOption.PortGlobalsAsImports = tmd.PortGlobalsAsImports;
             tmd.PortingOption.PortExportsAsImportsWhenPossible = tmd.PortExportsAsImportsWhenPossible;
             tmd.PortingOption.PortExportsMemorySafe = tmd.PortExportsMemorySafe;
+            tmd.PortingOption.MoveDlcModTexturesToCurrentDlcTfc = tmd.MoveDlcModTexturesToCurrentDlcTfc;
             return tmd.PortingOption;
         }
 
