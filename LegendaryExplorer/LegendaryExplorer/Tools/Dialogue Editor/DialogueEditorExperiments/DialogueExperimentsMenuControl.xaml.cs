@@ -1,5 +1,8 @@
 ﻿using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.DialogueEditor.DialogueEditorExperiments;
+using LegendaryExplorer.UserControls.PackageEditorControls;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -10,13 +13,41 @@ namespace LegendaryExplorer.Tools.Dialogue_Editor.DialogueEditorExperiments
     /// </summary>
     public partial class DialogueExperimentsMenuControl : MenuItem
     {
+        private readonly List<MenuItem> _experimentMenuItems;
+
         public DialogueExperimentsMenuControl()
         {
             LoadCommands();
             InitializeComponent();
+
+            _experimentMenuItems = Items.OfType<MenuItem>().ToList();
+            foreach (MenuItem menuItem in _experimentMenuItems)
+            {
+                menuItem.DataContext = this;
+            }
+
+            Items.Clear();
+            Click += DialogueExperimentsMenuControl_Click;
         }
 
         private void LoadCommands() { }
+
+        private void DialogueExperimentsMenuControl_Click(object sender, RoutedEventArgs e)
+        {
+            DialogueEditorWindow owner = GetDEWindow();
+            if (owner == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<ExperimentBrowserItem> experiments = ExperimentBrowserCatalog.Create(
+                _experimentMenuItems, ExperimentBrowserCatalog.GetHeader);
+            var browser = new ExperimentsBrowserWindow(owner, "Dialogue Editor Experiments", experiments);
+            if (browser.ShowDialog() == true)
+            {
+                browser.SelectedExperiment?.Invoke();
+            }
+        }
 
         public DialogueEditorWindow GetDEWindow()
         {

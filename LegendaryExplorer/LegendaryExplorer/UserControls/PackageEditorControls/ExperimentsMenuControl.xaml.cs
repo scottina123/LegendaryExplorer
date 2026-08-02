@@ -39,10 +39,51 @@ namespace LegendaryExplorer.UserControls.PackageEditorControls
     /// </summary>
     public partial class ExperimentsMenuControl : MenuItem
     {
+        private readonly List<MenuItem> _experimentMenuItems;
+
         public ExperimentsMenuControl()
         {
             LoadCommands();
             InitializeComponent();
+
+            _experimentMenuItems = Items.OfType<MenuItem>().ToList();
+            foreach (MenuItem menuItem in _experimentMenuItems)
+            {
+                menuItem.DataContext = this;
+            }
+
+            Items.Clear();
+            Click += ExperimentsMenuControl_Click;
+        }
+
+        internal IReadOnlyList<ExperimentBrowserItem> GetExperimentBrowserItems()
+        {
+            bool useTopLevelCategory = false;
+            return ExperimentBrowserCatalog.Create(_experimentMenuItems, menuItem =>
+            {
+                string header = ExperimentBrowserCatalog.GetHeader(menuItem);
+                if (header == "Mgamerz's Programming Circus")
+                {
+                    useTopLevelCategory = true;
+                }
+
+                return useTopLevelCategory ? header : "General";
+            });
+        }
+
+        private void ExperimentsMenuControl_Click(object sender, RoutedEventArgs e)
+        {
+            PackageEditorWindow owner = GetPEWindow();
+            if (owner == null)
+            {
+                return;
+            }
+
+            var browser = new ExperimentsBrowserWindow(owner, "Package Editor Experiments", GetExperimentBrowserItems());
+            if (browser.ShowDialog() == true)
+            {
+                browser.SelectedExperiment?.Invoke();
+            }
         }
 
         public ICommand ForceReloadPackageCommand { get; set; }

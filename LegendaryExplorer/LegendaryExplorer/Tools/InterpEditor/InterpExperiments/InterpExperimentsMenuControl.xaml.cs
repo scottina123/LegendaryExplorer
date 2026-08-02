@@ -1,5 +1,8 @@
-﻿using System.Windows;
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
+using LegendaryExplorer.UserControls.PackageEditorControls;
 
 namespace LegendaryExplorer.Tools.InterpEditor.InterpExperiments
 {
@@ -8,13 +11,41 @@ namespace LegendaryExplorer.Tools.InterpEditor.InterpExperiments
     /// </summary>
     public partial class InterpExperimentsMenuControl : MenuItem
     {
+        private readonly List<MenuItem> _experimentMenuItems;
+
         public InterpExperimentsMenuControl()
         {
             LoadCommands();
             InitializeComponent();
+
+            _experimentMenuItems = Items.OfType<MenuItem>().ToList();
+            foreach (MenuItem menuItem in _experimentMenuItems)
+            {
+                menuItem.DataContext = this;
+            }
+
+            Items.Clear();
+            Click += InterpExperimentsMenuControl_Click;
         }
 
         private void LoadCommands() { }
+
+        private void InterpExperimentsMenuControl_Click(object sender, RoutedEventArgs e)
+        {
+            InterpEditorWindow owner = GetIEWindow();
+            if (owner == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<ExperimentBrowserItem> experiments = ExperimentBrowserCatalog.Create(
+                _experimentMenuItems, ExperimentBrowserCatalog.GetHeader);
+            var browser = new ExperimentsBrowserWindow(owner, "Interp Editor Experiments", experiments);
+            if (browser.ShowDialog() == true)
+            {
+                browser.SelectedExperiment?.Invoke();
+            }
+        }
 
         public InterpEditorWindow GetIEWindow()
         {
