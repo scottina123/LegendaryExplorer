@@ -546,7 +546,7 @@
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal">
                                         <Image Width="16" Height="16" Margin="0,0,3,0" Source="{Binding Entry, Converter={StaticResource EntryFileTypeIconPathConverter}}" Visibility="{Binding Entry, Converter={StaticResource EntryFileTypeConverter}}" />
-                                        <TextBlock  Text="{Binding DisplayName}" VerticalAlignment="Center">
+                                        <TextBlock x:Name="ObjectNameDisplay" Text="{Binding DisplayName}" VerticalAlignment="Center" MouseLeftButtonDown="ObjectNameDisplay_MouseLeftButtonDown">
                                             <TextBlock.Style>
                                                 <Style TargetType="{x:Type TextBlock}">
                                                     <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
@@ -569,6 +569,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <TextBox x:Name="ObjectNameEditor" Visibility="Collapsed" VerticalContentAlignment="Center" MinWidth="120" LostKeyboardFocus="ObjectNameEditor_LostKeyboardFocus" PreviewKeyDown="ObjectNameEditor_PreviewKeyDown" />
                                     </StackPanel>
                                 </DockPanel>
                             </controls:TreeViewEntryContainer>

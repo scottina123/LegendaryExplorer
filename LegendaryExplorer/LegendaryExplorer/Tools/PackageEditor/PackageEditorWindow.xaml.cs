@@ -90,6 +90,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private CancellationTokenSource _entrySearchCancellationTokenSource;
 
+        private TextBox _inlineObjectNameEditor;
+        private TextBlock _inlineObjectNameDisplay;
+        private TreeViewEntry _inlineObjectNameNode;
+        private bool _isEndingInlineObjectNameEdit;
+
         private static readonly HashSet<string> CommonStringRefPropertyNames =
         [
             "m_nStrRefID",
@@ -6295,6 +6300,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void TreeEntryContainer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (_inlineObjectNameEditor?.IsMouseOver == true)
+            {
+                return;
+            }
+
             if (sender is not FrameworkElement { DataContext: TreeViewEntry clickedNode })
             {
                 return;
@@ -6348,6 +6358,117 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
 
             SetTreeMultiSelection([clickedNode], clickedNode, updatePrimarySelection: true);
+        }
+
+        private void ObjectNameDisplay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2
+                || sender is not TextBlock { DataContext: TreeViewEntry { Entry: not null } node, Parent: Panel parent } display
+                || node.UIndex == 0
+                || parent.Children.OfType<TextBox>().FirstOrDefault() is not { } editor)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            if (_inlineObjectNameEditor == editor)
+            {
+                return;
+            }
+
+            if (!EndInlineObjectNameEdit(commit: true))
+            {
+                return;
+            }
+
+            _inlineObjectNameEditor = editor;
+            _inlineObjectNameDisplay = display;
+            _inlineObjectNameNode = node;
+
+            editor.Text = node.Entry.ObjectName.Instanced;
+            display.Visibility = Visibility.Collapsed;
+            editor.Visibility = Visibility.Visible;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                editor.Focus();
+                editor.CaretIndex = editor.Text.Length;
+            }));
+        }
+
+        private void ObjectNameEditor_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender != _inlineObjectNameEditor)
+            {
+                return;
+            }
+
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = EndInlineObjectNameEdit(commit: true);
+            }
+            else if (e.Key == Key.Escape)
+            {
+                EndInlineObjectNameEdit(commit: false);
+                e.Handled = true;
+            }
+        }
+
+        private void ObjectNameEditor_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (sender == _inlineObjectNameEditor && !_isEndingInlineObjectNameEdit)
+            {
+                EndInlineObjectNameEdit(commit: true);
+            }
+        }
+
+        private bool EndInlineObjectNameEdit(bool commit)
+        {
+            if (_inlineObjectNameEditor is null)
+            {
+                return true;
+            }
+
+            if (commit && string.IsNullOrWhiteSpace(_inlineObjectNameEditor.Text))
+            {
+                MessageBox.Show(this, "Object names cannot be empty.", "Invalid object name", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                {
+                    _inlineObjectNameEditor?.Focus();
+                    _inlineObjectNameEditor?.SelectAll();
+                }));
+                return false;
+            }
+
+            _isEndingInlineObjectNameEdit = true;
+            try
+            {
+                TextBox editor = _inlineObjectNameEditor;
+                TextBlock display = _inlineObjectNameDisplay;
+                TreeViewEntry node = _inlineObjectNameNode;
+                string editedName = editor.Text.Trim();
+
+                _inlineObjectNameEditor = null;
+                _inlineObjectNameDisplay = null;
+                _inlineObjectNameNode = null;
+                editor.Visibility = Visibility.Collapsed;
+                display.Visibility = Visibility.Visible;
+
+                if (commit)
+                {
+                    NameReference newName = NameReference.FromInstancedString(editedName);
+                    if (node.Entry.ObjectName != newName)
+                    {
+                        node.Entry.ObjectName = newName;
+                        node.RefreshDisplayName();
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                _isEndingInlineObjectNameEdit = false;
+            }
         }
 
         private void TreeEntryContainer_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
