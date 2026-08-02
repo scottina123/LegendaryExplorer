@@ -597,6 +597,13 @@ namespace LegendaryExplorer.SharedUI
                             }
                         }
 
+                        if (ee.ClassName == "SFXPointOfInterest" && ResolvePointOfInterestGameName(ee) is { } gameName)
+                        {
+                            _subtext = _subtext != null
+                                ? $"{_subtext}\n{gameName}"
+                                : gameName;
+                        }
+
                         if (ee.ParentName == "PersistentLevel" && ee.ClassName == "SFXStuntActor" && ee.Archetype is ExportEntry archetype)
                         {
                             string archetypeSubtext = archetype.ObjectName.Instanced;
@@ -698,6 +705,39 @@ namespace LegendaryExplorer.SharedUI
                 }
             }
             set { _subtext = value; OnPropertyChanged(); }
+        }
+
+        private static string ResolvePointOfInterestGameName(ExportEntry pointOfInterest)
+        {
+            int strRef = pointOfInterest.GetProperty<StringRefProperty>("m_srGameName")?.Value
+                         ?? pointOfInterest.GetProperty<IntProperty>("m_srGameName")?.Value
+                         ?? 0;
+
+            if (strRef == 0 && pointOfInterest.GetProperty<ArrayProperty<ObjectProperty>>("Modules") is { } modules)
+            {
+                foreach (var moduleRef in modules)
+                {
+                    if (pointOfInterest.FileRef.TryGetUExport(moduleRef.Value, out var module)
+                        && module.ClassName == "SFXSimpleUseModule")
+                    {
+                        strRef = module.GetProperty<StringRefProperty>("m_srGameName")?.Value
+                                 ?? module.GetProperty<IntProperty>("m_srGameName")?.Value
+                                 ?? 0;
+                        if (strRef != 0)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (strRef == 0)
+            {
+                return null;
+            }
+
+            string gameName = TLKManagerWPF.GlobalFindStrRefbyID(strRef, pointOfInterest.FileRef);
+            return gameName == "No Data" ? null : gameName;
         }
 
         private bool AddPropertyFlags(ExportEntry ee)
