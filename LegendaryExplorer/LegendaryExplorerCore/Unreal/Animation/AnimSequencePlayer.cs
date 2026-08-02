@@ -49,6 +49,8 @@ public class AnimSequencePlayer : AnimPlayer
     private List<ScheduledAnimationClipState> _scheduledClips;
     private float _scheduledStartTime;
     private float _scheduledEndTime;
+    private Matrix4x4[] _scheduledBasePose;
+    private Matrix4x4[] _scheduledLocalPose;
 
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
     {
@@ -93,6 +95,8 @@ public class AnimSequencePlayer : AnimPlayer
     public void SetAnimation(AnimSequence animSequence, PackageCache packageCache = null)
     {
         _scheduledClips = null;
+        _scheduledBasePose = null;
+        _scheduledLocalPose = null;
         _scheduledStartTime = 0;
         _scheduledEndTime = 0;
         _animSequence = animSequence;
@@ -157,6 +161,9 @@ public class AnimSequencePlayer : AnimPlayer
 
     public void SetAnimationTimeline(IEnumerable<ScheduledAnimationClip> clips, PackageCache packageCache = null)
     {
+        _scheduledBasePose = (Matrix4x4[])_boneComponentSpace.Clone();
+        _scheduledLocalPose = new Matrix4x4[_boneComponentSpace.Length];
+        ConvertComponentToLocalPose(_scheduledBasePose, _scheduledLocalPose);
         _animSequence = null;
         _blendFromComponentSpace = null;
         _crossfadeDuration = 0;
@@ -177,6 +184,8 @@ public class AnimSequencePlayer : AnimPlayer
         if (_scheduledClips.Count == 0)
         {
             _scheduledClips = null;
+            _scheduledBasePose = null;
+            _scheduledLocalPose = null;
             _scheduledStartTime = 0;
             _scheduledEndTime = 0;
             CurrentTime = 0;
@@ -399,22 +408,28 @@ public class AnimSequencePlayer : AnimPlayer
             return _skinningMatrices;
         }
 
-        ScheduledAnimationClipState first = activeClips[0].State;
-        Array.Copy(first.Player._boneComponentSpace, _boneComponentSpace, _boneComponentSpace.Length);
-        float accumulatedWeight = activeClips[0].Weight;
+        var blendedLocalPose = new Matrix4x4[_bones.Length];
+        var clipLocalPose = new Matrix4x4[_bones.Length];
+        float activeWeight = activeClips.Sum(activeClip => activeClip.Weight);
+        float accumulatedWeight = _scheduledLocalPose is null ? 0 : Math.Max(0, 1 - activeWeight);
+        if (accumulatedWeight > 0)
+        {
+            Array.Copy(_scheduledLocalPose, blendedLocalPose, blendedLocalPose.Length);
+        }
 
-        for (int clipIndex = 1; clipIndex < activeClips.Count; clipIndex++)
+        for (int clipIndex = 0; clipIndex < activeClips.Count; clipIndex++)
         {
             (ScheduledAnimationClipState state, float weight) = activeClips[clipIndex];
-            float alpha = Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
+            ConvertComponentToLocalPose(state.Player._boneComponentSpace, clipLocalPose);
+            float alpha = accumulatedWeight <= 0 ? 1 : Math.Clamp(weight / (accumulatedWeight + weight), 0, 1);
             for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
             {
-                if (Matrix4x4.Decompose(_boneComponentSpace[boneIndex], out _, out Quaternion currentRotation, out Vector3 currentPosition)
-                    && Matrix4x4.Decompose(state.Player._boneComponentSpace[boneIndex], out _, out Quaternion nextRotation, out Vector3 nextPosition))
+                if (Matrix4x4.Decompose(blendedLocalPose[boneIndex], out _, out Quaternion currentRotation, out Vector3 currentPosition)
+                    && Matrix4x4.Decompose(clipLocalPose[boneIndex], out _, out Quaternion nextRotation, out Vector3 nextPosition))
                 {
                     Quaternion rotation = Quaternion.Slerp(currentRotation, nextRotation, alpha);
                     Vector3 position = Vector3.Lerp(currentPosition, nextPosition, alpha);
-                    _boneComponentSpace[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
+                    blendedLocalPose[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
                 }
             }
             accumulatedWeight += weight;
@@ -422,10 +437,31 @@ public class AnimSequencePlayer : AnimPlayer
 
         for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
         {
+            int parentIndex = _bones[boneIndex].ParentIndex;
+            _boneComponentSpace[boneIndex] = parentIndex >= 0 && parentIndex < boneIndex
+                ? blendedLocalPose[boneIndex] * _boneComponentSpace[parentIndex]
+                : blendedLocalPose[boneIndex];
             _skinningMatrices[boneIndex] = _inverseBindPose[boneIndex] * _boneComponentSpace[boneIndex];
         }
 
         return _skinningMatrices;
+    }
+
+    private void ConvertComponentToLocalPose(Matrix4x4[] componentPose, Matrix4x4[] localPose)
+    {
+        for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+        {
+            int parentIndex = _bones[boneIndex].ParentIndex;
+            if (parentIndex >= 0 && parentIndex < boneIndex
+                && Matrix4x4.Invert(componentPose[parentIndex], out Matrix4x4 inverseParent))
+            {
+                localPose[boneIndex] = componentPose[boneIndex] * inverseParent;
+            }
+            else
+            {
+                localPose[boneIndex] = componentPose[boneIndex];
+            }
+        }
     }
 
     private static Vector3 SamplePosition(AnimTrack track, float frame, Vector3 bonePosition)

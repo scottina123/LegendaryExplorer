@@ -178,19 +178,52 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
             public override Matrix4x4[] ComputeSkinningMatrices()
             {
-                Matrix4x4[] gestureMatrices = GesturePlayer.HasAnimation
-                    ? GesturePlayer.ComputeSkinningMatrices()
-                    : null;
-                Matrix4x4[] faceMatrices = FaceFxPlayer.HasAnimation
-                    ? FaceFxPlayer.ComputeSkinningMatrices()
-                    : null;
+                bool hasGesture = GesturePlayer.HasAnimation;
+                bool hasFaceFx = FaceFxPlayer.HasAnimation;
+                if (hasGesture)
+                {
+                    GesturePlayer.ComputeSkinningMatrices();
+                }
+                if (hasFaceFx)
+                {
+                    FaceFxPlayer.ComputeSkinningMatrices();
+                }
+
                 for (int index = 0; index < _skinningMatrices.Length; index++)
                 {
-                    Matrix4x4 gesture = gestureMatrices?.ElementAtOrDefault(index) ?? Matrix4x4.Identity;
-                    Matrix4x4 face = faceMatrices?.ElementAtOrDefault(index) ?? Matrix4x4.Identity;
-                    _skinningMatrices[index] = face * gesture;
+                    MeshBone bone = _bones[index];
+                    Matrix4x4 bindLocal = Matrix4x4.CreateFromQuaternion(bone.Orientation)
+                                          * Matrix4x4.CreateTranslation(bone.Position);
+                    Matrix4x4 bodyLocal = hasGesture
+                        ? GetLocalTransform(GesturePlayer.BoneComponentSpaceTransforms, index)
+                        : bindLocal;
+                    Matrix4x4 finalLocal = bodyLocal;
+                    if (hasFaceFx)
+                    {
+                        Matrix4x4 faceLocal = GetLocalTransform(FaceFxPlayer.BoneComponentSpaceTransforms, index);
+                        if (Matrix4x4.Invert(bindLocal, out Matrix4x4 inverseBindLocal))
+                        {
+                            finalLocal *= inverseBindLocal * faceLocal;
+                        }
+                    }
+
+                    _boneComponentSpace[index] = bone.ParentIndex >= 0 && bone.ParentIndex < index
+                        ? finalLocal * _boneComponentSpace[bone.ParentIndex]
+                        : finalLocal;
+                    _skinningMatrices[index] = _inverseBindPose[index] * _boneComponentSpace[index];
                 }
                 return _skinningMatrices;
+            }
+
+            private Matrix4x4 GetLocalTransform(Matrix4x4[] componentPose, int boneIndex)
+            {
+                int parentIndex = _bones[boneIndex].ParentIndex;
+                if (parentIndex >= 0 && parentIndex < boneIndex
+                    && Matrix4x4.Invert(componentPose[parentIndex], out Matrix4x4 inverseParent))
+                {
+                    return componentPose[boneIndex] * inverseParent;
+                }
+                return componentPose[boneIndex];
             }
         }
 
@@ -2965,6 +2998,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        foreach (PreviewActorPlaybackState state in playbackActors)
+        {
+            ApplyAssignedGestureToActor(state.Actor);
+        }
+
         SetPlaybackRangeForCurrentMode(includeActorTracks: true);
         if (playbackEndTime <= playbackStartTime)
         {
@@ -3262,18 +3300,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         foreach (PreviewActorPlaybackState state in playbackActors)
         {
             state.Actor.Origin = state.OriginalOrigin;
-            if (previewActorAnimationStates.TryGetValue(state.Actor, out PreviewActorAnimationState animationState))
-            {
-                if (animationState.HasTimeline)
-                {
-                    animationState.SetTime(animationState.Player.StartTime);
-                }
-                else
-                {
-                    animationState.Clear();
-                }
-                UpdatePreviewActorSkinning(state.Actor);
-            }
+            ApplyAssignedGestureToActor(state.Actor);
             if (ReferenceEquals(selectedPreviewActor, state.Actor))
             {
                 updatingPreviewActorControls = true;
