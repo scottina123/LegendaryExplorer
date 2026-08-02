@@ -146,6 +146,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public ExportEntry Group { get; init; }
         public ExportEntry Track { get; init; }
         public IReadOnlyList<GesturePreviewExportLoader.GestureAnimationItem> Animations { get; init; } = [];
+        public GesturePreviewExportLoader.GestureAnimationItem StartingPose { get; init; }
         public IReadOnlyList<AnimationPreviewControl.AnimationTimelineClip> Timeline { get; init; } = [];
         public string Status { get; init; }
         public bool HasResolvedTimeline => Timeline.Count > 0;
@@ -198,8 +199,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public LayeredAnimationPlayer Player { get; init; }
         public bool HasTimeline => Player?.HasAnimation == true;
 
-        public void SetTimeline(IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache)
+        public void SetTimeline(GesturePreviewExportLoader.GestureAnimationItem startingPose,
+            IEnumerable<AnimationPreviewControl.AnimationTimelineClip> timeline, PackageCache packageCache)
         {
+            if (startingPose?.AnimationExport is not null)
+            {
+                var startingPoseAnimation = ObjectBinary.From<AnimSequence>(startingPose.AnimationExport);
+                startingPoseAnimation.DecompressAnimationData();
+                Player.GesturePlayer.SetAnimation(startingPoseAnimation, packageCache);
+                Player.GesturePlayer.SetCurrentTime(startingPose.Settings.StartOffset);
+                Player.GesturePlayer.ComputeSkinningMatrices();
+            }
+
             List<AnimSequencePlayer.ScheduledAnimationClip> scheduledClips = [];
             foreach (AnimationPreviewControl.AnimationTimelineClip clip in timeline)
             {
@@ -225,7 +236,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 });
             }
 
-            Player.GesturePlayer.SetAnimationTimeline(scheduledClips, packageCache);
+            if (scheduledClips.Count > 0)
+            {
+                Player.GesturePlayer.SetAnimationTimeline(scheduledClips, packageCache);
+            }
             Renderer.NeedsUpdate = true;
         }
 
@@ -910,8 +924,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             List<GesturePreviewExportLoader.GestureAnimationItem> resolvedAnimations = animations
                 .Where(animation => animation.AnimationExport is not null)
                 .ToList();
+            GesturePreviewExportLoader.GestureAnimationItem startingPose = resolvedAnimations
+                .FirstOrDefault(animation => !animation.GestureIndex.HasValue);
             List<AnimationPreviewControl.AnimationTimelineClip> timeline = GesturePreviewExportLoader
-                .BuildPlaybackTimeline(resolvedAnimations);
+                .BuildPlaybackTimeline(resolvedAnimations.Where(animation => animation.GestureIndex.HasValue).ToList());
             string title = gestureTrack.GetProperty<StrProperty>("TrackTitle")?.Value ?? gestureTrack.ObjectName.Instanced;
             string actor = gestureTrack.GetProperty<NameProperty>("m_nmFindActor")?.Value.Instanced ?? "None";
             availableGestureTracks.Add(new GestureTrackOption
@@ -920,8 +936,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Group = gestureTrack.Parent as ExportEntry,
                 Track = gestureTrack,
                 Animations = animations,
+                StartingPose = startingPose,
                 Timeline = timeline,
-                Status = timeline.Count == 0
+                Status = timeline.Count == 0 && startingPose is null
                     ? $"{title}: no resolved gesture animation timeline."
                     : $"{title}: {resolvedAnimations.Count} resolved animation slot(s).",
             });
@@ -4163,14 +4180,15 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
-        if (!previewActorGestureAssignments.TryGetValue(actor, out GestureTrackOption gesture) || gesture.Timeline.Count == 0)
+        if (!previewActorGestureAssignments.TryGetValue(actor, out GestureTrackOption gesture)
+            || gesture.Timeline.Count == 0 && gesture.StartingPose is null)
         {
             animationState.Clear();
             UpdatePreviewActorSkinning(actor);
             return;
         }
 
-        animationState.SetTimeline(gesture.Timeline, previewActorGesturePackageCache);
+        animationState.SetTimeline(gesture.StartingPose, gesture.Timeline, previewActorGesturePackageCache);
         UpdatePreviewActorSkinning(actor);
     }
 
