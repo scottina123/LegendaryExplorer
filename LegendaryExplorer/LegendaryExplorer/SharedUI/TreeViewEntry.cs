@@ -596,6 +596,13 @@ namespace LegendaryExplorer.SharedUI
                                 _subtext = tag.Value.Instanced;
                             }
                         }
+
+                        if (ee.ParentName == "PersistentLevel" && ee.ClassName == "SFXStuntActor" && ee.Archetype is ExportEntry archetype)
+                        {
+                            _subtext = _subtext != null
+                                ? $"{_subtext}\n{archetype.ObjectName.Instanced}"
+                                : archetype.ObjectName.Instanced;
+                        }
                     }
 
                     if (_subtext == null)
