@@ -9,7 +9,6 @@ using LegendaryExplorerCore.Unreal;
 using SharpDX.D3DCompiler;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
-using SharpDX.DXGI;
 using SharpDX.Mathematics.Interop;
 using System;
 using System.Collections.Generic;
@@ -877,30 +876,7 @@ public class MeshRenderContext : RenderContext
             return WhiteTex;
         }
         var unrealTexture = new LECTexture2D(texture2DExport);
-        LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip = unrealTexture.GetTopMip();
-        LegendaryExplorerCore.Textures.PixelFormat pixelFormat = LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name);
-        byte[] imageBytes = LECTexture2D.GetTextureData(mip, mip.Export.Game);
-        uint width = (uint)mip.width;
-        uint height = (uint)mip.height;
-        Format format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
-        if (texture2DExport.GetProperty<BoolProperty>("SRGB")?.Value != false)
-        {
-            format = format switch
-            {
-                Format.BC1_UNorm => Format.BC1_UNorm_SRgb,
-                Format.BC2_UNorm => Format.BC2_UNorm_SRgb,
-                Format.BC3_UNorm => Format.BC3_UNorm_SRgb,
-                Format.B8G8R8A8_UNorm => Format.B8G8R8A8_UNorm_SRgb,
-                Format.R8G8B8A8_UNorm => Format.R8G8B8A8_UNorm_SRgb,
-                _ => format
-            };
-        }
-        if (format.IsCompressed())
-        {
-            width = Math.Max(width, 4);
-            height = Math.Max(height, 4);
-        }
-        return this.LoadTexture(width, height, format, imageBytes);
+        return this.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
     }
 
     public Texture2D LoadUnrealTextureCube(ExportEntry textureCubeExport, PackageCache packageCache = null)
