@@ -318,6 +318,7 @@ namespace LegendaryExplorer.DialogueEditor
         public ObservableCollectionExtended<SpeakerExtended> SelectedSpeakerList { get; } = new();
         public ObservableCollectionExtended<SpeakerExtended> ListenersList { get; } = new();
         public ObservableCollectionExtended<TreeViewEntry> InterpDataTreeNodes { get; } = new();
+        private ExportEntry loadedInterpDataEditorExport;
         public ObservableCollectionExtended<ReplyChoiceNode> InlineLinkEditorLinks { get; } = new();
         private DialogueNodeExtended _SelectedDialogueNode;
         public DialogueNodeExtended SelectedDialogueNode
@@ -4677,7 +4678,10 @@ namespace LegendaryExplorer.DialogueEditor
         {
             if (e.NewValue is TreeViewEntry { Entry: ExportEntry export })
             {
-                LoadInterpDataEditors(export);
+                if (!ReferenceEquals(export, loadedInterpDataEditorExport))
+                {
+                    LoadInterpDataEditors(export);
+                }
             }
             else if (suppressInterpDataInterpreterUnloadDepth == 0)
             {
@@ -4697,6 +4701,7 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             LoadActiveInterpDataEditor(export);
+            loadedInterpDataEditorExport = export;
         }
 
         private void LoadActiveInterpDataEditor(ExportEntry export)
@@ -4742,6 +4747,7 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void UnloadInterpDataEditors()
         {
+            loadedInterpDataEditorExport = null;
             InterpData_InterpreterWPF.UnloadExport();
             InterpData_MetadataEditor.UnloadExport();
             InterpData_CurveEditor.UnloadExport();
