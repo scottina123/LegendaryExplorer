@@ -50,6 +50,8 @@ internal sealed class StageConversationContext : IDisposable
 
 internal static class StageBoneOriginResolver
 {
+    private const float PlayerStageBoneActorZOffset = 88f;
+
     private sealed record StageOption(ExportEntry Stage, ExportEntry StartConversation,
         IReadOnlyDictionary<string, string> VariableLinkSubtitles)
     {
@@ -289,12 +291,12 @@ internal static class StageBoneOriginResolver
                 string actorTag = ResolveLinkedActorTag(variable, cache);
                 if (!string.IsNullOrWhiteSpace(actorTag))
                 {
-                    origins[actorTag] = slotOrigin;
+                    origins[actorTag] = GetActorSlotOrigin(actorTag, slotOrigin);
                 }
                 if (variableLink.LinkDesc.Equals("Owner", StringComparison.OrdinalIgnoreCase)
                     || variableLink.LinkDesc.Equals("Player", StringComparison.OrdinalIgnoreCase))
                 {
-                    origins[variableLink.LinkDesc] = slotOrigin;
+                    origins[variableLink.LinkDesc] = GetActorSlotOrigin(variableLink.LinkDesc, slotOrigin);
                 }
             }
         }
@@ -311,6 +313,18 @@ internal static class StageBoneOriginResolver
             origins["Owner"] = slotOrigins[ownerSlot.LinkDesc];
         }
         return origins;
+    }
+
+    private static CameraOrigin GetActorSlotOrigin(string actorTag, CameraOrigin slotOrigin)
+    {
+        if (!actorTag.Equals("Player", StringComparison.OrdinalIgnoreCase))
+        {
+            return slotOrigin;
+        }
+
+        Vector3 location = slotOrigin.Location;
+        location.Z += PlayerStageBoneActorZOffset;
+        return new CameraOrigin(location, slotOrigin.Rotation);
     }
 
     private static bool LinksReferToSameVariable(VarLinkInfo first, VarLinkInfo second, PackageCache cache)
