@@ -58,7 +58,7 @@ public abstract class AnimPlayer
         ComputeBindPose();
     }
 
-    private void ComputeBindPose()
+    protected void ComputeBindPose()
     {
         int numBones = _bones.Length;
         var bindPose = new Matrix4x4[numBones];
@@ -80,6 +80,7 @@ public abstract class AnimPlayer
             }
 
             Matrix4x4.Invert(bindPose[i], out _inverseBindPose[i]);
+            _boneComponentSpace[i] = bindPose[i];
             _skinningMatrices[i] = Matrix4x4.Identity;
         }
     }

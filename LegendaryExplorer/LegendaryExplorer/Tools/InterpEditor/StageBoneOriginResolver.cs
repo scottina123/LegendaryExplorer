@@ -23,11 +23,13 @@ internal sealed class StageConversationContext : IDisposable
     public ExportEntry StartConversation { get; }
     public ExportEntry Stage { get; }
     public CameraOrigin StageOrigin { get; }
+    public IReadOnlyDictionary<string, CameraOrigin> StageNodeOrigins { get; }
     public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
     public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
 
     public StageConversationContext(IMEPackage mainPackage, bool ownsMainPackage, ExportEntry startConversation,
-        ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
+        ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins,
+        IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
         IReadOnlyDictionary<string, string> variableLinkSubtitles)
     {
         MainPackage = mainPackage;
@@ -35,6 +37,7 @@ internal sealed class StageConversationContext : IDisposable
         StartConversation = startConversation;
         Stage = stage;
         StageOrigin = stageOrigin;
+        StageNodeOrigins = stageNodeOrigins;
         ActorOrigins = actorOrigins;
         VariableLinkSubtitles = variableLinkSubtitles;
     }
@@ -166,12 +169,13 @@ internal static class StageBoneOriginResolver
             Vector3 stageRotation = rotationProperty is null
                 ? Vector3.Zero
                 : CommonStructs.GetRotator(rotationProperty).GetDegreesVector();
-            IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(selectedStage.Stage,
-                new CameraOrigin(stageLocation, stageRotation),
-                KismetHelper.GetVariableLinks(selectedStage.StartConversation.GetProperties(), mainPackage),
-                cache);
+            var stageOrigin = new CameraOrigin(stageLocation, stageRotation);
+            IReadOnlyDictionary<string, CameraOrigin> stageNodeOrigins = ResolveStageNodeOrigins(selectedStage.Stage,
+                stageOrigin, cache);
+            IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(stageNodeOrigins,
+                KismetHelper.GetVariableLinks(selectedStage.StartConversation.GetProperties(), mainPackage), cache);
             context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
-                selectedStage.Stage, new CameraOrigin(stageLocation, stageRotation), actorOrigins,
+                selectedStage.Stage, stageOrigin, stageNodeOrigins, actorOrigins,
                 selectedStage.VariableLinkSubtitles);
             mainPackage = null;
             return true;
@@ -264,17 +268,19 @@ internal static class StageBoneOriginResolver
         return subtitles;
     }
 
-    private static IReadOnlyDictionary<string, CameraOrigin> ResolveLinkedActorOrigins(ExportEntry stage,
-        CameraOrigin stageOrigin, IEnumerable<VarLinkInfo> variableLinks, PackageCache cache)
+    private static IReadOnlyDictionary<string, CameraOrigin> ResolveStageNodeOrigins(ExportEntry stage,
+        CameraOrigin stageOrigin, PackageCache cache) => FindBones(stage, new Dictionary<string, string>(), cache)
+        .GroupBy(option => option.Bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key,
+            group => ResolveBoneOrigin(group.First().Mesh, group.First().Index, stageOrigin, cache),
+            StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, CameraOrigin> ResolveLinkedActorOrigins(
+        IReadOnlyDictionary<string, CameraOrigin> slotOrigins, IEnumerable<VarLinkInfo> variableLinks,
+        PackageCache cache)
     {
         var origins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
         List<VarLinkInfo> links = variableLinks.ToList();
-        Dictionary<string, BoneOption> stageBones = FindBones(stage, new Dictionary<string, string>(), cache)
-            .GroupBy(option => option.Bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        var slotOrigins = stageBones.ToDictionary(pair => pair.Key,
-            pair => ResolveBoneOrigin(pair.Value.Mesh, pair.Value.Index, stageOrigin, cache),
-            StringComparer.OrdinalIgnoreCase);
         foreach (VarLinkInfo variableLink in links.Where(link =>
                      !string.IsNullOrWhiteSpace(link.LinkDesc)
                      && slotOrigins.ContainsKey(link.LinkDesc)))

@@ -51,10 +51,13 @@ public class AnimSequencePlayer : AnimPlayer
     private float _scheduledEndTime;
     private Matrix4x4[] _scheduledBasePose;
     private Matrix4x4[] _scheduledLocalPose;
+    private readonly int _rootMotionBoneIndex;
 
     public AnimSequencePlayer(SkeletalMesh skeletalMesh) : base(skeletalMesh)
     {
         _skelToAnimMap = new int[_bones.Length];
+        _rootMotionBoneIndex = Array.FindIndex(_bones,
+            bone => bone.Name.Name.Equals("Root", StringComparison.OrdinalIgnoreCase));
     }
 
     public NameReference AnimName => _animSequence?.Name ?? "None";
@@ -103,16 +106,9 @@ public class AnimSequencePlayer : AnimPlayer
         CurrentTime = 0;
         _skelToAnimMap.AsSpan().Fill(-1);
 
-        if (animSequence == null || _bones == null)
+        if (animSequence == null)
         {
-            // Reset to bind pose
-            if (_skinningMatrices != null)
-            {
-                for (int i = 0; i < _skinningMatrices.Length; i++)
-                {
-                    _skinningMatrices[i] = Matrix4x4.Identity;
-                }
-            }
+            ComputeBindPose();
             return;
         }
 
@@ -368,7 +364,8 @@ public class AnimSequencePlayer : AnimPlayer
         foreach (ScheduledAnimationClipState state in _scheduledClips)
         {
             ScheduledAnimationClip clip = state.Clip;
-            if (CurrentTime < clip.StartTime || CurrentTime > clip.EndTime)
+            bool retainFinalFrame = CurrentTime >= _scheduledEndTime && clip.EndTime >= _scheduledEndTime;
+            if (CurrentTime < clip.StartTime || CurrentTime >= clip.EndTime && !retainFinalFrame)
             {
                 continue;
             }
@@ -410,6 +407,14 @@ public class AnimSequencePlayer : AnimPlayer
 
         if (activeClips.Count == 0)
         {
+            if (_scheduledBasePose is not null)
+            {
+                Array.Copy(_scheduledBasePose, _boneComponentSpace, _boneComponentSpace.Length);
+                for (int boneIndex = 0; boneIndex < _bones.Length; boneIndex++)
+                {
+                    _skinningMatrices[boneIndex] = _inverseBindPose[boneIndex] * _boneComponentSpace[boneIndex];
+                }
+            }
             return _skinningMatrices;
         }
 
@@ -417,9 +422,19 @@ public class AnimSequencePlayer : AnimPlayer
         var clipLocalPose = new Matrix4x4[_bones.Length];
         float activeWeight = activeClips.Sum(activeClip => activeClip.Weight);
         float accumulatedWeight = _scheduledLocalPose is null ? 0 : Math.Max(0, 1 - activeWeight);
-        if (accumulatedWeight > 0)
+        if (_scheduledLocalPose is not null)
         {
             Array.Copy(_scheduledLocalPose, blendedLocalPose, blendedLocalPose.Length);
+        }
+
+        Vector3 rootBasePosition = Vector3.Zero;
+        Vector3 dominantRootPosition = Vector3.Zero;
+        float dominantRootMotion = -1;
+        if (_rootMotionBoneIndex >= 0
+            && Matrix4x4.Decompose(blendedLocalPose[_rootMotionBoneIndex], out _, out _, out rootBasePosition))
+        {
+            dominantRootPosition = rootBasePosition;
+            dominantRootMotion = 0;
         }
 
         for (int clipIndex = 0; clipIndex < activeClips.Count; clipIndex++)
@@ -434,6 +449,17 @@ public class AnimSequencePlayer : AnimPlayer
                 {
                     Quaternion rotation = Quaternion.Slerp(currentRotation, nextRotation, alpha);
                     Vector3 position = Vector3.Lerp(currentPosition, nextPosition, alpha);
+                    if (boneIndex == _rootMotionBoneIndex && dominantRootMotion >= 0)
+                    {
+                        Vector3 candidate = Vector3.Lerp(rootBasePosition, nextPosition, Math.Clamp(weight, 0, 1));
+                        float candidateMotion = Vector3.DistanceSquared(candidate, rootBasePosition);
+                        if (candidateMotion > dominantRootMotion)
+                        {
+                            dominantRootPosition = candidate;
+                            dominantRootMotion = candidateMotion;
+                        }
+                        position = dominantRootPosition;
+                    }
                     blendedLocalPose[boneIndex] = Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
                 }
             }

@@ -57,11 +57,14 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
         public NameReference AnimationName { get; init; }
         public ExportEntry AnimationExport { get; set; }
         public GesturePlaybackSettings Settings { get; init; }
+        public bool IsControlMarker { get; init; }
         public float AnimationDuration => AnimationExport?.GetProperty<FloatProperty>("SequenceLength")?.Value ?? 0;
         public string DisplayName => GestureIndex is int index ? $"Gesture {index}: {SlotName}" : SlotName;
         public string TimelineText => GestureIndex is int ? $"Track time: {Time:F2}s" : "Track start";
-        public string ReferenceText => $"{SetName.Instanced}.{AnimationName.Instanced}";
-        public string ResolutionText => AnimationExport == null ? "Animation not found in shared animation sets" : $"Export {AnimationExport.UIndex}";
+        public string ReferenceText => IsControlMarker ? "Gesture control key" : $"{SetName.Instanced}.{AnimationName.Instanced}";
+        public string ResolutionText => IsControlMarker
+            ? "No animation; applies gesture-control flags"
+            : AnimationExport == null ? "Animation not found in shared animation sets" : $"Export {AnimationExport.UIndex}";
         public string TimingText => Settings?.TimingText ?? $"Starting pose offset: {Time:F2}s";
         public string FlagsText => Settings?.FlagsText;
         public string FiltersText => Settings?.FiltersText;
@@ -144,9 +147,24 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             float endBlendDuration = properties.GetProp<FloatProperty>("fEndBlendDuration")?.Value ?? 0;
             GesturePlaybackSettings settings = ReadPlaybackSettings(properties, startBlendDuration, endBlendDuration);
 
+            int animationCount = result.Count;
             AddAnimation(result, index, time, 0, startBlendDuration, "Pose", properties, "nmPoseSet", "nmPoseAnim", settings, dynamicAnimSets, packageCache);
             AddAnimation(result, index, time, 1, startBlendDuration, "Gesture", properties, "nmGestureSet", "nmGestureAnim", settings, dynamicAnimSets, packageCache);
             AddAnimation(result, index, time, 2, endBlendDuration, "Transition", properties, "nmTransitionSet", "nmTransitionAnim", settings, dynamicAnimSets, packageCache);
+            if (result.Count == animationCount)
+            {
+                result.Add(new GestureAnimationItem
+                {
+                    GestureIndex = index,
+                    Time = time,
+                    SlotOrder = 3,
+                    SlotName = "Control",
+                    SetName = "None",
+                    AnimationName = "None",
+                    Settings = settings,
+                    IsControlMarker = true,
+                });
+            }
         }
 
         return result.OrderBy(item => item.GestureIndex.HasValue)
@@ -490,15 +508,15 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
 
     private void PlayAllAnimations()
     {
-        List<GestureAnimationItem> animations = _animations.Where(item => item.AnimationExport != null).ToList();
-        if (animations.Count == 0)
+        List<GestureAnimationItem> resolvedAnimations = _animations.Where(item => item.AnimationExport != null).ToList();
+        if (resolvedAnimations.Count == 0)
         {
             AnimPreviewControl.ClearAnimation();
             StatusText = "No animations in this gesture track could be resolved.";
             return;
         }
 
-        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(animations);
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(_animations);
         if (timeline.Count == 0)
         {
             AnimPreviewControl.ClearAnimation();
@@ -506,11 +524,11 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             return;
         }
 
-        SelectedAnimation = animations[0];
+        SelectedAnimation = resolvedAnimations[0];
         AnimationListBox.SelectedItem = SelectedAnimation;
         AnimPreviewControl.LoadAnimSequenceTimeline(timeline);
         AnimPreviewControl.Play();
-        StatusText = $"Playing {animations.Count} resolved animations as one blended gesture timeline.";
+        StatusText = $"Playing {resolvedAnimations.Count} resolved animations as one blended gesture timeline.";
     }
 
     private void AnimPreviewControl_AnimationCompleted()
@@ -540,8 +558,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
             return;
         }
 
-        List<GestureAnimationItem> animations = _animations.Where(animation => animation.AnimationExport != null).ToList();
-        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(animations);
+        List<AnimationPreviewControl.AnimationTimelineClip> timeline = BuildPlaybackTimeline(_animations);
         if (timeline.Count == 0)
         {
             return;
@@ -572,14 +589,23 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 .Skip(groupIndex + 1)
                 .FirstOrDefault(nextGroup => nextGroup.First().Time > keyTime);
             float? nextKeyTime = nextTimeGroup?.First().Time;
-            bool nextTerminatesGestures = nextTimeGroup?.Any(item => item.Settings.TerminateAllGestures) ?? false;
+            float? terminationTime = gestureGroups
+                .Skip(groupIndex + 1)
+                .FirstOrDefault(nextGroup => nextGroup.Any(item => item.Settings.TerminateAllGestures))?
+                .First().Time;
+            float? chainTime = nextTimeGroup?.Any(item => item.Settings.ChainToPrevious) == true
+                ? nextKeyTime
+                : null;
+            float? cutoffTime = terminationTime is null
+                ? chainTime
+                : chainTime is null ? terminationTime : Math.Min(terminationTime.Value, chainTime.Value);
 
-            GestureAnimationItem pose = items.FirstOrDefault(item => item.SlotName == "Pose");
-            GestureAnimationItem gesture = items.FirstOrDefault(item => item.SlotName == "Gesture");
-            GestureAnimationItem transition = items.FirstOrDefault(item => item.SlotName == "Transition");
+            GestureAnimationItem pose = items.FirstOrDefault(item => item.SlotName == "Pose" && item.AnimationExport is not null);
+            GestureAnimationItem gesture = items.FirstOrDefault(item => item.SlotName == "Gesture" && item.AnimationExport is not null);
+            GestureAnimationItem transition = items.FirstOrDefault(item => item.SlotName == "Transition" && item.AnimationExport is not null);
             float primaryDuration = GetPlaybackDuration(gesture ?? pose, settings);
             float primaryEnd = keyTime + primaryDuration;
-            if (nextKeyTime is float cutoff && nextTerminatesGestures)
+            if (cutoffTime is float cutoff)
             {
                 primaryEnd = Math.Min(primaryEnd, cutoff);
             }
@@ -598,7 +624,7 @@ public partial class GesturePreviewExportLoader : ExportLoaderControl
                 float transitionBlend = settings.TransitionBlendTime > 0 ? settings.TransitionBlendTime : settings.EndBlendDuration;
                 float transitionStart = keyTime;
                 float transitionEnd = transitionStart + GetPlaybackDuration(transition, settings);
-                if (nextKeyTime is float transitionCutoff && nextTerminatesGestures)
+                if (cutoffTime is float transitionCutoff)
                 {
                     transitionEnd = Math.Min(transitionEnd, transitionCutoff);
                 }

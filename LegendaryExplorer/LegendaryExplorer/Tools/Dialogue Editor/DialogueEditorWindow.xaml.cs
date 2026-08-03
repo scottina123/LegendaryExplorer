@@ -863,8 +863,8 @@ namespace LegendaryExplorer.DialogueEditor
 
             List<CurveEditor3D.DialogueNodePreviewActor> actors = actorTags
                 .Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                    stageContext.ActorOrigins.GetValueOrDefault(tag,
-                        actorOrigins.GetValueOrDefault(tag,
+                    actorOrigins.GetValueOrDefault(tag,
+                        stageContext.ActorOrigins.GetValueOrDefault(tag,
                             new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
                                 stageContext.StageOrigin.Rotation)))))
                 .ToList();
@@ -5841,8 +5841,8 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             return actorTags.Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                stageContext.ActorOrigins.GetValueOrDefault(tag,
-                    actorOrigins.GetValueOrDefault(tag,
+                actorOrigins.GetValueOrDefault(tag,
+                    stageContext.ActorOrigins.GetValueOrDefault(tag,
                         new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
                             stageContext.StageOrigin.Rotation))))).ToList();
         }
