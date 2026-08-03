@@ -231,6 +231,8 @@
                                   LostKeyboardFocus="DialoguePreviewFaceFxAsset_LostKeyboardFocus"/>
                         <exportLoaderControls:Soundpanel x:Name="DialoguePreviewSoundpanel" Margin="0,8,0,0"
                                                          MiniPlayerMode="True"/>
+                        <exportLoaderControls:Soundpanel x:Name="FaceOnlyVoSoundpanel" Visibility="Collapsed"
+                                                         MiniPlayerMode="True"/>
                     </StackPanel>
                     <ListBox x:Name="DialoguePreviewActorListBox" DisplayMemberPath="DisplayName"
                              SelectionChanged="DialoguePreviewActorListBox_SelectionChanged"/>

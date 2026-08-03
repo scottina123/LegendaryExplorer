@@ -496,6 +496,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float playbackElapsed;
     private float playbackCurrentTime;
     private bool dialoguePreviewAudioStarted;
+    private bool faceOnlyVoAudioStarted;
     private FaceOnlyVoEvent activeFaceOnlyVoEvent;
     private TrackMovePlaybackOption selectedExtraTrackMove;
     private DirectorPlaybackOption selectedDirectorPlayback;
@@ -1621,12 +1622,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ConfigureDialoguePreviewPlayback()
     {
-        if (activeFaceOnlyVoEvent is not null)
-        {
-            DialoguePreviewSoundpanel.StopPlaying();
-        }
+        DialoguePreviewSoundpanel.StopPlaying();
+        FaceOnlyVoSoundpanel.StopPlaying();
         activeFaceOnlyVoEvent = null;
         dialoguePreviewAudioStarted = false;
+        faceOnlyVoAudioStarted = false;
         ClearDialoguePreviewFaceFx();
         LoadDialoguePreviewFaceFxAssets();
         LoadFaceOnlyVoEvents();
@@ -1758,7 +1758,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             if (activeFaceOnlyVoEvent is not null)
             {
-                DialoguePreviewSoundpanel.StopPlaying();
+                FaceOnlyVoSoundpanel.StopPlaying();
                 EndActiveFaceOnlyVo();
             }
             return;
@@ -1768,22 +1768,23 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             if (activeFaceOnlyVoEvent is not null)
             {
+                FaceOnlyVoSoundpanel.StopPlaying();
                 EndActiveFaceOnlyVo();
             }
             activeFaceOnlyVoEvent = faceOnlyVo;
-            dialoguePreviewAudioStarted = false;
+            faceOnlyVoAudioStarted = false;
             ApplyFaceOnlyVoFaceFx(faceOnlyVo);
         }
 
-        if (!dialoguePreviewAudioStarted)
+        if (!faceOnlyVoAudioStarted)
         {
             ExportEntry audio = GetDialogueNodeAudio(faceOnlyVo.Node, faceOnlyVo.Actor);
             if (audio is not null)
             {
-                DialoguePreviewSoundpanel.LoadExport(audio);
-                DialoguePreviewSoundpanel.StopPlaying();
-                DialoguePreviewSoundpanel.StartOrPausePlaying(Math.Max(0, time - faceOnlyVo.StartTime));
-                dialoguePreviewAudioStarted = true;
+                FaceOnlyVoSoundpanel.LoadExport(audio);
+                FaceOnlyVoSoundpanel.StopPlaying();
+                FaceOnlyVoSoundpanel.StartOrPausePlaying(Math.Max(0, time - faceOnlyVo.StartTime));
+                faceOnlyVoAudioStarted = true;
             }
         }
     }
@@ -1835,7 +1836,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         PreviewActorConfiguration actor = activeFaceOnlyVoEvent?.Actor;
         activeFaceOnlyVoEvent = null;
-        dialoguePreviewAudioStarted = false;
+        faceOnlyVoAudioStarted = false;
         if (actor is null || !previewActorAnimationStates.TryGetValue(actor, out PreviewActorAnimationState animationState))
         {
             return;
@@ -3488,6 +3489,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.ForceContinuousRendering = true;
         ApplyActorsAtTime(playbackStartTime);
         dialoguePreviewAudioStarted = false;
+        faceOnlyVoAudioStarted = false;
         if (activeFaceOnlyVoEvent is not null)
         {
             EndActiveFaceOnlyVo();
@@ -3496,10 +3498,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             ApplyFaceOnlyVoAtTime(playbackStartTime);
         }
-        else
-        {
-            UpdateDialoguePreviewAudio(playbackStartTime);
-        }
+        UpdateDialoguePreviewAudio(playbackStartTime);
         SceneViewer.Focus();
     }
 
@@ -3721,6 +3720,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         isPlayingActor = playbackActors.Count > 0;
         isPlayingMove = false;
         dialoguePreviewAudioStarted = false;
+        faceOnlyVoAudioStarted = false;
         activeFaceOnlyVoEvent = null;
     }
 
@@ -3733,7 +3733,9 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
         RenderContext.ForceContinuousRendering = false;
         DialoguePreviewSoundpanel.StopPlaying();
+        FaceOnlyVoSoundpanel.StopPlaying();
         dialoguePreviewAudioStarted = false;
+        faceOnlyVoAudioStarted = false;
         SceneViewer?.MarkRenderDirty();
     }
 
@@ -3764,23 +3766,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (isPlayingActor)
         {
             ApplyActorsAtTime(time);
-            FaceOnlyVoEvent latestFaceOnlyVo = faceOnlyVoEvents.LastOrDefault(candidate => candidate.StartTime <= time);
-            float dialogueVoStartTime = dialogueNodePreview?.VoStartTime ?? float.PositiveInfinity;
-            bool playFaceOnlyVo = latestFaceOnlyVo is not null
-                                  && (time < dialogueVoStartTime || latestFaceOnlyVo.StartTime > dialogueVoStartTime);
-            if (playFaceOnlyVo)
+            if (faceOnlyVoEvents.Count > 0)
             {
                 ApplyFaceOnlyVoAtTime(time);
             }
-            else
-            {
-                if (activeFaceOnlyVoEvent is not null)
-                {
-                    DialoguePreviewSoundpanel.StopPlaying();
-                    EndActiveFaceOnlyVo();
-                }
-                UpdateDialoguePreviewAudio(time);
-            }
+            UpdateDialoguePreviewAudio(time);
             UpdateAdditionalCameraPlayback(time);
         }
         else
@@ -4072,6 +4062,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         if (stoppedActorPlayback)
         {
             DialoguePreviewSoundpanel.StopPlaying();
+            FaceOnlyVoSoundpanel.StopPlaying();
             if (activeFaceOnlyVoEvent is not null)
             {
                 EndActiveFaceOnlyVo();
@@ -4802,6 +4793,13 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 dialoguePreviewAudioStarted = false;
                 UpdateDialoguePreviewAudio(playbackCurrentTime);
             }
+            if (isPlayingActor && ReferenceEquals(activeFaceOnlyVoEvent?.Actor, selectedPreviewActor))
+            {
+                FaceOnlyVoSoundpanel.StopPlaying();
+                faceOnlyVoAudioStarted = false;
+                ApplyFaceOnlyVoFaceFx(activeFaceOnlyVoEvent);
+                ApplyFaceOnlyVoAtTime(playbackCurrentTime);
+            }
         }
     }
 
@@ -4818,6 +4816,10 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             selectedPreviewActor.FaceFxAssetName = DialoguePreviewFaceFxAssetComboBox.Text.Trim();
             ApplyDialoguePreviewFaceFx(selectedPreviewActor);
+            if (ReferenceEquals(activeFaceOnlyVoEvent?.Actor, selectedPreviewActor))
+            {
+                ApplyFaceOnlyVoFaceFx(activeFaceOnlyVoEvent);
+            }
             if (isPlayingActor && previewActorAnimationStates.TryGetValue(selectedPreviewActor, out PreviewActorAnimationState state))
             {
                 state.SetTime(playbackCurrentTime);
