@@ -68,6 +68,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
         }
     }
 
+    private const float PreviewBodyMeshRelativeZ = -88f;
     private static readonly RenderPass[] BaseRenderPasses = [RenderPass.Base, RenderPass.Hair];
 
     private sealed class PreviewActorWidgetTarget : ITransformWidgetTarget
@@ -134,7 +135,7 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
     private Action<GeneratedCameraKey> _activeCameraChanged;
     private string _activeMulticamGroupName;
     private bool _showCollision = Settings.LevelEditor_ShowCollision;
-    private bool _showLightIcons = Settings.LevelEditor_ShowLightIcons;
+    private bool _showLightIcons;
     private bool _showVolumes = Settings.LevelEditor_ShowVolumes;
     private bool _showVolumetrics;
     private bool _unlit = Settings.LevelEditor_Unlit;
@@ -798,7 +799,8 @@ public partial class CameraPresetPreview : UserControl, IDisposable, IActorEdito
 
     private static Matrix4x4 CreateActorTransform(CameraOrigin transform)
     {
-        return Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
+        return Matrix4x4.CreateTranslation(0, 0, PreviewBodyMeshRelativeZ)
+               * Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
     }
 
