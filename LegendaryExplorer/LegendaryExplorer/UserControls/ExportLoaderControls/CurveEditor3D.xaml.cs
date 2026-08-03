@@ -397,6 +397,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public TrackMovePlaybackOption Camera { get; init; }
     }
 
+    private const float PreviewBodyMeshRelativeZ = -88f;
     private static readonly RenderPass[] RenderPasses = [RenderPass.Base, RenderPass.Hair];
     private static readonly object sessionLevelPathsLock = new();
     private static readonly List<string> sessionLevelPaths = [];
@@ -440,7 +441,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private float dialogueTimelineCurrentTime;
     private DialogueTimelineSegment activeDialogueTimelineSegment;
     private bool updatingMulticamControls;
-    private bool updatingActorPlaybackZControls;
     private bool playExtraTrackMove;
     private bool playDirectorMulticam;
     private bool sessionLevelsRestored;
@@ -1609,10 +1609,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DirectorMulticamCheckBox.IsChecked = playDirectorMulticam;
         ExtraTrackMoveCheckBox.IsChecked = playExtraTrackMove;
         updatingMulticamControls = false;
-        updatingActorPlaybackZControls = true;
         ActorPlaybackTrackZCheckBox.IsChecked = true;
-        ActorPlaybackShiftZCheckBox.IsChecked = false;
-        updatingActorPlaybackZControls = false;
         BuildActorDirectionTracks();
         RefreshKeyframeTrackMoveTabs();
     }
@@ -1689,25 +1686,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     private bool IsDialogueNodeSpeaker(PreviewActorConfiguration actor) =>
         dialogueNodePreview?.Node.SpeakerTag is { } speaker
         && actor.ActorTag.Equals(speaker.SpeakerName, StringComparison.OrdinalIgnoreCase);
-
-    private void ActorPlaybackZOption_Changed(object sender, RoutedEventArgs e)
-    {
-        if (updatingActorPlaybackZControls || sender is not CheckBox changed || changed.IsChecked != true)
-        {
-            return;
-        }
-
-        updatingActorPlaybackZControls = true;
-        if (ReferenceEquals(changed, ActorPlaybackTrackZCheckBox))
-        {
-            ActorPlaybackShiftZCheckBox.IsChecked = false;
-        }
-        else
-        {
-            ActorPlaybackTrackZCheckBox.IsChecked = false;
-        }
-        updatingActorPlaybackZControls = false;
-    }
 
     private void BuildActorDirectionTracks()
     {
@@ -3607,10 +3585,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         {
             location.Z = state.OriginalOrigin.Location.Z;
         }
-        if (ActorPlaybackShiftZCheckBox.IsChecked == true)
-        {
-            location.Z -= 90f;
-        }
         return new CameraOrigin(location, origin.Rotation);
     }
 
@@ -3663,12 +3637,6 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 float actorTrackTime = Math.Clamp(time, actorKeys[0].Time, actorKeys[^1].Time);
                 CameraOrigin trackOrigin = EvaluateTrackMove(state.TrackMove.Model, actorTrackTime);
                 state.Actor.Origin = ResolveActorTrackOrigin(state, trackOrigin);
-            }
-            else if (ActorPlaybackShiftZCheckBox.IsChecked == true)
-            {
-                Vector3 actorLocation = state.OriginalOrigin.Location;
-                actorLocation.Z -= 90f;
-                state.Actor.Origin = new CameraOrigin(actorLocation, state.OriginalOrigin.Rotation);
             }
             if (ReferenceEquals(selectedPreviewActor, state.Actor))
             {
@@ -3927,7 +3895,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private static Matrix4x4 CreatePreviewActorTransform(CameraOrigin transform)
     {
-        return Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
+        return Matrix4x4.CreateTranslation(0, 0, PreviewBodyMeshRelativeZ)
+               * Rotator.FromDegreesVector(transform.Rotation).ToRotationMatrix()
                * Matrix4x4.CreateTranslation(transform.Location);
     }
 

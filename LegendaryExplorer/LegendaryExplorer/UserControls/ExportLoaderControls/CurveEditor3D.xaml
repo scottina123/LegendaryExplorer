@@ -358,11 +358,7 @@
                             </WrapPanel>
                             <StackPanel Margin="2,2,0,0">
                                 <CheckBox x:Name="ActorPlaybackTrackZCheckBox" Content="Use TrackMove Z for actor playback"
-                                          Checked="ActorPlaybackZOption_Changed" Unchecked="ActorPlaybackZOption_Changed"
                                           ToolTip="Uses the TrackMove Z exactly during actor playback."/>
-                                <CheckBox x:Name="ActorPlaybackShiftZCheckBox" Content="Shift actors down 90 units during playback"
-                                          Checked="ActorPlaybackZOption_Changed" Unchecked="ActorPlaybackZOption_Changed"
-                                          ToolTip="Applies a playback-only -90 Z offset without changing actor origins. Mutually exclusive with TrackMove Z."/>
                             </StackPanel>
                             <TextBlock x:Name="PreviewActorStatusTextBlock" Margin="2,2,0,0" Opacity="0.7" TextWrapping="Wrap"/>
                         </StackPanel>
