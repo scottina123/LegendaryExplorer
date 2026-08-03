@@ -3268,9 +3268,10 @@ namespace LegendaryExplorer.DialogueEditor
 
         private void ReindexSelectedSpeakerIds()
         {
-            for (int i = 0; i < SelectedSpeakerList.Count; i++)
+            int speakerId = 0;
+            foreach (SpeakerExtended speaker in SelectedSpeakerList.Where(speaker => speaker.SpeakerID >= 0))
             {
-                SelectedSpeakerList[i].SpeakerID = i - 2;
+                speaker.SpeakerID = speakerId++;
             }
         }
 
@@ -3370,8 +3371,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            int speakerIndex = SelectedSpeaker.SpeakerID + 2;
-            if (speakerIndex < 0 || speakerIndex >= SelectedSpeakerList.Count)
+            SpeakerExtended speaker = SelectedSpeakerList.FirstOrDefault(candidate => candidate.SpeakerID == SelectedSpeaker.SpeakerID);
+            if (speaker is null)
             {
                 return;
             }
@@ -3379,7 +3380,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (newMaleFaceFx != null)
             {
                 SelectedSpeaker.FaceFX_Male = newMaleFaceFx;
-                SelectedSpeakerList[speakerIndex].FaceFX_Male = newMaleFaceFx;
+                speaker.FaceFX_Male = newMaleFaceFx;
                 if (!FFXAnimsets.OfType<IEntry>().Any(x => x.UIndex == newMaleFaceFx.UIndex))
                 {
                     FFXAnimsets.Add(newMaleFaceFx);
@@ -3389,7 +3390,7 @@ namespace LegendaryExplorer.DialogueEditor
             if (newFemaleFaceFx != null)
             {
                 SelectedSpeaker.FaceFX_Female = newFemaleFaceFx;
-                SelectedSpeakerList[speakerIndex].FaceFX_Female = newFemaleFaceFx;
+                speaker.FaceFX_Female = newFemaleFaceFx;
                 if (!FFXAnimsets.OfType<IEntry>().Any(x => x.UIndex == newFemaleFaceFx.UIndex))
                 {
                     FFXAnimsets.Add(newFemaleFaceFx);
@@ -6747,8 +6748,8 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
-            int speakerIndex = SelectedSpeaker.SpeakerID + 2;
-            if (speakerIndex < 0 || speakerIndex >= SelectedSpeakerList.Count)
+            SpeakerExtended speaker = SelectedSpeakerList.FirstOrDefault(candidate => candidate.SpeakerID == SelectedSpeaker.SpeakerID);
+            if (speaker is null)
             {
                 return;
             }
@@ -6756,12 +6757,12 @@ namespace LegendaryExplorer.DialogueEditor
             if (isMale)
             {
                 SelectedSpeaker.FaceFX_Male = selectedFaceFx;
-                SelectedSpeakerList[speakerIndex].FaceFX_Male = selectedFaceFx;
+                speaker.FaceFX_Male = selectedFaceFx;
             }
             else
             {
                 SelectedSpeaker.FaceFX_Female = selectedFaceFx;
-                SelectedSpeakerList[speakerIndex].FaceFX_Female = selectedFaceFx;
+                speaker.FaceFX_Female = selectedFaceFx;
             }
 
             SaveSpeakerChangesInPlace();

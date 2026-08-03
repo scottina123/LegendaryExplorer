@@ -581,8 +581,8 @@ namespace LegendaryExplorerCore.Dialogue
         {
             Speakers = new ObservableCollectionExtended<SpeakerExtended>
             {
-                new SpeakerExtended(-2, "player", null, null, 125303, "\"Shepard\""),
-                new SpeakerExtended(-1, "owner", null, null, 0, "No data")
+                new SpeakerExtended(-1, "owner", null, null, 0, "No data"),
+                new SpeakerExtended(-2, "player", null, null, 125303, "\"Shepard\"")
             };
             try
             {
@@ -1827,12 +1827,13 @@ namespace LegendaryExplorerCore.Dialogue
             }
             else
             {
-                if (!Export.Game.IsGame3() || !Export.ObjectNameString.EndsWith("_dlg", StringComparison.OrdinalIgnoreCase) || speakerIdx >= Speakers.Count)
+                SpeakerExtended speaker = Speakers.FirstOrDefault(candidate => candidate.SpeakerID == speakerID);
+                if (!Export.Game.IsGame3() || !Export.ObjectNameString.EndsWith("_dlg", StringComparison.OrdinalIgnoreCase) || speaker is null)
                 {
                     return null;
                 }
                 // Some conversations in Game3 don't have the m_aFaceSets properties. This is a workaround.
-                var fxaName = $"FXA_{Export.ObjectNameString[..^4]}_{Speakers[speakerIdx].SpeakerName}_{(isMale ? 'M' : 'F')}";
+                var fxaName = $"FXA_{Export.ObjectNameString[..^4]}_{speaker.SpeakerName}_{(isMale ? 'M' : 'F')}";
                 foreach (var entry in Export.FileRef.Exports)
                 {
                     if (string.Equals(entry.ObjectName, fxaName, StringComparison.OrdinalIgnoreCase))
