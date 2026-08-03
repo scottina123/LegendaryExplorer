@@ -185,7 +185,7 @@ public static class CameraActorSceneStateResolver
             foreach (string actorTag in tags)
             {
                 ResolvedActorTransform transform = null;
-                foreach (DialogueNodeExtended node in nodes)
+                foreach (DialogueNodeExtended node in nodes.TakeWhile(node => !ReferenceEquals(node, context.SelectedNode)))
                 {
                     if (TryResolveNodeTrackMove(node, actorTag, out ResolvedActorTransform nodeTransform))
                     {

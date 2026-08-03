@@ -821,6 +821,14 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!StageBoneOriginResolver.TrySelectContext(this, Pcc, interpData, SelectedConv,
+                    out StageConversationContext stageContext, out string stageMessage))
+            {
+                MessageBox.Show(this, stageMessage, "Conversation Stage Unavailable", MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
             string[] actorTags = SelectedSpeakerList
                 .Select(speaker => speaker.SpeakerName)
                 .Where(tag => !string.IsNullOrWhiteSpace(tag))
@@ -854,17 +862,20 @@ namespace LegendaryExplorer.DialogueEditor
 
             List<CurveEditor3D.DialogueNodePreviewActor> actors = actorTags
                 .Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                    actorOrigins.GetValueOrDefault(tag,
-                        new CameraOrigin(new Vector3(0, index * 100, 0), Vector3.Zero))))
+                    stageContext.ActorOrigins.GetValueOrDefault(tag,
+                        actorOrigins.GetValueOrDefault(tag,
+                            new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
+                                stageContext.StageOrigin.Rotation)))))
                 .ToList();
             var levelPicker = new DialoguePreviewLevelPicker { Owner = this };
             if (levelPicker.ShowDialog() != true)
             {
+                stageContext.Dispose();
                 return;
             }
             IReadOnlyList<string> levelPaths = levelPicker.SelectedLevelPaths;
             var preview = new CurveEditor3D();
-            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths);
+            preview.ConfigureDialogueNodePreview(SelectedConv, SelectedDialogueNode, actors, levelPaths, stageContext);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5765,14 +5776,23 @@ namespace LegendaryExplorer.DialogueEditor
                 return;
             }
 
+            if (!StageBoneOriginResolver.TrySelectContext(this, Pcc, startNode.InterpData ?? SelectedConv.Export,
+                    SelectedConv, out StageConversationContext stageContext, out string stageMessage))
+            {
+                MessageBox.Show(this, stageMessage, "Conversation Stage Unavailable", MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
             List<CurveEditor3D.DialogueNodePreviewActor> actors = BuildDialogueConversationPreviewActors(
-                SelectedConv, startNode);
+                SelectedConv, startNode, stageContext);
             ExportEntry previewTrackMove = CurveEditor3D.FindDialoguePreviewTrackMove(startNode.InterpData)
                 ?? SelectedConv.EntryList.Concat(SelectedConv.ReplyList)
                     .Select(node => CurveEditor3D.FindDialoguePreviewTrackMove(node.InterpData))
                     .FirstOrDefault(track => track is not null);
             if (previewTrackMove is null)
             {
+                stageContext.Dispose();
                 MessageBox.Show(this, "No node in this BioConversation has a TrackMove that can initialize the 3D preview.",
                     "Conversation Preview Unavailable", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
@@ -5780,7 +5800,7 @@ namespace LegendaryExplorer.DialogueEditor
 
             var preview = new CurveEditor3D();
             preview.ConfigureDialogueConversationPreview(SelectedConv, startNode, actors,
-                levelPicker.SelectedLevelPaths);
+                levelPicker.SelectedLevelPaths, stageContext);
             var window = new ExportLoaderHostedWindow(preview, previewTrackMove)
             {
                 Owner = this,
@@ -5791,7 +5811,8 @@ namespace LegendaryExplorer.DialogueEditor
 
         private List<CurveEditor3D.DialogueNodePreviewActor> BuildDialogueConversationPreviewActors(
             ConversationExtended conversation,
-            DialogueNodeExtended startNode)
+            DialogueNodeExtended startNode,
+            StageConversationContext stageContext)
         {
             string[] actorTags = conversation.Speakers
                 .Select(speaker => speaker.SpeakerName)
@@ -5813,8 +5834,10 @@ namespace LegendaryExplorer.DialogueEditor
             }
 
             return actorTags.Select((tag, index) => new CurveEditor3D.DialogueNodePreviewActor(tag,
-                actorOrigins.GetValueOrDefault(tag,
-                    new CameraOrigin(new Vector3(0, index * 100, 0), Vector3.Zero)))).ToList();
+                stageContext.ActorOrigins.GetValueOrDefault(tag,
+                    actorOrigins.GetValueOrDefault(tag,
+                        new CameraOrigin(stageContext.StageOrigin.Location + new Vector3(0, index * 100, 0),
+                            stageContext.StageOrigin.Rotation))))).ToList();
         }
 
         private void Conversations_CloneTopLevelPackage_Click(object sender, RoutedEventArgs e)

@@ -34,6 +34,7 @@ using LegendaryExplorerCore.Unreal.ObjectInfo;
 using Newtonsoft.Json;
 using System.Windows.Threading;
 using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
+using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
@@ -55,6 +56,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         DialogueNodeExtended Node,
         IReadOnlyList<DialogueNodePreviewActor> Actors,
         IReadOnlyList<string> LevelPaths,
+        StageConversationContext StageContext,
         float VoStartTime);
 
     public sealed class DialogueTimelineSegment
@@ -375,7 +377,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public PreviewActorConfiguration Actor { get; init; }
         public TrackMovePlaybackOption TrackMove { get; init; }
         public CameraOrigin OriginalOrigin { get; init; }
-        public float ZOffset { get; init; }
+        public CameraOrigin TrackStartOrigin { get; init; }
+        public EInterpTrackMoveFrame MoveFrame { get; init; }
     }
 
     private sealed class DirectorPlaybackOption
@@ -583,26 +586,29 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             .FirstOrDefault(track => track.ClassName == "InterpTrackMove");
     }
 
-    public void ConfigureDialogueNodePreview(ConversationExtended conversation, DialogueNodeExtended node,
-        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths)
+    internal void ConfigureDialogueNodePreview(ConversationExtended conversation, DialogueNodeExtended node,
+        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
+        StageConversationContext stageContext)
     {
         ArgumentNullException.ThrowIfNull(conversation);
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(levelPaths);
+        ArgumentNullException.ThrowIfNull(stageContext);
         isDialogueConversationPreview = false;
-        dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths,
+        dialogueNodePreview = new DialogueNodePreviewConfiguration(conversation, node, actors, levelPaths, stageContext,
             GetDialoguePreviewVoStartTime(node.InterpData));
         BuildDialogueTimeline(node);
         DialoguePreviewActorPanel.Visibility = Visibility.Visible;
         DialoguePreviewActorPanelSplitter.Visibility = Visibility.Visible;
     }
 
-    public void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
-        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths)
+    internal void ConfigureDialogueConversationPreview(ConversationExtended conversation, DialogueNodeExtended startNode,
+        IReadOnlyList<DialogueNodePreviewActor> actors, IReadOnlyList<string> levelPaths,
+        StageConversationContext stageContext)
     {
         dialogueBranchSelections.Clear();
-        ConfigureDialogueNodePreview(conversation, startNode, actors, levelPaths);
+        ConfigureDialogueNodePreview(conversation, startNode, actors, levelPaths, stageContext);
         isDialogueConversationPreview = true;
     }
 
@@ -1124,6 +1130,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ThemeManager.ThemeChanged -= OnThemeChanged;
         KeyframeList.PreviewMouseRightButtonDown -= KeyframeList_PreviewMouseRightButtonDown;
         previewActorGesturePackageCache.ReleasePackages();
+        dialogueNodePreview?.StageContext.Dispose();
         SceneViewer.Dispose();
     }
 
@@ -1527,6 +1534,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 if (isDialogueConversationPreview)
                 {
                     ApplyDialogueTimelineAtTime(0, reconstruct: true);
+                    StartDialogueTimelinePlayback();
                 }
                 else
                 {
@@ -1593,7 +1601,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         ExtraTrackMoveCheckBox.IsChecked = playExtraTrackMove;
         updatingMulticamControls = false;
         updatingActorPlaybackZControls = true;
-        ActorPlaybackTrackZCheckBox.IsChecked = false;
+        ActorPlaybackTrackZCheckBox.IsChecked = true;
         ActorPlaybackShiftZCheckBox.IsChecked = false;
         updatingActorPlaybackZControls = false;
         BuildActorDirectionTracks();
@@ -3180,12 +3188,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Actor = actor,
                 TrackMove = trackMove,
                 OriginalOrigin = originalOrigin,
-                ZOffset = trackMove?.Model?.Keyframes is not { Count: > 0 } keys
-                    ? ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f
-                    : ActorPlaybackTrackZCheckBox.IsChecked == true
-                    ? 0f
-                    : originalOrigin.Location.Z - EvaluateTrackMove(trackMove.Model, keys[0].Time).Location.Z
-                      + (ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f),
+                TrackStartOrigin = GetTrackStartOrigin(trackMove),
+                MoveFrame = GetTrackMoveFrame(trackMove)
             });
         }
 
@@ -3274,6 +3278,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ApplyDialogueTimelineAtTime(0, reconstruct: true);
         }
 
+        StartDialogueTimelinePlayback();
+    }
+
+    private void StartDialogueTimelinePlayback()
+    {
         isPlayingDialogueTimeline = true;
         if (FindName("DialogueTimelinePlayButton") is Button playButton)
         {
@@ -3419,12 +3428,8 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 Actor = actor,
                 TrackMove = trackMove,
                 OriginalOrigin = originalOrigin,
-                ZOffset = trackMove?.Model?.Keyframes is not { Count: > 0 } keys
-                    ? ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f
-                    : ActorPlaybackTrackZCheckBox.IsChecked == true
-                        ? 0f
-                        : originalOrigin.Location.Z - EvaluateTrackMove(trackMove.Model, keys[0].Time).Location.Z
-                          + (ActorPlaybackShiftZCheckBox.IsChecked == true ? -90f : 0f)
+                TrackStartOrigin = GetTrackStartOrigin(trackMove),
+                MoveFrame = GetTrackMoveFrame(trackMove)
             });
         }
         foreach (PreviewActorPlaybackState state in playbackActors)
@@ -3565,6 +3570,57 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         return new CameraOrigin(location, rotation);
     }
 
+    private static EInterpTrackMoveFrame GetTrackMoveFrame(TrackMovePlaybackOption trackMove) =>
+        trackMove?.TrackMove?.GetProperty<EnumProperty>("MoveFrame")
+            .GetEnumValOrDefault(EInterpTrackMoveFrame.IMF_World)
+        ?? EInterpTrackMoveFrame.IMF_World;
+
+    private static CameraOrigin GetTrackStartOrigin(TrackMovePlaybackOption trackMove) =>
+        trackMove?.Model?.Keyframes is { Count: > 0 } keys
+            ? EvaluateTrackMove(trackMove.Model, keys[0].Time)
+            : default;
+
+    private CameraOrigin ResolveActorTrackOrigin(PreviewActorPlaybackState state, CameraOrigin trackOrigin)
+    {
+        CameraOrigin origin;
+        if (dialogueNodePreview is not null)
+        {
+            Vector3 locationDelta = trackOrigin.Location - state.TrackStartOrigin.Location;
+            if (state.MoveFrame is not EInterpTrackMoveFrame.IMF_World)
+            {
+                Quaternion initialRotation = Rotator.FromDegreesVector(state.OriginalOrigin.Rotation).ToQuaternion();
+                locationDelta = Vector3.Transform(locationDelta, initialRotation);
+            }
+            origin = new CameraOrigin(state.OriginalOrigin.Location + locationDelta,
+                state.OriginalOrigin.Rotation + trackOrigin.Rotation - state.TrackStartOrigin.Rotation);
+        }
+        else
+        {
+            origin = state.MoveFrame switch
+            {
+                EInterpTrackMoveFrame.IMF_RelativeToInitial => ComposeRelativeOrigin(state.OriginalOrigin, trackOrigin),
+                _ => trackOrigin
+            };
+        }
+        Vector3 location = origin.Location;
+        if (ActorPlaybackTrackZCheckBox.IsChecked != true)
+        {
+            location.Z = state.OriginalOrigin.Location.Z;
+        }
+        if (ActorPlaybackShiftZCheckBox.IsChecked == true)
+        {
+            location.Z -= 90f;
+        }
+        return new CameraOrigin(location, origin.Rotation);
+    }
+
+    private static CameraOrigin ComposeRelativeOrigin(CameraOrigin basis, CameraOrigin relative)
+    {
+        Quaternion rotation = Rotator.FromDegreesVector(basis.Rotation).ToQuaternion();
+        Vector3 location = basis.Location + Vector3.Transform(relative.Location, rotation);
+        return new CameraOrigin(location, basis.Rotation + relative.Rotation);
+    }
+
     private void ApplyViewportCameraOrigin(CameraOrigin origin)
     {
         const float degreesToRadians = 0.017453292519943295f;
@@ -3606,9 +3662,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             {
                 float actorTrackTime = Math.Clamp(time, actorKeys[0].Time, actorKeys[^1].Time);
                 CameraOrigin trackOrigin = EvaluateTrackMove(state.TrackMove.Model, actorTrackTime);
-                Vector3 actorLocation = trackOrigin.Location;
-                actorLocation.Z += state.ZOffset;
-                state.Actor.Origin = new CameraOrigin(actorLocation, trackOrigin.Rotation);
+                state.Actor.Origin = ResolveActorTrackOrigin(state, trackOrigin);
             }
             else if (ActorPlaybackShiftZCheckBox.IsChecked == true)
             {
@@ -3841,7 +3895,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             }
         }
 
-        if (!isPlayingMove && !isPlayingDialogueTimeline)
+        if (!isPlayingMove && !isPlayingActor && !isPlayingDialogueTimeline)
         {
             DrawTrajectory(ActiveModel);
         }

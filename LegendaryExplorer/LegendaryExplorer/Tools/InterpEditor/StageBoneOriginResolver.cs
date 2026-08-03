@@ -15,6 +15,39 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 
 namespace LegendaryExplorer.Tools.InterpEditor;
 
+internal sealed class StageConversationContext : IDisposable
+{
+    private readonly bool ownsMainPackage;
+
+    public IMEPackage MainPackage { get; }
+    public ExportEntry StartConversation { get; }
+    public ExportEntry Stage { get; }
+    public CameraOrigin StageOrigin { get; }
+    public IReadOnlyDictionary<string, CameraOrigin> ActorOrigins { get; }
+    public IReadOnlyDictionary<string, string> VariableLinkSubtitles { get; }
+
+    public StageConversationContext(IMEPackage mainPackage, bool ownsMainPackage, ExportEntry startConversation,
+        ExportEntry stage, CameraOrigin stageOrigin, IReadOnlyDictionary<string, CameraOrigin> actorOrigins,
+        IReadOnlyDictionary<string, string> variableLinkSubtitles)
+    {
+        MainPackage = mainPackage;
+        this.ownsMainPackage = ownsMainPackage;
+        StartConversation = startConversation;
+        Stage = stage;
+        StageOrigin = stageOrigin;
+        ActorOrigins = actorOrigins;
+        VariableLinkSubtitles = variableLinkSubtitles;
+    }
+
+    public void Dispose()
+    {
+        if (ownsMainPackage)
+        {
+            MainPackage.Dispose();
+        }
+    }
+}
+
 internal static class StageBoneOriginResolver
 {
     private sealed record StageOption(ExportEntry Stage, ExportEntry StartConversation,
@@ -37,6 +70,49 @@ internal static class StageBoneOriginResolver
         ConversationExtended conversation, out CameraOrigin origin, out string message, string actorLabel = null)
     {
         origin = default;
+        if (!TrySelectContext(owner, sourcePackage, contextExport, conversation, out StageConversationContext context,
+                out message, actorLabel))
+        {
+            return false;
+        }
+
+        using (context)
+        {
+            try
+            {
+            using var cache = new PackageCache();
+            List<BoneOption> bones = FindBones(context.Stage, context.VariableLinkSubtitles, cache);
+            if (bones.Count == 0)
+            {
+                message = $"No skeletal mesh RefSkeleton could be resolved from '{context.Stage.InstancedFullPath}'.";
+                return false;
+            }
+
+            string selectionSuffix = string.IsNullOrWhiteSpace(actorLabel) ? string.Empty : $" for {actorLabel}";
+            BoneOption selectedBone = Select(owner, bones, $"Choose Stage Origin Bone{selectionSuffix}",
+                $"Choose the RefSkeleton bone whose raw Position and orientation will place {actorLabel ?? "the actor"}.");
+            if (selectedBone is null)
+            {
+                return false;
+            }
+
+            origin = ResolveBoneOrigin(selectedBone.Mesh, selectedBone.Index, context.StageOrigin, cache);
+            message = $"Origin set to {context.Stage.ObjectName.Instanced} transform plus {selectedBone.Bone.Name.Instanced} position and orientation.";
+            return true;
+            }
+            catch (Exception exception)
+            {
+                message = $"Stage origin resolution failed: {exception.Message}";
+                return false;
+            }
+        }
+    }
+
+    public static bool TrySelectContext(Window owner, IMEPackage sourcePackage, ExportEntry contextExport,
+        ConversationExtended conversation, out StageConversationContext context, out string message,
+        string actorLabel = null)
+    {
+        context = null;
         message = null;
         if (sourcePackage is null)
         {
@@ -59,12 +135,11 @@ internal static class StageBoneOriginResolver
             return false;
         }
 
-        IMEPackage openedPackage = null;
+        bool ownsMainPackage = !PathsEqual(mainPackagePath, sourcePackage.FilePath);
+        IMEPackage mainPackage = null;
         try
         {
-            IMEPackage mainPackage = PathsEqual(mainPackagePath, sourcePackage.FilePath)
-                ? sourcePackage
-                : openedPackage = MEPackageHandler.OpenMEPackage(mainPackagePath);
+            mainPackage = ownsMainPackage ? MEPackageHandler.OpenMEPackage(mainPackagePath) : sourcePackage;
             using var cache = new PackageCache();
             List<StageOption> stages = FindStages(mainPackage, conversationName, cache);
             if (stages.Count == 0)
@@ -81,42 +156,35 @@ internal static class StageBoneOriginResolver
                 return false;
             }
 
-            List<BoneOption> bones = FindBones(selectedStage.Stage, selectedStage.VariableLinkSubtitles, cache);
-            if (bones.Count == 0)
-            {
-                message = $"No skeletal mesh RefSkeleton could be resolved from '{selectedStage.Stage.InstancedFullPath}'.";
-                return false;
-            }
-
-            BoneOption selectedBone = Select(owner, bones, $"Choose Stage Origin Bone{selectionSuffix}",
-                $"Choose the RefSkeleton bone whose raw Position and orientation will place {actorLabel ?? "the actor"}.");
-            if (selectedBone is null)
-            {
-                return false;
-            }
-
             PropertyCollection stageProperties = GetPropertiesIncludingArchetypes(selectedStage.Stage, cache);
             StructProperty locationProperty = stageProperties.GetProp<StructProperty>("location")
-                                              ?? stageProperties.GetProp<StructProperty>("Location");
+                                               ?? stageProperties.GetProp<StructProperty>("Location");
             StructProperty rotationProperty = stageProperties.GetProp<StructProperty>("Rotation");
             Vector3 stageLocation = locationProperty is null ? Vector3.Zero : CommonStructs.GetVector3(locationProperty);
             Vector3 stageRotation = rotationProperty is null
                 ? Vector3.Zero
                 : CommonStructs.GetRotator(rotationProperty).GetDegreesVector();
-            Vector3 boneRotation = new(selectedBone.Bone.Orientation.X, selectedBone.Bone.Orientation.Y,
-                selectedBone.Bone.Orientation.Z);
-            origin = new CameraOrigin(stageLocation + selectedBone.Bone.Position, stageRotation + boneRotation);
-            message = $"Origin set to {selectedStage.Stage.ObjectName.Instanced} transform plus {selectedBone.Bone.Name.Instanced} position and orientation.";
+            IReadOnlyDictionary<string, CameraOrigin> actorOrigins = ResolveLinkedActorOrigins(selectedStage.Stage,
+                new CameraOrigin(stageLocation, stageRotation),
+                KismetHelper.GetVariableLinks(selectedStage.StartConversation.GetProperties(), mainPackage),
+                cache);
+            context = new StageConversationContext(mainPackage, ownsMainPackage, selectedStage.StartConversation,
+                selectedStage.Stage, new CameraOrigin(stageLocation, stageRotation), actorOrigins,
+                selectedStage.VariableLinkSubtitles);
+            mainPackage = null;
             return true;
         }
         catch (Exception exception)
         {
-            message = $"Stage origin resolution failed: {exception.Message}";
+            message = $"Stage context resolution failed: {exception.Message}";
             return false;
         }
         finally
         {
-            openedPackage?.Dispose();
+            if (ownsMainPackage)
+            {
+                mainPackage?.Dispose();
+            }
         }
     }
 
@@ -192,6 +260,160 @@ internal static class StageBoneOriginResolver
             }
         }
         return subtitles;
+    }
+
+    private static IReadOnlyDictionary<string, CameraOrigin> ResolveLinkedActorOrigins(ExportEntry stage,
+        CameraOrigin stageOrigin, IEnumerable<VarLinkInfo> variableLinks, PackageCache cache)
+    {
+        var origins = new Dictionary<string, CameraOrigin>(StringComparer.OrdinalIgnoreCase);
+        List<VarLinkInfo> links = variableLinks.ToList();
+        Dictionary<string, BoneOption> stageBones = FindBones(stage, new Dictionary<string, string>(), cache)
+            .GroupBy(option => option.Bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var slotOrigins = stageBones.ToDictionary(pair => pair.Key,
+            pair => ResolveBoneOrigin(pair.Value.Mesh, pair.Value.Index, stageOrigin, cache),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (VarLinkInfo variableLink in links.Where(link =>
+                     !string.IsNullOrWhiteSpace(link.LinkDesc)
+                     && slotOrigins.ContainsKey(link.LinkDesc)))
+        {
+            CameraOrigin slotOrigin = slotOrigins[variableLink.LinkDesc];
+            foreach (IEntry linkedNode in variableLink.LinkedNodes)
+            {
+                ExportEntry variable = ResolveExport(linkedNode, cache);
+                if (variable is null)
+                {
+                    continue;
+                }
+
+                string actorTag = ResolveLinkedActorTag(variable, cache);
+                if (!string.IsNullOrWhiteSpace(actorTag))
+                {
+                    origins[actorTag] = slotOrigin;
+                }
+                if (variableLink.LinkDesc.Equals("Owner", StringComparison.OrdinalIgnoreCase)
+                    || variableLink.LinkDesc.Equals("Player", StringComparison.OrdinalIgnoreCase))
+                {
+                    origins[variableLink.LinkDesc] = slotOrigin;
+                }
+            }
+        }
+
+        VarLinkInfo ownerLink = links.FirstOrDefault(link =>
+            string.Equals(link.LinkDesc, "Owner", StringComparison.OrdinalIgnoreCase));
+        VarLinkInfo ownerSlot = links.FirstOrDefault(link =>
+            !string.Equals(link.LinkDesc, "Owner", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(link.LinkDesc, "Stage", StringComparison.OrdinalIgnoreCase)
+            && slotOrigins.ContainsKey(link.LinkDesc)
+            && LinksReferToSameVariable(ownerLink, link, cache));
+        if (ownerSlot is not null)
+        {
+            origins["Owner"] = slotOrigins[ownerSlot.LinkDesc];
+        }
+        return origins;
+    }
+
+    private static bool LinksReferToSameVariable(VarLinkInfo first, VarLinkInfo second, PackageCache cache)
+    {
+        if (first is null || second is null)
+        {
+            return false;
+        }
+
+        return first.LinkedNodes.Any(firstNode => second.LinkedNodes.Any(secondNode =>
+            VariablesReferToSameObject(firstNode, secondNode, cache)));
+    }
+
+    private static bool VariablesReferToSameObject(IEntry first, IEntry second, PackageCache cache)
+    {
+        ExportEntry firstVariable = ResolveExport(first, cache);
+        ExportEntry secondVariable = ResolveExport(second, cache);
+        if (firstVariable is null || secondVariable is null)
+        {
+            return false;
+        }
+        if (firstVariable == secondVariable)
+        {
+            return true;
+        }
+
+        PropertyCollection firstProperties = GetPropertiesIncludingArchetypes(firstVariable, cache);
+        PropertyCollection secondProperties = GetPropertiesIncludingArchetypes(secondVariable, cache);
+        string firstName = ResolveVariableReferenceName(firstProperties);
+        string secondName = ResolveVariableReferenceName(secondProperties);
+        if (!string.IsNullOrWhiteSpace(firstName)
+            && firstName.Equals(secondName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        IEntry firstValue = firstProperties.GetProp<ObjectProperty>("ObjValue")?.ResolveToEntry(firstVariable.FileRef);
+        IEntry secondValue = secondProperties.GetProp<ObjectProperty>("ObjValue")?.ResolveToEntry(secondVariable.FileRef);
+        ExportEntry firstTarget = ResolveExport(firstValue, cache);
+        ExportEntry secondTarget = ResolveExport(secondValue, cache);
+        return firstTarget is not null && secondTarget is not null
+               && (firstTarget == secondTarget
+                   || firstTarget.ObjectName.Name.Equals(secondTarget.ObjectName.Name,
+                       StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveVariableReferenceName(PropertyCollection properties) =>
+        properties.GetProp<NameProperty>("m_sObjectTagToFind")?.Value.Instanced
+        ?? properties.GetProp<StrProperty>("m_sObjectTagToFind")?.Value
+        ?? properties.GetProp<NameProperty>("FindVarName")?.Value.Instanced
+        ?? properties.GetProp<NameProperty>("VarName")?.Value.Instanced;
+
+    private static string ResolveLinkedActorTag(ExportEntry variable, PackageCache cache)
+    {
+        if (variable.ClassName == "SeqVar_Player")
+        {
+            return "Player";
+        }
+
+        PropertyCollection variableProperties = GetPropertiesIncludingArchetypes(variable, cache);
+        string actorTag = variableProperties.GetProp<NameProperty>("m_sObjectTagToFind")?.Value.Instanced
+                          ?? variableProperties.GetProp<StrProperty>("m_sObjectTagToFind")?.Value;
+        if (!string.IsNullOrWhiteSpace(actorTag))
+        {
+            return actorTag;
+        }
+
+        ExportEntry actor = variableProperties.GetProp<ObjectProperty>("ObjValue") is { } objectValue
+            ? ResolveExport(objectValue.ResolveToEntry(variable.FileRef), cache)
+            : null;
+        return actor is null
+            ? null
+            : GetPropertiesIncludingArchetypes(actor, cache).GetProp<NameProperty>("Tag")?.Value.Instanced
+              ?? actor.ObjectName.Instanced;
+    }
+
+    private static CameraOrigin ResolveBoneOrigin(ExportEntry mesh, int boneIndex, CameraOrigin stageOrigin,
+        PackageCache cache)
+    {
+        SkeletalMesh skeletalMesh = ObjectBinary.From<SkeletalMesh>(mesh, cache);
+        MeshBone[] bones = skeletalMesh?.RefSkeleton;
+        if (bones is null || boneIndex < 0 || boneIndex >= bones.Length)
+        {
+            return stageOrigin;
+        }
+
+        var componentTransforms = new Matrix4x4[boneIndex + 1];
+        for (int index = 0; index <= boneIndex; index++)
+        {
+            MeshBone bone = bones[index];
+            Matrix4x4 localTransform = Matrix4x4.CreateFromQuaternion(bone.Orientation)
+                                       * Matrix4x4.CreateTranslation(bone.Position);
+            componentTransforms[index] = bone.ParentIndex >= 0 && bone.ParentIndex < index
+                ? localTransform * componentTransforms[bone.ParentIndex]
+                : localTransform;
+        }
+
+        Matrix4x4 stageTransform = Rotator.FromDegreesVector(stageOrigin.Rotation).ToRotationMatrix()
+                                   * Matrix4x4.CreateTranslation(stageOrigin.Location);
+        Matrix4x4 worldTransform = componentTransforms[boneIndex] * stageTransform;
+        Quaternion worldRotation = Quaternion.CreateFromRotationMatrix(worldTransform);
+        return new CameraOrigin(worldTransform.Translation,
+            Rotator.FromQuaternion(worldRotation).GetDegreesVector());
     }
 
     private static string ResolveVariableAttachment(IEntry linkedNode, PackageCache cache)
