@@ -36,6 +36,7 @@ using System.Windows.Threading;
 using CameraOrigin = LegendaryExplorer.Tools.InterpEditor.CameraOrigin;
 using StageConversationContext = LegendaryExplorer.Tools.InterpEditor.StageConversationContext;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
+using InterpCurveFloat = LegendaryExplorerCore.Unreal.BinaryConverters.InterpCurve<float>;
 
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
@@ -370,6 +371,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         public ExportEntry Group { get; init; }
         public ExportEntry TrackMove { get; init; }
         public CurveEditor3DModel Model { get; init; }
+        public InterpCurveFloat FovTrack { get; init; }
     }
 
     private sealed class PreviewActorPlaybackState
@@ -1218,6 +1220,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                         Group = group,
                         TrackMove = groupTrackMove,
                         Model = trackModel,
+                        FovTrack = LoadCameraFovTrack(group),
                     };
                     availableTrackMoves.Add(option);
                     bool isCameraTrackForGroup = cameraOptionsByGroup.TryAdd(groupName, option);
@@ -1277,6 +1280,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             Group = trackMove.Parent as ExportEntry,
             TrackMove = trackMove,
             Model = model,
+            FovTrack = LoadCameraFovTrack(trackMove.Parent as ExportEntry),
         };
         if (availableTrackMoves.All(option => !IsSameExport(option.TrackMove, primaryTrackMove.TrackMove)))
         {
@@ -1395,6 +1399,18 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private static string GetInterpGroupName(ExportEntry group)
         => group.GetProperty<NameProperty>("GroupName")?.Value.Instanced ?? group.ObjectName.Instanced;
+
+    private static InterpCurveFloat LoadCameraFovTrack(ExportEntry group)
+    {
+        ExportEntry fovTrack = GetReferencedExports(group, "InterpTracks").FirstOrDefault(track =>
+            track.ClassName == "InterpTrackFloatProp"
+            && (string.Equals(track.GetProperty<NameProperty>("PropertyName")?.Value.Instanced, "FOVAngle",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(track.GetProperty<StrProperty>("TrackTitle")?.Value, "FOVAngle",
+                    StringComparison.OrdinalIgnoreCase)));
+        StructProperty floatTrack = fovTrack?.GetProperty<StructProperty>("FloatTrack");
+        return floatTrack is null ? null : InterpCurveFloat.FromStructProperty(floatTrack, fovTrack.Game);
+    }
 
     private static IEnumerable<ExportEntry> FindDirectorTracks(ExportEntry interpData)
     {
@@ -3532,7 +3548,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         }
     }
 
-    private CameraOrigin GetPlaybackCameraOrigin(float time)
+    private TrackMovePlaybackOption GetPlaybackCameraOption(float time)
     {
         if (playDirectorMulticam && selectedDirectorPlayback?.Cuts is { Count: > 0 } cuts)
         {
@@ -3547,13 +3563,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 cut = candidate;
             }
 
-            if (cut.Camera?.Model is not null)
-            {
-                return EvaluateTrackMove(cut.Camera.Model, time);
-            }
+            return cut.Camera;
         }
 
-        return EvaluateTrackMove(ActiveModel, time);
+        return availableTrackMoves.FirstOrDefault(option => ReferenceEquals(option.Model, ActiveModel))
+               ?? primaryTrackMove;
     }
 
     private static CameraOrigin EvaluateTrackMove(CurveEditor3DModel trackModel, float time)
@@ -3604,6 +3618,16 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         RenderContext.Camera.Yaw = origin.Rotation.Z * degreesToRadians;
     }
 
+    private void ApplyViewportCameraAtTime(TrackMovePlaybackOption camera, float time)
+    {
+        const float defaultFovDegrees = 60f;
+        const float degreesToRadians = 0.017453292519943295f;
+        CurveEditor3DModel cameraModel = camera?.Model ?? ActiveModel;
+        ApplyViewportCameraOrigin(EvaluateTrackMove(cameraModel, time));
+        RenderContext.Camera.FOV = (camera?.FovTrack?.Eval(time, defaultFovDegrees) ?? defaultFovDegrees)
+                                   * degreesToRadians;
+    }
+
     private void UpdateAdditionalCameraPlayback(float time)
     {
         playbackCurrentTime = time;
@@ -3611,8 +3635,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void ApplyCameraAtTime(float time)
     {
-        CameraOrigin origin = GetPlaybackCameraOrigin(time);
-        ApplyViewportCameraOrigin(origin);
+        ApplyViewportCameraAtTime(GetPlaybackCameraOption(time), time);
         RenderContext.Camera.FocusDepth = 0f;
         PlaybackKeyframeStatus = GetPlaybackKeyframeStatus(time);
         string playbackMode = playDirectorMulticam ? "director multicam" : "camera";
@@ -3664,11 +3687,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
     {
         if (playDirectorMulticam)
         {
-            ApplyViewportCameraOrigin(GetPlaybackCameraOrigin(time));
+            ApplyViewportCameraAtTime(GetPlaybackCameraOption(time), time);
         }
         else if (playExtraTrackMove && selectedExtraTrackMove?.Model is not null)
         {
-            ApplyViewportCameraOrigin(EvaluateTrackMove(selectedExtraTrackMove.Model, time));
+            ApplyViewportCameraAtTime(selectedExtraTrackMove, time);
         }
         else
         {
