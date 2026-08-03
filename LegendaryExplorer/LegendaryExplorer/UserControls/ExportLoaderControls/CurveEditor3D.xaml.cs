@@ -1689,7 +1689,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 ArrayProperty<StructProperty> trackKeys = track.GetProperty<ArrayProperty<StructProperty>>("m_aTrackKeys");
                 ArrayProperty<StructProperty> voKeys = track.GetProperty<ArrayProperty<StructProperty>>("m_aFOVOKeys");
                 int keyCount = Math.Min(trackKeys?.Count ?? 0, voKeys?.Count ?? 0);
-                PreviewActorConfiguration actor = ResolveFaceOnlyVoActor(track, group);
+                PreviewActorConfiguration trackActor = ResolveFaceOnlyVoActor(track, group);
                 for (int index = 0; index < keyCount; index++)
                 {
                     float startTime = trackKeys[index].GetProp<FloatProperty>("fTime")?.Value ?? 0;
@@ -1698,6 +1698,7 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                     DialogueNodeExtended node = ResolveFaceOnlyVoNode(track.FileRef.GetEntry(conversationIndex), lineStrRef);
                     if (node is not null)
                     {
+                        PreviewActorConfiguration actor = trackActor ?? FindPreviewActorByTag(node.SpeakerTag?.SpeakerName);
                         faceOnlyVoEvents.Add(new FaceOnlyVoEvent(startTime, track, group, node, actor));
                     }
                 }
@@ -1726,10 +1727,36 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return null;
         }
 
-        return previewActors.FirstOrDefault(actor =>
-            string.Equals(actor.ActorTag, actorTag, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(actorTag, "player", StringComparison.OrdinalIgnoreCase)
-               && string.Equals(actor.ActorTag, "player", StringComparison.OrdinalIgnoreCase));
+        return FindPreviewActorByTag(actorTag);
+    }
+
+    private PreviewActorConfiguration FindPreviewActorByTag(string actorTag)
+    {
+        if (string.IsNullOrWhiteSpace(actorTag))
+        {
+            return null;
+        }
+
+        PreviewActorConfiguration actor = previewActors.FirstOrDefault(candidate =>
+            string.Equals(candidate.ActorTag, actorTag, StringComparison.OrdinalIgnoreCase));
+        if (actor is not null)
+        {
+            return actor;
+        }
+
+        const string faceOnlyVoPrefix = "fovo_";
+        string unprefixedActorTag = actorTag.StartsWith(faceOnlyVoPrefix, StringComparison.OrdinalIgnoreCase)
+            ? actorTag[faceOnlyVoPrefix.Length..]
+            : actorTag;
+        return previewActors.FirstOrDefault(candidate =>
+        {
+            string candidateTag = candidate.ActorTag;
+            if (candidateTag.StartsWith(faceOnlyVoPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                candidateTag = candidateTag[faceOnlyVoPrefix.Length..];
+            }
+            return string.Equals(candidateTag, unprefixedActorTag, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     private DialogueNodeExtended ResolveFaceOnlyVoNode(IEntry conversationEntry, int lineStrRef)
@@ -1810,17 +1837,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             ImportEntry import => EntryImporter.ResolveImport(import, previewActorGesturePackageCache),
             _ => null
         };
-        string lineName = faceOnlyVo.Actor.AudioGender == DialoguePreviewAudioGender.Female
-            ? faceOnlyVo.Node.FaceFX_Female
-            : faceOnlyVo.Node.FaceFX_Male;
-        if (assetExport is null || animSetExport is null || string.IsNullOrWhiteSpace(lineName))
+        if (assetExport is null || animSetExport is null)
         {
             return;
         }
 
         FaceFXAnimSet animSet = animSetExport.GetBinaryData<FaceFXAnimSet>();
-        FaceFXLine line = animSet.Lines.FirstOrDefault(candidate =>
-            candidate.NameAsString.Equals(lineName, StringComparison.OrdinalIgnoreCase));
+        FaceFXLine line = FindFaceOnlyVoFaceFxLine(animSet, faceOnlyVo.Node,
+            faceOnlyVo.Actor.AudioGender == DialoguePreviewAudioGender.Female, animSetExport.Game);
         if (line is null)
         {
             return;
@@ -1830,6 +1854,36 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
         animationState.SetFaceFx(assetExport.GetBinaryData<FaceFXAsset>(), animSet, line, faceOnlyVo.StartTime);
         animationState.SetTime(playbackCurrentTime);
         UpdatePreviewActorSkinning(faceOnlyVo.Actor);
+    }
+
+    private static FaceFXLine FindFaceOnlyVoFaceFxLine(FaceFXAnimSet animSet, DialogueNodeExtended node,
+        bool isFemale, MEGame game)
+    {
+        var candidateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string parsedLineName = isFemale ? node.FaceFX_Female : node.FaceFX_Male;
+        if (!string.IsNullOrWhiteSpace(parsedLineName)
+            && !string.Equals(parsedLineName, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            candidateNames.Add(parsedLineName);
+        }
+
+        string baseLineName = $"FXA_{node.LineStrRef}";
+        candidateNames.Add($"{baseLineName}_{(isFemale ? 'F' : 'M')}");
+        if (isFemale && game.IsGame1())
+        {
+            candidateNames.Add(baseLineName);
+        }
+
+        FaceFXLine line = animSet.Lines.FirstOrDefault(candidate =>
+            candidateNames.Contains(candidate.NameAsString));
+        if (line is not null)
+        {
+            return line;
+        }
+
+        string lineId = node.LineStrRef.ToString(CultureInfo.InvariantCulture);
+        return animSet.Lines.FirstOrDefault(candidate =>
+            string.Equals(candidate.ID, lineId, StringComparison.OrdinalIgnoreCase));
     }
 
     private void EndActiveFaceOnlyVo()
