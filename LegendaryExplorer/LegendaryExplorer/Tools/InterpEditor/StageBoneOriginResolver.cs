@@ -326,8 +326,8 @@ internal static class StageBoneOriginResolver
 
     private static bool VariablesReferToSameObject(IEntry first, IEntry second, PackageCache cache)
     {
-        ExportEntry firstVariable = ResolveExport(first, cache);
-        ExportEntry secondVariable = ResolveExport(second, cache);
+        ExportEntry firstVariable = ResolveSequenceVariable(first, cache);
+        ExportEntry secondVariable = ResolveSequenceVariable(second, cache);
         if (firstVariable is null || secondVariable is null)
         {
             return false;
@@ -339,29 +339,68 @@ internal static class StageBoneOriginResolver
 
         PropertyCollection firstProperties = GetPropertiesIncludingArchetypes(firstVariable, cache);
         PropertyCollection secondProperties = GetPropertiesIncludingArchetypes(secondVariable, cache);
-        string firstName = ResolveVariableReferenceName(firstProperties);
-        string secondName = ResolveVariableReferenceName(secondProperties);
-        if (!string.IsNullOrWhiteSpace(firstName)
-            && firstName.Equals(secondName, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        IEntry firstValue = firstProperties.GetProp<ObjectProperty>("ObjValue")?.ResolveToEntry(firstVariable.FileRef);
-        IEntry secondValue = secondProperties.GetProp<ObjectProperty>("ObjValue")?.ResolveToEntry(secondVariable.FileRef);
-        ExportEntry firstTarget = ResolveExport(firstValue, cache);
-        ExportEntry secondTarget = ResolveExport(secondValue, cache);
-        return firstTarget is not null && secondTarget is not null
-               && (firstTarget == secondTarget
-                   || firstTarget.ObjectName.Name.Equals(secondTarget.ObjectName.Name,
-                       StringComparison.OrdinalIgnoreCase));
+        HashSet<string> firstReferents = ResolveVariableReferents(firstVariable, firstProperties, cache);
+        HashSet<string> secondReferents = ResolveVariableReferents(secondVariable, secondProperties, cache);
+        return firstReferents.Overlaps(secondReferents);
     }
 
-    private static string ResolveVariableReferenceName(PropertyCollection properties) =>
-        properties.GetProp<NameProperty>("m_sObjectTagToFind")?.Value.Instanced
-        ?? properties.GetProp<StrProperty>("m_sObjectTagToFind")?.Value
-        ?? properties.GetProp<NameProperty>("FindVarName")?.Value.Instanced
-        ?? properties.GetProp<NameProperty>("VarName")?.Value.Instanced;
+    private static ExportEntry ResolveSequenceVariable(IEntry entry, PackageCache cache)
+    {
+        ExportEntry variable = ResolveExport(entry, cache);
+        var visited = new HashSet<int>();
+        while (variable is not null && visited.Add(variable.UIndex))
+        {
+            ExportEntry resolved = variable.ClassName switch
+            {
+                "SeqVar_Named" or "SeqVar_ScopedNamed" => KismetHelper.ResolveSeqVar_Named(variable),
+                "SeqVar_External" => KismetHelper.ResolveSeqVar_External(variable),
+                _ => null
+            };
+            if (resolved is null)
+            {
+                break;
+            }
+            variable = ResolveExport(resolved, cache) ?? resolved;
+        }
+        return variable;
+    }
+
+    private static HashSet<string> ResolveVariableReferents(ExportEntry variable, PropertyCollection properties,
+        PackageCache cache)
+    {
+        var referents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddReferent(referents, GetNameOrStringValue(properties, "m_sObjectTagToFind"));
+        AddReferent(referents, GetNameOrStringValue(properties, "m_sActorTagToFind"));
+        AddReferent(referents, GetNameOrStringValue(properties, "FindVarName"));
+        AddReferent(referents, GetNameOrStringValue(properties, "VarName"));
+
+        IEntry value = properties.GetProp<ObjectProperty>("ObjValue")?.ResolveToEntry(variable.FileRef);
+        ExportEntry target = ResolveExport(value, cache);
+        if (target is not null)
+        {
+            AddReferent(referents, target.InstancedFullPath);
+            AddReferent(referents, target.ObjectName.Instanced);
+            PropertyCollection targetProperties = GetPropertiesIncludingArchetypes(target, cache);
+            AddReferent(referents, GetNameOrStringValue(targetProperties, "Tag"));
+        }
+        return referents;
+    }
+
+    private static string GetNameOrStringValue(PropertyCollection properties, NameReference propertyName) =>
+        properties.FirstOrDefault(property => property.Name == propertyName) switch
+        {
+            NameProperty nameProperty => nameProperty.Value.Instanced,
+            StrProperty stringProperty => stringProperty.Value,
+            _ => null
+        };
+
+    private static void AddReferent(ISet<string> referents, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && !value.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            referents.Add(value);
+        }
+    }
 
     private static string ResolveLinkedActorTag(ExportEntry variable, PackageCache cache)
     {

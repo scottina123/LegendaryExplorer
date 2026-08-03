@@ -1176,9 +1176,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private void RefreshMulticamPlaybackOptions(ExportEntry trackMove)
     {
-        Dictionary<PreviewActorConfiguration, ExportEntry> previousActorTracks = previewActorTrackAssignments
-            .Where(pair => pair.Value?.TrackMove is not null)
-            .ToDictionary(pair => pair.Key, pair => pair.Value.TrackMove);
+        Dictionary<PreviewActorConfiguration, ExportEntry> previousActorTracks = dialogueNodePreview is null
+            ? previewActorTrackAssignments
+                .Where(pair => pair.Value?.TrackMove is not null)
+                .ToDictionary(pair => pair.Key, pair => pair.Value.TrackMove)
+            : [];
         updatingMulticamControls = true;
         primaryTrackMove = null;
         availableTrackMoves.Clear();
@@ -1290,7 +1292,14 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
                 previewActorTrackAssignments[actor] = replacement;
             }
         }
-        EnsurePreviewActorTrackAssignments();
+        if (dialogueNodePreview is not null && previewActors.Count > 0)
+        {
+            AssignDialoguePreviewTrackMoves();
+        }
+        else
+        {
+            EnsurePreviewActorTrackAssignments();
+        }
         RefreshKeyframeTrackMoveTabs();
     }
 
@@ -3392,6 +3401,12 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
             return;
         }
 
+        if (activeDialogueTimelineSegment is not null
+            && segment.StartTime >= activeDialogueTimelineSegment.EndTime)
+        {
+            ApplyPlaybackAtTime(activeDialogueTimelineSegment.Duration);
+        }
+
         Dictionary<string, CameraOrigin> actorOrigins = previewActors.ToDictionary(actor => actor.ActorTag,
             actor => actor.Origin, StringComparer.OrdinalIgnoreCase);
         dialogueNodePreview = dialogueNodePreview with
@@ -3582,26 +3597,11 @@ public sealed partial class CurveEditor3D : ExportLoaderControl, IActorEditorCon
 
     private CameraOrigin ResolveActorTrackOrigin(PreviewActorPlaybackState state, CameraOrigin trackOrigin)
     {
-        CameraOrigin origin;
-        if (dialogueNodePreview is not null)
+        CameraOrigin origin = state.MoveFrame switch
         {
-            Vector3 locationDelta = trackOrigin.Location - state.TrackStartOrigin.Location;
-            if (state.MoveFrame is not EInterpTrackMoveFrame.IMF_World)
-            {
-                Quaternion initialRotation = Rotator.FromDegreesVector(state.OriginalOrigin.Rotation).ToQuaternion();
-                locationDelta = Vector3.Transform(locationDelta, initialRotation);
-            }
-            origin = new CameraOrigin(state.OriginalOrigin.Location + locationDelta,
-                state.OriginalOrigin.Rotation + trackOrigin.Rotation - state.TrackStartOrigin.Rotation);
-        }
-        else
-        {
-            origin = state.MoveFrame switch
-            {
-                EInterpTrackMoveFrame.IMF_RelativeToInitial => ComposeRelativeOrigin(state.OriginalOrigin, trackOrigin),
-                _ => trackOrigin
-            };
-        }
+            EInterpTrackMoveFrame.IMF_RelativeToInitial => ComposeRelativeOrigin(state.OriginalOrigin, trackOrigin),
+            _ => trackOrigin
+        };
         Vector3 location = origin.Location;
         if (ActorPlaybackTrackZCheckBox.IsChecked != true)
         {
