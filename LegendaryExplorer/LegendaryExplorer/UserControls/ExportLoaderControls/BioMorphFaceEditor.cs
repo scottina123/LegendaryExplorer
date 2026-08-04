@@ -75,15 +75,37 @@ public partial class MeshRenderer
 
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
     public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
-        MorphFeatureItems.Where(feature => feature.HasMorphTarget).ToArray();
+        MorphFeatureItems.Where(feature => feature.HasMorphTarget && MatchesMorphEditorSearch(feature.Name)).ToArray();
     public IEnumerable<MorphFeatureEditorItem> UnmatchedMorphFeatureItems =>
-        MorphFeatureItems.Where(feature => !feature.HasMorphTarget).ToArray();
-    public int UnmatchedMorphFeatureCount => MorphFeatureItems.Count(feature => !feature.HasMorphTarget);
+        MorphFeatureItems.Where(feature => !feature.HasMorphTarget && MatchesMorphEditorSearch(feature.Name)).ToArray();
+    public int UnmatchedMorphFeatureCount => UnmatchedMorphFeatureItems.Count();
     public bool HasUnmatchedMorphFeatures => UnmatchedMorphFeatureCount > 0;
     public ObservableCollectionExtended<MorphBoneEditorItem> MorphSkeletonItems { get; } = [];
+    public IEnumerable<MorphBoneEditorItem> FilteredMorphSkeletonItems =>
+        MorphSkeletonItems.Where(bone => MatchesMorphEditorSearch(bone.Name)).ToArray();
     public ObservableCollectionExtended<MorphScalarOverrideItem> MorphScalarOverrides { get; } = [];
+    public IEnumerable<MorphScalarOverrideItem> FilteredMorphScalarOverrides =>
+        MorphScalarOverrides.Where(scalar => MatchesMorphEditorSearch(scalar.Name)).ToArray();
     public ObservableCollectionExtended<MorphColorOverrideItem> MorphColorOverrides { get; } = [];
+    public IEnumerable<MorphColorOverrideItem> FilteredMorphColorOverrides =>
+        MorphColorOverrides.Where(color => MatchesMorphEditorSearch(color.Name)).ToArray();
     public ObservableCollectionExtended<MorphTextureOverrideItem> MorphTextureOverrides { get; } = [];
+    public IEnumerable<MorphTextureOverrideItem> FilteredMorphTextureOverrides => MorphTextureOverrides
+        .Where(texture => MatchesMorphEditorSearch(texture.Name, texture.ResolvedPath, texture.EntryIndex.ToString()))
+        .ToArray();
+
+    private string _morphEditorSearchText;
+    public string MorphEditorSearchText
+    {
+        get => _morphEditorSearchText;
+        set
+        {
+            if (SetProperty(ref _morphEditorSearchText, value))
+            {
+                RefreshMorphEditorFilters();
+            }
+        }
+    }
 
     private string _morphBaseHeadPath;
     public string MorphBaseHeadPath
@@ -126,11 +148,11 @@ public partial class MeshRenderer
         try
         {
             MorphFeatureItems.ClearEx();
-            RefreshMorphFeatureGroups();
             MorphSkeletonItems.ClearEx();
             MorphScalarOverrides.ClearEx();
             MorphColorOverrides.ClearEx();
             MorphTextureOverrides.ClearEx();
+            RefreshMorphEditorFilters();
             RemovedMorphBones.Clear();
             MorphTargets = new Dictionary<string, MorphTargetSnapshot>(StringComparer.OrdinalIgnoreCase);
             BaseSkeletonPositions = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
@@ -186,6 +208,7 @@ public partial class MeshRenderer
             {
                 LoadMaterialOverrideItems(materialOverride);
             }
+            RefreshMorphEditorFilters();
 
             MorphEditorStatus = StoredMorphLods.Length == 0
                 ? "This morph has no stored vertex LODs. Properties can be edited, but no face geometry can be previewed."
@@ -1074,6 +1097,22 @@ public partial class MeshRenderer
         OnPropertyChanged(nameof(HasUnmatchedMorphFeatures));
     }
 
+    private bool MatchesMorphEditorSearch(params string[] values)
+    {
+        string search = MorphEditorSearchText?.Trim();
+        return string.IsNullOrWhiteSpace(search)
+               || values.Any(value => value?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private void RefreshMorphEditorFilters()
+    {
+        RefreshMorphFeatureGroups();
+        OnPropertyChanged(nameof(FilteredMorphSkeletonItems));
+        OnPropertyChanged(nameof(FilteredMorphScalarOverrides));
+        OnPropertyChanged(nameof(FilteredMorphColorOverrides));
+        OnPropertyChanged(nameof(FilteredMorphTextureOverrides));
+    }
+
     private void AddMorphBone_Click(object sender, RoutedEventArgs e)
     {
         string name = PromptDialog.Prompt(this, "Bone name:", "Add final-skeleton bone");
@@ -1085,6 +1124,7 @@ public partial class MeshRenderer
         Vector3 position = BaseSkeletonPositions.GetValueOrDefault(trimmed);
         RemovedMorphBones.Remove(trimmed);
         MorphSkeletonItems.Add(new MorphBoneEditorItem(trimmed, position, OnMorphBoneChanged));
+        RefreshMorphEditorFilters();
         MarkMorphChanged();
         UpdateMorphSkeletonPreview();
     }
@@ -1094,6 +1134,7 @@ public partial class MeshRenderer
         if (sender is FrameworkElement { DataContext: MorphBoneEditorItem item } && MorphSkeletonItems.Remove(item))
         {
             RemovedMorphBones.Add(item.Name);
+            RefreshMorphEditorFilters();
             MarkMorphChanged();
             UpdateMorphSkeletonPreview();
         }
@@ -1116,6 +1157,7 @@ public partial class MeshRenderer
             return;
         }
         add(name.Trim());
+        RefreshMorphEditorFilters();
         OnMorphMaterialChanged();
     }
 
@@ -1127,6 +1169,7 @@ public partial class MeshRenderer
     {
         if (sender is FrameworkElement { DataContext: T item } && collection.Remove(item))
         {
+            RefreshMorphEditorFilters();
             OnMorphMaterialChanged();
         }
     }
@@ -1141,11 +1184,12 @@ public partial class MeshRenderer
         try
         {
             MorphFeatureItems.ClearEx();
-            RefreshMorphFeatureGroups();
             MorphSkeletonItems.ClearEx();
             MorphScalarOverrides.ClearEx();
             MorphColorOverrides.ClearEx();
             MorphTextureOverrides.ClearEx();
+            MorphEditorSearchText = null;
+            RefreshMorphEditorFilters();
             RemovedMorphBones.Clear();
             MorphTargets.Clear();
             BaseSkeletonPositions.Clear();

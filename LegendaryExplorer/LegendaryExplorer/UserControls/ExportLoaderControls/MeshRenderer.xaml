@@ -147,6 +147,10 @@
                             </UniformGrid>
                         </StackPanel>
 
+                        <xctk:WatermarkTextBox DockPanel.Dock="Top" Margin="0,0,0,5" Padding="6,4"
+                                               Watermark="Search features, skeleton, and material overrides"
+                                               Text="{Binding MorphEditorSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
                         <TabControl>
                             <TabItem Header="Features">
                                 <DockPanel Margin="4">
@@ -172,7 +176,7 @@
                                     <Button DockPanel.Dock="Top" Content="Add bone…" HorizontalAlignment="Left" Padding="7,3" Margin="0,0,0,4"
                                             Click="AddMorphBone_Click"/>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding MorphSkeletonItems}">
+                                        <ItemsControl ItemsSource="{Binding FilteredMorphSkeletonItems}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Expander IsExpanded="False" Margin="0,1">
@@ -217,7 +221,7 @@
                                         <GroupBox Header="Scalar parameters" Margin="0,0,0,6">
                                             <DockPanel Margin="4">
                                                 <Button DockPanel.Dock="Top" Content="Add scalar…" HorizontalAlignment="Left" Padding="6,2" Margin="0,0,0,3" Click="AddMorphScalar_Click"/>
-                                                <ItemsControl ItemsSource="{Binding MorphScalarOverrides}">
+                                                <ItemsControl ItemsSource="{Binding FilteredMorphScalarOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
                                                             <Grid Margin="0,3">
@@ -241,7 +245,7 @@
                                         <GroupBox Header="Color parameters" Margin="0,0,0,6">
                                             <DockPanel Margin="4">
                                                 <Button DockPanel.Dock="Top" Content="Add color…" HorizontalAlignment="Left" Padding="6,2" Margin="0,0,0,3" Click="AddMorphColor_Click"/>
-                                                <ItemsControl ItemsSource="{Binding MorphColorOverrides}">
+                                                <ItemsControl ItemsSource="{Binding FilteredMorphColorOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
                                                             <Grid Margin="0,4">
@@ -268,7 +272,7 @@
                                         <GroupBox Header="Texture parameters">
                                             <DockPanel Margin="4">
                                                 <Button DockPanel.Dock="Top" Content="Add texture…" HorizontalAlignment="Left" Padding="6,2" Margin="0,0,0,3" Click="AddMorphTexture_Click"/>
-                                                <ItemsControl ItemsSource="{Binding MorphTextureOverrides}">
+                                                <ItemsControl ItemsSource="{Binding FilteredMorphTextureOverrides}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
                                                             <Grid Margin="0,4">
