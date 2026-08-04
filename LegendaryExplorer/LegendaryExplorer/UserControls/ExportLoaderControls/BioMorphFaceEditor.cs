@@ -1006,14 +1006,32 @@ public partial class MeshRenderer
 
     private void AddMorphFeature_Click(object sender, RoutedEventArgs e)
     {
-        string name = PromptDialog.Prompt(this, "Morph target/feature name:", "Add morph feature");
+        var existingFeatures = MorphFeatureItems
+            .Select(feature => feature.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string[] addableFeatures = MorphTargets.Keys
+            .Where(name => !existingFeatures.Contains(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (addableFeatures.Length == 0)
+        {
+            MorphTargetStatus = MorphTargets.Count == 0
+                ? "No morph targets are available to add."
+                : "Every available morph target is already present on this face.";
+            return;
+        }
+
+        string name = StringSelectorDialog.GetValue(this,
+            $"Choose a morph feature to add. Type to search the {addableFeatures.Length} available targets.",
+            "Add morph feature", addableFeatures);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
         }
-        var item = new MorphFeatureEditorItem(name.Trim(), 0, OnMorphFeatureChanged)
+        var item = new MorphFeatureEditorItem(name, 0, OnMorphFeatureChanged)
         {
-            HasMorphTarget = MorphTargets.ContainsKey(name.Trim())
+            HasMorphTarget = true
         };
         MorphFeatureItems.Add(item);
         OnMorphFeatureChanged();
