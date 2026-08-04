@@ -248,6 +248,33 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor
                 }
             }
         }
+
+        /// <summary>
+        /// Gets the names of every scalar parameter available to <see cref="MaterialExport"/>, including inherited base-material parameters.
+        /// </summary>
+        public IReadOnlyList<string> GetScalarParameterNames(PackageCache cache)
+        {
+            var parameters = new List<ExpressionParameter>();
+            GetAllScalarParameters(MaterialExport, false, cache, parameters);
+            return GetDistinctParameterNames(parameters);
+        }
+
+        /// <summary>
+        /// Gets the names of every vector parameter available to <see cref="MaterialExport"/>, including inherited base-material parameters.
+        /// </summary>
+        public IReadOnlyList<string> GetVectorParameterNames(PackageCache cache)
+        {
+            var parameters = new List<ExpressionParameter>();
+            GetAllVectorParameters(MaterialExport, false, cache, parameters);
+            return GetDistinctParameterNames(parameters);
+        }
+
+        private static IReadOnlyList<string> GetDistinctParameterNames(IEnumerable<ExpressionParameter> parameters) => parameters
+            .Select(parameter => parameter.ParameterName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         #endregion
 
         #region Reading export data

@@ -311,6 +311,14 @@
                                                     </ItemsPanelTemplate>
                                                 </ComboBox.ItemsPanel>
                                             </ComboBox>
+                                            <Button MinWidth="140"
+                                                    Padding="8,0"
+                                                    HorizontalContentAlignment="Left"
+                                                    Content="{Binding InlineNameValue}"
+                                                    ToolTip="Choose from the scalar or vector parameters exposed by this material"
+                                                    Tag="{Binding}"
+                                                    Click="MaterialParameterNamePickerButton_Click"
+                                                    Visibility="{Binding ShowMaterialParameterNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <TextBlock Text="_" Margin="3,0" VerticalAlignment="Center" FontWeight="Bold" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <TextBox Width="40" Text="{Binding InlineNameIndexValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Tag="{Binding}" KeyDown="InlineEditor_KeyDown" Style="{StaticResource InlineEditorTextBoxStyle}" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                             <Button Margin="5,0,0,0" Padding="6,0" Content="✓" Tag="{Binding}" Click="InlineEditorConfirmButton_Click" Visibility="{Binding ShowStandardNamePicker, Converter={StaticResource BoolToVisibilityConverter}}"/>

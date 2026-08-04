@@ -28,6 +28,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.PlotEditor;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UserControls.ExportLoaderControls.MaterialEditor;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -4362,6 +4363,70 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             TryCommitInlineEditor(sender as FrameworkElement);
         }
 
+        private void MaterialParameterNamePickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
+                || node.Property is not NameProperty _
+                || CurrentLoadedExport is null
+                || !node.ShowMaterialParameterNamePicker)
+            {
+                return;
+            }
+
+            bool isVectorParameter = node.MaterialParameterArrayName == "VectorParameterValues";
+            IReadOnlyList<string> parameterNames;
+            try
+            {
+                using var cache = new PackageCache();
+                var materialInfo = new MaterialInfo { MaterialExport = CurrentLoadedExport };
+                parameterNames = isVectorParameter
+                    ? materialInfo.GetVectorParameterNames(cache)
+                    : materialInfo.GetScalarParameterNames(cache);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    $"The material's parameter list could not be loaded.\n\n{exception.Message}",
+                    "Material parameters unavailable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string currentName = ((NameProperty)node.Property).Value.Instanced;
+            parameterNames = parameterNames
+                .Concat(currentName.Equals(NameReference.None.Name, StringComparison.OrdinalIgnoreCase) ? [] : [currentName])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (parameterNames.Count == 0)
+            {
+                MessageBox.Show(
+                    $"No {(isVectorParameter ? "vector" : "scalar")} parameters were found on this material or its parent material.",
+                    "No material parameters found",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string parameterType = isVectorParameter ? "vector" : "scalar";
+            string selectedName = StringSelectorDialog.GetValue(
+                this,
+                $"Choose a {parameterType} parameter name. Type to search the {parameterNames.Count} available values.",
+                $"Choose {parameterType} parameter",
+                parameterNames.Select(name => new StringSelectorItem(name, name, $"{parameterType} parameter")),
+                currentName);
+            if (string.IsNullOrWhiteSpace(selectedName))
+            {
+                return;
+            }
+
+            NameReference selectedNameReference = NameReference.FromInstancedString(selectedName);
+            node.InlineNameValue = selectedNameReference.Name;
+            node.InlineNameIndexValue = selectedNameReference.Number.ToString(CultureInfo.InvariantCulture);
+            TryCommitInlineEditor(node);
+        }
+
         private async void PropActionPickerButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not FrameworkElement { Tag: UPropertyTreeViewEntry node }
@@ -6216,7 +6281,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowNameInlineEditor => IsNameProperty;
         public bool ShowPropActionPicker { get; set; }
         public bool ShowClientEffectPicker { get; set; }
-        public bool ShowStandardNamePicker => true;
+        public string MaterialParameterArrayName => Property is NameProperty { Name.Name: "ParameterName" }
+                                                    && AttachedExport?.IsA("MaterialInstanceConstant") == true
+                                                    && UPParent?.UPParent?.Property is ArrayPropertyBase parameterArray
+                                                    && parameterArray.Name.Name is "ScalarParameterValues" or "VectorParameterValues"
+            ? parameterArray.Name.Name
+            : null;
+        public bool ShowMaterialParameterNamePicker => MaterialParameterArrayName is not null;
+        public bool ShowStandardNamePicker => !ShowMaterialParameterNamePicker;
         public bool ShowEnumInlineEditor => IsEnumProperty;
         public bool ShowParsedValue => Property is not ObjectProperty && !string.IsNullOrWhiteSpace(ParsedValue);
 
