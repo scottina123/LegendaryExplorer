@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Packages.CloningImportingAndRelinking;
 using LegendaryExplorerCore.Unreal.BinaryConverters;
 using LegendaryExplorerCore.Unreal;
 using LegendaryExplorerCore.Unreal.Classes;
@@ -29,6 +30,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IEntry> TextureParameterEntries = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, LinearColor Value)> PreviewVectorBaselines = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, string Value)> PreviewTextureBaselines = new(StringComparer.OrdinalIgnoreCase);
@@ -161,11 +163,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                         }
                         else if (expressionProps.GetProp<ObjectProperty>("Texture") is {} textureProp)
                         {
-                            if (!TextureParameterValues.ContainsKey(paramNameProp.Value.Instanced) 
+                            if (!TextureParameterValues.ContainsKey(paramNameProp.Value.Instanced)
                                 && mat.FileRef.GetEntry(textureProp.Value) is {} texEntry)
                             {
                                 Textures.Add(texEntry);
                                 TextureParameterValues.Add(paramNameProp.Value.Instanced, texEntry.InstancedFullPath);
+                                TextureParameterEntries.TryAdd(paramNameProp.Value.Instanced, texEntry);
                             }
                         }
                     }
@@ -252,7 +255,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (textureValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                         && textureValue.GetProp<ObjectProperty>("ParameterValue") is { } valProp)
                     {
-                        TextureParameterValues.TryAdd(paramNameProp.Value.Instanced, valProp.ResolveToEntry(matInst.FileRef)?.InstancedFullPath);
+                        IEntry textureEntry = valProp.ResolveToEntry(matInst.FileRef);
+                        TextureParameterValues.TryAdd(paramNameProp.Value.Instanced, textureEntry?.InstancedFullPath);
+                        if (textureEntry is not null)
+                        {
+                            TextureParameterEntries.TryAdd(paramNameProp.Value.Instanced, textureEntry);
+                        }
                     }
                 }
             }
@@ -321,8 +329,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 ShaderMap.UniformPixelVectorExpressions, ShaderMap.UniformPixelScalarExpressions,
                 CachedPixelScalarParameters, CachedPixelVectorParameters);
 
-            UpdateTextureExpressions(ShaderMap.Uniform2DTextureExpressions, CachedTexture2DParameters);
-            UpdateTextureExpressions(ShaderMap.UniformCubeTextureExpressions, CachedCubeTextureParameters);
+            UpdateTextureExpressions(ShaderMap.Uniform2DTextureExpressions, CachedTexture2DParameters, context);
+            UpdateTextureExpressions(ShaderMap.UniformCubeTextureExpressions, CachedCubeTextureParameters, context);
         }
 
         private LinearColor GetFlipBookTextureOffset(UniformExpressionRenderContext context, int texIndex)
@@ -337,7 +345,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             return LinearColor.Black;
         }
 
-        private void UpdateTextureExpressions(MaterialUniformExpressionTexture[] textureExpressions, List<PreviewTextureCache.TextureEntry> textureCache)
+        private void UpdateTextureExpressions(MaterialUniformExpressionTexture[] textureExpressions,
+            List<PreviewTextureCache.TextureEntry> textureCache, MeshRenderContext context)
         {
             foreach (MaterialUniformExpressionTexture texExpression in textureExpressions)
             {
@@ -345,10 +354,33 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 switch (texExpression)
                 {
                     case MaterialUniformExpressionTextureParameter texParamExpression:
-                        if (TextureParameterValues.TryGetValue(texParamExpression.ParameterName.Instanced, out string texIfp)
+                        string parameterName = texParamExpression.ParameterName.Instanced;
+                        if (TextureParameterValues.TryGetValue(parameterName, out string texIfp)
                             && texIfp is not null)
                         {
                             TextureMap.TryGetValue(texIfp, out texture);
+                        }
+                        if (texture is null && texIfp is not null
+                            && TextureParameterEntries.TryGetValue(parameterName, out IEntry textureEntry)
+                            && (string.Equals(texIfp, textureEntry.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(texIfp, textureEntry.FullPath, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            ExportEntry textureExport = textureEntry as ExportEntry;
+                            if (textureEntry is ImportEntry textureImport)
+                            {
+                                textureExport = EntryImporter.ResolveImport(textureImport, assetCache);
+                            }
+                            if (textureExport is not null)
+                            {
+                                texture = context.TextureCache.LoadTexture(textureExport);
+                                if (texture is not null)
+                                {
+                                    TextureMap[textureEntry.FullPath] = texture;
+                                    TextureMap[textureEntry.InstancedFullPath] = texture;
+                                    TextureMap[textureExport.FullPath] = texture;
+                                    TextureMap[textureExport.InstancedFullPath] = texture;
+                                }
+                            }
                         }
                         break;
                     default:

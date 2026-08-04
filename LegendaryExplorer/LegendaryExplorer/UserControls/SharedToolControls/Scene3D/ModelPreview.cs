@@ -113,7 +113,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     {
                         var preloadedInfo = preloadedTextures.FirstOrDefault(x =>
                             IsSameExport(x.MaterialExport, mat.Export)
-                            && x.TextureExport?.ObjectName.Name == textureEntry.ObjectName.Name); //i don't like matching on object name but its export vs import here.
+                            && IsSameTexture(textureEntry, x.TextureExport));
 
                         if (preloadedInfo?.TextureExport != null)
                         {
@@ -159,6 +159,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             return !string.IsNullOrEmpty(left.FileRef.FilePath)
                    && !string.IsNullOrEmpty(right.FileRef.FilePath)
                    && string.Equals(left.FileRef.FilePath, right.FileRef.FilePath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSameTexture(IEntry requested, ExportEntry loaded)
+        {
+            if (requested is null || loaded is null) return false;
+            if (requested is ExportEntry requestedExport && IsSameExport(requestedExport, loaded)) return true;
+            return string.Equals(requested.InstancedFullPath, loaded.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(requested.FullPath, loaded.FullPath, StringComparison.OrdinalIgnoreCase);
         }
         public MaterialInstanceConstant Material { get; }
 
