@@ -505,7 +505,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                         uvs[j] = new Vector4(vertex.HalfPrecisionUVs[j], 0, 0);
                     }
                 }
-                vertices.Add((TVertex)TVertex.Create(new Vector3(-position.X, position.Z, position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                vertices.Add((TVertex)TVertex.Create(
+                    ToRendererSpace(position),
+                    ToRendererSpace((Vector3)vertex.TangentX),
+                    ToRendererSpace((Vector4)vertex.TangentZ),
+                    uvs));
             }
 
             //OLD CODE
@@ -652,7 +656,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     foreach (SoftSkinVertex vertex in lodmodel.ME1VertexBufferGPUSkin)
                     {
                         uvs[0] = new Vector4(vertex.UV, 0, 0);
-                        vertices.Add((TVertex)TVertex.Create(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                        vertices.Add((TVertex)TVertex.Create(
+                            ToRendererSpace(vertex.Position),
+                            ToRendererSpace((Vector3)vertex.TangentX),
+                            ToRendererSpace((Vector4)vertex.TangentZ),
+                            uvs));
                     }
                 }
                 else
@@ -660,7 +668,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     foreach (GPUSkinVertex vertex in lodmodel.VertexBufferGPUSkin.VertexData)
                     {
                         uvs[0] = new Vector4(vertex.UV, 0, 0);
-                        vertices.Add((TVertex)TVertex.Create(new Vector3(-vertex.Position.X, vertex.Position.Z, vertex.Position.Y), (Vector3)vertex.TangentX, (Vector4)vertex.TangentZ, uvs));
+                        vertices.Add((TVertex)TVertex.Create(
+                            ToRendererSpace(vertex.Position),
+                            ToRendererSpace((Vector3)vertex.TangentX),
+                            ToRendererSpace((Vector4)vertex.TangentZ),
+                            uvs));
                     }
                 }
                 // Triangles
@@ -735,6 +747,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             }
             LODs.Clear();
         }
+
+        private static Vector3 ToRendererSpace(Vector3 vector) => new(-vector.X, vector.Z, vector.Y);
+
+        private static Vector4 ToRendererSpace(Vector4 vector) => new(-vector.X, vector.Z, vector.Y, vector.W);
     }
 
     public class PreloadedModelData

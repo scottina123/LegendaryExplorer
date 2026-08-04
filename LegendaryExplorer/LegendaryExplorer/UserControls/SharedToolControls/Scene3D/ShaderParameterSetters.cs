@@ -66,7 +66,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         {
             buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
             buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.AABBCenter, mesh.AABBHalfSize.Length()));
-            buffer.WriteVal(p.ObjectOrientation, Vector3.UnitZ);
+            buffer.WriteVal(p.ObjectOrientation, Vector3.UnitY);
             buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
             buffer.WriteVal(p.FoliageImpulseDirection, Vector3.Zero);
             buffer.WriteVal(p.FoliageNormalizedRotationAxisAndAngle, Vector4.UnitZ);
@@ -74,7 +74,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
+                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
             {
@@ -86,7 +86,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             SceneCamera camera = context.Camera;
             buffer.WriteVal(p.CameraWorldPosition, camera.Position);
             buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.AABBCenter, mesh.AABBHalfSize.Length()));
-            buffer.WriteVal(p.ObjectOrientation, Vector3.UnitZ);
+            buffer.WriteVal(p.ObjectOrientation, Vector3.UnitY);
             buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
             buffer.WriteVal(p.FoliageImpulseDirection, Vector3.Zero);
             buffer.WriteVal(p.FoliageNormalizedRotationAxisAndAngle, Vector4.UnitZ);
@@ -98,7 +98,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
             foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
             {
-                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
+                buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
             }
             foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
             {

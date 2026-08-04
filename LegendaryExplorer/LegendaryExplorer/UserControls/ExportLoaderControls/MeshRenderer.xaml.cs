@@ -89,10 +89,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _renderGameShader;
             set
             {
-                if (IsMorphEditorMode && !value)
-                {
-                    return;
-                }
                 if (SetProperty(ref _renderGameShader, value))
                 {
                     OnPropertyChanged(nameof(ShowLiveMaterialEditor));
@@ -105,6 +101,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         }
                         RenderSolid = false;
                     }
+                    else if (IsMorphEditorMode)
+                    {
+                        // Morph Editor exposes a single shader switch. Turning the game shader off
+                        // immediately selects Meshplorer's standard textured preview.
+                        RenderSolid = true;
+                    }
                 }
             }
         }
@@ -114,10 +116,6 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _renderSolid;
             set
             {
-                if (IsMorphEditorMode && value)
-                {
-                    return;
-                }
                 if (SetProperty(ref _renderSolid, value) && _renderSolid)
                 {
                     RenderGameShader = false;
@@ -308,7 +306,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowLiveMaterialEditor => !IsMorphEditorMode && RenderGameShader && LiveMaterials.Count > 0;
 
         /// <summary>
-        /// True for the dedicated LE3 BioMorphFace editor. In this mode the in-game shader is mandatory.
+        /// True for the dedicated LE3 BioMorphFace editor. Its in-game shader is enabled by default.
         /// </summary>
         public bool IsMorphEditorMode { get; }
 
@@ -1068,13 +1066,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     break;
                                 case SkeletalMesh skm:
                                     if (CanUseGameShaders && RenderGameShader) GameShaderPreview = new ModelPreview<LEVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
-                                    // Morph Editor never draws the generic solid preview. Avoid constructing a second
-                                    // material/mesh pipeline that can prevent the required game-shader preview from
-                                    // being installed.
-                                    if (!IsMorphEditorMode)
-                                    {
-                                        LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
-                                    }
+                                    // Keep both previews resident so Morph Editor can switch renderers without
+                                    // reloading, and so both receive every live geometry update.
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
                                     MeshContext.Camera.FocusDepth = skm.Bounds.SphereRadius * 1.2f;
                                     CenterView();
                                     if (IsMorphEditorMode)
@@ -1133,7 +1127,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 {
                                     morphPreviewWarning = $"Material overrides unavailable: {exception.Message}";
                                 }
-                                MorphEditorStatus = $"Rendered m_oBaseHead with {GameShaderPreview?.LODs.Count ?? 0} in-game shader LOD(s)."
+                                int previewLodCount = RenderGameShader
+                                    ? GameShaderPreview?.LODs.Count ?? 0
+                                    : LEXPreview?.LODs.Count ?? 0;
+                                string previewMode = RenderGameShader ? "in-game shader" : "standard textured";
+                                MorphEditorStatus = $"Rendered m_oBaseHead with {previewLodCount} {previewMode} LOD(s)."
                                                     + (morphPreviewWarning is null ? string.Empty : $" {morphPreviewWarning}");
                                 BeginMorphTargetCatalogLoad(requestedExport, MorphBaseHeadExport);
                                 morphTargetLoadStarted = true;

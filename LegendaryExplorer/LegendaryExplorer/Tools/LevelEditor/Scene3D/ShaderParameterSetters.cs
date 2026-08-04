@@ -69,7 +69,7 @@ internal static class ShaderParameterSetters
         (List<Vector4> scalarParamValues, List<Vector4> vectorParamValues) = mat.GetCachedVertexParameters(context);
         foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformVertexScalarShaderParameters)
         {
-            buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
+            buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
         }
         foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformVertexVectorShaderParameters)
         {
@@ -92,7 +92,7 @@ internal static class ShaderParameterSetters
 
         foreach (TUniformParameter<FShaderParameter> scalarParam in p.UniformPixelScalarShaderParameters)
         {
-            buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index / 4][scalarParam.Index % 4]);
+            buffer.WriteVal(scalarParam.Param, scalarParamValues[scalarParam.Index]);
         }
         foreach (TUniformParameter<FShaderParameter> vectorParam in p.UniformPixelVectorShaderParameters)
         {

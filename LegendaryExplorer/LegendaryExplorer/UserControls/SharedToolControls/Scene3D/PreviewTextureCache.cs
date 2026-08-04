@@ -5,6 +5,7 @@ using LegendaryExplorerCore.Unreal.BinaryConverters;
 using SharpDX.Direct3D11;
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 
 namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
@@ -24,6 +25,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             /// </summary>
             //public ExportEntry TextureExport { get; set; }
             public string InstanceFullPath { get; }
+            public string SourcePackagePath { get; }
+            public int SourcePackageIdentity { get; }
 
             /// <summary>
             /// The Direct3D ShaderResourceView for binding to shaders.
@@ -49,6 +52,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             {
                 MemoryAnalyzer.AddTrackedMemoryItem($"PreviewTexture {export.ObjectName}", new WeakReference(this));
                 InstanceFullPath = export.InstancedFullPath;
+                SourcePackagePath = export.FileRef.FilePath;
+                SourcePackageIdentity = RuntimeHelpers.GetHashCode(export.FileRef);
                 IsTextureCube = export.ClassName == "TextureCube";
 
                 Texture = IsTextureCube ? renderContext.LoadUnrealTextureCube(export) : renderContext.LoadUnrealTexture(export);
@@ -327,8 +332,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         {
             foreach (TextureEntry e in AssetCache)
             {
-                // Same full paths are assumed to be identical. Leaving this here in case this needs changing for some reason.
-                if (/*e.TextureExport.FileRef.FilePath == export.FileRef.FilePath && */e.InstanceFullPath == export.InstancedFullPath)
+                string sourcePackagePath = export.FileRef.FilePath;
+                bool samePackage = !string.IsNullOrEmpty(e.SourcePackagePath) && !string.IsNullOrEmpty(sourcePackagePath)
+                    ? string.Equals(e.SourcePackagePath, sourcePackagePath, StringComparison.OrdinalIgnoreCase)
+                    : e.SourcePackageIdentity == RuntimeHelpers.GetHashCode(export.FileRef);
+                if (samePackage
+                    && string.Equals(e.InstanceFullPath, export.InstancedFullPath, StringComparison.OrdinalIgnoreCase))
                 {
                     e.LastUsageTime = DateTime.Now;
                     return e;

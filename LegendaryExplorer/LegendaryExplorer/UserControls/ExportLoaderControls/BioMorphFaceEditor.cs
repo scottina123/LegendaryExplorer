@@ -289,8 +289,7 @@ public partial class MeshRenderer
         if (materials.All(item => item.MaterialExport != material))
         {
             // Morph heads are installed before texture discovery. ModelPreview uses this marker to
-            // preserve the SkeletalMesh material index and resolves the material's game textures
-            // while constructing its mandatory in-game shader proxy.
+            // preserve the SkeletalMesh material index and resolve textures for both preview modes.
             materials.Add(new PreloadedTextureData { MaterialExport = material });
         }
     }
@@ -585,7 +584,9 @@ public partial class MeshRenderer
                         }
                         normal = new Vector4(deformedNormal, normal.W);
                     }
-                    mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(ToRendererSpace(skinnedPosition), normal);
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(
+                        ToRendererSpace(skinnedPosition),
+                        ToRendererSpace(normal));
                 }
                 mesh.RebuildBuffer(MeshContext.Device);
             }
@@ -732,6 +733,8 @@ public partial class MeshRenderer
     }).ToArray() ?? [];
 
     private static Vector3 ToRendererSpace(Vector3 position) => new(-position.X, position.Z, position.Y);
+
+    private static Vector4 ToRendererSpace(Vector4 vector) => new(-vector.X, vector.Z, vector.Y, vector.W);
 
     private void ApplyWorkingLodsToSkeletalMesh(SkeletalMesh skeletalMesh)
     {
