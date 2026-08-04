@@ -1,6 +1,7 @@
 using LegendaryExplorer.Dialogs;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -1251,6 +1252,184 @@ public partial class MeshRenderer
         MorphFeatureItems.Add(item);
         RefreshMorphFeatureGroups();
         OnMorphFeatureChanged();
+    }
+
+    private async void RandomizeMorphFeatures_Click(object sender, RoutedEventArgs e)
+    {
+        if (MorphBaseHeadExport is null || MorphTargets.Count == 0)
+        {
+            MorphTargetStatus = "Morph targets must finish loading before the face can be randomized.";
+            return;
+        }
+
+        BioMorphSpecies species = MorphBaseHeadExport.ObjectName.Name.GetBioMorphSpecies();
+        if (species == BioMorphSpecies.Unknown)
+        {
+            MorphEditorStatus = $"Could not identify the species from m_oBaseHead {MorphBaseHeadExport.ObjectName.Instanced}.";
+            return;
+        }
+
+        ExportEntry sourceMorph = CurrentLoadedExport;
+        IsBusy = true;
+        BusyText = $"Loading BioWare {species.ToDisplayName()} faces from the LE3 Asset Database…";
+        BioMorphReferenceCatalog catalog;
+        try
+        {
+            catalog = await BioMorphRandomizationCatalog.GetCatalogAsync(species);
+        }
+        catch (Exception exception)
+        {
+            MorphEditorStatus = $"Could not load morph randomization references: {exception.Message}";
+            return;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        if (!ReferenceEquals(CurrentLoadedExport, sourceMorph))
+        {
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(catalog.Error))
+        {
+            MorphEditorStatus = catalog.Error;
+            return;
+        }
+
+        HashSet<string> availableTargets = MorphTargets.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<BioMorphReferenceFace> compatibleFaces = catalog.Faces
+            .Where(face => face.Features.Keys.Count(availableTargets.Contains) >= 3)
+            .ToList();
+        List<BioMorphReferenceFace> exactBaseHeadFaces = compatibleFaces
+            .Where(face => face.BaseHeadName.Equals(MorphBaseHeadExport.ObjectName.Name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (exactBaseHeadFaces.Count >= 2)
+        {
+            compatibleFaces = exactBaseHeadFaces;
+        }
+        List<BioMorphReferenceFace> materialFaces = compatibleFaces
+            .Where(face => face.ScalarOverrides.Count > 0 || face.ColorOverrides.Count > 0)
+            .ToList();
+        if (materialFaces.Count == 0)
+        {
+            MorphEditorStatus = $"The Asset Database did not provide a compatible {species.ToDisplayName()} scalar/color material profile.";
+            return;
+        }
+        if (materialFaces.Count >= 2)
+        {
+            compatibleFaces = materialFaces;
+        }
+        if (compatibleFaces.Count < 2)
+        {
+            MorphEditorStatus = $"The Asset Database did not provide two compatible {species.ToDisplayName()} faces for this morph-target set.";
+            return;
+        }
+
+        BioMorphReferenceFace firstFace = materialFaces.Count == 1
+            ? materialFaces[0]
+            : compatibleFaces[Random.Shared.Next(compatibleFaces.Count)];
+        BioMorphReferenceFace secondFace;
+        do
+        {
+            secondFace = compatibleFaces[Random.Shared.Next(compatibleFaces.Count)];
+        } while (ReferenceEquals(firstFace, secondFace));
+
+        float firstWeight = 0.4f + Random.Shared.NextSingle() * 0.2f;
+        float secondWeight = 1f - firstWeight;
+        var randomizedValues = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        foreach (string targetName in availableTargets)
+        {
+            float value = firstFace.Features.GetValueOrDefault(targetName) * firstWeight
+                          + secondFace.Features.GetValueOrDefault(targetName) * secondWeight;
+            randomizedValues[targetName] = Math.Abs(value) < 0.0001f ? 0f : value;
+        }
+        Dictionary<string, float> randomizedScalars = BlendMorphScalarOverrides(firstFace, secondFace, firstWeight, secondWeight);
+        Dictionary<string, LinearColor> randomizedColors = BlendMorphColorOverrides(firstFace, secondFace, firstWeight, secondWeight);
+
+        SuppressMorphEditorChanges = true;
+        try
+        {
+            Dictionary<string, List<MorphFeatureEditorItem>> existingFeatures = MorphFeatureItems
+                .Where(feature => feature.HasMorphTarget)
+                .GroupBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+            foreach ((string targetName, float value) in randomizedValues)
+            {
+                if (existingFeatures.TryGetValue(targetName, out List<MorphFeatureEditorItem> features))
+                {
+                    features[0].Value = value;
+                    foreach (MorphFeatureEditorItem duplicate in features.Skip(1))
+                    {
+                        duplicate.Value = 0;
+                    }
+                }
+                else if (value != 0)
+                {
+                    MorphFeatureItems.Add(new MorphFeatureEditorItem(targetName, value, OnMorphFeatureChanged)
+                    {
+                        HasMorphTarget = true
+                    });
+                }
+            }
+
+            MorphScalarOverrides.ClearEx();
+            foreach ((string name, float value) in randomizedScalars.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                MorphScalarOverrides.Add(new MorphScalarOverrideItem(name, value, OnMorphMaterialChanged));
+            }
+            MorphColorOverrides.ClearEx();
+            foreach ((string name, LinearColor value) in randomizedColors.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                MorphColorOverrides.Add(new MorphColorOverrideItem(name, value, OnMorphMaterialChanged));
+            }
+        }
+        finally
+        {
+            SuppressMorphEditorChanges = false;
+        }
+
+        RefreshMorphEditorFilters();
+        OnMorphFeatureChanged();
+        OnMorphMaterialChanged();
+        MorphEditorStatus = $"Randomized {randomizedValues.Count(value => value.Value != 0)} {species.ToDisplayName()} morph features, {randomizedScalars.Count} scalar overrides, and {randomizedColors.Count} color overrides using a safe blend of two BioWare faces from {compatibleFaces.Count} Asset Database references. Texture overrides were left unchanged.";
+    }
+
+    private static Dictionary<string, float> BlendMorphScalarOverrides(
+        BioMorphReferenceFace firstFace, BioMorphReferenceFace secondFace, float firstWeight, float secondWeight)
+    {
+        var result = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in firstFace.ScalarOverrides.Keys.Concat(secondFace.ScalarOverrides.Keys)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            bool hasFirst = firstFace.ScalarOverrides.TryGetValue(name, out float firstValue);
+            bool hasSecond = secondFace.ScalarOverrides.TryGetValue(name, out float secondValue);
+            result[name] = hasFirst && hasSecond
+                ? firstValue * firstWeight + secondValue * secondWeight
+                : hasFirst ? firstValue : secondValue;
+        }
+        return result;
+    }
+
+    private static Dictionary<string, LinearColor> BlendMorphColorOverrides(
+        BioMorphReferenceFace firstFace, BioMorphReferenceFace secondFace, float firstWeight, float secondWeight)
+    {
+        var result = new Dictionary<string, LinearColor>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in firstFace.ColorOverrides.Keys.Concat(secondFace.ColorOverrides.Keys)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            bool hasFirst = firstFace.ColorOverrides.TryGetValue(name, out BioMorphReferenceColor firstValue);
+            bool hasSecond = secondFace.ColorOverrides.TryGetValue(name, out BioMorphReferenceColor secondValue);
+            BioMorphReferenceColor value = hasFirst && hasSecond
+                ? new BioMorphReferenceColor(
+                    firstValue.R * firstWeight + secondValue.R * secondWeight,
+                    firstValue.G * firstWeight + secondValue.G * secondWeight,
+                    firstValue.B * firstWeight + secondValue.B * secondWeight,
+                    firstValue.A * firstWeight + secondValue.A * secondWeight)
+                : hasFirst ? firstValue : secondValue;
+            result[name] = new LinearColor(value.R, value.G, value.B, value.A);
+        }
+        return result;
     }
 
     private void RemoveMorphFeature_Click(object sender, RoutedEventArgs e)

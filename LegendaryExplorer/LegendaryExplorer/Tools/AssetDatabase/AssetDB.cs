@@ -61,6 +61,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<PropActionRecord> PropActions { get; set; } = new();
 
+        public List<BioMorphFaceRecord> MorphFaces { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -100,6 +102,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Actors.Clear();
             GestureTracks.Clear();
             PropActions.Clear();
+            MorphFaces.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -120,6 +123,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             Actors.AddRange(from.Actors);
             GestureTracks.AddRange(from.GestureTracks);
             PropActions.AddRange(from.PropActions);
+            MorphFaces.AddRange(from.MorphFaces);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -136,6 +140,83 @@ namespace LegendaryExplorer.Tools.AssetDatabase
     }
 
     public sealed record FileNameDirKeyPair(string FileName, int DirectoryKey) { public FileNameDirKeyPair() : this(default, default) { } }
+
+    public enum BioMorphSpecies
+    {
+        Unknown,
+        HumanMale,
+        HumanFemale,
+        Asari,
+        Salarian,
+        Turian,
+        Krogan,
+        Batarian
+    }
+
+    public static class BioMorphSpeciesExtensions
+    {
+        public static BioMorphSpecies GetBioMorphSpecies(this string baseHeadName)
+        {
+            string name = baseHeadName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return BioMorphSpecies.Unknown;
+            }
+
+            return name.ToUpperInvariant() switch
+            {
+                string value when value.StartsWith("HMM_") => BioMorphSpecies.HumanMale,
+                string value when value.StartsWith("HMF_") => BioMorphSpecies.HumanFemale,
+                string value when value.StartsWith("ASA_") => BioMorphSpecies.Asari,
+                string value when value.StartsWith("SAL_") || value.StartsWith("SLM_") => BioMorphSpecies.Salarian,
+                string value when value.StartsWith("TUR_") || value.StartsWith("TUF_") => BioMorphSpecies.Turian,
+                string value when value.StartsWith("KRO_") => BioMorphSpecies.Krogan,
+                string value when value.StartsWith("BAT_") => BioMorphSpecies.Batarian,
+                _ => BioMorphSpecies.Unknown
+            };
+        }
+
+        public static string ToDisplayName(this BioMorphSpecies species) => species switch
+        {
+            BioMorphSpecies.HumanMale => "human male",
+            BioMorphSpecies.HumanFemale => "human female",
+            BioMorphSpecies.Asari => "asari",
+            BioMorphSpecies.Salarian => "salarian",
+            BioMorphSpecies.Turian => "turian",
+            BioMorphSpecies.Krogan => "krogan",
+            BioMorphSpecies.Batarian => "batarian",
+            _ => "unknown"
+        };
+    }
+
+    public sealed record BioMorphFeatureRecord(string Name, float Value)
+    {
+        public BioMorphFeatureRecord() : this(default, default) { }
+    }
+
+    public sealed record BioMorphScalarRecord(string Name, float Value)
+    {
+        public BioMorphScalarRecord() : this(default, default) { }
+    }
+
+    public sealed record BioMorphColorRecord(string Name, float R, float G, float B, float A)
+    {
+        public BioMorphColorRecord() : this(default, default, default, default, default) { }
+    }
+
+    public sealed record BioMorphFaceRecord(
+        string MorphName,
+        string BaseHeadName,
+        BioMorphSpecies Species,
+        int FileKey,
+        int UIndex,
+        bool IsMod,
+        BioMorphFeatureRecord[] Features,
+        BioMorphScalarRecord[] ScalarOverrides,
+        BioMorphColorRecord[] ColorOverrides)
+    {
+        public BioMorphFaceRecord() : this(default, default, default, default, default, default, [], [], []) { }
+    }
 
     public class PlotUsageDB
     {

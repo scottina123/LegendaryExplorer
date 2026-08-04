@@ -92,6 +92,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, PropActionRecord> GeneratedPropActions = new();
         /// <summary>
+        /// Dictionary that stores BioMorphFace feature profiles.
+        /// </summary>
+        public ConcurrentDictionary<string, BioMorphFaceRecord> GeneratedMorphFaces = new();
+        /// <summary>
         /// Used to do per-class locking during generation
         /// </summary>
         public ConcurrentDictionary<string, Lock> ClassLocks = new();
@@ -118,6 +122,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedActors.Clear();
             GeneratedGestureTracks.Clear();
             GeneratedPropActions.Clear();
+            GeneratedMorphFaces.Clear();
         }
 
         public string GetProgressString()
@@ -134,6 +139,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Actors: {GeneratedActors.Count}\n" +
                    $"Gesture Tracks: {GeneratedGestureTracks.Count}\n" +
                    $"Prop Actions: {GeneratedPropActions.Count}\n" +
+                   $"Morph Faces: {GeneratedMorphFaces.Count}\n" +
                    $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
@@ -230,6 +236,15 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 .ThenBy(x => x.SourceKeyIndex)
                 .ToList();
             pdb.PropActions.AddRange(propActionsSorted);
+
+            var morphFacesSorted = GeneratedMorphFaces.Values
+                .OrderBy(face => face.Species)
+                .ThenBy(face => face.BaseHeadName, System.StringComparer.OrdinalIgnoreCase)
+                .ThenBy(face => face.MorphName, System.StringComparer.OrdinalIgnoreCase)
+                .ThenBy(face => face.FileKey)
+                .ThenBy(face => face.UIndex)
+                .ToList();
+            pdb.MorphFaces.AddRange(morphFacesSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

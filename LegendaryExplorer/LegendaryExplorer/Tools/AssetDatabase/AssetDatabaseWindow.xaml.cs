@@ -269,8 +269,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v13.0: Index compatible pActionClientEffect references for prop/action records.
-        public const string dbCurrentBuild = "13.0";
+        // v15.0: Index LE3 BioMorphFace scalar and color material overrides for instant morph randomization.
+        public const string dbCurrentBuild = "15.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -1411,7 +1411,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} Morph Faces: {CurrentDataBase.MorphFaces.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -2734,7 +2734,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                       $"Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} " +
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
                                                       $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} " +
-                                                       $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count}";
+                                                       $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} " +
+                                                       $"Morph Faces: {CurrentDataBase.MorphFaces.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;
