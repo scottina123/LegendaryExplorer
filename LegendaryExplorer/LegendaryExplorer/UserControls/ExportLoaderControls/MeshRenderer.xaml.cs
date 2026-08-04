@@ -101,10 +101,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         }
                         RenderSolid = false;
                     }
-                    else if (IsMorphEditorMode)
+                    else
                     {
-                        // Morph Editor exposes a single shader switch. Turning the game shader off
-                        // immediately selects Meshplorer's standard textured preview.
+                        // Turning the game shader off switches back to the standard textured preview.
+                        // Enabling the game shader turns RenderSolid off above, so this must be
+                        // restored for both Meshplorer and Morph Editor.
                         RenderSolid = true;
                     }
                 }

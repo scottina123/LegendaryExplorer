@@ -112,7 +112,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (preloadedTextures != null)
                     {
                         var preloadedInfo = preloadedTextures.FirstOrDefault(x =>
-                            x.MaterialExport == mat.Export && x.TextureExport?.ObjectName.Name == textureEntry.ObjectName.Name); //i don't like matching on object name but its export vs import here.
+                            IsSameExport(x.MaterialExport, mat.Export)
+                            && x.TextureExport?.ObjectName.Name == textureEntry.ObjectName.Name); //i don't like matching on object name but its export vs import here.
 
                         if (preloadedInfo?.TextureExport != null)
                         {
@@ -140,10 +141,24 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     }
                     if (texture is not null)
                     {
-                        TextureMap.Add(textureEntry.FullPath, texture);
+                        // Uniform texture parameters use InstancedFullPath, while older preview code
+                        // uses FullPath. Register both so inherited MIC overrides (notably HMF eyes)
+                        // cannot miss a successfully loaded texture.
+                        TextureMap[textureEntry.FullPath] = texture;
+                        TextureMap[textureEntry.InstancedFullPath] = texture;
                     }
                 }
             }
+        }
+
+        private static bool IsSameExport(ExportEntry left, ExportEntry right)
+        {
+            if (ReferenceEquals(left, right)) return true;
+            if (left is null || right is null || left.UIndex != right.UIndex) return false;
+            if (ReferenceEquals(left.FileRef, right.FileRef)) return true;
+            return !string.IsNullOrEmpty(left.FileRef.FilePath)
+                   && !string.IsNullOrEmpty(right.FileRef.FilePath)
+                   && string.Equals(left.FileRef.FilePath, right.FileRef.FilePath, StringComparison.OrdinalIgnoreCase);
         }
         public MaterialInstanceConstant Material { get; }
 
@@ -152,7 +167,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         /// </summary>
         public readonly Dictionary<string, string> Properties = [];
 
-        public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = [];
+        public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Renders the given <see cref="ModelPreviewSection"/> of a <see cref="ModelPreviewLOD"/>. 
@@ -173,6 +188,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
     public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
     {
+        private bool IsOpacityOnly;
         /// <summary>
         /// The full name of the diffuse texture property.
         /// </summary>
@@ -237,6 +253,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     return;
                 }
             }
+            // The simple standard shader cannot reproduce opacity-only shells such as human
+            // eyelashes. Leaving their texture unset renders the blue missing-texture checker
+            // over the eyes, so omit only that unsupported shell in standard mode. The in-game
+            // shader path continues to render it normally.
+            IsOpacityOnly = mat.Textures.Any(texture =>
+                texture.ObjectName.Name.Contains("opac", StringComparison.OrdinalIgnoreCase)
+                || texture.ObjectName.Name.Contains("opacity", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -248,6 +271,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         /// <param name="view">The SceneRenderControl that the given LOD should be rendered into.</param>
         public override void RenderSection(ModelPreviewLOD<WorldVertex> lod, ModelPreviewSection s, Matrix4x4 transform, MeshRenderContext context)
         {
+            if (IsOpacityOnly) return;
             SceneCamera camera = context.Camera;
             context.DefaultEffect.PrepDraw(context.ImmediateContext, context.AlphaBlendState);
             var worldConstants = new MeshRenderContext.WorldConstants(
@@ -408,7 +432,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             var vsConstants = new LEVSConstants
             {
                 ViewProjectionMatrix = viewMatrix * camera.ProjectionMatrix,
-                CameraPosition = new Vector4(camera.Position, 1),
+                CameraPosition = new Vector4(camera.WorldPosition, 1),
                 PreViewTranslation = Vector4.Zero,
             };
             float depthMul = camera.ProjectionMatrix[2, 2];

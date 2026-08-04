@@ -285,8 +285,21 @@ public struct LEVertex : IVertexBase
 
     public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
     {
-        return new LEVertex(new Vector4(position, 1), tangent, normal, Vector4.Zero, uvs);
+        return new LEVertex(
+            new Vector4(position, 1),
+            PackShaderNormal(tangent),
+            PackShaderNormal(normal),
+            Vector4.Zero,
+            uvs);
     }
+
+    // FLocalVertexFactory shaders expect packed-normal vertex inputs in the
+    // unsigned 0..1 range, then unpack them with input * 2 - 1.
+    private static Vector3 PackShaderNormal(Vector3 value) =>
+        Vector3.Clamp((value + Vector3.One) * 0.5f, Vector3.Zero, Vector3.One);
+
+    private static Vector4 PackShaderNormal(Vector4 value) =>
+        Vector4.Clamp((value + Vector4.One) * 0.5f, Vector4.Zero, Vector4.One);
     public static unsafe int Stride => sizeof(Vector4) + sizeof(Vector3) + sizeof(Vector4) + sizeof(Vector4) + sizeof(Vector4) * 3 + sizeof(Vector2);
 
 

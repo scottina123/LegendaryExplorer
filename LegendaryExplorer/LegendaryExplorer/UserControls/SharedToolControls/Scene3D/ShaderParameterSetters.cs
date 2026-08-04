@@ -64,7 +64,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public static void WriteValues(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
-            buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
+            buffer.WriteVal(p.CameraWorldPosition, context.Camera.WorldPosition);
             buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.AABBCenter, mesh.AABBHalfSize.Length()));
             buffer.WriteVal(p.ObjectOrientation, Vector3.UnitY);
             buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);
@@ -84,7 +84,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public static void WriteValues(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
         {
             SceneCamera camera = context.Camera;
-            buffer.WriteVal(p.CameraWorldPosition, camera.Position);
+            buffer.WriteVal(p.CameraWorldPosition, camera.WorldPosition);
             buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.AABBCenter, mesh.AABBHalfSize.Length()));
             buffer.WriteVal(p.ObjectOrientation, Vector3.UnitY);
             buffer.WriteVal(p.WindDirectionAndSpeed, Vector4.Zero);

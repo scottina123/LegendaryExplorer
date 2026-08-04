@@ -21,6 +21,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public Vector3 CameraForward => Vector3.Transform(Vector3.UnitZ, Matrix4x4.CreateRotationX(-Pitch) * Matrix4x4.CreateRotationY(-Yaw));
 
+        // Position is the orbit pivot in third-person mode. Shaders need the
+        // actual eye position, which is FocusDepth behind that pivot.
+        public Vector3 WorldPosition => FirstPerson ? Position : Position - CameraForward * FocusDepth;
+
         public SceneCamera()
         {
         }
