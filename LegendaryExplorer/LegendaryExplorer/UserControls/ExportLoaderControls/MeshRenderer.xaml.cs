@@ -31,6 +31,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -2244,6 +2245,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void MeshRendererWPF_OnKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.OriginalSource is TextBoxBase or PasswordBox
+                || Keyboard.FocusedElement is TextBoxBase or PasswordBox
+                || Keyboard.FocusedElement is ComboBox { IsEditable: true })
+            {
+                return;
+            }
+
             SceneViewer?.OnKeyDown(sender, e);
         }
     }
