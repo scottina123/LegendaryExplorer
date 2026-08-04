@@ -18,6 +18,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using MediaColor = System.Windows.Media.Color;
 using BinaryMorphFace = LegendaryExplorerCore.Unreal.BinaryConverters.BioMorphFace;
 
@@ -55,6 +56,8 @@ public partial class MeshRenderer
 {
     private sealed record MorphFeatureSnapshot(string Name, float Value);
     private sealed record MorphTargetSnapshot(MorphTarget.MorphLODModel[] Lods, MorphTarget.BoneOffset[] BoneOffsets);
+    private sealed record MorphTexturePreviewResolution(
+        ExportEntry TextureExport, PreviewTextureCache.TextureEntry CachedTexture, string DisplayPath);
     private readonly record struct MorphSkinInfluences(
         int Bone0, int Bone1, int Bone2, int Bone3,
         float Weight0, float Weight1, float Weight2, float Weight3);
@@ -79,6 +82,8 @@ public partial class MeshRenderer
     private readonly HashSet<string> RemovedMorphBones = new(StringComparer.OrdinalIgnoreCase);
     private bool SuppressMorphEditorChanges;
     private string PendingMorphTargetStatus;
+    private readonly Dictionary<int, MorphTexturePreviewResolution> MorphTexturePreviewCache = [];
+    private DispatcherTimer MorphMaterialPreviewTimer;
 
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
     public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
@@ -161,6 +166,8 @@ public partial class MeshRenderer
         SuppressMorphEditorChanges = true;
         try
         {
+            MorphMaterialPreviewTimer?.Stop();
+            MorphTexturePreviewCache.Clear();
             MorphFeatureItems.ClearEx();
             MorphSkeletonItems.ClearEx();
             MorphScalarOverrides.ClearEx();
@@ -952,21 +959,42 @@ public partial class MeshRenderer
         {
             return;
         }
-        ApplyMorphMaterialOverridePreview();
+        QueueMorphMaterialOverridePreview();
         MarkMorphChanged();
+    }
+
+    private void QueueMorphMaterialOverridePreview()
+    {
+        if (MorphMaterialPreviewTimer is null)
+        {
+            MorphMaterialPreviewTimer = new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(33)
+            };
+            MorphMaterialPreviewTimer.Tick += (_, _) =>
+            {
+                MorphMaterialPreviewTimer.Stop();
+                ApplyMorphMaterialOverridePreview();
+            };
+        }
+        if (!MorphMaterialPreviewTimer.IsEnabled)
+        {
+            MorphMaterialPreviewTimer.Start();
+        }
     }
 
     private void ApplyMorphMaterialOverridePreview()
     {
-        if (GameShaderPreview is null || CurrentLoadedExport is null)
+        MorphMaterialPreviewTimer?.Stop();
+        if (CurrentLoadedExport is null)
         {
             return;
         }
-        List<MaterialRenderProxy> materials = GameShaderPreview.Materials.Values
-            .Select(value => value.Material)
-            .OfType<MaterialRenderProxy>()
-            .Distinct()
-            .ToList();
+        List<MaterialRenderProxy> materials = GetMorphMaterialPreviewTargets();
+        if (materials.Count == 0)
+        {
+            return;
+        }
         foreach (MaterialRenderProxy material in materials)
         {
             material.ResetPreviewParameterOverrides();
@@ -980,27 +1008,63 @@ public partial class MeshRenderer
             }
         }
 
-        using var cache = new PackageCache();
-        foreach (MorphTextureOverrideItem texture in MorphTextureOverrides)
+        PackageCache cache = null;
+        try
         {
-            ExportEntry textureExport = CurrentLoadedExport.FileRef.GetEntry(texture.EntryIndex) switch
+            foreach (MorphTextureOverrideItem texture in MorphTextureOverrides)
             {
-                ExportEntry export when export.IsTexture() => export,
-                ImportEntry import => EntryImporter.ResolveImport(import, cache),
-                _ => null
-            };
-            if (textureExport is not null && !textureExport.IsTexture())
-            {
-                textureExport = null;
+                if (!MorphTexturePreviewCache.TryGetValue(texture.EntryIndex, out MorphTexturePreviewResolution resolution))
+                {
+                    IEntry textureEntry = CurrentLoadedExport.FileRef.GetEntry(texture.EntryIndex);
+                    ExportEntry textureExport = textureEntry switch
+                    {
+                        ExportEntry export when export.IsTexture() => export,
+                        ImportEntry import => EntryImporter.ResolveImport(import, cache ??= new PackageCache()),
+                        _ => null
+                    };
+                    if (textureExport is not null && !textureExport.IsTexture())
+                    {
+                        textureExport = null;
+                    }
+                    PreviewTextureCache.TextureEntry cachedTexture = textureExport is not null
+                        ? MeshContext.TextureCache.LoadTexture(textureExport)
+                        : null;
+                    string displayPath = textureExport?.InstancedFullPath
+                                         ?? (texture.EntryIndex == 0 ? "None" : "Entry is not a resolvable texture");
+                    resolution = new MorphTexturePreviewResolution(textureExport, cachedTexture, displayPath);
+                    MorphTexturePreviewCache[texture.EntryIndex] = resolution;
+                }
+
+                texture.ResolvedPath = resolution.DisplayPath;
+                foreach (MaterialRenderProxy material in materials)
+                {
+                    material.SetTextureParameter(
+                        texture.Name, resolution.TextureExport?.InstancedFullPath, resolution.CachedTexture);
+                }
             }
-            PreviewTextureCache.TextureEntry cachedTexture = textureExport is not null
-                ? MeshContext.TextureCache.LoadTexture(textureExport)
-                : null;
-            texture.ResolvedPath = textureExport?.InstancedFullPath ?? (texture.EntryIndex == 0 ? "None" : "Entry is not a resolvable texture");
-            foreach (MaterialRenderProxy material in materials)
+        }
+        finally
+        {
+            cache?.Dispose();
+        }
+    }
+
+    private List<MaterialRenderProxy> GetMorphMaterialPreviewTargets()
+    {
+        var materials = new List<MaterialRenderProxy>();
+        AddPreviewMaterials(GameShaderPreview);
+        AddPreviewMaterials(MorphHairGameShaderPreview);
+        return materials.Distinct().ToList();
+
+        void AddPreviewMaterials(ModelPreview<LEVertex> preview)
+        {
+            if (preview is null)
             {
-                material.SetTextureParameter(texture.Name, textureExport?.InstancedFullPath, cachedTexture);
+                return;
             }
+            materials.AddRange(preview.Materials.Values
+                .Select(value => value.Material)
+                .OfType<MaterialRenderProxy>());
         }
     }
 
@@ -1381,6 +1445,8 @@ public partial class MeshRenderer
             return;
         }
         DisposeMorphHairPreview();
+        MorphMaterialPreviewTimer?.Stop();
+        MorphTexturePreviewCache.Clear();
         SuppressMorphEditorChanges = true;
         try
         {
