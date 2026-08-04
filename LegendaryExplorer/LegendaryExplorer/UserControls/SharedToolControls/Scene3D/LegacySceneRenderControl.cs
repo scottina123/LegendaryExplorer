@@ -92,7 +92,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         {
             var pixelFormat = LegendaryExplorerCore.Textures.PixelFormat.ARGB;
             byte[] pixelData = LegendaryExplorerCore.Textures.TexConverter.LoadTexture(filename, out uint width, out uint height, ref pixelFormat); // NEEDS WAY TO HAVE ALPHA AS BLACK!
-            Format format = PreviewColorSpace.ToSrgbFormat((Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat));
+            Format format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
+            if (renderContext.UseSrgbColorManagement)
+            {
+                format = PreviewColorSpace.ToSrgbFormat(format);
+            }
             return renderContext.LoadTexture(width, height, format, pixelData);
         }
 
@@ -121,7 +125,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             var unrealTexture = new LECTexture2D(texture2DExport);
             return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(),
                 LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name),
-                PreviewColorSpace.UsesSrgbSampling(texture2DExport));
+                renderContext.UseSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(texture2DExport));
         }
 
         public static Texture2D LoadUnrealTextureCube(this LegacyRenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)
@@ -141,7 +145,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             uint size = (uint)faceTextures[0].GetTopMip().width;
             var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
                 LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
-            if (PreviewColorSpace.UsesSrgbSampling(faceTextures[0].Export))
+            if (renderContext.UseSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(faceTextures[0].Export))
             {
                 format = PreviewColorSpace.ToSrgbFormat(format);
             }
@@ -162,6 +166,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public Texture2D Backbuffer { get; private set; }
         public BlendState AlphaBlendState { get; private set; } // A BlendState that uses standard alpha blending
         public bool IsReady => Device != null;
+
+        /// <summary>
+        /// Enables the linear/sRGB pipeline used by character and material previews. Scene tools
+        /// intentionally retain their established lighting pipeline unless they explicitly opt in.
+        /// Must be set before <see cref="CreateResources"/>.
+        /// </summary>
+        public bool UseSrgbColorManagement { get; set; }
 
         public virtual void CreateResources()
         {

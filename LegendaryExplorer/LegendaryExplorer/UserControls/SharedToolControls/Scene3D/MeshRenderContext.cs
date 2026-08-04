@@ -304,7 +304,12 @@ public class MeshRenderContext : LegacyRenderContext
         DefaultTextureView = new ShaderResourceView(Device, DefaultTexture);
 
         // Load the default position-texture shader
-        DefaultEffect = new GenericEffect<WorldConstants, WorldVertex>(Device, EmbeddedResources.StandardShader);
+        string standardShader = EmbeddedResources.StandardShader;
+        if (UseSrgbColorManagement)
+        {
+            standardShader = "#define COLOR_MANAGED_PREVIEW\n" + standardShader;
+        }
+        DefaultEffect = new GenericEffect<WorldConstants, WorldVertex>(Device, standardShader);
 
         //create fallback textures
         var whiteCubeData = new Fixed6<byte[]>();
@@ -521,7 +526,10 @@ public class MeshRenderContext : LegacyRenderContext
             //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
             code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
                                                             "#define inf 1.#INF");
-            code = PreviewColorSpace.EncodePixelShaderOutput(code);
+            if (UseSrgbColorManagement)
+            {
+                code = PreviewColorSpace.EncodePixelShaderOutput(code);
+            }
             try
             {
                 shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");

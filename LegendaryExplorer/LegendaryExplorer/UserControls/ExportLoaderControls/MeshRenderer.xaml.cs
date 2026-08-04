@@ -647,7 +647,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             DataContext = this;
             LoadCommands();
             InitializeComponent();
-            MeshContext = new MeshRenderContext();
+            MeshContext = new MeshRenderContext
+            {
+                // Meshplorer and Morph Editor need Unreal color textures decoded to linear and
+                // their lit output encoded for display. Shared scene tools remain opted out.
+                UseSrgbColorManagement = true
+            };
             if (IsMorphEditorMode)
             {
                 // Keep the compiled in-game material shader, but present its linear output with the
