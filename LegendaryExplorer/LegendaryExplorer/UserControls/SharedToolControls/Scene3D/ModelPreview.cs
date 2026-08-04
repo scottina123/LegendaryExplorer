@@ -145,7 +145,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 }
             }
         }
-        protected readonly MaterialInstanceConstant Material;
+        public MaterialInstanceConstant Material { get; }
 
         /// <summary>
         /// A Dictionary of string properties. Useful because some materials have properties that others don't.

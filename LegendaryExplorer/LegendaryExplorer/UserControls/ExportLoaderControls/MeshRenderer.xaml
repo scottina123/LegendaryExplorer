@@ -18,6 +18,29 @@
              d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Control.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <Style x:Key="MaterialParameterScrubberStyle" TargetType="Thumb">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="ToolTip" Value="Drag horizontally to adjust; Shift is faster and Ctrl is finer"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Background="Transparent">
+                            <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                    Background="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                    BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                    BorderThickness="1"/>
+                            <Ellipse Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                     Fill="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                                     Stroke="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                     StrokeThickness="1"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Control.Resources>
     <xctk:BusyIndicator IsBusy="{Binding IsBusy}" BusyContent="{Binding BusyText}">
         <xctk:BusyIndicator.ProgressBarStyle>
@@ -66,7 +89,85 @@
                     </StackPanel>
                 </StackPanel>
             </StatusBar>
-            <Grid>
+            <DockPanel>
+                <Border DockPanel.Dock="Right" Width="360" Padding="6" BorderThickness="1,0,0,0"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        Visibility="{Binding ShowLiveMaterialEditor, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
+                            <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately." TextWrapping="Wrap"/>
+                            <TextBlock Text="Material" FontWeight="SemiBold"/>
+                            <ComboBox ItemsSource="{Binding LiveMaterials}" SelectedItem="{Binding SelectedLiveMaterial}"
+                                      DisplayMemberPath="DisplayName" Margin="0,2,0,6"/>
+                            <TextBlock Text="{Binding SelectedLiveMaterial.SourcePath}" Opacity="0.7" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock Text="Unsaved preview changes" Foreground="OrangeRed" Margin="0,0,0,4"
+                                       Visibility="{Binding SelectedLiveMaterial.HasUnsavedChanges, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <TextBlock Text="Only local MaterialInstanceConstants can be overwritten. Use Save as new for base or imported materials."
+                                       TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,5"/>
+                            <UniformGrid Rows="1" Columns="2">
+                                <Button Content="Save to current" Margin="0,0,3,0" Padding="5,3"
+                                        IsEnabled="{Binding SelectedLiveMaterial.CanSaveToCurrent}"
+                                        Click="SaveLiveMaterialToCurrent_Click"/>
+                                <Button Content="Save as new..." Margin="3,0,0,0" Padding="5,3"
+                                        IsEnabled="{Binding SelectedLiveMaterial.CanCreateNew}"
+                                        Click="SaveLiveMaterialAsNew_Click"/>
+                            </UniformGrid>
+                        </StackPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <GroupBox Header="Scalar parameters" Margin="0,2,0,6">
+                                    <ItemsControl ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="4,3">
+                                                    <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    <Grid Margin="0,2,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Thumb Style="{StaticResource MaterialParameterScrubberStyle}"
+                                                               DragDelta="MaterialParameterScrubber_DragDelta"/>
+                                                        <xctk:SingleUpDown Grid.Column="1" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                           Increment="0.01" AllowInputSpecialValues="None"/>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </GroupBox>
+
+                                <GroupBox Header="Vector parameters" Margin="0,0,0,2">
+                                    <ItemsControl ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="4,5">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding ParameterName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                        <xctk:ColorCanvas Margin="0,3,0,0"
+                                                                          HorizontalAlignment="Stretch"
+                                                                          Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                                          Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                                                                          BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                                                          UsingAlphaChannel="True"
+                                                                          SelectedColor="{Binding PreviewColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </GroupBox>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+                <Grid>
                 <Expander Canvas.ZIndex="3" VerticalAlignment="Top" HorizontalAlignment="Left" ExpandDirection="Down" IsExpanded="False" Background="Transparent" Header="Camera info" Padding="3">
                     <StackPanel Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
                         <Grid Margin="3,2">
@@ -123,7 +224,8 @@
                     </ItemsControl>
                 </StackPanel>-->
                 <scene3D:LegacySceneRenderControl Canvas.ZIndex="0"  x:Name="SceneViewer" />
-            </Grid>
+                </Grid>
+            </DockPanel>
         </DockPanel>
     </xctk:BusyIndicator>
 </exportLoaderControls:ExportLoaderControl>

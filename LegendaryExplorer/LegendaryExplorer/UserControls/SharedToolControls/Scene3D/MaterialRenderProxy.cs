@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
@@ -25,9 +26,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public EBlendMode BlendMode;
         public bool UseHairPass;
         public bool IsUnlit;
-        private readonly Dictionary<string, float> ScalarParameterValues = [];
-        private readonly Dictionary<string, LinearColor> VectorParameterValues = [];
-        private readonly Dictionary<string, string> TextureParameterValues = [];
+        private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> Uniform2DTextureExpressions = [];
         public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
         private MaterialShaderMap ShaderMap;
@@ -42,6 +43,28 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public VertexShaderType VertexShader;
         public PixelShaderType PixelShader;
+
+        /// <summary>
+        /// Effective scalar parameters used by the preview, including inherited defaults and instance overrides.
+        /// </summary>
+        public IReadOnlyDictionary<string, float> ScalarParameters => ScalarParameterValues;
+
+        /// <summary>
+        /// Effective vector parameters used by the preview, including inherited defaults and instance overrides.
+        /// </summary>
+        public IReadOnlyDictionary<string, LinearColor> VectorParameters => VectorParameterValues;
+
+        public void SetScalarParameter(string parameterName, float value)
+        {
+            ScalarParameterValues[parameterName] = value;
+            CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+        }
+
+        public void SetVectorParameter(string parameterName, LinearColor value)
+        {
+            VectorParameterValues[parameterName] = value;
+            CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+        }
 
         protected override void ReadBaseMaterial(ExportEntry mat, PackageCache assetCache, Material parsedMaterial)
         {
@@ -105,8 +128,41 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         {
             (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(mat, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
 
+            foreach (MaterialUniformExpression expression in ShaderMap.UniformVertexScalarExpressions
+                         .Concat(ShaderMap.UniformVertexVectorExpressions)
+                         .Concat(ShaderMap.UniformPixelScalarExpressions)
+                         .Concat(ShaderMap.UniformPixelVectorExpressions))
+            {
+                AddUniformExpressionParameters(expression);
+            }
+
             VertexShader = (VertexShaderType)shaders[0];
             PixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
+        }
+
+        private void AddUniformExpressionParameters(MaterialUniformExpression expression)
+        {
+            switch (expression)
+            {
+                case MaterialUniformExpressionScalarParameter scalarParameter:
+                    ScalarParameterValues.TryAdd(scalarParameter.ParameterName.Instanced, scalarParameter.DefaultValue);
+                    break;
+                case MaterialUniformExpressionVectorParameter vectorParameter:
+                    VectorParameterValues.TryAdd(vectorParameter.ParameterName.Instanced, vectorParameter.DefaultValue);
+                    break;
+                case MaterialUniformExpressionUnaryOp unaryOperation:
+                    AddUniformExpressionParameters(unaryOperation.X);
+                    break;
+                case MaterialUniformExpressionBinaryOp binaryOperation:
+                    AddUniformExpressionParameters(binaryOperation.A);
+                    AddUniformExpressionParameters(binaryOperation.B);
+                    break;
+                case MaterialUniformExpressionClamp clamp:
+                    AddUniformExpressionParameters(clamp.Input);
+                    AddUniformExpressionParameters(clamp.Min);
+                    AddUniformExpressionParameters(clamp.Max);
+                    break;
+            }
         }
 
         protected override void ReadMaterialInstanceConstant(ExportEntry matInst, PropertyCollection props)
@@ -119,7 +175,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (scalarValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                         && scalarValue.GetProp<FloatProperty>("ParameterValue") is { } valProp)
                     {
-                        ScalarParameterValues[paramNameProp.Value.Instanced] = valProp.Value;
+                        ScalarParameterValues.TryAdd(paramNameProp.Value.Instanced, valProp.Value);
                     }
                 }
             }
@@ -130,7 +186,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (vectorValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                         && vectorValue.GetProp<StructProperty>("ParameterValue") is { } valProp)
                     {
-                        VectorParameterValues[paramNameProp.Value.Instanced] = CommonStructs.GetLinearColor(valProp);
+                        VectorParameterValues.TryAdd(paramNameProp.Value.Instanced, CommonStructs.GetLinearColor(valProp));
                     }
                 }
             }
@@ -141,12 +197,13 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (textureValue.GetProp<NameProperty>("ParameterName") is { } paramNameProp
                         && textureValue.GetProp<ObjectProperty>("ParameterValue") is { } valProp)
                     {
-                        TextureParameterValues[paramNameProp.Value.Instanced] = valProp.ResolveToEntry(matInst.FileRef)?.InstancedFullPath;
+                        TextureParameterValues.TryAdd(paramNameProp.Value.Instanced, valProp.ResolveToEntry(matInst.FileRef)?.InstancedFullPath);
                     }
                 }
             }
 
-            if (ObjectBinary.From(matInst) is MaterialInstance binary)
+            if (props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true }
+                && ObjectBinary.From(matInst) is MaterialInstance binary)
             {
                 foreach (int uIndex in binary.SM3StaticPermutationResource.UniformExpressionTextures)
                 {

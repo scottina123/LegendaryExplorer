@@ -88,14 +88,18 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _renderGameShader;
             set
             {
-                if (SetProperty(ref _renderGameShader, value) && _renderGameShader)
+                if (SetProperty(ref _renderGameShader, value))
                 {
-                    //require reload so that the game shader feature is (relatively) costless when not used
-                    if (GameShaderPreview is null)
+                    OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+                    if (_renderGameShader)
                     {
-                        LoadExport(CurrentLoadedExport);
+                        //require reload so that the game shader feature is (relatively) costless when not used
+                        if (GameShaderPreview is null)
+                        {
+                            LoadExport(CurrentLoadedExport);
+                        }
+                        RenderSolid = false;
                     }
-                    RenderSolid = false;
                 }
             }
         }
@@ -269,6 +273,19 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private ModelPreview<WorldVertex> LEXPreview;
         private ModelPreview<LEVertex> GameShaderPreview;
+
+        public ObservableCollectionExtended<LiveMaterialEditorMaterial> LiveMaterials { get; } = [];
+
+        private LiveMaterialEditorMaterial _selectedLiveMaterial;
+        public LiveMaterialEditorMaterial SelectedLiveMaterial
+        {
+            get => _selectedLiveMaterial;
+            set => SetProperty(ref _selectedLiveMaterial, value);
+        }
+
+        public bool ShowLiveMaterialEditor => RenderGameShader && LiveMaterials.Count > 0;
+
+        private string PendingLiveMaterialSelectionName;
 
         /// <summary>
         /// Value is true after _Loaded is called. False after _Unloaded (which if in tab control, is called when different tab is selected)
@@ -662,6 +679,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public override void LoadExport(ExportEntry exportEntry)
         {
+            PendingLiveMaterialSelectionName ??= SelectedLiveMaterial?.SourceEntry?.ObjectName.Instanced;
             UnloadExport();
             if (exportEntry == null)
                 return; // Can reload due to static mesh component looking for static mesh
@@ -993,6 +1011,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
                                 break;
                         }
+                        PopulateLiveMaterialEditor();
                         assetCache.Dispose();
                         LODPicker.ClearEx();
                         if (LEXPreview is not null)
@@ -1394,6 +1413,248 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        private void PopulateLiveMaterialEditor()
+        {
+            LiveMaterials.ClearEx();
+            SelectedLiveMaterial = null;
+
+            if (GameShaderPreview is null || CurrentLoadedExport is null)
+            {
+                OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+                return;
+            }
+
+            List<IEntry> sourceMaterials = GetCurrentMeshMaterialEntries();
+            foreach (MaterialRenderProxy proxy in GameShaderPreview.Materials.Values
+                         .Select(material => material.Material)
+                         .OfType<MaterialRenderProxy>()
+                         .Distinct())
+            {
+                IEntry sourceEntry = sourceMaterials.FirstOrDefault(entry =>
+                                         entry.UIndex == proxy.Export.UIndex && entry.FileRef == proxy.Export.FileRef)
+                                     ?? sourceMaterials.FirstOrDefault(entry =>
+                                         entry.InstancedFullPath.Equals(proxy.Export.InstancedFullPath, StringComparison.OrdinalIgnoreCase))
+                                     ?? sourceMaterials.FirstOrDefault(entry =>
+                                         entry.ObjectName.Name.Equals(proxy.Export.ObjectName.Name, StringComparison.OrdinalIgnoreCase));
+                LiveMaterials.Add(new LiveMaterialEditorMaterial(proxy, sourceEntry));
+            }
+
+            SelectedLiveMaterial = LiveMaterials.FirstOrDefault(material =>
+                                       material.SourceEntry?.ObjectName.Instanced.Equals(PendingLiveMaterialSelectionName, StringComparison.OrdinalIgnoreCase) == true)
+                                   ?? LiveMaterials.FirstOrDefault();
+            PendingLiveMaterialSelectionName = null;
+            OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+        }
+
+        private List<IEntry> GetCurrentMeshMaterialEntries()
+        {
+            if (CurrentLoadedExport is null)
+            {
+                return [];
+            }
+
+            var materialIndexes = new HashSet<int>();
+            switch (ObjectBinary.From(CurrentLoadedExport))
+            {
+                case StaticMesh staticMesh:
+                    foreach (StaticMeshElement element in staticMesh.LODModels.SelectMany(lod => lod.Elements))
+                    {
+                        if (element.Material != 0)
+                        {
+                            materialIndexes.Add(element.Material);
+                        }
+                    }
+                    break;
+                case SkeletalMesh skeletalMesh:
+                    materialIndexes.UnionWith(skeletalMesh.Materials.Where(index => index != 0));
+                    break;
+            }
+
+            return materialIndexes.Select(CurrentLoadedExport.FileRef.GetEntry).Where(entry => entry is not null).ToList();
+        }
+
+        private void ClearLiveMaterialEditor()
+        {
+            LiveMaterials.ClearEx();
+            SelectedLiveMaterial = null;
+            OnPropertyChanged(nameof(ShowLiveMaterialEditor));
+        }
+
+        private void MaterialParameterScrubber_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+        {
+            float speedMultiplier = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10f
+                : Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? 0.1f
+                : 1f;
+
+            if (sender is FrameworkElement { DataContext: LiveScalarMaterialParameter scalar })
+            {
+                scalar.Value += GetScrubberIncrement(scalar.Value, e.HorizontalChange, speedMultiplier);
+            }
+        }
+
+        private static float GetScrubberIncrement(float value, double horizontalChange, float speedMultiplier)
+        {
+            float unitsPerPixel = Math.Max(Math.Abs(value) * 0.01f, 0.01f);
+            return (float)horizontalChange * unitsPerPixel * speedMultiplier;
+        }
+
+        private void SaveLiveMaterialToCurrent_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLiveMaterial?.SourceEntry is not ExportEntry target || !SelectedLiveMaterial.CanSaveToCurrent)
+            {
+                return;
+            }
+
+            try
+            {
+                WriteLiveMaterialParameters(target, SelectedLiveMaterial);
+                SelectedLiveMaterial.MarkSaved();
+            }
+            catch (Exception exception)
+            {
+                new ExceptionHandlerDialog(exception).ShowDialog();
+            }
+        }
+
+        private void SaveLiveMaterialAsNew_Click(object sender, RoutedEventArgs e)
+        {
+            LiveMaterialEditorMaterial material = SelectedLiveMaterial;
+            ExportEntry meshExport = CurrentLoadedExport;
+            if (material?.SourceEntry is null || meshExport is null)
+            {
+                return;
+            }
+
+            string defaultName = $"{material.SourceEntry.ObjectName.Name}_Edited";
+            string newName = PromptDialog.Prompt(this,
+                "Name the new MaterialInstanceConstant:",
+                "Save live material as new",
+                defaultName,
+                selectText: true,
+                validator: value => ValidateNewMaterialName(meshExport, value));
+            if (newName is null)
+            {
+                return;
+            }
+
+            try
+            {
+                ObjectBinary meshBinary = ObjectBinary.From(meshExport);
+                int replacementCount = CountMeshMaterialAssignments(meshBinary, material.SourceEntry.UIndex);
+                if (replacementCount == 0)
+                {
+                    throw new InvalidOperationException("The selected material is no longer assigned to this mesh.");
+                }
+
+                IEntry parent = meshExport.Parent;
+                ExportEntry newMaterial = meshExport.FileRef.CreateExport(new NameReference(newName.Trim()),
+                    "MaterialInstanceConstant", parent, indexed: false);
+                var properties = new PropertyCollection
+                {
+                    new ObjectProperty(material.SourceEntry.UIndex, "Parent"),
+                    CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid")
+                };
+                newMaterial.WriteProperties(properties);
+                WriteLiveMaterialParameters(newMaterial, material);
+
+                ReplaceMeshMaterial(meshBinary, material.SourceEntry.UIndex, newMaterial.UIndex);
+                PendingLiveMaterialSelectionName = newMaterial.ObjectName.Instanced;
+                meshExport.WriteBinary(meshBinary);
+                material.MarkSaved();
+            }
+            catch (Exception exception)
+            {
+                new ExceptionHandlerDialog(exception).ShowDialog();
+            }
+        }
+
+        private static (bool, string) ValidateNewMaterialName(ExportEntry meshExport, string value)
+        {
+            string name = value?.Trim();
+            if (string.IsNullOrEmpty(name))
+            {
+                return (false, "Enter a material name.");
+            }
+            if (!(char.IsLetter(name[0]) || name[0] == '_') || name.Skip(1).Any(character => !(char.IsLetterOrDigit(character) || character == '_')))
+            {
+                return (false, "Use letters, numbers, and underscores; the first character cannot be a number.");
+            }
+
+            string path = meshExport.Parent is { } parent ? $"{parent.InstancedFullPath}.{name}" : name;
+            return meshExport.FileRef.FindEntry(path) is null
+                ? (true, null)
+                : (false, "An entry with that name already exists here.");
+        }
+
+        private static void WriteLiveMaterialParameters(ExportEntry target, LiveMaterialEditorMaterial material)
+        {
+            PropertyCollection properties = target.GetProperties();
+            properties.RemoveNamedProperty("ScalarParameterValues");
+            properties.RemoveNamedProperty("VectorParameterValues");
+
+            var scalarValues = new ArrayProperty<StructProperty>("ScalarParameterValues");
+            foreach (LiveScalarMaterialParameter parameter in material.ScalarParameters)
+            {
+                scalarValues.Add(new StructProperty("ScalarParameterValue", new PropertyCollection
+                {
+                    new NameProperty(parameter.ParameterName, "ParameterName"),
+                    new FloatProperty(parameter.Value, "ParameterValue"),
+                    CommonStructs.GuidProp(Guid.Empty, "ExpressionGUID")
+                }));
+            }
+
+            var vectorValues = new ArrayProperty<StructProperty>("VectorParameterValues");
+            foreach (LiveVectorMaterialParameter parameter in material.VectorParameters)
+            {
+                vectorValues.Add(new StructProperty("VectorParameterValue", new PropertyCollection
+                {
+                    new NameProperty(parameter.ParameterName, "ParameterName"),
+                    CommonStructs.LinearColorProp(parameter.R, parameter.G, parameter.B, parameter.A, "ParameterValue"),
+                    CommonStructs.GuidProp(Guid.Empty, "ExpressionGUID")
+                }));
+            }
+
+            properties.Add(scalarValues);
+            properties.Add(vectorValues);
+            target.WriteProperties(properties);
+        }
+
+        private static int ReplaceMeshMaterial(ObjectBinary meshBinary, int oldUIndex, int newUIndex)
+        {
+            int replacementCount = 0;
+            switch (meshBinary)
+            {
+                case StaticMesh staticMesh:
+                    foreach (StaticMeshElement element in staticMesh.LODModels.SelectMany(lod => lod.Elements))
+                    {
+                        if (element.Material == oldUIndex)
+                        {
+                            element.Material = newUIndex;
+                            replacementCount++;
+                        }
+                    }
+                    break;
+                case SkeletalMesh skeletalMesh:
+                    for (int i = 0; i < skeletalMesh.Materials.Length; i++)
+                    {
+                        if (skeletalMesh.Materials[i] == oldUIndex)
+                        {
+                            skeletalMesh.Materials[i] = newUIndex;
+                            replacementCount++;
+                        }
+                    }
+                    break;
+            }
+            return replacementCount;
+        }
+
+        private static int CountMeshMaterialAssignments(ObjectBinary meshBinary, int materialUIndex) => meshBinary switch
+        {
+            StaticMesh staticMesh => staticMesh.LODModels.Sum(lod => lod.Elements.Count(element => element.Material == materialUIndex)),
+            SkeletalMesh skeletalMesh => skeletalMesh.Materials.Count(index => index == materialUIndex),
+            _ => 0
+        };
+
         public override void UnloadExport()
         {
             IsBrush = false;
@@ -1411,6 +1672,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LEXPreview = null;
             GameShaderPreview?.Dispose();
             GameShaderPreview = null;
+            ClearLiveMaterialEditor();
             SceneViewer?.Context?.EmptyCaches();
         }
 
@@ -1442,6 +1704,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LEXPreview = null;
             GameShaderPreview?.Dispose();
             GameShaderPreview = null;
+            ClearLiveMaterialEditor();
             if (SceneViewer is { Context: not null })
             {
                 MeshContext.RenderScene -= SceneContext_RenderScene;
