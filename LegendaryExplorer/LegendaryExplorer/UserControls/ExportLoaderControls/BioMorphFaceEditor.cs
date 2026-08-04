@@ -64,6 +64,7 @@ public partial class MeshRenderer
     private MorphSkinInfluences[][] MorphSkinningInfluences = [];
     private Vector3[][] StoredMorphLods = [];
     private Vector3[][] WorkingMorphLods = [];
+    private Vector3[][] WorkingMorphNormalDeltas = [];
     private List<MorphFeatureSnapshot> OriginalMorphFeatures = [];
     private Dictionary<string, MorphTargetSnapshot> MorphTargets = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, Vector3> BaseSkeletonPositions = new(StringComparer.OrdinalIgnoreCase);
@@ -441,6 +442,7 @@ public partial class MeshRenderer
     private void RecalculateMorphFromFeatures()
     {
         WorkingMorphLods = CloneLods(StoredMorphLods);
+        WorkingMorphNormalDeltas = CreateZeroLods(WorkingMorphLods);
         foreach (MorphFeatureSnapshot original in OriginalMorphFeatures)
         {
             ApplyMorphTargetToWorkingLods(original.Name, -original.Value);
@@ -448,6 +450,7 @@ public partial class MeshRenderer
         foreach (MorphFeatureEditorItem current in MorphFeatureItems)
         {
             ApplyMorphTargetToWorkingLods(current.Name, current.Value);
+            AccumulateMorphNormalDeltas(current.Name, current.Value);
         }
 
         var boneDeltas = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
@@ -522,6 +525,30 @@ public partial class MeshRenderer
         }
     }
 
+    private void AccumulateMorphNormalDeltas(string featureName, float weight)
+    {
+        if (weight == 0 || !MorphTargets.TryGetValue(featureName ?? string.Empty, out MorphTargetSnapshot target))
+        {
+            return;
+        }
+        int lodCount = Math.Min(WorkingMorphNormalDeltas.Length, target.Lods.Length);
+        for (int lodIndex = 0; lodIndex < lodCount; lodIndex++)
+        {
+            if (WorkingMorphNormalDeltas[lodIndex] is not { } normalDeltas
+                || target.Lods[lodIndex]?.Vertices is not { } vertices)
+            {
+                continue;
+            }
+            foreach (MorphTarget.MorphVertex vertex in vertices)
+            {
+                if (vertex.SourceIdx < normalDeltas.Length)
+                {
+                    normalDeltas[vertex.SourceIdx] += (Vector3)vertex.TangentZDelta * weight;
+                }
+            }
+        }
+    }
+
     private void UpdateMorphGeometryPreview()
     {
         ApplyWorkingLodsToSkeletalMesh(MorphPreviewSkeletalMesh);
@@ -536,10 +563,29 @@ public partial class MeshRenderer
             if (GameShaderPreview?.LODs.Count > lodIndex)
             {
                 Mesh<LEVertex> mesh = GameShaderPreview.LODs[lodIndex].Mesh;
+                GPUSkinVertex[] sourceVertices = MorphPreviewSkeletalMesh?.LODModels is { } sourceLods
+                                                   && lodIndex < sourceLods.Length
+                    ? sourceLods[lodIndex].VertexBufferGPUSkin.VertexData
+                    : null;
+                Vector3[] normalDeltas = lodIndex < WorkingMorphNormalDeltas.Length
+                    ? WorkingMorphNormalDeltas[lodIndex]
+                    : null;
                 for (int i = 0; i < positions.Length && i < mesh.Vertices.Count; i++)
                 {
                     Vector3 skinnedPosition = SkinMorphPosition(positions[i], lodIndex, i, skinningMatrices);
-                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(skinnedPosition));
+                    Vector4 normal = sourceVertices is not null && i < sourceVertices.Length
+                        ? (Vector4)sourceVertices[i].TangentZ
+                        : Vector4.UnitZ;
+                    if (normalDeltas is not null && i < normalDeltas.Length)
+                    {
+                        Vector3 deformedNormal = new Vector3(normal.X, normal.Y, normal.Z) + normalDeltas[i];
+                        if (deformedNormal.LengthSquared() > float.Epsilon)
+                        {
+                            deformedNormal = Vector3.Normalize(deformedNormal);
+                        }
+                        normal = new Vector4(deformedNormal, normal.W);
+                    }
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPositionAndNormal(ToRendererSpace(skinnedPosition), normal);
                 }
                 mesh.RebuildBuffer(MeshContext.Device);
             }
@@ -1054,6 +1100,7 @@ public partial class MeshRenderer
             OriginalMorphFeatures.Clear();
             StoredMorphLods = [];
             WorkingMorphLods = [];
+            WorkingMorphNormalDeltas = [];
             MorphBindSkeleton = [];
             MorphSkinningInfluences = [];
             MorphBaseHeadExport = null;
@@ -1072,6 +1119,9 @@ public partial class MeshRenderer
 
     private static Vector3[][] CloneLods(Vector3[][] source) =>
         source?.Select(lod => lod is null ? null : (Vector3[])lod.Clone()).ToArray() ?? [];
+
+    private static Vector3[][] CreateZeroLods(Vector3[][] source) =>
+        source?.Select(lod => lod is null ? null : new Vector3[lod.Length]).ToArray() ?? [];
 }
 
 public sealed class MorphFeatureEditorItem : NotifyPropertyChangedBase

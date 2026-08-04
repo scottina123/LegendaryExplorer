@@ -122,6 +122,16 @@ public class MeshRenderContext : LegacyRenderContext
     public bool Panning { get; private set; }
     public bool Zooming { get; private set; }
     public float CameraSpeed { get; set; } = 50.0f; // Units per second
+    /// <summary>
+    /// Multiplier for the in-game shader preview's skylight. This affects rendered materials only,
+    /// leaving the viewport clear color unchanged.
+    /// </summary>
+    public float GameShaderLightScale { get; set; } = 1f;
+
+    /// <summary>
+    /// Gamma constant supplied to compiled in-game material shaders.
+    /// </summary>
+    public float GameShaderInvGamma { get; set; } = 1f;
     public float Time { get; private set; }
     public uint NumFrames { get; private set; }
 

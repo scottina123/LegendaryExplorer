@@ -190,6 +190,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public LEVertex WithPosition(Vector3 newPosition) =>
             new(new Vector4(newPosition, position.W), tangent, normal, color, uvs);
 
+        public LEVertex WithPositionAndNormal(Vector3 newPosition, Vector4 newNormal) =>
+            new(new Vector4(newPosition, position.W), tangent, newNormal, color, uvs);
+
         public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);
 
         public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)

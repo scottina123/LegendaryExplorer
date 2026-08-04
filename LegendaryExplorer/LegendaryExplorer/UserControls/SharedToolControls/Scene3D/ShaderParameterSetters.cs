@@ -40,13 +40,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             shader.MaterialParameters.WriteValues(buffer, context, mesh, mat);
             bool drawUnlit = mat.IsUnlit;
             bool skylight = !drawUnlit;
-            buffer.WriteVal(shader.AmbientColorAndSkyFactor, drawUnlit ? new LinearColor(1, 1, 1, 0) : new LinearColor(0, 0, 0, 1));
+            float lightScale = context.GameShaderLightScale;
+            buffer.WriteVal(shader.AmbientColorAndSkyFactor, drawUnlit
+                ? new LinearColor(lightScale, lightScale, lightScale, 0)
+                : new LinearColor(0, 0, 0, 1));
             Vector3 upperSkyColor = Vector3.Zero;
             Vector3 lowerSkyColor = Vector3.Zero;
             if (skylight)
             {
-                upperSkyColor = new Vector3(1, 1, 1);
-                lowerSkyColor = new Vector3(1, 1, 1);
+                upperSkyColor = new Vector3(lightScale);
+                lowerSkyColor = new Vector3(lightScale);
             }
             buffer.WriteVal(shader.UpperSkyColor, upperSkyColor);
             buffer.WriteVal(shader.LowerSkyColor, lowerSkyColor);
@@ -126,7 +129,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             p.SceneTextureParameters.WriteValues(buffer, context, mesh, mat);
 
             buffer.WriteVal(p.TwoSidedSign, 1f); //-1 if rendering backface?
-            buffer.WriteVal(p.InvGamma, 1f / (1f /*GammaCorrection*/ ));
+            buffer.WriteVal(p.InvGamma, context.GameShaderInvGamma);
             buffer.WriteVal(p.DecalFarPlaneDistance, 65536f); //actual value is stored on the BioDecalComponent
 
             //these are used for ParticleSystem rendering

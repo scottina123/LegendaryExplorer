@@ -649,6 +649,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LoadCommands();
             InitializeComponent();
             MeshContext = new MeshRenderContext();
+            if (IsMorphEditorMode)
+            {
+                // Keep the compiled in-game material shader, but present its linear output with the
+                // gamma and brighter neutral skylight expected for inspecting dark face materials.
+                MeshContext.GameShaderInvGamma = 1f / 2.2f;
+                MeshContext.GameShaderLightScale = 1.5f;
+            }
             if (ColorConverter.ConvertFromString(Settings.Meshplorer_BackgroundColor) is System.Windows.Media.Color color)
             {
                 BackgroundColor = IsThemeDefaultBackgroundColor(color)
@@ -732,7 +739,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             if (IsMorphEditorMode && exportEntry.ClassName == "BioMorphFace")
             {
                 IsSkeletalMesh = true;
-                ShowSkeleton = true;
+                ShowSkeleton = false;
                 if (!InitializeMorphEditor(exportEntry, assetCache))
                 {
                     assetCache.Dispose();
