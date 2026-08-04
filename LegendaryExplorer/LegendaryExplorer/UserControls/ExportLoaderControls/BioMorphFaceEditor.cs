@@ -1404,11 +1404,83 @@ public partial class MeshRenderer
         }
     }
 
-    private void AddMorphScalar_Click(object sender, RoutedEventArgs e) => AddMaterialItem(
-        "Scalar parameter name:", name => MorphScalarOverrides.Add(new MorphScalarOverrideItem(name, 0, OnMorphMaterialChanged)));
+    private void AddMorphScalar_Click(object sender, RoutedEventArgs e)
+    {
+        List<MaterialRenderProxy> materials = GetMorphMaterialPreviewTargets();
+        var existingNames = MorphScalarOverrides.Select(item => item.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var groups = materials
+            .SelectMany(material => material.ScalarParameters.Select(parameter => (
+                Name: parameter.Key,
+                Value: parameter.Value,
+                MaterialName: material.Export.ObjectName.Instanced)))
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Name) && !existingNames.Contains(parameter.Name))
+            .GroupBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (groups.Count == 0)
+        {
+            MorphEditorStatus = materials.Count == 0
+                ? "No in-game shader materials are loaded for scalar parameter discovery."
+                : "Every scalar parameter exposed by the head and hair materials is already overridden.";
+            return;
+        }
 
-    private void AddMorphColor_Click(object sender, RoutedEventArgs e) => AddMaterialItem(
-        "Color parameter name:", name => MorphColorOverrides.Add(new MorphColorOverrideItem(name, LinearColor.White, OnMorphMaterialChanged)));
+        var choices = groups.Select(group => new StringSelectorItem(
+            group.Key,
+            group.Key,
+            $"Used by {string.Join(", ", group.Select(item => item.MaterialName).Distinct(StringComparer.OrdinalIgnoreCase))}"));
+        string selectedName = StringSelectorDialog.GetValue(this,
+            $"Choose a scalar parameter to override. Type to search the {groups.Count} available values.",
+            "Add scalar override", choices);
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return;
+        }
+
+        float initialValue = groups.First(group => group.Key.Equals(selectedName, StringComparison.OrdinalIgnoreCase)).First().Value;
+        MorphScalarOverrides.Add(new MorphScalarOverrideItem(selectedName, initialValue, OnMorphMaterialChanged));
+        CompleteMaterialItemAddition();
+    }
+
+    private void AddMorphColor_Click(object sender, RoutedEventArgs e)
+    {
+        List<MaterialRenderProxy> materials = GetMorphMaterialPreviewTargets();
+        var existingNames = MorphColorOverrides.Select(item => item.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var groups = materials
+            .SelectMany(material => material.VectorParameters.Select(parameter => (
+                Name: parameter.Key,
+                Value: parameter.Value,
+                MaterialName: material.Export.ObjectName.Instanced)))
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Name) && !existingNames.Contains(parameter.Name))
+            .GroupBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (groups.Count == 0)
+        {
+            MorphEditorStatus = materials.Count == 0
+                ? "No in-game shader materials are loaded for color parameter discovery."
+                : "Every color parameter exposed by the head and hair materials is already overridden.";
+            return;
+        }
+
+        var choices = groups.Select(group => new StringSelectorItem(
+            group.Key,
+            group.Key,
+            $"Used by {string.Join(", ", group.Select(item => item.MaterialName).Distinct(StringComparer.OrdinalIgnoreCase))}"));
+        string selectedName = StringSelectorDialog.GetValue(this,
+            $"Choose a color parameter to override. Type to search the {groups.Count} available values.",
+            "Add color override", choices);
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return;
+        }
+
+        LinearColor initialValue = groups.First(group => group.Key.Equals(selectedName, StringComparison.OrdinalIgnoreCase)).First().Value;
+        MorphColorOverrides.Add(new MorphColorOverrideItem(selectedName, initialValue, OnMorphMaterialChanged));
+        CompleteMaterialItemAddition();
+    }
 
     private void AddMorphTexture_Click(object sender, RoutedEventArgs e) => AddMaterialItem(
         "Texture parameter name:", name => MorphTextureOverrides.Add(new MorphTextureOverrideItem(name, 0, OnMorphMaterialChanged)));
@@ -1421,6 +1493,11 @@ public partial class MeshRenderer
             return;
         }
         add(name.Trim());
+        CompleteMaterialItemAddition();
+    }
+
+    private void CompleteMaterialItemAddition()
+    {
         RefreshMorphEditorFilters();
         OnMorphMaterialChanged();
     }
