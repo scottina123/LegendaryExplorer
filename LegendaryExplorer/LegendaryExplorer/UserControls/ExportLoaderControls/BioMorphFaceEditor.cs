@@ -54,9 +54,14 @@ public partial class MeshRenderer
 {
     private sealed record MorphFeatureSnapshot(string Name, float Value);
     private sealed record MorphTargetSnapshot(MorphTarget.MorphLODModel[] Lods, MorphTarget.BoneOffset[] BoneOffsets);
+    private readonly record struct MorphSkinInfluences(
+        int Bone0, int Bone1, int Bone2, int Bone3,
+        float Weight0, float Weight1, float Weight2, float Weight3);
 
     private ExportEntry MorphBaseHeadExport;
     private SkeletalMesh MorphPreviewSkeletalMesh;
+    private MeshBone[] MorphBindSkeleton = [];
+    private MorphSkinInfluences[][] MorphSkinningInfluences = [];
     private Vector3[][] StoredMorphLods = [];
     private Vector3[][] WorkingMorphLods = [];
     private List<MorphFeatureSnapshot> OriginalMorphFeatures = [];
@@ -227,7 +232,9 @@ public partial class MeshRenderer
     {
         var skeletalMesh = ObjectBinary.From<SkeletalMesh>(baseHead);
         MorphPreviewSkeletalMesh = skeletalMesh;
-        BaseSkeletonPositions = skeletalMesh.RefSkeleton
+        MorphBindSkeleton = CloneSkeleton(skeletalMesh.RefSkeleton);
+        MorphSkinningInfluences = BuildMorphSkinningInfluences(skeletalMesh);
+        BaseSkeletonPositions = MorphBindSkeleton
             .GroupBy(bone => bone.Name.Instanced, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First().Position, StringComparer.OrdinalIgnoreCase);
 
@@ -442,7 +449,6 @@ public partial class MeshRenderer
         {
             ApplyMorphTargetToWorkingLods(current.Name, current.Value);
         }
-        UpdateMorphGeometryPreview();
 
         var boneDeltas = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
         foreach (MorphFeatureSnapshot original in OriginalMorphFeatures)
@@ -519,6 +525,7 @@ public partial class MeshRenderer
     private void UpdateMorphGeometryPreview()
     {
         ApplyWorkingLodsToSkeletalMesh(MorphPreviewSkeletalMesh);
+        Matrix4x4[] skinningMatrices = ComputeMorphSkinningMatrices();
         for (int lodIndex = 0; lodIndex < WorkingMorphLods.Length; lodIndex++)
         {
             Vector3[] positions = WorkingMorphLods[lodIndex];
@@ -531,7 +538,8 @@ public partial class MeshRenderer
                 Mesh<LEVertex> mesh = GameShaderPreview.LODs[lodIndex].Mesh;
                 for (int i = 0; i < positions.Length && i < mesh.Vertices.Count; i++)
                 {
-                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(positions[i]));
+                    Vector3 skinnedPosition = SkinMorphPosition(positions[i], lodIndex, i, skinningMatrices);
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(skinnedPosition));
                 }
                 mesh.RebuildBuffer(MeshContext.Device);
             }
@@ -540,12 +548,142 @@ public partial class MeshRenderer
                 Mesh<WorldVertex> mesh = LEXPreview.LODs[lodIndex].Mesh;
                 for (int i = 0; i < positions.Length && i < mesh.Vertices.Count; i++)
                 {
-                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(positions[i]));
+                    Vector3 skinnedPosition = SkinMorphPosition(positions[i], lodIndex, i, skinningMatrices);
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(skinnedPosition));
                 }
                 mesh.RebuildBuffer(MeshContext.Device);
             }
         }
     }
+
+    private Matrix4x4[] ComputeMorphSkinningMatrices()
+    {
+        MeshBone[] editedSkeleton = MorphPreviewSkeletalMesh?.RefSkeleton;
+        int boneCount = Math.Min(MorphBindSkeleton.Length, editedSkeleton?.Length ?? 0);
+        if (boneCount == 0)
+        {
+            return [];
+        }
+
+        var bindComponentSpace = new Matrix4x4[boneCount];
+        var editedComponentSpace = new Matrix4x4[boneCount];
+        var skinningMatrices = new Matrix4x4[boneCount];
+        for (int boneIndex = 0; boneIndex < boneCount; boneIndex++)
+        {
+            MeshBone bindBone = MorphBindSkeleton[boneIndex];
+            MeshBone editedBone = editedSkeleton[boneIndex];
+            Matrix4x4 bindLocal = Matrix4x4.CreateFromQuaternion(bindBone.Orientation)
+                                  * Matrix4x4.CreateTranslation(bindBone.Position);
+            Matrix4x4 editedLocal = Matrix4x4.CreateFromQuaternion(editedBone.Orientation)
+                                    * Matrix4x4.CreateTranslation(editedBone.Position);
+            if (bindBone.ParentIndex >= 0 && bindBone.ParentIndex < boneIndex)
+            {
+                bindComponentSpace[boneIndex] = bindLocal * bindComponentSpace[bindBone.ParentIndex];
+            }
+            else
+            {
+                bindComponentSpace[boneIndex] = bindLocal;
+            }
+            if (editedBone.ParentIndex >= 0 && editedBone.ParentIndex < boneIndex)
+            {
+                editedComponentSpace[boneIndex] = editedLocal * editedComponentSpace[editedBone.ParentIndex];
+            }
+            else
+            {
+                editedComponentSpace[boneIndex] = editedLocal;
+            }
+            skinningMatrices[boneIndex] = Matrix4x4.Invert(bindComponentSpace[boneIndex], out Matrix4x4 inverseBind)
+                ? inverseBind * editedComponentSpace[boneIndex]
+                : Matrix4x4.Identity;
+        }
+        return skinningMatrices;
+    }
+
+    private Vector3 SkinMorphPosition(Vector3 position, int lodIndex, int vertexIndex, Matrix4x4[] skinningMatrices)
+    {
+        if (skinningMatrices.Length == 0
+            || lodIndex >= MorphSkinningInfluences.Length
+            || vertexIndex >= MorphSkinningInfluences[lodIndex].Length)
+        {
+            return position;
+        }
+        MorphSkinInfluences influence = MorphSkinningInfluences[lodIndex][vertexIndex];
+        Matrix4x4 blended = GetSkinningMatrix(skinningMatrices, influence.Bone0) * influence.Weight0;
+        if (influence.Weight1 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone1) * influence.Weight1;
+        if (influence.Weight2 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone2) * influence.Weight2;
+        if (influence.Weight3 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone3) * influence.Weight3;
+        return Vector3.Transform(position, blended);
+    }
+
+    private static Matrix4x4 GetSkinningMatrix(Matrix4x4[] matrices, int boneIndex) =>
+        boneIndex >= 0 && boneIndex < matrices.Length ? matrices[boneIndex] : Matrix4x4.Identity;
+
+    private static MorphSkinInfluences[][] BuildMorphSkinningInfluences(SkeletalMesh skeletalMesh)
+    {
+        var result = new MorphSkinInfluences[skeletalMesh.LODModels.Length][];
+        for (int lodIndex = 0; lodIndex < skeletalMesh.LODModels.Length; lodIndex++)
+        {
+            StaticLODModel lod = skeletalMesh.LODModels[lodIndex];
+            GPUSkinVertex[] vertices = lod.VertexBufferGPUSkin.VertexData;
+            result[lodIndex] = new MorphSkinInfluences[vertices.Length];
+            for (int vertexIndex = 0; vertexIndex < vertices.Length; vertexIndex++)
+            {
+                SkelMeshChunk chunk = FindMorphVertexChunk(lod, vertexIndex);
+                GPUSkinVertex vertex = vertices[vertexIndex];
+                float weight0 = vertex.InfluenceWeights[0] / 255f;
+                float weight1 = vertex.InfluenceWeights[1] / 255f;
+                float weight2 = vertex.InfluenceWeights[2] / 255f;
+                float weight3 = vertex.InfluenceWeights[3] / 255f;
+                float total = weight0 + weight1 + weight2 + weight3;
+                if (total > 0)
+                {
+                    weight0 /= total;
+                    weight1 /= total;
+                    weight2 /= total;
+                    weight3 /= total;
+                }
+                else
+                {
+                    weight0 = 1;
+                }
+                result[lodIndex][vertexIndex] = new MorphSkinInfluences(
+                    ResolveMorphBoneIndex(vertex.InfluenceBones[0], chunk),
+                    ResolveMorphBoneIndex(vertex.InfluenceBones[1], chunk),
+                    ResolveMorphBoneIndex(vertex.InfluenceBones[2], chunk),
+                    ResolveMorphBoneIndex(vertex.InfluenceBones[3], chunk),
+                    weight0, weight1, weight2, weight3);
+            }
+        }
+        return result;
+    }
+
+    private static SkelMeshChunk FindMorphVertexChunk(StaticLODModel lod, int vertexIndex)
+    {
+        foreach (SkelMeshChunk chunk in lod.Chunks)
+        {
+            int start = (int)chunk.BaseVertexIndex;
+            int end = start + chunk.NumRigidVertices + chunk.NumSoftVertices;
+            if (vertexIndex >= start && vertexIndex < end)
+            {
+                return chunk;
+            }
+        }
+        return lod.Chunks.FirstOrDefault();
+    }
+
+    private static int ResolveMorphBoneIndex(byte influenceBone, SkelMeshChunk chunk) =>
+        chunk is not null && influenceBone < chunk.BoneMap.Length ? chunk.BoneMap[influenceBone] : 0;
+
+    private static MeshBone[] CloneSkeleton(MeshBone[] skeleton) => skeleton?.Select(bone => new MeshBone
+    {
+        Name = bone.Name,
+        Flags = bone.Flags,
+        Orientation = bone.Orientation,
+        Position = bone.Position,
+        NumChildren = bone.NumChildren,
+        ParentIndex = bone.ParentIndex,
+        BoneColor = bone.BoneColor
+    }).ToArray() ?? [];
 
     private static Vector3 ToRendererSpace(Vector3 position) => new(-position.X, position.Z, position.Y);
 
@@ -600,6 +738,7 @@ public partial class MeshRenderer
                 MorphPreviewSkeletalMesh.RefSkeleton[i].Position = basePosition;
             }
         }
+        UpdateMorphGeometryPreview();
         if (MeshContext.IsReady)
         {
             BuildSkeletonLineBuffer(MorphPreviewSkeletalMesh);
@@ -915,6 +1054,8 @@ public partial class MeshRenderer
             OriginalMorphFeatures.Clear();
             StoredMorphLods = [];
             WorkingMorphLods = [];
+            MorphBindSkeleton = [];
+            MorphSkinningInfluences = [];
             MorphBaseHeadExport = null;
             MorphPreviewSkeletalMesh = null;
             MorphBaseHeadPath = null;

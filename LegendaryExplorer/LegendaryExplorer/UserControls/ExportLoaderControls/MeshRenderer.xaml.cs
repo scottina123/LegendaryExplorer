@@ -1112,6 +1112,14 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 ClearLiveMaterialEditor();
                                 try
                                 {
+                                    UpdateMorphGeometryPreview();
+                                }
+                                catch (Exception exception)
+                                {
+                                    morphPreviewWarning = $"Final-skeleton skinning unavailable: {exception.Message}";
+                                }
+                                try
+                                {
                                     ApplyMorphMaterialOverridePreview();
                                 }
                                 catch (Exception exception)
