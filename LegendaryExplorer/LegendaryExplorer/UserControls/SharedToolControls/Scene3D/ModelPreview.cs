@@ -791,6 +791,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public List<ModelPreviewSection> sections;
         public List<PreloadedTextureData> texturePreviewMaterials;
         public List<int[]> lodMaterialMaps;
+        public List<PreloadedModelData> additionalModels;
+        public string additionalModelLoadError;
     }
 
     public class PreloadedTextureData

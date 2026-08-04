@@ -60,9 +60,16 @@ public partial class MeshRenderer
         float Weight0, float Weight1, float Weight2, float Weight3);
 
     private ExportEntry MorphBaseHeadExport;
+    private ExportEntry MorphHairMeshExport;
     private SkeletalMesh MorphPreviewSkeletalMesh;
+    private SkeletalMesh MorphPreviewHairMesh;
     private MeshBone[] MorphBindSkeleton = [];
+    private MeshBone[] MorphHairBindSkeleton = [];
     private MorphSkinInfluences[][] MorphSkinningInfluences = [];
+    private MorphSkinInfluences[][] MorphHairSkinningInfluences = [];
+    private Vector3[][] MorphHairBindLods = [];
+    private ModelPreview<WorldVertex> MorphHairLEXPreview;
+    private ModelPreview<LEVertex> MorphHairGameShaderPreview;
     private Vector3[][] StoredMorphLods = [];
     private Vector3[][] WorkingMorphLods = [];
     private Vector3[][] WorkingMorphNormalDeltas = [];
@@ -112,6 +119,13 @@ public partial class MeshRenderer
     {
         get => _morphBaseHeadPath;
         private set => SetProperty(ref _morphBaseHeadPath, value);
+    }
+
+    private string _morphHairMeshPath;
+    public string MorphHairMeshPath
+    {
+        get => _morphHairMeshPath;
+        private set => SetProperty(ref _morphHairMeshPath, value);
     }
 
     private string _morphEditorStatus;
@@ -175,7 +189,28 @@ public partial class MeshRenderer
             }
 
             MorphBaseHeadExport = baseHead;
-            MorphBaseHeadPath = $"{baseHead.InstancedFullPath} ({Path.GetFileName(baseHead.FileRef.FilePath)})";
+            MorphBaseHeadPath = $"m_oBaseHead: {baseHead.InstancedFullPath} ({Path.GetFileName(baseHead.FileRef.FilePath)})";
+            MorphHairMeshExport = null;
+            MorphHairMeshPath = "m_oHairMesh is not set.";
+            if (properties.GetProp<ObjectProperty>("m_oHairMesh") is { Value: not 0 } hairProperty)
+            {
+                if (hairProperty.ResolveToExport(morphExport.FileRef, assetCache) is { } hairMesh)
+                {
+                    MorphHairMeshPath = $"m_oHairMesh: {hairMesh.InstancedFullPath} ({Path.GetFileName(hairMesh.FileRef.FilePath)})";
+                    if (hairMesh.IsA("SkeletalMesh"))
+                    {
+                        MorphHairMeshExport = hairMesh;
+                    }
+                    else
+                    {
+                        MorphHairMeshPath += $" — {hairMesh.ClassName} cannot be rendered as hair";
+                    }
+                }
+                else
+                {
+                    MorphHairMeshPath = "m_oHairMesh could not be resolved.";
+                }
+            }
 
             BinaryMorphFace binary = ObjectBinary.From<BinaryMorphFace>(morphExport);
             StoredMorphLods = CloneLods(binary?.LODs);
@@ -261,7 +296,7 @@ public partial class MeshRenderer
         }
     }
 
-    private PreloadedModelData CreateMorphPreloadedModelData(PackageCache assetCache, ExportEntry morphSource, ExportEntry baseHead)
+    private PreloadedModelData CreateMorphPreloadedModelData(PackageCache assetCache, ExportEntry baseHead, ExportEntry hairExport)
     {
         var skeletalMesh = ObjectBinary.From<SkeletalMesh>(baseHead);
         MorphPreviewSkeletalMesh = skeletalMesh;
@@ -283,8 +318,26 @@ public partial class MeshRenderer
             }
         }
 
+        PreloadedModelData preloaded = CreateMorphSkeletalMeshPreload(assetCache, baseHead, skeletalMesh);
+        if (hairExport is not null)
+        {
+            try
+            {
+                var hairMesh = ObjectBinary.From<SkeletalMesh>(hairExport);
+                preloaded.additionalModels = [CreateMorphSkeletalMeshPreload(assetCache, hairExport, hairMesh)];
+            }
+            catch (Exception exception)
+            {
+                preloaded.additionalModelLoadError = exception.Message;
+            }
+        }
+        return preloaded;
+    }
+
+    private static PreloadedModelData CreateMorphSkeletalMeshPreload(PackageCache assetCache, ExportEntry meshExport, SkeletalMesh skeletalMesh)
+    {
         var lodMaterialMaps = new List<int[]>();
-        if (baseHead.GetProperty<ArrayProperty<StructProperty>>("LODInfo", assetCache) is { } lodInfo)
+        if (meshExport.GetProperty<ArrayProperty<StructProperty>>("LODInfo", assetCache) is { } lodInfo)
         {
             foreach (StructProperty lod in lodInfo)
             {
@@ -298,7 +351,8 @@ public partial class MeshRenderer
             meshObject = skeletalMesh,
             sections = [],
             texturePreviewMaterials = [],
-            lodMaterialMaps = lodMaterialMaps
+            lodMaterialMaps = lodMaterialMaps,
+            additionalModels = []
         };
         IMEPackage package = skeletalMesh.Export.FileRef;
         foreach (int materialIndex in skeletalMesh.Materials.Distinct())
@@ -644,12 +698,63 @@ public partial class MeshRenderer
                 mesh.RebuildBuffer(MeshContext.Device);
             }
         }
+        UpdateMorphHairGeometryPreview();
     }
 
-    private Matrix4x4[] ComputeMorphSkinningMatrices()
+    private void UpdateMorphHairGeometryPreview()
     {
-        MeshBone[] editedSkeleton = MorphPreviewSkeletalMesh?.RefSkeleton;
-        int boneCount = Math.Min(MorphBindSkeleton.Length, editedSkeleton?.Length ?? 0);
+        if (MorphPreviewHairMesh is null || MorphHairBindSkeleton.Length == 0)
+        {
+            return;
+        }
+
+        MeshBone[] editedSkeleton = CloneSkeleton(MorphHairBindSkeleton);
+        Dictionary<string, Vector3> editedPositions = MorphSkeletonItems
+            .GroupBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last().Position, StringComparer.OrdinalIgnoreCase);
+        foreach (MeshBone bone in editedSkeleton)
+        {
+            if (editedPositions.TryGetValue(bone.Name.Instanced, out Vector3 position))
+            {
+                bone.Position = position;
+            }
+        }
+
+        Matrix4x4[] skinningMatrices = ComputeSkinningMatrices(MorphHairBindSkeleton, editedSkeleton);
+        for (int lodIndex = 0; lodIndex < MorphHairBindLods.Length; lodIndex++)
+        {
+            Vector3[] positions = MorphHairBindLods[lodIndex];
+            if (MorphHairGameShaderPreview?.LODs.Count > lodIndex)
+            {
+                Mesh<LEVertex> mesh = MorphHairGameShaderPreview.LODs[lodIndex].Mesh;
+                for (int i = 0; i < positions.Length && i < mesh.Vertices.Count; i++)
+                {
+                    Vector3 skinnedPosition = SkinPosition(
+                        positions[i], lodIndex, i, skinningMatrices, MorphHairSkinningInfluences);
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(skinnedPosition));
+                }
+                mesh.RebuildBuffer(MeshContext.Device);
+            }
+            if (MorphHairLEXPreview?.LODs.Count > lodIndex)
+            {
+                Mesh<WorldVertex> mesh = MorphHairLEXPreview.LODs[lodIndex].Mesh;
+                for (int i = 0; i < positions.Length && i < mesh.Vertices.Count; i++)
+                {
+                    Vector3 skinnedPosition = SkinPosition(
+                        positions[i], lodIndex, i, skinningMatrices, MorphHairSkinningInfluences);
+                    mesh.Vertices[i] = mesh.Vertices[i].WithPosition(ToRendererSpace(skinnedPosition));
+                }
+                mesh.RebuildBuffer(MeshContext.Device);
+            }
+        }
+    }
+
+    private Matrix4x4[] ComputeMorphSkinningMatrices() =>
+        ComputeSkinningMatrices(MorphBindSkeleton, MorphPreviewSkeletalMesh?.RefSkeleton);
+
+    private static Matrix4x4[] ComputeSkinningMatrices(MeshBone[] bindSkeleton, MeshBone[] editedSkeleton)
+    {
+        int boneCount = Math.Min(bindSkeleton?.Length ?? 0, editedSkeleton?.Length ?? 0);
         if (boneCount == 0)
         {
             return [];
@@ -660,7 +765,7 @@ public partial class MeshRenderer
         var skinningMatrices = new Matrix4x4[boneCount];
         for (int boneIndex = 0; boneIndex < boneCount; boneIndex++)
         {
-            MeshBone bindBone = MorphBindSkeleton[boneIndex];
+            MeshBone bindBone = bindSkeleton[boneIndex];
             MeshBone editedBone = editedSkeleton[boneIndex];
             Matrix4x4 bindLocal = Matrix4x4.CreateFromQuaternion(bindBone.Orientation)
                                   * Matrix4x4.CreateTranslation(bindBone.Position);
@@ -690,14 +795,18 @@ public partial class MeshRenderer
     }
 
     private Vector3 SkinMorphPosition(Vector3 position, int lodIndex, int vertexIndex, Matrix4x4[] skinningMatrices)
+        => SkinPosition(position, lodIndex, vertexIndex, skinningMatrices, MorphSkinningInfluences);
+
+    private static Vector3 SkinPosition(Vector3 position, int lodIndex, int vertexIndex,
+        Matrix4x4[] skinningMatrices, MorphSkinInfluences[][] influences)
     {
         if (skinningMatrices.Length == 0
-            || lodIndex >= MorphSkinningInfluences.Length
-            || vertexIndex >= MorphSkinningInfluences[lodIndex].Length)
+            || lodIndex >= influences.Length
+            || vertexIndex >= influences[lodIndex].Length)
         {
             return position;
         }
-        MorphSkinInfluences influence = MorphSkinningInfluences[lodIndex][vertexIndex];
+        MorphSkinInfluences influence = influences[lodIndex][vertexIndex];
         Matrix4x4 blended = GetSkinningMatrix(skinningMatrices, influence.Bone0) * influence.Weight0;
         if (influence.Weight1 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone1) * influence.Weight1;
         if (influence.Weight2 > 0) blended += GetSkinningMatrix(skinningMatrices, influence.Bone2) * influence.Weight2;
@@ -1089,6 +1198,97 @@ public partial class MeshRenderer
         }
     }
 
+    private string LoadMorphHairPreview(PreloadedModelData hairData, PackageCache assetCache, string loadError)
+    {
+        DisposeMorphHairPreview();
+        if (MorphHairMeshExport is null)
+        {
+            return MorphHairMeshPath;
+        }
+        if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            return $"Could not load m_oHairMesh: {loadError}";
+        }
+        if (hairData?.meshObject is not SkeletalMesh hairMesh)
+        {
+            return "m_oHairMesh resolved, but no preview data was produced.";
+        }
+
+        try
+        {
+            MorphPreviewHairMesh = hairMesh;
+            MorphHairBindSkeleton = CloneSkeleton(hairMesh.RefSkeleton);
+            MorphHairSkinningInfluences = BuildMorphSkinningInfluences(hairMesh);
+            MorphHairBindLods = hairMesh.LODModels
+                .Select(lod => lod.VertexBufferGPUSkin.VertexData.Select(vertex => vertex.Position).ToArray())
+                .ToArray();
+
+            if (CanUseGameShaders && RenderGameShader)
+            {
+                MorphHairGameShaderPreview = new ModelPreview<LEVertex>(
+                    MeshContext.Device, hairMesh, MeshContext.TextureCache, assetCache, hairData);
+            }
+            MorphHairLEXPreview = new ModelPreview<WorldVertex>(
+                MeshContext.Device, hairMesh, MeshContext.TextureCache, assetCache, hairData);
+
+            int lodCount = RenderGameShader
+                ? MorphHairGameShaderPreview?.LODs.Count ?? 0
+                : MorphHairLEXPreview?.LODs.Count ?? 0;
+            return $"Rendered m_oHairMesh with {lodCount} LOD(s).";
+        }
+        catch (Exception exception)
+        {
+            DisposeMorphHairPreview();
+            return $"Could not render m_oHairMesh: {exception.Message}";
+        }
+    }
+
+    private void RenderMorphHairPreview(RenderPass renderPass)
+    {
+        if (RenderSolid && MorphHairLEXPreview is { LODs.Count: > 0 } standardPreview)
+        {
+            MeshContext.Wireframe = false;
+            int lodIndex = Math.Clamp(CurrentLOD, 0, standardPreview.LODs.Count - 1);
+            standardPreview.Render(renderPass, MeshContext, lodIndex, Matrix4x4.Identity);
+        }
+        if (RenderGameShader && MorphHairGameShaderPreview is { LODs.Count: > 0 } gamePreview)
+        {
+            MeshContext.Wireframe = false;
+            int lodIndex = Math.Clamp(CurrentLOD, 0, gamePreview.LODs.Count - 1);
+            gamePreview.Render(renderPass, MeshContext, lodIndex, Matrix4x4.Identity);
+        }
+    }
+
+    private void RenderMorphHairWireframe()
+    {
+        if (!RenderWireframe || MorphHairLEXPreview is not { LODs.Count: > 0 } preview)
+        {
+            return;
+        }
+        int lodIndex = Math.Clamp(CurrentLOD, 0, preview.LODs.Count - 1);
+        MeshContext.Wireframe = true;
+        var viewConstants = new MeshRenderContext.WorldConstants(
+            Matrix4x4.Transpose(MeshContext.Camera.ProjectionMatrix),
+            Matrix4x4.Transpose(MeshContext.Camera.ViewMatrix),
+            Matrix4x4.Identity,
+            MeshContext.CurrentTextureViewFlags);
+        MeshContext.DefaultEffect.PrepDraw(MeshContext.ImmediateContext, MeshContext.AlphaBlendState);
+        MeshContext.DefaultEffect.RenderObject(
+            MeshContext.ImmediateContext, viewConstants, preview.LODs[lodIndex].Mesh, [null]);
+    }
+
+    private void DisposeMorphHairPreview()
+    {
+        MorphHairLEXPreview?.Dispose();
+        MorphHairLEXPreview = null;
+        MorphHairGameShaderPreview?.Dispose();
+        MorphHairGameShaderPreview = null;
+        MorphPreviewHairMesh = null;
+        MorphHairBindSkeleton = [];
+        MorphHairSkinningInfluences = [];
+        MorphHairBindLods = [];
+    }
+
     private void RefreshMorphFeatureGroups()
     {
         OnPropertyChanged(nameof(MatchedMorphFeatureItems));
@@ -1180,6 +1380,7 @@ public partial class MeshRenderer
         {
             return;
         }
+        DisposeMorphHairPreview();
         SuppressMorphEditorChanges = true;
         try
         {
@@ -1200,8 +1401,10 @@ public partial class MeshRenderer
             MorphBindSkeleton = [];
             MorphSkinningInfluences = [];
             MorphBaseHeadExport = null;
+            MorphHairMeshExport = null;
             MorphPreviewSkeletalMesh = null;
             MorphBaseHeadPath = null;
+            MorphHairMeshPath = null;
             MorphTargetStatus = null;
             MorphEditorStatus = null;
             HasMorphEditorData = false;

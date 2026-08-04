@@ -130,6 +130,7 @@
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Morph Editor" FontWeight="Bold" FontSize="15"/>
                             <TextBlock Text="{Binding MorphBaseHeadPath}" TextWrapping="Wrap" Opacity="0.75" Margin="0,2,0,3"/>
+                            <TextBlock Text="{Binding MorphHairMeshPath}" TextWrapping="Wrap" Opacity="0.75" Margin="0,0,0,3"/>
                             <TextBlock Text="{Binding MorphTargetStatus}" TextWrapping="Wrap" Margin="0,0,0,4"/>
                             <TextBlock Text="{Binding MorphEditorStatus}" TextWrapping="Wrap" Margin="0,0,0,5"/>
                             <TextBlock Text="Unsaved live changes" Foreground="OrangeRed" FontWeight="SemiBold" Margin="0,0,0,4"

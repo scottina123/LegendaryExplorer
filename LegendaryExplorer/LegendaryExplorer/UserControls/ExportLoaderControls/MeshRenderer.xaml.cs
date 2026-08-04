@@ -339,6 +339,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     MeshContext.Wireframe = false;
                     GameShaderPreview.Render(renderPass, MeshContext, CurrentLOD, Matrix4x4.Identity);
                 }
+                RenderMorphHairPreview(renderPass);
             }
             if (RenderWireframe && LEXPreview is not null && CurrentLOD < LEXPreview.LODs.Count)
             {
@@ -347,6 +348,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 MeshContext.DefaultEffect.PrepDraw(SceneViewer.Context.ImmediateContext, MeshContext.AlphaBlendState);
                 MeshContext.DefaultEffect.RenderObject(SceneViewer.Context.ImmediateContext, viewConstants, LEXPreview.LODs[CurrentLOD].Mesh, [null]);
             }
+            RenderMorphHairWireframe();
             if (IsStaticMesh && ShowCollisionMesh && STMCollisionMesh != null)
             {
                 MeshContext.Wireframe = true;
@@ -753,7 +755,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 }
                 ExportEntry morphSource = exportEntry;
                 ExportEntry morphBaseHead = MorphBaseHeadExport;
-                loadMesh = () => CreateMorphPreloadedModelData(assetCache, morphSource, morphBaseHead);
+                ExportEntry morphHairMesh = MorphHairMeshExport;
+                loadMesh = () => CreateMorphPreloadedModelData(assetCache, morphBaseHead, morphHairMesh);
             }
             else if (exportEntry.ClassName is "StaticMeshComponent")
             {
@@ -1051,6 +1054,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     Action loadPreviewAction = () =>
                     {
                         string morphPreviewWarning = null;
+                        string morphHairStatus = null;
                         bool morphTargetLoadStarted = false;
                         try
                         {
@@ -1058,6 +1062,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             GameShaderPreview?.Dispose();
                             LEXPreview = null;
                             GameShaderPreview = null;
+                            DisposeMorphHairPreview();
                             STMCollisionMesh?.Dispose();
                             STMCollisionMesh = null;
                             SkeletonVertexBuffer?.Dispose();
@@ -1119,6 +1124,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                             if (IsMorphEditorMode)
                             {
                                 ClearLiveMaterialEditor();
+                                morphHairStatus = LoadMorphHairPreview(
+                                    pmd.additionalModels?.FirstOrDefault(), assetCache, pmd.additionalModelLoadError);
                                 try
                                 {
                                     UpdateMorphGeometryPreview();
@@ -1140,6 +1147,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                     : LEXPreview?.LODs.Count ?? 0;
                                 string previewMode = RenderGameShader ? "in-game shader" : "standard textured";
                                 MorphEditorStatus = $"Rendered m_oBaseHead with {previewLodCount} {previewMode} LOD(s)."
+                                                    + (string.IsNullOrWhiteSpace(morphHairStatus) ? string.Empty : $" {morphHairStatus}")
                                                     + (morphPreviewWarning is null ? string.Empty : $" {morphPreviewWarning}");
                                 BeginMorphTargetCatalogLoad(requestedExport, MorphBaseHeadExport);
                                 morphTargetLoadStarted = true;
@@ -1160,6 +1168,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                         {
                             LEXPreview?.Dispose();
                             LEXPreview = null;
+                            DisposeMorphHairPreview();
                             if (IsMorphEditorMode && GameShaderPreview is not null)
                             {
                                 MorphEditorStatus = $"Rendered m_oBaseHead, but editor setup was incomplete: {exception.Message}";
