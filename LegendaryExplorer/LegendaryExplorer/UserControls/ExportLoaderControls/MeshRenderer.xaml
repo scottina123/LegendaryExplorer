@@ -97,7 +97,7 @@
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
-                            <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately." TextWrapping="Wrap"/>
+                            <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately. Click a mesh region to detect and focus the vector parameter affecting that pixel." TextWrapping="Wrap"/>
                             <TextBlock Text="Material" FontWeight="SemiBold"/>
                             <ComboBox ItemsSource="{Binding LiveMaterials}" SelectedItem="{Binding SelectedLiveMaterial}"
                                       DisplayMemberPath="DisplayName" Margin="0,2,0,6"/>
@@ -119,7 +119,7 @@
                             </UniformGrid>
                         </StackPanel>
 
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="LiveMaterialEditorScrollViewer" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
                                 <GroupBox Header="Scalar parameters" Margin="0,2,0,6">
                                     <ItemsControl ItemsSource="{Binding SelectedLiveMaterial.ScalarParameters}">
@@ -144,8 +144,19 @@
                                 </GroupBox>
 
                                 <GroupBox Header="Vector parameters" Margin="0,0,0,2">
-                                    <ItemsControl ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}">
-                                        <ItemsControl.ItemTemplate>
+                                    <ListBox x:Name="LiveVectorParameterList"
+                                             ItemsSource="{Binding SelectedLiveMaterial.VectorParameters}"
+                                             SelectedItem="{Binding SelectedLiveVectorParameter}"
+                                             Background="Transparent" BorderThickness="0"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                <Setter Property="Padding" Value="0"/>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="4,5">
                                                     <StackPanel>
@@ -155,13 +166,14 @@
                                                                           Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                                                                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                                                                           BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                                                                          Focusable="True"
                                                                           UsingAlphaChannel="True"
                                                                           SelectedColor="{Binding PreviewColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
                                 </GroupBox>
                             </StackPanel>
                         </ScrollViewer>

@@ -33,6 +33,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 //using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Color = LegendaryExplorerCore.SharpDX.Color;
 using SkeletalMesh = LegendaryExplorerCore.Unreal.BinaryConverters.SkeletalMesh;
@@ -280,12 +281,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public LiveMaterialEditorMaterial SelectedLiveMaterial
         {
             get => _selectedLiveMaterial;
-            set => SetProperty(ref _selectedLiveMaterial, value);
+            set
+            {
+                if (SetProperty(ref _selectedLiveMaterial, value))
+                {
+                    SelectedLiveVectorParameter = GetPreferredVectorParameter(value);
+                }
+            }
+        }
+
+        private LiveVectorMaterialParameter _selectedLiveVectorParameter;
+        public LiveVectorMaterialParameter SelectedLiveVectorParameter
+        {
+            get => _selectedLiveVectorParameter;
+            set => SetProperty(ref _selectedLiveVectorParameter, value);
         }
 
         public bool ShowLiveMaterialEditor => RenderGameShader && LiveMaterials.Count > 0;
 
         private string PendingLiveMaterialSelectionName;
+        private System.Windows.Point? MaterialPickMouseDownPosition;
 
         /// <summary>
         /// Value is true after _Loaded is called. False after _Unloaded (which if in tab control, is called when different tab is selected)
@@ -625,6 +640,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 BackgroundColor = GetThemeDefaultBackgroundColor();
             }
             SceneViewer.Context = MeshContext;
+            SceneViewer.AddHandler(Mouse.PreviewMouseDownEvent,
+                new MouseButtonEventHandler(SceneViewer_PreviewMouseDownForMaterialPicking), true);
+            SceneViewer.AddHandler(Mouse.PreviewMouseUpEvent,
+                new MouseButtonEventHandler(SceneViewer_PreviewMouseUpForMaterialPicking), true);
             SceneViewer.Loaded += (sender, args) =>
             {
                 if (MeshContext.IsReady)
@@ -1480,6 +1499,289 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             OnPropertyChanged(nameof(ShowLiveMaterialEditor));
         }
 
+        private void SceneViewer_PreviewMouseDownForMaterialPicking(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left && RenderGameShader && GameShaderPreview is not null)
+            {
+                MaterialPickMouseDownPosition = e.GetPosition(SceneViewer);
+            }
+        }
+
+        private void SceneViewer_PreviewMouseUpForMaterialPicking(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Left || MaterialPickMouseDownPosition is not { } mouseDownPosition)
+            {
+                return;
+            }
+
+            MaterialPickMouseDownPosition = null;
+            System.Windows.Point mouseUpPosition = e.GetPosition(SceneViewer);
+            System.Windows.Vector clickMovement = mouseUpPosition - mouseDownPosition;
+            if (clickMovement.LengthSquared > 16 || !TryPickGameShaderMaterials(mouseUpPosition, out List<string> materialNames))
+            {
+                return;
+            }
+
+            var hitMaterials = new List<LiveMaterialEditorMaterial>();
+            foreach (string materialName in materialNames)
+            {
+                if (GameShaderPreview.Materials.TryGetValue(materialName, out ModelPreviewMaterial<LEVertex> previewMaterial)
+                    && previewMaterial.Material is MaterialRenderProxy renderProxy
+                    && LiveMaterials.FirstOrDefault(material => ReferenceEquals(material.RenderProxy, renderProxy)) is { } hitLiveMaterial
+                    && !hitMaterials.Contains(hitLiveMaterial))
+                {
+                    hitMaterials.Add(hitLiveMaterial);
+                }
+            }
+            if (hitMaterials.Count == 0)
+            {
+                return;
+            }
+
+            if (!TryFindInfluencingVectorParameter(mouseUpPosition, hitMaterials,
+                    out LiveMaterialEditorMaterial selectedMaterial, out LiveVectorMaterialParameter selectedParameter))
+            {
+                return;
+            }
+
+            SelectedLiveMaterial = selectedMaterial;
+            SelectedLiveVectorParameter = selectedParameter;
+            FocusSelectedLiveVectorParameter();
+        }
+
+        private bool TryFindInfluencingVectorParameter(System.Windows.Point screenPosition,
+            IReadOnlyCollection<LiveMaterialEditorMaterial> hitMaterials,
+            out LiveMaterialEditorMaterial selectedMaterial,
+            out LiveVectorMaterialParameter selectedParameter)
+        {
+            selectedMaterial = null;
+            selectedParameter = null;
+            if (MeshContext.Backbuffer is null || MeshContext.Width <= 0 || MeshContext.Height <= 0
+                || SceneViewer.ActualWidth <= 0 || SceneViewer.ActualHeight <= 0)
+            {
+                return false;
+            }
+
+            List<(LiveMaterialEditorMaterial Material, LiveVectorMaterialParameter Parameter)> candidates =
+                hitMaterials.SelectMany(material => material.VectorParameters
+                    .Where(parameter => !IsGlobalOverlayParameter(parameter))
+                    .Select(parameter => (Material: material, Parameter: parameter)))
+                    .ToList();
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            int pixelX = Math.Clamp((int)(screenPosition.X / SceneViewer.ActualWidth * MeshContext.Width), 0, MeshContext.Width - 1);
+            int pixelY = Math.Clamp((int)(screenPosition.Y / SceneViewer.ActualHeight * MeshContext.Height), 0, MeshContext.Height - 1);
+
+            MeshContext.Render();
+            if (!MeshContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 baselineColor))
+            {
+                return false;
+            }
+
+            float strongestResponse = 0;
+            try
+            {
+                foreach ((LiveMaterialEditorMaterial material, LiveVectorMaterialParameter parameter) in candidates)
+                {
+                    var currentValue = new LinearColor(parameter.R, parameter.G, parameter.B, parameter.A);
+                    material.RenderProxy.SetVectorParameter(parameter.ParameterName, CreateVectorParameterProbe(currentValue));
+                    try
+                    {
+                        MeshContext.Render();
+                        if (MeshContext.TryReadBackbufferPixelNeighborhood(pixelX, pixelY, out Vector4 probeColor))
+                        {
+                            Vector3 response = new(probeColor.X - baselineColor.X,
+                                probeColor.Y - baselineColor.Y, probeColor.Z - baselineColor.Z);
+                            float responseStrength = response.LengthSquared();
+                            if (responseStrength > strongestResponse)
+                            {
+                                strongestResponse = responseStrength;
+                                selectedMaterial = material;
+                                selectedParameter = parameter;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        material.RenderProxy.SetVectorParameter(parameter.ParameterName, currentValue);
+                    }
+                }
+            }
+            finally
+            {
+                // Ensure the temporary probe value never remains visible or becomes a user edit.
+                MeshContext.Render();
+            }
+
+            // Ignore byte-level render noise when no vector parameter materially affects the clicked pixel.
+            const float minimumResponse = 3f / (255f * 255f);
+            return selectedParameter is not null && strongestResponse >= minimumResponse;
+        }
+
+        private static LinearColor CreateVectorParameterProbe(LinearColor value)
+        {
+            static float FarthestEndpoint(float component) => Math.Abs(component) >= Math.Abs(component - 1f) ? 0f : 1f;
+            return new LinearColor(FarthestEndpoint(value.R), FarthestEndpoint(value.G),
+                FarthestEndpoint(value.B), FarthestEndpoint(value.A));
+        }
+
+        private bool TryPickGameShaderMaterials(System.Windows.Point screenPosition, out List<string> materialNames)
+        {
+            materialNames = [];
+            if (GameShaderPreview is null
+                || CurrentLOD < 0
+                || CurrentLOD >= GameShaderPreview.LODs.Count
+                || SceneViewer.ActualWidth <= 0
+                || SceneViewer.ActualHeight <= 0)
+            {
+                return false;
+            }
+
+            float normalizedX = (float)(screenPosition.X / SceneViewer.ActualWidth * 2.0 - 1.0);
+            float normalizedY = (float)(1.0 - screenPosition.Y / SceneViewer.ActualHeight * 2.0);
+            Matrix4x4 viewProjection = MeshContext.Camera.ViewMatrix * MeshContext.Camera.ProjectionMatrix;
+            if (!Matrix4x4.Invert(viewProjection, out Matrix4x4 inverseViewProjection))
+            {
+                return false;
+            }
+
+            Vector4 nearClip = Vector4.Transform(new Vector4(normalizedX, normalizedY, 0, 1), inverseViewProjection);
+            Vector4 farClip = Vector4.Transform(new Vector4(normalizedX, normalizedY, 1, 1), inverseViewProjection);
+            if (Math.Abs(nearClip.W) < float.Epsilon || Math.Abs(farClip.W) < float.Epsilon)
+            {
+                return false;
+            }
+
+            Vector3 rayOrigin = new(nearClip.X / nearClip.W, nearClip.Y / nearClip.W, nearClip.Z / nearClip.W);
+            Vector3 farPoint = new(farClip.X / farClip.W, farClip.Y / farClip.W, farClip.Z / farClip.W);
+            Vector3 rayDirection = Vector3.Normalize(farPoint - rayOrigin);
+
+            ModelPreviewLOD<LEVertex> lod = GameShaderPreview.LODs[CurrentLOD];
+            Mesh<LEVertex> mesh = lod.Mesh;
+            var nearestDistanceByMaterial = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (ModelPreviewSection section in lod.Sections)
+            {
+                int firstTriangle = (int)(section.StartIndex / 3);
+                int endTriangle = Math.Min(mesh.Triangles.Count, firstTriangle + (int)section.TriangleCount);
+                for (int triangleIndex = firstTriangle; triangleIndex < endTriangle; triangleIndex++)
+                {
+                    Triangle triangle = mesh.Triangles[triangleIndex];
+                    if (triangle.Vertex1 >= (uint)mesh.Vertices.Count
+                        || triangle.Vertex2 >= (uint)mesh.Vertices.Count
+                        || triangle.Vertex3 >= (uint)mesh.Vertices.Count)
+                    {
+                        continue;
+                    }
+
+                    Vector3 vertex0 = mesh.Vertices[(int)triangle.Vertex1].Position;
+                    Vector3 vertex1 = mesh.Vertices[(int)triangle.Vertex2].Position;
+                    Vector3 vertex2 = mesh.Vertices[(int)triangle.Vertex3].Position;
+                    if (RayIntersectsTriangle(rayOrigin, rayDirection, vertex0, vertex1, vertex2, out float distance)
+                        && (!nearestDistanceByMaterial.TryGetValue(section.MaterialName, out float nearestDistance)
+                            || distance < nearestDistance))
+                    {
+                        nearestDistanceByMaterial[section.MaterialName] = distance;
+                    }
+                }
+            }
+
+            materialNames = nearestDistanceByMaterial.OrderBy(pair => pair.Value).Select(pair => pair.Key).ToList();
+            return materialNames.Count > 0;
+        }
+
+        private static bool RayIntersectsTriangle(Vector3 rayOrigin, Vector3 rayDirection,
+            Vector3 vertex0, Vector3 vertex1, Vector3 vertex2, out float distance)
+        {
+            const float epsilon = 0.000001f;
+            Vector3 edge1 = vertex1 - vertex0;
+            Vector3 edge2 = vertex2 - vertex0;
+            Vector3 cross = Vector3.Cross(rayDirection, edge2);
+            float determinant = Vector3.Dot(edge1, cross);
+            if (Math.Abs(determinant) < epsilon)
+            {
+                distance = 0;
+                return false;
+            }
+
+            float inverseDeterminant = 1f / determinant;
+            Vector3 originToVertex = rayOrigin - vertex0;
+            float u = Vector3.Dot(originToVertex, cross) * inverseDeterminant;
+            if (u < 0 || u > 1)
+            {
+                distance = 0;
+                return false;
+            }
+
+            Vector3 secondCross = Vector3.Cross(originToVertex, edge1);
+            float v = Vector3.Dot(rayDirection, secondCross) * inverseDeterminant;
+            if (v < 0 || u + v > 1)
+            {
+                distance = 0;
+                return false;
+            }
+
+            distance = Vector3.Dot(edge2, secondCross) * inverseDeterminant;
+            return distance > epsilon;
+        }
+
+        private static LiveVectorMaterialParameter GetPreferredVectorParameter(LiveMaterialEditorMaterial material)
+        {
+            return material?.VectorParameters.FirstOrDefault();
+        }
+
+        private static bool IsGlobalOverlayParameter(LiveVectorMaterialParameter parameter)
+        {
+            string name = parameter.ParameterName;
+            return name.Contains("Selection", StringComparison.OrdinalIgnoreCase)
+                   || name.Contains("Highlight", StringComparison.OrdinalIgnoreCase)
+                   || name.Contains("Overlay", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void FocusSelectedLiveVectorParameter()
+        {
+            LiveVectorMaterialParameter parameter = SelectedLiveVectorParameter;
+            if (parameter is null)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                LiveVectorParameterList.UpdateLayout();
+                if (LiveVectorParameterList.ItemContainerGenerator.ContainerFromItem(parameter) is FrameworkElement container)
+                {
+                    container.BringIntoView();
+                    FindVisualDescendant<Xceed.Wpf.Toolkit.ColorCanvas>(container)?.Focus();
+                }
+            }));
+        }
+
+        private static T FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
+        {
+            if (parent is null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match)
+                {
+                    return match;
+                }
+                if (FindVisualDescendant<T>(child) is { } descendant)
+                {
+                    return descendant;
+                }
+            }
+            return null;
+        }
+
         private void MaterialParameterScrubber_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
         {
             float speedMultiplier = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10f
@@ -1672,6 +1974,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             LEXPreview = null;
             GameShaderPreview?.Dispose();
             GameShaderPreview = null;
+            MaterialPickMouseDownPosition = null;
             ClearLiveMaterialEditor();
             SceneViewer?.Context?.EmptyCaches();
         }
@@ -1707,6 +2010,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             ClearLiveMaterialEditor();
             if (SceneViewer is { Context: not null })
             {
+                SceneViewer.RemoveHandler(Mouse.PreviewMouseDownEvent,
+                    new MouseButtonEventHandler(SceneViewer_PreviewMouseDownForMaterialPicking));
+                SceneViewer.RemoveHandler(Mouse.PreviewMouseUpEvent,
+                    new MouseButtonEventHandler(SceneViewer_PreviewMouseUpForMaterialPicking));
                 MeshContext.RenderScene -= SceneContext_RenderScene;
                 MeshContext.UpdateScene -= SceneContext_UpdateScene;
             }
