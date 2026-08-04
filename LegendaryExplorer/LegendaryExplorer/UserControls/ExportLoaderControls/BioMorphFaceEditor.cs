@@ -74,6 +74,12 @@ public partial class MeshRenderer
     private string PendingMorphTargetStatus;
 
     public ObservableCollectionExtended<MorphFeatureEditorItem> MorphFeatureItems { get; } = [];
+    public IEnumerable<MorphFeatureEditorItem> MatchedMorphFeatureItems =>
+        MorphFeatureItems.Where(feature => feature.HasMorphTarget).ToArray();
+    public IEnumerable<MorphFeatureEditorItem> UnmatchedMorphFeatureItems =>
+        MorphFeatureItems.Where(feature => !feature.HasMorphTarget).ToArray();
+    public int UnmatchedMorphFeatureCount => MorphFeatureItems.Count(feature => !feature.HasMorphTarget);
+    public bool HasUnmatchedMorphFeatures => UnmatchedMorphFeatureCount > 0;
     public ObservableCollectionExtended<MorphBoneEditorItem> MorphSkeletonItems { get; } = [];
     public ObservableCollectionExtended<MorphScalarOverrideItem> MorphScalarOverrides { get; } = [];
     public ObservableCollectionExtended<MorphColorOverrideItem> MorphColorOverrides { get; } = [];
@@ -120,6 +126,7 @@ public partial class MeshRenderer
         try
         {
             MorphFeatureItems.ClearEx();
+            RefreshMorphFeatureGroups();
             MorphSkeletonItems.ClearEx();
             MorphScalarOverrides.ClearEx();
             MorphColorOverrides.ClearEx();
@@ -161,6 +168,7 @@ public partial class MeshRenderer
             {
                 MorphFeatureItems.Add(new MorphFeatureEditorItem(feature.Name, feature.Value, OnMorphFeatureChanged));
             }
+            RefreshMorphFeatureGroups();
 
             if (properties.GetProp<ArrayProperty<StructProperty>>("m_aFinalSkeleton") is { } skeletonProperties)
             {
@@ -412,6 +420,7 @@ public partial class MeshRenderer
         {
             feature.HasMorphTarget = MorphTargets.ContainsKey(feature.Name);
         }
+        RefreshMorphFeatureGroups();
         MorphTargetStatus = PendingMorphTargetStatus;
         SuppressMorphEditorChanges = true;
         try
@@ -431,9 +440,19 @@ public partial class MeshRenderer
         {
             return;
         }
+        bool groupsChanged = false;
         foreach (MorphFeatureEditorItem feature in MorphFeatureItems)
         {
-            feature.HasMorphTarget = MorphTargets.ContainsKey(feature.Name);
+            bool hasMorphTarget = MorphTargets.ContainsKey(feature.Name);
+            if (feature.HasMorphTarget != hasMorphTarget)
+            {
+                feature.HasMorphTarget = hasMorphTarget;
+                groupsChanged = true;
+            }
+        }
+        if (groupsChanged)
+        {
+            RefreshMorphFeatureGroups();
         }
         RecalculateMorphFromFeatures();
         MarkMorphChanged();
@@ -1034,6 +1053,7 @@ public partial class MeshRenderer
             HasMorphTarget = true
         };
         MorphFeatureItems.Add(item);
+        RefreshMorphFeatureGroups();
         OnMorphFeatureChanged();
     }
 
@@ -1041,8 +1061,17 @@ public partial class MeshRenderer
     {
         if (sender is FrameworkElement { DataContext: MorphFeatureEditorItem item } && MorphFeatureItems.Remove(item))
         {
+            RefreshMorphFeatureGroups();
             OnMorphFeatureChanged();
         }
+    }
+
+    private void RefreshMorphFeatureGroups()
+    {
+        OnPropertyChanged(nameof(MatchedMorphFeatureItems));
+        OnPropertyChanged(nameof(UnmatchedMorphFeatureItems));
+        OnPropertyChanged(nameof(UnmatchedMorphFeatureCount));
+        OnPropertyChanged(nameof(HasUnmatchedMorphFeatures));
     }
 
     private void AddMorphBone_Click(object sender, RoutedEventArgs e)
@@ -1112,6 +1141,7 @@ public partial class MeshRenderer
         try
         {
             MorphFeatureItems.ClearEx();
+            RefreshMorphFeatureGroups();
             MorphSkeletonItems.ClearEx();
             MorphScalarOverrides.ClearEx();
             MorphColorOverrides.ClearEx();

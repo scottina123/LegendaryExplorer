@@ -18,6 +18,35 @@
              d:DataContext="{Binding RelativeSource={RelativeSource Self}}">
     <Control.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <DataTemplate x:Key="MorphFeatureEditorItemTemplate">
+            <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="2,5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Target found — slider deforms the stored face" Foreground="DarkSeaGreen" FontSize="11"
+                                   Visibility="{Binding HasMorphTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <TextBlock Text="No target found — value is metadata only" Foreground="DarkOrange" FontSize="11"
+                                   Visibility="{Binding HasMorphTarget, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"/>
+                        <Grid Margin="0,3,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="82"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
+                            <xctk:SingleUpDown Grid.Column="1" Margin="5,0,0,0" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                               Increment="0.01" AllowInputSpecialValues="None"/>
+                        </Grid>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="×" ToolTip="Remove feature" Margin="5,0,0,0" Padding="5,1"
+                            VerticalAlignment="Top" Click="RemoveMorphFeature_Click"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
         <Style x:Key="MaterialParameterScrubberStyle" TargetType="Thumb">
             <Setter Property="Width" Value="34"/>
             <Setter Property="Height" Value="22"/>
@@ -124,39 +153,16 @@
                                     <Button DockPanel.Dock="Top" Content="Add feature…" HorizontalAlignment="Left" Padding="7,3" Margin="0,0,0,4"
                                             Click="AddMorphFeature_Click"/>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding MorphFeatureItems}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" Padding="2,5">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <StackPanel>
-                                                                <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"/>
-                                                                <TextBlock Text="Target found — slider deforms the stored face" Foreground="DarkSeaGreen" FontSize="11"
-                                                                           Visibility="{Binding HasMorphTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                                                <TextBlock Text="No target found — value is metadata only" Foreground="DarkOrange" FontSize="11"
-                                                                           Visibility="{Binding HasMorphTarget, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Not}"/>
-                                                                <Grid Margin="0,3,0,0">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*"/>
-                                                                        <ColumnDefinition Width="82"/>
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                                            VerticalAlignment="Center" IsMoveToPointEnabled="True"/>
-                                                                    <xctk:SingleUpDown Grid.Column="1" Margin="5,0,0,0" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                                                       Increment="0.01" AllowInputSpecialValues="None"/>
-                                                                </Grid>
-                                                            </StackPanel>
-                                                            <Button Grid.Column="1" Content="×" ToolTip="Remove feature" Margin="5,0,0,0" Padding="5,1"
-                                                                    VerticalAlignment="Top" Click="RemoveMorphFeature_Click"/>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <StackPanel>
+                                            <ItemsControl ItemsSource="{Binding MatchedMorphFeatureItems}"
+                                                          ItemTemplate="{StaticResource MorphFeatureEditorItemTemplate}"/>
+                                            <Expander Margin="0,5,0,0" IsExpanded="False"
+                                                      Header="{Binding UnmatchedMorphFeatureCount, StringFormat=No target found ({0})}"
+                                                      Visibility="{Binding HasUnmatchedMorphFeatures, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <ItemsControl ItemsSource="{Binding UnmatchedMorphFeatureItems}"
+                                                              ItemTemplate="{StaticResource MorphFeatureEditorItemTemplate}"/>
+                                            </Expander>
+                                        </StackPanel>
                                     </ScrollViewer>
                                 </DockPanel>
                             </TabItem>
