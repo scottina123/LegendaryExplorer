@@ -608,6 +608,7 @@ public class MeshRenderContext : RenderContext
             //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
             code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
                                                             "#define inf 1.#INF");
+            code = PreviewColorSpace.EncodePixelShaderOutput(code);
             try
             {
                 shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");
@@ -876,7 +877,9 @@ public class MeshRenderContext : RenderContext
             return WhiteTex;
         }
         var unrealTexture = new LECTexture2D(texture2DExport);
-        return this.LoadUnrealMip(unrealTexture.GetTopMip(), LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name));
+        return this.LoadUnrealMip(unrealTexture.GetTopMip(),
+            LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name),
+            PreviewColorSpace.UsesSrgbSampling(texture2DExport));
     }
 
     public Texture2D LoadUnrealTextureCube(ExportEntry textureCubeExport, PackageCache packageCache = null)
@@ -912,6 +915,10 @@ public class MeshRenderContext : RenderContext
         uint size = (uint)faceTextures[0].GetTopMip().width;
         var format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(
             LegendaryExplorerCore.Textures.Image.getPixelFormatType(faceTextures[0].Export.GetProperty<EnumProperty>("Format").Value.Name));
+        if (PreviewColorSpace.UsesSrgbSampling(faceTextures[0].Export))
+        {
+            format = PreviewColorSpace.ToSrgbFormat(format);
+        }
         for (int i = 0; i < 6; i++)
         {
             pixelData[i] = LECTexture2D.GetTextureData(faceTextures[i].GetTopMip(), textureCubeExport.Game);

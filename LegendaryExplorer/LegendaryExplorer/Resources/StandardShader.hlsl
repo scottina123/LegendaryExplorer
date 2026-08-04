@@ -21,6 +21,13 @@ struct PS_OUT {
 	float4 color : SV_TARGET;
 };
 
+float3 LinearToSrgb(float3 linearColor) {
+	linearColor = max(linearColor, 0.0);
+	float3 low = linearColor * 12.92;
+	float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+	return lerp(low, high, step(0.0031308, linearColor));
+}
+
 cbuffer constants {
 	float4x4 projection;
 	float4x4 view;
@@ -92,7 +99,7 @@ PS_OUT PSMain(PS_IN input) {
 	float3 toLight = normalize(float3(0.6, 1, 0.3)); // the direction to the fake directional light
 	float lambert = saturate(dot(toLight, input.normal));
 	lambert = lambert * 0.5 + 0.5; // a super simple way to fake some ambient lighting in. wildly inaccurate though.
-	result.color = float4(textureValue.xyz * lambert, 1.0);
+	result.color = float4(LinearToSrgb(textureValue.xyz * lambert), 1.0);
 	
 	// use the input normal (negative values are clamped to zero (black))
 	//result.color = float4(input.normal, 1.0);

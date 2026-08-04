@@ -652,7 +652,9 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             {
                 // Keep the compiled in-game material shader, but present its linear output with the
                 // gamma and brighter neutral skylight expected for inspecting dark face materials.
-                MeshContext.GameShaderInvGamma = 1f / 2.2f;
+                // Preview shaders now perform one explicit linear-to-sRGB conversion at output.
+                // Keep UE's optional shader gamma parameter neutral to avoid converting twice.
+                MeshContext.GameShaderInvGamma = 1f;
                 MeshContext.GameShaderLightScale = 1.5f;
             }
             if (ColorConverter.ConvertFromString(Settings.Meshplorer_BackgroundColor) is System.Windows.Media.Color color)

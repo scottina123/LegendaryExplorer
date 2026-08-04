@@ -521,6 +521,7 @@ public class MeshRenderContext : LegacyRenderContext
             //3DMigoto outputs "inf" for the infinity constant, but that's not valid HLSL
             code = code.Replace("// 3Dmigoto declarations", "// 3Dmigoto declarations\n" +
                                                             "#define inf 1.#INF");
+            code = PreviewColorSpace.EncodePixelShaderOutput(code);
             try
             {
                 shaderBytecode = ShaderBytecode.Compile(code, "main", "ps_5_0");

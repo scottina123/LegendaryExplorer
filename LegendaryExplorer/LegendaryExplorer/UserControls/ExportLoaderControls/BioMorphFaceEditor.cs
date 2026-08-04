@@ -1,4 +1,5 @@
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D;
 using LegendaryExplorerCore.GameFilesystem;
@@ -1237,7 +1238,8 @@ public sealed class MorphColorOverrideItem : NotifyPropertyChangedBase
     public LinearColor Value => new(R, G, B, A);
     public MediaColor? PreviewColor
     {
-        get => MediaColor.FromArgb(ToByte(A), ToByte(R), ToByte(G), ToByte(B));
+        get => MediaColor.FromArgb(ToByte(A), ToByte(PreviewColorSpace.LinearToSrgb(R)),
+            ToByte(PreviewColorSpace.LinearToSrgb(G)), ToByte(PreviewColorSpace.LinearToSrgb(B)));
         set
         {
             if (value is not { } color)
@@ -1245,9 +1247,9 @@ public sealed class MorphColorOverrideItem : NotifyPropertyChangedBase
                 return;
             }
             bool changed = false;
-            changed |= SetProperty(ref _r, color.R / 255f, nameof(R));
-            changed |= SetProperty(ref _g, color.G / 255f, nameof(G));
-            changed |= SetProperty(ref _b, color.B / 255f, nameof(B));
+            changed |= SetProperty(ref _r, PreviewColorSpace.SrgbToLinear(color.R / 255f), nameof(R));
+            changed |= SetProperty(ref _g, PreviewColorSpace.SrgbToLinear(color.G / 255f), nameof(G));
+            changed |= SetProperty(ref _b, PreviewColorSpace.SrgbToLinear(color.B / 255f), nameof(B));
             changed |= SetProperty(ref _a, color.A / 255f, nameof(A));
             if (changed)
             {

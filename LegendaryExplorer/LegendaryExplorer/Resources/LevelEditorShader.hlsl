@@ -29,6 +29,13 @@ struct PS_OUT {
     float4 hitTestID : SV_Target1;
 };
 
+float3 LinearToSrgb(float3 linearColor) {
+	linearColor = max(linearColor, 0.0);
+	float3 low = linearColor * 12.92;
+	float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+	return lerp(low, high, step(0.0031308, linearColor));
+}
+
 //reminder: Constant buffers must be a multiple of 16 bytes long
 cbuffer constants {
 	float4x4 projection;
@@ -175,6 +182,10 @@ PS_OUT PSMain(PS_IN input) {
         result.color = input.color;
         result.hitTestID = float4(input.hitTestID, 1.0f);
     }
+	else
+	{
+		result.color.rgb = LinearToSrgb(result.color.rgb);
+	}
 	
 	return result;
 }

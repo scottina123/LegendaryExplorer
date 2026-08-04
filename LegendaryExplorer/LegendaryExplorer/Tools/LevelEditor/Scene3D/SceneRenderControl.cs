@@ -19,6 +19,7 @@ using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Packages;
 using Texture2D = SharpDX.Direct3D11.Texture2D;
 using LegendaryExplorer.Dialogs;
+using LegendaryExplorer.Misc;
 using System.Numerics;
 
 namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
@@ -92,17 +93,22 @@ public static class RenderContextExtensions
     {
         var pixelFormat = LegendaryExplorerCore.Textures.PixelFormat.ARGB;
         byte[] pixelData = LegendaryExplorerCore.Textures.TexConverter.LoadTexture(filename, out uint width, out uint height, ref pixelFormat); // NEEDS WAY TO HAVE ALPHA AS BLACK!
-        Format format = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
+        Format format = PreviewColorSpace.ToSrgbFormat((Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat));
         return renderContext.LoadTexture(width, height, format, pixelData);
     }
 
-    public static Texture2D LoadUnrealMip(this RenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip, LegendaryExplorerCore.Textures.PixelFormat pixelFormat)
+    public static Texture2D LoadUnrealMip(this RenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip,
+        LegendaryExplorerCore.Textures.PixelFormat pixelFormat, bool useSrgbSampling = false)
     {
         // Todo: Needs way to set black alpha
         var imagebytes = LECTexture2D.GetTextureData(mip, mip.Export.Game);
         uint mipWidth = (uint)mip.width;
         uint mipHeight = (uint)mip.height;
         var mipFormat = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
+        if (useSrgbSampling)
+        {
+            mipFormat = PreviewColorSpace.ToSrgbFormat(mipFormat);
+        }
         if (mipFormat.IsCompressed())
         {
             mipWidth = (mipWidth < 4) ? 4 : mipWidth;
