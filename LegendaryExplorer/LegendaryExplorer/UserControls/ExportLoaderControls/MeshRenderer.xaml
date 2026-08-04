@@ -160,7 +160,7 @@
                                                 Click="AddMorphFeature_Click"/>
                                         <Button Content="Randomize morph" HorizontalAlignment="Left" Padding="7,3" Margin="6,0,0,0"
                                                 IsEnabled="{Binding HasMorphEditorData}" Click="RandomizeMorphFeatures_Click"
-                                                ToolTip="Blend the geometry, scalar overrides, and color overrides of two same-species BioWare faces from the LE3 Asset Database. Texture references are not changed."/>
+                                                ToolTip="Randomize scalar and color overrides from same-species BioWare faces in the LE3 Asset Database, and blend geometry when compatible morph targets exist. Texture references are not changed."/>
                                     </StackPanel>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <StackPanel>

@@ -60,17 +60,21 @@ internal static class BioMorphRandomizationCatalog
         }
 
         List<BioMorphReferenceFace> faces = database.MorphFaces
-            .Where(face => face.Species == species && !face.IsMod && face.Features is { Length: > 0 })
+            .Where(face => face.Species == species
+                           && !face.IsMod
+                           && (face.Features is { Length: > 0 }
+                               || face.ScalarOverrides is { Length: > 0 }
+                               || face.ColorOverrides is { Length: > 0 }))
             .Select(face => new BioMorphReferenceFace(
                 GetSourceName(database, face),
                 face.BaseHeadName,
-                face.Features.ToDictionary(feature => feature.Name, feature => feature.Value, StringComparer.OrdinalIgnoreCase),
+                (face.Features ?? []).ToDictionary(feature => feature.Name, feature => feature.Value, StringComparer.OrdinalIgnoreCase),
                 (face.ScalarOverrides ?? []).ToDictionary(scalar => scalar.Name, scalar => scalar.Value, StringComparer.OrdinalIgnoreCase),
                 (face.ColorOverrides ?? []).ToDictionary(
                     color => color.Name,
                     color => new BioMorphReferenceColor(color.R, color.G, color.B, color.A),
                     StringComparer.OrdinalIgnoreCase)))
-            .Where(face => face.Features.Count > 0
+            .Where(face => (face.Features.Count > 0 || face.ScalarOverrides.Count > 0 || face.ColorOverrides.Count > 0)
                            && face.Features.Values.All(value => float.IsFinite(value) && Math.Abs(value) <= 2f)
                            && face.ScalarOverrides.Values.All(float.IsFinite)
                            && face.ColorOverrides.Values.All(color => float.IsFinite(color.R)

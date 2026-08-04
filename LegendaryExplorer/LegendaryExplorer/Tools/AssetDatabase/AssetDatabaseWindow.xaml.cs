@@ -269,8 +269,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v15.0: Index LE3 BioMorphFace scalar and color material overrides for instant morph randomization.
-        public const string dbCurrentBuild = "15.0";
+        // v16.0: Index material-only LE3 BioMorphFace profiles independently of morph-target features.
+        public const string dbCurrentBuild = "16.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;

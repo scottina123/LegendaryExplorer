@@ -19,13 +19,13 @@ internal sealed class BioMorphScanner : AssetScanner
         IEntry baseHead = baseHeadProperty?.ResolveToEntry(e.Export.FileRef);
         string baseHeadName = baseHead?.ObjectName.Name;
         BioMorphSpecies species = baseHeadName.GetBioMorphSpecies();
-        if (species == BioMorphSpecies.Unknown
-            || e.Properties.GetProp<ArrayProperty<StructProperty>>("m_aMorphFeatures") is not { Count: > 0 } featureArray)
+        if (species == BioMorphSpecies.Unknown)
         {
             return;
         }
 
-        BioMorphFeatureRecord[] features = featureArray
+        BioMorphFeatureRecord[] features = e.Properties
+            .GetProp<ArrayProperty<StructProperty>>("m_aMorphFeatures")?
             .Select(feature => new BioMorphFeatureRecord(
                 feature.GetProp<NameProperty>("sFeatureName")?.Value.Instanced,
                 feature.GetProp<FloatProperty>("Offset")?.Value ?? 0f))
@@ -35,11 +35,7 @@ internal sealed class BioMorphScanner : AssetScanner
             .GroupBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
             .Select(group => new BioMorphFeatureRecord(group.Key, group.Sum(feature => feature.Value)))
             .OrderBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (features.Length == 0)
-        {
-            return;
-        }
+            .ToArray() ?? [];
 
         ExportEntry materialOverride = e.Properties.GetProp<ObjectProperty>("m_oMaterialOverrides")?
             .ResolveToEntry(e.Export.FileRef) as ExportEntry;
@@ -74,6 +70,10 @@ internal sealed class BioMorphScanner : AssetScanner
             .Select(group => group.Last())
             .OrderBy(color => color.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray() ?? [];
+        if (features.Length == 0 && scalarOverrides.Length == 0 && colorOverrides.Length == 0)
+        {
+            return;
+        }
 
         var record = new BioMorphFaceRecord(
             e.Export.InstancedFullPath,
