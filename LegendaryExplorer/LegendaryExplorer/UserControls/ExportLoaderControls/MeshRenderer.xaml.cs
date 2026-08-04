@@ -89,6 +89,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _renderGameShader;
             set
             {
+                if (IsMorphEditorMode && !value)
+                {
+                    return;
+                }
                 if (SetProperty(ref _renderGameShader, value))
                 {
                     OnPropertyChanged(nameof(ShowLiveMaterialEditor));
@@ -110,6 +114,10 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             get => _renderSolid;
             set
             {
+                if (IsMorphEditorMode && value)
+                {
+                    return;
+                }
                 if (SetProperty(ref _renderSolid, value) && _renderSolid)
                 {
                     RenderGameShader = false;
@@ -297,7 +305,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             set => SetProperty(ref _selectedLiveVectorParameter, value);
         }
 
-        public bool ShowLiveMaterialEditor => RenderGameShader && LiveMaterials.Count > 0;
+        public bool ShowLiveMaterialEditor => !IsMorphEditorMode && RenderGameShader && LiveMaterials.Count > 0;
+
+        /// <summary>
+        /// True for the dedicated LE3 BioMorphFace editor. In this mode the in-game shader is mandatory.
+        /// </summary>
+        public bool IsMorphEditorMode { get; }
 
         private string PendingLiveMaterialSelectionName;
         private System.Windows.Point? MaterialPickMouseDownPosition;
@@ -622,9 +635,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         #endregion
 
         private readonly bool startingUp;
-        public MeshRenderer() : base("Mesh Renderer")
+        public MeshRenderer() : this(false)
+        {
+        }
+
+        protected MeshRenderer(bool isMorphEditorMode) : base(isMorphEditorMode ? "Morph Editor" : "Mesh Renderer")
         {
             startingUp = true;
+            IsMorphEditorMode = isMorphEditorMode;
+            _renderGameShader = isMorphEditorMode;
+            _renderSolid = !isMorphEditorMode;
             DataContext = this;
             LoadCommands();
             InitializeComponent();
@@ -646,11 +666,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 new MouseButtonEventHandler(SceneViewer_PreviewMouseUpForMaterialPicking), true);
             SceneViewer.Loaded += (sender, args) =>
             {
-                if (MeshContext.IsReady)
-                {
-                    this.ViewportLoadAction?.Invoke();
-                }
-                this.ViewportLoadAction = null;
+                TryRunViewportLoadAction();
             };
 
             ThemeManager.ThemeChanged += OnThemeChanged;
@@ -710,10 +726,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             CurrentLOD = 0;
             CanUseGameShaders = exportEntry.Game.IsLEGame();
 
-            Func<PreloadedModelData> loadMesh;
+            Func<PreloadedModelData> loadMesh = null;
             var assetCache = new PackageCache();
 
-            if (exportEntry.ClassName is "StaticMeshComponent")
+            if (IsMorphEditorMode && exportEntry.ClassName == "BioMorphFace")
+            {
+                IsSkeletalMesh = true;
+                ShowSkeleton = true;
+                if (!InitializeMorphEditor(exportEntry, assetCache))
+                {
+                    assetCache.Dispose();
+                    return;
+                }
+                ExportEntry morphSource = exportEntry;
+                ExportEntry morphBaseHead = MorphBaseHeadExport;
+                loadMesh = () => CreateMorphPreloadedModelData(assetCache, morphSource, morphBaseHead);
+            }
+            else if (exportEntry.ClassName is "StaticMeshComponent")
             {
                 var cache = new PackageCache();
                 var mesh = CurrentLoadedExport.GetProperty<ObjectProperty>("StaticMesh")?.ResolveToExport(exportEntry.FileRef, cache);
@@ -731,7 +760,12 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 return;
             }
 
-            if (CurrentLoadedExport.ClassName is "StaticMesh" or "FracturedStaticMesh")
+            if (loadMesh is not null)
+            {
+                // Morph editor mode already built the loader for m_oBaseHead. The class-name dispatch
+                // below would not match BioMorphFace and would discard it.
+            }
+            else if (CurrentLoadedExport.ClassName is "StaticMesh" or "FracturedStaticMesh")
             {
                 IsStaticMesh = true;
                 loadMesh = () =>
@@ -965,82 +999,173 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
             
 
+            ExportEntry requestedExport = exportEntry;
             Task.Run(loadMesh).ContinueWith(prevTask =>
             {
+                PreloadedModelData result = prevTask.GetAwaiter().GetResult();
                 if (CanUseGameShaders && RenderGameShader)
                 {
                     BusyText = "Reading Shader Cache (~15s)";
                     RefShaderCacheReader.PopulateOffsets(Pcc.Game);
                 }
-                return prevTask.Result;
+                return result;
             }).ContinueWithOnUIThread(prevTask =>
             {
                 IsBusy = false;
-                if (CurrentLoadedExport == null)
+                if (!ReferenceEquals(CurrentLoadedExport, requestedExport))
                 {
                     //in the time since the previous task was started, the export has been unloaded
+                    assetCache.Dispose();
+                    return;
+                }
+                if (prevTask.IsFaulted || prevTask.IsCanceled)
+                {
+                    Exception exception = prevTask.Exception?.GetBaseException();
+                    assetCache.Dispose();
+                    if (IsMorphEditorMode)
+                    {
+                        MorphEditorStatus = $"Could not render m_oBaseHead: {exception?.Message ?? "preview loading was canceled"}";
+                        MorphTargetStatus = "Morph-target loading was not started.";
+                    }
+                    else if (exception is not null)
+                    {
+                        new ExceptionHandlerDialog(exception).Show();
+                    }
                     return;
                 }
                 if (prevTask.Result is PreloadedModelData pmd)
                 {
                     Action loadPreviewAction = () =>
                     {
-                        LEXPreview?.Dispose();
-                        GameShaderPreview?.Dispose();
-                        LEXPreview = null;
-                        GameShaderPreview = null;
-                        STMCollisionMesh?.Dispose();
-                        STMCollisionMesh = null;
-                        SkeletonVertexBuffer?.Dispose();
-                        SkeletonVertexBuffer = null;
-                        SkeletonVertexCount = 0;
-                        SkeletonBonePositions = null;
-                        switch (pmd.meshObject)
+                        string morphPreviewWarning = null;
+                        bool morphTargetLoadStarted = false;
+                        try
                         {
-                            case StaticMesh statM:
-                                STMCollisionMesh = GetMeshFromAggGeom(statM.GetCollisionMeshProperty(Pcc));
-                                if (CanUseGameShaders && RenderGameShader) GameShaderPreview = new ModelPreview<LEVertex>(MeshContext.Device, statM, CurrentLOD, MeshContext.TextureCache, assetCache, pmd);
-                                LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, statM, CurrentLOD, MeshContext.TextureCache, assetCache, pmd);
-                                MeshContext.Camera.FocusDepth = statM.Bounds.SphereRadius * 1.2f;
-                                break;
-                            case SkeletalMesh skm:
-                                if (CanUseGameShaders && RenderGameShader) GameShaderPreview = new ModelPreview<LEVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
-                                LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
-                                MeshContext.Camera.FocusDepth = skm.Bounds.SphereRadius * 1.2f;
-                                BuildSkeletonLineBuffer(skm);
-                                break;
-                            case StructProperty structProp: //BrushComponent
-                                LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, GetMeshFromAggGeom(structProp), MeshContext.TextureCache, assetCache, pmd);
-                                MeshContext.Camera.FocusDepth = LEXPreview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
-                                break;
-                            case ModelComponent mc:
-                                LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, GetMeshFromModelComponent(mc), MeshContext.TextureCache, assetCache, pmd);
-                                //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
-                                break;
-                            case Model m:
-                                var sections = new List<ModelPreviewSection>();
-                                Mesh<WorldVertex> mesh = GetMeshFromModelSubcomponents(m, sections);
-                                pmd.sections = sections;
-                                if (mesh.Vertices.Any())
-                                {
-                                    MeshContext.Camera.Position = mesh.Vertices[0].Position;
-                                }
+                            LEXPreview?.Dispose();
+                            GameShaderPreview?.Dispose();
+                            LEXPreview = null;
+                            GameShaderPreview = null;
+                            STMCollisionMesh?.Dispose();
+                            STMCollisionMesh = null;
+                            SkeletonVertexBuffer?.Dispose();
+                            SkeletonVertexBuffer = null;
+                            SkeletonVertexCount = 0;
+                            SkeletonBonePositions = null;
+                            switch (pmd.meshObject)
+                            {
+                                case StaticMesh statM:
+                                    STMCollisionMesh = GetMeshFromAggGeom(statM.GetCollisionMeshProperty(Pcc));
+                                    if (CanUseGameShaders && RenderGameShader) GameShaderPreview = new ModelPreview<LEVertex>(MeshContext.Device, statM, CurrentLOD, MeshContext.TextureCache, assetCache, pmd);
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, statM, CurrentLOD, MeshContext.TextureCache, assetCache, pmd);
+                                    MeshContext.Camera.FocusDepth = statM.Bounds.SphereRadius * 1.2f;
+                                    break;
+                                case SkeletalMesh skm:
+                                    if (CanUseGameShaders && RenderGameShader) GameShaderPreview = new ModelPreview<LEVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
+                                    // Morph Editor never draws the generic solid preview. Avoid constructing a second
+                                    // material/mesh pipeline that can prevent the required game-shader preview from
+                                    // being installed.
+                                    if (!IsMorphEditorMode)
+                                    {
+                                        LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, skm, MeshContext.TextureCache, assetCache, pmd);
+                                    }
+                                    MeshContext.Camera.FocusDepth = skm.Bounds.SphereRadius * 1.2f;
+                                    CenterView();
+                                    if (IsMorphEditorMode)
+                                    {
+                                        try
+                                        {
+                                            BuildSkeletonLineBuffer(skm);
+                                        }
+                                        catch (Exception exception)
+                                        {
+                                            morphPreviewWarning = $"Skeleton overlay unavailable: {exception.Message}";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        BuildSkeletonLineBuffer(skm);
+                                    }
+                                    break;
+                                case StructProperty structProp: //BrushComponent
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, GetMeshFromAggGeom(structProp), MeshContext.TextureCache, assetCache, pmd);
+                                    MeshContext.Camera.FocusDepth = LEXPreview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
+                                    break;
+                                case ModelComponent mc:
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, GetMeshFromModelComponent(mc), MeshContext.TextureCache, assetCache, pmd);
+                                    //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
+                                    break;
+                                case Model m:
+                                    var sections = new List<ModelPreviewSection>();
+                                    Mesh<WorldVertex> mesh = GetMeshFromModelSubcomponents(m, sections);
+                                    pmd.sections = sections;
+                                    if (mesh.Vertices.Any())
+                                    {
+                                        MeshContext.Camera.Position = mesh.Vertices[0].Position;
+                                    }
 
-                                LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, mesh, MeshContext.TextureCache, assetCache, pmd);
-                                //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
-                                break;
-                        }
-                        PopulateLiveMaterialEditor();
-                        assetCache.Dispose();
-                        LODPicker.ClearEx();
-                        if (LEXPreview is not null)
-                        {
-                            for (int i = 0; i < LEXPreview.LODs.Count; i++)
+                                    LEXPreview = new ModelPreview<WorldVertex>(MeshContext.Device, mesh, MeshContext.TextureCache, assetCache, pmd);
+                                    //SceneViewer.Context.Camera.FocusDepth = Preview.LODs[0].Mesh.AABBHalfSize.Length() * 1.2f;
+                                    break;
+                            }
+                            if (IsMorphEditorMode)
+                            {
+                                ClearLiveMaterialEditor();
+                                try
+                                {
+                                    ApplyMorphMaterialOverridePreview();
+                                }
+                                catch (Exception exception)
+                                {
+                                    morphPreviewWarning = $"Material overrides unavailable: {exception.Message}";
+                                }
+                                MorphEditorStatus = $"Rendered m_oBaseHead with {GameShaderPreview?.LODs.Count ?? 0} in-game shader LOD(s)."
+                                                    + (morphPreviewWarning is null ? string.Empty : $" {morphPreviewWarning}");
+                                BeginMorphTargetCatalogLoad(requestedExport, MorphBaseHeadExport);
+                                morphTargetLoadStarted = true;
+                            }
+                            else
+                            {
+                                PopulateLiveMaterialEditor();
+                            }
+                            LODPicker.ClearEx();
+                            int lodCount = LEXPreview?.LODs.Count ?? GameShaderPreview?.LODs.Count ?? 0;
+                            for (int i = 0; i < lodCount; i++)
                             {
                                 LODPicker.Add($"LOD{i}");
                             }
+                            CenterView();
                         }
-                        CenterView();
+                        catch (Exception exception)
+                        {
+                            LEXPreview?.Dispose();
+                            LEXPreview = null;
+                            if (IsMorphEditorMode && GameShaderPreview is not null)
+                            {
+                                MorphEditorStatus = $"Rendered m_oBaseHead, but editor setup was incomplete: {exception.Message}";
+                                if (!morphTargetLoadStarted)
+                                {
+                                    BeginMorphTargetCatalogLoad(requestedExport, MorphBaseHeadExport);
+                                }
+                                CenterView();
+                            }
+                            else if (IsMorphEditorMode)
+                            {
+                                GameShaderPreview?.Dispose();
+                                GameShaderPreview = null;
+                                MorphEditorStatus = $"Could not render m_oBaseHead: {exception.Message}";
+                                MorphTargetStatus = "Morph-target loading was not started.";
+                            }
+                            else
+                            {
+                                GameShaderPreview?.Dispose();
+                                GameShaderPreview = null;
+                                new ExceptionHandlerDialog(exception).Show();
+                            }
+                        }
+                        finally
+                        {
+                            assetCache.Dispose();
+                        }
                     };
 
                     LODPicker.ClearEx();
@@ -1325,6 +1450,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             if (texturePreviewMaterials.Any(x => x.MaterialExport.InstancedFullPath == entry.InstancedFullPath))
                 return; //already cached
+            // Keep the material slot even when it has no Texture2D that can be preloaded. ModelPreview
+            // derives section/material indices from this list, so omitting an otherwise valid material
+            // makes the corresponding mesh sections disappear.
+            texturePreviewMaterials.Add(new PreloadedTextureData
+            {
+                MaterialExport = entry
+            });
             Debug.WriteLine("Loading material assets for " + entry.InstancedFullPath);
             foreach (var tex in MaterialInstanceConstant.GetTextures(entry, assetCache))
             {
@@ -1382,10 +1514,26 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 MeshContext.UpdateScene += SceneContext_UpdateScene;
                 MeshContext.RenderScene += SceneContext_RenderScene;
             }
+            TryRunViewportLoadAction();
+        }
+
+        private void TryRunViewportLoadAction()
+        {
+            if (!MeshContext.IsReady || ViewportLoadAction is not { } action)
+            {
+                return;
+            }
+            ViewportLoadAction = null;
+            action();
         }
 
         private void SceneContext_UpdateScene(object sender, float timeStep)
         {
+            // A preview may finish loading in the narrow interval after WPF Loaded has fired but
+            // before the Direct3D context reports ready. Polling the one-shot action here guarantees
+            // it is installed on the first render frame instead of remaining queued forever.
+            TryRunViewportLoadAction();
+
             if (ControlIsLoaded && Rotating)
             {
                 MeshContext.Camera.Yaw += 0.3f * timeStep;
@@ -1964,6 +2112,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             IsStaticMesh = false;
             IsModel = false;
             CurrentLoadedExport = null;
+            ViewportLoadAction = null;
             STMCollisionMesh?.Dispose();
             STMCollisionMesh = null;
             SkeletonVertexBuffer?.Dispose();
@@ -1976,6 +2125,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             GameShaderPreview = null;
             MaterialPickMouseDownPosition = null;
             ClearLiveMaterialEditor();
+            UnloadMorphEditor();
             SceneViewer?.Context?.EmptyCaches();
         }
 
@@ -2008,6 +2158,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             GameShaderPreview?.Dispose();
             GameShaderPreview = null;
             ClearLiveMaterialEditor();
+            UnloadMorphEditor();
             if (SceneViewer is { Context: not null })
             {
                 SceneViewer.RemoveHandler(Mouse.PreviewMouseDownEvent,

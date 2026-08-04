@@ -112,9 +112,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                     if (preloadedTextures != null)
                     {
                         var preloadedInfo = preloadedTextures.FirstOrDefault(x =>
-                            x.MaterialExport == mat.Export && x.TextureExport.ObjectName.Name == textureEntry.ObjectName.Name); //i don't like matching on object name but its export vs import here.
+                            x.MaterialExport == mat.Export && x.TextureExport?.ObjectName.Name == textureEntry.ObjectName.Name); //i don't like matching on object name but its export vs import here.
 
-                        if (preloadedInfo != null)
+                        if (preloadedInfo?.TextureExport != null)
                         {
                             texture = texcache.LoadTexture(preloadedInfo.TextureExport);
                         }

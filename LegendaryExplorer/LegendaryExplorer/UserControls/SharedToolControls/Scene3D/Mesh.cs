@@ -143,6 +143,8 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             UV = uv;
         }
 
+        public WorldVertex WithPosition(Vector3 position) => new(position, Normal, UV);
+
 
 
         public void ToFloats(Span<float> dest) => this.AsSpanOf<WorldVertex, float>().CopyTo(dest);
@@ -184,6 +186,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             this.color = color;
             this.uvs = uvs;
         }
+
+        public LEVertex WithPosition(Vector3 newPosition) =>
+            new(new Vector4(newPosition, position.W), tangent, normal, color, uvs);
 
         public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);
 

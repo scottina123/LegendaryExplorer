@@ -691,6 +691,12 @@
                         </TabItem.Header>
                         <exportLoaderControls:MeshRenderer x:Name="MeshRendererTab_MeshRenderer"/>
                     </TabItem>
+                    <TabItem Name="MorphEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
+                        <TabItem.Header>
+                            <TextBlock Text="Morph Editor" ToolTip="Live-edit LE3 BioMorphFace geometry, skeleton, and material overrides"/>
+                        </TabItem.Header>
+                        <exportLoaderControls:BioMorphFaceEditor x:Name="MorphEditorTab_MorphEditor"/>
+                    </TabItem>
                     <TabItem Name="Bytecode_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
                             <TextBlock Text="Bytecode" ToolTip="View and edit UnrealScript bytecode"/>

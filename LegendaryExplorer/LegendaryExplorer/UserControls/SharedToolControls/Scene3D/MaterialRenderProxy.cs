@@ -29,6 +29,9 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (bool Exists, LinearColor Value)> PreviewVectorBaselines = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (bool Exists, string Value)> PreviewTextureBaselines = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> Uniform2DTextureExpressions = [];
         public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
         private MaterialShaderMap ShaderMap;
@@ -56,13 +59,65 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
         public void SetScalarParameter(string parameterName, float value)
         {
+            PreviewScalarBaselines.TryAdd(parameterName, ScalarParameterValues.TryGetValue(parameterName, out float baseline)
+                ? (true, baseline)
+                : (false, default));
             ScalarParameterValues[parameterName] = value;
             CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
         }
 
         public void SetVectorParameter(string parameterName, LinearColor value)
         {
+            PreviewVectorBaselines.TryAdd(parameterName, VectorParameterValues.TryGetValue(parameterName, out LinearColor baseline)
+                ? (true, baseline)
+                : (false, default));
             VectorParameterValues[parameterName] = value;
+            CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
+        }
+
+        /// <summary>
+        /// Replaces a texture parameter for the live preview. The caller owns the cached GPU texture.
+        /// </summary>
+        public void SetTextureParameter(string parameterName, string texturePath, PreviewTextureCache.TextureEntry texture)
+        {
+            PreviewTextureBaselines.TryAdd(parameterName, TextureParameterValues.TryGetValue(parameterName, out string baseline)
+                ? (true, baseline)
+                : (false, default));
+            if (string.IsNullOrEmpty(texturePath) || texture is null)
+            {
+                TextureParameterValues.Remove(parameterName);
+            }
+            else
+            {
+                TextureMap[texturePath] = texture;
+                TextureParameterValues[parameterName] = texturePath;
+            }
+            CachedPixelFrameNumber = uint.MaxValue;
+        }
+
+        /// <summary>
+        /// Restores parameters changed through the live-preview setters to their material values.
+        /// </summary>
+        public void ResetPreviewParameterOverrides()
+        {
+            foreach ((string name, (bool exists, float value)) in PreviewScalarBaselines)
+            {
+                if (exists) ScalarParameterValues[name] = value;
+                else ScalarParameterValues.Remove(name);
+            }
+            foreach ((string name, (bool exists, LinearColor value)) in PreviewVectorBaselines)
+            {
+                if (exists) VectorParameterValues[name] = value;
+                else VectorParameterValues.Remove(name);
+            }
+            foreach ((string name, (bool exists, string value)) in PreviewTextureBaselines)
+            {
+                if (exists) TextureParameterValues[name] = value;
+                else TextureParameterValues.Remove(name);
+            }
+            PreviewScalarBaselines.Clear();
+            PreviewVectorBaselines.Clear();
+            PreviewTextureBaselines.Clear();
             CachedPixelFrameNumber = CachedVertexFrameNumber = uint.MaxValue;
         }
 
