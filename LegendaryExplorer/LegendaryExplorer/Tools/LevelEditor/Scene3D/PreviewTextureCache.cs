@@ -337,6 +337,11 @@ public class PreviewTextureCache : IDisposable
     /// </summary>
     public TextureEntry LoadTexture(IEntry textureEntry, PackageCache packageCache = null)
     {
+        if (textureEntry is null)
+        {
+            Debug.WriteLine("Unable to resolve texture: no entry was provided");
+            return null;
+        }
         string ifp = textureEntry.InstancedFullPath;
         if (AssetCache.TryGetValue(ifp, out TextureEntry entry))
         {
