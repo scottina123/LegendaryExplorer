@@ -63,6 +63,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     public sealed class MeshSection
     {
         public ModelPreviewSection Section;
+        public ExportEntry GameShaderMaterial;
         public VfxParticleMaterialDefinition Material = new();
         public PreviewTextureCache.TextureEntry Texture;
         public BlendState BlendState;
@@ -75,7 +76,9 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
     /// </summary>
     public sealed class MeshEmitterResources : IDisposable
     {
+        public StaticMesh StaticMesh;
         public ModelPreview<WorldVertex> Preview;
+        public ModelPreview<LEVertex> GameShaderPreview;
         public Mesh<WorldVertex> Mesh;
         public List<MeshSection> Sections = [];
         public VfxBounds LocalBounds;
@@ -83,7 +86,10 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         public void Dispose()
         {
             Preview?.Dispose();
+            GameShaderPreview?.Dispose();
+            StaticMesh = null;
             Preview = null;
+            GameShaderPreview = null;
             Mesh = null;
             Sections.Clear();
         }
@@ -131,6 +137,7 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         Vector3 origin = lod.Mesh.BaseBounds.Origin;
         var resources = new MeshEmitterResources
         {
+            StaticMesh = staticMesh,
             Preview = preview,
             Mesh = lod.Mesh,
             LocalBounds = new VfxBounds(origin - extent, origin + extent)
@@ -141,6 +148,121 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
         }
         meshDefinition.LocalBounds = resources.LocalBounds;
         return resources;
+    }
+
+    /// <summary>
+    /// Creates the same LE-vertex model/material preview used by Meshplorer and Morph Editor, then applies
+    /// the mesh-emitter material overrides already resolved by the VFX preview.
+    /// </summary>
+    public static bool TryLoadGameShaderPreview(
+        MeshRenderContext context,
+        MeshEmitterResources resources,
+        out string warning)
+    {
+        warning = null;
+        resources.GameShaderPreview?.Dispose();
+        resources.GameShaderPreview = null;
+        if (resources.StaticMesh is null)
+        {
+            return false;
+        }
+
+        ModelPreview<LEVertex> preview = null;
+        try
+        {
+            preview = new ModelPreview<LEVertex>(context, resources.StaticMesh, 0);
+            if (preview.LODs.Count == 0 || preview.LODs[0].Sections.Count != resources.Sections.Count)
+            {
+                warning = "The mesh could not be prepared for the in-game shader preview.";
+                preview.Dispose();
+                return false;
+            }
+
+            ModelPreviewLOD<LEVertex> lod = preview.LODs[0];
+            for (int sectionIndex = 0; sectionIndex < resources.Sections.Count; sectionIndex++)
+            {
+                ExportEntry materialExport = resources.Sections[sectionIndex].GameShaderMaterial;
+                if (materialExport is null || !preview.AddMaterial(context, materialExport))
+                {
+                    warning = $"Mesh section {sectionIndex} has no material for the in-game shader preview.";
+                    preview.Dispose();
+                    return false;
+                }
+
+                string materialName = materialExport.InstancedFullPath;
+                if (!preview.Materials.TryGetValue(materialName, out ModelPreviewMaterial<LEVertex> material)
+                    || material is not LEShaderPreviewMaterial { CanRender: true })
+                {
+                    warning = $"{materialName} has no compatible in-game local vertex factory shader.";
+                    preview.Dispose();
+                    return false;
+                }
+
+                ModelPreviewSection section = lod.Sections[sectionIndex];
+                section.MaterialName = materialName;
+                lod.Sections[sectionIndex] = section;
+            }
+
+            resources.GameShaderPreview = preview;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            preview?.Dispose();
+            warning = $"The mesh in-game shader could not be loaded ({exception.Message}).";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Draws every live mesh particle using the Meshplorer/Morph Editor in-game material pipeline.
+    /// </summary>
+    public static bool RenderGameShader(
+        MeshRenderContext context,
+        VfxEmitterState emitter,
+        MeshEmitterResources resources,
+        Matrix4x4 previewTransform)
+    {
+        if (resources?.GameShaderPreview is null)
+        {
+            return false;
+        }
+
+        IReadOnlyList<VfxParticle> particles = emitter.Particles;
+        if (particles.Count == 0)
+        {
+            return true;
+        }
+        if (emitter.Definition.UseMaxDrawCount
+            && emitter.Definition.MaxDrawCount >= 0
+            && particles.Count > emitter.Definition.MaxDrawCount)
+        {
+            particles = [.. particles.Take(emitter.Definition.MaxDrawCount)];
+        }
+
+        Matrix4x4 transform = previewTransform == default ? Matrix4x4.Identity : previewTransform;
+        if (resources.Sections.Any(section => !section.IsOpaque))
+        {
+            var sortedParticles = new List<VfxParticle>(particles);
+            VfxBillboardRenderer.SortParticles(sortedParticles, emitter.Definition.SortMode, context.Camera.Position, transform);
+            particles = sortedParticles;
+        }
+
+        foreach (VfxParticle particle in particles)
+        {
+            Matrix4x4 model = VfxMeshMath.CreateParticleTransform(
+                particle,
+                emitter.Definition,
+                emitter.Definition.MeshEmitter,
+                context.Camera.Position,
+                context.Camera.CameraRight,
+                context.Camera.CameraUp,
+                context.Camera.CameraForward,
+                transform);
+            resources.GameShaderPreview.UpdateLocalToWorld(model);
+            resources.GameShaderPreview.Render(RenderPass.ANY, context, 0);
+        }
+        return true;
     }
 
     public void Render(

@@ -55,6 +55,18 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         }
     }
 
+    public bool UseGameShader
+    {
+        get => RenderContext.UseGameShader;
+        set
+        {
+            RenderContext.UseGameShader = value;
+            WarningText = RenderContext.RuntimeWarning;
+            Viewport.MarkRenderDirty();
+            OnPropertyChanged();
+        }
+    }
+
     public VfxPreviewBackground Background
     {
         get => RenderContext.Background;

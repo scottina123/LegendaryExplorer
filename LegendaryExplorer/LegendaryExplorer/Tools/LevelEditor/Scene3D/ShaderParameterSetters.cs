@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using LegendaryExplorerCore.Gammtek;
 using LegendaryExplorerCore.Gammtek.Extensions;
@@ -141,25 +140,19 @@ internal static class ShaderParameterSetters
         }
         if (p.ScreenDoorNoiseTexture.IsBound())
         {
-            Debugger.Break();
             context.ImmediateContext.PixelShader.SetShaderResource(p.ScreenDoorNoiseTexture.BaseIndex, null);
         }
-        if (p.WrapLightingParameters.IsBound())
-        {
-            Debugger.Break();
-        }
+        // Wrap lighting is not modeled by the preview; its cleared constants leave it disabled.
     }
 
     public static void WriteValues(this ref FSceneTextureShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
     {
         if (p.SceneColorTexture.IsBound())
         {
-            Debugger.Break();
             context.ImmediateContext.PixelShader.SetShaderResource(p.SceneColorTexture.BaseIndex, null);
         }
         if (p.SceneDepthTexture.IsBound())
         {
-            Debugger.Break();
             context.ImmediateContext.PixelShader.SetShaderResource(p.SceneDepthTexture.BaseIndex, null);
         }
 

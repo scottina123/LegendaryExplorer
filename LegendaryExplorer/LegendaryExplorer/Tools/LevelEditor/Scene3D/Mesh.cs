@@ -281,6 +281,9 @@ public struct LEVertex : IVertexBase
         this.uvs = uvs;
     }
 
+    public readonly LEVertex WithColor(Vector4 newColor) =>
+        new(position, tangent, normal, newColor, uvs);
+
     public void ToFloats(Span<float> floats) => MemoryMarshal.CreateSpan(ref Unsafe.As<LEVertex, float>(ref this), Stride / 4).CopyTo(floats);
 
     public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)

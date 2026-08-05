@@ -16,6 +16,9 @@
             <Button Content="Focus" Click="Focus_Click" Padding="6,2" Margin="1,1,8,1"/>
             <CheckBox Content="Loop" IsChecked="{Binding Loop, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
             <ComboBox Width="90" ItemsSource="{Binding ShadingModes, ElementName=root}" SelectedItem="{Binding ShadingMode, ElementName=root}" Margin="4,1"/>
+            <CheckBox Content="In-Game Shader (Experimental)" IsChecked="{Binding UseGameShader, ElementName=root}"
+                      ToolTip="Render supported materials with the same compiled shader preview used by Meshplorer and Morph Editor."
+                      VerticalAlignment="Center" Margin="4,2"/>
             <ComboBox Width="120" ItemsSource="{Binding Backgrounds, ElementName=root}" SelectedItem="{Binding Background, ElementName=root}" Margin="1"/>
             <CheckBox Content="Axis" IsChecked="{Binding ShowAxis, ElementName=root}" VerticalAlignment="Center" Margin="4,2"/>
             <CheckBox Content="Grid" IsChecked="{Binding ShowGrid, ElementName=root}" VerticalAlignment="Center" Margin="2"/>

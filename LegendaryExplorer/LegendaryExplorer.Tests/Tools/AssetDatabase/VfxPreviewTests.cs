@@ -9,6 +9,14 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase;
 public class VfxPreviewTests
 {
     [TestMethod]
+    public void InGameShaderPreviewIsDisabledByDefault()
+    {
+        var context = new VfxPreviewRenderContext();
+
+        Assert.IsFalse(context.UseGameShader);
+    }
+
+    [TestMethod]
     public void CurveDistributionInterpolatesSamples()
     {
         var distribution = new VfxCurveFloatDistribution([0, 10, 20]);

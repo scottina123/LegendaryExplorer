@@ -209,11 +209,21 @@ public class TexturedPreviewMaterial : ModelPreviewMaterial<WorldVertex>
     }
 }
 
-file class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
+internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 {
     private readonly RenderTargetBlendDescription BlendDescription;
 
     public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = [];
+
+    /// <summary>
+    /// The in-game shader preview is only available when the material supplied both halves of the
+    /// local-vertex-factory base pass used by Meshplorer and Morph Editor.
+    /// </summary>
+    public bool CanRender => Material is MaterialRenderProxy
+    {
+        UnrealVertexShader: not null,
+        UnrealPixelShader: not null
+    };
 
     public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
     {
@@ -559,7 +569,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// <summary>
     /// Adds a <see cref="ModelPreviewMaterial"/> to this model, or adds another reference of any conflicting material.
     /// </summary>
-    private bool AddMaterial(MeshRenderContext renderContext, IEntry matEntry)
+    internal bool AddMaterial(MeshRenderContext renderContext, IEntry matEntry)
     {
         if (matEntry is null)
         {

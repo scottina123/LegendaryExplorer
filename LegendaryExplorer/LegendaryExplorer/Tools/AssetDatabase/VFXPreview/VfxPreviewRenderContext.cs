@@ -19,6 +19,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 {
     private readonly VfxBillboardRenderer billboardRenderer = new();
     private readonly VfxMeshRenderer meshRenderer = new();
+    private readonly VfxGameShaderRenderer gameShaderRenderer = new();
     private readonly BatchedPrimitives primitives = new();
     private readonly Dictionary<VfxEmitterDefinition, PreviewTextureCache.TextureEntry> textures = [];
     private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
@@ -26,6 +27,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
+    private bool useGameShader;
+    private string standardRuntimeWarning;
     private bool isDarkMode;
     private bool autoFramePending;
     private int autoFrameElapsed;
@@ -47,6 +50,36 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public bool ShowBoundingBox { get; set; }
     public bool ShowOrigin { get; set; } = true;
     public string RuntimeWarning { get; private set; }
+
+    /// <summary>
+    /// Uses the experimental compiled-material preview shared with Meshplorer and Morph Editor.
+    /// It is deliberately opt-in because loading material shader maps is substantially more expensive.
+    /// </summary>
+    public bool UseGameShader
+    {
+        get => useGameShader;
+        set
+        {
+            if (useGameShader == value)
+            {
+                return;
+            }
+            useGameShader = value;
+            if (!IsReady || Simulation.Definition is null)
+            {
+                return;
+            }
+            if (value)
+            {
+                RefreshGameShaderResources();
+            }
+            else
+            {
+                DisposeGameShaderResources();
+                RuntimeWarning = standardRuntimeWarning;
+            }
+        }
+    }
 
     public VfxPreviewBackground Background
     {
@@ -189,8 +222,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         Simulation.Clear();
         autoFramePending = false;
         textures.Clear();
+        gameShaderRenderer.Clear();
         DisposeMeshEmitters();
         RuntimeWarning = null;
+        standardRuntimeWarning = null;
         TextureCache?.ExpungeStaleCacheItems();
         PackageCache?.ReleasePackages();
     }
@@ -252,6 +287,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private void RefreshTextures()
     {
         textures.Clear();
+        gameShaderRenderer.Clear();
         DisposeMeshEmitters();
         if (!IsReady || Simulation.Definition is null)
         {
@@ -311,6 +347,71 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: material unsupported ({exception.Message})");
             }
         }
+
+        standardRuntimeWarning = RuntimeWarning;
+        if (useGameShader)
+        {
+            RefreshGameShaderResources();
+        }
+    }
+
+    private void RefreshGameShaderResources()
+    {
+        DisposeGameShaderResources();
+        RuntimeWarning = standardRuntimeWarning;
+        if (!useGameShader || !IsReady || Simulation.Definition is null)
+        {
+            return;
+        }
+
+        foreach (VfxEmitterDefinition emitter in Simulation.Definition.Emitters)
+        {
+            string warning = null;
+            try
+            {
+                switch (emitter.RenderMode)
+                {
+                    case VfxEmitterRenderMode.Sprite:
+                        ExportEntry materialExport = emitter.Material switch
+                        {
+                            ExportEntry export => export,
+                            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
+                            _ => null
+                        };
+                        if (materialExport is not null)
+                        {
+                            gameShaderRenderer.TryLoadSprite(this, emitter, materialExport, out warning);
+                        }
+                        break;
+                    case VfxEmitterRenderMode.Mesh:
+                        if (meshEmitters.TryGetValue(emitter, out VfxMeshRenderer.MeshEmitterResources resources))
+                        {
+                            VfxMeshRenderer.TryLoadGameShaderPreview(this, resources, out warning);
+                        }
+                        break;
+                }
+            }
+            catch (Exception exception)
+            {
+                warning = $"The in-game shader could not be loaded ({exception.Message}).";
+            }
+
+            if (!string.IsNullOrWhiteSpace(warning))
+            {
+                RuntimeWarning = AppendWarning(RuntimeWarning,
+                    $"{emitter.Name}: {warning} The standard VFX shader will be used for this emitter.");
+            }
+        }
+    }
+
+    private void DisposeGameShaderResources()
+    {
+        gameShaderRenderer.Clear();
+        foreach (VfxMeshRenderer.MeshEmitterResources resources in meshEmitters.Values)
+        {
+            resources.GameShaderPreview?.Dispose();
+            resources.GameShaderPreview = null;
+        }
     }
 
     /// <summary>
@@ -351,6 +452,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                     RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: no material could be resolved for mesh section {index}.");
                     continue;
                 }
+
+                section.GameShaderMaterial = materialExport;
 
                 PopulateMaterialProperties(materialExport, section.Material);
                 IEntry textureEntry = ResolveParticleTexture(materialExport);
@@ -659,11 +762,18 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             {
                 if (meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources meshResources))
                 {
-                    meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
+                    if (!useGameShader || !VfxMeshRenderer.RenderGameShader(this, emitter, meshResources, previewTransform))
+                    {
+                        meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
+                    }
                 }
                 continue;
             }
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Sprite)
+            {
+                continue;
+            }
+            if (useGameShader && gameShaderRenderer.TryRenderSprite(this, emitter, previewTransform))
             {
                 continue;
             }
@@ -901,6 +1011,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         DisposeDepthStates();
         billboardRenderer.Dispose();
         meshRenderer.Dispose();
+        gameShaderRenderer.Dispose();
         DisposeMeshEmitters();
         textures.Clear();
         base.DisposeResources();
