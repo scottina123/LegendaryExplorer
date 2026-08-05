@@ -20,6 +20,7 @@ using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
 using LegendaryExplorer.Tools.TlkManagerNS;
+using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
 using LegendaryExplorerCore.GameFilesystem;
 using LegendaryExplorerCore.Helpers;
@@ -51,6 +52,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private const string CompanionGalaxyMapFile = "BioD_Nor_203CIC.pcc";
     private const string GalaxyArtFile = "BioA_Nor_203aGalaxyMap.pcc";
     private const string GalaxyTexturePath = "BIOA_GalaxyMap_T.galaxy";
+    private const string PlanetMeshPath = "BIOA_GalaxyMap_S.Planet";
+    private const string CloudMeshPath = "BIOA_GalaxyMap_S.CloudMask";
 
     private readonly Dictionary<int, SFXGalaxyNode> _nodesByUIndex = [];
     private readonly Dictionary<int, string> _tlkCache = [];
@@ -71,6 +74,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private bool _pendingCompanionFullSync;
     private ImageSource _galaxyBackground;
     private string _galaxyArtPackagePath;
+    private IMEPackage _galaxyArtPcc;
 
     public string AuthoritativePackagePath => Pcc?.FilePath ?? string.Empty;
     public string CompanionPackagePath => _companionPcc?.FilePath ?? string.Empty;
@@ -98,6 +102,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     public ObservableCollectionExtended<SFXGalaxyNode> HierarchyRoots { get; } = [];
     public ObservableCollectionExtended<SFXGalaxyNode> SearchResults { get; } = [];
     public ObservableCollectionExtended<SFXGalaxyEditableExport> EditableExports { get; } = [];
+    public ObservableCollectionExtended<SFXGalaxyPlanetMaterialSlot> PlanetMaterialSlots { get; } = [];
 
     private SFXGalaxyNode _rootNode;
     private SFXGalaxyNode _currentNode;
@@ -126,9 +131,60 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             if (SetProperty(ref _selectedNode, value))
             {
                 RefreshPropertyExports();
+                OnPropertyChanged(nameof(CanOpenPlanetMaterialEditor));
+                if (IsPlanetMaterialEditorOpen)
+                {
+                    if (CanOpenPlanetMaterialEditor)
+                    {
+                        RefreshPlanetMaterialSlots();
+                    }
+                    else
+                    {
+                        ClosePlanetMaterialEditor();
+                    }
+                }
                 UpdateStatus();
                 RenderCurrentLevel();
                 CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
+    public bool CanOpenPlanetMaterialEditor => SelectedNode?.Export is { } export
+        && export.IsA("BioPlanet")
+        && HasPlanetMaterialReference(export);
+
+    private bool _isPlanetMaterialEditorOpen;
+    public bool IsPlanetMaterialEditorOpen
+    {
+        get => _isPlanetMaterialEditorOpen;
+        private set
+        {
+            if (SetProperty(ref _isPlanetMaterialEditorOpen, value))
+            {
+                OnPropertyChanged(nameof(PlanetMaterialSplitterWidth));
+                OnPropertyChanged(nameof(PlanetMaterialEditorWidth));
+            }
+        }
+    }
+
+    public GridLength PlanetMaterialSplitterWidth => IsPlanetMaterialEditorOpen
+        ? new GridLength(5)
+        : new GridLength(0);
+
+    public GridLength PlanetMaterialEditorWidth => IsPlanetMaterialEditorOpen
+        ? new GridLength(780)
+        : new GridLength(0);
+
+    private SFXGalaxyPlanetMaterialSlot _selectedPlanetMaterialSlot;
+    public SFXGalaxyPlanetMaterialSlot SelectedPlanetMaterialSlot
+    {
+        get => _selectedPlanetMaterialSlot;
+        set
+        {
+            if (SetProperty(ref _selectedPlanetMaterialSlot, value) && IsPlanetMaterialEditorOpen)
+            {
+                LoadSelectedPlanetMaterialPreview();
             }
         }
     }
@@ -189,6 +245,13 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         DeleteCommand = new GenericCommand(DeleteSelected, () => SelectedNode is { Parent: not null, IsImplicitStar: false });
 
         InitializeComponent();
+        PlanetMaterialMeshViewer.RenderGameShader = true;
+        PlanetMaterialMeshViewer.SaveLiveMaterialToCurrentOverride = SavePlanetMaterialToCurrent;
+        PlanetMaterialMeshViewer.SaveLiveMaterialAsNewOverride = SavePlanetMaterialAsNew;
+        PlanetMaterialMeshViewer.LiveMaterialSaveCurrentLabel = "Overwrite MIC";
+        PlanetMaterialMeshViewer.LiveMaterialSaveAsNewLabel = "Create new MIC...";
+        PlanetMaterialMeshViewer.LiveMaterialSaveHelpText =
+            "Overwrite updates the referenced MIC everywhere it is shared. Create new makes a named MIC for only this planet layer and repoints the BioPlanet property.";
         SearchResultsList.ItemsSource = SearchResults;
         RecentsController.InitRecentControl(Toolname, Recents_MenuItem, LoadFile);
     }
@@ -507,26 +570,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         _galaxyArtPackagePath = galaxyArtPath;
         OnPropertyChanged(nameof(GalaxyArtPackagePath));
-        IMEPackage galaxyArt = MEPackageHandler.OpenMEPackage(galaxyArtPath);
-        try
+        _galaxyArtPcc = MEPackageHandler.OpenMEPackage(galaxyArtPath);
+        if (_galaxyArtPcc.Game != MEGame.LE3)
         {
-            if (galaxyArt.Game != MEGame.LE3)
-            {
-                throw new InvalidDataException($"{GalaxyArtFile} is not a Legendary Edition 3 package.");
-            }
-            ExportEntry galaxyTexture = galaxyArt.FindExport(GalaxyTexturePath, "Texture2D")
-                ?? throw new InvalidDataException($"{GalaxyArtFile} does not contain {GalaxyTexturePath}.");
-            _galaxyBackground = DecodeBackgroundTexture(galaxyTexture)
-                ?? throw new InvalidDataException($"Could not decode {GalaxyTexturePath} from {GalaxyArtFile}.");
+            throw new InvalidDataException($"{GalaxyArtFile} is not a Legendary Edition 3 package.");
         }
-        finally
-        {
-            galaxyArt.Release();
-        }
+        ExportEntry galaxyTexture = _galaxyArtPcc.FindExport(GalaxyTexturePath, "Texture2D")
+            ?? throw new InvalidDataException($"{GalaxyArtFile} does not contain {GalaxyTexturePath}.");
+        _galaxyBackground = DecodeBackgroundTexture(galaxyTexture)
+            ?? throw new InvalidDataException($"Could not decode {GalaxyTexturePath} from {GalaxyArtFile}.");
     }
 
     private void UnloadVisualAssets()
     {
+        ClosePlanetMaterialEditor();
+        _galaxyArtPcc?.Release();
+        _galaxyArtPcc = null;
         _galaxyBackground = null;
         _galaxyArtPackagePath = null;
         _backgroundTextureCache.Clear();
@@ -598,7 +657,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     }
 
     private bool SynchronizeCompanionFromAuthoritative(bool fullHierarchy,
-        IEnumerable<ExportEntry> changedExports, bool showErrors)
+        IEnumerable<ExportEntry> changedExports, bool showErrors, bool includeExplicitExternalExports = false)
     {
         if (Pcc is null || _companionPcc is null)
         {
@@ -622,7 +681,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             {
                 string galaxyPathPrefix = $"{sourceGalaxy.InstancedFullPath}.";
                 sourcesToPort = changedExports?.Where(export => export is not null && !export.IsTrash()
-                        && (export == sourceGalaxy || export.InstancedFullPath.StartsWith(galaxyPathPrefix, StringComparison.OrdinalIgnoreCase)))
+                        && (includeExplicitExternalExports || export == sourceGalaxy
+                            || export.InstancedFullPath.StartsWith(galaxyPathPrefix, StringComparison.OrdinalIgnoreCase)))
                     .DistinctBy(export => export.UIndex).ToList() ?? [];
                 if (sourcesToPort.Count == 0)
                 {
@@ -637,7 +697,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             List<string> portErrors = [];
             relinkerOptions.ErrorOccurredCallback = portErrors.Add;
             AddExistingCompanionMappings(relinkerOptions, sourcesToPort);
-            Dictionary<string, ExportEntry> companionByKey = GetGalaxyExports(companionGalaxy)
+            Dictionary<string, ExportEntry> companionByKey = _companionPcc.Exports.Where(export => !export.IsTrash())
                 .GroupBy(GalaxySyncKey, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
@@ -646,7 +706,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 string key = GalaxySyncKey(source);
                 if (!companionByKey.TryGetValue(key, out ExportEntry target))
                 {
-                    if (!fullHierarchy)
+                    if (!fullHierarchy && !includeExplicitExternalExports)
                     {
                         return SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors);
                     }
@@ -729,6 +789,16 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private List<ExportEntry> PrepareFullGalaxySync(ExportEntry sourceGalaxy, ExportEntry companionGalaxy)
     {
         List<ExportEntry> sourceExports = GetGalaxyExports(sourceGalaxy);
+        // Retail BioPlanet MICs are referenced by the hierarchy but are not consistently outered
+        // beneath SFXGalaxy. Include those exports in every full two-package synchronization.
+        sourceExports.AddRange(sourceExports.Where(export => export.IsA("BioPlanet"))
+            .SelectMany(planet => new[]
+            {
+                planet.GetProperty<ObjectProperty>("PlanetMaterial")?.ResolveToEntry(Pcc) as ExportEntry,
+                planet.GetProperty<ObjectProperty>("CloudMaterial")?.ResolveToEntry(Pcc) as ExportEntry
+            })
+            .Where(material => material is not null && !material.IsTrash()));
+        sourceExports = sourceExports.DistinctBy(export => export.UIndex).ToList();
         HashSet<string> sourceKeys = sourceExports.Select(GalaxySyncKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         List<ExportEntry> companionOnly = GetGalaxyExports(companionGalaxy)
             .Where(export => !sourceKeys.Contains(GalaxySyncKey(export))).ToList();
@@ -1730,6 +1800,220 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             EditableExports.Add(new SFXGalaxyEditableExport(appearance, $"Appearance: {appearance.ObjectName.Instanced}"));
         }
         EditableExportCombo.SelectedIndex = 0;
+    }
+
+    private static bool HasPlanetMaterialReference(ExportEntry planet)
+    {
+        PropertyCollection properties = planet?.GetProperties();
+        return properties?.GetProp<ObjectProperty>("PlanetMaterial")?.Value != 0
+               || properties?.GetProp<ObjectProperty>("CloudMaterial")?.Value != 0;
+    }
+
+    private void OpenPlanetMaterialEditor_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanOpenPlanetMaterialEditor)
+        {
+            return;
+        }
+
+        IsPlanetMaterialEditorOpen = true;
+        RefreshPlanetMaterialSlots();
+    }
+
+    private void ClosePlanetMaterialEditor_Click(object sender, RoutedEventArgs e) => ClosePlanetMaterialEditor();
+
+    private void ClosePlanetMaterialEditor()
+    {
+        IsPlanetMaterialEditorOpen = false;
+        PlanetMaterialMeshViewer?.UnloadExport();
+        if (PlanetMaterialMeshViewer is not null)
+        {
+            PlanetMaterialMeshViewer.OverlayMaterials = null;
+            PlanetMaterialMeshViewer.LiveMaterialSourceOverrides = null;
+        }
+        PlanetMaterialSlots.ClearEx();
+        SelectedPlanetMaterialSlot = null;
+    }
+
+    private void RefreshPlanetMaterialSlots()
+    {
+        string selectedProperty = SelectedPlanetMaterialSlot?.PropertyName;
+        SelectedPlanetMaterialSlot = null;
+        PlanetMaterialSlots.ClearEx();
+
+        if (SelectedNode?.Export is not { } planet || !planet.IsA("BioPlanet"))
+        {
+            return;
+        }
+
+        PropertyCollection properties = planet.GetProperties();
+        if (properties.GetProp<ObjectProperty>("PlanetMaterial")?.Value != 0)
+        {
+            PlanetMaterialSlots.Add(new SFXGalaxyPlanetMaterialSlot("PlanetMaterial", "Planet surface", PlanetMeshPath));
+        }
+        if (properties.GetProp<ObjectProperty>("CloudMaterial")?.Value != 0)
+        {
+            PlanetMaterialSlots.Add(new SFXGalaxyPlanetMaterialSlot("CloudMaterial", "Cloud layer", CloudMeshPath));
+        }
+
+        SelectedPlanetMaterialSlot = PlanetMaterialSlots.FirstOrDefault(slot =>
+                                         slot.PropertyName.Equals(selectedProperty, StringComparison.OrdinalIgnoreCase))
+                                     ?? PlanetMaterialSlots.FirstOrDefault();
+    }
+
+    private ExportEntry ResolveSelectedPlanetMaterial(out ObjectProperty materialReference)
+    {
+        materialReference = null;
+        if (SelectedNode?.Export is not { } planet || SelectedPlanetMaterialSlot is not { } slot)
+        {
+            return null;
+        }
+
+        materialReference = planet.GetProperty<ObjectProperty>(slot.PropertyName);
+        return materialReference?.ResolveToExport(Pcc, _texturePackageCache);
+    }
+
+    private void LoadSelectedPlanetMaterialPreview()
+    {
+        PlanetMaterialMeshViewer?.UnloadExport();
+        if (!IsPlanetMaterialEditorOpen || _galaxyArtPcc is null || SelectedPlanetMaterialSlot is not { } slot)
+        {
+            return;
+        }
+
+        ExportEntry material = ResolveSelectedPlanetMaterial(out _);
+        ExportEntry mesh = _galaxyArtPcc.FindExport(slot.MeshPath, "StaticMesh");
+        if (material is null || mesh is null)
+        {
+            MessageBox.Show(this,
+                material is null
+                    ? $"The selected planet's {slot.PropertyName} reference could not be resolved."
+                    : $"{GalaxyArtFile} does not contain the preview mesh {slot.MeshPath}.",
+                "Planet material preview", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        PlanetMaterialMeshViewer.LiveMaterialSourceOverrides = [material];
+        PlanetMaterialMeshViewer.OverlayMaterials = [material];
+        PlanetMaterialMeshViewer.LoadExport(mesh);
+    }
+
+    private bool SavePlanetMaterialToCurrent(LiveMaterialEditorMaterial material)
+    {
+        ExportEntry currentMaterial = ResolveSelectedPlanetMaterial(out _)
+            ?? throw new InvalidOperationException("The selected BioPlanet material reference can no longer be resolved.");
+        if (material.SourceEntry is not ExportEntry source || currentMaterial != source)
+        {
+            throw new InvalidOperationException("The previewed material is no longer assigned to this planet layer.");
+        }
+        if (source.FileRef != Pcc || !source.IsA("MaterialInstanceConstant"))
+        {
+            throw new InvalidOperationException("Only a MaterialInstanceConstant stored in the authoritative galaxy map package can be overwritten.");
+        }
+
+        _suppressPackageRefresh = true;
+        try
+        {
+            MeshRenderer.WriteLiveMaterialParameters(source, material);
+            if (SynchronizeCompanionFromAuthoritative(fullHierarchy: false, [source], showErrors: true,
+                    includeExplicitExternalExports: true))
+            {
+                CompanionSyncStatus = $"Updated {source.InstancedFullPath} and mirrored its serialized MIC parameters.";
+            }
+            UpdateStatus();
+            return true;
+        }
+        finally
+        {
+            _suppressPackageRefresh = false;
+        }
+    }
+
+    private bool SavePlanetMaterialAsNew(LiveMaterialEditorMaterial material)
+    {
+        if (SelectedNode?.Export is not { } planet || SelectedPlanetMaterialSlot is not { } slot)
+        {
+            throw new InvalidOperationException("Select a BioPlanet material layer before creating a MIC.");
+        }
+        ExportEntry source = ResolveSelectedPlanetMaterial(out ObjectProperty sourceReference)
+            ?? throw new InvalidOperationException("The selected BioPlanet material reference can no longer be resolved.");
+        if (material.SourceEntry is not ExportEntry previewSource || source != previewSource)
+        {
+            throw new InvalidOperationException("The previewed material is no longer assigned to this planet layer.");
+        }
+
+        string defaultName = $"{source.ObjectName.Name}_Edited";
+        string newName = PromptDialog.Prompt(this,
+            "Name the new MaterialInstanceConstant:",
+            $"Create {slot.DisplayName} MIC",
+            defaultName,
+            selectText: true,
+            validator: value => ValidatePlanetMaterialName(planet, value));
+        if (newName is null)
+        {
+            return false;
+        }
+
+        ExportEntry newMaterial = null;
+        bool planetRepointed = false;
+        _suppressPackageRefresh = true;
+        try
+        {
+            newMaterial = Pcc.CreateExport(new NameReference(newName.Trim()),
+                "MaterialInstanceConstant", planet, indexed: false);
+            newMaterial.WriteProperties(new PropertyCollection
+            {
+                new ObjectProperty(sourceReference.Value, "Parent"),
+                CommonStructs.GuidProp(Guid.NewGuid(), "m_Guid")
+            });
+            MeshRenderer.WriteLiveMaterialParameters(newMaterial, material);
+
+            PropertyCollection planetProperties = planet.GetProperties();
+            planetProperties.AddOrReplaceProp(new ObjectProperty(newMaterial, slot.PropertyName));
+            planet.WriteProperties(planetProperties);
+            planetRepointed = true;
+
+            bool synchronized = SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true);
+            RefreshPropertyExports();
+            if (synchronized)
+            {
+                CompanionSyncStatus = $"Created {newMaterial.InstancedFullPath}, repointed {slot.PropertyName}, and synchronized the galaxy hierarchy.";
+            }
+            UpdateStatus();
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(RefreshPlanetMaterialSlots));
+            return true;
+        }
+        catch
+        {
+            if (newMaterial is not null && !planetRepointed)
+            {
+                EntryPruner.TrashEntryAndDescendants(newMaterial);
+            }
+            throw;
+        }
+        finally
+        {
+            _suppressPackageRefresh = false;
+        }
+    }
+
+    private static (bool, string) ValidatePlanetMaterialName(ExportEntry planet, string value)
+    {
+        string name = value?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return (false, "Enter a material name.");
+        }
+        if (!(char.IsLetter(name[0]) || name[0] == '_')
+            || name.Skip(1).Any(character => !(char.IsLetterOrDigit(character) || character == '_')))
+        {
+            return (false, "Use letters, numbers, and underscores; the first character cannot be a number.");
+        }
+
+        string path = $"{planet.InstancedFullPath}.{name}";
+        return planet.FileRef.FindEntry(path) is null
+            ? (true, null)
+            : (false, "An entry with that name already exists under this planet.");
     }
 
     private void EditableExportCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

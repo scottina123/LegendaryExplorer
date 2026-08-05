@@ -323,14 +323,14 @@
                         </StackPanel>
 
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                            <TextBlock Text="Only local MaterialInstanceConstants can be overwritten. Use Save as new for base or imported materials."
+                            <TextBlock Text="{Binding LiveMaterialSaveHelpText}"
                                        TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,5"/>
                             <UniformGrid Rows="1" Columns="2">
-                                <Button Content="Save to current" Margin="0,0,3,0" Padding="5,3"
-                                        IsEnabled="{Binding SelectedLiveMaterial.CanSaveToCurrent}"
+                                <Button Content="{Binding LiveMaterialSaveCurrentLabel}" Margin="0,0,3,0" Padding="5,3"
+                                        IsEnabled="{Binding CanSaveSelectedLiveMaterialToCurrent}"
                                         Click="SaveLiveMaterialToCurrent_Click"/>
-                                <Button Content="Save as new..." Margin="3,0,0,0" Padding="5,3"
-                                        IsEnabled="{Binding SelectedLiveMaterial.CanCreateNew}"
+                                <Button Content="{Binding LiveMaterialSaveAsNewLabel}" Margin="3,0,0,0" Padding="5,3"
+                                        IsEnabled="{Binding CanSaveSelectedLiveMaterialAsNew}"
                                         Click="SaveLiveMaterialAsNew_Click"/>
                             </UniformGrid>
                         </StackPanel>

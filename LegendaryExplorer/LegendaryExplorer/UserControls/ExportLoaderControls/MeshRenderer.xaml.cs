@@ -285,6 +285,42 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         public ObservableCollectionExtended<LiveMaterialEditorMaterial> LiveMaterials { get; } = [];
 
+        /// <summary>
+        /// Optional host-specific persistence callbacks for the live material editor. When supplied,
+        /// the renderer keeps responsibility for the live preview while the host owns serialization
+        /// and any reference changes outside the preview mesh package.
+        /// </summary>
+        public Func<LiveMaterialEditorMaterial, bool> SaveLiveMaterialToCurrentOverride { get; set; }
+        public Func<LiveMaterialEditorMaterial, bool> SaveLiveMaterialAsNewOverride { get; set; }
+        private string _liveMaterialSaveCurrentLabel = "Save to current";
+        public string LiveMaterialSaveCurrentLabel
+        {
+            get => _liveMaterialSaveCurrentLabel;
+            set => SetProperty(ref _liveMaterialSaveCurrentLabel, value);
+        }
+        private string _liveMaterialSaveAsNewLabel = "Save as new...";
+        public string LiveMaterialSaveAsNewLabel
+        {
+            get => _liveMaterialSaveAsNewLabel;
+            set => SetProperty(ref _liveMaterialSaveAsNewLabel, value);
+        }
+        private string _liveMaterialSaveHelpText =
+            "Only local MaterialInstanceConstants can be overwritten. Use Save as new for base or imported materials.";
+        public string LiveMaterialSaveHelpText
+        {
+            get => _liveMaterialSaveHelpText;
+            set => SetProperty(ref _liveMaterialSaveHelpText, value);
+        }
+
+        public bool CanSaveSelectedLiveMaterialToCurrent => SelectedLiveMaterial is not null
+            && (SaveLiveMaterialToCurrentOverride is not null
+                ? SelectedLiveMaterial.SourceEntry is ExportEntry source && source.IsA("MaterialInstanceConstant")
+                : SelectedLiveMaterial.CanSaveToCurrent);
+        public bool CanSaveSelectedLiveMaterialAsNew => SelectedLiveMaterial is not null
+            && (SaveLiveMaterialAsNewOverride is not null
+                ? SelectedLiveMaterial.SourceEntry is not null
+                : SelectedLiveMaterial.CanCreateNew);
+
         private LiveMaterialEditorMaterial _selectedLiveMaterial;
         public LiveMaterialEditorMaterial SelectedLiveMaterial
         {
@@ -294,6 +330,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 if (SetProperty(ref _selectedLiveMaterial, value))
                 {
                     SelectedLiveVectorParameter = GetPreferredVectorParameter(value);
+                    OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialToCurrent));
+                    OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialAsNew));
                 }
             }
         }
@@ -794,9 +832,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     IsBusy = true;
 
                     var meshObject = ObjectBinary.From<StaticMesh>(CurrentLoadedExport);
-                    if (OverlayMaterials != null)
+                    List<IEntry> overlayMaterials = OverlayMaterials?.ToList()
+                                                    ?? LiveMaterialSourceOverrides?.ToList();
+                    if (overlayMaterials != null)
                     {
-                        meshObject.SetMaterials(OverlayMaterials, true);
+                        meshObject.SetMaterials(overlayMaterials, true);
                         OverlayMaterials = null;
                     }
                     var pmd = new PreloadedModelData
@@ -808,10 +848,16 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     IMEPackage meshFile = meshObject.Export.FileRef;
                     if (meshFile.Game != MEGame.UDK)
                     {
+                        int sectionIndex = 0;
                         foreach (StaticMeshElement section in meshObject.LODModels[CurrentLOD].Elements)
                         {
                             int matIndex = section.Material;
-                            if (meshFile.IsUExport(matIndex))
+                            IEntry overrideMaterial = overlayMaterials?.ElementAtOrDefault(sectionIndex++);
+                            if (overrideMaterial is ExportEntry overrideExport)
+                            {
+                                AddMaterialBackgroundThreadTextures(pmd.texturePreviewMaterials, overrideExport, assetCache);
+                            }
+                            else if (meshFile.IsUExport(matIndex))
                             {
                                 ExportEntry entry = meshFile.GetUExport(matIndex);
                                 AddMaterialBackgroundThreadTextures(pmd.texturePreviewMaterials, entry, assetCache);
@@ -830,7 +876,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                                 }
                             }
 
-                            pmd.sections.Add(new ModelPreviewSection(meshFile.getObjectName(matIndex), section.FirstIndex, section.NumTriangles));
+                            string materialName = overrideMaterial?.ObjectName.Name ?? meshFile.getObjectName(matIndex);
+                            pmd.sections.Add(new ModelPreviewSection(materialName, section.FirstIndex, section.NumTriangles));
                         }
                     }
                     return pmd;
@@ -1223,6 +1270,13 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         /// Material overrides for a mesh
         /// </summary>
         public List<IEntry> OverlayMaterials { get; set; }
+
+        /// <summary>
+        /// Optional source entries represented by <see cref="OverlayMaterials"/>. This is retained
+        /// after the one-shot binary override is consumed so a host can edit materials from a
+        /// different package than the preview mesh.
+        /// </summary>
+        public List<IEntry> LiveMaterialSourceOverrides { get; set; }
 
         public void ExportToGltf()
         {
@@ -1648,6 +1702,11 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private List<IEntry> GetCurrentMeshMaterialEntries()
         {
+            if (LiveMaterialSourceOverrides is { Count: > 0 })
+            {
+                return LiveMaterialSourceOverrides.Where(entry => entry is not null).ToList();
+            }
+
             if (CurrentLoadedExport is null)
             {
                 return [];
@@ -1983,15 +2042,23 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
 
         private void SaveLiveMaterialToCurrent_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedLiveMaterial?.SourceEntry is not ExportEntry target || !SelectedLiveMaterial.CanSaveToCurrent)
+            if (SelectedLiveMaterial is not { } material || !CanSaveSelectedLiveMaterialToCurrent)
             {
                 return;
             }
 
             try
             {
-                WriteLiveMaterialParameters(target, SelectedLiveMaterial);
-                SelectedLiveMaterial.MarkSaved();
+                if (SaveLiveMaterialToCurrentOverride is not null)
+                {
+                    if (SaveLiveMaterialToCurrentOverride(material))
+                    {
+                        material.MarkSaved();
+                    }
+                    return;
+                }
+                WriteLiveMaterialParameters((ExportEntry)material.SourceEntry, material);
+                material.MarkSaved();
             }
             catch (Exception exception)
             {
@@ -2003,8 +2070,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             LiveMaterialEditorMaterial material = SelectedLiveMaterial;
             ExportEntry meshExport = CurrentLoadedExport;
-            if (material?.SourceEntry is null || meshExport is null)
+            if (material?.SourceEntry is null || meshExport is null || !CanSaveSelectedLiveMaterialAsNew)
             {
+                return;
+            }
+
+            if (SaveLiveMaterialAsNewOverride is not null)
+            {
+                try
+                {
+                    if (SaveLiveMaterialAsNewOverride(material))
+                    {
+                        material.MarkSaved();
+                    }
+                }
+                catch (Exception exception)
+                {
+                    new ExceptionHandlerDialog(exception).ShowDialog();
+                }
                 return;
             }
 
@@ -2069,7 +2152,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 : (false, "An entry with that name already exists here.");
         }
 
-        private static void WriteLiveMaterialParameters(ExportEntry target, LiveMaterialEditorMaterial material)
+        public static void WriteLiveMaterialParameters(ExportEntry target, LiveMaterialEditorMaterial material)
         {
             PropertyCollection properties = target.GetProperties();
             properties.RemoveNamedProperty("ScalarParameterValues");

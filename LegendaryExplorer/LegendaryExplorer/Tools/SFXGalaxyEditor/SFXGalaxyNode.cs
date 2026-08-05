@@ -100,3 +100,8 @@ public sealed record SFXGalaxyEditableExport(ExportEntry Export, string Label)
 {
     public override string ToString() => Label;
 }
+
+public sealed record SFXGalaxyPlanetMaterialSlot(string PropertyName, string DisplayName, string MeshPath)
+{
+    public override string ToString() => DisplayName;
+}
