@@ -195,6 +195,64 @@ namespace LegendaryExplorerCore.Helpers
             }
         }
 
+        /// <summary>
+        /// Resolves the compiled material selected by an RvrEffectsMaterialUser multiplexor for a named
+        /// receiver effect (for example Tears, Fire, or Cryo). Material instances are followed until their
+        /// effects-material user is reached; materials which do not advertise the requested entry return null.
+        /// </summary>
+        public static ExportEntry ResolveRvrEffectMaterial(this ExportEntry materialExport, string effectName,
+            PackageCache cache = null)
+        {
+            if (materialExport is null || string.IsNullOrWhiteSpace(effectName))
+            {
+                return null;
+            }
+
+            cache ??= new PackageCache();
+            var visited = new HashSet<string>();
+            ExportEntry current = materialExport;
+            while (current is not null && visited.Add($"{current.FileRef.FilePath}|{current.UIndex}"))
+            {
+                PropertyCollection properties = current.GetProperties(packageCache: cache);
+                if (current.ClassName == "RvrEffectsMaterialUser")
+                {
+                    ExportEntry multiplexor = ResolveObjectExport(current,
+                        properties.GetProp<ObjectProperty>("m_pMultiplexor")
+                        ?? properties.GetProp<ObjectProperty>("m_pParentMaterial"), cache);
+                    if (multiplexor?.GetProperty<ArrayProperty<StructProperty>>("m_lstParents", cache) is { } entries)
+                    {
+                        foreach (StructProperty entry in entries)
+                        {
+                            string tag = entry.GetProp<NameProperty>("m_nmTag")?.Value.Instanced;
+                            if (string.Equals(tag, effectName, System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ResolveObjectExport(multiplexor,
+                                    entry.GetProp<ObjectProperty>("m_pMaterial"), cache);
+                            }
+                        }
+                    }
+                    return null;
+                }
+
+                current = ResolveObjectExport(current, properties.GetProp<ObjectProperty>("Parent"), cache);
+            }
+            return null;
+        }
+
+        private static ExportEntry ResolveObjectExport(ExportEntry owner, ObjectProperty reference, PackageCache cache)
+        {
+            if (owner is null || reference is null || reference.Value == 0)
+            {
+                return null;
+            }
+            return reference.ResolveToEntry(owner.FileRef) switch
+            {
+                ExportEntry export => export,
+                ImportEntry import => EntryImporter.ResolveImport(import, cache),
+                _ => null
+            };
+        }
+
         public static void FindBestDiffAndNormForMaterial(ExportEntry material, out ExportEntry diffuseTexture, out ExportEntry normalTexture)
         {
             diffuseTexture = null;

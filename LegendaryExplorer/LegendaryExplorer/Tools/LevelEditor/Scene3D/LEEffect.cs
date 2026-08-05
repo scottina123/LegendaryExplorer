@@ -54,7 +54,8 @@ public unsafe class LEEffect : IDisposable
         context.PixelShader.SetConstantBuffer(2, PixelShaderConstants);
     }
 
-    public void RenderObject(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, Mesh<LEVertex> mesh, int indexstart, int indexcount)
+    public void RenderObject<TVertex>(DeviceContext context, LEVSConstants vsSharedConstants, LEPSConstants psSharedConstants, Mesh<TVertex> mesh, int indexstart, int indexcount)
+        where TVertex : IVertexBase
     {
         if (mesh.Vertices.Count is 0)
         {
@@ -69,7 +70,7 @@ public unsafe class LEEffect : IDisposable
 
         // Setup buffers for rendering
         context.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
-        context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, LEVertex.Stride, 0));
+        context.InputAssembler.SetVertexBuffers(0, new VertexBufferBinding(mesh.VertexBuffer, TVertex.Stride, 0));
         context.InputAssembler.SetIndexBuffer(mesh.IndexBuffer, Format.R32_UInt, 0);
 
         // Draw!!!

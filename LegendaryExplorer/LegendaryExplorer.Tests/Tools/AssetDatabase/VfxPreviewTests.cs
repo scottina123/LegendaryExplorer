@@ -1,9 +1,12 @@
 using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
+using LegendaryExplorer.Tools.LevelEditor.Scene3D;
 using LegendaryExplorerCore;
+using LegendaryExplorerCore.Helpers;
 using LegendaryExplorerCore.Packages;
 using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SharpDX.D3DCompiler;
 using System;
 using System.Linq;
 using System.Numerics;
@@ -31,6 +34,181 @@ public class VfxPreviewTests
         var context = new VfxPreviewRenderContext();
 
         Assert.IsFalse(context.HideActor);
+    }
+
+    [TestMethod]
+    public void VfxViewportUsesFreeFlyCameraByDefault()
+    {
+        var context = new VfxPreviewRenderContext();
+
+        Assert.IsTrue(context.Camera.FirstPerson);
+    }
+
+    [TestMethod]
+    public void NativeSpriteVertexPopulatesEveryFactoryInput()
+    {
+        var vertex = new ParticleVertex(
+            new Vector3(1, 2, 3),
+            new Vector3(4, 5, 6),
+            new Vector3(7, 8, 9),
+            10,
+            new Vector4(11, 12, 13, 14),
+            new Vector4(15, 16, 17, 18),
+            new Vector4(19, 20, 21, 22),
+            new Vector4(23, 24, 25, 26));
+        var values = new float[ParticleVertex.Stride / sizeof(float)];
+
+        vertex.ToFloats(values);
+
+        CollectionAssert.AreEqual(new float[]
+        {
+            1, 2, 3, 1,
+            4, 5, 6, 1,
+            7, 8, 9,
+            10,
+            11, 12, 13, 14,
+            15, 16, 17, 18,
+            19, 20, 21, 22,
+            23, 24, 25, 26
+        }, values);
+        CollectionAssert.AreEqual(
+            new[] { "POSITION0", "NORMAL0", "TANGENT0", "BLENDWEIGHT0", "TEXCOORD0", "TEXCOORD1", "TEXCOORD2", "TEXCOORD3" },
+            ParticleVertex.InputElements.Select(element => $"{element.SemanticName}{element.SemanticIndex}").ToArray());
+    }
+
+    [TestMethod]
+    public void NativeBeamTrailVertexPopulatesEveryFactoryInput()
+    {
+        var vertex = new ParticleBeamTrailVertex(
+            new Vector3(1, 2, 3),
+            new Vector3(4, 5, 6),
+            new Vector3(7, 8, 9),
+            new Vector4(10, 11, 12, 13),
+            14,
+            new Vector4(15, 16, 17, 18),
+            new Vector4(19, 20, 21, 22));
+        var values = new float[ParticleBeamTrailVertex.Stride / sizeof(float)];
+
+        vertex.ToFloats(values);
+
+        CollectionAssert.AreEqual(new float[]
+        {
+            1, 2, 3, 1,
+            4, 5, 6, 1,
+            7, 8, 9,
+            10, 11, 12, 13,
+            14,
+            15, 16, 17, 18,
+            19, 20, 21, 22
+        }, values);
+        CollectionAssert.AreEqual(
+            new[] { "POSITION0", "NORMAL0", "TANGENT0", "TEXCOORD0", "BLENDWEIGHT0", "TEXCOORD1", "TEXCOORD2" },
+            ParticleBeamTrailVertex.InputElements.Select(element => $"{element.SemanticName}{element.SemanticIndex}").ToArray());
+    }
+
+    [TestMethod]
+    public void NativeFactoryLayoutValidatorAcceptsCompleteSpriteAndBeamContracts()
+    {
+        const string spriteShader = """
+struct VSInput
+{
+    float4 Position : POSITION0;
+    float4 OldPosition : NORMAL0;
+    float3 Size : TANGENT0;
+    float Rotation : BLENDWEIGHT0;
+    float4 UV : TEXCOORD0;
+    float4 Color : TEXCOORD1;
+    float4 SubUV : TEXCOORD2;
+    float4 DynamicParameter : TEXCOORD3;
+};
+float4 main(VSInput input) : SV_POSITION
+{
+    return input.Position + input.OldPosition + input.UV + input.Color + input.SubUV
+        + input.DynamicParameter + float4(input.Size, input.Rotation);
+}
+""";
+        const string beamShader = """
+struct VSInput
+{
+    float4 Position : POSITION0;
+    float4 DirectionReference : NORMAL0;
+    float3 Tangent : TANGENT0;
+    float4 UV : TEXCOORD0;
+    float Rotation : BLENDWEIGHT0;
+    float4 Color : TEXCOORD1;
+};
+float4 main(VSInput input) : SV_POSITION
+{
+    return input.Position + input.DirectionReference + input.UV + input.Color
+        + float4(input.Tangent, input.Rotation);
+}
+""";
+        using CompilationResult sprite = ShaderBytecode.Compile(spriteShader, "main", "vs_5_0");
+        using CompilationResult beam = ShaderBytecode.Compile(beamShader, "main", "vs_5_0");
+
+        Assert.IsTrue(MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleVertex>(
+            "FParticleSubUVDynamicParameterVertexFactory", sprite.Bytecode.Data, out string spriteError), spriteError);
+        Assert.IsTrue(MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleBeamTrailVertex>(
+            "FParticleBeamTrailVertexFactory", beam.Bytecode.Data, out string beamError), beamError);
+        Assert.IsFalse(MeshRenderContext.ValidateVertexFactoryInputLayout<WorldVertex>(
+            "FParticleSubUVDynamicParameterVertexFactory", sprite.Bytecode.Data, out string incompleteError));
+        StringAssert.Contains(incompleteError, "BLENDWEIGHT0");
+    }
+
+    [TestMethod]
+    public void CanonicalFactoryValidationDoesNotDependOnShaderOptimization()
+    {
+        const string optimizedShader = "float4 main(float4 position : POSITION0) : SV_POSITION { return position; }";
+        using CompilationResult shader = ShaderBytecode.Compile(optimizedShader, "main", "vs_5_0");
+
+        Assert.IsTrue(MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleVertex>(
+            "FParticleSubUVDynamicParameterVertexFactory", shader.Bytecode.Data, out string completeError), completeError);
+        Assert.IsFalse(MeshRenderContext.ValidateVertexFactoryInputLayout<WorldVertex>(
+            "FParticleSubUVDynamicParameterVertexFactory", shader.Bytecode.Data, out string incompleteError));
+        StringAssert.Contains(incompleteError, "BLENDWEIGHT0");
+    }
+
+    [TestMethod]
+    public void ClientEffectReadsNamedActorMaterialEffects()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxActorMaterialEffectTest.pcc", MEGame.ME3);
+        ExportEntry clientEffect = package.CreateExport("Tears_Human_Heavy", "RvrClientEffect", indexed: false);
+        ExportEntry module = package.CreateExport("RvrCEffectModuleEffectsMaterial_0", "RvrCEffectModuleEffectsMaterial", indexed: false);
+        module.WriteProperty(new NameProperty("Tears", "m_nmEffect"));
+        module.WriteProperty(new NameProperty("Material", "m_nmTag"));
+        clientEffect.WriteProperty(new ArrayProperty<ObjectProperty>("m_lstModules")
+        {
+            new(module.UIndex)
+        });
+
+        VfxPreviewDefinition definition = new WrappedVfxSourceAdapter().CreateDefinition(clientEffect);
+
+        Assert.AreEqual(1, definition.ActorMaterialEffects.Count);
+        Assert.AreEqual("Tears", definition.ActorMaterialEffects[0].EffectName);
+        Assert.AreEqual("Material", definition.ActorMaterialEffects[0].TargetTag);
+    }
+
+    [TestMethod]
+    public void RvrEffectMaterialResolverSelectsOnlyAdvertisedEffect()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("RvrMaterialEffectTest.pcc", MEGame.ME3);
+        ExportEntry tearsMaterial = package.CreateExport("CombinedEffect_Tears", "Material", indexed: false);
+        ExportEntry multiplexor = package.CreateExport("RvrMaterialMultiplexor_0", "RvrMaterialMultiplexor", indexed: false);
+        multiplexor.WriteProperty(new ArrayProperty<StructProperty>("m_lstParents")
+        {
+            new("RvrMultiplexorEntry", new PropertyCollection
+            {
+                new ObjectProperty(tearsMaterial.UIndex, "m_pMaterial"),
+                new NameProperty("Tears", "m_nmTag")
+            })
+        });
+        ExportEntry effectUser = package.CreateExport("Human_Head_USER", "RvrEffectsMaterialUser", indexed: false);
+        effectUser.WriteProperty(new ObjectProperty(multiplexor.UIndex, "m_pMultiplexor"));
+        ExportEntry actorMaterial = package.CreateExport("Human_Head_MIC", "MaterialInstanceConstant", indexed: false);
+        actorMaterial.WriteProperty(new ObjectProperty(effectUser.UIndex, "Parent"));
+
+        Assert.AreSame(tearsMaterial, actorMaterial.ResolveRvrEffectMaterial("Tears"));
+        Assert.IsNull(actorMaterial.ResolveRvrEffectMaterial("Cryo"));
     }
 
     [TestMethod]

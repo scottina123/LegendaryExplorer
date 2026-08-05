@@ -102,6 +102,7 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
     public RenderPass Pass;
 
     protected readonly MaterialInstanceConstantLevelEditor Material;
+    public ExportEntry MaterialExport { get; }
     public string InstancedFullPath => Material.InstancedFullPath;
 
     /// <summary>
@@ -113,8 +114,15 @@ public abstract class ModelPreviewMaterial<Vertex> where Vertex : IVertexBase
     /// Creates a ModelPreviewMaterial that renders as close to what the given <see cref="MaterialInstanceConstantLevelEditor"/> looks like as possible. 
     /// </summary>
     public ModelPreviewMaterial(MeshRenderContext renderContext, ExportEntry export)
+        : this(renderContext, export, null)
     {
-        Material = CreateMaterial(renderContext, export);
+    }
+
+    protected ModelPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
+        MaterialInstanceConstantLevelEditor material)
+    {
+        MaterialExport = export;
+        Material = material ?? CreateMaterial(renderContext, export);
         Pass = RenderPass.Base;
     }
 
@@ -225,7 +233,16 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
         UnrealPixelShader: not null
     };
 
-    public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export) : base(renderContext, export)
+    internal MaterialRenderProxy RenderProxy => (MaterialRenderProxy)Material;
+
+    public LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export)
+        : this(renderContext, export, null)
+    {
+    }
+
+    private LEShaderPreviewMaterial(MeshRenderContext renderContext, ExportEntry export,
+        MaterialRenderProxy parameterSource)
+        : base(renderContext, export, new MaterialRenderProxy(renderContext, export, parameterSource))
     {
         foreach (IEntry textureEntry in Material.Textures)
         {
@@ -328,6 +345,9 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
         };
     }
 
+    internal LEShaderPreviewMaterial CreateEffectOverride(MeshRenderContext renderContext, ExportEntry effectMaterial)
+        => new(renderContext, effectMaterial, (MaterialRenderProxy)Material);
+
 
 
     /// <summary>
@@ -389,6 +409,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 /// </summary>
 public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
 {
+    private readonly Dictionary<string, ModelPreviewMaterial<TVertex>> materialEffectBaselines = [];
     /// <summary>
     /// Contains the geometry and section information for each level-of-detail in the model.
     /// </summary>
@@ -634,6 +655,70 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
 
         return true;
     }
+
+    /// <summary>
+    /// Applies an Rvr receiver effect only to mesh sections whose effects-material multiplexor exposes the
+    /// requested name. Unsupported materials remain unchanged, preserving the effect's authored shape/coverage.
+    /// </summary>
+    public int ApplyNamedRvrMaterialEffect(MeshRenderContext renderContext, string effectName)
+        => ApplyNamedRvrMaterialEffects(renderContext, [effectName]);
+
+    public int ApplyNamedRvrMaterialEffects(MeshRenderContext renderContext, IEnumerable<string> effectNames)
+    {
+        ClearNamedRvrMaterialEffect();
+        string[] names = effectNames?.Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
+        if (names.Length == 0 || Materials is not Dictionary<string, ModelPreviewMaterial<LEVertex>> gameShaderMaterials)
+        {
+            return 0;
+        }
+
+        foreach ((string materialName, ModelPreviewMaterial<LEVertex> material) in gameShaderMaterials.ToList())
+        {
+            if (material is not LEShaderPreviewMaterial shaderMaterial)
+            {
+                continue;
+            }
+            ExportEntry effectMaterial = names.Select(name => material.MaterialExport.ResolveRvrEffectMaterial(
+                    name, renderContext.PackageCache))
+                .FirstOrDefault(candidate => candidate is not null);
+            if (effectMaterial is null)
+            {
+                continue;
+            }
+
+            LEShaderPreviewMaterial effectPreview;
+            try
+            {
+                effectPreview = shaderMaterial.CreateEffectOverride(renderContext, effectMaterial);
+            }
+            catch
+            {
+                continue;
+            }
+            if (!effectPreview.CanRender)
+            {
+                continue;
+            }
+
+            materialEffectBaselines[materialName] = (ModelPreviewMaterial<TVertex>)(object)material;
+            gameShaderMaterials[materialName] = effectPreview;
+        }
+        return materialEffectBaselines.Count;
+    }
+
+    /// <summary>
+    /// Restores the actor's authored section materials. Called before every new VFX selection so effects cannot
+    /// leak from one receiver/client effect into the next particle system or client effect.
+    /// </summary>
+    public void ClearNamedRvrMaterialEffect()
+    {
+        foreach ((string materialName, ModelPreviewMaterial<TVertex> material) in materialEffectBaselines)
+        {
+            Materials[materialName] = material;
+        }
+        materialEffectBaselines.Clear();
+    }
     /// <summary>
     /// Renders the ModelPreview at the specified level of detail
     /// </summary>
@@ -674,6 +759,7 @@ public class ModelPreview<TVertex> : IDisposable where TVertex : IVertexBase
     /// </summary>
     public void Dispose()
     {
+        ClearNamedRvrMaterialEffect();
         Materials.Clear();
         foreach (var lod in LODs)
         {

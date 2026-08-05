@@ -176,6 +176,7 @@ public class MeshRenderContext : RenderContext
     private readonly Dictionary<Guid, VertexShader> VertexShaderCache = [];
     private readonly Dictionary<Guid, InputLayout> InputLayoutCache = [];
     private readonly Dictionary<Guid, PixelShader> PixelShaderCache = [];
+    private readonly Dictionary<Guid, PixelShader> NativePixelShaderCache = [];
     public readonly PreviewTextureCache TextureCache;
     public readonly PackageCache PackageCache;
 
@@ -585,6 +586,10 @@ public class MeshRenderContext : RenderContext
     }
 
     public (VertexShader, InputLayout) GetCachedVertexShader(Guid id, byte[] shaderBytecode)
+        => GetCachedVertexShader<LEVertex>(id, shaderBytecode);
+
+    public (VertexShader, InputLayout) GetCachedVertexShader<TVertex>(Guid id, byte[] shaderBytecode)
+        where TVertex : IVertexBase
     {
         InputLayout inputLayout;
         if (VertexShaderCache.TryGetValue(id, out VertexShader shader))
@@ -595,11 +600,159 @@ public class MeshRenderContext : RenderContext
         {
             shader = new VertexShader(Device, shaderBytecode);
             VertexShaderCache.Add(id, shader);
-            inputLayout = new InputLayout(Device, shaderBytecode, LEVertex.InputElements);
+            inputLayout = new InputLayout(Device, shaderBytecode, TVertex.InputElements);
             InputLayoutCache.Add(id, inputLayout);
         }
         return (shader, inputLayout);
     }
+
+    /// <summary>
+    /// Verifies the complete reflected vertex-shader input contract before a native vertex factory is enabled.
+    /// D3D permits a supplied element to contain more components than a shader consumes, but never fewer.
+    /// </summary>
+    public static bool ValidateVertexShaderInputLayout<TVertex>(byte[] shaderBytecode, out string error)
+        where TVertex : IVertexBase
+    {
+        error = null;
+        if (shaderBytecode is null || shaderBytecode.Length == 0)
+        {
+            error = "The vertex shader has no bytecode.";
+            return false;
+        }
+
+        using var reflection = new ShaderReflection(shaderBytecode);
+        ShaderDescription shaderDescription = reflection.Description;
+        for (int inputIndex = 0; inputIndex < shaderDescription.InputParameters; inputIndex++)
+        {
+            ShaderParameterDescription input = reflection.GetInputParameterDescription(inputIndex);
+            InputElement? matchingElement = null;
+            foreach (InputElement element in TVertex.InputElements)
+            {
+                if (element.SemanticIndex == input.SemanticIndex
+                    && string.Equals(element.SemanticName, input.SemanticName, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchingElement = element;
+                    break;
+                }
+            }
+            if (matchingElement is null)
+            {
+                error = $"The {typeof(TVertex).Name} layout does not provide {input.SemanticName}{input.SemanticIndex}.";
+                return false;
+            }
+
+            int requiredComponents = HighestSetBit((int)input.UsageMask);
+            int suppliedComponents = GetFormatComponentCount(matchingElement.Value.Format);
+            if (suppliedComponents < requiredComponents)
+            {
+                error = $"{input.SemanticName}{input.SemanticIndex} requires {requiredComponents} components, "
+                    + $"but {typeof(TVertex).Name} provides {suppliedComponents}.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Validates both sides of a native vertex-factory contract. The canonical requirements are checked even
+    /// when a particular material shader optimized an unused input away, then the compiled shader signature is
+    /// checked as a second guard against game- or material-specific additions.
+    /// </summary>
+    public static bool ValidateVertexFactoryInputLayout<TVertex>(
+        string vertexFactoryType,
+        byte[] shaderBytecode,
+        out string error)
+        where TVertex : IVertexBase
+    {
+        (string Semantic, int Index, int Components)[] requiredInputs = vertexFactoryType switch
+        {
+            "FLocalVertexFactory" =>
+            [
+                ("POSITION", 0, 4), ("TANGENT", 0, 3), ("NORMAL", 0, 4), ("COLOR", 1, 4),
+                ("TEXCOORD", 0, 4), ("TEXCOORD", 1, 4), ("TEXCOORD", 2, 4), ("TEXCOORD", 3, 4)
+            ],
+            "FParticleVertexFactory" => ParticleBaseInputs(),
+            "FParticleSubUVVertexFactory" => [.. ParticleBaseInputs(), ("TEXCOORD", 2, 4)],
+            "FParticleDynamicParameterVertexFactory" => [.. ParticleBaseInputs(), ("TEXCOORD", 3, 4)],
+            "FParticleSubUVDynamicParameterVertexFactory" =>
+                [.. ParticleBaseInputs(), ("TEXCOORD", 2, 4), ("TEXCOORD", 3, 4)],
+            "FParticleBeamTrailVertexFactory" => BeamTrailBaseInputs(),
+            "FParticleBeamTrailDynamicParameterVertexFactory" =>
+                [.. BeamTrailBaseInputs(), ("TEXCOORD", 2, 4)],
+            _ => null
+        };
+        if (requiredInputs is null)
+        {
+            error = $"No complete input contract is registered for {vertexFactoryType}.";
+            return false;
+        }
+
+        foreach ((string semantic, int semanticIndex, int requiredComponents) in requiredInputs)
+        {
+            InputElement? matchingElement = FindInputElement<TVertex>(semantic, semanticIndex);
+            if (matchingElement is null)
+            {
+                error = $"The {typeof(TVertex).Name} layout does not provide the {vertexFactoryType} input "
+                    + $"{semantic}{semanticIndex}.";
+                return false;
+            }
+            int suppliedComponents = GetFormatComponentCount(matchingElement.Value.Format);
+            if (suppliedComponents < requiredComponents)
+            {
+                error = $"The {vertexFactoryType} input {semantic}{semanticIndex} requires {requiredComponents} "
+                    + $"components, but {typeof(TVertex).Name} provides {suppliedComponents}.";
+                return false;
+            }
+        }
+
+        return ValidateVertexShaderInputLayout<TVertex>(shaderBytecode, out error);
+    }
+
+    private static (string Semantic, int Index, int Components)[] ParticleBaseInputs() =>
+    [
+        ("POSITION", 0, 4), ("NORMAL", 0, 4), ("TANGENT", 0, 3),
+        ("BLENDWEIGHT", 0, 1), ("TEXCOORD", 0, 4), ("TEXCOORD", 1, 4)
+    ];
+
+    private static (string Semantic, int Index, int Components)[] BeamTrailBaseInputs() =>
+    [
+        ("POSITION", 0, 4), ("NORMAL", 0, 4), ("TANGENT", 0, 3),
+        ("TEXCOORD", 0, 4), ("BLENDWEIGHT", 0, 1), ("TEXCOORD", 1, 4)
+    ];
+
+    private static InputElement? FindInputElement<TVertex>(string semantic, int semanticIndex)
+        where TVertex : IVertexBase
+    {
+        foreach (InputElement element in TVertex.InputElements)
+        {
+            if (element.SemanticIndex == semanticIndex
+                && string.Equals(element.SemanticName, semantic, StringComparison.OrdinalIgnoreCase))
+            {
+                return element;
+            }
+        }
+        return null;
+    }
+
+    private static int HighestSetBit(int mask)
+    {
+        int bit = 0;
+        while (mask != 0)
+        {
+            bit++;
+            mask >>= 1;
+        }
+        return bit;
+    }
+
+    private static int GetFormatComponentCount(Format format) => format switch
+    {
+        Format.R32_Float or Format.R32_UInt or Format.R32_SInt => 1,
+        Format.R32G32_Float or Format.R32G32_UInt or Format.R32G32_SInt => 2,
+        Format.R32G32B32_Float or Format.R32G32B32_UInt or Format.R32G32B32_SInt => 3,
+        Format.R32G32B32A32_Float or Format.R32G32B32A32_UInt or Format.R32G32B32A32_SInt => 4,
+        _ => 0
+    };
 
     public PixelShader GetCachedPixelShader(Guid id, byte[] shaderBytecode)
     {
@@ -626,6 +779,20 @@ public class MeshRenderContext : RenderContext
         return shader;
     }
 
+    /// <summary>
+    /// Returns the cooked pixel shader byte-for-byte. The legacy mesh preview recompiles shaders and forces an
+    /// alpha of one for opaque model inspection; particle blending must retain the authored output alpha.
+    /// </summary>
+    public PixelShader GetCachedNativePixelShader(Guid id, byte[] shaderBytecode)
+    {
+        if (!NativePixelShaderCache.TryGetValue(id, out PixelShader shader))
+        {
+            shader = new PixelShader(Device, shaderBytecode);
+            NativePixelShaderCache.Add(id, shader);
+        }
+        return shader;
+    }
+
     public override void EmptyCaches()
     {
         PackageCache?.ReleasePackages();
@@ -634,6 +801,7 @@ public class MeshRenderContext : RenderContext
         VertexShaderCache.DisposeValuesAndClear();
         InputLayoutCache.DisposeValuesAndClear();
         PixelShaderCache.DisposeValuesAndClear();
+        NativePixelShaderCache.DisposeValuesAndClear();
     }
 
     private System.Drawing.Point mouseDownPos;

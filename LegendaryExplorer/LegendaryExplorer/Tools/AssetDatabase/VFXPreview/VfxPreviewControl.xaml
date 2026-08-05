@@ -28,6 +28,8 @@
             <CheckBox Content="Hide actor" IsChecked="{Binding HideActor, ElementName=root}"
                       ToolTip="Hide the centered preview actor. Bone-attached effects continue to use its skeleton."
                       VerticalAlignment="Center" Margin="8,2,2,2"/>
+            <Button Content="Clear actor effects" Click="ClearActorEffects_Click" Padding="6,2" Margin="4,1"
+                    ToolTip="Remove client-effect material overrides from the body, head, and hair."/>
         </WrapPanel>
         <Border Grid.Row="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1">
             <scene3d:SceneRenderControl x:Name="Viewport" Focusable="True"/>

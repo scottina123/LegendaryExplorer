@@ -246,6 +246,12 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         Viewport.MarkRenderDirty();
     }
 
+    private void ClearActorEffects_Click(object sender, RoutedEventArgs e)
+    {
+        RenderContext.ClearAllActorEffects();
+        Viewport.MarkRenderDirty();
+    }
+
     private void SetOverlay(bool value, Action<bool> setter, [CallerMemberName] string propertyName = null)
     {
         setter(value);

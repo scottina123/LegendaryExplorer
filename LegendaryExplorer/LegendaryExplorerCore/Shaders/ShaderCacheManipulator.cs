@@ -517,6 +517,15 @@ namespace LegendaryExplorerCore.Shaders
 
         //if MaterialInstanceConstant, bHasStaticPermutationResource _must_ be true!
         public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShaders(ExportEntry material, params string[] shaderTypes)
+            => GetMaterialShaderMapAndShadersForVertexFactory(material, "FLocalVertexFactory", shaderTypes);
+
+        /// <summary>
+        /// Resolves a material's shaders for one specific vertex factory. Particle renderers must use the
+        /// factory that matches their actual vertex streams; selecting a shader from a differently-shaped
+        /// factory can compile an input layout while still feeding every semantic the wrong data.
+        /// </summary>
+        public static (MaterialShaderMap, Shader[]) GetMaterialShaderMapAndShadersForVertexFactory(
+            ExportEntry material, string vertexFactoryType, params string[] shaderTypes)
         {
             StaticParameterSet sps = material.ClassName switch
             {
@@ -531,7 +540,7 @@ namespace LegendaryExplorerCore.Shaders
                 {
                     foreach (MeshShaderMap meshShaderMap in msm.MeshShaderMaps)
                     {
-                        if (meshShaderMap.VertexFactoryType.Name == "FLocalVertexFactory")
+                        if (meshShaderMap.VertexFactoryType.Name == vertexFactoryType)
                         {
                             for (int i = 0; i < shaderTypes.Length; i++)
                             {
@@ -551,7 +560,7 @@ namespace LegendaryExplorerCore.Shaders
             MaterialShaderMap materialShaderMap = RefShaderCacheReader.GetMaterialShaderMap(material.Game, sps, out _);
             foreach (MeshShaderMap meshShaderMap in materialShaderMap.MeshShaderMaps)
             {
-                if (meshShaderMap.VertexFactoryType.Name == "FLocalVertexFactory")
+                if (meshShaderMap.VertexFactoryType.Name == vertexFactoryType)
                 {
                     for (int i = 0; i < shaderTypes.Length; i++)
                     {

@@ -45,6 +45,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
     private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
+
+    internal DepthStencilState GetVfxDepthState(bool depthTest, bool depthWrite)
+        => depthStates.GetValueOrDefault((depthTest, depthWrite));
     private readonly Dictionary<string, bool> luminanceOpacityCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<PreviewActorModelComponent, ActorMeshResources> actorModels = [];
     private readonly Dictionary<string, Matrix4x4> actorBoneTransforms = new(StringComparer.OrdinalIgnoreCase);
@@ -56,6 +59,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private string standardRuntimeWarning;
     private bool isDarkMode;
     private bool autoFramePending;
+    private bool actorEffectsClearedManually;
     private int autoFrameElapsed;
     private bool autoFrameHasPeak;
     private SkeletalMesh actorSkeleton;
@@ -80,8 +84,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public string RuntimeWarning { get; private set; }
 
     /// <summary>
-    /// Uses the experimental compiled-material preview shared with Meshplorer and Morph Editor.
-    /// This is the default VFX preview path; incompatible emitters fall back to the standard shader.
+    /// Uses the compiled native material and vertex-factory preview shared with Meshplorer and Morph Editor.
+    /// This is the default VFX preview path. Emitters that do not have a complete compatible native path are
+    /// omitted instead of being rendered through a visually misleading custom fallback.
     /// </summary>
     public bool UseGameShader
     {
@@ -139,7 +144,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     public VfxPreviewRenderContext()
     {
-        Camera.FirstPerson = false;
+        Camera.FirstPerson = true;
         Camera.Yaw = MathF.PI;
         Camera.Pitch = -0.15f;
         Camera.FocusDepth = DefaultFocusDepth;
@@ -215,6 +220,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             RebuildActorBoneTransforms();
         }
         resources.UpdateLocalToWorld(actorTransform);
+        ApplyActorMaterialEffects(resources);
         ErrorText = null;
     }
 
@@ -372,16 +378,20 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public void Load(VfxPreviewDefinition definition, Func<ImportEntry, IEnumerable<VfxImportFallback>> fallbackResolver = null)
     {
         ResetPreviewCamera();
+        ClearActorMaterialEffects();
+        actorEffectsClearedManually = false;
         importFallbackResolver = fallbackResolver;
         Simulation.Load(definition);
         RuntimeWarning = definition.Warnings.Count == 0 ? null : string.Join(Environment.NewLine, definition.Warnings.Distinct());
         ErrorText = null;
         RefreshTextures();
+        ApplyActorMaterialEffects();
         Focus();
     }
 
     public void Unload()
     {
+        ClearActorMaterialEffects();
         Simulation.Clear();
         autoFramePending = false;
         textures.Clear();
@@ -393,6 +403,46 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         luminanceOpacityCache.Clear();
         TextureCache?.ExpungeStaleCacheItems();
         PackageCache?.ReleasePackages();
+    }
+
+    private void ApplyActorMaterialEffects()
+    {
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            ApplyActorMaterialEffects(actorModel);
+        }
+    }
+
+    private void ApplyActorMaterialEffects(ActorMeshResources actorModel)
+    {
+        if (actorEffectsClearedManually)
+        {
+            return;
+        }
+        string[] effectNames = Simulation.Definition?.ActorMaterialEffects
+            .Select(effect => effect.EffectName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+        actorModel.GameShaderPreview?.ApplyNamedRvrMaterialEffects(this, effectNames);
+    }
+
+    private void ClearActorMaterialEffects()
+    {
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            actorModel.GameShaderPreview?.ClearNamedRvrMaterialEffect();
+        }
+    }
+
+    /// <summary>
+    /// Removes the active client-effect material override from every loaded actor component and prevents the
+    /// current selection from reapplying it if body, head, or hair resources are rebuilt. Selecting another VFX
+    /// starts a new preview and enables its authored actor effects again.
+    /// </summary>
+    public void ClearAllActorEffects()
+    {
+        actorEffectsClearedManually = true;
+        ClearActorMaterialEffects();
     }
 
     public void Focus()
@@ -420,8 +470,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         }
         else
         {
-            Camera.Position = Vector3.Zero;
             Camera.FocusDepth = DefaultFocusDepth;
+            Camera.Position = -Camera.CameraForward * DefaultFocusDepth;
         }
         autoFramePending = true;
         autoFrameElapsed = 0;
@@ -493,8 +543,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         float limitingFov = Math.Min(verticalFov, horizontalFov);
         float distance = radius / MathF.Tan(limitingFov * 0.5f);
 
-        Camera.Position = center;
         Camera.FocusDepth = Math.Clamp(distance * FocusPadding, MinimumFocusRadius, MaximumFocusDepth);
+        Camera.Position = Camera.FirstPerson
+            ? center - Camera.CameraForward * Camera.FocusDepth
+            : center;
     }
 
     public void Restart()
@@ -506,7 +558,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     private void ResetPreviewCamera()
     {
-        Camera.FirstPerson = false;
+        Camera.FirstPerson = true;
         Camera.IsOrthographic = false;
         Camera.Position = Vector3.Zero;
         Camera.Roll = 0;
@@ -613,25 +665,40 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 switch (emitter.RenderMode)
                 {
                     case VfxEmitterRenderMode.Sprite:
-                        // ParticleModuleParameterDynamic is evaluated by the simulator, but Meshplorer's material
-                        // renderer supplies FLocalVertexFactory streams. A material compiled with dynamic particle
-                        // inputs must use the standard VFX renderer until the native particle VF is available;
-                        // sending it through the local VF produces the solid white/yellow cards seen in BioticBadass.
-                        if (emitter.ParticleMaterial.UsesDynamicParameter)
-                        {
-                            break;
-                        }
                         ExportEntry materialExport = ResolvePreviewExport(emitter.Material);
                         if (materialExport is not null)
                         {
                             gameShaderLoaded = gameShaderRenderer.TryLoadSprite(this, emitter, materialExport, out warning);
                         }
+                        else
+                        {
+                            warning = "The particle material or import definition could not be resolved.";
+                        }
+                        break;
+                    case VfxEmitterRenderMode.Beam:
+                    case VfxEmitterRenderMode.Trail:
+                        materialExport = ResolvePreviewExport(emitter.Material);
+                        if (materialExport is not null)
+                        {
+                            gameShaderLoaded = gameShaderRenderer.TryLoadBeamTrail(this, emitter, materialExport, out warning);
+                        }
+                        else
+                        {
+                            warning = "The beam/trail material or import definition could not be resolved.";
+                        }
                         break;
                     case VfxEmitterRenderMode.Mesh:
                         if (meshEmitters.TryGetValue(emitter, out VfxMeshRenderer.MeshEmitterResources resources))
                         {
-                            VfxMeshRenderer.TryLoadGameShaderPreview(this, resources, out warning);
+                            gameShaderLoaded = VfxMeshRenderer.TryLoadGameShaderPreview(this, resources, out warning);
                         }
+                        else
+                        {
+                            warning = "The mesh emitter geometry could not be resolved.";
+                        }
+                        break;
+                    case VfxEmitterRenderMode.Procedural:
+                        warning = "This helper visualization does not expose a cooked native particle material.";
                         break;
                 }
             }
@@ -655,7 +722,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             if (!string.IsNullOrWhiteSpace(warning))
             {
                 RuntimeWarning = AppendWarning(RuntimeWarning,
-                    $"{emitter.Name}: {warning} The standard VFX shader will be used for this emitter.");
+                    $"{emitter.Name}: {warning} This emitter is hidden while In-Game Shader is enabled.");
             }
         }
     }
@@ -1208,7 +1275,11 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             {
                 if (meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources meshResources))
                 {
-                    if (!useGameShader || !VfxMeshRenderer.RenderGameShader(this, emitter, meshResources, previewTransform))
+                    if (useGameShader)
+                    {
+                        VfxMeshRenderer.RenderGameShader(this, emitter, meshResources, previewTransform);
+                    }
+                    else
                     {
                         meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
                     }
@@ -1217,25 +1288,43 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Beam)
             {
-                AddBeamPreview(emitter, previewTransform);
+                if (useGameShader)
+                {
+                    gameShaderRenderer.TryRenderBeamTrail(this, emitter, previewTransform);
+                }
+                else
+                {
+                    AddBeamPreview(emitter, previewTransform);
+                }
                 continue;
             }
             if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Trail)
             {
-                AddTrailPreview(emitter, previewTransform);
+                if (useGameShader)
+                {
+                    gameShaderRenderer.TryRenderBeamTrail(this, emitter, previewTransform);
+                }
+                else
+                {
+                    AddTrailPreview(emitter, previewTransform);
+                }
                 continue;
             }
             if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Procedural)
             {
-                AddProceduralPreview(emitter.Definition.Procedural, previewTransform);
+                if (!useGameShader)
+                {
+                    AddProceduralPreview(emitter.Definition.Procedural, previewTransform);
+                }
                 continue;
             }
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Sprite)
             {
                 continue;
             }
-            if (useGameShader && gameShaderRenderer.TryRenderSprite(this, emitter, previewTransform))
+            if (useGameShader)
             {
+                gameShaderRenderer.TryRenderSprite(this, emitter, previewTransform);
                 continue;
             }
             VfxParticleMaterialDefinition material = emitter.Definition.ParticleMaterial;

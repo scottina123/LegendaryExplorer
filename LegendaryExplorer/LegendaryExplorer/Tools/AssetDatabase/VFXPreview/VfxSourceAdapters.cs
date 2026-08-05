@@ -1001,6 +1001,13 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             MaxParticles = Math.Max(lod.GetProperty<IntProperty>("PeakActiveParticles")?.Value ?? 0, 4096),
             ScreenAlignment = ParseScreenAlignment(required?.GetProperty<EnumProperty>("ScreenAlignment")?.Value),
             AxisLock = axisLock,
+            NormalsMode = ParseNormalsMode(required?.GetProperty<EnumProperty>("EmitterNormalsMode")?.Value),
+            NormalsSphereCenter = required?.GetProperty<StructProperty>("NormalsSphereCenter") is { } sphereCenter
+                ? CommonStructs.GetVector3(sphereCenter)
+                : Vector3.Zero,
+            NormalsCylinderDirection = required?.GetProperty<StructProperty>("NormalsCylinderDirection") is { } cylinderDirection
+                ? CommonStructs.GetVector3(cylinderDirection)
+                : Vector3.UnitZ,
             SubImagesHorizontal = Math.Max(1, required?.GetProperty<IntProperty>("SubImages_Horizontal")?.Value ?? 1),
             SubImagesVertical = Math.Max(1, required?.GetProperty<IntProperty>("SubImages_Vertical")?.Value ?? 1),
             SubUVInterpolation = ParseSubUVInterpolation(required?.GetProperty<EnumProperty>("InterpolationMethod")?.Value),
@@ -1392,6 +1399,13 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         _ => VfxScreenAlignment.Square
     };
 
+    private static VfxEmitterNormalsMode ParseNormalsMode(string value) => value switch
+    {
+        "ENM_Spherical" => VfxEmitterNormalsMode.Spherical,
+        "ENM_Cylindrical" => VfxEmitterNormalsMode.Cylindrical,
+        _ => VfxEmitterNormalsMode.CameraFacing
+    };
+
     private static VfxAxisLock ParseAxisLock(string value) => value switch
     {
         "EPAL_X" => VfxAxisLock.PositiveX,
@@ -1502,6 +1516,27 @@ public sealed class WrappedVfxSourceAdapter : IVfxSourceAdapter
             result.Emitters.AddRange(nested.Emitters);
             result.Warnings.AddRange(nested.Warnings);
             result.PropertyCoverage.AddRange(nested.PropertyCoverage);
+        }
+
+        if (export.ClassName == "RvrClientEffect")
+        {
+            foreach (ExportEntry module in FindClientEffectModules(export, packageCache)
+                         .Where(module => module.ClassName == "RvrCEffectModuleEffectsMaterial"
+                             && module.GetProperty<BoolProperty>("m_bEnabled")?.Value != false))
+            {
+                string effectName = module.GetProperty<NameProperty>("m_nmEffect")?.Value.Instanced;
+                if (string.IsNullOrWhiteSpace(effectName)
+                    || string.Equals(effectName, "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                string targetTag = module.GetProperty<NameProperty>("m_nmTag")?.Value.Instanced;
+                var effect = new VfxActorMaterialEffectDefinition(effectName, targetTag);
+                if (!result.ActorMaterialEffects.Contains(effect))
+                {
+                    result.ActorMaterialEffects.Add(effect);
+                }
+            }
         }
 
         // Legacy BioVFXTemplate payloads need simple standalone markers because they often contain no particle
@@ -1678,6 +1713,40 @@ public sealed class WrappedVfxSourceAdapter : IVfxSourceAdapter
                     {
                         pending.Enqueue(nested);
                     }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<ExportEntry> FindClientEffectModules(ExportEntry wrapper, PackageCache packageCache)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Queue<ExportEntry>();
+        pending.Enqueue(wrapper);
+        while (pending.Count > 0)
+        {
+            ExportEntry current = pending.Dequeue();
+            if (!visited.Add($"{current.FileRef.FilePath}|{current.UIndex}"))
+            {
+                continue;
+            }
+
+            IEnumerable<ObjectProperty> references = current.GetProperties().OfType<ObjectProperty>()
+                .Concat(current.GetProperties().OfType<ArrayProperty<ObjectProperty>>().SelectMany(array => array));
+            foreach (ObjectProperty reference in references)
+            {
+                ExportEntry child = ResolveReferencedExport(reference, current.FileRef, packageCache);
+                if (child is null)
+                {
+                    continue;
+                }
+                if (child.ClassName.StartsWith("RvrCEffectModule", StringComparison.Ordinal))
+                {
+                    yield return child;
+                }
+                else if (child.ClassName == "RvrClientEffect" && pending.Count < 128)
+                {
+                    pending.Enqueue(child);
                 }
             }
         }

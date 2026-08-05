@@ -318,3 +318,119 @@ public struct LEVertex : IVertexBase
         new InputElement("TEXCOORD", 3, Format.R32G32B32A32_Float, 0),
     ];
 }
+
+/// <summary>
+/// Complete UE3 sprite-particle vertex. The superset layout is accepted by all four sprite factories:
+/// FParticleVertexFactory, FParticleSubUVVertexFactory, FParticleDynamicParameterVertexFactory, and
+/// FParticleSubUVDynamicParameterVertexFactory. Factories ignore only the TEXCOORD semantics they do not use.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct ParticleVertex : IVertexBase
+{
+    private Vector4 position;
+    public Vector4 OldPosition;
+    public Vector3 Size;
+    public float Rotation;
+    public Vector4 TextureCoordinates;
+    public Vector4 Color;
+    public Vector4 SubUVData;
+    public Vector4 DynamicParameter;
+
+    public readonly Vector3 Position => new(position.X, position.Y, position.Z);
+
+    public ParticleVertex(
+        Vector3 position,
+        Vector3 oldPosition,
+        Vector3 size,
+        float rotation,
+        Vector4 textureCoordinates,
+        Vector4 color,
+        Vector4 subUVData,
+        Vector4 dynamicParameter)
+    {
+        this.position = new Vector4(position, 1);
+        OldPosition = new Vector4(oldPosition, 1);
+        Size = size;
+        Rotation = rotation;
+        TextureCoordinates = textureCoordinates;
+        Color = color;
+        SubUVData = subUVData;
+        DynamicParameter = dynamicParameter;
+    }
+
+    public void ToFloats(Span<float> floats)
+        => MemoryMarshal.CreateSpan(ref Unsafe.As<ParticleVertex, float>(ref this), Stride / 4).CopyTo(floats);
+
+    public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
+        => new ParticleVertex(position, position, Vector3.Zero, 0, uvs[0], Vector4.One, Vector4.Zero, Vector4.One);
+
+    public static unsafe int Stride => sizeof(Vector4) * 6 + sizeof(Vector3) + sizeof(float);
+
+    public static InputElement[] InputElements { get; } =
+    [
+        new InputElement("POSITION", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("NORMAL", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("TANGENT", 0, Format.R32G32B32_Float, 0),
+        new InputElement("BLENDWEIGHT", 0, Format.R32_Float, 0),
+        new InputElement("TEXCOORD", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("TEXCOORD", 1, Format.R32G32B32A32_Float, 0),
+        new InputElement("TEXCOORD", 2, Format.R32G32B32A32_Float, 0),
+        new InputElement("TEXCOORD", 3, Format.R32G32B32A32_Float, 0),
+    ];
+}
+
+/// <summary>
+/// Complete UE3 beam/trail vertex. POSITION is an already expanded ribbon edge; NORMAL stores the adjacent
+/// reference position used by the factory to derive its tangent basis. TANGENT is present even when a particular
+/// compiled base-pass shader optimizes it away, so the input contract remains valid for every beam/trail shader.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct ParticleBeamTrailVertex : IVertexBase
+{
+    private Vector4 position;
+    public Vector4 DirectionReference;
+    public Vector3 Tangent;
+    public Vector4 TextureCoordinates;
+    public float Rotation;
+    public Vector4 Color;
+    public Vector4 DynamicParameter;
+
+    public readonly Vector3 Position => new(position.X, position.Y, position.Z);
+
+    public ParticleBeamTrailVertex(
+        Vector3 position,
+        Vector3 directionReference,
+        Vector3 tangent,
+        Vector4 textureCoordinates,
+        float rotation,
+        Vector4 color,
+        Vector4 dynamicParameter = default)
+    {
+        this.position = new Vector4(position, 1);
+        DirectionReference = new Vector4(directionReference, 1);
+        Tangent = tangent;
+        TextureCoordinates = textureCoordinates;
+        Rotation = rotation;
+        Color = color;
+        DynamicParameter = dynamicParameter;
+    }
+
+    public void ToFloats(Span<float> floats)
+        => MemoryMarshal.CreateSpan(ref Unsafe.As<ParticleBeamTrailVertex, float>(ref this), Stride / 4).CopyTo(floats);
+
+    public static IVertexBase Create(Vector3 position, Vector3 tangent, Vector4 normal, Fixed4<Vector4> uvs)
+        => new ParticleBeamTrailVertex(position, position - tangent, tangent, uvs[0], 0, Vector4.One);
+
+    public static unsafe int Stride => sizeof(Vector4) * 5 + sizeof(Vector3) + sizeof(float);
+
+    public static InputElement[] InputElements { get; } =
+    [
+        new InputElement("POSITION", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("NORMAL", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("TANGENT", 0, Format.R32G32B32_Float, 0),
+        new InputElement("TEXCOORD", 0, Format.R32G32B32A32_Float, 0),
+        new InputElement("BLENDWEIGHT", 0, Format.R32_Float, 0),
+        new InputElement("TEXCOORD", 1, Format.R32G32B32A32_Float, 0),
+        new InputElement("TEXCOORD", 2, Format.R32G32B32A32_Float, 0),
+    ];
+}

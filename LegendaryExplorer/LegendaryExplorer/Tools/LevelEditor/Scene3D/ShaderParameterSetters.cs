@@ -15,23 +15,37 @@ namespace LegendaryExplorer.Tools.LevelEditor.Scene3D;
 
 internal static class ShaderParameterSetters
 {
-    public static void WriteValues<LightMapPolicy, DensityPolicy>(this TBasePassVertexShader<LightMapPolicy, DensityPolicy> shader, 
-        Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat) 
+    public static void WriteValues<LightMapPolicy, DensityPolicy, TVertex>(this TBasePassVertexShader<LightMapPolicy, DensityPolicy> shader,
+        Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
         where LightMapPolicy : struct, IVertexParametersType where DensityPolicy : struct, IVertexShaderParametersType
+        where TVertex : IVertexBase
     {
-        if (shader.VertexFactoryParameters.Parameters is not FLocalVertexFactoryShaderParameters vertexFactoryParams)
+        switch (shader.VertexFactoryParameters.Parameters)
         {
-            throw new NotSupportedException($"{shader.VertexFactoryParameters.VertexFactoryType} is not supported by the renderer");
+            case FLocalVertexFactoryShaderParameters localVertexFactory:
+                localVertexFactory.WriteValues(buffer, context, mesh, mat);
+                break;
+            case FParticleVertexFactoryShaderParameters particleVertexFactory:
+                particleVertexFactory.WriteValues(buffer, context, mesh, mat);
+                break;
+            case FParticleBeamTrailVertexFactoryShaderParameters beamTrailVertexFactory:
+                beamTrailVertexFactory.WriteValues(buffer, context, mesh, mat);
+                break;
+            case FParticleInstancedMeshVertexFactoryShaderParameters instancedMeshVertexFactory:
+                instancedMeshVertexFactory.WriteValues(buffer, context, mesh, mat);
+                break;
+            default:
+                throw new NotSupportedException($"{shader.VertexFactoryParameters.VertexFactoryType} is not supported by the renderer");
         }
         //TODO: LightMapPolicy params
-        vertexFactoryParams.WriteValues(buffer, context, mesh, mat);
         shader.HeightFogParameters.WriteValues(buffer, context, mesh, mat);
         shader.MaterialParameters.WriteValues(buffer, context, mesh, mat);
         //TODO: DensityPolicy params
     }
-    public static void WriteValues<LightMapPolicy>(this TBasePassPixelShader<LightMapPolicy> shader, 
-        Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat) 
-        where LightMapPolicy : struct, IPixelParametersType 
+    public static void WriteValues<LightMapPolicy, TVertex>(this TBasePassPixelShader<LightMapPolicy> shader,
+        Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where LightMapPolicy : struct, IPixelParametersType
+        where TVertex : IVertexBase
     {
         //TODO: LightMapPolicy params
         shader.MaterialParameters.WriteValues(buffer, context, mesh, mat);
@@ -56,7 +70,8 @@ internal static class ShaderParameterSetters
         }
     }
 
-    public static void WriteValues(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
+    public static void WriteValues<TVertex>(this ref FMaterialVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
     {
         buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.TransformedBounds.Origin, mesh.TransformedBounds.SphereRadius));
@@ -75,7 +90,8 @@ internal static class ShaderParameterSetters
             buffer.WriteVal(vectorParam.Param, vectorParamValues[vectorParam.Index]);
         }
     }
-    public static void WriteValues(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
+    public static void WriteValues<TVertex>(this ref FMaterialPixelShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
     {
         buffer.WriteVal(p.CameraWorldPosition, context.Camera.Position);
         buffer.WriteVal(p.ObjectWorldPositionAndRadius, new Vector4(mesh.TransformedBounds.Origin, mesh.TransformedBounds.SphereRadius));
@@ -145,7 +161,8 @@ internal static class ShaderParameterSetters
         // Wrap lighting is not modeled by the preview; its cleared constants leave it disabled.
     }
 
-    public static void WriteValues(this ref FSceneTextureShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
+    public static void WriteValues<TVertex>(this ref FSceneTextureShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
     {
         if (p.SceneColorTexture.IsBound())
         {
@@ -174,7 +191,8 @@ internal static class ShaderParameterSetters
         }
     }
 
-    public static void WriteValues(this ref FHeightFogVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
+    public static void WriteValues<TVertex>(this ref FHeightFogVertexShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
     {
         //these values disable fog
         buffer.WriteVal(p.FogExtinctionDistance, new Vector4(float.MaxValue));
@@ -190,11 +208,48 @@ internal static class ShaderParameterSetters
         buffer.WriteVal(p.FogStartDistance, Vector4.Zero);
     }
 
-    public static void WriteValues(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<LEVertex> mesh, MaterialRenderProxy mat)
+    public static void WriteValues<TVertex>(this FLocalVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
     {
-            buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
-            buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
-            buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
+        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+        buffer.WriteVal(p.WorldToLocal, mesh.WorldToLocal);
+        buffer.WriteVal(p.LocalToWorldRotDeterminantFlip, mesh.LocalToWorld.GetDeterminant() >= 0 ? 1f : -1f);
+    }
+
+    public static void WriteValues<TVertex>(this FParticleVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
+    {
+        ParticleVertexFactoryRenderParameters values = mat.ParticleFactoryParameters;
+        buffer.WriteVal(p.CameraWorldPosition, new Vector4(context.Camera.Position, 1));
+        buffer.WriteVal(p.CameraRight, new Vector4(context.Camera.CameraRight, 0));
+        buffer.WriteVal(p.CameraUp, new Vector4(context.Camera.CameraUp, 0));
+        buffer.WriteVal(p.ScreenAlignment, new Vector4(values.ScreenAlignment));
+        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+        buffer.WriteVal(p.AxisRotationVectorSourceIndex, values.AxisRotationVectorSourceIndex);
+        buffer.WriteVal(p.AxisRotationVectors, values.AxisRotationVectors);
+        buffer.WriteVal(p.ParticleUpRightResultScalars, values.ParticleUpRightResultScalars);
+        buffer.WriteVal(p.NormalsType, values.NormalsType);
+        buffer.WriteVal(p.NormalsSphereCenter, values.NormalsSphereCenter);
+        buffer.WriteVal(p.NormalsCylinderUnitDirection, values.NormalsCylinderUnitDirection);
+    }
+
+    public static void WriteValues<TVertex>(this FParticleBeamTrailVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
+    {
+        buffer.WriteVal(p.CameraWorldPosition, new Vector4(context.Camera.Position, 1));
+        buffer.WriteVal(p.CameraRight, new Vector4(context.Camera.CameraRight, 0));
+        buffer.WriteVal(p.CameraUp, new Vector4(context.Camera.CameraUp, 0));
+        buffer.WriteVal(p.ScreenAlignment, new Vector4(mat.ParticleFactoryParameters.ScreenAlignment));
+        buffer.WriteVal(p.LocalToWorld, mesh.LocalToWorld);
+    }
+
+    public static void WriteValues<TVertex>(this FParticleInstancedMeshVertexFactoryShaderParameters p, Span<byte> buffer, MeshRenderContext context, Mesh<TVertex> mesh, MaterialRenderProxy mat)
+        where TVertex : IVertexBase
+    {
+        float vertexCount = MathF.Max(1, mat.ParticleFactoryParameters.NumVerticesPerInstance);
+        buffer.WriteVal(p.InvNumVerticesPerInstance, 1f / vertexCount);
+        buffer.WriteVal(p.NumVerticesPerInstance, vertexCount);
+        buffer.WriteVal(p.InstancedPreViewTranslation, mat.ParticleFactoryParameters.InstancedPreViewTranslation);
     }
 
     private static unsafe void WriteVal<T>(this Span<byte> buff, FShaderParameter param, T val) where T : unmanaged

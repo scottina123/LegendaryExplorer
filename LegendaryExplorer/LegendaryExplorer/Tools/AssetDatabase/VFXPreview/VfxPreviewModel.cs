@@ -41,6 +41,13 @@ public enum VfxEmitterRenderMode
     Unsupported
 }
 
+public enum VfxEmitterNormalsMode
+{
+    CameraFacing,
+    Spherical,
+    Cylindrical
+}
+
 public enum VfxProceduralKind
 {
     LensFlare,
@@ -341,6 +348,7 @@ public sealed class VfxPreviewDefinition
     public bool UseSystemDelayRange { get; init; }
     public bool OrientZAxisTowardCamera { get; init; }
     public List<VfxEmitterDefinition> Emitters { get; } = [];
+    public List<VfxActorMaterialEffectDefinition> ActorMaterialEffects { get; } = [];
     public List<string> Warnings { get; } = [];
     public List<VfxPropertyCoverage> PropertyCoverage { get; } = [];
 
@@ -364,6 +372,12 @@ public sealed class VfxPreviewDefinition
         return Matrix4x4.CreateTranslation(groundTranslation) * Matrix4x4.CreateScale(scale);
     }
 }
+
+/// <summary>
+/// A named material operation authored by RvrCEffectModuleEffectsMaterial. The effect name is resolved separately
+/// against every actor mesh section's RvrEffectsMaterialUser multiplexor, so only compatible surfaces are changed.
+/// </summary>
+public sealed record VfxActorMaterialEffectDefinition(string EffectName, string TargetTag);
 
 public readonly record struct VfxBounds(Vector3 Minimum, Vector3 Maximum)
 {
@@ -438,6 +452,9 @@ public sealed class VfxEmitterDefinition
     public int MaxParticles { get; init; } = 4096;
     public VfxScreenAlignment ScreenAlignment { get; init; } = VfxScreenAlignment.Square;
     public VfxAxisLock AxisLock { get; init; }
+    public VfxEmitterNormalsMode NormalsMode { get; init; }
+    public Vector3 NormalsSphereCenter { get; init; }
+    public Vector3 NormalsCylinderDirection { get; init; } = Vector3.UnitZ;
     public Vector2 PivotOffset { get; init; }
     public Vector2 SourceAspect { get; init; } = Vector2.One;
     public int SubImagesHorizontal { get; init; } = 1;

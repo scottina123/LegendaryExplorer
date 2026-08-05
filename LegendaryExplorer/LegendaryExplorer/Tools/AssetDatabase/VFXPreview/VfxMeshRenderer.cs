@@ -191,9 +191,18 @@ float4 PSMain(VS_OUT input) : SV_TARGET0
 
                 string materialName = materialExport.InstancedFullPath;
                 if (!preview.Materials.TryGetValue(materialName, out ModelPreviewMaterial<LEVertex> material)
-                    || material is not LEShaderPreviewMaterial { CanRender: true })
+                    || material is not LEShaderPreviewMaterial { CanRender: true } shaderPreviewMaterial)
                 {
                     warning = $"{materialName} has no compatible in-game local vertex factory shader.";
+                    preview.Dispose();
+                    return false;
+                }
+                if (!MeshRenderContext.ValidateVertexFactoryInputLayout<LEVertex>(
+                        "FLocalVertexFactory",
+                        shaderPreviewMaterial.RenderProxy.UnrealVertexShader.ShaderByteCode,
+                        out string inputError))
+                {
+                    warning = $"{materialName} rejected FLocalVertexFactory: {inputError}";
                     preview.Dispose();
                     return false;
                 }
