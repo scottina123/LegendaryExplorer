@@ -147,18 +147,31 @@ public class VfxPreviewTests
     }
 
     [TestMethod]
-    public void PreviewCenteringTransformMovesBoundsCenterToOriginAtUnitScale()
+    public void PreviewGridTransformCentersAndScalesOversizedBoundsInsideGrid()
     {
-        var bounds = new VfxBounds(new Vector3(100, 200, 300), new Vector3(300, 600, 900));
+        var bounds = new VfxBounds(new Vector3(-2000, -1000, -500), new Vector3(2000, 1000, 500));
 
-        Matrix4x4 transform = VfxPreviewDefinition.CreateUnitScaleCenteringTransform(bounds);
+        Matrix4x4 transform = VfxPreviewDefinition.CreateGridFittingTransform(bounds);
         VfxBounds centered = VfxBoundsMath.Transform(bounds, transform);
 
-        AssertVector(new Vector3(-100, -200, -300), centered.Minimum);
-        AssertVector(new Vector3(100, 200, 300), centered.Maximum);
-        Assert.AreEqual(1, transform.M11, 0.0001f);
-        Assert.AreEqual(1, transform.M22, 0.0001f);
-        Assert.AreEqual(1, transform.M33, 0.0001f);
+        AssertVector(new Vector3(-400, -200, -100), centered.Minimum);
+        AssertVector(new Vector3(400, 200, 100), centered.Maximum);
+        Assert.AreEqual(0.2f, transform.M11, 0.0001f);
+        Assert.AreEqual(transform.M11, transform.M22, 0.0001f);
+        Assert.AreEqual(transform.M11, transform.M33, 0.0001f);
+    }
+
+    [TestMethod]
+    public void PreviewGridTransformAlsoScalesSmallBoundsToConsistentInitialFraming()
+    {
+        var bounds = new VfxBounds(new Vector3(-10, -20, -5), new Vector3(10, 20, 5));
+
+        Matrix4x4 transform = VfxPreviewDefinition.CreateGridFittingTransform(bounds);
+        VfxBounds fitted = VfxBoundsMath.Transform(bounds, transform);
+
+        AssertVector(new Vector3(-200, -400, -100), fitted.Minimum);
+        AssertVector(new Vector3(200, 400, 100), fitted.Maximum);
+        Assert.AreEqual(20, transform.M11, 0.0001f);
     }
 
     [TestMethod]
@@ -194,6 +207,28 @@ public class VfxPreviewTests
         Assert.IsTrue(simulation.TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum));
         AssertVector(new Vector3(13, -3, -3), minimum);
         AssertVector(new Vector3(17, 3, 3), maximum);
+    }
+
+    [TestMethod]
+    public void DynamicBoundsScaleParticlePositionAndSizeWithPreviewTransform()
+    {
+        var definition = new VfxPreviewDefinition { SystemTransform = Matrix4x4.CreateScale(2) };
+        definition.Emitters.Add(new VfxEmitterDefinition
+        {
+            Duration = 1,
+            Loops = 1,
+            Bursts = [new VfxBurst(0, 1)],
+            Lifetime = new VfxConstantDistribution<float>(1),
+            InitialLocation = new VfxConstantDistribution<Vector3>(new Vector3(2, 0, 0)),
+            InitialSize = new VfxConstantDistribution<Vector3>(new Vector3(4, 6, 1))
+        });
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+        simulation.Tick(0.01f);
+
+        Assert.IsTrue(simulation.TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum));
+        AssertVector(new Vector3(0, -6, -6), minimum);
+        AssertVector(new Vector3(8, 6, 6), maximum);
     }
 
     [TestMethod]

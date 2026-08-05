@@ -157,28 +157,26 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     }
 
     /// <summary>
-    /// Effects spawn nothing on the first frame, so the initial Focus() has no bounds to work with.
-    /// This re-frames once the effect has actually produced geometry, then stops so the user keeps control.
+    /// Effects often spawn nothing on the first frame, so the initial Focus() may have no live bounds to use.
+    /// The camera settles once geometry appears, while the preview transform keeps tracking the peak live bounds
+    /// so delayed or expanding particles remain inside the grid without overriding later camera input.
     /// </summary>
     private void TryAutoFrame()
     {
-        if (!autoFramePending)
-        {
-            return;
-        }
-        autoFrameElapsed += 1;
-        if (!TryGetPreviewBounds(false, out Vector3 minimum, out Vector3 maximum))
+        if (!TryGetPreviewBounds(false, Matrix4x4.Identity, out Vector3 minimum, out Vector3 maximum))
         {
             // Give the effect a reasonable window to start emitting (delays/warmup can hold off spawning).
-            if (autoFrameElapsed > AutoFrameMaxFrames)
+            if (autoFramePending && ++autoFrameElapsed > AutoFrameMaxFrames)
             {
                 autoFramePending = false;
             }
             return;
         }
+
+        bool frameCamera = autoFramePending || !autoFrameHasPeak;
         AccumulateAutoFrameBounds(ref minimum, ref maximum);
-        FrameBounds(minimum, maximum);
-        if (autoFrameElapsed > AutoFrameSettleFrames)
+        FitPreviewToGrid(minimum, maximum, frameCamera);
+        if (autoFramePending && ++autoFrameElapsed > AutoFrameSettleFrames)
         {
             autoFramePending = false;
         }
@@ -232,19 +230,47 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     public void Focus()
     {
-        if (TryGetPreviewBounds(false, out Vector3 minimum, out Vector3 maximum))
+        if (TryGetPreviewBounds(false, Matrix4x4.Identity, out Vector3 minimum, out Vector3 maximum))
         {
-            FrameBounds(minimum, maximum);
-            autoFramePending = false;
+            autoFramePeakMinimum = minimum;
+            autoFramePeakMaximum = maximum;
+            autoFrameHasPeak = true;
+            autoFrameElapsed = 0;
+            autoFramePending = true;
+            FitPreviewToGrid(minimum, maximum, true);
             return;
         }
-        // Nothing has spawned yet. Keep the default framing and let the auto-framing pass fix it up
-        // once the simulation produces real geometry.
-        Camera.Position = Vector3.Zero;
-        Camera.FocusDepth = DefaultFocusDepth;
+
+        // Use the authored bounds for the initial camera when available. Live bounds deliberately start a
+        // separate peak below, so an inaccurate authored box cannot permanently make the effect appear tiny.
+        if (TryGetPreviewBounds(true, out minimum, out maximum))
+        {
+            FrameBounds(minimum, maximum);
+        }
+        else
+        {
+            Camera.Position = Vector3.Zero;
+            Camera.FocusDepth = DefaultFocusDepth;
+        }
         autoFramePending = true;
         autoFrameElapsed = 0;
         autoFrameHasPeak = false;
+    }
+
+    private void FitPreviewToGrid(Vector3 rawMinimum, Vector3 rawMaximum, bool frameCamera)
+    {
+        if (Simulation.Definition is null)
+        {
+            return;
+        }
+
+        var rawBounds = new VfxBounds(rawMinimum, rawMaximum);
+        Simulation.Definition.SystemTransform = VfxPreviewDefinition.CreateGridFittingTransform(rawBounds);
+        if (frameCamera)
+        {
+            VfxBounds fittedBounds = VfxBoundsMath.Transform(rawBounds, Simulation.Definition.SystemTransform);
+            FrameBounds(fittedBounds.Minimum, fittedBounds.Maximum);
+        }
     }
 
     /// <summary>
@@ -909,24 +935,25 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     private void DrawHelpers()
     {
+        const float gridHalfExtent = VfxPreviewDefinition.PreviewGridHalfExtent;
         if (ShowGroundPlane)
         {
             var ground = primitives.BuildMesh(new Vector4(0.16f, 0.16f, 0.16f, 0.45f), 0, Matrix4x4.Identity);
-            ground.AddVertex(-500, -500, 0);
-            ground.AddVertex(500, -500, 0);
-            ground.AddVertex(500, 500, 0);
-            ground.AddVertex(-500, 500, 0);
+            ground.AddVertex(-gridHalfExtent, -gridHalfExtent, 0);
+            ground.AddVertex(gridHalfExtent, -gridHalfExtent, 0);
+            ground.AddVertex(gridHalfExtent, gridHalfExtent, 0);
+            ground.AddVertex(-gridHalfExtent, gridHalfExtent, 0);
             ground.AddTriangle(0, 1, 2);
             ground.AddTriangle(0, 2, 3);
         }
 
         if (ShowGrid)
         {
-            for (int coordinate = -500; coordinate <= 500; coordinate += 50)
+            for (int coordinate = -(int)gridHalfExtent; coordinate <= gridHalfExtent; coordinate += 50)
             {
                 Vector4 color = coordinate == 0 ? new Vector4(0.45f, 0.45f, 0.45f, 0.8f) : new Vector4(0.28f, 0.28f, 0.28f, 0.55f);
-                primitives.AddLine(new Vector3(coordinate, -500, 0), new Vector3(coordinate, 500, 0), color, 0);
-                primitives.AddLine(new Vector3(-500, coordinate, 0), new Vector3(500, coordinate, 0), color, 0);
+                primitives.AddLine(new Vector3(coordinate, -gridHalfExtent, 0), new Vector3(coordinate, gridHalfExtent, 0), color, 0);
+                primitives.AddLine(new Vector3(-gridHalfExtent, coordinate, 0), new Vector3(gridHalfExtent, coordinate, 0), color, 0);
             }
         }
 
@@ -967,11 +994,17 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     /// extent, so camera framing must not use it.
     /// </param>
     private bool TryGetPreviewBounds(bool allowFixedBounds, out Vector3 minimum, out Vector3 maximum)
+        => TryGetPreviewBounds(
+            allowFixedBounds,
+            Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity,
+            out minimum,
+            out maximum);
+
+    private bool TryGetPreviewBounds(bool allowFixedBounds, Matrix4x4 previewTransform, out Vector3 minimum, out Vector3 maximum)
     {
         bool found = allowFixedBounds
-            ? Simulation.TryGetBounds(out minimum, out maximum)
-            : Simulation.TryGetDynamicBounds(out minimum, out maximum);
-        Matrix4x4 previewTransform = Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity;
+            ? Simulation.TryGetBounds(previewTransform, out minimum, out maximum)
+            : Simulation.TryGetDynamicBounds(previewTransform, out minimum, out maximum);
         foreach (VfxEmitterState emitter in Simulation.Emitters)
         {
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Mesh

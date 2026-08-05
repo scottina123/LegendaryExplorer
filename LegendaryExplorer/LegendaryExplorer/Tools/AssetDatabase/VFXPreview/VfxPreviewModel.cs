@@ -238,8 +238,12 @@ public interface IVfxDistribution<T>
 
 public sealed class VfxPreviewDefinition
 {
+    public const float PreviewGridHalfExtent = 500;
+    public const float PreviewGridFitFraction = 0.8f;
+    public const float PreviewGridFitSize = PreviewGridHalfExtent * 2 * PreviewGridFitFraction;
+
     public string Name { get; init; }
-    public Matrix4x4 SystemTransform { get; init; } = Matrix4x4.Identity;
+    public Matrix4x4 SystemTransform { get; set; } = Matrix4x4.Identity;
     public VfxBounds? FixedLocalBounds { get; init; }
     public IReadOnlyList<float> LodDistances { get; init; } = [];
     public IReadOnlyList<VfxLodSetting> LodSettings { get; init; } = [];
@@ -254,14 +258,23 @@ public sealed class VfxPreviewDefinition
     public List<string> Warnings { get; } = [];
     public List<VfxPropertyCoverage> PropertyCoverage { get; } = [];
 
-    public static Matrix4x4 CreateUnitScaleCenteringTransform(VfxBounds? localBounds)
+    public static Matrix4x4 CreateGridFittingTransform(VfxBounds? localBounds)
     {
         if (localBounds is not { IsValid: true } bounds)
         {
             return Matrix4x4.Identity;
         }
+
         Vector3 center = (bounds.Minimum + bounds.Maximum) * 0.5f;
-        return Matrix4x4.CreateTranslation(-center);
+        Vector3 size = bounds.Maximum - bounds.Minimum;
+        float largestDimension = Math.Max(size.X, Math.Max(size.Y, size.Z));
+        if (!float.IsFinite(largestDimension) || largestDimension <= 0.0001f)
+        {
+            return Matrix4x4.CreateTranslation(-center);
+        }
+
+        float scale = PreviewGridFitSize / largestDimension;
+        return Matrix4x4.CreateTranslation(-center) * Matrix4x4.CreateScale(scale);
     }
 }
 

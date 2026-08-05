@@ -116,8 +116,12 @@ public sealed class VfxGameShaderRenderer : IDisposable
                 emitter.Definition.AxisLock,
                 particle.Rotation);
             VfxParticle renderParticle = particle;
-            renderParticle.Position = Vector3.Transform(particle.Position + particle.OrbitOffset, transform);
+            renderParticle.Position = particle.Position + particle.OrbitOffset;
             VfxBillboardMath.CreateQuad(renderParticle, emitter.Definition, basis, corners);
+            for (int cornerIndex = 0; cornerIndex < corners.Length; cornerIndex++)
+            {
+                corners[cornerIndex] = Vector3.Transform(corners[cornerIndex], transform);
+            }
             VfxBillboardRenderer.GetSubUVs(
                 emitter.Definition,
                 particle.SubImageIndex,

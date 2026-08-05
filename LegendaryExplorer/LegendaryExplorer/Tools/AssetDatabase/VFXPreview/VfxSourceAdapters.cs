@@ -239,7 +239,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         var definition = new VfxPreviewDefinition
         {
             Name = export.ObjectName.Instanced,
-            SystemTransform = VfxPreviewDefinition.CreateUnitScaleCenteringTransform(fixedLocalBounds),
+            SystemTransform = VfxPreviewDefinition.CreateGridFittingTransform(fixedLocalBounds),
             LodDistances = lodDistances,
             LodSettings = lodSettings,
             SelectedLodIndex = selectedLodIndex,

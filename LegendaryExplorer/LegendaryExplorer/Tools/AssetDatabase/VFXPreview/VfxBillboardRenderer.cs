@@ -147,8 +147,11 @@ float4 PSMain(VS_OUT input) : SV_TARGET0 { float4 textureSample = tex.Sample(sam
                 particle.Rotation);
             VfxParticle renderParticle = particle;
             renderParticle.Position += particle.OrbitOffset;
-            renderParticle.Position = Vector3.Transform(renderParticle.Position, previewSpaceTransform);
             VfxBillboardMath.CreateQuad(renderParticle, emitter.Definition, basis, corners);
+            for (int cornerIndex = 0; cornerIndex < corners.Length; cornerIndex++)
+            {
+                corners[cornerIndex] = Vector3.Transform(corners[cornerIndex], previewSpaceTransform);
+            }
 
             int vertexStart = vertices.Count;
             Vector4 normal = new(basis.Normal, 0);

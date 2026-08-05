@@ -574,19 +574,25 @@ public sealed class VfxSimulation
     }
 
     public bool TryGetBounds(out Vector3 minimum, out Vector3 maximum)
+        => TryGetBounds(Definition?.SystemTransform ?? Matrix4x4.Identity, out minimum, out maximum);
+
+    public bool TryGetBounds(Matrix4x4 previewTransform, out Vector3 minimum, out Vector3 maximum)
     {
         if (Definition?.FixedLocalBounds is { IsValid: true } fixedLocalBounds)
         {
-            VfxBounds fixedWorldBounds = VfxBoundsMath.Transform(fixedLocalBounds, Definition.SystemTransform);
+            VfxBounds fixedWorldBounds = VfxBoundsMath.Transform(fixedLocalBounds, previewTransform);
             minimum = fixedWorldBounds.Minimum;
             maximum = fixedWorldBounds.Maximum;
             return fixedWorldBounds.IsValid;
         }
 
-        return TryGetDynamicBounds(out minimum, out maximum);
+        return TryGetDynamicBounds(previewTransform, out minimum, out maximum);
     }
 
     public bool TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum)
+        => TryGetDynamicBounds(Definition?.SystemTransform ?? Matrix4x4.Identity, out minimum, out maximum);
+
+    public bool TryGetDynamicBounds(Matrix4x4 previewTransform, out Vector3 minimum, out Vector3 maximum)
     {
         minimum = new Vector3(float.MaxValue);
         maximum = new Vector3(float.MinValue);
@@ -601,15 +607,17 @@ public sealed class VfxSimulation
                     size.Y * Math.Max(0.0001f, emitter.Definition.SourceAspect.Y) * 0.5f,
                     Math.Max(size.X, size.Y) * 0.5f);
                 Vector3 localRenderPosition = particle.Position + particle.OrbitOffset;
-                Vector3 renderPosition = Definition is not null
-                    ? Vector3.Transform(localRenderPosition, Definition.SystemTransform)
-                    : localRenderPosition;
-                if (!IsUsableBoundsValue(renderPosition) || !IsUsableBoundsValue(extent))
+                VfxBounds particleBounds = VfxBoundsMath.Transform(
+                    new VfxBounds(localRenderPosition - extent, localRenderPosition + extent),
+                    previewTransform);
+                if (!particleBounds.IsValid
+                    || !IsUsableBoundsValue(particleBounds.Minimum)
+                    || !IsUsableBoundsValue(particleBounds.Maximum))
                 {
                     continue;
                 }
-                minimum = Vector3.Min(minimum, renderPosition - extent);
-                maximum = Vector3.Max(maximum, renderPosition + extent);
+                minimum = Vector3.Min(minimum, particleBounds.Minimum);
+                maximum = Vector3.Max(maximum, particleBounds.Maximum);
                 found = true;
             }
         }
