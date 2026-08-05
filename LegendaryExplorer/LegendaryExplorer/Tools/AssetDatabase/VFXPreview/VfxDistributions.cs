@@ -68,8 +68,13 @@ public sealed class VfxRawFloatDistribution(
         {
             return 0;
         }
-        float normalized = timeScale > 0 ? (time - startTime) * timeScale : time;
-        return Math.Clamp(normalized, 0, 1) * (sampleCount - 1);
+
+        // UE3 serializes LookupTableTimeScale as samples per unit of input time, not as a normalized
+        // curve-time multiplier. Multiplying by the sample count again makes a 21-sample, scale-20
+        // curve reach its final value at 0.05 instead of 1.0 (commonly making fire alpha immediately zero).
+        return timeScale > 0
+            ? Math.Clamp((time - startTime) * timeScale, 0, sampleCount - 1)
+            : Math.Clamp(time, 0, 1) * (sampleCount - 1);
     }
 }
 

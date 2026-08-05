@@ -1,6 +1,7 @@
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Linq;
 using System.Numerics;
 
 namespace LegendaryExplorer.Tests.Tools.AssetDatabase;
@@ -49,6 +50,22 @@ public class VfxPreviewTests
         Assert.AreEqual(new Vector3(0.5f), distribution.Evaluate(0, 0.5f));
         Assert.AreEqual(new Vector3(3), distribution.Evaluate(1, 0.5f));
         Assert.AreEqual(new Vector3(1.75f), distribution.Evaluate(0.5f, 0.5f));
+    }
+
+    [TestMethod]
+    public void RawDistributionTimeScaleIsSamplesPerSecondRatherThanNormalizedMultiplier()
+    {
+        var distribution = new VfxRawFloatDistribution(
+            Enumerable.Range(0, 21).Select(value => (float)value).ToArray(),
+            1,
+            1,
+            0,
+            20,
+            -1);
+
+        Assert.AreEqual(5, distribution.Evaluate(0.25f, 0), 0.0001f);
+        Assert.AreEqual(10, distribution.Evaluate(0.5f, 0), 0.0001f);
+        Assert.AreEqual(20, distribution.Evaluate(1, 0), 0.0001f);
     }
 
     [TestMethod]
@@ -154,8 +171,8 @@ public class VfxPreviewTests
         Matrix4x4 transform = VfxPreviewDefinition.CreateGridFittingTransform(bounds);
         VfxBounds centered = VfxBoundsMath.Transform(bounds, transform);
 
-        AssertVector(new Vector3(-400, -200, -100), centered.Minimum);
-        AssertVector(new Vector3(400, 200, 100), centered.Maximum);
+        AssertVector(new Vector3(-400, -200, 0), centered.Minimum);
+        AssertVector(new Vector3(400, 200, 200), centered.Maximum);
         Assert.AreEqual(0.2f, transform.M11, 0.0001f);
         Assert.AreEqual(transform.M11, transform.M22, 0.0001f);
         Assert.AreEqual(transform.M11, transform.M33, 0.0001f);
@@ -169,8 +186,8 @@ public class VfxPreviewTests
         Matrix4x4 transform = VfxPreviewDefinition.CreateGridFittingTransform(bounds);
         VfxBounds fitted = VfxBoundsMath.Transform(bounds, transform);
 
-        AssertVector(new Vector3(-200, -400, -100), fitted.Minimum);
-        AssertVector(new Vector3(200, 400, 100), fitted.Maximum);
+        AssertVector(new Vector3(-200, -400, 0), fitted.Minimum);
+        AssertVector(new Vector3(200, 400, 200), fitted.Maximum);
         Assert.AreEqual(20, transform.M11, 0.0001f);
     }
 
@@ -451,6 +468,27 @@ public class VfxPreviewTests
         Assert.AreEqual(2, Vector3.Distance(corners[1], corners[2]), 0.0001f);
         Vector3 center = (corners[0] + corners[2]) * 0.5f;
         Assert.AreEqual(particle.Position + (basis.Right * 4), center);
+    }
+
+    [TestMethod]
+    public void SquareBillboardUsesXSizeWhenCookedFireDataLeavesYAtZero()
+    {
+        VfxBillboardBasis basis = VfxBillboardMath.CreateBasis(
+            Vector3.UnitY,
+            Vector3.UnitZ,
+            Vector3.UnitX,
+            Vector3.Zero,
+            VfxScreenAlignment.Square,
+            VfxAxisLock.None,
+            0);
+        var particle = new VfxParticle { Size = new Vector3(10, 0, 0) };
+        var emitter = new VfxEmitterDefinition();
+        System.Span<Vector3> corners = stackalloc Vector3[4];
+
+        VfxBillboardMath.CreateQuad(particle, emitter, basis, corners);
+
+        Assert.AreEqual(10, Vector3.Distance(corners[0], corners[1]), 0.0001f);
+        Assert.AreEqual(10, Vector3.Distance(corners[1], corners[2]), 0.0001f);
     }
 
     [TestMethod]

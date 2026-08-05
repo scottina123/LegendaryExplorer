@@ -266,15 +266,16 @@ public sealed class VfxPreviewDefinition
         }
 
         Vector3 center = (bounds.Minimum + bounds.Maximum) * 0.5f;
+        Vector3 groundTranslation = new(-center.X, -center.Y, -bounds.Minimum.Z);
         Vector3 size = bounds.Maximum - bounds.Minimum;
         float largestDimension = Math.Max(size.X, Math.Max(size.Y, size.Z));
         if (!float.IsFinite(largestDimension) || largestDimension <= 0.0001f)
         {
-            return Matrix4x4.CreateTranslation(-center);
+            return Matrix4x4.CreateTranslation(groundTranslation);
         }
 
         float scale = PreviewGridFitSize / largestDimension;
-        return Matrix4x4.CreateTranslation(-center) * Matrix4x4.CreateScale(scale);
+        return Matrix4x4.CreateTranslation(groundTranslation) * Matrix4x4.CreateScale(scale);
     }
 }
 
@@ -343,7 +344,7 @@ public sealed class VfxEmitterDefinition
     public int MaxDrawCount { get; init; }
     public bool UseMaxDrawCount { get; init; }
     public int MaxParticles { get; init; } = 4096;
-    public VfxScreenAlignment ScreenAlignment { get; init; } = VfxScreenAlignment.CameraFacing;
+    public VfxScreenAlignment ScreenAlignment { get; init; } = VfxScreenAlignment.Square;
     public VfxAxisLock AxisLock { get; init; }
     public Vector2 PivotOffset { get; init; }
     public Vector2 SourceAspect { get; init; } = Vector2.One;

@@ -175,6 +175,14 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         Viewport.MarkRenderDirty();
     }
 
+    public void ShowUnavailable(string warning)
+    {
+        RenderContext.Unload();
+        StatusText = "Preview unavailable.";
+        WarningText = warning;
+        Viewport.MarkRenderDirty();
+    }
+
     private void StatusTimer_Tick(object sender, EventArgs e)
     {
         if (RenderContext.Simulation.Definition is null)

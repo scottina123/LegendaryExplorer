@@ -941,7 +941,11 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         "PSA_Rectangle" => VfxScreenAlignment.Rectangle,
         "PSA_Velocity" => VfxScreenAlignment.Velocity,
         "PSA_TypeSpecific" => VfxScreenAlignment.TypeSpecific,
-        _ => VfxScreenAlignment.CameraFacing
+        "PSA_FacingCameraPosition" => VfxScreenAlignment.CameraFacing,
+        // ScreenAlignment is omitted for the native enum default (PSA_Square) in a large amount of
+        // cooked content. Treating an absent property as FacingCameraPosition collapses X-only fire
+        // sprites to zero height.
+        _ => VfxScreenAlignment.Square
     };
 
     private static VfxAxisLock ParseAxisLock(string value) => value switch

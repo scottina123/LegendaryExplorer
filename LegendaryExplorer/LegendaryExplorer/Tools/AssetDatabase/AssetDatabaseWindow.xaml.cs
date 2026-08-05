@@ -1231,36 +1231,63 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 return;
             }
 
-            ParticleSysUsage usage = record.Usages
+            IEnumerable<ParticleSysUsage> usages = record.Usages
                 .OrderBy(candidate => candidate.IsInMod)
-                .ThenBy(candidate => candidate.IsInDLC)
-                .FirstOrDefault();
-            if (usage is null)
+                .ThenBy(candidate => candidate.IsInDLC);
+            Exception lastException = null;
+            foreach (ParticleSysUsage usage in usages)
             {
-                return;
-            }
-
-            string filePath = GetFilePath(usage.FileKey);
-            if (!File.Exists(filePath))
-            {
-                return;
-            }
-
-            try
-            {
-                vfxPreviewPcc = MEPackageHandler.OpenMEPackage(filePath);
-                if (vfxPreviewPcc.TryGetUExport(usage.UIndex, out ExportEntry export))
+                string filePath = GetFilePath(usage.FileKey);
+                if (!File.Exists(filePath))
                 {
+                    continue;
+                }
+
+                IMEPackage candidatePackage = null;
+                try
+                {
+                    candidatePackage = MEPackageHandler.OpenMEPackage(filePath);
+                    ExportEntry export = candidatePackage.TryGetUExport(usage.UIndex, out ExportEntry indexedExport)
+                        && IsMatchingVfxExport(indexedExport, record)
+                            ? indexedExport
+                            : candidatePackage.Exports.FirstOrDefault(candidate => IsMatchingVfxExport(candidate, record));
+                    if (export is null)
+                    {
+                        continue;
+                    }
+
+                    vfxPreviewPcc = candidatePackage;
+                    candidatePackage = null;
                     VfxPreview.LoadExport(export);
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    lastException = exception;
+                    Debug.WriteLine($"Unable to preview VFX {record.PSName} from {filePath}: {exception.FlattenException()}");
+                }
+                finally
+                {
+                    candidatePackage?.Dispose();
                 }
             }
-            catch (Exception exception)
+
+            string warning = lastException is null
+                ? $"{record.PSName} could not be found at any recorded usage. The Asset Database entry may be stale; rescan the database to refresh package indices."
+                : $"{record.PSName} could not be loaded from any recorded usage: {lastException.Message}";
+            VfxPreview.ShowUnavailable(warning);
+        }
+
+        private static bool IsMatchingVfxExport(ExportEntry export, ParticleSysRecord record)
+        {
+            string expectedClass = record.VFXType switch
             {
-                Debug.WriteLine($"Unable to preview VFX {record.PSName}: {exception.FlattenException()}");
-                VfxPreview.UnloadExport();
-                vfxPreviewPcc?.Dispose();
-                vfxPreviewPcc = null;
-            }
+                ParticleSysRecord.VFXClass.ParticleSystem => "ParticleSystem",
+                ParticleSysRecord.VFXClass.RvrClientEffect => "RvrClientEffect",
+                _ => "BioVFXTemplate"
+            };
+            return export?.ClassName == expectedClass
+                && string.Equals(export.ObjectName.Instanced, record.PSName, StringComparison.Ordinal);
         }
 
         private void UnloadVfxPreview()
