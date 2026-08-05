@@ -41,7 +41,7 @@
         <DockPanel>
             <Menu DockPanel.Dock="Top">
                 <MenuItem Header="_File" Padding="4">
-                    <MenuItem Header="Open highest-mounted LE3 galaxy map" Click="OpenVanilla_Click" />
+                    <MenuItem Header="Open highest-mounted LE3 galaxy map pair" Click="OpenVanilla_Click" />
                     <MenuItem Header="_Open package…" Command="{Binding OpenCommand}" InputGestureText="Ctrl+O" />
                     <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S" />
                     <MenuItem Header="Save _as…" Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S" />
@@ -92,8 +92,8 @@
                     <StackPanel Grid.Column="0" Margin="60" VerticalAlignment="Center">
                         <TextBlock Text="SFXGalaxy Editor" FontSize="25" FontWeight="SemiBold" />
                         <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                                   Text="Open BioD_Nor_203aGalaxyMap.pcc from LE3 to explore and edit its SFXGalaxy hierarchy. This editor only accepts Legendary Edition 3 packages." />
-                        <Button Margin="0,20,0,0" Padding="14,8" HorizontalAlignment="Left" Content="Open highest-mounted LE3 galaxy map" Click="OpenVanilla_Click" />
+                                   Text="Open the highest-mounted BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc together. The viewport edits the former and synchronizes its SFXGalaxy hierarchy into the latter." />
+                        <Button Margin="0,20,0,0" Padding="14,8" HorizontalAlignment="Left" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenVanilla_Click" />
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="1" Margin="50" />
                 </Grid>
@@ -146,6 +146,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <DockPanel Margin="8,2,8,7">
@@ -155,10 +156,14 @@
                                       Content="Coordinate grid" IsChecked="{Binding ShowCoordinateGrid}" />
                         </DockPanel>
                         <DockPanel Grid.Row="1" Margin="8,0,8,4" LastChildFill="True">
-                            <TextBlock Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Loaded package:" />
-                            <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding Pcc.FilePath, Mode=OneWay}" ToolTip="{Binding Pcc.FilePath}" />
+                            <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Viewport/map data:" />
+                            <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding AuthoritativePackagePath, Mode=OneWay}" ToolTip="{Binding AuthoritativePackagePath}" />
                         </DockPanel>
-                        <Border Grid.Row="2" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1" Background="#FF02070D">
+                        <DockPanel Grid.Row="2" Margin="8,0,8,4" LastChildFill="True">
+                            <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Synced companion:" />
+                            <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding CompanionPackagePath, Mode=OneWay}" ToolTip="{Binding CompanionSyncStatus}" />
+                        </DockPanel>
+                        <Border Grid.Row="3" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1" Background="#FF02070D">
                             <Grid>
                                 <Viewbox Stretch="Uniform">
                                     <Canvas x:Name="MapCanvas" Width="1024" Height="1024" Background="Transparent"

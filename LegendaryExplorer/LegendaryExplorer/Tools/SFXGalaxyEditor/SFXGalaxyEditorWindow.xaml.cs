@@ -44,6 +44,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 {
     private const int MapExtent = 1024;
     private const string VanillaGalaxyMapFile = "BioD_Nor_203aGalaxyMap.pcc";
+    private const string CompanionGalaxyMapFile = "BioD_Nor_203CIC.pcc";
 
     private readonly Dictionary<int, SFXGalaxyNode> _nodesByUIndex = [];
     private readonly Dictionary<int, string> _tlkCache = [];
@@ -51,9 +52,31 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private readonly Dictionary<SFXGalaxyNode, Point> _visibleCenters = [];
     private string _queuedFile;
     private int _queuedExportUIndex;
+    private string _queuedExportPath;
+    private string _queuedExportClass;
     private bool _handledInitialLoad;
     private bool _suppressPackageRefresh;
     private bool _refreshQueued;
+    private IMEPackage _companionPcc;
+    private bool _companionNeedsFullSync;
+    private readonly HashSet<int> _pendingCompanionSyncUIndexes = [];
+    private bool _pendingCompanionFullSync;
+
+    public string AuthoritativePackagePath => Pcc?.FilePath ?? string.Empty;
+    public string CompanionPackagePath => _companionPcc?.FilePath ?? string.Empty;
+
+    private string _companionSyncStatus = "Companion package not loaded.";
+    public string CompanionSyncStatus
+    {
+        get => _companionSyncStatus;
+        private set
+        {
+            if (SetProperty(ref _companionSyncStatus, value))
+            {
+                UpdateStatus();
+            }
+        }
+    }
 
     private SFXGalaxyNode _dragNode;
     private Point _dragStart;
@@ -146,8 +169,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     public SFXGalaxyEditorWindow() : base("SFXGalaxy Editor (LE3)")
     {
         OpenCommand = new GenericCommand(OpenPackage);
-        SaveCommand = new GenericCommand(SavePackage, () => Pcc is not null);
-        SaveAsCommand = new GenericCommand(SavePackageAs, () => Pcc is not null);
+        SaveCommand = new GenericCommand(SavePackage, () => Pcc is not null && _companionPcc is not null);
+        SaveAsCommand = new GenericCommand(SavePackageAs, () => Pcc is not null && _companionPcc is not null);
         BackCommand = new GenericCommand(NavigateBack, () => CurrentNode?.Parent is not null);
         NavigateIntoCommand = new GenericCommand(NavigateIntoSelected, () => CanEnter(SelectedNode));
         FocusSearchCommand = new GenericCommand(() => SearchBox?.Focus(), () => Pcc is not null);
@@ -163,6 +186,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         _queuedFile = export.FileRef.FilePath;
         _queuedExportUIndex = export.UIndex;
+        _queuedExportPath = export.InstancedFullPath;
+        _queuedExportClass = export.ClassName;
     }
 
     public static bool CanOpenExport(ExportEntry export) =>
@@ -197,10 +222,21 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             {
                 string file = _queuedFile;
                 int exportIndex = _queuedExportUIndex;
+                string exportPath = _queuedExportPath;
+                string exportClass = _queuedExportClass;
                 _queuedFile = null;
                 _queuedExportUIndex = 0;
+                _queuedExportPath = null;
+                _queuedExportClass = null;
                 LoadFile(file);
-                if (_nodesByUIndex.TryGetValue(exportIndex, out SFXGalaxyNode node))
+                SFXGalaxyNode node = _nodesByUIndex.GetValueOrDefault(exportIndex);
+                if (!string.IsNullOrWhiteSpace(exportPath))
+                {
+                    node = _nodesByUIndex.Values.FirstOrDefault(candidate =>
+                        candidate.Export.ClassName.CaseInsensitiveEquals(exportClass)
+                        && candidate.Export.InstancedFullPath.CaseInsensitiveEquals(exportPath)) ?? node;
+                }
+                if (node is not null)
                 {
                     NavigateToSearchResult(node);
                 }
@@ -223,12 +259,22 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return;
         }
 
+        if (_companionPcc is { IsModified: true } && Pcc?.IsModified != true
+            && MessageBox.Show(this,
+                $"{Path.GetFileName(_companionPcc.FilePath)} has unsaved synchronized changes. Close without saving the package pair?",
+                "Unsaved galaxy map changes", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            e.Cancel = true;
+            return;
+        }
+
         RecentsController?.Dispose();
         PropertiesInterpreter?.UnloadExport();
         MetadataLoader?.UnloadExport();
         HierarchyRoots.ClearEx();
         SearchResults.ClearEx();
         EditableExports.ClearEx();
+        UnloadCompanionPackage();
         UnLoadMEPackage();
     }
 
@@ -248,6 +294,16 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void OpenHighestMountedGalaxyMap(bool showErrors)
     {
+        if (TryResolveHighestMountedPair(showErrors, out string galaxyMapPath, out string companionPath))
+        {
+            LoadPackagePair(galaxyMapPath, companionPath);
+        }
+    }
+
+    private bool TryResolveHighestMountedPair(bool showErrors, out string galaxyMapPath, out string companionPath)
+    {
+        galaxyMapPath = null;
+        companionPath = null;
         if (string.IsNullOrWhiteSpace(MEDirectories.GetDefaultGamePath(MEGame.LE3)))
         {
             if (showErrors)
@@ -256,29 +312,44 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                     "Configure your Legendary Edition installation path before opening the highest-mounted LE3 galaxy map.",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            return;
+            return false;
         }
 
-        if (!MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, VanillaGalaxyMapFile, out string filePath))
+        bool foundGalaxyMap = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, VanillaGalaxyMapFile, out galaxyMapPath);
+        bool foundCompanion = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, CompanionGalaxyMapFile, out companionPath);
+        if (!foundGalaxyMap || !foundCompanion)
         {
             if (showErrors)
             {
-                MessageBox.Show(this, $"Could not locate a mounted {VanillaGalaxyMapFile} in the configured LE3 installation.",
+                string missing = string.Join(" and ", new[]
+                {
+                    foundGalaxyMap ? null : VanillaGalaxyMapFile,
+                    foundCompanion ? null : CompanionGalaxyMapFile
+                }.Where(name => name is not null));
+                MessageBox.Show(this, $"Could not locate the highest-mounted {missing} in the configured LE3 installation.",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-            return;
+            return false;
         }
-
-        LoadFile(filePath);
+        return true;
     }
 
     public void LoadFile(string fileName)
+    {
+        if (TryResolveHighestMountedPair(showErrors: true, out string galaxyMapPath, out string companionPath))
+        {
+            LoadPackagePair(galaxyMapPath, companionPath);
+        }
+    }
+
+    private void LoadPackagePair(string galaxyMapPath, string companionPath)
     {
         try
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
-            LoadMEPackage(fileName);
+            UnloadCompanionPackage();
+            LoadMEPackage(galaxyMapPath);
 
             if (Pcc.Game != MEGame.LE3)
             {
@@ -288,32 +359,61 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             ExportEntry galaxy = Pcc.Exports.FirstOrDefault(e => e.ClassName == "SFXGalaxy" && !e.IsDefaultObject && !e.IsTrash());
             if (galaxy is null)
             {
-                throw new InvalidDataException("This package does not contain an SFXGalaxy instance.");
+                throw new InvalidDataException($"{VanillaGalaxyMapFile} does not contain an SFXGalaxy instance.");
+            }
+
+            _companionPcc = MEPackageHandler.OpenMEPackage(companionPath);
+            if (_companionPcc.Game != MEGame.LE3 || GetGalaxyRoot(_companionPcc) is null)
+            {
+                throw new InvalidDataException($"{CompanionGalaxyMapFile} does not contain a compatible LE3 SFXGalaxy instance.");
             }
 
             RebuildHierarchy(galaxy.UIndex, galaxy.UIndex);
+            _companionNeedsFullSync = true;
+            (int sourceCount, int companionCount, int differences) = CompareGalaxyStructure(Pcc, _companionPcc);
+            CompanionSyncStatus = differences == 0
+                ? $"Both galaxy hierarchies loaded ({sourceCount} exports). Changes are mirrored from {VanillaGalaxyMapFile}."
+                : $"Loaded with {differences} structural differences ({sourceCount} map / {companionCount} companion exports). The next edit will port the authoritative hierarchy.";
             // Match Level Editor: keep the exact loaded package path visible in the window title.
             Title = $"SFXGalaxy Editor (LE3) — {Pcc.FilePath}";
-            RecentsController.AddRecent(fileName, false, Pcc.Game);
+            RecentsController.AddRecent(galaxyMapPath, false, Pcc.Game);
             RecentsController.SaveRecentList(true);
             OnPropertyChanged(nameof(Pcc));
+            OnPropertyChanged(nameof(AuthoritativePackagePath));
+            OnPropertyChanged(nameof(CompanionPackagePath));
             UpdateStatus();
         }
         catch (Exception exception)
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
+            UnloadCompanionPackage();
             UnLoadMEPackage();
             HierarchyRoots.ClearEx();
-            MessageBox.Show(this, $"Unable to open this galaxy map package:\n\n{exception.Message}",
+            MessageBox.Show(this, $"Unable to open the galaxy map package pair:\n\n{exception.Message}",
                 "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private async void SavePackage()
     {
-        await Pcc.SaveAsync();
-        UpdateStatus();
+        try
+        {
+            // BioD_Nor_203aGalaxyMap is authoritative: persist it before porting to BioD_Nor_203CIC.
+            await Pcc.SaveAsync();
+            if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+            {
+                return;
+            }
+            await _companionPcc.SaveAsync();
+            CompanionSyncStatus = "Both highest-mounted galaxy map packages are synchronized and saved.";
+            UpdateStatus();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, $"Unable to save the synchronized galaxy map package pair:\n\n{exception.Message}",
+                "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async void SavePackageAs()
@@ -325,11 +425,205 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         };
         if (DirectoryMemory.ShowDialog(dialog) == true)
         {
-            await Pcc.SaveAsync(dialog.FileName);
-            Title = $"SFXGalaxy Editor (LE3) — {Pcc.FilePath}";
-            OnPropertyChanged(nameof(Pcc));
-            UpdateStatus();
+            try
+            {
+                string companionSavePath = Path.Combine(Path.GetDirectoryName(dialog.FileName)!, CompanionGalaxyMapFile);
+                await Pcc.SaveAsync(dialog.FileName);
+                if (!SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: true))
+                {
+                    return;
+                }
+                await _companionPcc.SaveAsync(companionSavePath);
+                Title = $"SFXGalaxy Editor (LE3) — {Pcc.FilePath}";
+                CompanionSyncStatus = "Both galaxy map packages were synchronized and saved to the selected folder.";
+                OnPropertyChanged(nameof(Pcc));
+                OnPropertyChanged(nameof(AuthoritativePackagePath));
+                OnPropertyChanged(nameof(CompanionPackagePath));
+                UpdateStatus();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, $"Unable to save the synchronized galaxy map package pair:\n\n{exception.Message}",
+                    "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
+    }
+
+    private static ExportEntry GetGalaxyRoot(IMEPackage package) => package?.Exports
+        .FirstOrDefault(export => export.ClassName == "SFXGalaxy" && !export.IsDefaultObject && !export.IsTrash());
+
+    private static List<ExportEntry> GetGalaxyExports(ExportEntry galaxy) =>
+        [galaxy, .. galaxy.GetAllDescendants().OfType<ExportEntry>().Where(export => !export.IsTrash())];
+
+    private static string GalaxySyncKey(ExportEntry export) => $"{export.ClassName}|{export.InstancedFullPath}";
+
+    private static (int SourceCount, int CompanionCount, int Differences) CompareGalaxyStructure(
+        IMEPackage sourcePackage, IMEPackage companionPackage)
+    {
+        ExportEntry sourceGalaxy = GetGalaxyRoot(sourcePackage);
+        ExportEntry companionGalaxy = GetGalaxyRoot(companionPackage);
+        HashSet<string> sourceKeys = GetGalaxyExports(sourceGalaxy).Select(GalaxySyncKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> companionKeys = GetGalaxyExports(companionGalaxy).Select(GalaxySyncKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int differences = sourceKeys.Except(companionKeys, StringComparer.OrdinalIgnoreCase).Count()
+                          + companionKeys.Except(sourceKeys, StringComparer.OrdinalIgnoreCase).Count();
+        return (sourceKeys.Count, companionKeys.Count, differences);
+    }
+
+    private void UnloadCompanionPackage()
+    {
+        _companionPcc?.Release();
+        _companionPcc = null;
+        _companionNeedsFullSync = false;
+        _pendingCompanionSyncUIndexes.Clear();
+        _pendingCompanionFullSync = false;
+        OnPropertyChanged(nameof(CompanionPackagePath));
+        CompanionSyncStatus = "Companion package not loaded.";
+    }
+
+    private bool SynchronizeCompanionFromAuthoritative(bool fullHierarchy,
+        IEnumerable<ExportEntry> changedExports, bool showErrors)
+    {
+        if (Pcc is null || _companionPcc is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            ExportEntry sourceGalaxy = GetGalaxyRoot(Pcc)
+                ?? throw new InvalidDataException($"{VanillaGalaxyMapFile} no longer contains SFXGalaxy.");
+            ExportEntry companionGalaxy = GetGalaxyRoot(_companionPcc)
+                ?? throw new InvalidDataException($"{CompanionGalaxyMapFile} no longer contains SFXGalaxy.");
+
+            fullHierarchy |= _companionNeedsFullSync;
+            List<ExportEntry> sourcesToPort;
+            if (fullHierarchy)
+            {
+                sourcesToPort = PrepareFullGalaxySync(sourceGalaxy, companionGalaxy);
+            }
+            else
+            {
+                string galaxyPathPrefix = $"{sourceGalaxy.InstancedFullPath}.";
+                sourcesToPort = changedExports?.Where(export => export is not null && !export.IsTrash()
+                        && (export == sourceGalaxy || export.InstancedFullPath.StartsWith(galaxyPathPrefix, StringComparison.OrdinalIgnoreCase)))
+                    .DistinctBy(export => export.UIndex).ToList() ?? [];
+                if (sourcesToPort.Count == 0)
+                {
+                    return true;
+                }
+            }
+
+            RelinkerOptionsPackage relinkerOptions = new()
+            {
+                ImportExportDependencies = true
+            };
+            List<string> portErrors = [];
+            relinkerOptions.ErrorOccurredCallback = portErrors.Add;
+            AddExistingCompanionMappings(relinkerOptions, sourcesToPort);
+            Dictionary<string, ExportEntry> companionByKey = GetGalaxyExports(companionGalaxy)
+                .GroupBy(GalaxySyncKey, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (ExportEntry source in sourcesToPort)
+            {
+                string key = GalaxySyncKey(source);
+                if (!companionByKey.TryGetValue(key, out ExportEntry target))
+                {
+                    if (!fullHierarchy)
+                    {
+                        return SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors);
+                    }
+                    if (source.Parent is not ExportEntry sourceParent
+                        || !relinkerOptions.CrossPackageMap.TryGetValue(sourceParent, out IEntry targetParent))
+                    {
+                        throw new InvalidDataException($"Could not resolve the companion parent for {source.InstancedFullPath}.");
+                    }
+                    target = EntryImporter.ImportExport(_companionPcc, source, targetParent.UIndex, relinkerOptions) as ExportEntry
+                             ?? throw new InvalidDataException($"Could not port {source.InstancedFullPath} into {CompanionGalaxyMapFile}.");
+                    companionByKey[key] = target;
+                }
+                relinkerOptions.CrossPackageMap[source] = target;
+                relinkerOptions.RelinkMapEntriesToSkip.Remove(source);
+            }
+
+            // Copy through LegendaryExplorerCore's existing export serializer first. This makes the
+            // companion's property/binary boundaries match the authoritative export before Relinker
+            // rewrites package-local references (whose UIndexes are intentionally allowed to differ).
+            foreach (ExportEntry source in sourcesToPort)
+            {
+                if (relinkerOptions.CrossPackageMap[source] is not ExportEntry target
+                    || !EntryImporter.ReplaceExportDataWithAnother(source, target, relinkerOptions))
+                {
+                    throw new InvalidDataException($"Could not serialize {source.InstancedFullPath} into {CompanionGalaxyMapFile}.");
+                }
+            }
+
+            Relinker.RelinkAll(relinkerOptions);
+            if (portErrors.Count > 0)
+            {
+                throw new InvalidDataException(string.Join(Environment.NewLine, portErrors));
+            }
+
+            _companionNeedsFullSync = false;
+            int warningCount = relinkerOptions.RelinkReport.Count;
+            CompanionSyncStatus = warningCount == 0
+                ? $"Synchronized {sourcesToPort.Count} exports from {VanillaGalaxyMapFile} to {CompanionGalaxyMapFile}."
+                : $"Synchronized with {warningCount} relinker warnings; save will retry a full synchronization.";
+            return warningCount == 0;
+        }
+        catch (Exception exception)
+        {
+            _companionNeedsFullSync = true;
+            CompanionSyncStatus = $"Companion synchronization failed: {exception.Message}";
+            if (showErrors)
+            {
+                MessageBox.Show(this,
+                    $"{VanillaGalaxyMapFile} remains the authoritative edited package, but its changes could not be ported to {CompanionGalaxyMapFile}:\n\n{exception.Message}",
+                    "Galaxy map synchronization", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            return false;
+        }
+    }
+
+    private void AddExistingCompanionMappings(RelinkerOptionsPackage relinkerOptions,
+        IReadOnlyCollection<ExportEntry> sourcesToPort)
+    {
+        HashSet<int> portUIndexes = sourcesToPort.Select(export => export.UIndex).ToHashSet();
+        Dictionary<string, IEntry> companionEntries = _companionPcc.Exports.Cast<IEntry>()
+            .Concat(_companionPcc.Imports)
+            .GroupBy(EntrySyncKey, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        foreach (IEntry sourceEntry in Pcc.Exports.Cast<IEntry>().Concat(Pcc.Imports))
+        {
+            if (sourceEntry is ExportEntry sourceExport && portUIndexes.Contains(sourceExport.UIndex))
+            {
+                continue;
+            }
+            if (companionEntries.TryGetValue(EntrySyncKey(sourceEntry), out IEntry companionEntry))
+            {
+                relinkerOptions.CrossPackageMap[sourceEntry] = companionEntry;
+                relinkerOptions.RelinkMapEntriesToSkip.Add(sourceEntry);
+            }
+        }
+    }
+
+    private static string EntrySyncKey(IEntry entry) => $"{entry.ClassName}|{entry.InstancedFullPath}";
+
+    private List<ExportEntry> PrepareFullGalaxySync(ExportEntry sourceGalaxy, ExportEntry companionGalaxy)
+    {
+        List<ExportEntry> sourceExports = GetGalaxyExports(sourceGalaxy);
+        HashSet<string> sourceKeys = sourceExports.Select(GalaxySyncKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<ExportEntry> companionOnly = GetGalaxyExports(companionGalaxy)
+            .Where(export => !sourceKeys.Contains(GalaxySyncKey(export))).ToList();
+        HashSet<int> companionOnlyIndexes = companionOnly.Select(export => export.UIndex).ToHashSet();
+        foreach (ExportEntry extraRoot in companionOnly.Where(export =>
+                     export.Parent is not ExportEntry parent || !companionOnlyIndexes.Contains(parent.UIndex)))
+        {
+            EntryPruner.TrashEntryAndDescendants(extraRoot);
+        }
+        return sourceExports;
     }
 
     private void BuildHierarchy(ExportEntry galaxy)
@@ -918,6 +1212,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             _suppressPackageRefresh = true;
             node.Export.WriteProperties(properties);
             _suppressPackageRefresh = false;
+            SynchronizeCompanionFromAuthoritative(fullHierarchy: false, [node.Export], showErrors: false);
             RenderCurrentLevel();
             UpdateStatus();
         }
@@ -1090,6 +1385,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         WriteRelayReference(first.Export, second.Export, true);
         WriteRelayReference(second.Export, first.Export, true);
         _suppressPackageRefresh = false;
+        SynchronizeCompanionFromAuthoritative(fullHierarchy: false, [first.Export, second.Export], showErrors: false);
         RenderCurrentLevel();
     }
 
@@ -1099,6 +1395,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         WriteRelayReference(first.Export, second.Export, false);
         WriteRelayReference(second.Export, first.Export, false);
         _suppressPackageRefresh = false;
+        SynchronizeCompanionFromAuthoritative(fullHierarchy: false, [first.Export, second.Export], showErrors: false);
         RenderCurrentLevel();
     }
 
@@ -1372,6 +1669,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             AddChildReferences(parent, created);
             parentReferencesAdded = true;
             RebuildHierarchy(currentIndex, created.UIndex);
+            SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: false);
             if (_nodesByUIndex.TryGetValue(created.UIndex, out SFXGalaxyNode createdNode))
             {
                 SelectTreeNode(createdNode);
@@ -1512,6 +1810,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             parentReferencesAdded = true;
             int currentIndex = CurrentNode?.Export.UIndex ?? parent.Export.UIndex;
             RebuildHierarchy(currentIndex, clone.UIndex);
+            SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: false);
             if (_nodesByUIndex.TryGetValue(clone.UIndex, out SFXGalaxyNode created))
             {
                 SelectTreeNode(created);
@@ -1634,6 +1933,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             RemoveChildReferences(parent.Export, target.Export);
             EntryPruner.TrashEntryAndDescendants(target.Export);
             RebuildHierarchy(parent.Export.UIndex, parent.Export.UIndex);
+            SynchronizeCompanionFromAuthoritative(fullHierarchy: true, changedExports: null, showErrors: false);
         }
         finally
         {
@@ -1703,7 +2003,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
         string path = CurrentNode is null ? string.Empty : string.Join(" › ", GetPath(CurrentNode).Select(node => node.DisplayName));
         string selection = SelectedNode is null ? string.Empty : $"  |  Selected: {SelectedNode.DisplayName} ({SelectedNode.PosX}, {SelectedNode.PosY})";
-        StatusText = $"{Path.GetFileName(Pcc.FilePath)}  |  {path}{selection}";
+        StatusText = $"{Path.GetFileName(Pcc.FilePath)}  |  {path}{selection}  |  {CompanionSyncStatus}";
     }
 
     private static IEnumerable<SFXGalaxyNode> GetPath(SFXGalaxyNode node)
@@ -1760,10 +2060,21 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     public override void HandleUpdate(List<PackageUpdate> updates)
     {
-        if (_suppressPackageRefresh || Pcc is null || !updates.Any(update => update.Change.HasFlag(PackageChange.Export)))
+        if (_suppressPackageRefresh || Pcc is null)
         {
             return;
         }
+        List<PackageUpdate> exportUpdates = updates.Where(update => update.Change.HasFlag(PackageChange.Export)).ToList();
+        if (exportUpdates.Count == 0)
+        {
+            return;
+        }
+        foreach (PackageUpdate update in exportUpdates.Where(update => update.Index > 0))
+        {
+            _pendingCompanionSyncUIndexes.Add(update.Index);
+        }
+        _pendingCompanionFullSync |= exportUpdates.Any(update =>
+            update.Change.HasFlag(PackageChange.Add) || update.Change.HasFlag(PackageChange.Remove));
         if (_refreshQueued)
         {
             return;
@@ -1776,7 +2087,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             _refreshQueued = false;
+            List<ExportEntry> changedExports = _pendingCompanionSyncUIndexes
+                .Where(index => index <= Pcc.ExportCount)
+                .Select(index => Pcc.GetUExport(index)).Where(export => export is not null).ToList();
+            bool fullSync = _pendingCompanionFullSync;
+            _pendingCompanionSyncUIndexes.Clear();
+            _pendingCompanionFullSync = false;
             RebuildHierarchy(currentIndex, selectedIndex, selectedWasStar, editableExportIndex);
+            SynchronizeCompanionFromAuthoritative(fullSync, changedExports, showErrors: false);
         }));
     }
 
