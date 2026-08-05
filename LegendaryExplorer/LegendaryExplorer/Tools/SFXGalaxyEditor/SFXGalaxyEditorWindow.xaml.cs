@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using LegendaryExplorer.Dialogs;
@@ -33,6 +35,8 @@ using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
+using LECTexture2D = LegendaryExplorerCore.Unreal.Classes.Texture2D;
+using Texture2DMipInfo = LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo;
 
 namespace LegendaryExplorer.Tools.SFXGalaxyEditor;
 
@@ -45,11 +49,15 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private const int MapExtent = 1024;
     private const string VanillaGalaxyMapFile = "BioD_Nor_203aGalaxyMap.pcc";
     private const string CompanionGalaxyMapFile = "BioD_Nor_203CIC.pcc";
+    private const string GalaxyArtFile = "BioA_Nor_203aGalaxyMap.pcc";
+    private const string GalaxyTexturePath = "BIOA_GalaxyMap_T.galaxy";
 
     private readonly Dictionary<int, SFXGalaxyNode> _nodesByUIndex = [];
     private readonly Dictionary<int, string> _tlkCache = [];
     private readonly Dictionary<SFXGalaxyNode, FrameworkElement> _markerElements = [];
     private readonly Dictionary<SFXGalaxyNode, Point> _visibleCenters = [];
+    private readonly Dictionary<string, ImageSource> _backgroundTextureCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly PackageCache _texturePackageCache = new();
     private string _queuedFile;
     private int _queuedExportUIndex;
     private string _queuedExportPath;
@@ -61,9 +69,12 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private bool _companionNeedsFullSync;
     private readonly HashSet<int> _pendingCompanionSyncUIndexes = [];
     private bool _pendingCompanionFullSync;
+    private ImageSource _galaxyBackground;
+    private string _galaxyArtPackagePath;
 
     public string AuthoritativePackagePath => Pcc?.FilePath ?? string.Empty;
     public string CompanionPackagePath => _companionPcc?.FilePath ?? string.Empty;
+    public string GalaxyArtPackagePath => _galaxyArtPackagePath ?? string.Empty;
 
     private string _companionSyncStatus = "Companion package not loaded.";
     public string CompanionSyncStatus
@@ -274,6 +285,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         HierarchyRoots.ClearEx();
         SearchResults.ClearEx();
         EditableExports.ClearEx();
+        UnloadVisualAssets();
         UnloadCompanionPackage();
         UnLoadMEPackage();
     }
@@ -294,16 +306,18 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void OpenHighestMountedGalaxyMap(bool showErrors)
     {
-        if (TryResolveHighestMountedPair(showErrors, out string galaxyMapPath, out string companionPath))
+        if (TryResolveHighestMountedPair(showErrors, out string galaxyMapPath, out string companionPath, out string galaxyArtPath))
         {
-            LoadPackagePair(galaxyMapPath, companionPath);
+            LoadPackagePair(galaxyMapPath, companionPath, galaxyArtPath);
         }
     }
 
-    private bool TryResolveHighestMountedPair(bool showErrors, out string galaxyMapPath, out string companionPath)
+    private bool TryResolveHighestMountedPair(bool showErrors, out string galaxyMapPath, out string companionPath,
+        out string galaxyArtPath)
     {
         galaxyMapPath = null;
         companionPath = null;
+        galaxyArtPath = null;
         if (string.IsNullOrWhiteSpace(MEDirectories.GetDefaultGamePath(MEGame.LE3)))
         {
             if (showErrors)
@@ -317,14 +331,16 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
         bool foundGalaxyMap = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, VanillaGalaxyMapFile, out galaxyMapPath);
         bool foundCompanion = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, CompanionGalaxyMapFile, out companionPath);
-        if (!foundGalaxyMap || !foundCompanion)
+        bool foundGalaxyArt = MELoadedFiles.TryGetHighestMountedFile(MEGame.LE3, GalaxyArtFile, out galaxyArtPath);
+        if (!foundGalaxyMap || !foundCompanion || !foundGalaxyArt)
         {
             if (showErrors)
             {
                 string missing = string.Join(" and ", new[]
                 {
                     foundGalaxyMap ? null : VanillaGalaxyMapFile,
-                    foundCompanion ? null : CompanionGalaxyMapFile
+                    foundCompanion ? null : CompanionGalaxyMapFile,
+                    foundGalaxyArt ? null : GalaxyArtFile
                 }.Where(name => name is not null));
                 MessageBox.Show(this, $"Could not locate the highest-mounted {missing} in the configured LE3 installation.",
                     "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -336,18 +352,20 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     public void LoadFile(string fileName)
     {
-        if (TryResolveHighestMountedPair(showErrors: true, out string galaxyMapPath, out string companionPath))
+        if (TryResolveHighestMountedPair(showErrors: true, out string galaxyMapPath, out string companionPath,
+                out string galaxyArtPath))
         {
-            LoadPackagePair(galaxyMapPath, companionPath);
+            LoadPackagePair(galaxyMapPath, companionPath, galaxyArtPath);
         }
     }
 
-    private void LoadPackagePair(string galaxyMapPath, string companionPath)
+    private void LoadPackagePair(string galaxyMapPath, string companionPath, string galaxyArtPath)
     {
         try
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
+            UnloadVisualAssets();
             UnloadCompanionPackage();
             LoadMEPackage(galaxyMapPath);
 
@@ -368,6 +386,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 throw new InvalidDataException($"{CompanionGalaxyMapFile} does not contain a compatible LE3 SFXGalaxy instance.");
             }
 
+            LoadGalaxyBackground(galaxyArtPath);
             RebuildHierarchy(galaxy.UIndex, galaxy.UIndex);
             _companionNeedsFullSync = true;
             (int sourceCount, int companionCount, int differences) = CompareGalaxyStructure(Pcc, _companionPcc);
@@ -381,12 +400,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             OnPropertyChanged(nameof(Pcc));
             OnPropertyChanged(nameof(AuthoritativePackagePath));
             OnPropertyChanged(nameof(CompanionPackagePath));
+            OnPropertyChanged(nameof(GalaxyArtPackagePath));
             UpdateStatus();
         }
         catch (Exception exception)
         {
             PropertiesInterpreter.UnloadExport();
             MetadataLoader.UnloadExport();
+            UnloadVisualAssets();
             UnloadCompanionPackage();
             UnLoadMEPackage();
             HierarchyRoots.ClearEx();
@@ -480,6 +501,100 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         _pendingCompanionFullSync = false;
         OnPropertyChanged(nameof(CompanionPackagePath));
         CompanionSyncStatus = "Companion package not loaded.";
+    }
+
+    private void LoadGalaxyBackground(string galaxyArtPath)
+    {
+        _galaxyArtPackagePath = galaxyArtPath;
+        OnPropertyChanged(nameof(GalaxyArtPackagePath));
+        IMEPackage galaxyArt = MEPackageHandler.OpenMEPackage(galaxyArtPath);
+        try
+        {
+            if (galaxyArt.Game != MEGame.LE3)
+            {
+                throw new InvalidDataException($"{GalaxyArtFile} is not a Legendary Edition 3 package.");
+            }
+            ExportEntry galaxyTexture = galaxyArt.FindExport(GalaxyTexturePath, "Texture2D")
+                ?? throw new InvalidDataException($"{GalaxyArtFile} does not contain {GalaxyTexturePath}.");
+            _galaxyBackground = DecodeBackgroundTexture(galaxyTexture)
+                ?? throw new InvalidDataException($"Could not decode {GalaxyTexturePath} from {GalaxyArtFile}.");
+        }
+        finally
+        {
+            galaxyArt.Release();
+        }
+    }
+
+    private void UnloadVisualAssets()
+    {
+        _galaxyBackground = null;
+        _galaxyArtPackagePath = null;
+        _backgroundTextureCache.Clear();
+        _texturePackageCache.ReleasePackages();
+        OnPropertyChanged(nameof(GalaxyArtPackagePath));
+    }
+
+    private ImageSource DecodeBackgroundTexture(ExportEntry textureExport)
+    {
+        if (textureExport is null || !textureExport.IsA("Texture2D"))
+        {
+            return null;
+        }
+
+        string cacheKey = $"{textureExport.FileRef.FilePath}|{textureExport.UIndex}|{textureExport.DataSize}";
+        if (_backgroundTextureCache.TryGetValue(cacheKey, out ImageSource cached))
+        {
+            return cached;
+        }
+
+        try
+        {
+            LECTexture2D texture = new(textureExport);
+            Texture2DMipInfo mip = texture.Mips
+                .Where(candidate => candidate.storageType != StorageTypes.empty
+                                    && candidate.width <= MapExtent && candidate.height <= MapExtent)
+                .OrderByDescending(candidate => (long)candidate.width * candidate.height)
+                .FirstOrDefault() ?? texture.GetTopMip();
+            if (mip is null)
+            {
+                return null;
+            }
+
+            byte[] png;
+            try
+            {
+                png = texture.GetPNG(mip);
+            }
+            catch (FileNotFoundException)
+            {
+                Texture2DMipInfo packageMip = texture.Mips
+                    .Where(candidate => candidate.storageType is StorageTypes.pccUnc or StorageTypes.pccLZO
+                        or StorageTypes.pccZlib or StorageTypes.pccOodle)
+                    .OrderByDescending(candidate => (long)candidate.width * candidate.height)
+                    .FirstOrDefault();
+                if (packageMip is null || ReferenceEquals(packageMip, mip))
+                {
+                    throw;
+                }
+                png = texture.GetPNG(packageMip);
+            }
+
+            using MemoryStream stream = new(png, writable: false);
+            BitmapImage bitmap = new();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.DecodePixelWidth = MapExtent;
+            bitmap.StreamSource = stream;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            _backgroundTextureCache[cacheKey] = bitmap;
+            return bitmap;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Could not decode galaxy map texture {textureExport.InstancedFullPath}: {exception}");
+            return null;
+        }
     }
 
     private bool SynchronizeCompanionFromAuthoritative(bool fullHierarchy,
@@ -895,7 +1010,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return;
         }
 
-        DrawSpaceBackground();
+        DrawLevelBackground();
         if (ShowCoordinateGrid)
         {
             DrawCoordinateGrid();
@@ -914,6 +1029,56 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             DrawMarker(node);
         }
         OnPropertyChanged(nameof(CurrentObjectCountText));
+    }
+
+    private void DrawLevelBackground()
+    {
+        ImageSource background = CurrentNode.Kind switch
+        {
+            SFXGalaxyNodeKind.Galaxy => _galaxyBackground,
+            SFXGalaxyNodeKind.Cluster => GetClusterBackground(CurrentNode),
+            _ => null
+        };
+        if (background is null)
+        {
+            DrawSpaceBackground();
+            return;
+        }
+
+        MapCanvas.Children.Add(new Image
+        {
+            Width = MapExtent,
+            Height = MapExtent,
+            Source = background,
+            Stretch = Stretch.Fill,
+            IsHitTestVisible = false,
+            SnapsToDevicePixels = true
+        });
+    }
+
+    private ImageSource GetClusterBackground(SFXGalaxyNode cluster)
+    {
+        ObjectProperty textureReference = cluster.Export.GetProperty<ObjectProperty>("ClusterTexture");
+        if (textureReference is null || textureReference.Value == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            IEntry textureEntry = textureReference.ResolveToEntry(cluster.Export.FileRef);
+            ExportEntry textureExport = textureEntry as ExportEntry;
+            if (textureExport is null && textureEntry is ImportEntry textureImport)
+            {
+                EntryImporter.TryResolveImport(textureImport, out textureExport, cache: _texturePackageCache);
+            }
+            return DecodeBackgroundTexture(textureExport);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Could not resolve ClusterTexture for {cluster.Export.InstancedFullPath}: {exception}");
+            return null;
+        }
     }
 
     private void DrawSpaceBackground()

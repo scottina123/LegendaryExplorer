@@ -92,7 +92,7 @@
                     <StackPanel Grid.Column="0" Margin="60" VerticalAlignment="Center">
                         <TextBlock Text="SFXGalaxy Editor" FontSize="25" FontWeight="SemiBold" />
                         <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                                   Text="Open the highest-mounted BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc together. The viewport edits the former and synchronizes its SFXGalaxy hierarchy into the latter." />
+                                   Text="Open the highest-mounted BioD_Nor_203aGalaxyMap.pcc and BioD_Nor_203CIC.pcc together. The viewport edits the former, synchronizes its SFXGalaxy hierarchy into the latter, and uses BioA_Nor_203aGalaxyMap.pcc for the galaxy background." />
                         <Button Margin="0,20,0,0" Padding="14,8" HorizontalAlignment="Left" Content="Open highest-mounted LE3 galaxy map pair" Click="OpenVanilla_Click" />
                     </StackPanel>
                     <sharedToolControls:RecentsControl x:Name="RecentsController" Grid.Column="1" Margin="50" />
@@ -147,6 +147,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <DockPanel Margin="8,2,8,7">
@@ -163,7 +164,11 @@
                             <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Synced companion:" />
                             <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding CompanionPackagePath, Mode=OneWay}" ToolTip="{Binding CompanionSyncStatus}" />
                         </DockPanel>
-                        <Border Grid.Row="3" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1" Background="#FF02070D">
+                        <DockPanel Grid.Row="3" Margin="8,0,8,4" LastChildFill="True">
+                            <TextBlock Width="105" Margin="0,0,7,0" VerticalAlignment="Center" Foreground="Gray" Text="Galaxy artwork:" />
+                            <TextBox Padding="4,2" IsReadOnly="True" Text="{Binding GalaxyArtPackagePath, Mode=OneWay}" ToolTip="{Binding GalaxyArtPackagePath}" />
+                        </DockPanel>
+                        <Border Grid.Row="4" Margin="5" BorderBrush="#335E7B8C" BorderThickness="1" Background="#FF02070D">
                             <Grid>
                                 <Viewbox Stretch="Uniform">
                                     <Canvas x:Name="MapCanvas" Width="1024" Height="1024" Background="Transparent"
