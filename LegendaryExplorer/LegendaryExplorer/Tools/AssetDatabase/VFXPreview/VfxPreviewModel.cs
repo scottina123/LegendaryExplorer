@@ -37,8 +37,22 @@ public enum VfxEmitterRenderMode
     Mesh,
     Beam,
     Trail,
+    Procedural,
     Unsupported
 }
+
+public enum VfxProceduralKind
+{
+    LensFlare,
+    Framebuffer,
+    EffectsMaterial,
+    CameraShake,
+    SkeletalMesh,
+    SpawnActor,
+    Decal
+}
+
+public sealed record VfxProceduralDefinition(VfxProceduralKind Kind, float Scale, Vector4 Color, IEntry SourceAsset = null);
 
 /// <summary>
 /// EMeshScreenAlignment, as declared by ParticleModuleTypeDataMesh in Engine.
@@ -208,6 +222,11 @@ public sealed record VfxLocationSpawnInitializer(IVfxDistribution<Vector3> Locat
 
 public sealed record VfxVelocitySpawnInitializer(IVfxDistribution<Vector3> Velocity) : VfxSpawnInitializer;
 
+public sealed record VfxEmitterLocationSpawnInitializer(
+    string EmitterName,
+    bool InheritVelocity,
+    float InheritVelocityScale) : VfxSpawnInitializer;
+
 public sealed record VfxCylinderSpawnInitializer(
     IVfxDistribution<Vector3> StartLocation,
     IVfxDistribution<float> StartRadius,
@@ -248,6 +267,41 @@ public sealed record VfxOrbitSpawnInitializer(
     bool OffsetUsesEmitterTime,
     bool RotationUsesEmitterTime,
     bool RotationRateUsesEmitterTime) : VfxSpawnInitializer;
+
+public enum VfxCollisionCompletion
+{
+    Freeze,
+    HaltCollisions,
+    Kill,
+    FreezeTranslation,
+    FreezeRotation,
+    FreezeMovement
+}
+
+public sealed record VfxCollisionDefinition(
+    IVfxDistribution<Vector3> Damping,
+    IVfxDistribution<float> Delay,
+    IVfxDistribution<float> MaximumCollisions,
+    VfxCollisionCompletion Completion);
+
+public sealed record VfxPointAttractorDefinition(
+    IVfxDistribution<Vector3> Position,
+    IVfxDistribution<float> Range,
+    IVfxDistribution<float> Strength,
+    bool StrengthByDistance,
+    bool OverrideVelocity);
+
+public sealed record VfxParticleAttractorDefinition(
+    string EmitterName,
+    IVfxDistribution<float> Range,
+    IVfxDistribution<float> Strength,
+    bool InheritSourceVelocity);
+
+public sealed record VfxBeamDefinition(
+    IVfxDistribution<Vector3> Source,
+    IVfxDistribution<Vector3> Target,
+    IVfxDistribution<float> Distance,
+    int InterpolationPoints);
 
 public enum VfxPreviewShadingMode
 {
@@ -421,10 +475,21 @@ public sealed class VfxEmitterDefinition
     public IVfxDistribution<Vector3> VelocityOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
     public bool VelocityOverLifeIsAbsolute { get; init; }
     public IVfxDistribution<Vector3> AccelerationOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+    /// <summary>
+    /// ParticleModuleSourceMovement's component-motion multiplier. The preview component is stationary at the
+    /// grid origin, so this is evaluated by the simulation against a zero source-motion delta.
+    /// </summary>
+    public IVfxDistribution<Vector3> SourceMovementScale { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
+    public bool EventSpawnAtSystemLocation { get; init; }
     public bool UseLocalSpace { get; init; }
     public IReadOnlyList<VfxKillVolume> KillVolumes { get; init; } = [];
     public VfxEmitterRenderMode RenderMode { get; init; } = VfxEmitterRenderMode.Sprite;
     public VfxMeshEmitterDefinition MeshEmitter { get; init; }
+    public VfxCollisionDefinition Collision { get; init; }
+    public IReadOnlyList<VfxPointAttractorDefinition> PointAttractors { get; init; } = [];
+    public IReadOnlyList<VfxParticleAttractorDefinition> ParticleAttractors { get; init; } = [];
+    public VfxBeamDefinition Beam { get; init; }
+    public VfxProceduralDefinition Procedural { get; init; }
     public bool IsSpriteEmitter => RenderMode == VfxEmitterRenderMode.Sprite;
     public List<VfxSpawnInitializer> SpawnInitializers { get; } = [];
 }
@@ -472,6 +537,8 @@ public struct VfxParticle
     public float BaseRotation;
     public float RandomImageTimer;
     public int RandomImageChangesRemaining;
+    public int RemainingCollisions;
+    public bool CollisionDisabled;
 
     public readonly float RelativeTime => Lifetime <= 0 ? 1 : Math.Clamp(Age / Lifetime, 0, 1);
     public readonly bool IsAlive => Age < Lifetime;
@@ -480,5 +547,5 @@ public struct VfxParticle
 public interface IVfxSourceAdapter
 {
     bool CanAdapt(ExportEntry export);
-    VfxPreviewDefinition CreateDefinition(ExportEntry export);
+    VfxPreviewDefinition CreateDefinition(ExportEntry export, PackageCache packageCache = null);
 }

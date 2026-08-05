@@ -1314,12 +1314,34 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     yield return new VfxImportFallback(filePath, usage.UIndex);
                 }
             }
+
+            if (import.ClassName.StartsWith("Texture", StringComparison.Ordinal))
+            {
+                IEnumerable<TextureRecord> matchingTextures = CurrentDataBase.Textures.Where(texture =>
+                    string.Equals(GetVfxTexturePath(texture), importPath, StringComparison.OrdinalIgnoreCase));
+                foreach (TextureUsage usage in matchingTextures.SelectMany(texture => texture.Usages)
+                             .Where(usage => usage.FileKey >= 0 && usage.FileKey < FileListExtended.Count)
+                             .OrderBy(usage => usage.IsInDLC))
+                {
+                    string filePath = GetFilePath(usage.FileKey);
+                    if (File.Exists(filePath))
+                    {
+                        yield return new VfxImportFallback(filePath, usage.UIndex);
+                    }
+                }
+            }
         }
 
-        internal static string GetVfxMaterialPath(MaterialRecord material)
+        public static string GetVfxMaterialPath(MaterialRecord material)
         {
             string parent = material?.ParentPackage?.Replace('\\', '.').Replace('/', '.').Trim('.');
             return string.IsNullOrWhiteSpace(parent) ? material?.MaterialName : $"{parent}.{material.MaterialName}";
+        }
+
+        public static string GetVfxTexturePath(TextureRecord texture)
+        {
+            string parent = texture?.ParentPackage?.Replace('\\', '.').Replace('/', '.').Trim('.');
+            return string.IsNullOrWhiteSpace(parent) ? texture?.TextureName : $"{parent}.{texture.TextureName}";
         }
 
         private void UnloadVfxPreview()

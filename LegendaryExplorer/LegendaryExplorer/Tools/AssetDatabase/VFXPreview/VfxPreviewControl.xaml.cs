@@ -161,7 +161,7 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
 
         try
         {
-            VfxPreviewDefinition definition = sourceAdapter.CreateDefinition(export);
+            VfxPreviewDefinition definition = sourceAdapter.CreateDefinition(export, RenderContext.PackageCache);
             RenderContext.Load(definition, fallbackResolver);
             WarningText = RenderContext.RuntimeWarning;
             Viewport.MarkRenderDirty();

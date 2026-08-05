@@ -11,6 +11,7 @@ public sealed class VfxSimulation
     private const float MaximumPreviewCoordinate = 1_000_000f;
     private readonly List<VfxEmitterState> emitters = [];
     private VfxRandom random = new(0x4C455856u);
+    private Vector3 previousSourcePosition;
 
     public VfxPreviewDefinition Definition { get; private set; }
     public IReadOnlyList<VfxEmitterState> Emitters => emitters;
@@ -18,6 +19,8 @@ public sealed class VfxSimulation
     public bool Loop { get; set; } = true;
     public float Time { get; private set; }
     public float SystemDelay { get; private set; }
+    /// <summary>Owning component position used by ParticleModuleSourceMovement. It is the grid origin by default.</summary>
+    public Vector3 SourcePosition { get; set; }
     public int ParticleCount => emitters.Sum(emitter => emitter.Particles.Count);
 
     public void Load(VfxPreviewDefinition definition)
@@ -33,6 +36,7 @@ public sealed class VfxSimulation
     public void Restart()
     {
         Time = 0;
+        previousSourcePosition = SourcePosition;
         random = new VfxRandom(0x4C455856u);
         emitters.Clear();
         if (Definition is not null)
@@ -116,9 +120,10 @@ public sealed class VfxSimulation
             return;
         }
         bool allFinished = true;
+        Vector3 sourceMovement = SourcePosition - previousSourcePosition;
         foreach (VfxEmitterState emitter in emitters)
         {
-            UpdateParticles(emitter, timestep);
+            UpdateParticles(emitter, timestep, sourceMovement);
             bool spawningFinished = SpawnParticles(emitter, timestep);
             if (spawningFinished && emitter.Definition.KillOnCompleted)
             {
@@ -127,6 +132,7 @@ public sealed class VfxSimulation
             }
             allFinished &= spawningFinished && emitter.Particles.Count == 0;
         }
+        previousSourcePosition = SourcePosition;
 
         if (allFinished)
         {
@@ -141,7 +147,7 @@ public sealed class VfxSimulation
         }
     }
 
-    private static void UpdateParticles(VfxEmitterState emitter, float timestep)
+    private void UpdateParticles(VfxEmitterState emitter, float timestep, Vector3 sourceMovement)
     {
         for (int index = emitter.Particles.Count - 1; index >= 0; index--)
         {
@@ -153,14 +159,22 @@ public sealed class VfxSimulation
                 continue;
             }
             float relativeTime = particle.RelativeTime;
+            particle.Position += sourceMovement
+                * emitter.Definition.SourceMovementScale.Evaluate(relativeTime, particle.Random);
             Vector3 acceleration = particle.Acceleration
                 + emitter.Definition.AccelerationOverLife.Evaluate(relativeTime, particle.Random);
+            ApplyAttractors(emitter, ref particle, ref acceleration, relativeTime);
             particle.BaseVelocity += acceleration * timestep;
             Vector3 velocityOverLife = emitter.Definition.VelocityOverLife.Evaluate(relativeTime, particle.Random);
             particle.Velocity = emitter.Definition.VelocityOverLifeIsAbsolute
                 ? velocityOverLife
                 : particle.BaseVelocity * velocityOverLife;
             particle.Position += particle.Velocity * timestep;
+            if (ApplyGroundCollision(emitter.Definition, ref particle, relativeTime))
+            {
+                emitter.Particles.RemoveAt(index);
+                continue;
+            }
             if (IsKilled(emitter.Definition, particle, relativeTime))
             {
                 emitter.Particles.RemoveAt(index);
@@ -296,7 +310,9 @@ public sealed class VfxSimulation
             float initialRotation = emitter.Definition.InitialRotation.Evaluate(emitterTime, random.NextFloat());
             var particle = new VfxParticle
             {
-                Position = emitter.Definition.InitialLocation.Evaluate(emitterTime, random.NextFloat()),
+                Position = emitter.Definition.EventSpawnAtSystemLocation
+                    ? Vector3.Zero
+                    : emitter.Definition.InitialLocation.Evaluate(emitterTime, random.NextFloat()),
                 BaseVelocity = initialVelocity,
                 Velocity = initialVelocity,
                 BaseSize = baseSize,
@@ -307,14 +323,16 @@ public sealed class VfxSimulation
                 RotationRate = emitter.Definition.RotationRate.Evaluate(emitterTime, random.NextFloat()),
                 Lifetime = lifetime,
                 Random = sample,
-                RandomImageChangesRemaining = emitter.Definition.RandomImageChanges
+                RandomImageChangesRemaining = emitter.Definition.RandomImageChanges,
+                RemainingCollisions = Math.Max(0, (int)MathF.Round(
+                    emitter.Definition.Collision?.MaximumCollisions.Evaluate(0, sample) ?? 0))
             };
             if (emitter.Definition.MeshEmitter is { } meshDefinition)
             {
                 particle.MeshRotation = meshDefinition.StartRotation.Evaluate(emitterTime, random.NextFloat());
                 particle.MeshRotationRate = meshDefinition.StartRotationRate.Evaluate(emitterTime, random.NextFloat());
             }
-            ApplySpawnInitializers(emitter.Definition, ref particle, emitterTime);
+            ApplySpawnInitializers(emitter, ref particle, emitterTime);
             particle.BaseVelocity = particle.Velocity;
             UpdateDynamicParameters(emitter, ref particle, spawn: true);
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
@@ -322,8 +340,9 @@ public sealed class VfxSimulation
         }
     }
 
-    private void ApplySpawnInitializers(VfxEmitterDefinition definition, ref VfxParticle particle, float emitterTime)
+    private void ApplySpawnInitializers(VfxEmitterState emitter, ref VfxParticle particle, float emitterTime)
     {
+        VfxEmitterDefinition definition = emitter.Definition;
         foreach (VfxSpawnInitializer initializer in definition.SpawnInitializers)
         {
             switch (initializer)
@@ -333,6 +352,9 @@ public sealed class VfxSimulation
                     break;
                 case VfxVelocitySpawnInitializer velocity:
                     particle.Velocity += velocity.Velocity.Evaluate(emitterTime, random.NextFloat());
+                    break;
+                case VfxEmitterLocationSpawnInitializer sourceLocation:
+                    ApplyEmitterLocationInitializer(sourceLocation, ref particle);
                     break;
                 case VfxCylinderSpawnInitializer cylinder:
                     ApplyCylinderInitializer(cylinder, ref particle, emitterTime);
@@ -619,6 +641,121 @@ public sealed class VfxSimulation
             }
             particle.DynamicParameter[index] = value;
         }
+    }
+
+    private void ApplyEmitterLocationInitializer(VfxEmitterLocationSpawnInitializer initializer, ref VfxParticle particle)
+    {
+        VfxEmitterState source = emitters.FirstOrDefault(candidate =>
+            string.Equals(candidate.Definition.Name, initializer.EmitterName, StringComparison.OrdinalIgnoreCase));
+        if (source?.Particles.Count > 0)
+        {
+            VfxParticle sourceParticle = source.Particles[random.NextInt(0, source.Particles.Count)];
+            particle.Position += sourceParticle.Position + sourceParticle.OrbitOffset;
+            if (initializer.InheritVelocity)
+            {
+                particle.Velocity += sourceParticle.Velocity * initializer.InheritVelocityScale;
+            }
+        }
+    }
+
+    private void ApplyAttractors(VfxEmitterState emitter, ref VfxParticle particle, ref Vector3 acceleration, float relativeTime)
+    {
+        foreach (VfxPointAttractorDefinition attractor in emitter.Definition.PointAttractors)
+        {
+            Vector3 delta = attractor.Position.Evaluate(relativeTime, particle.Random) - particle.Position;
+            float distance = delta.Length();
+            float range = Math.Max(0.0001f, attractor.Range.Evaluate(relativeTime, particle.Random));
+            if (distance <= 0.0001f || distance > range)
+            {
+                continue;
+            }
+            float strength = attractor.Strength.Evaluate(relativeTime, particle.Random);
+            if (attractor.StrengthByDistance)
+            {
+                strength *= 1 - (distance / range);
+            }
+            Vector3 pull = delta / distance * strength;
+            if (attractor.OverrideVelocity)
+            {
+                particle.BaseVelocity = pull;
+                particle.Velocity = pull;
+            }
+            else
+            {
+                acceleration += pull;
+            }
+        }
+
+        foreach (VfxParticleAttractorDefinition attractor in emitter.Definition.ParticleAttractors)
+        {
+            VfxEmitterState source = emitters.FirstOrDefault(candidate =>
+                string.Equals(candidate.Definition.Name, attractor.EmitterName, StringComparison.OrdinalIgnoreCase));
+            if (source?.Particles.Count is not > 0)
+            {
+                continue;
+            }
+            VfxParticle sourceParticle = source.Particles[(int)(particle.Random * source.Particles.Count) % source.Particles.Count];
+            Vector3 delta = sourceParticle.Position - particle.Position;
+            float distance = delta.Length();
+            float range = Math.Max(0.0001f, attractor.Range.Evaluate(relativeTime, particle.Random));
+            if (distance > 0.0001f && distance <= range)
+            {
+                acceleration += delta / distance * attractor.Strength.Evaluate(relativeTime, particle.Random);
+                if (attractor.InheritSourceVelocity)
+                {
+                    particle.BaseVelocity += sourceParticle.Velocity;
+                }
+            }
+        }
+    }
+
+    private static bool ApplyGroundCollision(VfxEmitterDefinition definition, ref VfxParticle particle, float relativeTime)
+    {
+        VfxCollisionDefinition collision = definition.Collision;
+        if (collision is null || particle.CollisionDisabled || particle.Age < collision.Delay.Evaluate(relativeTime, particle.Random)
+            || particle.Position.Z >= 0 || particle.Velocity.Z >= 0)
+        {
+            return false;
+        }
+
+        particle.Position.Z = 0;
+        Vector3 damping = Vector3.Abs(collision.Damping.Evaluate(relativeTime, particle.Random));
+        particle.BaseVelocity = new Vector3(
+            particle.BaseVelocity.X * damping.X,
+            particle.BaseVelocity.Y * damping.Y,
+            MathF.Abs(particle.BaseVelocity.Z) * damping.Z);
+        particle.Velocity = particle.BaseVelocity;
+        particle.RemainingCollisions--;
+        if (particle.RemainingCollisions > 0)
+        {
+            return false;
+        }
+
+        switch (collision.Completion)
+        {
+            case VfxCollisionCompletion.Kill:
+                return true;
+            case VfxCollisionCompletion.HaltCollisions:
+                particle.CollisionDisabled = true;
+                break;
+            case VfxCollisionCompletion.FreezeRotation:
+                particle.RotationRate = 0;
+                particle.MeshRotationRate = Vector3.Zero;
+                break;
+            case VfxCollisionCompletion.FreezeTranslation:
+            case VfxCollisionCompletion.FreezeMovement:
+            case VfxCollisionCompletion.Freeze:
+                particle.BaseVelocity = Vector3.Zero;
+                particle.Velocity = Vector3.Zero;
+                particle.Acceleration = Vector3.Zero;
+                if (collision.Completion != VfxCollisionCompletion.FreezeTranslation)
+                {
+                    particle.RotationRate = 0;
+                    particle.MeshRotationRate = Vector3.Zero;
+                }
+                break;
+        }
+        return false;
     }
 
     public bool TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum)

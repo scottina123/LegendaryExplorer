@@ -34,6 +34,32 @@ public class VfxPreviewTests
     }
 
     [TestMethod]
+    public void ClientEffectDoesNotCreateProceduralHelperLines()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxClientEffectTest.pcc", MEGame.ME3);
+        ExportEntry clientEffect = package.CreateExport("ClientEffect_0", "RvrClientEffect", indexed: false);
+        ExportEntry lensFlare = package.CreateExport("LensFlare_0", "RvrCEffectModuleLensFlare", indexed: false);
+        clientEffect.WriteProperty(new ObjectProperty(lensFlare.UIndex, "m_pLensFlare"));
+
+        VfxPreviewDefinition definition = new WrappedVfxSourceAdapter().CreateDefinition(clientEffect);
+
+        Assert.IsFalse(definition.Emitters.Any(emitter => emitter.RenderMode == VfxEmitterRenderMode.Procedural));
+    }
+
+    [TestMethod]
+    public void LegacyVfxTemplateRetainsStandaloneVisualMarker()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxTemplateTest.pcc", MEGame.ME2);
+        ExportEntry template = package.CreateExport("Template_0", "BioVFXTemplate", indexed: false);
+        ExportEntry cameraShake = package.CreateExport("CameraShake_0", "BioCameraShake", indexed: false);
+        template.WriteProperty(new ObjectProperty(cameraShake.UIndex, "CameraShake"));
+
+        VfxPreviewDefinition definition = new WrappedVfxSourceAdapter().CreateDefinition(template);
+
+        Assert.IsTrue(definition.Emitters.Any(emitter => emitter.RenderMode == VfxEmitterRenderMode.Procedural));
+    }
+
+    [TestMethod]
     public void CurveDistributionInterpolatesSamples()
     {
         var distribution = new VfxCurveFloatDistribution([0, 10, 20]);
@@ -150,6 +176,14 @@ public class VfxPreviewTests
     }
 
     [TestMethod]
+    public void AssetDatabaseTextureParentPathMatchesImportPath()
+    {
+        var record = new TextureRecord { ParentPackage = "BioVFX_Env_Fire/Textures", TextureName = "Fire_Sparks" };
+
+        Assert.AreEqual("BioVFX_Env_Fire.Textures.Fire_Sparks", AssetDatabaseWindow.GetVfxTexturePath(record));
+    }
+
+    [TestMethod]
     public void BillboardDistanceIncludesOrbitOffset()
     {
         var particle = new VfxParticle
@@ -247,6 +281,24 @@ public class VfxPreviewTests
         });
 
         Assert.AreSame(enabled, ParticleSystemSourceAdapter.SelectEmitterLod(emitter, 0));
+    }
+
+    [TestMethod]
+    public void EmitterWithAllLodsDisabledStillUsesNearestCookedChildForPreview()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxDisabledLodFallbackTest.pcc", MEGame.LE3);
+        ExportEntry emitter = package.CreateExport("ParticleSpriteEmitter_0", "ParticleSpriteEmitter", indexed: false);
+        ExportEntry first = package.CreateExport("ParticleLODLevel_0", "ParticleLODLevel", indexed: false);
+        first.WriteProperty(new BoolProperty(false, "bEnabled"));
+        ExportEntry second = package.CreateExport("ParticleLODLevel_1", "ParticleLODLevel", indexed: false);
+        second.WriteProperty(new BoolProperty(false, "bEnabled"));
+        emitter.WriteProperty(new ArrayProperty<ObjectProperty>("LODLevels")
+        {
+            new(first.UIndex),
+            new(second.UIndex)
+        });
+
+        Assert.AreSame(second, ParticleSystemSourceAdapter.SelectEmitterLod(emitter, 1));
     }
 
     [TestMethod]
@@ -592,6 +644,49 @@ public class VfxPreviewTests
         simulation.Tick(0.2f);
 
         Assert.AreEqual(5, simulation.ParticleCount);
+    }
+
+    [TestMethod]
+    public void SourceMovementAppliesOwningComponentDeltaToExistingParticles()
+    {
+        var definition = new VfxPreviewDefinition { Name = "SourceMovement" };
+        definition.Emitters.Add(new VfxEmitterDefinition
+        {
+            Duration = 1,
+            Loops = 1,
+            Bursts = [new VfxBurst(0, 1)],
+            Lifetime = new VfxConstantDistribution<float>(1),
+            SourceMovementScale = new VfxConstantDistribution<Vector3>(new Vector3(2, 0.5f, 0))
+        });
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+        simulation.Tick(0.01f);
+
+        simulation.SourcePosition = new Vector3(10, 20, 30);
+        simulation.Tick(0.01f);
+
+        AssertVector(new Vector3(20, 10, 0), simulation.Emitters[0].Particles[0].Position);
+    }
+
+    [TestMethod]
+    public void EventReceiverCanSpawnAtParticleSystemOrigin()
+    {
+        var definition = new VfxPreviewDefinition { Name = "EventReceiver" };
+        definition.Emitters.Add(new VfxEmitterDefinition
+        {
+            Duration = 1,
+            Loops = 1,
+            Bursts = [new VfxBurst(0, 1)],
+            Lifetime = new VfxConstantDistribution<float>(1),
+            InitialLocation = new VfxConstantDistribution<Vector3>(new Vector3(100, 200, 300)),
+            EventSpawnAtSystemLocation = true
+        });
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+
+        simulation.Tick(0.01f);
+
+        AssertVector(Vector3.Zero, simulation.Emitters[0].Particles[0].Position);
     }
 
     [TestMethod]

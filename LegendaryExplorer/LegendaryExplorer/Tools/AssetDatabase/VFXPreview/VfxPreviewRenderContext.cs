@@ -535,8 +535,13 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 case VfxEmitterRenderMode.Mesh:
                     LoadMeshEmitter(emitter);
                     continue;
+                case VfxEmitterRenderMode.Beam:
+                case VfxEmitterRenderMode.Trail:
+                case VfxEmitterRenderMode.Procedural:
+                    // Beams and trails use the standalone line/strip preview and do not require a sprite texture.
+                    continue;
                 default:
-                    RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: {emitter.RenderMode} emitters are not rendered yet.");
+                    RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: {emitter.RenderMode} has no preview renderer.");
                     continue;
             }
             try
@@ -544,16 +549,24 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 ExportEntry materialExport = ResolvePreviewExport(emitter.Material);
                 if (materialExport is null)
                 {
+                    // Materialless cooked helper emitters are intentionally invisible. A named but unresolved
+                    // material is still reported because that indicates missing preview data rather than design.
                     string materialName = emitter.Material?.InstancedFullPath;
-                    RuntimeWarning = AppendWarning(RuntimeWarning, materialName is null
-                        ? $"{emitter.Name}: no material is assigned, so no sprites can be drawn."
-                        : $"{emitter.Name}: material {materialName} could not be resolved, so no sprites can be drawn.");
+                    if (materialName is not null)
+                    {
+                        RuntimeWarning = AppendWarning(RuntimeWarning,
+                            $"{emitter.Name}: material {materialName} could not be resolved, so no sprites can be drawn.");
+                    }
                     continue;
                 }
 
                 VfxParticleMaterialDefinition particleMaterial = emitter.ParticleMaterial;
                 PopulateMaterialProperties(materialExport, particleMaterial);
                 IEntry textureEntry = ResolveParticleTexture(materialExport);
+                // Uniform-expression and parameter tables commonly point at an import. Follow the same
+                // EntryImporter "find definition of import" path used by Package Editor before asking the
+                // texture cache to decode it; the cache itself only accepts an exported texture definition.
+                textureEntry = ResolvePreviewExport(textureEntry) ?? textureEntry;
                 particleMaterial.Texture = textureEntry;
                 particleMaterial.OpacitySource = ResolveOpacitySource(materialExport, textureEntry, particleMaterial.BlendMode);
                 ApplyUnresolvedBlendModeFallback(particleMaterial);
@@ -594,6 +607,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         foreach (VfxEmitterDefinition emitter in Simulation.Definition.Emitters)
         {
             string warning = null;
+            bool gameShaderLoaded = false;
             try
             {
                 switch (emitter.RenderMode)
@@ -610,7 +624,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                         ExportEntry materialExport = ResolvePreviewExport(emitter.Material);
                         if (materialExport is not null)
                         {
-                            gameShaderRenderer.TryLoadSprite(this, emitter, materialExport, out warning);
+                            gameShaderLoaded = gameShaderRenderer.TryLoadSprite(this, emitter, materialExport, out warning);
                         }
                         break;
                     case VfxEmitterRenderMode.Mesh:
@@ -624,6 +638,18 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             catch (Exception exception)
             {
                 warning = $"The in-game shader could not be loaded ({exception.Message}).";
+            }
+
+            // A compiled procedural material can intentionally have no texture at all (for example
+            // BioVFX_Z_MATERIALS.sparks.Dot_Math_Spark). The standard billboard renderer cannot reproduce its
+            // material graph, but the successfully loaded game shader can. Remove only that emitter's standard
+            // fallback warning while the game-shader path is active; disabling the option restores it from
+            // standardRuntimeWarning.
+            if (gameShaderLoaded && !emitter.ParticleMaterial.IsSupported
+                && !string.IsNullOrWhiteSpace(emitter.ParticleMaterial.Warning))
+            {
+                RuntimeWarning = RemoveWarning(RuntimeWarning,
+                    $"{emitter.Name}: {emitter.ParticleMaterial.Warning}");
             }
 
             if (!string.IsNullOrWhiteSpace(warning))
@@ -654,7 +680,6 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         VfxMeshEmitterDefinition meshDefinition = emitter.MeshEmitter;
         if (meshDefinition?.Mesh is null)
         {
-            RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: the mesh type data module has no mesh assigned, so nothing can be drawn.");
             return;
         }
 
@@ -682,6 +707,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
                 PopulateMaterialProperties(materialExport, section.Material);
                 IEntry textureEntry = ResolveParticleTexture(materialExport);
+                textureEntry = ResolvePreviewExport(textureEntry) ?? textureEntry;
                 section.Material.Texture = textureEntry;
                 section.Material.OpacitySource = ResolveOpacitySource(materialExport, textureEntry, section.Material.BlendMode);
                 ApplyUnresolvedBlendModeFallback(section.Material);
@@ -763,7 +789,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         {
             foreach (ObjectProperty expressionReference in expressions)
             {
-                if (expressionReference.ResolveToEntry(baseMaterial.FileRef) is ExportEntry expression
+                if (ResolvePreviewExport(expressionReference.ResolveToEntry(baseMaterial.FileRef)) is { } expression
                     && expression.ClassName == "MaterialExpressionVectorParameter"
                     && expression.GetProperty<NameProperty>("ParameterName")?.Value.Name == "Color"
                     && expression.GetProperty<StructProperty>("DefaultValue") is { } color)
@@ -848,15 +874,47 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             if (current.ClassName == "Material")
             {
                 Material binary = ObjectBinary.From<Material>(current);
-                return SelectParticleTexture(binary.SM3MaterialResource.UniformExpressionTextures
+                var candidates = new List<IEntry>();
+                candidates.AddRange(binary.SM3MaterialResource.UniformExpressionTextures
                     .Select(current.FileRef.GetEntry)
-                    .Where(texture => texture?.ClassName is "Texture2D" or "TextureFlipBook"), current);
+                    .Where(IsSupportedParticleTexture));
+
+                // Some cooked materials omit the uniform-expression table but retain their texture dependencies.
+                // Treat those keys as secondary candidates; imported entries are resolved after selection through
+                // the same EntryImporter path used by Package Editor's "Find definition of import" action.
+                if (binary.SM3MaterialResource.TextureDependencyLengthMap is { } textureDependencies)
+                {
+                    candidates.AddRange(textureDependencies
+                        .Select(dependency => current.FileRef.GetEntry(dependency.Key))
+                        .Where(IsSupportedParticleTexture));
+                }
+
+                // Uncooked and partially cooked materials can keep the authoritative texture only on a material
+                // expression. Resolve imported expression nodes first, then preserve an imported Texture reference
+                // for ResolvePreviewExport to follow into its defining package.
+                if (properties.GetProp<ArrayProperty<ObjectProperty>>("Expressions") is { } expressions)
+                {
+                    foreach (ObjectProperty expressionReference in expressions)
+                    {
+                        ExportEntry expression = ResolvePreviewExport(expressionReference.ResolveToEntry(current.FileRef));
+                        IEntry texture = expression?.GetProperty<ObjectProperty>("Texture")?.ResolveToEntry(expression.FileRef);
+                        if (IsSupportedParticleTexture(texture))
+                        {
+                            candidates.Add(texture);
+                        }
+                    }
+                }
+
+                return SelectParticleTexture(candidates.Distinct(), current);
             }
 
             current = ResolveMaterialParent(current, properties);
         }
         return null;
     }
+
+    private static bool IsSupportedParticleTexture(IEntry texture) =>
+        texture?.ClassName is "Texture2D" or "TextureFlipBook";
 
     private static IEntry SelectParticleTexture(IEnumerable<IEntry> textures, ExportEntry material)
     {
@@ -1097,7 +1155,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 }
 
                 ExportEntry candidate = package.TryGetUExport(fallback.UIndex, out ExportEntry indexed)
-                    && IsMatchingImportedExport(indexed, import)
+                    && IsCompatibleImportDefinition(indexed, import)
                         ? indexed
                         : package.Exports.FirstOrDefault(exportCandidate => IsMatchingImportedExport(exportCandidate, import));
                 if (candidate is not null)
@@ -1117,8 +1175,25 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         export?.ClassName == import.ClassName
         && string.Equals(export.InstancedFullPath, import.InstancedFullPath, StringComparison.Ordinal);
 
+    private static bool IsCompatibleImportDefinition(ExportEntry export, ImportEntry import) =>
+        export?.ClassName == import.ClassName
+        && (string.Equals(export.InstancedFullPath, import.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
+            || export.ObjectName == import.ObjectName);
+
     private static string AppendWarning(string current, string warning) =>
         string.Join(Environment.NewLine, new[] { current, warning }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct());
+
+    private static string RemoveWarning(string current, string warning)
+    {
+        if (string.IsNullOrWhiteSpace(current) || string.IsNullOrWhiteSpace(warning))
+        {
+            return current;
+        }
+        string filtered = string.Join(Environment.NewLine, current
+            .Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => !string.Equals(line, warning, StringComparison.Ordinal)));
+        return string.IsNullOrWhiteSpace(filtered) ? null : filtered;
+    }
 
     private void RenderPreview(object sender, EventArgs args)
     {
@@ -1138,6 +1213,21 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                         meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
                     }
                 }
+                continue;
+            }
+            if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Beam)
+            {
+                AddBeamPreview(emitter, previewTransform);
+                continue;
+            }
+            if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Trail)
+            {
+                AddTrailPreview(emitter, previewTransform);
+                continue;
+            }
+            if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Procedural)
+            {
+                AddProceduralPreview(emitter.Definition.Procedural, previewTransform);
                 continue;
             }
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Sprite)
@@ -1168,6 +1258,11 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
         }
 
+        // The standalone beam/trail path is deliberately independent of compiled material vertex factories.
+        // It preserves authored position, color, lifetime and motion even when the original renderer depended on
+        // game-only trail buffers or beam endpoint actors.
+        primitives.Render(this, false);
+
         // Blended particles from every emitter still have to interleave back-to-front, so the shared pass keeps a
         // depth sort. Emitters that request an age-based order are pre-ordered in GetDrawableParticles and are
         // excluded from this sort so their authored order survives.
@@ -1195,6 +1290,155 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, batch, previewTransform);
             batch = [];
+        }
+    }
+
+    private void AddBeamPreview(VfxEmitterState emitter, Matrix4x4 transform)
+    {
+        VfxBeamDefinition beam = emitter.Definition.Beam;
+        if (beam is null)
+        {
+            return;
+        }
+        if (emitter.Particles.Count == 0)
+        {
+            Vector3 source = Vector3.Transform(beam.Source.Evaluate(0, 0.5f), transform);
+            Vector3 target = Vector3.Transform(beam.Target.Evaluate(0, 0.5f), transform);
+            primitives.AddLine(source, target, Vector4.One, 0);
+            return;
+        }
+        foreach (VfxParticle particle in emitter.Particles)
+        {
+            Vector3 source = Vector3.Transform(beam.Source.Evaluate(particle.RelativeTime, particle.Random), transform);
+            Vector3 target = Vector3.Transform(beam.Target.Evaluate(particle.RelativeTime, particle.Random), transform);
+            if (Vector3.DistanceSquared(source, target) < 0.0001f)
+            {
+                float distance = Math.Max(1, beam.Distance.Evaluate(particle.RelativeTime, particle.Random));
+                target = source + Vector3.TransformNormal(Vector3.UnitZ * distance, transform);
+            }
+            Vector4 color = particle.Color == Vector4.Zero ? Vector4.One : particle.Color;
+            int segmentCount = Math.Max(1, beam.InterpolationPoints + 1);
+            Vector3 previous = source;
+            for (int segment = 1; segment <= segmentCount; segment++)
+            {
+                Vector3 next = Vector3.Lerp(source, target, segment / (float)segmentCount);
+                primitives.AddLine(previous, next, color, 0);
+                previous = next;
+            }
+        }
+    }
+
+    private void AddTrailPreview(VfxEmitterState emitter, Matrix4x4 transform)
+    {
+        if (emitter.Particles.Count < 2)
+        {
+            return;
+        }
+        VfxParticle[] ordered = emitter.Particles.OrderByDescending(particle => particle.Age).ToArray();
+        for (int index = 1; index < ordered.Length; index++)
+        {
+            Vector3 start = Vector3.Transform(ordered[index - 1].Position + ordered[index - 1].OrbitOffset, transform);
+            Vector3 end = Vector3.Transform(ordered[index].Position + ordered[index].OrbitOffset, transform);
+            Vector4 color = (ordered[index - 1].Color + ordered[index].Color) * 0.5f;
+            primitives.AddLine(start, end, color == Vector4.Zero ? Vector4.One : color, 0);
+        }
+    }
+
+    private void AddProceduralPreview(VfxProceduralDefinition definition, Matrix4x4 transform)
+    {
+        if (definition is null)
+        {
+            return;
+        }
+        float size = definition.Scale;
+        Vector4 color = definition.Color;
+        switch (definition.Kind)
+        {
+            case VfxProceduralKind.LensFlare:
+                AddCircle(Vector3.Zero, Vector3.UnitX, Vector3.UnitZ, size * 0.45f, color, transform);
+                for (int ray = 0; ray < 8; ray++)
+                {
+                    float angle = ray * MathF.Tau / 8;
+                    Vector3 direction = (Vector3.UnitX * MathF.Cos(angle)) + (Vector3.UnitZ * MathF.Sin(angle));
+                    primitives.AddLine(
+                        Vector3.Transform(direction * size * 0.2f, transform),
+                        Vector3.Transform(direction * size, transform), color, 0);
+                }
+                break;
+            case VfxProceduralKind.Framebuffer:
+                AddRectangle(new Vector3(-size, 0, -size * 0.6f), new Vector3(size, 0, size * 0.6f), color, transform);
+                break;
+            case VfxProceduralKind.EffectsMaterial:
+                AddCircle(Vector3.Zero, Vector3.UnitX, Vector3.UnitY, size, color, transform);
+                AddCircle(Vector3.Zero, Vector3.UnitX, Vector3.UnitZ, size, color, transform);
+                AddCircle(Vector3.Zero, Vector3.UnitY, Vector3.UnitZ, size, color, transform);
+                break;
+            case VfxProceduralKind.Decal:
+                AddRectangle(new Vector3(-size, -size, 1), new Vector3(size, size, 1), color, transform);
+                primitives.AddLine(
+                    Vector3.Transform(new Vector3(-size, -size, 1), transform),
+                    Vector3.Transform(new Vector3(size, size, 1), transform), color, 0);
+                primitives.AddLine(
+                    Vector3.Transform(new Vector3(-size, size, 1), transform),
+                    Vector3.Transform(new Vector3(size, -size, 1), transform), color, 0);
+                break;
+            case VfxProceduralKind.CameraShake:
+                for (int index = -2; index <= 2; index++)
+                {
+                    float offset = index * size * 0.15f;
+                    primitives.AddLine(Vector3.Transform(new Vector3(-size, offset, 0), transform),
+                        Vector3.Transform(new Vector3(size, -offset, 0), transform), color, 0);
+                }
+                break;
+            case VfxProceduralKind.SkeletalMesh:
+            case VfxProceduralKind.SpawnActor:
+                AddWireBox(new Vector3(-size * 0.35f, -size * 0.25f, 0),
+                    new Vector3(size * 0.35f, size * 0.25f, size * 2), color, transform);
+                break;
+        }
+    }
+
+    private void AddCircle(Vector3 center, Vector3 axisA, Vector3 axisB, float radius, Vector4 color, Matrix4x4 transform)
+    {
+        const int segments = 24;
+        Vector3 previous = center + (axisA * radius);
+        for (int index = 1; index <= segments; index++)
+        {
+            float angle = index * MathF.Tau / segments;
+            Vector3 current = center + ((axisA * MathF.Cos(angle) + axisB * MathF.Sin(angle)) * radius);
+            primitives.AddLine(Vector3.Transform(previous, transform), Vector3.Transform(current, transform), color, 0);
+            previous = current;
+        }
+    }
+
+    private void AddRectangle(Vector3 minimum, Vector3 maximum, Vector4 color, Matrix4x4 transform)
+    {
+        Vector3[] corners =
+        [
+            new(minimum.X, minimum.Y, minimum.Z), new(maximum.X, minimum.Y, minimum.Z),
+            new(maximum.X, maximum.Y, maximum.Z), new(minimum.X, maximum.Y, maximum.Z)
+        ];
+        for (int index = 0; index < corners.Length; index++)
+        {
+            primitives.AddLine(Vector3.Transform(corners[index], transform),
+                Vector3.Transform(corners[(index + 1) % corners.Length], transform), color, 0);
+        }
+    }
+
+    private void AddWireBox(Vector3 minimum, Vector3 maximum, Vector4 color, Matrix4x4 transform)
+    {
+        Vector3[] corners = new Vector3[8];
+        for (int index = 0; index < corners.Length; index++)
+        {
+            corners[index] = Vector3.Transform(new Vector3(
+                (index & 1) == 0 ? minimum.X : maximum.X,
+                (index & 2) == 0 ? minimum.Y : maximum.Y,
+                (index & 4) == 0 ? minimum.Z : maximum.Z), transform);
+        }
+        int[] edges = [0, 1, 0, 2, 0, 4, 1, 3, 1, 5, 2, 3, 2, 6, 3, 7, 4, 5, 4, 6, 5, 7, 6, 7];
+        for (int index = 0; index < edges.Length; index += 2)
+        {
+            primitives.AddLine(corners[edges[index]], corners[edges[index + 1]], color, 0);
         }
     }
 
