@@ -41,6 +41,12 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private readonly List<string> Uniform2DTextureExpressions = [];
         public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
         private MaterialShaderMap ShaderMap;
+        private MaterialUniformExpression[] PixelVectorExpressions = [];
+        private MaterialUniformExpression[] PixelScalarExpressions = [];
+        private MaterialUniformExpressionTexture[] Pixel2DTextureExpressions = [];
+        private MaterialUniformExpressionTexture[] PixelCubeTextureExpressions = [];
+        private MaterialUniformExpression[] VertexVectorExpressions = [];
+        private MaterialUniformExpression[] VertexScalarExpressions = [];
         private uint CachedPixelFrameNumber = uint.MaxValue;
         private uint CachedVertexFrameNumber = uint.MaxValue;
         private readonly List<Vector4> CachedVertexScalarParameters = [];
@@ -187,18 +193,40 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             //if the MIC had a StaticPermutationResource, this is already set
             if (ShaderMap is null)
             {
-                LoadShaders(mat);
+                LoadShaders(mat, parsedMaterial.SM3MaterialResource);
             }
         }
 
-        private void LoadShaders(ExportEntry mat)
+        private void LoadShaders(ExportEntry mat, MaterialResource legacyMaterialResource)
         {
             (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShaders(mat, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
 
-            foreach (MaterialUniformExpression expression in ShaderMap.UniformVertexScalarExpressions
-                         .Concat(ShaderMap.UniformVertexVectorExpressions)
-                         .Concat(ShaderMap.UniformPixelScalarExpressions)
-                         .Concat(ShaderMap.UniformPixelVectorExpressions))
+            if (mat.Game < MEGame.ME3)
+            {
+                // ME1 and ME2 store uniform expressions on the material resource. Their shader
+                // maps contain only shader references, so reading expressions from the map loses
+                // every parameter used by the original-game renderer.
+                PixelVectorExpressions = legacyMaterialResource?.UniformPixelVectorExpressions ?? [];
+                PixelScalarExpressions = legacyMaterialResource?.UniformPixelScalarExpressions ?? [];
+                Pixel2DTextureExpressions = legacyMaterialResource?.Uniform2DTextureExpressions ?? [];
+                PixelCubeTextureExpressions = legacyMaterialResource?.UniformCubeTextureExpressions ?? [];
+                VertexVectorExpressions = [];
+                VertexScalarExpressions = [];
+            }
+            else
+            {
+                PixelVectorExpressions = ShaderMap.UniformPixelVectorExpressions ?? [];
+                PixelScalarExpressions = ShaderMap.UniformPixelScalarExpressions ?? [];
+                Pixel2DTextureExpressions = ShaderMap.Uniform2DTextureExpressions ?? [];
+                PixelCubeTextureExpressions = ShaderMap.UniformCubeTextureExpressions ?? [];
+                VertexVectorExpressions = ShaderMap.UniformVertexVectorExpressions ?? [];
+                VertexScalarExpressions = ShaderMap.UniformVertexScalarExpressions ?? [];
+            }
+
+            foreach (MaterialUniformExpression expression in VertexScalarExpressions
+                         .Concat(VertexVectorExpressions)
+                         .Concat(PixelScalarExpressions)
+                         .Concat(PixelVectorExpressions))
             {
                 AddUniformExpressionParameters(expression);
             }
@@ -281,7 +309,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 {
                     Uniform2DTextureExpressions.Add(matInst.FileRef.GetEntry(uIndex)?.InstancedFullPath);
                 }
-                LoadShaders(matInst);
+                LoadShaders(matInst, binary.SM3StaticPermutationResource);
             }
         }
 
@@ -317,7 +345,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 context.Time, context.Time, GetFlipBookTextureOffset);
 
             UpdateExpressions(uniformContext,
-                ShaderMap.UniformVertexVectorExpressions, ShaderMap.UniformVertexScalarExpressions,
+                VertexVectorExpressions, VertexScalarExpressions,
                 CachedVertexScalarParameters, CachedVertexVectorParameters);
         }
 
@@ -335,11 +363,11 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                 context.Time, context.Time, GetFlipBookTextureOffset);
 
             UpdateExpressions(uniformContext,
-                ShaderMap.UniformPixelVectorExpressions, ShaderMap.UniformPixelScalarExpressions,
+                PixelVectorExpressions, PixelScalarExpressions,
                 CachedPixelScalarParameters, CachedPixelVectorParameters);
 
-            UpdateTextureExpressions(ShaderMap.Uniform2DTextureExpressions, CachedTexture2DParameters, context);
-            UpdateTextureExpressions(ShaderMap.UniformCubeTextureExpressions, CachedCubeTextureParameters, context);
+            UpdateTextureExpressions(Pixel2DTextureExpressions, CachedTexture2DParameters, context);
+            UpdateTextureExpressions(PixelCubeTextureExpressions, CachedCubeTextureParameters, context);
         }
 
         private LinearColor GetFlipBookTextureOffset(UniformExpressionRenderContext context, int texIndex)
@@ -490,39 +518,54 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             MaterialUniformExpression[] vectorExpressions, MaterialUniformExpression[] scalarExpressions, 
             List<Vector4> scalarCache, List<Vector4> vectorCache)
         {
-            var enumerator = scalarExpressions.ChunkBySpan(4);
-            foreach (ReadOnlySpan<MaterialUniformExpression> scalerExpression in enumerator)
+            if (Game is MEGame.LE3)
             {
-                LinearColor xVal = default;
-                LinearColor yVal = default;
-                LinearColor zVal = default;
-                LinearColor wVal = default;
-                scalerExpression[0].GetNumberValue(uniformContext, ref xVal);
-                scalerExpression[1].GetNumberValue(uniformContext, ref yVal);
-                scalerExpression[2].GetNumberValue(uniformContext, ref zVal);
-                scalerExpression[3].GetNumberValue(uniformContext, ref wVal);
-                scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
-            }
-            if (enumerator.Current is { Length: > 0 } remainder)
-            {
-                LinearColor xVal = default;
-                LinearColor yVal = default;
-                LinearColor zVal = default;
-                LinearColor wVal = default;
-                remainder[0].GetNumberValue(uniformContext, ref xVal);
-                if(remainder.Length > 1)
+                // LE3 packs four scalar expressions into each float4 shader parameter.
+                var enumerator = scalarExpressions.ChunkBySpan(4);
+                foreach (ReadOnlySpan<MaterialUniformExpression> scalarExpression in enumerator)
                 {
-                    remainder[1].GetNumberValue(uniformContext, ref yVal);
-                    if (remainder.Length > 2)
+                    LinearColor xVal = default;
+                    LinearColor yVal = default;
+                    LinearColor zVal = default;
+                    LinearColor wVal = default;
+                    scalarExpression[0].GetNumberValue(uniformContext, ref xVal);
+                    scalarExpression[1].GetNumberValue(uniformContext, ref yVal);
+                    scalarExpression[2].GetNumberValue(uniformContext, ref zVal);
+                    scalarExpression[3].GetNumberValue(uniformContext, ref wVal);
+                    scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
+                }
+                if (enumerator.Current is { Length: > 0 } remainder)
+                {
+                    LinearColor xVal = default;
+                    LinearColor yVal = default;
+                    LinearColor zVal = default;
+                    LinearColor wVal = default;
+                    remainder[0].GetNumberValue(uniformContext, ref xVal);
+                    if (remainder.Length > 1)
                     {
-                        remainder[2].GetNumberValue(uniformContext, ref zVal);
-                        if (remainder.Length > 3)
+                        remainder[1].GetNumberValue(uniformContext, ref yVal);
+                        if (remainder.Length > 2)
                         {
-                            remainder[3].GetNumberValue(uniformContext, ref wVal);
+                            remainder[2].GetNumberValue(uniformContext, ref zVal);
+                            if (remainder.Length > 3)
+                            {
+                                remainder[3].GetNumberValue(uniformContext, ref wVal);
+                            }
                         }
                     }
+                    scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
                 }
-                scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
+            }
+            else
+            {
+                // Every other game serializes scalar uniforms as individual 4-byte parameters.
+                // Their shader indices address the uncompressed scalar-expression array directly.
+                foreach (MaterialUniformExpression scalarExpression in scalarExpressions)
+                {
+                    LinearColor value = default;
+                    scalarExpression.GetNumberValue(uniformContext, ref value);
+                    scalarCache.Add(new Vector4(value.R, 0, 0, 0));
+                }
             }
             foreach (MaterialUniformExpression vectorExpression in vectorExpressions)
             {

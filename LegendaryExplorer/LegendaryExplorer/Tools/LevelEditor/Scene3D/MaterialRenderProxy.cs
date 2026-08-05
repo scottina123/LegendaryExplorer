@@ -277,39 +277,54 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         MaterialUniformExpression[] vectorExpressions, MaterialUniformExpression[] scalarExpressions, 
         List<Vector4> scalarCache, List<Vector4> vectorCache)
     {
-        var enumerator = scalarExpressions.ChunkBySpan(4);
-        foreach (ReadOnlySpan<MaterialUniformExpression> scalerExpression in enumerator)
+        if (Game is MEGame.LE3)
         {
-            LinearColor xVal = default;
-            LinearColor yVal = default;
-            LinearColor zVal = default;
-            LinearColor wVal = default;
-            scalerExpression[0].GetNumberValue(uniformContext, ref xVal);
-            scalerExpression[1].GetNumberValue(uniformContext, ref yVal);
-            scalerExpression[2].GetNumberValue(uniformContext, ref zVal);
-            scalerExpression[3].GetNumberValue(uniformContext, ref wVal);
-            scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
-        }
-        if (enumerator.Current is { Length: > 0 } remainder)
-        {
-            LinearColor xVal = default;
-            LinearColor yVal = default;
-            LinearColor zVal = default;
-            LinearColor wVal = default;
-            remainder[0].GetNumberValue(uniformContext, ref xVal);
-            if(remainder.Length > 1)
+            // LE3 packs four scalar expressions into each float4 shader parameter.
+            var enumerator = scalarExpressions.ChunkBySpan(4);
+            foreach (ReadOnlySpan<MaterialUniformExpression> scalarExpression in enumerator)
             {
-                remainder[1].GetNumberValue(uniformContext, ref yVal);
-                if (remainder.Length > 2)
+                LinearColor xVal = default;
+                LinearColor yVal = default;
+                LinearColor zVal = default;
+                LinearColor wVal = default;
+                scalarExpression[0].GetNumberValue(uniformContext, ref xVal);
+                scalarExpression[1].GetNumberValue(uniformContext, ref yVal);
+                scalarExpression[2].GetNumberValue(uniformContext, ref zVal);
+                scalarExpression[3].GetNumberValue(uniformContext, ref wVal);
+                scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
+            }
+            if (enumerator.Current is { Length: > 0 } remainder)
+            {
+                LinearColor xVal = default;
+                LinearColor yVal = default;
+                LinearColor zVal = default;
+                LinearColor wVal = default;
+                remainder[0].GetNumberValue(uniformContext, ref xVal);
+                if (remainder.Length > 1)
                 {
-                    remainder[2].GetNumberValue(uniformContext, ref zVal);
-                    if (remainder.Length > 3)
+                    remainder[1].GetNumberValue(uniformContext, ref yVal);
+                    if (remainder.Length > 2)
                     {
-                        remainder[3].GetNumberValue(uniformContext, ref wVal);
+                        remainder[2].GetNumberValue(uniformContext, ref zVal);
+                        if (remainder.Length > 3)
+                        {
+                            remainder[3].GetNumberValue(uniformContext, ref wVal);
+                        }
                     }
                 }
+                scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
             }
-            scalarCache.Add(new Vector4(xVal.R, yVal.R, zVal.R, wVal.R));
+        }
+        else
+        {
+            // Every other game serializes scalar uniforms as individual 4-byte parameters.
+            // Their shader indices address the uncompressed scalar-expression array directly.
+            foreach (MaterialUniformExpression scalarExpression in scalarExpressions)
+            {
+                LinearColor value = default;
+                scalarExpression.GetNumberValue(uniformContext, ref value);
+                scalarCache.Add(new Vector4(value.R, 0, 0, 0));
+            }
         }
         foreach (MaterialUniformExpression vectorExpression in vectorExpressions)
         {
