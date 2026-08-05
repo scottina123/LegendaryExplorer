@@ -32,9 +32,14 @@ internal static class BioMorphRandomizationCatalog
 {
     private static readonly ConcurrentDictionary<string, Task<AssetDB>> DatabaseTasks = new(StringComparer.OrdinalIgnoreCase);
 
-    public static async Task<BioMorphReferenceCatalog> GetCatalogAsync(BioMorphSpecies species)
+    public static async Task<BioMorphReferenceCatalog> GetCatalogAsync(MEGame game, BioMorphSpecies species)
     {
-        string databasePath = AssetDatabaseWindow.GetDBPath(MEGame.LE3);
+        if (!game.IsMEGame())
+        {
+            return new BioMorphReferenceCatalog(species, [], "Morph randomization is only available for Mass Effect games.");
+        }
+
+        string databasePath = AssetDatabaseWindow.GetDBPath(game);
         if (species == BioMorphSpecies.Unknown)
         {
             return new BioMorphReferenceCatalog(species, [], "The species could not be identified from m_oBaseHead.");
@@ -42,21 +47,21 @@ internal static class BioMorphRandomizationCatalog
         if (!File.Exists(databasePath))
         {
             return new BioMorphReferenceCatalog(species, [],
-                "The LE3 Asset Database is not installed. Generate it from Tools > Asset Database, then try again.");
+                $"The {game} Asset Database is not installed. Generate it from Tools > Asset Database, then try again.");
         }
 
         long databaseStamp = File.GetLastWriteTimeUtc(databasePath).Ticks;
-        string cacheKey = $"{databasePath}|{databaseStamp}";
-        AssetDB database = await DatabaseTasks.GetOrAdd(cacheKey, _ => LoadDatabaseAsync(databasePath));
+        string cacheKey = $"{game}|{databasePath}|{databaseStamp}";
+        AssetDB database = await DatabaseTasks.GetOrAdd(cacheKey, _ => LoadDatabaseAsync(databasePath, game));
         if (!string.Equals(database.DatabaseVersion, AssetDatabaseWindow.dbCurrentBuild, StringComparison.Ordinal))
         {
             return new BioMorphReferenceCatalog(species, [],
-                $"The LE3 Asset Database is version {database.DatabaseVersion ?? "unknown"}; version {AssetDatabaseWindow.dbCurrentBuild} is required. Rebuild the database, then try again.");
+                $"The {game} Asset Database is version {database.DatabaseVersion ?? "unknown"}; version {AssetDatabaseWindow.dbCurrentBuild} is required. Rebuild the database, then try again.");
         }
         if (database.MorphFaces.Count == 0)
         {
             return new BioMorphReferenceCatalog(species, [],
-                $"The LE3 Asset Database contains no morph profiles. Rebuild it with database version {AssetDatabaseWindow.dbCurrentBuild}, then try again.");
+                $"The {game} Asset Database contains no morph profiles. Rebuild it, then try again.");
         }
 
         List<BioMorphReferenceFace> faces = database.MorphFaces
@@ -86,13 +91,13 @@ internal static class BioMorphRandomizationCatalog
         return faces.Count > 0
             ? new BioMorphReferenceCatalog(species, faces)
             : new BioMorphReferenceCatalog(species, [],
-                $"The LE3 Asset Database contains no official {species.ToDisplayName()} morph profiles.");
+                $"The {game} Asset Database contains no official {species.ToDisplayName()} morph profiles.");
     }
 
-    private static async Task<AssetDB> LoadDatabaseAsync(string databasePath)
+    private static async Task<AssetDB> LoadDatabaseAsync(string databasePath, MEGame game)
     {
         var database = new AssetDB();
-        await AssetDatabaseWindow.LoadDatabase(databasePath, MEGame.LE3, database, CancellationToken.None);
+        await AssetDatabaseWindow.LoadDatabase(databasePath, game, database, CancellationToken.None);
         return database;
     }
 

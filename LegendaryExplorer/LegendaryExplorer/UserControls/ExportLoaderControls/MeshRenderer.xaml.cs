@@ -308,7 +308,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         public bool ShowLiveMaterialEditor => !IsMorphEditorMode && RenderGameShader && LiveMaterials.Count > 0;
 
         /// <summary>
-        /// True for the dedicated LE3 BioMorphFace editor. Its in-game shader is enabled by default.
+        /// True for the dedicated BioMorphFace editor. Its in-game shader is enabled by default.
         /// </summary>
         public bool IsMorphEditorMode { get; }
 
@@ -742,7 +742,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             alreadyLoadedImportMaterials.Clear();
             CurrentLoadedExport = exportEntry;
             CurrentLOD = 0;
-            CanUseGameShaders = exportEntry.Game.IsLEGame();
+            CanUseGameShaders = exportEntry.Game.IsMEGame();
 
             Func<PreloadedModelData> loadMesh = null;
             var assetCache = new PackageCache();

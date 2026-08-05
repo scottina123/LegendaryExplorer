@@ -693,7 +693,7 @@
                     </TabItem>
                     <TabItem Name="MorphEditor_Tab" IsEnabled="{Binding Pcc, Converter={StaticResource NullEnabledConverter}}">
                         <TabItem.Header>
-                            <TextBlock Text="Morph Editor" ToolTip="Live-edit LE3 BioMorphFace geometry, skeleton, and material overrides"/>
+                            <TextBlock Text="Morph Editor" ToolTip="Live-edit BioMorphFace geometry, skeleton, and material overrides for any Mass Effect game"/>
                         </TabItem.Header>
                         <exportLoaderControls:BioMorphFaceEditor x:Name="MorphEditorTab_MorphEditor"/>
                     </TabItem>

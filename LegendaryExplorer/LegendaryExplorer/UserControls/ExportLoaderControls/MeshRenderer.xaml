@@ -154,7 +154,7 @@
                         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
                             <Button DockPanel.Dock="Right" Content="Randomize morph" Padding="7,3" Margin="6,0,0,0"
                                     IsEnabled="{Binding HasMorphEditorData}" Click="RandomizeMorphFeatures_Click"
-                                    ToolTip="Randomize scalar and color overrides from same-species BioWare faces in the LE3 Asset Database, and blend geometry when compatible morph targets exist. Texture references are not changed."/>
+                                    ToolTip="Randomize scalar and color overrides from same-species BioWare faces in this game's Asset Database, and blend geometry when compatible morph targets exist. Texture references are not changed."/>
                             <xctk:WatermarkTextBox Padding="6,4"
                                                    Watermark="Search features, skeleton, and material overrides"
                                                    Text="{Binding MorphEditorSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>

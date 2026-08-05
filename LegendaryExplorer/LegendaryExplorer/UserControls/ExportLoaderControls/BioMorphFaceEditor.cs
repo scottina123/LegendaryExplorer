@@ -26,8 +26,8 @@ using BinaryMorphFace = LegendaryExplorerCore.Unreal.BinaryConverters.BioMorphFa
 namespace LegendaryExplorer.UserControls.ExportLoaderControls;
 
 /// <summary>
-/// LE3-only BioMorphFace editor. It inherits the mesh viewport so the preview uses the exact same
-/// LE shader path as the regular mesh renderer.
+/// BioMorphFace editor for every Mass Effect game. It inherits the mesh viewport so the preview
+/// uses the same game-specific shader path as the regular mesh renderer.
 /// </summary>
 public sealed class BioMorphFaceEditor : MeshRenderer
 {
@@ -36,7 +36,8 @@ public sealed class BioMorphFaceEditor : MeshRenderer
     }
 
     public override bool CanParse(ExportEntry exportEntry) =>
-        exportEntry is { Game: MEGame.LE3, ClassName: "BioMorphFace", IsDefaultObject: false };
+        exportEntry is { ClassName: "BioMorphFace", IsDefaultObject: false }
+        && exportEntry.Game.IsMEGame();
 
     public override void PopOut()
     {
@@ -442,12 +443,18 @@ public partial class MeshRenderer
         ReadPackage(baseHead.FileRef, false);
 
         string prefix = baseHead.ObjectName.Name.Split('_').FirstOrDefault();
-        string cookedPath = MEDirectories.GetCookedPath(MEGame.LE3);
-        if (!string.IsNullOrWhiteSpace(prefix) && Directory.Exists(cookedPath))
+        if (!string.IsNullOrWhiteSpace(prefix))
         {
             try
             {
-                foreach (string path in Directory.EnumerateFiles(cookedPath, $"BIOG_{prefix}_*PROMorph*.pcc", SearchOption.TopDirectoryOnly))
+                string packagePrefix = $"BIOG_{prefix}_";
+                IEnumerable<string> candidatePaths = MELoadedFiles
+                    .GetFilesLoadedInGame(morphSource.Game, forceUseCached: true)
+                    .Where(file => Path.GetFileNameWithoutExtension(file.Key).StartsWith(packagePrefix, StringComparison.OrdinalIgnoreCase)
+                                   && Path.GetFileNameWithoutExtension(file.Key).Contains("PROMorph", StringComparison.OrdinalIgnoreCase))
+                    .Select(file => file.Value)
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                foreach (string path in candidatePaths)
                 {
                     if (visitedPaths.Contains(path))
                     {
@@ -1278,11 +1285,12 @@ public partial class MeshRenderer
 
         ExportEntry sourceMorph = CurrentLoadedExport;
         IsBusy = true;
-        BusyText = $"Loading BioWare {species.ToDisplayName()} faces from the LE3 Asset Database…";
+        MEGame game = sourceMorph.Game;
+        BusyText = $"Loading BioWare {species.ToDisplayName()} faces from the {game} Asset Database…";
         BioMorphReferenceCatalog catalog;
         try
         {
-            catalog = await BioMorphRandomizationCatalog.GetCatalogAsync(species);
+            catalog = await BioMorphRandomizationCatalog.GetCatalogAsync(game, species);
         }
         catch (Exception exception)
         {

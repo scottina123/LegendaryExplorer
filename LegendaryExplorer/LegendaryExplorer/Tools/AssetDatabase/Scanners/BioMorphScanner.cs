@@ -10,7 +10,7 @@ internal sealed class BioMorphScanner : AssetScanner
 {
     public override void ScanExport(ExportScanInfo e, ConcurrentAssetDB db, AssetDBScanOptions options)
     {
-        if (e.Export.Game != MEGame.LE3 || e.IsDefault || e.ClassName != "BioMorphFace")
+        if (!e.Export.Game.IsMEGame() || e.IsDefault || e.ClassName != "BioMorphFace")
         {
             return;
         }
