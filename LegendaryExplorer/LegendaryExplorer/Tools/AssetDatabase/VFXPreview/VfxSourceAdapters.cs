@@ -100,6 +100,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         ["ParticleModuleColor"] = new(StringComparer.Ordinal) { "StartColorRw", "StartColor", "StartAlpha", "bClampAlpha" },
         ["ParticleModuleColorOverLife"] = new(StringComparer.Ordinal) { "ColorOverLifeRw", "ColorOverLife", "AlphaOverLife", "bClampAlpha" },
         ["ParticleModuleColorScaleOverLife"] = new(StringComparer.Ordinal) { "ColorScaleOverLifeRw", "AlphaScaleOverLife", "bEmitterTime" },
+        ["ParticleModuleParameterDynamic"] = new(StringComparer.Ordinal) { "DynamicParams" },
         ["ParticleModuleAcceleration"] = new(StringComparer.Ordinal) { "AccelerationRw", "bApplyOwnerScale" },
         ["ParticleModuleAccelerationBase"] = new(StringComparer.Ordinal) { "bAlwaysInWorldSpace" },
         ["ParticleModuleAccelerationOverLifetime"] = new(StringComparer.Ordinal) { "AccelOverLifeRw" },
@@ -198,6 +199,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         "ParticleModuleColor",
         "ParticleModuleColorOverLife",
         "ParticleModuleColorScaleOverLife",
+        "ParticleModuleParameterDynamic",
         "ParticleModuleVelocityOverLifetime",
         "ParticleModuleAcceleration",
         "ParticleModuleAccelerationOverLifetime",
@@ -309,7 +311,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         return Math.Clamp(selected, 0, lodCount - 1);
     }
 
-    private static ExportEntry SelectEmitterLod(ExportEntry emitter, int selectedLodIndex)
+    internal static ExportEntry SelectEmitterLod(ExportEntry emitter, int selectedLodIndex)
     {
         List<ExportEntry> lods = emitter.GetProperty<ArrayProperty<ObjectProperty>>("LODLevels")?
             .Select(reference => reference.ResolveToEntry(emitter.FileRef))
@@ -322,7 +324,21 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
 
         int clampedIndex = Math.Clamp(selectedLodIndex, 0, lods.Count - 1);
         ExportEntry selected = lods[clampedIndex];
-        return selected.GetProperty<BoolProperty>("bEnabled")?.Value == false ? null : selected;
+        if (selected.GetProperty<BoolProperty>("bEnabled")?.Value != false)
+        {
+            return selected;
+        }
+
+        // Individual emitters can disable the system-selected LOD while keeping another child enabled. For an
+        // asset preview, rejecting the whole emitter hides useful layers; use the closest enabled child instead,
+        // breaking a tie toward the higher-detail (lower numbered) LOD.
+        return lods
+            .Select((lod, index) => (Lod: lod, Index: index))
+            .Where(candidate => candidate.Lod.GetProperty<BoolProperty>("bEnabled")?.Value != false)
+            .OrderBy(candidate => Math.Abs(candidate.Index - clampedIndex))
+            .ThenBy(candidate => candidate.Index)
+            .Select(candidate => candidate.Lod)
+            .FirstOrDefault();
     }
 
     private static IReadOnlyList<float> ReadLodDistances(ExportEntry particleSystem) =>
@@ -439,6 +455,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         var killVolumes = new List<VfxKillVolume>();
         IReadOnlyList<IEntry> meshSectionMaterials = [];
         var spawnInitializers = new List<VfxSpawnInitializer>();
+        var dynamicParameters = new List<VfxDynamicParameterDefinition>();
 
         foreach (ExportEntry module in modules)
         {
@@ -502,13 +519,15 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                         module.GetProperty<BoolProperty>("MultiplyZ")?.Value != false);
                     break;
                 case "ParticleModuleColor":
+                    // A color distribution the preview cannot read must fall back to white: black would silently
+                    // remove the emitter from additive effects such as flame cards.
                     initialColor = CombineColor(
-                        ReadVectorDistribution(module, Vector3.Zero, "StartColorRw", "StartColor"),
+                        ReadVectorDistribution(module, Vector3.One, "StartColorRw", "StartColor"),
                         ReadFloatDistribution(module, "StartAlpha", 1));
                     break;
                 case "ParticleModuleColorOverLife":
                     colorOverLife = CombineColor(
-                        ReadVectorDistribution(module, Vector3.Zero, "ColorOverLifeRw", "ColorOverLife"),
+                        ReadVectorDistribution(module, Vector3.One, "ColorOverLifeRw", "ColorOverLife"),
                         ReadFloatDistribution(module, "AlphaOverLife", 1),
                         module.GetProperty<BoolProperty>("bClampAlpha")?.Value != false);
                     break;
@@ -517,6 +536,9 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                         ReadVectorDistribution(module, Vector3.One, "ColorScaleOverLifeRw"),
                         ReadFloatDistribution(module, "AlphaScaleOverLife", 1));
                     colorScaleUsesEmitterTime = module.GetProperty<BoolProperty>("bEmitterTime")?.Value == true;
+                    break;
+                case "ParticleModuleParameterDynamic":
+                    dynamicParameters = ReadDynamicParameters(module);
                     break;
                 case "ParticleModuleVelocityOverLifetime":
                     velocityOverLife = ReadVectorDistribution(module, Vector3.One, "VelOverLifeRw");
@@ -721,6 +743,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             ColorOverLife = colorOverLife,
             ColorScaleOverLife = colorScaleOverLife,
             ColorScaleUsesEmitterTime = colorScaleUsesEmitterTime,
+            DynamicParameters = dynamicParameters,
             VelocityOverLife = velocityOverLife,
             VelocityOverLifeIsAbsolute = velocityOverLifeIsAbsolute,
             AccelerationOverLife = accelerationOverLife,
@@ -732,6 +755,35 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
         emitterDefinition.SpawnInitializers.AddRange(spawnInitializers);
         return emitterDefinition;
     }
+
+    private static List<VfxDynamicParameterDefinition> ReadDynamicParameters(ExportEntry module)
+    {
+        var result = new List<VfxDynamicParameterDefinition>(4);
+        if (module.GetProperty<ArrayProperty<StructProperty>>("DynamicParams") is not { } parameters)
+        {
+            return result;
+        }
+
+        foreach (StructProperty parameter in parameters.Take(4))
+        {
+            result.Add(new VfxDynamicParameterDefinition(
+                ReadFloatDistribution(parameter.GetProp<StructProperty>("ParamValue"), module, 1),
+                ParseDynamicParameterValueMethod(parameter.GetProp<EnumProperty>("ValueMethod")?.Value.Name),
+                parameter.GetProp<BoolProperty>("bUseEmitterTime")?.Value == true,
+                parameter.GetProp<BoolProperty>("bSpawnTimeOnly")?.Value == true,
+                parameter.GetProp<BoolProperty>("bScaleVelocityByParamValue")?.Value == true));
+        }
+        return result;
+    }
+
+    private static VfxDynamicParameterValueMethod ParseDynamicParameterValueMethod(string value) => value switch
+    {
+        "EDPV_VelocityX" => VfxDynamicParameterValueMethod.VelocityX,
+        "EDPV_VelocityY" => VfxDynamicParameterValueMethod.VelocityY,
+        "EDPV_VelocityZ" => VfxDynamicParameterValueMethod.VelocityZ,
+        "EDPV_VelocityMag" => VfxDynamicParameterValueMethod.VelocityMagnitude,
+        _ => VfxDynamicParameterValueMethod.UserSet
+    };
 
     private static VfxOrbitSpawnInitializer ReadOrbitInitializer(ExportEntry module) => new(
         ReadVectorDistribution(module, Vector3.Zero, "OffsetAmountRw"),
@@ -793,6 +845,11 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
     internal static IVfxDistribution<float> ReadFloatDistribution(ExportEntry module, string propertyName, float fallback)
     {
         StructProperty raw = module?.GetProperty<StructProperty>(propertyName);
+        return ReadFloatDistribution(raw, module, fallback);
+    }
+
+    private static IVfxDistribution<float> ReadFloatDistribution(StructProperty raw, ExportEntry context, float fallback)
+    {
         ArrayPropertyBase lookup = GetArrayProperty(raw, "LookupTable");
         if (lookup is { Count: > 2 } && lookup.Properties.All(property => property is FloatProperty))
         {
@@ -803,7 +860,7 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
             return new VfxRawFloatDistribution(lookup.Properties.Skip(2).Cast<FloatProperty>().Select(value => value.Value).ToList(), operation, chunkSize, startTime, timeScale, fallback);
         }
 
-        if (raw?.GetProp<ObjectProperty>("Distribution")?.ResolveToEntry(module.FileRef) is ExportEntry distribution)
+        if (raw?.GetProp<ObjectProperty>("Distribution")?.ResolveToEntry(context.FileRef) is ExportEntry distribution)
         {
             return distribution.ClassName switch
             {
@@ -811,6 +868,8 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 "DistributionFloatUniform" => new VfxUniformFloatDistribution(
                     distribution.GetProperty<FloatProperty>("Min")?.Value ?? fallback,
                     distribution.GetProperty<FloatProperty>("Max")?.Value ?? fallback),
+                "DistributionFloatParticleParameter" => new VfxConstantDistribution<float>(
+                    distribution.GetProperty<FloatProperty>("Constant")?.Value ?? fallback),
                 _ => new VfxConstantDistribution<float>(fallback)
             };
         }
@@ -869,6 +928,8 @@ public sealed class ParticleSystemSourceAdapter : IVfxSourceAdapter
                 "DistributionVectorUniform" => new VfxUniformVectorDistribution(
                     ReadVector(distribution.GetProperty<StructProperty>("Min"), fallback),
                     ReadVector(distribution.GetProperty<StructProperty>("Max"), fallback)),
+                "DistributionVectorParticleParameter" => new VfxConstantDistribution<Vector3>(
+                    ReadVector(distribution.GetProperty<StructProperty>("Constant"), fallback)),
                 _ => new VfxConstantDistribution<Vector3>(fallback)
             };
         }

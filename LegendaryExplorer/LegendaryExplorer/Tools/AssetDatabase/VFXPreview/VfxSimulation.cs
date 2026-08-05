@@ -198,6 +198,7 @@ public sealed class VfxSimulation
             particle.Color = emitter.Definition.InitialColor.Evaluate(0, particle.Random)
                 * emitter.Definition.ColorOverLife.Evaluate(relativeTime, particle.Random)
                 * emitter.Definition.ColorScaleOverLife.Evaluate(colorScaleTime, particle.Random);
+            UpdateDynamicParameters(emitter, ref particle, spawn: false);
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
             AdvanceRandomImage(emitter.Definition, ref particle, timestep);
             emitter.Particles[index] = particle;
@@ -315,6 +316,7 @@ public sealed class VfxSimulation
             }
             ApplySpawnInitializers(emitter.Definition, ref particle, emitterTime);
             particle.BaseVelocity = particle.Velocity;
+            UpdateDynamicParameters(emitter, ref particle, spawn: true);
             particle.SubImageIndex = EvaluateSubImageIndex(emitter, particle);
             emitter.Particles.Add(particle);
         }
@@ -587,6 +589,36 @@ public sealed class VfxSimulation
         }
 
         return TryGetDynamicBounds(previewTransform, out minimum, out maximum);
+    }
+
+    private static void UpdateDynamicParameters(VfxEmitterState emitter, ref VfxParticle particle, bool spawn)
+    {
+        IReadOnlyList<VfxDynamicParameterDefinition> parameters = emitter.Definition.DynamicParameters;
+        for (int index = 0; index < Math.Min(4, parameters.Count); index++)
+        {
+            VfxDynamicParameterDefinition parameter = parameters[index];
+            if (!spawn && parameter.SpawnTimeOnly)
+            {
+                continue;
+            }
+
+            float time = parameter.UseEmitterTime ? GetEmitterRelativeTime(emitter) : particle.RelativeTime;
+            float authoredValue = parameter.Value.Evaluate(time, particle.Random);
+            float value = parameter.ValueMethod switch
+            {
+                VfxDynamicParameterValueMethod.VelocityX => particle.Velocity.X,
+                VfxDynamicParameterValueMethod.VelocityY => particle.Velocity.Y,
+                VfxDynamicParameterValueMethod.VelocityZ => particle.Velocity.Z,
+                VfxDynamicParameterValueMethod.VelocityMagnitude => particle.Velocity.Length(),
+                _ => authoredValue
+            };
+            if (parameter.ValueMethod != VfxDynamicParameterValueMethod.UserSet
+                && parameter.ScaleVelocityByParamValue)
+            {
+                value *= authoredValue;
+            }
+            particle.DynamicParameter[index] = value;
+        }
     }
 
     public bool TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum)

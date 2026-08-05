@@ -123,6 +123,32 @@ public enum VfxOpacitySource
     One
 }
 
+/// <summary>
+/// Mirrors EEmitterDynamicParameterValue from ParticleModuleParameterDynamic.
+/// </summary>
+public enum VfxDynamicParameterValueMethod
+{
+    UserSet,
+    VelocityX,
+    VelocityY,
+    VelocityZ,
+    VelocityMagnitude
+}
+
+public sealed record VfxDynamicParameterDefinition(
+    IVfxDistribution<float> Value,
+    VfxDynamicParameterValueMethod ValueMethod,
+    bool UseEmitterTime,
+    bool SpawnTimeOnly,
+    bool ScaleVelocityByParamValue);
+
+/// <summary>
+/// A database-backed package candidate used when an import cannot be resolved through the game's normal
+/// associated-package rules. Seek-free level packages can reference shared VFX materials that were embedded
+/// in a different level package, so the asset database is the only reliable way to locate a preview copy.
+/// </summary>
+public readonly record struct VfxImportFallback(string FilePath, int UIndex);
+
 public sealed class VfxParticleMaterialDefinition
 {
     public VfxBlendMode BlendMode { get; set; } = VfxBlendMode.Translucent;
@@ -137,6 +163,12 @@ public sealed class VfxParticleMaterialDefinition
     public float OpacityMaskClipValue { get; set; } = 0.333f;
     public VfxOpacitySource OpacitySource { get; set; } = VfxOpacitySource.TextureAlpha;
     public Vector4 EmissiveTint { get; set; } = Vector4.One;
+    /// <summary>
+    /// True when the cooked material was compiled for a particle dynamic-parameter vertex factory. The local
+    /// vertex-factory path used by Meshplorer cannot provide that stream, so sprites with this flag use the
+    /// standard VFX renderer rather than rendering the material with missing inputs.
+    /// </summary>
+    public bool UsesDynamicParameter { get; set; }
     public IEntry Texture { get; set; }
     public bool IsSupported { get; set; }
     public string Warning { get; set; }
@@ -379,6 +411,7 @@ public sealed class VfxEmitterDefinition
     public IVfxDistribution<Vector4> ColorOverLife { get; init; } = new VfxConstantDistribution<Vector4>(Vector4.One);
     public IVfxDistribution<Vector4> ColorScaleOverLife { get; init; } = new VfxConstantDistribution<Vector4>(Vector4.One);
     public bool ColorScaleUsesEmitterTime { get; init; }
+    public IReadOnlyList<VfxDynamicParameterDefinition> DynamicParameters { get; init; } = [];
     public IVfxDistribution<Vector3> VelocityOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.One);
     public bool VelocityOverLifeIsAbsolute { get; init; }
     public IVfxDistribution<Vector3> AccelerationOverLife { get; init; } = new VfxConstantDistribution<Vector3>(Vector3.Zero);
@@ -421,6 +454,7 @@ public struct VfxParticle
     public Vector3 BaseSize;
     public Vector3 Size;
     public Vector4 Color;
+    public Vector4 DynamicParameter;
     public float Rotation;
     public float RotationRate;
     public Vector3 MeshRotation;

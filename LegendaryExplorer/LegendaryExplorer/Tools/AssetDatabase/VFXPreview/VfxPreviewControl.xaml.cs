@@ -1,7 +1,9 @@
 using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using LegendaryExplorer.Misc;
 using LegendaryExplorer.Misc.AppSettings;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -142,7 +144,7 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         Viewport.MarkRenderDirty();
     }
 
-    public void LoadExport(ExportEntry export)
+    public void LoadExport(ExportEntry export, Func<ImportEntry, IEnumerable<VfxImportFallback>> fallbackResolver = null)
     {
         if (export is null || !sourceAdapter.CanAdapt(export))
         {
@@ -154,7 +156,7 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         try
         {
             VfxPreviewDefinition definition = sourceAdapter.CreateDefinition(export);
-            RenderContext.Load(definition);
+            RenderContext.Load(definition, fallbackResolver);
             WarningText = RenderContext.RuntimeWarning;
             Viewport.MarkRenderDirty();
             StatusTimer_Tick(null, EventArgs.Empty);

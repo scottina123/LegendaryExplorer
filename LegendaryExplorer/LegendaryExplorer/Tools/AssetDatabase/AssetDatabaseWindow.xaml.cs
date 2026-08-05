@@ -40,6 +40,7 @@ using LegendaryExplorer.SharedUI.Controls;
 using LegendaryExplorer.DialogueEditor;
 using LegendaryExplorer.Tools.CoalescedEditor;
 using LegendaryExplorer.Tools.AssetDatabase.Filters;
+using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 using LegendaryExplorer.Tools.AssetViewer;
 using LegendaryExplorer.Tools.LiveLevelEditor;
 using LegendaryExplorer.Tools.PlotDatabase;
@@ -1258,7 +1259,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
                     vfxPreviewPcc = candidatePackage;
                     candidatePackage = null;
-                    VfxPreview.LoadExport(export);
+                    VfxPreview.LoadExport(export, ResolveVfxImportFallbacks);
                     return;
                 }
                 catch (Exception exception)
@@ -1288,6 +1289,34 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             };
             return export?.ClassName == expectedClass
                 && string.Equals(export.ObjectName.Instanced, record.PSName, StringComparison.Ordinal);
+        }
+
+        private IEnumerable<VfxImportFallback> ResolveVfxImportFallbacks(ImportEntry import)
+        {
+            string importPath = import?.InstancedFullPath;
+            if (string.IsNullOrWhiteSpace(importPath))
+            {
+                yield break;
+            }
+
+            IEnumerable<MaterialRecord> matchingMaterials = CurrentDataBase.Materials.Where(material =>
+                string.Equals(GetVfxMaterialPath(material), importPath, StringComparison.OrdinalIgnoreCase));
+            foreach (MatUsage usage in matchingMaterials.SelectMany(material => material.Usages)
+                         .Where(usage => usage.FileKey >= 0 && usage.FileKey < FileListExtended.Count)
+                         .OrderBy(usage => usage.IsInDLC))
+            {
+                string filePath = GetFilePath(usage.FileKey);
+                if (File.Exists(filePath))
+                {
+                    yield return new VfxImportFallback(filePath, usage.UIndex);
+                }
+            }
+        }
+
+        internal static string GetVfxMaterialPath(MaterialRecord material)
+        {
+            string parent = material?.ParentPackage?.Replace('\\', '.').Replace('/', '.').Trim('.');
+            return string.IsNullOrWhiteSpace(parent) ? material?.MaterialName : $"{parent}.{material.MaterialName}";
         }
 
         private void UnloadVfxPreview()

@@ -25,6 +25,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<VfxEmitterDefinition, VfxMeshRenderer.MeshEmitterResources> meshEmitters = [];
     private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
+    private readonly Dictionary<string, bool> luminanceOpacityCache = new(StringComparer.OrdinalIgnoreCase);
+    private Func<ImportEntry, IEnumerable<VfxImportFallback>> importFallbackResolver;
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
     private bool useGameShader = true;
@@ -205,9 +207,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     public override bool IsActivelyUpdating() => Simulation.IsPlaying || base.IsActivelyUpdating();
 
-    public void Load(VfxPreviewDefinition definition)
+    public void Load(VfxPreviewDefinition definition, Func<ImportEntry, IEnumerable<VfxImportFallback>> fallbackResolver = null)
     {
         ResetPreviewCamera();
+        importFallbackResolver = fallbackResolver;
         Simulation.Load(definition);
         RuntimeWarning = definition.Warnings.Count == 0 ? null : string.Join(Environment.NewLine, definition.Warnings.Distinct());
         ErrorText = null;
@@ -224,6 +227,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         DisposeMeshEmitters();
         RuntimeWarning = null;
         standardRuntimeWarning = null;
+        importFallbackResolver = null;
+        luminanceOpacityCache.Clear();
         TextureCache?.ExpungeStaleCacheItems();
         PackageCache?.ReleasePackages();
     }
@@ -313,6 +318,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private void RefreshTextures()
     {
         textures.Clear();
+        luminanceOpacityCache.Clear();
         gameShaderRenderer.Clear();
         DisposeMeshEmitters();
         if (!IsReady || Simulation.Definition is null)
@@ -335,12 +341,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             try
             {
-                ExportEntry materialExport = emitter.Material switch
-                {
-                    ExportEntry export => export,
-                    ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-                    _ => null
-                };
+                ExportEntry materialExport = ResolvePreviewExport(emitter.Material);
                 if (materialExport is null)
                 {
                     string materialName = emitter.Material?.InstancedFullPath;
@@ -398,12 +399,15 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
                 switch (emitter.RenderMode)
                 {
                     case VfxEmitterRenderMode.Sprite:
-                        ExportEntry materialExport = emitter.Material switch
+                        // ParticleModuleParameterDynamic is evaluated by the simulator, but Meshplorer's material
+                        // renderer supplies FLocalVertexFactory streams. A material compiled with dynamic particle
+                        // inputs must use the standard VFX renderer until the native particle VF is available;
+                        // sending it through the local VF produces the solid white/yellow cards seen in BioticBadass.
+                        if (emitter.ParticleMaterial.UsesDynamicParameter)
                         {
-                            ExportEntry export => export,
-                            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-                            _ => null
-                        };
+                            break;
+                        }
+                        ExportEntry materialExport = ResolvePreviewExport(emitter.Material);
                         if (materialExport is not null)
                         {
                             gameShaderRenderer.TryLoadSprite(this, emitter, materialExport, out warning);
@@ -467,12 +471,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             {
                 VfxMeshRenderer.MeshSection section = resources.Sections[index];
                 IEntry materialEntry = ResolveMeshSectionMaterial(emitter, meshDefinition, section, index);
-                ExportEntry materialExport = materialEntry switch
-                {
-                    ExportEntry export => export,
-                    ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-                    _ => null
-                };
+                ExportEntry materialExport = ResolvePreviewExport(materialEntry);
                 if (materialExport is null)
                 {
                     RuntimeWarning = AppendWarning(RuntimeWarning, $"{emitter.Name}: no material could be resolved for mesh section {index}.");
@@ -558,6 +557,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         material.TwoSided = properties?.GetProp<BoolProperty>("TwoSided")?.Value == true;
         material.DisableDepthTest = properties?.GetProp<BoolProperty>("bDisableDepthTest")?.Value == true;
         material.OpacityMaskClipValue = properties?.GetProp<FloatProperty>("OpacityMaskClipValue")?.Value ?? 0.333f;
+        material.UsesDynamicParameter = baseMaterial?.ClassName == "Material"
+            && ObjectBinary.From<Material>(baseMaterial).SM3MaterialResource.bUsesDynamicParameter;
         if (properties?.GetProp<ArrayProperty<ObjectProperty>>("Expressions") is { } expressions)
         {
             foreach (ObjectProperty expressionReference in expressions)
@@ -576,6 +577,20 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
         }
         material.EmissiveTint = ResolveMaterialInstanceVectorOverride(materialExport, "Color", material.EmissiveTint);
+        material.EmissiveTint = NormalizeEmissiveTint(material.EmissiveTint);
+    }
+
+    /// <summary>
+    /// The preview multiplies the material's Color parameter into every sprite. In game that parameter is usually
+    /// driven at runtime, so an authored black default would only ever blank out the effect (most visibly on additive
+    /// flame cards). Fall back to an untinted card in that case.
+    /// </summary>
+    private static Vector4 NormalizeEmissiveTint(Vector4 tint)
+    {
+        const float visibleTintThreshold = 0.004f;
+        return tint.X <= visibleTintThreshold && tint.Y <= visibleTintThreshold && tint.Z <= visibleTintThreshold
+            ? new Vector4(1, 1, 1, tint.W)
+            : tint;
     }
 
     private Vector4 ResolveMaterialInstanceVectorOverride(ExportEntry materialExport, string parameterName, Vector4 value)
@@ -678,23 +693,39 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             return VfxOpacitySource.One;
         }
 
+        VfxOpacitySource opacitySource = VfxOpacitySource.TextureAlpha;
         ExportEntry baseMaterial = ResolveBaseMaterial(materialExport);
         StructProperty opacity = baseMaterial?.GetProperty<StructProperty>(blendMode == VfxBlendMode.Masked ? "OpacityMask" : "Opacity");
         if (opacity is not null && HasExpression(opacity))
         {
-            if (opacity.GetProp<IntProperty>("MaskR")?.Value != 0) return VfxOpacitySource.TextureRed;
-            if (opacity.GetProp<IntProperty>("MaskG")?.Value != 0) return VfxOpacitySource.TextureGreen;
-            if (opacity.GetProp<IntProperty>("MaskB")?.Value != 0) return VfxOpacitySource.TextureBlue;
-            if (opacity.GetProp<IntProperty>("MaskA")?.Value != 0) return VfxOpacitySource.TextureAlpha;
+            if (opacity.GetProp<IntProperty>("MaskR")?.Value != 0) opacitySource = VfxOpacitySource.TextureRed;
+            else if (opacity.GetProp<IntProperty>("MaskG")?.Value != 0) opacitySource = VfxOpacitySource.TextureGreen;
+            else if (opacity.GetProp<IntProperty>("MaskB")?.Value != 0) opacitySource = VfxOpacitySource.TextureBlue;
+            else if (opacity.GetProp<IntProperty>("MaskA")?.Value != 0) opacitySource = VfxOpacitySource.TextureAlpha;
         }
 
-        if (blendMode is VfxBlendMode.Translucent or VfxBlendMode.Additive or VfxBlendMode.SoftMasked
-            && !TextureHasAlphaChannel(texture))
+        if (opacitySource != VfxOpacitySource.TextureAlpha
+            || blendMode is not (VfxBlendMode.Translucent or VfxBlendMode.Additive or VfxBlendMode.SoftMasked))
         {
-            return VfxOpacitySource.TextureLuminance;
+            return opacitySource;
         }
 
-        return VfxOpacitySource.TextureAlpha;
+        bool hasAlphaChannel = TextureHasAlphaChannel(texture);
+        bool alphaNeedsLuminance = hasAlphaChannel && TextureAlphaNeedsLuminance(texture);
+        return ApplyTextureOpacityFallback(opacitySource, blendMode, hasAlphaChannel, alphaNeedsLuminance);
+    }
+
+    public static VfxOpacitySource ApplyTextureOpacityFallback(
+        VfxOpacitySource authoredSource,
+        VfxBlendMode blendMode,
+        bool hasAlphaChannel,
+        bool alphaNeedsLuminance)
+    {
+        return blendMode is VfxBlendMode.Translucent or VfxBlendMode.Additive or VfxBlendMode.SoftMasked
+               && authoredSource == VfxOpacitySource.TextureAlpha
+               && (!hasAlphaChannel || alphaNeedsLuminance)
+            ? VfxOpacitySource.TextureLuminance
+            : authoredSource;
     }
 
     /// <summary>
@@ -703,14 +734,75 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     /// </summary>
     private bool TextureHasAlphaChannel(IEntry texture)
     {
-        ExportEntry textureExport = texture switch
-        {
-            ExportEntry export => export,
-            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-            _ => null
-        };
+        ExportEntry textureExport = ResolvePreviewExport(texture);
         string format = textureExport?.GetProperty<EnumProperty>("Format")?.Value.Name;
         return format is not null && TextureFormatHasAlpha(format);
+    }
+
+    /// <summary>
+    /// Some DXT5 particle atlases use RGB as coverage while their alpha channel has a nonzero value in every texel.
+    /// Treating that alpha as opacity makes every billboard's rectangular edge visible. Prefer luminance only when
+    /// alpha has no transparent texels but RGB contains a meaningful transparent background.
+    /// </summary>
+    private bool TextureAlphaNeedsLuminance(IEntry texture)
+    {
+        ExportEntry textureExport = ResolvePreviewExport(texture);
+        if (textureExport is null)
+        {
+            return false;
+        }
+
+        string key = $"{textureExport.FileRef.FilePath}:{textureExport.UIndex}";
+        if (luminanceOpacityCache.TryGetValue(key, out bool cached))
+        {
+            return cached;
+        }
+
+        bool useLuminance = false;
+        try
+        {
+            var unrealTexture = new LegendaryExplorerCore.Unreal.Classes.Texture2D(textureExport);
+            LegendaryExplorerCore.Textures.Image image = unrealTexture.ToImage(LegendaryExplorerCore.Textures.PixelFormat.ARGB);
+            useLuminance = ShouldUseLuminanceForOpacity(image.mipMaps[0].data);
+        }
+        catch
+        {
+            // TextureCache will report an actionable warning if the texture itself cannot be loaded. Opacity analysis
+            // is only a quality improvement, so retain the authored alpha path when the source mip is unavailable.
+        }
+
+        luminanceOpacityCache[key] = useLuminance;
+        return useLuminance;
+    }
+
+    public static bool ShouldUseLuminanceForOpacity(ReadOnlySpan<byte> argbPixels)
+    {
+        int pixelCount = argbPixels.Length / 4;
+        if (pixelCount == 0)
+        {
+            return false;
+        }
+
+        int transparentPixelCount = 0;
+        int darkPixelCount = 0;
+        for (int offset = 0; offset + 3 < argbPixels.Length; offset += 4)
+        {
+            if (argbPixels[offset + 3] <= 2)
+            {
+                transparentPixelCount++;
+            }
+            // Block compression leaves noise in the nominally black background of particle cards, so a
+            // strict zero test misses most real atlases.
+            if (argbPixels[offset] <= 8 && argbPixels[offset + 1] <= 8 && argbPixels[offset + 2] <= 8)
+            {
+                darkPixelCount++;
+            }
+        }
+
+        // A handful of stray transparent texels is not authored coverage: only treat alpha as the opacity
+        // channel when a meaningful portion of the texture is actually transparent.
+        int coverageThreshold = Math.Max(1, pixelCount / 100);
+        return transparentPixelCount < coverageThreshold && darkPixelCount >= coverageThreshold;
     }
 
     /// <summary>
@@ -749,12 +841,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private ExportEntry ResolveMaterialParent(ExportEntry material, PropertyCollection properties)
     {
         IEntry parent = properties.GetProp<ObjectProperty>("Parent")?.ResolveToEntry(material.FileRef);
-        return parent switch
-        {
-            ExportEntry export => export,
-            ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-            _ => null
-        };
+        return ResolvePreviewExport(parent);
     }
 
     private ExportEntry ResolveBaseMaterial(ExportEntry material)
@@ -764,15 +851,71 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         while (current is not null && current.ClassName.Contains("MaterialInstance", StringComparison.Ordinal) && visited.Add($"{current.FileRef.FilePath}:{current.UIndex}"))
         {
             IEntry parent = current.GetProperty<ObjectProperty>("Parent")?.ResolveToEntry(current.FileRef);
-            current = parent switch
-            {
-                ExportEntry export => export,
-                ImportEntry import => EntryImporter.ResolveImport(import, PackageCache),
-                _ => null
-            };
+            current = ResolvePreviewExport(parent);
         }
         return current;
     }
+
+    private ExportEntry ResolvePreviewExport(IEntry entry)
+    {
+        if (entry is ExportEntry export)
+        {
+            return export;
+        }
+        if (entry is not ImportEntry import)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (EntryImporter.ResolveImport(import, PackageCache) is { } resolved)
+            {
+                return resolved;
+            }
+        }
+        catch
+        {
+            // Seek-free level imports are often intentionally absent from the normal associated-package search.
+            // The asset database fallbacks below can still provide an equivalent exported copy.
+        }
+
+        IEnumerable<VfxImportFallback> fallbacks = importFallbackResolver?.Invoke(import);
+        if (fallbacks is null)
+        {
+            return null;
+        }
+
+        foreach (VfxImportFallback fallback in fallbacks)
+        {
+            try
+            {
+                IMEPackage package = PackageCache?.GetCachedPackage(fallback.FilePath);
+                if (package is null)
+                {
+                    continue;
+                }
+
+                ExportEntry candidate = package.TryGetUExport(fallback.UIndex, out ExportEntry indexed)
+                    && IsMatchingImportedExport(indexed, import)
+                        ? indexed
+                        : package.Exports.FirstOrDefault(exportCandidate => IsMatchingImportedExport(exportCandidate, import));
+                if (candidate is not null)
+                {
+                    return candidate;
+                }
+            }
+            catch
+            {
+                // A stale or unavailable database usage must not prevent trying the remaining material copies.
+            }
+        }
+        return null;
+    }
+
+    private static bool IsMatchingImportedExport(ExportEntry export, ImportEntry import) =>
+        export?.ClassName == import.ClassName
+        && string.Equals(export.InstancedFullPath, import.InstancedFullPath, StringComparison.Ordinal);
 
     private static string AppendWarning(string current, string warning) =>
         string.Join(Environment.NewLine, new[] { current, warning }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct());
@@ -874,7 +1017,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         blendStates[VfxBlendMode.Opaque] = CreateBlendState(BlendOption.One, BlendOption.Zero, false);
         blendStates[VfxBlendMode.Masked] = CreateBlendState(BlendOption.One, BlendOption.Zero, false);
         blendStates[VfxBlendMode.Translucent] = CreateBlendState(BlendOption.SourceAlpha, BlendOption.InverseSourceAlpha, true);
-        blendStates[VfxBlendMode.Additive] = CreateBlendState(BlendOption.SourceAlpha, BlendOption.One, true);
+        // UE3's BLEND_Additive is Source + Destination. SourceAlpha here attenuates dark fire atlases twice
+        // (once in their RGB and again through luminance-derived alpha), which makes their flames disappear.
+        blendStates[VfxBlendMode.Additive] = CreateBlendState(BlendOption.One, BlendOption.One, true);
         blendStates[VfxBlendMode.Modulate] = CreateBlendState(BlendOption.DestinationColor, BlendOption.Zero, true);
         blendStates[VfxBlendMode.ModulateAndAdd] = CreateBlendState(BlendOption.DestinationColor, BlendOption.One, true);
         blendStates[VfxBlendMode.SoftMasked] = CreateBlendState(BlendOption.SourceAlpha, BlendOption.InverseSourceAlpha, true);

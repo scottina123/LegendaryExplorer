@@ -1,14 +1,22 @@
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
+using LegendaryExplorerCore;
+using LegendaryExplorerCore.Packages;
+using LegendaryExplorerCore.Unreal;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 
 namespace LegendaryExplorer.Tests.Tools.AssetDatabase;
 
 [TestClass]
 public class VfxPreviewTests
 {
+    [ClassInitialize]
+    public static void Initialize(TestContext _) => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default);
+
     [TestMethod]
     public void InGameShaderPreviewIsEnabledByDefault()
     {
@@ -66,6 +74,71 @@ public class VfxPreviewTests
         Assert.AreEqual(5, distribution.Evaluate(0.25f, 0), 0.0001f);
         Assert.AreEqual(10, distribution.Evaluate(0.5f, 0), 0.0001f);
         Assert.AreEqual(20, distribution.Evaluate(1, 0), 0.0001f);
+    }
+
+    [TestMethod]
+    public void ParticleParameterDistributionUsesItsAuthoredVectorDefault()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxParticleParameterTest.pcc", MEGame.ME3);
+        ExportEntry distribution = package.CreateExport("DistributionVectorParticleParameter_0", "DistributionVectorParticleParameter", indexed: false);
+        distribution.WriteProperty(CommonStructs.Vector3Prop(new Vector3(50, 5, 1), "Constant"));
+        ExportEntry module = package.CreateExport("ParticleModuleColorOverLife_0", "ParticleModuleColorOverLife", indexed: false);
+        module.WriteProperty(new StructProperty("BioRawDistributionRwVector3", new PropertyCollection
+        {
+            new ObjectProperty(distribution.UIndex, "Distribution"),
+            new ArrayProperty<StructProperty>("LookupTable")
+        }, "ColorOverLifeRw"));
+
+        IVfxDistribution<Vector3> parsed = ParticleSystemSourceAdapter.ReadVectorDistribution(
+            module,
+            Vector3.Zero,
+            "ColorOverLifeRw");
+
+        Assert.AreEqual(new Vector3(50, 5, 1), parsed.Evaluate(0.5f, 0.5f));
+    }
+
+    [TestMethod]
+    public void NonTransparentAlphaWithBlackRgbBackgroundUsesLuminanceCoverage()
+    {
+        byte[] argbPixels =
+        [
+            0, 0, 0, 8,
+            80, 90, 100, 107
+        ];
+
+        Assert.IsTrue(VfxPreviewRenderContext.ShouldUseLuminanceForOpacity(argbPixels));
+    }
+
+    [TestMethod]
+    public void TrulyTransparentTextureKeepsAuthoredAlphaCoverage()
+    {
+        byte[] argbPixels =
+        [
+            0, 0, 0, 0,
+            80, 90, 100, 107
+        ];
+
+        Assert.IsFalse(VfxPreviewRenderContext.ShouldUseLuminanceForOpacity(argbPixels));
+    }
+
+    [TestMethod]
+    public void ExplicitAlphaSourceWithOpaqueCardBackgroundUsesLuminanceCoverage()
+    {
+        VfxOpacitySource resolved = VfxPreviewRenderContext.ApplyTextureOpacityFallback(
+            VfxOpacitySource.TextureAlpha,
+            VfxBlendMode.Translucent,
+            hasAlphaChannel: true,
+            alphaNeedsLuminance: true);
+
+        Assert.AreEqual(VfxOpacitySource.TextureLuminance, resolved);
+    }
+
+    [TestMethod]
+    public void AssetDatabaseMaterialParentPathMatchesImportPath()
+    {
+        var record = new MaterialRecord { ParentPackage = "BioVFX_Env_Fire/Materials", MaterialName = "Fire_Gout" };
+
+        Assert.AreEqual("BioVFX_Env_Fire.Materials.Fire_Gout", AssetDatabaseWindow.GetVfxMaterialPath(record));
     }
 
     [TestMethod]
@@ -149,6 +222,50 @@ public class VfxPreviewTests
             [0, 3000, 6000],
             [new(false), new(false), new(false)],
             4500));
+    }
+
+    [TestMethod]
+    public void DisabledSelectedEmitterLodFallsBackToNearestEnabledChild()
+    {
+        using IMEPackage package = MEPackageHandler.CreateMemoryEmptyPackage("VfxLodFallbackTest.pcc", MEGame.ME3);
+        ExportEntry emitter = package.CreateExport("ParticleSpriteEmitter_0", "ParticleSpriteEmitter", indexed: false);
+        ExportEntry disabled = package.CreateExport("ParticleLODLevel_0", "ParticleLODLevel", indexed: false);
+        disabled.WriteProperty(new BoolProperty(false, "bEnabled"));
+        ExportEntry enabled = package.CreateExport("ParticleLODLevel_1", "ParticleLODLevel", indexed: false);
+        emitter.WriteProperty(new ArrayProperty<ObjectProperty>("LODLevels")
+        {
+            new(disabled.UIndex),
+            new(enabled.UIndex)
+        });
+
+        Assert.AreSame(enabled, ParticleSystemSourceAdapter.SelectEmitterLod(emitter, 0));
+    }
+
+    [TestMethod]
+    public void DynamicParametersEvaluateUserAndVelocityChannels()
+    {
+        var definition = new VfxPreviewDefinition();
+        definition.Emitters.Add(new VfxEmitterDefinition
+        {
+            Duration = 1,
+            Loops = 1,
+            Bursts = [new VfxBurst(0, 1)],
+            Lifetime = new VfxConstantDistribution<float>(1),
+            InitialVelocity = new VfxConstantDistribution<Vector3>(new Vector3(3, 4, 0)),
+            DynamicParameters =
+            [
+                new(new VfxConstantDistribution<float>(2), VfxDynamicParameterValueMethod.UserSet, false, true, false),
+                new(new VfxConstantDistribution<float>(0.5f), VfxDynamicParameterValueMethod.VelocityMagnitude, false, false, true)
+            ]
+        });
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+
+        simulation.Tick(0.01f);
+
+        VfxParticle particle = simulation.Emitters.Single().Particles.Single();
+        Assert.AreEqual(2, particle.DynamicParameter.X, 0.0001f);
+        Assert.AreEqual(2.5f, particle.DynamicParameter.Y, 0.0001f);
     }
 
     [TestMethod]
