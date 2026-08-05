@@ -47,10 +47,11 @@ namespace LegendaryExplorerCore.Unreal
                 if (prop.Name == name && prop.StaticArrayIndex == staticArrayIndex)
                 {
 #if DEBUG
-                    //type check is duplicative of the assert, but we want to avoid the string construction cost even in debug builds, as this is a very hot path
+                    //the type check avoids the string construction cost even in debug builds, as this is a very hot path.
+                    //A type mismatch is not an error condition - callers are documented to get null back - so this must not assert.
                     if (prop is not T)
                     {
-                        Debug.Assert(prop is T, $"GetProp<{typeof(T).Name}>(\"{name}\"): property exists but is {prop.GetType().Name}. Check the generic type argument.");
+                        Debug.WriteLine($"GetProp<{typeof(T).Name}>(\"{name}\"): property exists but is {prop.GetType().Name}. Returning null.");
                     }
 #endif
                     return prop as T;
