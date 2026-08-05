@@ -130,6 +130,24 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
             }
         }
 
+        public void SetValue(float r, float g, float b, float a)
+        {
+            if (!float.IsFinite(r) || !float.IsFinite(g) || !float.IsFinite(b) || !float.IsFinite(a))
+            {
+                return;
+            }
+
+            bool changed = false;
+            changed |= SetProperty(ref _r, r, nameof(R));
+            changed |= SetProperty(ref _g, g, nameof(G));
+            changed |= SetProperty(ref _b, b, nameof(B));
+            changed |= SetProperty(ref _a, a, nameof(A));
+            if (changed)
+            {
+                ApplyValue();
+            }
+        }
+
         private void SetComponent(ref float field, float value)
         {
             if (float.IsFinite(value) && SetProperty(ref field, value))

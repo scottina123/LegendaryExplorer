@@ -321,6 +321,53 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                 ? SelectedLiveMaterial.SourceEntry is not null
                 : SelectedLiveMaterial.CanCreateNew);
 
+        private bool _showLiveMaterialRandomizationControls;
+        public bool ShowLiveMaterialRandomizationControls
+        {
+            get => _showLiveMaterialRandomizationControls;
+            set
+            {
+                if (SetProperty(ref _showLiveMaterialRandomizationControls, value))
+                {
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
+                }
+            }
+        }
+
+        private Func<LiveMaterialEditorMaterial, Task> _randomizeLiveMaterialScalarsOverride;
+        public Func<LiveMaterialEditorMaterial, Task> RandomizeLiveMaterialScalarsOverride
+        {
+            get => _randomizeLiveMaterialScalarsOverride;
+            set
+            {
+                if (SetProperty(ref _randomizeLiveMaterialScalarsOverride, value))
+                {
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
+                }
+            }
+        }
+
+        private Func<LiveMaterialEditorMaterial, Task> _randomizeLiveMaterialVectorsOverride;
+        public Func<LiveMaterialEditorMaterial, Task> RandomizeLiveMaterialVectorsOverride
+        {
+            get => _randomizeLiveMaterialVectorsOverride;
+            set
+            {
+                if (SetProperty(ref _randomizeLiveMaterialVectorsOverride, value))
+                {
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
+                }
+            }
+        }
+
+        public bool CanRandomizeSelectedLiveMaterialScalars => ShowLiveMaterialRandomizationControls
+            && RandomizeLiveMaterialScalarsOverride is not null
+            && SelectedLiveMaterial?.ScalarParameters.Count > 0;
+        public bool CanRandomizeSelectedLiveMaterialVectors => ShowLiveMaterialRandomizationControls
+            && RandomizeLiveMaterialVectorsOverride is not null
+            && SelectedLiveMaterial?.VectorParameters.Count > 0;
+
         private LiveMaterialEditorMaterial _selectedLiveMaterial;
         public LiveMaterialEditorMaterial SelectedLiveMaterial
         {
@@ -332,6 +379,8 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     SelectedLiveVectorParameter = GetPreferredVectorParameter(value);
                     OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialToCurrent));
                     OnPropertyChanged(nameof(CanSaveSelectedLiveMaterialAsNew));
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialScalars));
+                    OnPropertyChanged(nameof(CanRandomizeSelectedLiveMaterialVectors));
                 }
             }
         }
@@ -2038,6 +2087,40 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
         {
             float unitsPerPixel = Math.Max(Math.Abs(value) * 0.01f, 0.01f);
             return (float)horizontalChange * unitsPerPixel * speedMultiplier;
+        }
+
+        private async void RandomizeLiveMaterialScalars_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLiveMaterial is not { } material || !CanRandomizeSelectedLiveMaterialScalars)
+            {
+                return;
+            }
+
+            try
+            {
+                await RandomizeLiveMaterialScalarsOverride(material);
+            }
+            catch (Exception exception)
+            {
+                new ExceptionHandlerDialog(exception).ShowDialog();
+            }
+        }
+
+        private async void RandomizeLiveMaterialVectors_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedLiveMaterial is not { } material || !CanRandomizeSelectedLiveMaterialVectors)
+            {
+                return;
+            }
+
+            try
+            {
+                await RandomizeLiveMaterialVectorsOverride(material);
+            }
+            catch (Exception exception)
+            {
+                new ExceptionHandlerDialog(exception).ShowDialog();
+            }
         }
 
         private void SaveLiveMaterialToCurrent_Click(object sender, RoutedEventArgs e)

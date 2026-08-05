@@ -269,8 +269,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         }
 
         #region Declarations
-        // v16.0: Index material-only LE3 BioMorphFace profiles independently of morph-target features.
-        public const string dbCurrentBuild = "16.0";
+        // v17.0: Index official BioPlanet surface/cloud MIC parameter profiles for Galaxy Map randomization.
+        public const string dbCurrentBuild = "17.0";
 
         private int previousView { get; set; }
         private readonly bool _isMaterialSelectionMode;
@@ -1411,7 +1411,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         private string GetDatabaseSummaryText()
         {
-            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} Morph Faces: {CurrentDataBase.MorphFaces.Count}";
+            return $"Database generated {CurrentDataBase.GenerationDate} Classes: {CurrentDataBase.ClassRecords.Count} Animations: {CurrentDataBase.Animations.Count} Materials: {CurrentDataBase.Materials.Count} Meshes: {CurrentDataBase.Meshes.Count} Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} Lines: {CurrentDataBase.Lines.Count} Sequence Events: {CurrentDataBase.SequenceEvents.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
         }
 
         private void RefreshTlkLookup()
@@ -2735,7 +2735,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                                                       $"Particles: {CurrentDataBase.Particles.Count} Textures: {CurrentDataBase.Textures.Count} Elements: {CurrentDataBase.GUIElements.Count} " +
                                                       $"Lines: {CurrentDataBase.Lines.Count} TLKs: {CurrentDataBase.TlkStrings.Count} Actors: {CurrentDataBase.Actors.Count} " +
                                                        $"Gesture Tracks: {CurrentDataBase.GestureTracks.Count} Track Props: {CurrentDataBase.PropActions.Count} " +
-                                                       $"Morph Faces: {CurrentDataBase.MorphFaces.Count}";
+                                                       $"Morph Faces: {CurrentDataBase.MorphFaces.Count} BioPlanet Materials: {CurrentDataBase.BioPlanetMaterials.Count}";
 #if DEBUG
                         var end = DateTime.UtcNow;
                         double length = (end - start).TotalMilliseconds;

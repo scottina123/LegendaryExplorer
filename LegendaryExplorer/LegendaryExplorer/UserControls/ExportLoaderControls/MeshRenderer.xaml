@@ -314,6 +314,17 @@
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Live Material Editor" FontWeight="Bold" FontSize="15"/>
                             <TextBlock Margin="0,2,0,6" Text="Changes update the in-game shader preview immediately. Click a mesh region to detect and focus the vector parameter affecting that pixel." TextWrapping="Wrap"/>
+                            <UniformGrid Rows="1" Columns="2" Margin="0,0,0,7"
+                                         Visibility="{Binding ShowLiveMaterialRandomizationControls, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Button Content="Randomize scalars" Margin="0,0,3,0" Padding="5,3"
+                                        IsEnabled="{Binding CanRandomizeSelectedLiveMaterialScalars}"
+                                        Click="RandomizeLiveMaterialScalars_Click"
+                                        ToolTip="Blend compatible scalar values from official BioPlanet profiles in the LE3 Asset Database."/>
+                                <Button Content="Randomize vectors" Margin="3,0,0,0" Padding="5,3"
+                                        IsEnabled="{Binding CanRandomizeSelectedLiveMaterialVectors}"
+                                        Click="RandomizeLiveMaterialVectors_Click"
+                                        ToolTip="Blend compatible vector/color values from official BioPlanet profiles in the LE3 Asset Database."/>
+                            </UniformGrid>
                             <TextBlock Text="Material" FontWeight="SemiBold"/>
                             <ComboBox ItemsSource="{Binding LiveMaterials}" SelectedItem="{Binding SelectedLiveMaterial}"
                                       DisplayMemberPath="DisplayName" Margin="0,2,0,6"/>

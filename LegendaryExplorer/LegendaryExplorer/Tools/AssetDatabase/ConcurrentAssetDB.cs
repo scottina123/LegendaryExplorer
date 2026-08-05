@@ -96,6 +96,10 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         /// </summary>
         public ConcurrentDictionary<string, BioMorphFaceRecord> GeneratedMorphFaces = new();
         /// <summary>
+        /// Dictionary that stores BioPlanet surface and cloud MIC parameter profiles.
+        /// </summary>
+        public ConcurrentDictionary<string, BioPlanetMaterialProfileRecord> GeneratedBioPlanetMaterials = new();
+        /// <summary>
         /// Used to do per-class locking during generation
         /// </summary>
         public ConcurrentDictionary<string, Lock> ClassLocks = new();
@@ -123,6 +127,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GeneratedGestureTracks.Clear();
             GeneratedPropActions.Clear();
             GeneratedMorphFaces.Clear();
+            GeneratedBioPlanetMaterials.Clear();
         }
 
         public string GetProgressString()
@@ -140,6 +145,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                    $"Gesture Tracks: {GeneratedGestureTracks.Count}\n" +
                    $"Prop Actions: {GeneratedPropActions.Count}\n" +
                    $"Morph Faces: {GeneratedMorphFaces.Count}\n" +
+                   $"BioPlanet Materials: {GeneratedBioPlanetMaterials.Count}\n" +
                    $"TLK Strings: {GeneratedTlkStrings.Count}\n" +
                    $"Plot Elements: {GeneratedBoolRecords.Count + GeneratedIntRecords.Count + GeneratedFloatRecords.Count + GeneratedConditionalRecords.Count + GeneratedTransitionRecords.Count}";
         }
@@ -245,6 +251,14 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                 .ThenBy(face => face.UIndex)
                 .ToList();
             pdb.MorphFaces.AddRange(morphFacesSorted);
+
+            var bioPlanetMaterialsSorted = GeneratedBioPlanetMaterials.Values
+                .OrderBy(profile => profile.Layer)
+                .ThenBy(profile => profile.PlanetName, System.StringComparer.OrdinalIgnoreCase)
+                .ThenBy(profile => profile.FileKey)
+                .ThenBy(profile => profile.PlanetUIndex)
+                .ToList();
+            pdb.BioPlanetMaterials.AddRange(bioPlanetMaterialsSorted);
 
             var boolsSorted = GeneratedBoolRecords.Values.OrderBy(x => x.ElementID).ToList();
             pdb.PlotUsages.Bools.AddRange(boolsSorted);

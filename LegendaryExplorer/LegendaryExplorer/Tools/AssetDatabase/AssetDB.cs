@@ -63,6 +63,8 @@ namespace LegendaryExplorer.Tools.AssetDatabase
 
         public List<BioMorphFaceRecord> MorphFaces { get; set; } = new();
 
+        public List<BioPlanetMaterialProfileRecord> BioPlanetMaterials { get; set; } = new();
+
         public PlotUsageDB PlotUsages { get; set; } = new();
 
         public AssetDB(MEGame meGame, string GenerationDate, string databaseVersion, IEnumerable<FileNameDirKeyPair> FileList, IEnumerable<string> ContentDir)
@@ -103,6 +105,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GestureTracks.Clear();
             PropActions.Clear();
             MorphFaces.Clear();
+            BioPlanetMaterials.Clear();
             PlotUsages.ClearRecords();
         }
 
@@ -124,6 +127,7 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             GestureTracks.AddRange(from.GestureTracks);
             PropActions.AddRange(from.PropActions);
             MorphFaces.AddRange(from.MorphFaces);
+            BioPlanetMaterials.AddRange(from.BioPlanetMaterials);
             PlotUsages.AddRecords(from.PlotUsages);
         }
     }
@@ -216,6 +220,42 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         BioMorphColorRecord[] ColorOverrides)
     {
         public BioMorphFaceRecord() : this(default, default, default, default, default, default, [], [], []) { }
+    }
+
+    public enum BioPlanetMaterialLayer : byte
+    {
+        Planet,
+        Cloud
+    }
+
+    public sealed record BioPlanetScalarParameterRecord(string Name, float Value)
+    {
+        public BioPlanetScalarParameterRecord() : this(default, default) { }
+    }
+
+    public sealed record BioPlanetVectorParameterRecord(string Name, float R, float G, float B, float A)
+    {
+        public BioPlanetVectorParameterRecord() : this(default, default, default, default, default) { }
+    }
+
+    /// <summary>
+    /// Effective MIC override values referenced by one BioPlanet material layer. Profiles generated
+    /// from official packages provide bounded reference populations for Galaxy Map randomization.
+    /// </summary>
+    public sealed record BioPlanetMaterialProfileRecord(
+        string PlanetName,
+        string MaterialName,
+        BioPlanetMaterialLayer Layer,
+        int FileKey,
+        int PlanetUIndex,
+        int MaterialUIndex,
+        bool IsMod,
+        bool IsDlc,
+        BioPlanetScalarParameterRecord[] Scalars,
+        BioPlanetVectorParameterRecord[] Vectors)
+    {
+        public BioPlanetMaterialProfileRecord() : this(default, default, default, default, default, default,
+            default, default, [], []) { }
     }
 
     public class PlotUsageDB

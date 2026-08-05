@@ -19,6 +19,7 @@ using LegendaryExplorer.Misc;
 using LegendaryExplorer.SharedUI;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorer.SharedUI.Interfaces;
+using LegendaryExplorer.Tools.AssetDatabase;
 using LegendaryExplorer.Tools.TlkManagerNS;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorer.UserControls.SharedToolControls;
@@ -248,6 +249,9 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         PlanetMaterialMeshViewer.RenderGameShader = true;
         PlanetMaterialMeshViewer.SaveLiveMaterialToCurrentOverride = SavePlanetMaterialToCurrent;
         PlanetMaterialMeshViewer.SaveLiveMaterialAsNewOverride = SavePlanetMaterialAsNew;
+        PlanetMaterialMeshViewer.RandomizeLiveMaterialScalarsOverride = RandomizePlanetMaterialScalars;
+        PlanetMaterialMeshViewer.RandomizeLiveMaterialVectorsOverride = RandomizePlanetMaterialVectors;
+        PlanetMaterialMeshViewer.ShowLiveMaterialRandomizationControls = true;
         PlanetMaterialMeshViewer.LiveMaterialSaveCurrentLabel = "Overwrite MIC";
         PlanetMaterialMeshViewer.LiveMaterialSaveAsNewLabel = "Create new MIC...";
         PlanetMaterialMeshViewer.LiveMaterialSaveHelpText =
@@ -1896,6 +1900,153 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         PlanetMaterialMeshViewer.LiveMaterialSourceOverrides = [material];
         PlanetMaterialMeshViewer.OverlayMaterials = [material];
         PlanetMaterialMeshViewer.LoadExport(mesh);
+    }
+
+    private async Task RandomizePlanetMaterialScalars(LiveMaterialEditorMaterial material)
+    {
+        if (SelectedNode?.Export is not { } planet || SelectedPlanetMaterialSlot is not { } slot)
+        {
+            return;
+        }
+
+        BioPlanetReferenceCatalog catalog = await LoadBioPlanetRandomizationCatalog();
+        if (catalog is null || !ReferenceEquals(PlanetMaterialMeshViewer.SelectedLiveMaterial, material)
+                            || SelectedNode?.Export != planet || SelectedPlanetMaterialSlot != slot)
+        {
+            return;
+        }
+
+        BioPlanetMaterialLayer layer = GetMaterialLayer(slot);
+        HashSet<string> targetNames = material.ScalarParameters.Select(parameter => parameter.ParameterName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<BioPlanetReferenceProfile> profiles = catalog.Profiles
+            .Where(profile => profile.Layer == layer && profile.Scalars.Keys.Any(targetNames.Contains))
+            .ToList();
+        if (profiles.Count == 0)
+        {
+            ShowMissingBioPlanetProfiles(slot, "scalar");
+            return;
+        }
+
+        (BioPlanetReferenceProfile first, BioPlanetReferenceProfile second, float firstWeight, float secondWeight) =
+            PickBioPlanetProfiles(profiles);
+        int changed = 0;
+        foreach (LiveScalarMaterialParameter parameter in material.ScalarParameters)
+        {
+            bool hasFirst = first.Scalars.TryGetValue(parameter.ParameterName, out float firstValue);
+            bool hasSecond = second.Scalars.TryGetValue(parameter.ParameterName, out float secondValue);
+            if (!hasFirst && !hasSecond)
+            {
+                continue;
+            }
+
+            parameter.Value = hasFirst && hasSecond
+                ? firstValue * firstWeight + secondValue * secondWeight
+                : hasFirst ? firstValue : secondValue;
+            changed++;
+        }
+        StatusText = $"Randomized {changed} {slot.DisplayName.ToLowerInvariant()} scalar parameters by blending official BioPlanet profiles.";
+    }
+
+    private async Task RandomizePlanetMaterialVectors(LiveMaterialEditorMaterial material)
+    {
+        if (SelectedNode?.Export is not { } planet || SelectedPlanetMaterialSlot is not { } slot)
+        {
+            return;
+        }
+
+        BioPlanetReferenceCatalog catalog = await LoadBioPlanetRandomizationCatalog();
+        if (catalog is null || !ReferenceEquals(PlanetMaterialMeshViewer.SelectedLiveMaterial, material)
+                            || SelectedNode?.Export != planet || SelectedPlanetMaterialSlot != slot)
+        {
+            return;
+        }
+
+        BioPlanetMaterialLayer layer = GetMaterialLayer(slot);
+        HashSet<string> targetNames = material.VectorParameters.Select(parameter => parameter.ParameterName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<BioPlanetReferenceProfile> profiles = catalog.Profiles
+            .Where(profile => profile.Layer == layer && profile.Vectors.Keys.Any(targetNames.Contains))
+            .ToList();
+        if (profiles.Count == 0)
+        {
+            ShowMissingBioPlanetProfiles(slot, "vector");
+            return;
+        }
+
+        (BioPlanetReferenceProfile first, BioPlanetReferenceProfile second, float firstWeight, float secondWeight) =
+            PickBioPlanetProfiles(profiles);
+        int changed = 0;
+        foreach (LiveVectorMaterialParameter parameter in material.VectorParameters)
+        {
+            bool hasFirst = first.Vectors.TryGetValue(parameter.ParameterName, out BioPlanetReferenceVector firstValue);
+            bool hasSecond = second.Vectors.TryGetValue(parameter.ParameterName, out BioPlanetReferenceVector secondValue);
+            if (!hasFirst && !hasSecond)
+            {
+                continue;
+            }
+
+            BioPlanetReferenceVector value = hasFirst && hasSecond
+                ? new BioPlanetReferenceVector(
+                    firstValue.R * firstWeight + secondValue.R * secondWeight,
+                    firstValue.G * firstWeight + secondValue.G * secondWeight,
+                    firstValue.B * firstWeight + secondValue.B * secondWeight,
+                    firstValue.A * firstWeight + secondValue.A * secondWeight)
+                : hasFirst ? firstValue : secondValue;
+            parameter.SetValue(value.R, value.G, value.B, value.A);
+            changed++;
+        }
+        StatusText = $"Randomized {changed} {slot.DisplayName.ToLowerInvariant()} vector parameters by blending official BioPlanet profiles.";
+    }
+
+    private async Task<BioPlanetReferenceCatalog> LoadBioPlanetRandomizationCatalog()
+    {
+        IsBusy = true;
+        BusyText = "Loading official BioPlanet material profiles from the LE3 Asset Database...";
+        try
+        {
+            BioPlanetReferenceCatalog catalog = await BioPlanetRandomizationCatalog.GetCatalogAsync(MEGame.LE3);
+            if (!string.IsNullOrWhiteSpace(catalog.Error))
+            {
+                MessageBox.Show(this, catalog.Error, "BioPlanet material randomization",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return null;
+            }
+            return catalog;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static BioPlanetMaterialLayer GetMaterialLayer(SFXGalaxyPlanetMaterialSlot slot) =>
+        slot.PropertyName.Equals("CloudMaterial", StringComparison.OrdinalIgnoreCase)
+            ? BioPlanetMaterialLayer.Cloud
+            : BioPlanetMaterialLayer.Planet;
+
+    private static (BioPlanetReferenceProfile First, BioPlanetReferenceProfile Second,
+        float FirstWeight, float SecondWeight) PickBioPlanetProfiles(IReadOnlyList<BioPlanetReferenceProfile> profiles)
+    {
+        BioPlanetReferenceProfile first = profiles[Random.Shared.Next(profiles.Count)];
+        BioPlanetReferenceProfile second = first;
+        if (profiles.Count > 1)
+        {
+            do
+            {
+                second = profiles[Random.Shared.Next(profiles.Count)];
+            } while (ReferenceEquals(first, second));
+        }
+
+        float firstWeight = profiles.Count > 1 ? 0.4f + Random.Shared.NextSingle() * 0.2f : 1f;
+        return (first, second, firstWeight, 1f - firstWeight);
+    }
+
+    private void ShowMissingBioPlanetProfiles(SFXGalaxyPlanetMaterialSlot slot, string parameterType)
+    {
+        MessageBox.Show(this,
+            $"The LE3 Asset Database has no official {slot.DisplayName.ToLowerInvariant()} profiles matching this material's {parameterType} parameter names.",
+            "BioPlanet material randomization", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private bool SavePlanetMaterialToCurrent(LiveMaterialEditorMaterial material)
