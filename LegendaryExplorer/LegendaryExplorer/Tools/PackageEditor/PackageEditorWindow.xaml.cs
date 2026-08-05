@@ -361,6 +361,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         private bool _delaySelectionPreview;
         private DispatcherOperation _pendingPreviewOperation;
         private bool _pendingPreviewIsRefresh;
+        private DispatcherOperation _pendingStringRefNavigationOperation;
+        private CancellationTokenSource _stringRefSearchCancellationTokenSource;
+        private ListDialog _stringRefSearchResultsDialog;
         /// <summary>
         /// Caches FaceFXAnimSet export UIndex -> ObjectName so we can detect renames in HandleUpdate.
         /// </summary>
@@ -597,7 +600,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
             SaveFileCommand = new GenericCommand(SaveFile, PackageIsLoaded);
             SaveAsCommand = new GenericCommand(SaveFileAs, PackageIsLoaded);
             FindCommand = new GenericCommand(FocusSearch, PackageIsLoaded);
-            SearchStringRefsCommand = new GenericCommand(SearchStringRefs, PackageIsLoaded);
+            SearchStringRefsCommand = new GenericCommand(SearchStringRefs, CanSearchStringRefs);
             GotoCommand = new GenericCommand(FocusGoto, PackageIsLoaded);
             GoToLastExportCommand = new GenericCommand(GoToLastExport, () => Pcc?.Exports.Count > 0);
             TabRightCommand = new GenericCommand(TabRight, PackageIsLoaded);
@@ -2486,6 +2489,13 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void stringRefUsageDoubleClick(EntryStringPair clickedItem)
         {
+            if (clickedItem?.Entry is not ExportEntry targetExport
+                || targetExport.UIndex == 0
+                || !ReferenceEquals(targetExport.FileRef, Pcc))
+            {
+                return;
+            }
+
             if (CurrentView is CurrentViewMode.Names)
             {
                 SearchHintText = "Object name";
@@ -2493,9 +2503,36 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 CurrentView = CurrentViewMode.Tree;
             }
 
-            entryDoubleClick(clickedItem);
+            CancelPendingStringRefNavigation();
+            if (!GoToNumber(targetExport.UIndex))
+            {
+                return;
+            }
 
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => SelectStringRefUsageInRightPanel(clickedItem)));
+            _pendingStringRefNavigationOperation = Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                _pendingStringRefNavigationOperation = null;
+                if (!IsLoaded
+                    || !ReferenceEquals(targetExport.FileRef, Pcc)
+                    || InterpreterTab_Interpreter.CurrentLoadedExport is not { } loadedExport
+                    || !ReferenceEquals(loadedExport.FileRef, targetExport.FileRef)
+                    || loadedExport.UIndex != targetExport.UIndex)
+                {
+                    return;
+                }
+
+                SelectStringRefUsageInRightPanel(clickedItem);
+            }));
+        }
+
+        private void CancelPendingStringRefNavigation()
+        {
+            if (_pendingStringRefNavigationOperation?.Status == DispatcherOperationStatus.Pending)
+            {
+                _pendingStringRefNavigationOperation.Abort();
+            }
+
+            _pendingStringRefNavigationOperation = null;
         }
 
         private void SelectNameUsageInRightPanel(EntryStringPair clickedItem)
@@ -2569,7 +2606,12 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private void SelectStringRefUsageInRightPanel(EntryStringPair clickedItem)
         {
-            if (clickedItem?.Entry is not ExportEntry || clickedItem.Entry.UIndex == 0)
+            if (clickedItem?.Entry is not ExportEntry targetExport
+                || targetExport.UIndex == 0
+                || !ReferenceEquals(targetExport.FileRef, Pcc)
+                || InterpreterTab_Interpreter.CurrentLoadedExport is not { } loadedExport
+                || !ReferenceEquals(loadedExport.FileRef, targetExport.FileRef)
+                || loadedExport.UIndex != targetExport.UIndex)
             {
                 return;
             }
@@ -5556,6 +5598,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
         private bool PackageIsLoaded() => Pcc != null;
 
+        private bool CanSearchStringRefs() => Pcc != null && _stringRefSearchCancellationTokenSource is null;
+
         #endregion
 
         public PackageEditorWindow() : this(submitTelemetry: true) { }
@@ -5714,6 +5758,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         /// <param name="loadingSize"></param>
         private void preloadPackage(string loadingName, long loadingSize)
         {
+            CancelStringRefSearch();
+            CancelPendingStringRefNavigation();
+            CloseStringRefSearchResults();
             CancelPendingPreview();
             ClearTreeMultiSelection();
             _treeSelectionAnchor = null;
@@ -6863,9 +6910,10 @@ namespace LegendaryExplorer.Tools.PackageEditor
             }
         }
 
-        private void SearchStringRefs()
+        private async void SearchStringRefs()
         {
-            if (Pcc == null)
+            IMEPackage searchPackage = Pcc;
+            if (searchPackage == null || _stringRefSearchCancellationTokenSource is not null)
             {
                 return;
             }
@@ -6876,41 +6924,91 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            CancelPendingStringRefNavigation();
+            CloseStringRefSearchResults();
+            var cancellationTokenSource = new CancellationTokenSource();
+            _stringRefSearchCancellationTokenSource = cancellationTokenSource;
+            CommandManager.InvalidateRequerySuggested();
             BusyText = $"Searching string refs for '{searchTerm}'...";
             IsBusy = true;
-            Task.Run(() => FindStringRefUsages(searchTerm)).ContinueWithOnUIThread(prevTask =>
+            try
             {
-                IsBusy = false;
+                List<EntryStringPair> results = await Task.Run(
+                    () => FindStringRefUsages(searchPackage, searchTerm, cancellationTokenSource.Token),
+                    cancellationTokenSource.Token);
 
-                List<EntryStringPair> results = prevTask.Result;
+                if (cancellationTokenSource.IsCancellationRequested
+                    || !IsLoaded
+                    || !ReferenceEquals(searchPackage, Pcc))
+                {
+                    return;
+                }
+
                 if (results.Count == 0)
                 {
                     MessageBox.Show(this, $"No StringRef usages matching '{searchTerm}' were found.", "StringRef search");
                     return;
                 }
 
-                new ListDialog(
+                CloseStringRefSearchResults();
+                var resultsDialog = new ListDialog(
                     results,
                     $"{results.Count} StringRef match{(results.Count == 1 ? string.Empty : "es")}",
                     "Double-click a result to navigate to the owning export and property.",
                     this)
                 {
                     DoubleClickEntryHandler = stringRefUsageDoubleClick
-                }.Show();
-            });
+                };
+                _stringRefSearchResultsDialog = resultsDialog;
+                resultsDialog.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_stringRefSearchResultsDialog, resultsDialog))
+                    {
+                        _stringRefSearchResultsDialog = null;
+                    }
+                };
+                resultsDialog.Show();
+            }
+            catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
+            {
+                // A new package is loading or the Package Editor is closing.
+            }
+            catch (Exception exception)
+            {
+                if (IsLoaded && ReferenceEquals(searchPackage, Pcc))
+                {
+                    new ExceptionHandlerDialog(exception) { Owner = this }.ShowDialog();
+                }
+            }
+            finally
+            {
+                if (ReferenceEquals(_stringRefSearchCancellationTokenSource, cancellationTokenSource))
+                {
+                    _stringRefSearchCancellationTokenSource = null;
+                    IsBusy = false;
+                    CommandManager.InvalidateRequerySuggested();
+                }
+
+                cancellationTokenSource.Dispose();
+            }
         }
 
-        private List<EntryStringPair> FindStringRefUsages(string searchTerm)
+        private List<EntryStringPair> FindStringRefUsages(IMEPackage package, string searchTerm, CancellationToken cancellationToken)
         {
             var results = new List<EntryStringPair>();
             var resolvedTextCache = new Dictionary<int, string>();
             int? exactStringRef = int.TryParse(searchTerm, out int parsedStringRef) ? parsedStringRef : null;
 
-            foreach (ExportEntry export in Pcc.Exports)
+            foreach (ExportEntry export in package.Exports)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    CollectDerivedStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache);
+                    CollectDerivedStringRefUsages(export, results, searchTerm, exactStringRef, resolvedTextCache, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch
                 {
@@ -6919,7 +7017,11 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
                 try
                 {
-                    CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache);
+                    CollectStringRefUsages(export.GetProperties(), export, results, searchTerm, exactStringRef, string.Empty, resolvedTextCache, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch
                 {
@@ -6940,24 +7042,28 @@ namespace LegendaryExplorer.Tools.PackageEditor
             string searchTerm,
             int? exactStringRef,
             string pathPrefix,
-            Dictionary<int, string> resolvedTextCache)
+            Dictionary<int, string> resolvedTextCache,
+            CancellationToken cancellationToken)
         {
             foreach (Property prop in props)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 switch (prop)
                 {
                     case StructProperty structProperty:
-                        CollectStringRefUsages(structProperty.Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structProperty.Name}.", resolvedTextCache);
+                        CollectStringRefUsages(structProperty.Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structProperty.Name}.", resolvedTextCache, cancellationToken);
                         break;
                     case ArrayProperty<StructProperty> structArray:
                         for (int i = 0; i < structArray.Count; i++)
                         {
-                            CollectStringRefUsages(structArray[i].Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structArray.Name}[{i}].", resolvedTextCache);
+                            cancellationToken.ThrowIfCancellationRequested();
+                            CollectStringRefUsages(structArray[i].Properties, export, results, searchTerm, exactStringRef, $"{pathPrefix}{structArray.Name}[{i}].", resolvedTextCache, cancellationToken);
                         }
                         break;
                     case ArrayProperty<StringRefProperty> stringRefArray:
                         for (int i = 0; i < stringRefArray.Count; i++)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             AddStringRefUsage(results, export, $"{pathPrefix}{stringRefArray.Name}[{i}] value", stringRefArray[i].Value, searchTerm, exactStringRef, resolvedTextCache);
                         }
                         break;
@@ -6976,7 +7082,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
             List<EntryStringPair> results,
             string searchTerm,
             int? exactStringRef,
-            Dictionary<int, string> resolvedTextCache)
+            Dictionary<int, string> resolvedTextCache,
+            CancellationToken cancellationToken)
         {
             IEnumerable<int> stringRefs = export.ClassName switch
             {
@@ -6988,6 +7095,7 @@ namespace LegendaryExplorer.Tools.PackageEditor
 
             foreach (int stringRef in stringRefs.Distinct())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 AddStringRefUsage(results, export, "Header: Object Name", stringRef, searchTerm, exactStringRef, resolvedTextCache);
             }
         }
@@ -7040,11 +7148,15 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 return;
             }
 
+            if (exactStringRef.HasValue && stringRef != exactStringRef.Value)
+            {
+                return;
+            }
+
             string resolvedText = ResolveStringRefSearchText(export, stringRef, resolvedTextCache);
             bool matches = exactStringRef.HasValue
-                ? stringRef == exactStringRef.Value
-                : !string.IsNullOrWhiteSpace(resolvedText)
-                  && resolvedText.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+                || !string.IsNullOrWhiteSpace(resolvedText)
+                   && resolvedText.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
 
             if (!matches)
             {
@@ -7693,6 +7805,9 @@ namespace LegendaryExplorer.Tools.PackageEditor
         {
             if (!e.Cancel)
             {
+                CancelStringRefSearch();
+                CancelPendingStringRefNavigation();
+                CloseStringRefSearchResults();
                 SoundTab_Soundpanel.FreeAudioResources();
                 foreach (ExportLoaderControl el in ExportLoaders.Keys)
                 {
@@ -7702,6 +7817,24 @@ namespace LegendaryExplorer.Tools.PackageEditor
                 LeftSideList_ItemsSource.ClearEx();
                 ResetTreeView();
                 RecentsController?.Dispose();
+            }
+        }
+
+        private void CancelStringRefSearch()
+        {
+            CancellationTokenSource cancellationTokenSource = _stringRefSearchCancellationTokenSource;
+            _stringRefSearchCancellationTokenSource = null;
+            cancellationTokenSource?.Cancel();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        private void CloseStringRefSearchResults()
+        {
+            ListDialog resultsDialog = _stringRefSearchResultsDialog;
+            _stringRefSearchResultsDialog = null;
+            if (resultsDialog?.IsLoaded == true)
+            {
+                resultsDialog.Close();
             }
         }
 

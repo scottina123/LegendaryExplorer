@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using LegendaryExplorer.SharedUI.Bases;
 using LegendaryExplorerCore.Misc;
@@ -154,7 +155,15 @@ namespace LegendaryExplorer.Dialogs
 
         private void ListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            var ctx = ((FrameworkElement)e.OriginalSource).DataContext;
+            if (sender is not ListView listView
+                || e.ChangedButton != MouseButton.Left
+                || e.OriginalSource is not DependencyObject source
+                || ItemsControl.ContainerFromElement(listView, source) is not ListViewItem listViewItem)
+            {
+                return;
+            }
+
+            var ctx = listViewItem.DataContext;
             if (ctx is EntryStringPair esp && (esp.Entry is not null || esp.Openable is not null))
             {
                 if (DoubleClickEntryHandler == null)
@@ -164,6 +173,7 @@ namespace LegendaryExplorer.Dialogs
                 else
                 {
                     DoubleClickEntryHandler.Invoke(esp);
+                    e.Handled = true;
                 }
             }
             else if (ctx != null)
@@ -175,6 +185,7 @@ namespace LegendaryExplorer.Dialogs
                 else
                 {
                     DoubleClickItemHandler.Invoke(ctx);
+                    e.Handled = true;
                 }
             }
         }
