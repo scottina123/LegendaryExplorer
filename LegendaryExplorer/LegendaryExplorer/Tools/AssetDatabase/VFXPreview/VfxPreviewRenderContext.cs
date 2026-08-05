@@ -27,7 +27,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
-    private bool useGameShader;
+    private bool useGameShader = true;
     private string standardRuntimeWarning;
     private bool isDarkMode;
     private bool autoFramePending;
@@ -53,7 +53,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     /// <summary>
     /// Uses the experimental compiled-material preview shared with Meshplorer and Morph Editor.
-    /// It is deliberately opt-in because loading material shader maps is substantially more expensive.
+    /// This is the default VFX preview path; incompatible emitters fall back to the standard shader.
     /// </summary>
     public bool UseGameShader
     {

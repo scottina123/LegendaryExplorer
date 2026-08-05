@@ -9,11 +9,11 @@ namespace LegendaryExplorer.Tests.Tools.AssetDatabase;
 public class VfxPreviewTests
 {
     [TestMethod]
-    public void InGameShaderPreviewIsDisabledByDefault()
+    public void InGameShaderPreviewIsEnabledByDefault()
     {
         var context = new VfxPreviewRenderContext();
 
-        Assert.IsFalse(context.UseGameShader);
+        Assert.IsTrue(context.UseGameShader);
     }
 
     [TestMethod]
