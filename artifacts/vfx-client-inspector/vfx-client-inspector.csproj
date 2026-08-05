@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+    <Reference Include="LegendaryExplorer">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\LegendaryExplorer.dll</HintPath>
+    </Reference>
+    <Reference Include="LegendaryExplorerCore">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\LegendaryExplorerCore.dll</HintPath>
+    </Reference>
+    <Reference Include="BinaryPack">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\BinaryPack.dll</HintPath>
+    </Reference>
+    <Reference Include="Serilog">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\Serilog.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDX">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\SharpDX.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDX.D3DCompiler">
+      <HintPath>..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\SharpDX.D3DCompiler.dll</HintPath>
+    </Reference>
+    <None Include="..\..\LegendaryExplorer\LegendaryExplorer\bin\WinDebug\net10.0-windows\CompressionWrappers.dll"
+          Link="CompressionWrappers.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

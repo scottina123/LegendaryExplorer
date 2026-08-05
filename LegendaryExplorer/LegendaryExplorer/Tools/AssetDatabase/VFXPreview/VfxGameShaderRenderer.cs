@@ -97,6 +97,30 @@ public sealed class VfxGameShaderRenderer : IDisposable
             ? ParticleBeamTrailDynamicFactory
             : ParticleBeamTrailFactory;
 
+    private static IEnumerable<string> GetSpriteVertexFactoryCandidates(VfxEmitterDefinition emitter)
+    {
+        bool subUV = UsesSubUV(emitter);
+        bool dynamic = emitter.ParticleMaterial.UsesDynamicParameter;
+        if (subUV)
+        {
+            yield return dynamic ? ParticleSubUVDynamicFactory : ParticleSubUVFactory;
+            yield return dynamic ? ParticleSubUVFactory : ParticleSubUVDynamicFactory;
+        }
+        else
+        {
+            yield return dynamic ? ParticleDynamicFactory : ParticleFactory;
+            yield return dynamic ? ParticleFactory : ParticleDynamicFactory;
+        }
+    }
+
+    private static IEnumerable<string> GetBeamTrailVertexFactoryCandidates(VfxEmitterDefinition emitter)
+    {
+        yield return SelectBeamTrailVertexFactory(emitter);
+        yield return emitter.ParticleMaterial.UsesDynamicParameter
+            ? ParticleBeamTrailFactory
+            : ParticleBeamTrailDynamicFactory;
+    }
+
     public bool TryLoadSprite(
         MeshRenderContext context,
         VfxEmitterDefinition emitter,
@@ -109,51 +133,56 @@ public sealed class VfxGameShaderRenderer : IDisposable
             return false;
         }
 
-        try
+        var failures = new List<string>();
+        foreach (string candidateFactory in GetSpriteVertexFactoryCandidates(emitter))
         {
-            string vertexFactoryType = SelectSpriteVertexFactory(emitter);
-            var material = new MaterialRenderProxy(context, materialExport, vertexFactoryType);
-            if (material.UnrealVertexShader is null || material.UnrealPixelShader is null)
+            try
             {
-                warning = $"{materialExport.InstancedFullPath} has no {vertexFactoryType} base-pass shader.";
-                return false;
-            }
-            if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
-                    vertexFactoryType, StringComparison.Ordinal))
-            {
-                warning = $"{materialExport.InstancedFullPath} resolved a mismatched vertex factory.";
-                return false;
-            }
-            if (!MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleVertex>(
-                    vertexFactoryType, material.UnrealVertexShader.ShaderByteCode, out string inputError))
-            {
-                warning = $"{materialExport.InstancedFullPath} rejected {vertexFactoryType}: {inputError}";
-                return false;
-            }
+                var material = new MaterialRenderProxy(context, materialExport, candidateFactory);
+                if (material.UnrealVertexShader is null || material.UnrealPixelShader is null)
+                {
+                    failures.Add($"{candidateFactory}: no base-pass shader");
+                    continue;
+                }
+                if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
+                        candidateFactory, StringComparison.Ordinal))
+                {
+                    failures.Add($"{candidateFactory}: mismatched shader map");
+                    continue;
+                }
+                if (!MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleVertex>(
+                        candidateFactory, material.UnrealVertexShader.ShaderByteCode, out string inputError))
+                {
+                    failures.Add($"{candidateFactory}: {inputError}");
+                    continue;
+                }
 
-            LoadMaterialTextures(context, material);
-            ConfigureFactoryConstants(material.ParticleFactoryParameters, emitter);
+                LoadMaterialTextures(context, material);
+                ConfigureFactoryConstants(material.ParticleFactoryParameters, emitter);
 
-            const int initialParticleCapacity = 1;
-            spriteEmitters[emitter] = new SpriteResources
+                const int initialParticleCapacity = 1;
+                spriteEmitters[emitter] = new SpriteResources
+                {
+                    Mesh = CreateSpriteMesh(context, initialParticleCapacity),
+                    Material = material,
+                    BlendDescription = CreateBlendDescription(material.BlendMode),
+                    VertexFactoryType = candidateFactory,
+                    UsesSubUV = candidateFactory.Contains("SubUV", StringComparison.Ordinal),
+                    UsesDynamicParameter = candidateFactory.Contains("DynamicParameter", StringComparison.Ordinal),
+                    DepthTest = !emitter.ParticleMaterial.DisableDepthTest,
+                    DepthWrite = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked,
+                    ParticleCapacity = initialParticleCapacity
+                };
+                return true;
+            }
+            catch (Exception exception)
             {
-                Mesh = CreateSpriteMesh(context, initialParticleCapacity),
-                Material = material,
-                BlendDescription = CreateBlendDescription(material.BlendMode),
-                VertexFactoryType = vertexFactoryType,
-                UsesSubUV = UsesSubUV(emitter),
-                UsesDynamicParameter = emitter.ParticleMaterial.UsesDynamicParameter,
-                DepthTest = !emitter.ParticleMaterial.DisableDepthTest,
-                DepthWrite = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked,
-                ParticleCapacity = initialParticleCapacity
-            };
-            return true;
+                failures.Add($"{candidateFactory}: {exception.Message}");
+            }
         }
-        catch (Exception exception)
-        {
-            warning = $"{materialExport.InstancedFullPath} could not load its native particle shader ({exception.Message}).";
-            return false;
-        }
+        warning = $"{materialExport.InstancedFullPath} has no compatible native particle shader "
+            + $"({string.Join("; ", failures)}).";
+        return false;
     }
 
     public bool TryLoadBeamTrail(
@@ -168,47 +197,52 @@ public sealed class VfxGameShaderRenderer : IDisposable
             return false;
         }
 
-        try
+        var failures = new List<string>();
+        foreach (string candidateFactory in GetBeamTrailVertexFactoryCandidates(emitter))
         {
-            string vertexFactoryType = SelectBeamTrailVertexFactory(emitter);
-            var material = new MaterialRenderProxy(context, materialExport, vertexFactoryType);
-            if (material.UnrealVertexShader is null || material.UnrealPixelShader is null)
+            try
             {
-                warning = $"{materialExport.InstancedFullPath} has no {vertexFactoryType} base-pass shader.";
-                return false;
-            }
-            if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
-                    vertexFactoryType, StringComparison.Ordinal))
-            {
-                warning = $"{materialExport.InstancedFullPath} resolved a mismatched vertex factory.";
-                return false;
-            }
-            if (!MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleBeamTrailVertex>(
-                    vertexFactoryType, material.UnrealVertexShader.ShaderByteCode, out string inputError))
-            {
-                warning = $"{materialExport.InstancedFullPath} rejected {vertexFactoryType}: {inputError}";
-                return false;
-            }
+                var material = new MaterialRenderProxy(context, materialExport, candidateFactory);
+                if (material.UnrealVertexShader is null || material.UnrealPixelShader is null)
+                {
+                    failures.Add($"{candidateFactory}: no base-pass shader");
+                    continue;
+                }
+                if (!string.Equals(material.UnrealVertexShader.VertexFactoryParameters.VertexFactoryType.Name,
+                        candidateFactory, StringComparison.Ordinal))
+                {
+                    failures.Add($"{candidateFactory}: mismatched shader map");
+                    continue;
+                }
+                if (!MeshRenderContext.ValidateVertexFactoryInputLayout<ParticleBeamTrailVertex>(
+                        candidateFactory, material.UnrealVertexShader.ShaderByteCode, out string inputError))
+                {
+                    failures.Add($"{candidateFactory}: {inputError}");
+                    continue;
+                }
 
-            LoadMaterialTextures(context, material);
-            ConfigureFactoryConstants(material.ParticleFactoryParameters, emitter);
-            const int initialSegmentCapacity = 1;
-            beamTrailEmitters[emitter] = new BeamTrailResources
+                LoadMaterialTextures(context, material);
+                ConfigureFactoryConstants(material.ParticleFactoryParameters, emitter);
+                const int initialSegmentCapacity = 1;
+                beamTrailEmitters[emitter] = new BeamTrailResources
+                {
+                    Mesh = CreateBeamTrailMesh(context, initialSegmentCapacity),
+                    Material = material,
+                    BlendDescription = CreateBlendDescription(material.BlendMode),
+                    DepthTest = !emitter.ParticleMaterial.DisableDepthTest,
+                    DepthWrite = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked,
+                    SegmentCapacity = initialSegmentCapacity
+                };
+                return true;
+            }
+            catch (Exception exception)
             {
-                Mesh = CreateBeamTrailMesh(context, initialSegmentCapacity),
-                Material = material,
-                BlendDescription = CreateBlendDescription(material.BlendMode),
-                DepthTest = !emitter.ParticleMaterial.DisableDepthTest,
-                DepthWrite = material.BlendMode is EBlendMode.BLEND_Opaque or EBlendMode.BLEND_Masked,
-                SegmentCapacity = initialSegmentCapacity
-            };
-            return true;
+                failures.Add($"{candidateFactory}: {exception.Message}");
+            }
         }
-        catch (Exception exception)
-        {
-            warning = $"{materialExport.InstancedFullPath} could not load its native beam/trail shader ({exception.Message}).";
-            return false;
-        }
+        warning = $"{materialExport.InstancedFullPath} has no compatible native beam/trail shader "
+            + $"({string.Join("; ", failures)}).";
+        return false;
     }
 
     private static void LoadMaterialTextures(MeshRenderContext context, MaterialRenderProxy material)

@@ -19,6 +19,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 {
     private sealed class ActorMeshResources : IDisposable
     {
+        public SkeletalMesh SkeletalMesh;
         public ModelPreview<WorldVertex> StandardPreview;
         public ModelPreview<LEVertex> GameShaderPreview;
 
@@ -34,6 +35,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             GameShaderPreview?.Dispose();
             StandardPreview = null;
             GameShaderPreview = null;
+            SkeletalMesh = null;
         }
     }
 
@@ -85,8 +87,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     /// <summary>
     /// Uses the compiled native material and vertex-factory preview shared with Meshplorer and Morph Editor.
-    /// This is the default VFX preview path. Emitters that do not have a complete compatible native path are
-    /// omitted instead of being rendered through a visually misleading custom fallback.
+    /// This is the default VFX preview path. If cooked native resources are genuinely unavailable, the emitter
+    /// remains visible through the standard VFX preview and the status panel explains the fallback.
     /// </summary>
     public bool UseGameShader
     {
@@ -205,6 +207,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
         var resources = new ActorMeshResources
         {
+            SkeletalMesh = skeletalMesh,
             StandardPreview = new ModelPreview<WorldVertex>(this, skeletalMesh),
             GameShaderPreview = TryCreateActorGameShaderPreview(skeletalMesh)
         };
@@ -442,7 +445,17 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public void ClearAllActorEffects()
     {
         actorEffectsClearedManually = true;
-        ClearActorMaterialEffects();
+        // Rebuild every native actor preview from its original skeletal mesh. Restoring only the named-effect
+        // dictionary is insufficient after a failed material/MIC shader load because that preview may already
+        // contain partially constructed white fallback materials.
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            actorModel.GameShaderPreview?.Dispose();
+            actorModel.GameShaderPreview = actorModel.SkeletalMesh is null
+                ? null
+                : TryCreateActorGameShaderPreview(actorModel.SkeletalMesh);
+            actorModel.UpdateLocalToWorld(actorTransform);
+        }
     }
 
     public void Focus()
@@ -721,8 +734,16 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
             if (!string.IsNullOrWhiteSpace(warning))
             {
+                bool hasVisibleFallback = emitter.RenderMode switch
+                {
+                    VfxEmitterRenderMode.Sprite => emitter.ParticleMaterial.IsSupported,
+                    VfxEmitterRenderMode.Mesh => meshEmitters.ContainsKey(emitter),
+                    _ => false
+                };
                 RuntimeWarning = AppendWarning(RuntimeWarning,
-                    $"{emitter.Name}: {warning} This emitter is hidden while In-Game Shader is enabled.");
+                    hasVisibleFallback
+                        ? $"{emitter.Name}: {warning} Using the standard visible preview fallback."
+                        : $"{emitter.Name}: {warning}");
             }
         }
     }
@@ -1275,11 +1296,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             {
                 if (meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources meshResources))
                 {
-                    if (useGameShader)
-                    {
-                        VfxMeshRenderer.RenderGameShader(this, emitter, meshResources, previewTransform);
-                    }
-                    else
+                    if (!useGameShader || !VfxMeshRenderer.RenderGameShader(this, emitter, meshResources, previewTransform))
                     {
                         meshRenderer.Render(this, emitter, meshResources, null, previewTransform);
                     }
@@ -1322,9 +1339,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             {
                 continue;
             }
-            if (useGameShader)
+            if (useGameShader && gameShaderRenderer.TryRenderSprite(this, emitter, previewTransform))
             {
-                gameShaderRenderer.TryRenderSprite(this, emitter, previewTransform);
                 continue;
             }
             VfxParticleMaterialDefinition material = emitter.Definition.ParticleMaterial;

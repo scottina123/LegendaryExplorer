@@ -44,6 +44,10 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     private readonly List<Vector4> CachedPixelVectorParameters = [];
     private readonly List<PreviewTextureCache.TextureEntry> CachedTexture2DParameters = [];
     private readonly List<PreviewTextureCache.TextureEntry> CachedCubeTextureParameters = [];
+    // A non-static MIC owns parameter overrides but no cooked shader resource. In that case the base material
+    // reached by MaterialInstanceConstantLevelEditor is the shader owner. Static MICs replace this with their
+    // own permutation resource when bHasStaticPermutationResource is true.
+    private ExportEntry ShaderOwner;
 
     public VertexShaderType UnrealVertexShader;
     public PixelShaderType UnrealPixelShader;
@@ -66,8 +70,9 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             ? LocalVertexFactoryType
             : vertexFactoryType;
         // ReadBaseMaterial runs during the base constructor, before a derived constructor can select its
-        // particle factory. Reload only the shader references now; the uniform-expression map is shared.
-        LoadShaders(export);
+        // particle factory. Reload from the actual shader owner rather than blindly parsing the selected MIC.
+        // Non-static MICs have no serialized MaterialInstance binary and must inherit their parent's shaders.
+        LoadShaders(ShaderOwner ?? export);
     }
 
     /// <summary>
@@ -160,6 +165,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         (ShaderMap, Shader[] shaders) = ShaderCacheManipulator.GetMaterialShaderMapAndShadersForVertexFactory(
             mat, factoryType, VERTEX_SHADER_TYPE_NAME, LIT_PIXEL_SHADER_TYPE_NAME, UNLIT_PIXEL_SHADER_TYPE_NAME);
 
+        ShaderOwner = mat;
+
         UnrealVertexShader = (VertexShaderType)shaders[0];
         UnrealPixelShader = (PixelShaderType)(shaders[1] ?? shaders[2]);
     }
@@ -204,7 +211,8 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             }
         }
 
-        if (ObjectBinary.From(matInst) is MaterialInstance binary)
+        if (props.GetProp<BoolProperty>("bHasStaticPermutationResource") is { Value: true }
+            && ObjectBinary.From(matInst) is MaterialInstance binary)
         {
             foreach (int uIndex in binary.SM3StaticPermutationResource.UniformExpressionTextures)
             {
