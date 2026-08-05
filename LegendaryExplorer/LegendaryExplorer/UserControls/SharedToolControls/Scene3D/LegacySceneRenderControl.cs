@@ -101,10 +101,10 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         }
 
         public static Texture2D LoadUnrealMip(this LegacyRenderContext renderContext, LegendaryExplorerCore.Unreal.Classes.Texture2DMipInfo mip,
-            LegendaryExplorerCore.Textures.PixelFormat pixelFormat, bool useSrgbSampling = false)
+            LegendaryExplorerCore.Textures.PixelFormat pixelFormat, bool useSrgbSampling = false, byte[] imagebytes = null)
         {
             // Todo: Needs way to set black alpha
-            var imagebytes = LECTexture2D.GetTextureData(mip, mip.Export.Game);
+            imagebytes ??= LECTexture2D.GetTextureData(mip, mip.Export.Game);
             uint mipWidth = (uint)mip.width;
             uint mipHeight = (uint)mip.height;
             var mipFormat = (Format)LegendaryExplorerCore.Textures.TexConverter.GetDXGIFormatForPixelFormat(pixelFormat);
@@ -123,9 +123,36 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         public static Texture2D LoadUnrealTexture(this LegacyRenderContext renderContext, ExportEntry texture2DExport)
         {
             var unrealTexture = new LECTexture2D(texture2DExport);
-            return renderContext.LoadUnrealMip(unrealTexture.GetTopMip(),
-                LegendaryExplorerCore.Textures.Image.getPixelFormatType(unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name),
-                renderContext.UseSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(texture2DExport));
+            var requestedMip = unrealTexture.GetTopMip();
+            if (requestedMip is null)
+            {
+                throw new InvalidOperationException($"Texture {texture2DExport.InstancedFullPath} has no usable mips.");
+            }
+
+            // Streamed character textures can occasionally carry incomplete cooked metadata
+            // (HMF_EYE_MASTER_Diffuse has no serialized LODGroup). Prefer the external top mip,
+            // but keep the resident package mip as a reliable preview fallback rather than
+            // returning a null texture and rendering the material black.
+            byte[] imagebytes = unrealTexture.GetImageBytesForMip(requestedMip, texture2DExport.Game,
+                useLowerMipsIfTFCMissing: PreviewColorSpace.IsCharacterDiffuse(texture2DExport), usedMip: out var usedMip);
+            var pixelFormat = LegendaryExplorerCore.Textures.Image.getPixelFormatType(
+                unrealTexture.Export.GetProperty<EnumProperty>("Format").Value.Name);
+            bool useSrgbSampling = renderContext.UseSrgbColorManagement && PreviewColorSpace.UsesSrgbSampling(texture2DExport);
+
+            if (PreviewColorSpace.HasInferredCharacterDiffuseLodGroup(texture2DExport))
+            {
+                int width = usedMip.width;
+                int height = usedMip.height;
+                byte[] bgraPixels = LegendaryExplorerCore.Textures.Image.convertRawToARGB(imagebytes, ref width, ref height, pixelFormat);
+                Format format = Format.B8G8R8A8_UNorm;
+                if (useSrgbSampling)
+                {
+                    format = PreviewColorSpace.ToSrgbFormat(format);
+                }
+                return renderContext.LoadTexture((uint)width, (uint)height, format, bgraPixels);
+            }
+
+            return renderContext.LoadUnrealMip(usedMip, pixelFormat, useSrgbSampling, imagebytes);
         }
 
         public static Texture2D LoadUnrealTextureCube(this LegacyRenderContext renderContext, ExportEntry textureCubeExport, PackageCache packageCache = null)

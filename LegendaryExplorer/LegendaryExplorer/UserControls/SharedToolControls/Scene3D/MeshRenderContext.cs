@@ -90,6 +90,7 @@ public class MeshRenderContext : LegacyRenderContext
     #endregion
     public GenericEffect<WorldConstants, WorldVertex> DefaultEffect { get; private set; }
     public LEEffect LEEffect { get; private set; }
+    public LEEffect HumanLashEffect { get; private set; }
     private Texture2D DefaultTexture;
     private Texture2D WhiteTextureCube;
     private Texture2D WhiteTex;
@@ -322,6 +323,7 @@ public class MeshRenderContext : LegacyRenderContext
         WhiteTexView = new ShaderResourceView(Device, WhiteTex);
 
         LEEffect = new LEEffect(Device);
+        HumanLashEffect = new LEEffect(Device);
     }
 
     public override void CreateSizeDependentResources(int width, int height, Texture2D newBackBuffer)
@@ -475,6 +477,7 @@ public class MeshRenderContext : LegacyRenderContext
         SampleState?.Dispose();
         DefaultEffect?.Dispose();
         LEEffect?.Dispose();
+        HumanLashEffect?.Dispose();
         FillRasterizerState?.Dispose();
         WireframeRasterizerState?.Dispose();
         EmptyCaches();

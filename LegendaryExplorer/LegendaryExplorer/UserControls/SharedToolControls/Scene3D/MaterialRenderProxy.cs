@@ -22,15 +22,19 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
         private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
         private const string LIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicySkyLight";
         private const string UNLIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight";
+        private const string HUMAN_LASH_MASTER_MATERIAL_NAME = "HMN_HED_LASH_Unlit_MASTER_MAT";
+        private const string HUMAN_LASH_OPACITY_PARAMETER_NAME = "HED_Lash_Diff";
 
         public MEGame Game = export.Game;
         public EBlendMode BlendMode;
         public bool UseHairPass;
         public bool IsUnlit;
+        public bool IsHumanLashMaterial;
         private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, IEntry> TextureParameterEntries = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, HashSet<string>> DefaultTextureParameterNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, float Value)> PreviewScalarBaselines = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, LinearColor Value)> PreviewVectorBaselines = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, (bool Exists, string Value)> PreviewTextureBaselines = new(StringComparer.OrdinalIgnoreCase);
@@ -141,6 +145,7 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
 
             UseHairPass = props.GetProp<BoolProperty>("bHairPass") is { Value: true };
             IsUnlit = props.GetProp<EnumProperty>("LightingModel") is {} lightingModelProp && lightingModelProp.Value == "MLM_Unlit";
+            IsHumanLashMaterial = mat.ObjectName.Name.Equals(HUMAN_LASH_MASTER_MATERIAL_NAME, StringComparison.OrdinalIgnoreCase);
 
             var expressionsProp = props.GetProp<ArrayProperty<ObjectProperty>>("Expressions");
             if (expressionsProp is not null)
@@ -163,12 +168,16 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
                         }
                         else if (expressionProps.GetProp<ObjectProperty>("Texture") is {} textureProp)
                         {
-                            if (!TextureParameterValues.ContainsKey(paramNameProp.Value.Instanced)
-                                && mat.FileRef.GetEntry(textureProp.Value) is {} texEntry)
+                            if (mat.FileRef.GetEntry(textureProp.Value) is {} texEntry)
                             {
-                                Textures.Add(texEntry);
-                                TextureParameterValues.Add(paramNameProp.Value.Instanced, texEntry.InstancedFullPath);
-                                TextureParameterEntries.TryAdd(paramNameProp.Value.Instanced, texEntry);
+                                string parameterName = paramNameProp.Value.Instanced;
+                                RegisterDefaultTextureParameter(texEntry, parameterName);
+                                if (!TextureParameterValues.ContainsKey(parameterName))
+                                {
+                                    Textures.Add(texEntry);
+                                    TextureParameterValues.Add(parameterName, texEntry.InstancedFullPath);
+                                    TextureParameterEntries.TryAdd(parameterName, texEntry);
+                                }
                             }
                         }
                     }
@@ -351,48 +360,130 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             foreach (MaterialUniformExpressionTexture texExpression in textureExpressions)
             {
                 PreviewTextureCache.TextureEntry texture = null;
+                // The human lash master is a translucent black shell whose opacity comes entirely
+                // from HED_Lash_Diff. Its cooked shader exposes that texture as a plain uniform
+                // expression, so always honor the effective child-MIC parameter instead of falling
+                // back to the master's male lash texture (or the renderer's opaque white texture).
+                if (IsHumanLashMaterial && TextureParameterValues.ContainsKey(HUMAN_LASH_OPACITY_PARAMETER_NAME))
+                {
+                    textureCache.Add(ResolveTextureParameter(HUMAN_LASH_OPACITY_PARAMETER_NAME, context));
+                    continue;
+                }
                 switch (texExpression)
                 {
                     case MaterialUniformExpressionTextureParameter texParamExpression:
-                        string parameterName = texParamExpression.ParameterName.Instanced;
-                        if (TextureParameterValues.TryGetValue(parameterName, out string texIfp)
-                            && texIfp is not null)
-                        {
-                            TextureMap.TryGetValue(texIfp, out texture);
-                        }
-                        if (texture is null && texIfp is not null
-                            && TextureParameterEntries.TryGetValue(parameterName, out IEntry textureEntry)
-                            && (string.Equals(texIfp, textureEntry.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
-                                || string.Equals(texIfp, textureEntry.FullPath, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            ExportEntry textureExport = textureEntry as ExportEntry;
-                            if (textureEntry is ImportEntry textureImport)
-                            {
-                                textureExport = EntryImporter.ResolveImport(textureImport, assetCache);
-                            }
-                            if (textureExport is not null)
-                            {
-                                texture = context.TextureCache.LoadTexture(textureExport);
-                                if (texture is not null)
-                                {
-                                    TextureMap[textureEntry.FullPath] = texture;
-                                    TextureMap[textureEntry.InstancedFullPath] = texture;
-                                    TextureMap[textureExport.FullPath] = texture;
-                                    TextureMap[textureExport.InstancedFullPath] = texture;
-                                }
-                            }
-                        }
+                        texture = ResolveTextureParameter(texParamExpression.ParameterName.Instanced, context);
                         break;
                     default:
                         if ((uint)texExpression.TextureIndex < Uniform2DTextureExpressions.Count
                             && Uniform2DTextureExpressions[texExpression.TextureIndex] is {} texifp)
                         {
-                            TextureMap.TryGetValue(texifp, out texture);
+                            texture = ResolveDefaultTextureOverride(texifp, context);
+                            texture ??= TextureMap.GetValueOrDefault(texifp);
                         }
                         break;
                 }
                 textureCache.Add(texture);
             }
+        }
+
+        public bool HasRequiredTextures(MeshRenderContext context)
+        {
+            if (!IsHumanLashMaterial)
+            {
+                return true;
+            }
+
+            (_, _, List<PreviewTextureCache.TextureEntry> textures, _) = GetCachedPixelParameters(context);
+            return textures.Count > 0 && textures.All(texture => texture is not null);
+        }
+
+        private void RegisterDefaultTextureParameter(IEntry textureEntry, string parameterName)
+        {
+            foreach (string texturePath in new[] { textureEntry.FullPath, textureEntry.InstancedFullPath })
+            {
+                if (string.IsNullOrEmpty(texturePath)) continue;
+                if (!DefaultTextureParameterNames.TryGetValue(texturePath, out HashSet<string> parameterNames))
+                {
+                    parameterNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    DefaultTextureParameterNames.Add(texturePath, parameterNames);
+                }
+                parameterNames.Add(parameterName);
+            }
+        }
+
+        private PreviewTextureCache.TextureEntry ResolveDefaultTextureOverride(string defaultTexturePath, MeshRenderContext context)
+        {
+            if (!DefaultTextureParameterNames.TryGetValue(defaultTexturePath, out HashSet<string> parameterNames))
+            {
+                return null;
+            }
+
+            PreviewTextureCache.TextureEntry selectedTexture = null;
+            foreach (string parameterName in parameterNames)
+            {
+                if (!TextureParameterValues.TryGetValue(parameterName, out string overridePath)
+                    || string.IsNullOrEmpty(overridePath)
+                    || string.Equals(overridePath, defaultTexturePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                PreviewTextureCache.TextureEntry candidate = ResolveTextureParameter(parameterName, context);
+                if (candidate is null)
+                {
+                    continue;
+                }
+                if (selectedTexture is not null && !ReferenceEquals(selectedTexture, candidate))
+                {
+                    // A shared default texture is overridden by more than one parameter. There is
+                    // no safe way to choose for a non-parameter uniform expression.
+                    return null;
+                }
+                selectedTexture = candidate;
+            }
+            return selectedTexture;
+        }
+
+        private PreviewTextureCache.TextureEntry ResolveTextureParameter(string parameterName, MeshRenderContext context)
+        {
+            if (!TextureParameterValues.TryGetValue(parameterName, out string texturePath)
+                || string.IsNullOrEmpty(texturePath))
+            {
+                return null;
+            }
+
+            if (TextureMap.TryGetValue(texturePath, out PreviewTextureCache.TextureEntry texture))
+            {
+                return texture;
+            }
+            if (!TextureParameterEntries.TryGetValue(parameterName, out IEntry textureEntry)
+                || (!string.Equals(texturePath, textureEntry.InstancedFullPath, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(texturePath, textureEntry.FullPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            ExportEntry textureExport = textureEntry as ExportEntry;
+            if (textureEntry is ImportEntry textureImport)
+            {
+                textureExport = EntryImporter.ResolveImport(textureImport, assetCache);
+            }
+            if (textureExport is null)
+            {
+                return null;
+            }
+
+            texture = context.TextureCache.LoadTexture(textureExport);
+            if (texture is null)
+            {
+                return null;
+            }
+            TextureMap[textureEntry.FullPath] = texture;
+            TextureMap[textureEntry.InstancedFullPath] = texture;
+            TextureMap[textureExport.FullPath] = texture;
+            TextureMap[textureExport.InstancedFullPath] = texture;
+            return texture;
         }
 
         private void UpdateExpressions(UniformExpressionRenderContext uniformContext, 

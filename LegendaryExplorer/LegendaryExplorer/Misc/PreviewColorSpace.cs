@@ -11,8 +11,50 @@ namespace LegendaryExplorer.Misc;
 /// </summary>
 internal static class PreviewColorSpace
 {
+    private const string CharacterDiffuseLodGroup = "TEXTUREGROUP_Character_Diff";
+
+    /// <summary>
+    /// Gets the texture group used by the preview. A small number of cooked LE3 character
+    /// textures lost their LODGroup property even though they are character diffuse maps. UE3
+    /// treats those as color textures; infer that intent without changing the package export.
+    /// </summary>
+    public static string GetEffectiveLodGroup(ExportEntry textureExport)
+    {
+        string lodGroup = textureExport?.GetProperty<EnumProperty>("LODGroup")?.Value.Instanced;
+        if (!string.IsNullOrEmpty(lodGroup))
+        {
+            return lodGroup;
+        }
+
+        if (textureExport is null)
+        {
+            return null;
+        }
+
+        string objectName = textureExport.ObjectName.Name;
+        bool isDiffuse = objectName.Contains("diffuse", StringComparison.OrdinalIgnoreCase)
+                         || objectName.Contains("_diff", StringComparison.OrdinalIgnoreCase)
+                         || objectName.Contains("albedo", StringComparison.OrdinalIgnoreCase);
+        if (!isDiffuse)
+        {
+            return null;
+        }
+
+        string fullPath = textureExport.InstancedFullPath;
+        bool isCharacterTexture = fullPath.Contains(".Eye.", StringComparison.OrdinalIgnoreCase)
+                                  || fullPath.Contains("_HED_", StringComparison.OrdinalIgnoreCase)
+                                  || fullPath.Contains("Humanoid_MASTER", StringComparison.OrdinalIgnoreCase);
+        return isCharacterTexture ? CharacterDiffuseLodGroup : null;
+    }
+
     public static bool UsesSrgbSampling(ExportEntry textureExport)
         => textureExport?.GetProperty<BoolProperty>("SRGB")?.Value ?? true;
+
+    public static bool IsCharacterDiffuse(ExportEntry textureExport)
+        => GetEffectiveLodGroup(textureExport) == CharacterDiffuseLodGroup;
+
+    public static bool HasInferredCharacterDiffuseLodGroup(ExportEntry textureExport)
+        => textureExport?.GetProperty<EnumProperty>("LODGroup") is null && IsCharacterDiffuse(textureExport);
 
     public static Format ToSrgbFormat(Format format) => format switch
     {

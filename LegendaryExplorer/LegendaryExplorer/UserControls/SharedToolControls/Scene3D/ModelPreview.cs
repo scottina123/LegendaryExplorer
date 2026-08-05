@@ -431,7 +431,14 @@ namespace LegendaryExplorer.UserControls.SharedToolControls.LegacyScene3D
             Mesh<LEVertex> mesh = lod.Mesh;
             SceneCamera camera = context.Camera;
             var material = (MaterialRenderProxy)Material;
-            LEEffect effect = context.LEEffect;
+            if (!material.HasRequiredTextures(context))
+            {
+                return;
+            }
+            // The BioWare human-lash master has a materially different unlit/translucent constant
+            // layout. Keep it off the shared effect buffers so it cannot corrupt the HMF eye shader
+            // on the following frame.
+            LEEffect effect = material.IsHumanLashMaterial ? context.HumanLashEffect : context.LEEffect;
             PixelShader ps = context.GetCachedPixelShader(material.PixelShader.Guid, material.PixelShader.ShaderByteCode);
             (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.VertexShader.Guid, material.VertexShader.ShaderByteCode);
             effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));
