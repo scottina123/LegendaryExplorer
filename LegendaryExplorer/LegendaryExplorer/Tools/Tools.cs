@@ -36,7 +36,7 @@ using LegendaryExplorer.Tools.ClassViewer;
 using LegendaryExplorer.Tools.PlotDatabase;
 using LegendaryExplorer.Tools.ScriptDebugger;
 using LegendaryExplorer.Tools.LevelEditor;
-using LegendaryExplorer.Tools.GalaxyMapEditor;
+using LegendaryExplorer.Tools.SFXGalaxyEditor;
 using MessageBox = Xceed.Wpf.Toolkit.MessageBox;
 using LegendaryExplorer.Tools.PathfindingNetworkEditor;
 
@@ -782,16 +782,16 @@ public static class ToolSet
         });
         set.Add(new Tool
         {
-            name = "Galaxy Map Editor",
-            type = typeof(GalaxyMapEditor),
+            name = "SFXGalaxy Editor (LE3)",
+            type = typeof(SFXGalaxyEditorWindow),
             icon = Application.Current.FindResource("iconPlaceholder") as ImageSource,
             open = () =>
             {
-                (new GalaxyMapEditor()).Show();
+                (new SFXGalaxyEditorWindow()).Show();
             },
-            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "me2", "me3"],
+            tags = ["user", "developer", "galaxy", "map", "cluster", "system", "planet", "star", "relay", "le3"],
             category = "Core Editors",
-            description = "Galaxy Map Editor allows viewing and editing the galaxy map hierarchy (SFXGalaxy). Navigate into clusters and solar systems, and reposition planets, stars, and other galaxy map objects.",
+            description = "Edit the LE3 SFXGalaxy hierarchy, object properties, positions, planet orbits, and cluster relay connections.",
         });
         #endregion
 

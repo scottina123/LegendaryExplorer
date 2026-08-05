@@ -1677,29 +1677,23 @@ namespace LegendaryExplorer.Tools.PackageEditor
                     case "LevelEditor":
                         new LevelEditor.LevelEditor(exp).Show();
                         break;
-                    case "GalaxyMapEditor":
-                        if (TryGetGalaxyMapEditorTargetExport(exp, out var galaxyMapTarget))
+                    case "SFXGalaxyEditor":
+                        if (TryGetSFXGalaxyEditorTargetExport(exp, out var galaxyMapTarget))
                         {
-                            var galaxyMapEditor = new LegendaryExplorer.Tools.GalaxyMapEditor.GalaxyMapEditor();
-                            galaxyMapEditor.Show();
-                            _ = galaxyMapEditor.LoadFileAndSelectObjectAsync(Pcc.FilePath, galaxyMapTarget.UIndex);
+                            new LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow(galaxyMapTarget).Show();
                         }
                         break;
                 }
             }
         }
 
-        private static bool TryGetGalaxyMapEditorTargetExport(ExportEntry export, [NotNullWhen(true)] out ExportEntry? galaxyMapTarget)
+        private static bool TryGetSFXGalaxyEditorTargetExport(ExportEntry export, [NotNullWhen(true)] out ExportEntry? galaxyMapTarget)
         {
-            for (ExportEntry current = export; current is not null; current = current.Parent as ExportEntry)
+            if (export.Game == MEGame.LE3 && LegendaryExplorer.Tools.SFXGalaxyEditor.SFXGalaxyEditorWindow.TryGetGalaxyObject(export, out ExportEntry mapObject))
             {
-                if (LegendaryExplorer.Tools.GalaxyMapEditor.GalaxyMapObjectProxy.IsGalaxyMapClass(current))
-                {
-                    galaxyMapTarget = current;
-                    return true;
-                }
+                galaxyMapTarget = mapObject;
+                return true;
             }
-
             galaxyMapTarget = null;
             return false;
         }
@@ -2003,8 +1997,8 @@ namespace LegendaryExplorer.Tools.PackageEditor
                         return exp.ClassName == "WwiseBank";
                     case "LevelEditor":
                         return exp.ClassName is "Level" or "World" || exp.IsA("Actor") || (exp.ClassName is "StaticMeshComponent" && exp.Parent?.ClassName is "StaticMeshCollectionActor");
-                    case "GalaxyMapEditor":
-                        return TryGetGalaxyMapEditorTargetExport(exp, out _);
+                    case "SFXGalaxyEditor":
+                        return TryGetSFXGalaxyEditorTargetExport(exp, out _);
                 }
             }
 

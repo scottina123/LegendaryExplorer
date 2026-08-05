@@ -20,6 +20,7 @@ using LegendaryExplorer.Tools.PackageEditor;
 using LegendaryExplorer.Tools.PathfindingEditor;
 using LegendaryExplorer.Tools.Sequence_Editor;
 using LegendaryExplorer.Tools.Soundplorer;
+using LegendaryExplorer.Tools.SFXGalaxyEditor;
 using LegendaryExplorer.UserControls.ExportLoaderControls;
 using LegendaryExplorerCore.Helpers;
 
@@ -68,6 +69,9 @@ namespace LegendaryExplorer.Startup
                         break;
                     case "LevelEditor":
                         OpenTool<LevelEditor>(async l => await l.LoadFileAsync(file.FullName));
+                        break;
+                    case "SFXGalaxyEditor":
+                        OpenTool<SFXGalaxyEditorWindow>(editor => editor.LoadFile(file.FullName));
                         break;
                     case "SoundExplorer":
                     case "Soundplorer":
@@ -138,6 +142,9 @@ namespace LegendaryExplorer.Startup
                         break;
                     case "LevelEditor":
                         OpenTool<LevelEditor>();
+                        break;
+                    case "SFXGalaxyEditor":
+                        OpenTool<SFXGalaxyEditorWindow>();
                         break;
                     case "PathfindingEditor":
                         OpenTool<PathfindingEditorWindow>();
