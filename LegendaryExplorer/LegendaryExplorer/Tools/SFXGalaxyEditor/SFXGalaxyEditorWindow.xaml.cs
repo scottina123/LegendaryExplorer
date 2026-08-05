@@ -380,21 +380,19 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             });
         }
 
-        ArrayProperty<ObjectProperty> children = properties.GetProp<ArrayProperty<ObjectProperty>>("Children");
-        if (children is not null)
+        // Children is the serialized hierarchy. Clusters, Systems, and Planets are sparse
+        // lookup tables keyed by the game's table IDs, not an alternate hierarchy.
+        foreach (ObjectProperty childReference in properties.GetProp<ArrayProperty<ObjectProperty>>("Children")?.ToList() ?? [])
         {
-            foreach (ObjectProperty childReference in children)
+            if (childReference.ResolveToEntry(Pcc) is not ExportEntry childExport || childExport.IsTrash())
             {
-                if (childReference.ResolveToEntry(Pcc) is not ExportEntry childExport || childExport.IsTrash())
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                SFXGalaxyNode child = BuildNode(childExport, node, visited);
-                if (child is not null)
-                {
-                    node.Children.Add(child);
-                }
+            SFXGalaxyNode child = BuildNode(childExport, node, visited);
+            if (child is not null)
+            {
+                node.Children.Add(child);
             }
         }
 
@@ -409,6 +407,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         if (export.ClassName.Contains("MassRelay", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.MassRelay;
         if (export.ClassName.Contains("FuelDepot", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.FuelDepot;
         if (export.ClassName.Contains("Reaper", StringComparison.OrdinalIgnoreCase)) return SFXGalaxyNodeKind.Reaper;
+        if (export.ClassName == "SFXPlanetFeatureGAWAsset") return SFXGalaxyNodeKind.WarAsset;
         if (export.IsA("SFXPlanetFeature")) return SFXGalaxyNodeKind.Feature;
         if (export.IsA("BioPlanet"))
         {
@@ -432,15 +431,18 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             }
         }
 
-        string tag = properties.GetProp<StrProperty>("Tag")?.Value?.Trim();
-        if (!string.IsNullOrWhiteSpace(tag) && !IsGenericTag(tag))
+        string assetName = properties.GetProp<StrProperty>("AssetName")?.Value?.Trim();
+        if (!string.IsNullOrWhiteSpace(assetName))
         {
-            return tag;
+            return assetName;
         }
 
-        return kind == SFXGalaxyNodeKind.Galaxy
-            ? "The Milky Way"
-            : $"{KindName(kind)} {export.ObjectName.Number}";
+        if (kind == SFXGalaxyNodeKind.Galaxy)
+        {
+            return "The Milky Way";
+        }
+        string objectName = export.ObjectNameString.Replace('_', ' ').Trim();
+        return !string.IsNullOrWhiteSpace(objectName) ? objectName : $"{KindName(kind)} {export.ObjectName.Number}";
     }
 
     private string ResolveDescription(PropertyCollection properties)
@@ -528,7 +530,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     }
 
     private static bool CanEnter(SFXGalaxyNode node) => node is not null && !node.IsImplicitStar
-        && (node.Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System || node.Children.Count > 0);
+        && node.Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System;
 
     private void NavigateIntoSelected() => NavigateTo(SelectedNode);
 
@@ -735,10 +737,6 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return false;
         }
         PropertyCollection properties = node.Export.GetProperties();
-        if (properties.GetProp<BoolProperty>("ShowOrbitRing") is { Value: false })
-        {
-            return false;
-        }
         return properties.GetProp<EnumProperty>("OrbitRing")?.Value.Name != "OR_NONE";
     }
 
@@ -951,6 +949,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             return;
         }
         SelectedNode = node;
+        ContextMenu menu = BuildObjectContextMenu(node);
+        marker.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private ContextMenu BuildObjectContextMenu(SFXGalaxyNode node)
+    {
         ContextMenu menu = new();
         if (CanEnter(node))
         {
@@ -958,6 +964,14 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             open.Click += (_, _) => NavigateTo(node);
             menu.Items.Add(open);
         }
+
+        MenuItem add = new() { Header = "Add" };
+        AddCreationMenuItems(add.Items, node, null);
+        if (add.Items.Count > 0)
+        {
+            menu.Items.Add(add);
+        }
+
         if (node.Kind == SFXGalaxyNodeKind.Cluster)
         {
             MenuItem deleteConnection = new() { Header = "Delete connection" };
@@ -970,14 +984,98 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             deleteConnection.IsEnabled = deleteConnection.Items.Count > 0;
             menu.Items.Add(deleteConnection);
         }
+
         if (node.Parent is not null && !node.IsImplicitStar)
         {
-            menu.Items.Add(new Separator());
-            MenuItem delete = new() { Header = "Delete object…" };
-            delete.Click += (_, _) => DeleteSelected();
+            if (menu.Items.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+            }
+            MenuItem clone = new() { Header = "Clone object" };
+            clone.Click += (_, _) =>
+            {
+                SelectedNode = node;
+                DuplicateSelected();
+            };
+            menu.Items.Add(clone);
+
+            MenuItem delete = new() { Header = "Delete object..." };
+            delete.Click += (_, _) =>
+            {
+                SelectedNode = node;
+                DeleteSelected();
+            };
             menu.Items.Add(delete);
         }
-        marker.ContextMenu = menu;
+        return menu;
+    }
+
+    private ContextMenu BuildAddMenu(SFXGalaxyNode context, Point? position)
+    {
+        ContextMenu menu = new();
+        AddCreationMenuItems(menu.Items, context, position);
+        return menu;
+    }
+
+    private void AddCreationMenuItems(ItemCollection items, SFXGalaxyNode context, Point? position)
+    {
+        if (context is null)
+        {
+            return;
+        }
+        SFXGalaxyNodeKind[] kinds = context.Kind switch
+        {
+            SFXGalaxyNodeKind.Galaxy => [SFXGalaxyNodeKind.Cluster],
+            SFXGalaxyNodeKind.Cluster => [SFXGalaxyNodeKind.System],
+            SFXGalaxyNodeKind.System =>
+            [
+                SFXGalaxyNodeKind.Planet,
+                SFXGalaxyNodeKind.AsteroidBelt,
+                SFXGalaxyNodeKind.Anomaly,
+                SFXGalaxyNodeKind.MassRelay,
+                SFXGalaxyNodeKind.FuelDepot,
+                SFXGalaxyNodeKind.Reaper
+            ],
+            SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly =>
+                [SFXGalaxyNodeKind.Feature, SFXGalaxyNodeKind.WarAsset],
+            _ => []
+        };
+        foreach (SFXGalaxyNodeKind kind in kinds)
+        {
+            MenuItem item = new() { Header = KindName(kind) };
+            item.Click += (_, _) => CreateCustomObject(kind, context, position);
+            items.Add(item);
+        }
+    }
+
+    private static SFXGalaxyNode ResolveAddContext(SFXGalaxyNode node)
+    {
+        for (SFXGalaxyNode current = node; current is not null; current = current.Parent)
+        {
+            if (current.Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System
+                or SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly)
+            {
+                return current;
+            }
+        }
+        return null;
+    }
+
+    private void MapCanvas_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled || CurrentNode is null)
+        {
+            return;
+        }
+        Point position = e.GetPosition(MapCanvas);
+        position.X = Math.Clamp(position.X, 0, MapExtent);
+        position.Y = Math.Clamp(position.Y, 0, MapExtent);
+        ContextMenu menu = BuildAddMenu(CurrentNode, position);
+        if (menu.Items.Count == 0)
+        {
+            return;
+        }
+        menu.PlacementTarget = MapCanvas;
         menu.IsOpen = true;
         e.Handled = true;
     }
@@ -1011,8 +1109,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         if (connections is null)
         {
             if (!add) return;
-            connections = new ArrayProperty<ObjectProperty>("RelayConnections");
-            properties.Add(connections);
+            connections = GetOrCreateSerializedObjectArray(cluster, properties, "RelayConnections");
         }
         if (add)
         {
@@ -1056,6 +1153,32 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             NavigateTo(node);
             e.Handled = true;
         }
+    }
+
+    private void HierarchyTree_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FindVisualParent<TreeViewItem>(e.OriginalSource as DependencyObject) is not { DataContext: SFXGalaxyNode node } item)
+        {
+            return;
+        }
+        item.IsSelected = true;
+        SelectedNode = node;
+        ContextMenu menu = BuildObjectContextMenu(node);
+        item.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private static T FindVisualParent<T>(DependencyObject element) where T : DependencyObject
+    {
+        for (DependencyObject current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+        return null;
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1109,11 +1232,23 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private void NavigateToSearchResult(SFXGalaxyNode node)
     {
-        CurrentNode = node.Parent ?? node;
+        CurrentNode = FindOwningView(node);
         SelectedNode = node;
         SearchResultsList.Visibility = Visibility.Collapsed;
         RenderCurrentLevel();
         SelectTreeNode(node);
+    }
+
+    private static SFXGalaxyNode FindOwningView(SFXGalaxyNode node)
+    {
+        for (SFXGalaxyNode current = node; current is not null; current = current.Parent)
+        {
+            if (current.Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System)
+            {
+                return current == node && current.Parent is not null ? current.Parent : current;
+            }
+        }
+        return node;
     }
 
     private void RefreshPropertyExports()
@@ -1155,6 +1290,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private void AddFuelDepot_Click(object sender, RoutedEventArgs e) => AddKnownKind(SFXGalaxyNodeKind.FuelDepot);
     private void AddReaper_Click(object sender, RoutedEventArgs e) => AddKnownKind(SFXGalaxyNodeKind.Reaper);
     private void AddFeature_Click(object sender, RoutedEventArgs e) => AddKnownKind(SFXGalaxyNodeKind.Feature);
+    private void AddWarAsset_Click(object sender, RoutedEventArgs e) => AddKnownKind(SFXGalaxyNodeKind.WarAsset);
 
     private void AddKnownKind(SFXGalaxyNodeKind kind)
     {
@@ -1168,102 +1304,214 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             MessageBox.Show(this, CreationParentMessage(kind), "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        SFXGalaxyNode template = _rootNode.SelfAndDescendants().FirstOrDefault(node => !node.IsImplicitStar && node.Kind == kind);
-        if (template is null)
-        {
-            MessageBox.Show(this, $"This package does not contain a {KindName(kind)} object to use as a safe LE3 template.",
-                "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        CreateFromTemplate(template, parent);
+        CreateCustomObject(kind, parent, null);
     }
 
-    private void AddFromTemplate_Click(object sender, RoutedEventArgs e)
+    private void AddForSelection_Click(object sender, RoutedEventArgs e)
     {
-        if (_rootNode is null)
+        SFXGalaxyNode context = ResolveAddContext(SelectedNode ?? CurrentNode);
+        ContextMenu menu = BuildAddMenu(context, null);
+        if (menu.Items.Count == 0)
         {
-            return;
-        }
-        SFXGalaxyNode parent = ResolveTemplateParent();
-        if (parent is null)
-        {
-            MessageBox.Show(this, "Select the galaxy, a cluster, a system, or a planet before choosing an object template.",
+            MessageBox.Show(this, "Select the galaxy, a cluster, a system, or a planet before adding an object.",
                 "SFXGalaxy Editor", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-
-        IEnumerable<SFXGalaxyNode> candidates = parent.Kind switch
-        {
-            SFXGalaxyNodeKind.Galaxy => _rootNode.SelfAndDescendants().Where(n => n.Kind == SFXGalaxyNodeKind.Cluster),
-            SFXGalaxyNodeKind.Cluster => _rootNode.SelfAndDescendants().Where(n => n.Kind == SFXGalaxyNodeKind.System),
-            SFXGalaxyNodeKind.System => _rootNode.SelfAndDescendants().Where(n => n.Parent?.Kind == SFXGalaxyNodeKind.System && !n.IsImplicitStar),
-            _ => _rootNode.SelfAndDescendants().Where(n => n.Kind == SFXGalaxyNodeKind.Feature)
-        };
-        Dictionary<string, SFXGalaxyNode> choices = [];
-        foreach (SFXGalaxyNode candidate in candidates)
-        {
-            string key = $"{candidate.KindLabel} — {candidate.DisplayName} [{candidate.Export.ClassName}, #{candidate.Export.UIndex}]";
-            choices.TryAdd(key, candidate);
-        }
-        if (choices.Count == 0)
-        {
-            MessageBox.Show(this, "No compatible templates exist in this package.", "SFXGalaxy Editor",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        string chosen = InputComboBoxDialog.GetValue(this, "Choose an existing LE3 object as the template for the new object:",
-            "Create galaxy map object", choices.Keys.OrderBy(key => key), choices.Keys.OrderBy(key => key).First());
-        if (chosen is not null && choices.TryGetValue(chosen, out SFXGalaxyNode template))
-        {
-            CreateFromTemplate(template, parent);
-        }
+        menu.PlacementTarget = sender as UIElement;
+        menu.IsOpen = true;
     }
 
     private void DuplicateSelected()
     {
         if (SelectedNode is { Parent: not null, IsImplicitStar: false } selected)
         {
-            CreateFromTemplate(selected, selected.Parent);
+            CloneObject(selected, selected.Parent);
         }
     }
 
-    private void CreateFromTemplate(SFXGalaxyNode template, SFXGalaxyNode parent)
+    private void CreateCustomObject(SFXGalaxyNodeKind kind, SFXGalaxyNode parent, Point? requestedPosition)
     {
-        string suggested = $"New {template.KindLabel}";
-        string label = PromptDialog.Prompt(this, "Internal editor label (stored in Tag):", "Create galaxy map object", suggested, true)?.Trim();
+        string kindName = KindName(kind);
+        string className = ClassNameForKind(kind);
+        string label = PromptDialog.Prompt(this, "Custom object name:", $"Add {kindName}", $"New {kindName}", true)?.Trim();
         if (string.IsNullOrWhiteSpace(label))
         {
             return;
         }
-        int existingStringRef = template.Export.GetProperty<StringRefProperty>("DisplayName")?.Value ?? 0;
-        string stringRefText = PromptDialog.Prompt(this,
-            "DisplayName TLK StringRef ID (leave blank or use 0 to edit it later in Properties):",
-            "Create galaxy map object", existingStringRef.ToString(), true);
-        if (stringRefText is null)
+        int displayNameStringRef = 0;
+        if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null)
         {
-            return;
+            string stringRefText = PromptDialog.Prompt(this,
+                "DisplayName TLK StringRef ID (leave blank or use 0 to edit it later in Properties):",
+                $"Add {kindName}", "0", true);
+            if (stringRefText is null)
+            {
+                return;
+            }
+            int.TryParse(stringRefText, out displayNameStringRef);
         }
-        int.TryParse(stringRefText, out int displayNameStringRef);
 
+        ExportEntry created = null;
+        bool parentReferencesAdded = false;
+        int currentIndex = CurrentNode?.Export.UIndex ?? parent.Export.UIndex;
         _suppressPackageRefresh = true;
         try
         {
-            ExportEntry clone = EntryCloner.CloneEntry(template.Export, incrementIndex: true, newParentUIndex: parent.Export.UIndex);
+            string objectName = MakeObjectName(label, kind);
+            created = Pcc.CreateExport(objectName, className, parent.Export, indexed: true);
+            PropertyCollection properties = CreateInitialProperties(kind, label, displayNameStringRef, parent, requestedPosition);
+
+            if (kind is SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly)
+            {
+                ExportEntry appearance = Pcc.CreateExport($"{objectName}_Appearance", "SFXGalaxyMapPlanetAppearance", created, indexed: true);
+                appearance.WriteProperties(new PropertyCollection());
+                AddSerializedProperty(properties, "BioPlanet", new ObjectProperty(appearance, "Appearance"));
+            }
+
+            created.WriteProperties(properties);
+            AddChildReferences(parent, created);
+            parentReferencesAdded = true;
+            RebuildHierarchy(currentIndex, created.UIndex);
+            if (_nodesByUIndex.TryGetValue(created.UIndex, out SFXGalaxyNode createdNode))
+            {
+                SelectTreeNode(createdNode);
+            }
+        }
+        catch (Exception exception)
+        {
+            if (created is not null)
+            {
+                if (parentReferencesAdded)
+                {
+                    RemoveChildReferences(parent.Export, created);
+                }
+                EntryPruner.TrashEntryAndDescendants(created);
+            }
+            MessageBox.Show(this, $"Could not create this custom object:\n\n{exception.Message}", "SFXGalaxy Editor",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _suppressPackageRefresh = false;
+        }
+    }
+
+    private PropertyCollection CreateInitialProperties(SFXGalaxyNodeKind kind, string label, int displayNameStringRef,
+        SFXGalaxyNode parent, Point? requestedPosition)
+    {
+        int ordinal = parent.Children.Count(child => !child.IsImplicitStar);
+        Point position = requestedPosition ?? new Point(
+            Math.Clamp(256 + ordinal * 73 % 640, 0, MapExtent),
+            Math.Clamp(300 + ordinal * 109 % 560, 0, MapExtent));
+        string className = ClassNameForKind(kind);
+        PropertyCollection properties = [];
+        AddSerializedProperty(properties, className, new IntProperty((int)Math.Round(position.X), "PosX"));
+        AddSerializedProperty(properties, className, new IntProperty((int)Math.Round(position.Y), "PosY"));
+        if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null)
+        {
+            AddSerializedProperty(properties, className, new StringRefProperty(displayNameStringRef, "DisplayName"));
+        }
+
+        if (kind == SFXGalaxyNodeKind.WarAsset)
+        {
+            AddSerializedProperty(properties, className, new StrProperty(label, "AssetName"));
+        }
+
+        if (kind is SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly)
+        {
+            AddSerializedProperty(properties, className, new EnumProperty(
+                kind == SFXGalaxyNodeKind.Planet ? "SL_PLANET" : "SL_ANOMALY",
+                "ESystemLevelType", Pcc.Game, "SystemLevelType"));
+            AddSerializedProperty(properties, className, new EnumProperty(
+                kind switch
+                {
+                    SFXGalaxyNodeKind.Planet => "OR_ORBIT",
+                    SFXGalaxyNodeKind.AsteroidBelt => "OR_ASTEROID",
+                    _ => "OR_NONE"
+                }, "EOrbitRingType", Pcc.Game, "OrbitRing"));
+        }
+        return properties;
+    }
+
+    private void AddSerializedProperty(PropertyCollection properties, string className, Property property)
+    {
+        if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, property.Name, className) is null)
+        {
+            throw new InvalidOperationException($"{property.Name} is not a serialized {className} property in LE3 metadata.");
+        }
+        properties.AddOrReplaceProp(property);
+    }
+
+    private static string ClassNameForKind(SFXGalaxyNodeKind kind) => kind switch
+    {
+        SFXGalaxyNodeKind.Cluster => "SFXCluster",
+        SFXGalaxyNodeKind.System => "SFXSystem",
+        SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => "BioPlanet",
+        SFXGalaxyNodeKind.MassRelay => "SFXGalaxyMapMassRelay",
+        SFXGalaxyNodeKind.FuelDepot => "SFXGalaxyMapDestroyedFuelDepot",
+        SFXGalaxyNodeKind.Reaper => "SFXGalaxyMapReaper",
+        SFXGalaxyNodeKind.Feature => "SFXPlanetFeature",
+        SFXGalaxyNodeKind.WarAsset => "SFXPlanetFeatureGAWAsset",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "This galaxy map object type cannot be created.")
+    };
+
+    private static string MakeObjectName(string label, SFXGalaxyNodeKind kind)
+    {
+        char[] characters = label.Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray();
+        string sanitized = new string(characters).Trim('_');
+        return string.IsNullOrWhiteSpace(sanitized) ? $"Custom{kind}" : sanitized;
+    }
+
+    private void CloneObject(SFXGalaxyNode template, SFXGalaxyNode parent)
+    {
+        string className = template.Export.ClassName;
+        string label = PromptDialog.Prompt(this, "Custom name for the clone:", "Clone galaxy map object",
+            $"{template.DisplayName} Copy", true)?.Trim();
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return;
+        }
+        int displayNameStringRef = 0;
+        if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null)
+        {
+            string stringRefText = PromptDialog.Prompt(this,
+                "DisplayName TLK StringRef ID (leave blank or use 0 to use the custom name):",
+                "Clone galaxy map object", "0", true);
+            if (stringRefText is null)
+            {
+                return;
+            }
+            int.TryParse(stringRefText, out displayNameStringRef);
+        }
+
+        ExportEntry clone = null;
+        bool parentReferencesAdded = false;
+        _suppressPackageRefresh = true;
+        try
+        {
+            clone = EntryCloner.CloneEntry(template.Export, incrementIndex: true, newParentUIndex: parent.Export.UIndex);
+            clone.ObjectName = Pcc.GetNextIndexedName(MakeObjectName(label, template.Kind));
             PropertyCollection cloneProperties = clone.GetProperties();
             ResetClonedObjectProperties(cloneProperties, template.Kind);
             int ordinal = parent.Children.Count(child => !child.IsImplicitStar);
-            cloneProperties.AddOrReplaceProp(new StrProperty(label, "Tag"));
-            cloneProperties.AddOrReplaceProp(new IntProperty(Math.Clamp(256 + ordinal * 73 % 640, 0, MapExtent), "PosX"));
-            cloneProperties.AddOrReplaceProp(new IntProperty(Math.Clamp(300 + ordinal * 109 % 560, 0, MapExtent), "PosY"));
-            if (displayNameStringRef > 0)
+            if (template.Kind == SFXGalaxyNodeKind.WarAsset)
             {
-                cloneProperties.AddOrReplaceProp(new StringRefProperty(displayNameStringRef, "DisplayName"));
+                AddSerializedProperty(cloneProperties, className, new StrProperty(label, "AssetName"));
+            }
+            AddSerializedProperty(cloneProperties, className,
+                new IntProperty(Math.Clamp(256 + ordinal * 73 % 640, 0, MapExtent), "PosX"));
+            AddSerializedProperty(cloneProperties, className,
+                new IntProperty(Math.Clamp(300 + ordinal * 109 % 560, 0, MapExtent), "PosY"));
+            if (GlobalUnrealObjectInfo.GetPropertyInfo(Pcc.Game, "DisplayName", className) is not null)
+            {
+                AddSerializedProperty(cloneProperties, className, new StringRefProperty(displayNameStringRef, "DisplayName"));
             }
             clone.WriteProperties(cloneProperties);
             CloneOwnedAppearance(template.Export, clone);
             AddChildReferences(parent, clone);
-            int parentIndex = parent.Export.UIndex;
-            RebuildHierarchy(parentIndex, clone.UIndex);
+            parentReferencesAdded = true;
+            int currentIndex = CurrentNode?.Export.UIndex ?? parent.Export.UIndex;
+            RebuildHierarchy(currentIndex, clone.UIndex);
             if (_nodesByUIndex.TryGetValue(clone.UIndex, out SFXGalaxyNode created))
             {
                 SelectTreeNode(created);
@@ -1271,7 +1519,15 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, $"Could not create this object:\n\n{exception.Message}", "SFXGalaxy Editor",
+            if (clone is not null)
+            {
+                if (parentReferencesAdded)
+                {
+                    RemoveChildReferences(parent.Export, clone);
+                }
+                EntryPruner.TrashEntryAndDescendants(clone);
+            }
+            MessageBox.Show(this, $"Could not clone this object:\n\n{exception.Message}", "SFXGalaxy Editor",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -1282,16 +1538,12 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
 
     private static void ResetClonedObjectProperties(PropertyCollection properties, SFXGalaxyNodeKind kind)
     {
-        foreach (string transient in new[] { "ObjectActor", "TemporaryComponents", "ActorSpawned", "AudioComponent", "ScanEmitter" })
-        {
-            properties.RemoveNamedProperty(transient);
-        }
         foreach (string arrayName in kind switch
                  {
                      SFXGalaxyNodeKind.Cluster => new[] { "Children", "Systems", "RelayConnections" },
-                     SFXGalaxyNodeKind.System => new[] { "Children", "Planets", "aReapersTouchingPlayer" },
-                     SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => new[] { "Children", "Features", "AutoGrantedFeatures" },
-                     _ => new[] { "Children" }
+                     SFXGalaxyNodeKind.System => new[] { "Children", "Planets" },
+                     SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.AsteroidBelt or SFXGalaxyNodeKind.Anomaly => new[] { "Children" },
+                     _ => []
                  })
         {
             properties.GetProp<ArrayProperty<ObjectProperty>>(arrayName)?.Clear();
@@ -1312,13 +1564,11 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private static void AddChildReferences(SFXGalaxyNode parent, ExportEntry child)
     {
         PropertyCollection parentProperties = parent.Export.GetProperties();
-        ArrayProperty<ObjectProperty> children = parentProperties.GetProp<ArrayProperty<ObjectProperty>>("Children");
-        if (children is null)
+        ArrayProperty<ObjectProperty> children = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, "Children");
+        if (children.All(reference => reference.Value != child.UIndex))
         {
-            children = new ArrayProperty<ObjectProperty>("Children");
-            parentProperties.Add(children);
+            children.Add(new ObjectProperty(child));
         }
-        children.Add(new ObjectProperty(child));
 
         string typedArrayName = parent.Kind switch
         {
@@ -1327,22 +1577,33 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
             // LE3's Planets array is really the table for every SFXSystemLevelObject,
             // including relays, depots, Reapers, and anomalies—not only BioPlanet.
             SFXGalaxyNodeKind.System => "Planets",
-            _ when child.IsA("SFXPlanetFeature") => "Features",
             _ => null
         };
         if (typedArrayName is not null)
         {
-            ArrayProperty<ObjectProperty> typed = parentProperties.GetProp<ArrayProperty<ObjectProperty>>(typedArrayName);
-            if (typed is null)
+            ArrayProperty<ObjectProperty> typed = GetOrCreateSerializedObjectArray(parent.Export, parentProperties, typedArrayName);
+            if (typed.All(reference => reference.Value != child.UIndex))
             {
-                typed = new ArrayProperty<ObjectProperty>(typedArrayName);
-                parentProperties.Add(typed);
+                typed.Add(new ObjectProperty(child));
             }
-            int tableId = typed.Count;
-            typed.Add(new ObjectProperty(child));
-            child.WriteProperty(new IntProperty(tableId, "TableID"));
         }
         parent.Export.WriteProperties(parentProperties);
+    }
+
+    private static ArrayProperty<ObjectProperty> GetOrCreateSerializedObjectArray(ExportEntry owner,
+        PropertyCollection properties, string propertyName)
+    {
+        if (GlobalUnrealObjectInfo.GetPropertyInfo(owner.Game, propertyName, owner.ClassName, containingExport: owner) is null)
+        {
+            throw new InvalidOperationException($"{propertyName} is not a serialized {owner.ClassName} property in LE3 metadata.");
+        }
+        ArrayProperty<ObjectProperty> array = properties.GetProp<ArrayProperty<ObjectProperty>>(propertyName);
+        if (array is null)
+        {
+            array = new ArrayProperty<ObjectProperty>(propertyName);
+            properties.Add(array);
+        }
+        return array;
     }
 
     private void DeleteSelected()
@@ -1391,7 +1652,7 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
                 if (array[i].Value == child.UIndex) array.RemoveAt(i);
             }
         }
-        foreach (string arrayName in new[] { "Clusters", "Systems", "Planets", "Features" })
+        foreach (string arrayName in new[] { "Clusters", "Systems", "Planets" })
         {
             if (properties.GetProp<ArrayProperty<ObjectProperty>>(arrayName) is not { } array) continue;
             foreach (ObjectProperty reference in array.Where(reference => reference.Value == child.UIndex))
@@ -1406,24 +1667,10 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     {
         SFXGalaxyNodeKind.Cluster => _rootNode,
         SFXGalaxyNodeKind.System => FindContextNode(SFXGalaxyNodeKind.Cluster),
-        SFXGalaxyNodeKind.Feature => FindContextNode(SFXGalaxyNodeKind.Planet, SFXGalaxyNodeKind.Anomaly, SFXGalaxyNodeKind.AsteroidBelt),
+        SFXGalaxyNodeKind.Feature or SFXGalaxyNodeKind.WarAsset =>
+            FindContextNode(SFXGalaxyNodeKind.Planet, SFXGalaxyNodeKind.Anomaly, SFXGalaxyNodeKind.AsteroidBelt),
         _ => FindContextNode(SFXGalaxyNodeKind.System)
     };
-
-    private SFXGalaxyNode ResolveTemplateParent()
-    {
-        SFXGalaxyNode node = SelectedNode ?? CurrentNode;
-        while (node is not null)
-        {
-            if (node.Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System
-                or SFXGalaxyNodeKind.Planet or SFXGalaxyNodeKind.Anomaly or SFXGalaxyNodeKind.AsteroidBelt)
-            {
-                return node;
-            }
-            node = node.Parent;
-        }
-        return null;
-    }
 
     private SFXGalaxyNode FindContextNode(params SFXGalaxyNodeKind[] kinds)
     {
@@ -1441,7 +1688,8 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
     private static string CreationParentMessage(SFXGalaxyNodeKind kind) => kind switch
     {
         SFXGalaxyNodeKind.System => "Select a cluster before adding a system.",
-        SFXGalaxyNodeKind.Feature => "Select a planet or anomaly before adding a planet feature.",
+        SFXGalaxyNodeKind.Feature => "Select a planet, asteroid belt, or anomaly before adding a scannable feature.",
+        SFXGalaxyNodeKind.WarAsset => "Select a planet, asteroid belt, or anomaly before adding a war asset.",
         SFXGalaxyNodeKind.Cluster => "Open an SFXGalaxy package before adding a cluster.",
         _ => "Select a system before adding this object."
     };
@@ -1554,17 +1802,13 @@ public partial class SFXGalaxyEditorWindow : WPFBase, IRecents
         }
     }
 
-    private static bool IsGenericTag(string tag) => tag.Equals("Galaxy", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("Cluster", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("System", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("Planet", StringComparison.OrdinalIgnoreCase)
-        || tag.Equals("Feature", StringComparison.OrdinalIgnoreCase);
-
     private static string KindName(SFXGalaxyNodeKind kind) => kind switch
     {
         SFXGalaxyNodeKind.AsteroidBelt => "Asteroid Belt",
         SFXGalaxyNodeKind.MassRelay => "Mass Relay",
         SFXGalaxyNodeKind.FuelDepot => "Fuel Depot",
+        SFXGalaxyNodeKind.Feature => "Scannable Feature",
+        SFXGalaxyNodeKind.WarAsset => "War Asset",
         _ => kind.ToString()
     };
 

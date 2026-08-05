@@ -60,10 +60,10 @@
                     <MenuItem Header="Mass relay" Click="AddMassRelay_Click" />
                     <MenuItem Header="Fuel depot" Click="AddFuelDepot_Click" />
                     <MenuItem Header="Reaper" Click="AddReaper_Click" />
-                    <MenuItem Header="Planet feature" Click="AddFeature_Click" />
+                    <MenuItem Header="Scannable planet feature" Click="AddFeature_Click" />
+                    <MenuItem Header="War asset" Click="AddWarAsset_Click" />
                     <Separator />
-                    <MenuItem Header="From another object template…" Click="AddFromTemplate_Click" />
-                    <MenuItem Header="Duplicate selected" Command="{Binding DuplicateCommand}" />
+                    <MenuItem Header="Clone selected" Command="{Binding DuplicateCommand}" />
                     <MenuItem Header="Delete selected…" Command="{Binding DeleteCommand}" InputGestureText="Delete" />
                 </MenuItem>
                 <MenuItem Header="_View" Padding="4">
@@ -116,7 +116,7 @@
                         </Grid.RowDefinitions>
                         <DockPanel Margin="5,3,5,8">
                             <TextBlock Text="HIERARCHY" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Button DockPanel.Dock="Right" Padding="8,3" Content="Add…" Click="AddFromTemplate_Click" />
+                            <Button DockPanel.Dock="Right" Padding="8,3" Content="Add…" Click="AddForSelection_Click" />
                         </DockPanel>
                         <TextBox x:Name="SearchBox" Grid.Row="1" Margin="5" Padding="7,5"
                                  ToolTip="Search resolved names, descriptions, tags, classes, and export paths"
@@ -136,7 +136,8 @@
                         </ListBox>
                         <TreeView x:Name="HierarchyTree" Grid.Row="3" Margin="5" ItemsSource="{Binding HierarchyRoots}"
                                   SelectedItemChanged="HierarchyTree_SelectedItemChanged"
-                                  MouseDoubleClick="HierarchyTree_MouseDoubleClick" />
+                                  MouseDoubleClick="HierarchyTree_MouseDoubleClick"
+                                  MouseRightButtonUp="HierarchyTree_MouseRightButtonUp" />
                     </Grid>
 
                     <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
@@ -162,7 +163,7 @@
                                 <Viewbox Stretch="Uniform">
                                     <Canvas x:Name="MapCanvas" Width="1024" Height="1024" Background="Transparent"
                                             MouseMove="MapCanvas_MouseMove" MouseLeftButtonUp="MapCanvas_MouseLeftButtonUp"
-                                            MouseLeave="MapCanvas_MouseLeave" />
+                                            MouseLeave="MapCanvas_MouseLeave" MouseRightButtonUp="MapCanvas_MouseRightButtonUp" />
                                 </Viewbox>
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="12,8"
                                         Background="#D0121B25" BorderBrush="#665FAECF" BorderThickness="1" CornerRadius="3"

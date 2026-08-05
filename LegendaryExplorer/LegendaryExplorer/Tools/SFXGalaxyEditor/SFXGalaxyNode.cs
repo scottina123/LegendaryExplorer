@@ -17,6 +17,7 @@ public enum SFXGalaxyNodeKind
     Reaper,
     Anomaly,
     Feature,
+    WarAsset,
     Object
 }
 
@@ -33,7 +34,7 @@ public sealed class SFXGalaxyNode
     public int PosY { get; set; }
 
     public bool CanNavigateInto => !IsImplicitStar
-        && (Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System || Children.Count > 0);
+        && Kind is SFXGalaxyNodeKind.Galaxy or SFXGalaxyNodeKind.Cluster or SFXGalaxyNodeKind.System;
     public string ExportLabel => IsImplicitStar ? "Implicit SFXSystem star" : $"[{Export.UIndex}] {Export.ClassName}";
     public string SearchText => string.Join(" ", DisplayName, Description, Export?.ObjectNameString, Export?.ClassName, Export?.InstancedFullPath);
 
@@ -42,6 +43,7 @@ public sealed class SFXGalaxyNode
         SFXGalaxyNodeKind.AsteroidBelt => "Asteroid belt",
         SFXGalaxyNodeKind.MassRelay => "Mass relay",
         SFXGalaxyNodeKind.FuelDepot => "Fuel depot",
+        SFXGalaxyNodeKind.WarAsset => "War asset",
         _ => Kind.ToString()
     };
 
@@ -58,6 +60,7 @@ public sealed class SFXGalaxyNode
         SFXGalaxyNodeKind.Reaper => "◆",
         SFXGalaxyNodeKind.Anomaly => "◇",
         SFXGalaxyNodeKind.Feature => "▲",
+        SFXGalaxyNodeKind.WarAsset => "◆",
         _ => "•"
     };
 
@@ -74,6 +77,7 @@ public sealed class SFXGalaxyNode
         SFXGalaxyNodeKind.Reaper => Brushes.IndianRed,
         SFXGalaxyNodeKind.Anomaly => Brushes.MediumPurple,
         SFXGalaxyNodeKind.Feature => Brushes.LightGreen,
+        SFXGalaxyNodeKind.WarAsset => Brushes.Goldenrod,
         _ => Brushes.Silver
     };
 
