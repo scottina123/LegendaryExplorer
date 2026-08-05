@@ -1089,9 +1089,18 @@ public sealed class WrappedVfxSourceAdapter : IVfxSourceAdapter
     public VfxPreviewDefinition CreateDefinition(ExportEntry export)
     {
         var result = new VfxPreviewDefinition { Name = export.ObjectName.Instanced };
+        VfxActorAttachment attachment = ReadActorAttachment(export);
         foreach (ExportEntry particleSystem in FindParticleSystems(export))
         {
             VfxPreviewDefinition nested = particleSystemAdapter.CreateDefinition(particleSystem);
+            if (attachment is not null)
+            {
+                foreach (VfxEmitterDefinition emitter in nested.Emitters)
+                {
+                    emitter.AttachmentBone = attachment.BoneName;
+                    emitter.AttachmentTransform = attachment.LocalTransform;
+                }
+            }
             result.Emitters.AddRange(nested.Emitters);
             result.Warnings.AddRange(nested.Warnings);
             result.PropertyCoverage.AddRange(nested.PropertyCoverage);
@@ -1102,6 +1111,55 @@ public sealed class WrappedVfxSourceAdapter : IVfxSourceAdapter
             result.Warnings.Add($"{export.ClassName} does not expose a directly referenced ParticleSystem; proprietary wrapper modules are not yet simulated.");
         }
         return result;
+    }
+
+    private sealed record VfxActorAttachment(string BoneName, Matrix4x4 LocalTransform);
+
+    private static VfxActorAttachment ReadActorAttachment(ExportEntry wrapper)
+    {
+        ExportEntry locationModule = EnumerateReferencedExports(wrapper)
+            .FirstOrDefault(module => module.ClassName == "RvrCEffectModuleLocation"
+                && module.GetProperty<BoolProperty>("m_bAttach")?.Value != false
+                && string.Equals(module.GetProperty<EnumProperty>("m_eReference")?.Value.Name,
+                    "ELR_Bone", StringComparison.Ordinal));
+        string boneName = locationModule?.GetProperty<NameProperty>("m_sAttachment")?.Value.Instanced;
+        if (string.IsNullOrWhiteSpace(boneName) || string.Equals(boneName, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        Vector3 location = ParticleSystemSourceAdapter.ReadVectorDistribution(
+            locationModule, Vector3.Zero, "m_LocationAdjust").Evaluate(0, 0.5f);
+        Vector3 rotation = ParticleSystemSourceAdapter.ReadVectorDistribution(
+            locationModule, Vector3.Zero, "m_RotationAdjust").Evaluate(0, 0.5f);
+        Quaternion orientation = Quaternion.CreateFromYawPitchRoll(
+            rotation.Z * MathF.Tau,
+            rotation.Y * MathF.Tau,
+            rotation.X * MathF.Tau);
+        Matrix4x4 localTransform = Matrix4x4.CreateFromQuaternion(orientation)
+            * Matrix4x4.CreateTranslation(location);
+        return new VfxActorAttachment(boneName, localTransform);
+    }
+
+    private static IEnumerable<ExportEntry> EnumerateReferencedExports(ExportEntry wrapper)
+    {
+        foreach (ObjectProperty reference in wrapper.GetProperties().OfType<ObjectProperty>())
+        {
+            if (reference.ResolveToEntry(wrapper.FileRef) is ExportEntry export)
+            {
+                yield return export;
+            }
+        }
+        foreach (ArrayProperty<ObjectProperty> array in wrapper.GetProperties().OfType<ArrayProperty<ObjectProperty>>())
+        {
+            foreach (ObjectProperty reference in array)
+            {
+                if (reference.ResolveToEntry(wrapper.FileRef) is ExportEntry export)
+                {
+                    yield return export;
+                }
+            }
+        }
     }
 
     private static IEnumerable<ExportEntry> FindParticleSystems(ExportEntry wrapper)

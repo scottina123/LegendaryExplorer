@@ -1342,7 +1342,29 @@
                                 </StackPanel>
                             </Border>
                             <TextBlock Text="Preview" Style="{StaticResource ColumnHeaderStyle}" ToolTip="In-process VFX preview" Grid.Row="0" Grid.Column="2"/>
-                            <vfxPreview:VfxPreviewControl x:Name="VfxPreview" Grid.Row="2" Grid.Column="2"/>
+                            <DockPanel Grid.Row="2" Grid.Column="2">
+                                <Grid DockPanel.Dock="Top" Margin="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="45"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Body:" VerticalAlignment="Center"/>
+                                    <DockPanel Grid.Column="1" Margin="0,0,3,3"><Button DockPanel.Dock="Right" Content="Select..." Tag="Body" Click="VfxPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_VfxPreviewBodyMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                    <Button Grid.Column="2" Grid.RowSpan="3" Content="Reset Models" Padding="6,2"
+                                            Click="ResetVfxPreviewModels_Click"/>
+                                    <TextBlock Grid.Row="1" Text="Head:" VerticalAlignment="Center"/>
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,0,3,3"><Button DockPanel.Dock="Right" Content="Select..." Tag="Head" Click="VfxPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_VfxPreviewHeadMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                    <TextBlock Grid.Row="2" Text="Hair:" VerticalAlignment="Center"/>
+                                    <DockPanel Grid.Row="2" Grid.Column="1"><Button DockPanel.Dock="Right" Content="Select..." Tag="Hair" Click="VfxPreview_SelectMesh_Click" Padding="5,1"/><TextBox x:Name="txt_VfxPreviewHairMesh" IsReadOnly="True" Margin="0,0,3,0"/></DockPanel>
+                                </Grid>
+                                <vfxPreview:VfxPreviewControl x:Name="VfxPreview"/>
+                            </DockPanel>
                             <assetDatabase:AssetUsagesPanel x:Name="vfxUsagesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3"
                                                            FilterText="{Binding UsageFilterText, RelativeSource={RelativeSource AncestorType=Window}}"
                                                            UsagesSource="{Binding SelectedItem.Usages, ElementName=lstbx_Particles}"

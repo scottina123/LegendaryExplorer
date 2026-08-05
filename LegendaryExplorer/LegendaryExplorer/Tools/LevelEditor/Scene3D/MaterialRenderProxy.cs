@@ -21,13 +21,16 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
     private const string VERTEX_SHADER_TYPE_NAME = "TBasePassVertexShaderFNoLightMapPolicyFNoDensityPolicy";
     private const string LIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicySkyLight";
     private const string UNLIT_PIXEL_SHADER_TYPE_NAME = "TBasePassPixelShaderFNoLightMapPolicyNoSkyLight";
+    private const string HUMAN_LASH_MASTER_MATERIAL_NAME = "HMN_HED_LASH_Unlit_MASTER_MAT";
+    private const string HUMAN_LASH_OPACITY_PARAMETER_NAME = "HED_Lash_Diff";
 
     public EBlendMode BlendMode;
     public bool UseHairPass;
     public bool IsUnlit;
-    private readonly Dictionary<string, float> ScalarParameterValues = [];
-    private readonly Dictionary<string, LinearColor> VectorParameterValues = [];
-    private readonly Dictionary<string, string> TextureParameterValues = [];
+    public bool IsHumanLashMaterial;
+    private readonly Dictionary<string, float> ScalarParameterValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, LinearColor> VectorParameterValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> TextureParameterValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> Uniform2DTextureExpressions = [];
     public Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap;
     private MaterialShaderMap ShaderMap;
@@ -67,6 +70,7 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
 
         UseHairPass = props.GetProp<BoolProperty>("bHairPass") is { Value: true };
         IsUnlit = props.GetProp<EnumProperty>("LightingModel") is {} lightingModelProp && lightingModelProp.Value == "MLM_Unlit";
+        IsHumanLashMaterial = mat.ObjectName.Name.Equals(HUMAN_LASH_MASTER_MATERIAL_NAME, StringComparison.OrdinalIgnoreCase);
 
         var expressionsProp = props.GetProp<ArrayProperty<ObjectProperty>>("Expressions");
         if (expressionsProp is not null)
@@ -252,6 +256,16 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
         foreach (MaterialUniformExpressionTexture texExpression in textureExpressions)
         {
             PreviewTextureCache.TextureEntry texture = null;
+            // The human-lash shader serializes its opacity texture as a plain uniform expression. Meshplorer
+            // deliberately resolves that slot from the effective child-MIC parameter instead of the master's
+            // default lash texture, which otherwise produces an opaque white shell around the eyes.
+            if (IsHumanLashMaterial
+                && TextureParameterValues.TryGetValue(HUMAN_LASH_OPACITY_PARAMETER_NAME, out string lashTextureIfp))
+            {
+                TextureMap.TryGetValue(lashTextureIfp, out texture);
+                textureCache.Add(texture);
+                continue;
+            }
             switch (texExpression)
             {
                 case MaterialUniformExpressionTextureParameter texParamExpression:
@@ -271,6 +285,17 @@ public class MaterialRenderProxy : MaterialInstanceConstantLevelEditor
             }
             textureCache.Add(texture);
         }
+    }
+
+    public bool HasRequiredTextures(MeshRenderContext context)
+    {
+        if (!IsHumanLashMaterial)
+        {
+            return true;
+        }
+
+        (_, _, List<PreviewTextureCache.TextureEntry> textures, _) = GetCachedPixelParameters(context);
+        return textures.Count > 0 && textures.All(texture => texture is not null);
     }
 
     private void UpdateExpressions(UniformExpressionRenderContext uniformContext, 

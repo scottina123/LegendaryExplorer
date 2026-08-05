@@ -26,6 +26,14 @@ public class VfxPreviewTests
     }
 
     [TestMethod]
+    public void PreviewActorIsVisibleByDefault()
+    {
+        var context = new VfxPreviewRenderContext();
+
+        Assert.IsFalse(context.HideActor);
+    }
+
+    [TestMethod]
     public void CurveDistributionInterpolatesSamples()
     {
         var distribution = new VfxCurveFloatDistribution([0, 10, 20]);
@@ -363,6 +371,34 @@ public class VfxPreviewTests
         Assert.IsTrue(simulation.TryGetDynamicBounds(out Vector3 minimum, out Vector3 maximum));
         AssertVector(new Vector3(0, -6, -6), minimum);
         AssertVector(new Vector3(8, 6, 6), maximum);
+    }
+
+    [TestMethod]
+    public void DynamicBoundsUseEachEmittersAttachmentTransform()
+    {
+        var definition = new VfxPreviewDefinition();
+        foreach (string name in new[] { "Left", "Right" })
+        {
+            definition.Emitters.Add(new VfxEmitterDefinition
+            {
+                Name = name,
+                Duration = 1,
+                Loops = 1,
+                Bursts = [new VfxBurst(0, 1)],
+                Lifetime = new VfxConstantDistribution<float>(1),
+                InitialSize = new VfxConstantDistribution<Vector3>(new Vector3(2))
+            });
+        }
+        var simulation = new VfxSimulation { Loop = false };
+        simulation.Load(definition);
+        simulation.Tick(0.01f);
+
+        Assert.IsTrue(simulation.TryGetDynamicBounds(
+            emitter => Matrix4x4.CreateTranslation(emitter.Name == "Left" ? -10 : 10, 0, 0),
+            out Vector3 minimum,
+            out Vector3 maximum));
+        AssertVector(new Vector3(-11, -1, -1), minimum);
+        AssertVector(new Vector3(11, 1, 1), maximum);
     }
 
     [TestMethod]

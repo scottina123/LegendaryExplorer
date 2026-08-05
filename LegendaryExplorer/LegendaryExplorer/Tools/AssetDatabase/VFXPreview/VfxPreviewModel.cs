@@ -360,6 +360,12 @@ public sealed record VfxPropertyCoverage(
 public sealed class VfxEmitterDefinition
 {
     public string Name { get; init; }
+    /// <summary>
+    /// Optional actor reference-skeleton bone used by receiver-effect wrappers. Particle positions remain in the
+    /// emitter's authored local space and are transformed through this bone when the preview is rendered.
+    /// </summary>
+    public string AttachmentBone { get; set; }
+    public Matrix4x4 AttachmentTransform { get; set; } = Matrix4x4.Identity;
     public float Delay { get; init; }
     public float DelayLow { get; init; }
     public bool UseDelayRange { get; init; }

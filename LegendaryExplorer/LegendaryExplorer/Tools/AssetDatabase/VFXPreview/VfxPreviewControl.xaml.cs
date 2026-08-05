@@ -110,6 +110,12 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
         set => SetOverlay(value, current => RenderContext.ShowOrigin = current);
     }
 
+    public bool HideActor
+    {
+        get => RenderContext.HideActor;
+        set => SetOverlay(value, current => RenderContext.HideActor = current);
+    }
+
     public VfxPreviewControl()
     {
         InitializeComponent();
@@ -167,6 +173,29 @@ public partial class VfxPreviewControl : UserControl, INotifyPropertyChanged
             StatusText = "Preview could not be loaded.";
             WarningText = exception.Message;
         }
+    }
+
+    public void LoadActorMesh(PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+    {
+        try
+        {
+            RenderContext.LoadActorMesh(component, skeletalMeshExport);
+            if (component == PreviewActorModelComponent.Body)
+            {
+                RenderContext.Focus();
+            }
+        }
+        catch (Exception exception)
+        {
+            RenderContext.ErrorText = $"Actor {component.ToString().ToLowerInvariant()} could not be loaded: {exception.Message}";
+        }
+        Viewport.MarkRenderDirty();
+    }
+
+    public void ClearActorMesh(PreviewActorModelComponent component)
+    {
+        RenderContext.ClearActorMesh(component);
+        Viewport.MarkRenderDirty();
     }
 
     public void UnloadExport()

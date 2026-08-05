@@ -17,6 +17,26 @@ namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
 public sealed class VfxPreviewRenderContext : MeshRenderContext
 {
+    private sealed class ActorMeshResources : IDisposable
+    {
+        public ModelPreview<WorldVertex> StandardPreview;
+        public ModelPreview<LEVertex> GameShaderPreview;
+
+        public void UpdateLocalToWorld(Matrix4x4 transform)
+        {
+            StandardPreview?.UpdateLocalToWorld(transform);
+            GameShaderPreview?.UpdateLocalToWorld(transform);
+        }
+
+        public void Dispose()
+        {
+            StandardPreview?.Dispose();
+            GameShaderPreview?.Dispose();
+            StandardPreview = null;
+            GameShaderPreview = null;
+        }
+    }
+
     private readonly VfxBillboardRenderer billboardRenderer = new();
     private readonly VfxMeshRenderer meshRenderer = new();
     private readonly VfxGameShaderRenderer gameShaderRenderer = new();
@@ -26,6 +46,9 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private readonly Dictionary<VfxBlendMode, BlendState> blendStates = [];
     private readonly Dictionary<(bool DepthTest, bool DepthWrite), DepthStencilState> depthStates = [];
     private readonly Dictionary<string, bool> luminanceOpacityCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<PreviewActorModelComponent, ActorMeshResources> actorModels = [];
+    private readonly Dictionary<string, Matrix4x4> actorBoneTransforms = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> missingAttachmentBones = new(StringComparer.OrdinalIgnoreCase);
     private Func<ImportEntry, IEnumerable<VfxImportFallback>> importFallbackResolver;
     private VfxPreviewBackground background = VfxPreviewBackground.NeutralGray;
     private VfxPreviewShadingMode shadingMode = VfxPreviewShadingMode.Unlit;
@@ -35,6 +58,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private bool autoFramePending;
     private int autoFrameElapsed;
     private bool autoFrameHasPeak;
+    private SkeletalMesh actorSkeleton;
+    private Matrix4x4 actorTransform = Matrix4x4.Identity;
     private Vector3 autoFramePeakMinimum;
     private Vector3 autoFramePeakMaximum;
 
@@ -51,6 +76,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     public bool ShowGroundPlane { get; set; }
     public bool ShowBoundingBox { get; set; }
     public bool ShowOrigin { get; set; } = true;
+    public bool HideActor { get; set; }
     public string RuntimeWarning { get; private set; }
 
     /// <summary>
@@ -158,6 +184,142 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         TryAutoFrame();
     }
 
+    public void LoadActorMesh(PreviewActorModelComponent component, ExportEntry skeletalMeshExport)
+    {
+        if (skeletalMeshExport is null)
+        {
+            ClearActorMesh(component);
+            return;
+        }
+
+        SkeletalMesh skeletalMesh = ObjectBinary.From<SkeletalMesh>(skeletalMeshExport);
+        if (skeletalMesh.LODModels.Length == 0)
+        {
+            throw new InvalidOperationException($"{skeletalMeshExport.ObjectName.Instanced} has no skeletal-mesh LODs.");
+        }
+
+        var resources = new ActorMeshResources
+        {
+            StandardPreview = new ModelPreview<WorldVertex>(this, skeletalMesh),
+            GameShaderPreview = TryCreateActorGameShaderPreview(skeletalMesh)
+        };
+        if (actorModels.Remove(component, out ActorMeshResources previous))
+        {
+            previous.Dispose();
+        }
+        actorModels[component] = resources;
+        if (component == PreviewActorModelComponent.Body)
+        {
+            actorSkeleton = skeletalMesh;
+            UpdateActorPlacement(resources.StandardPreview);
+            RebuildActorBoneTransforms();
+        }
+        resources.UpdateLocalToWorld(actorTransform);
+        ErrorText = null;
+    }
+
+    /// <summary>
+    /// Builds the same LEVertex/MaterialRenderProxy representation used by Meshplorer's in-game shader preview.
+    /// The standard mesh remains resident as a fallback for original-game assets and materials without a compiled
+    /// local-vertex-factory shader.
+    /// </summary>
+    private ModelPreview<LEVertex> TryCreateActorGameShaderPreview(SkeletalMesh skeletalMesh)
+    {
+        ModelPreview<LEVertex> preview = null;
+        try
+        {
+            preview = new ModelPreview<LEVertex>(this, skeletalMesh);
+            if (preview.LODs.Count == 0)
+            {
+                preview.Dispose();
+                return null;
+            }
+
+            bool hasRenderableSection = preview.LODs[0].Sections.Any(section => section.MaterialName is not null
+                && preview.Materials.TryGetValue(section.MaterialName, out ModelPreviewMaterial<LEVertex> material)
+                && material is LEShaderPreviewMaterial { CanRender: true });
+            if (!hasRenderableSection)
+            {
+                preview.Dispose();
+                return null;
+            }
+            return preview;
+        }
+        catch
+        {
+            preview?.Dispose();
+            return null;
+        }
+    }
+
+    public void ClearActorMesh(PreviewActorModelComponent component)
+    {
+        if (component == PreviewActorModelComponent.Body)
+        {
+            DisposeActorMeshes();
+            return;
+        }
+        if (actorModels.Remove(component, out ActorMeshResources model))
+        {
+            model.Dispose();
+        }
+    }
+
+    private void UpdateActorPlacement(ModelPreview<WorldVertex> bodyPreview)
+    {
+        BoxSphereBounds bounds = bodyPreview.LODs[0].Mesh.BaseBounds;
+        Vector3 minimum = bounds.Origin - bounds.BoxExtent;
+        actorTransform = Matrix4x4.CreateTranslation(-bounds.Origin.X, -bounds.Origin.Y, -minimum.Z);
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            actorModel.UpdateLocalToWorld(actorTransform);
+        }
+    }
+
+    private void RebuildActorBoneTransforms()
+    {
+        actorBoneTransforms.Clear();
+        missingAttachmentBones.Clear();
+        if (actorSkeleton?.RefSkeleton is not { Length: > 0 } bones)
+        {
+            return;
+        }
+
+        var componentSpace = new Matrix4x4[bones.Length];
+        for (int index = 0; index < bones.Length; index++)
+        {
+            MeshBone bone = bones[index];
+            Matrix4x4 local = Matrix4x4.CreateFromQuaternion(bone.Orientation)
+                * Matrix4x4.CreateTranslation(bone.Position);
+            componentSpace[index] = bone.ParentIndex >= 0 && bone.ParentIndex < index
+                ? local * componentSpace[bone.ParentIndex]
+                : local;
+            actorBoneTransforms[bone.Name.Instanced] = componentSpace[index] * actorTransform;
+        }
+    }
+
+    private Matrix4x4 GetEmitterPreviewTransform(VfxEmitterDefinition emitter, Matrix4x4 systemTransform)
+    {
+        if (string.IsNullOrWhiteSpace(emitter.AttachmentBone))
+        {
+            return emitter.AttachmentTransform * systemTransform;
+        }
+        if (actorBoneTransforms.TryGetValue(emitter.AttachmentBone, out Matrix4x4 boneTransform))
+        {
+            return emitter.AttachmentTransform * boneTransform * systemTransform;
+        }
+
+        if (missingAttachmentBones.Add(emitter.AttachmentBone))
+        {
+            RuntimeWarning = AppendWarning(RuntimeWarning,
+                $"Actor bone {emitter.AttachmentBone} was not found; {emitter.Name} is attached to the actor root.");
+        }
+        return emitter.AttachmentTransform * actorTransform * systemTransform;
+    }
+
+    private bool HasActorAttachments => Simulation.Definition?.Emitters.Any(
+        emitter => !string.IsNullOrWhiteSpace(emitter.AttachmentBone)) == true;
+
     /// <summary>
     /// Effects often spawn nothing on the first frame, so the initial Focus() may have no live bounds to use.
     /// The camera settles once geometry appears, while the preview transform keeps tracking the peak live bounds
@@ -250,6 +412,10 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         // separate peak below, so an inaccurate authored box cannot permanently make the effect appear tiny.
         if (TryGetPreviewBounds(true, out minimum, out maximum))
         {
+            FrameBoundsIncludingActor(minimum, maximum);
+        }
+        else if (!HideActor && TryGetActorBounds(out minimum, out maximum))
+        {
             FrameBounds(minimum, maximum);
         }
         else
@@ -270,12 +436,46 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         }
 
         var rawBounds = new VfxBounds(rawMinimum, rawMaximum);
-        Simulation.Definition.SystemTransform = VfxPreviewDefinition.CreateGridFittingTransform(rawBounds);
+        // A bone-attached effect and its actor form one authored coordinate system. Scaling only the particles
+        // would tear the effect away from the attachment point, so attached wrappers keep actor-space scale.
+        Simulation.Definition.SystemTransform = HasActorAttachments
+            ? Matrix4x4.Identity
+            : VfxPreviewDefinition.CreateGridFittingTransform(rawBounds);
         if (frameCamera)
         {
             VfxBounds fittedBounds = VfxBoundsMath.Transform(rawBounds, Simulation.Definition.SystemTransform);
-            FrameBounds(fittedBounds.Minimum, fittedBounds.Maximum);
+            FrameBoundsIncludingActor(fittedBounds.Minimum, fittedBounds.Maximum);
         }
+    }
+
+    private void FrameBoundsIncludingActor(Vector3 minimum, Vector3 maximum)
+    {
+        if (!HideActor && TryGetActorBounds(out Vector3 actorMinimum, out Vector3 actorMaximum))
+        {
+            minimum = Vector3.Min(minimum, actorMinimum);
+            maximum = Vector3.Max(maximum, actorMaximum);
+        }
+        FrameBounds(minimum, maximum);
+    }
+
+    private bool TryGetActorBounds(out Vector3 minimum, out Vector3 maximum)
+    {
+        minimum = new Vector3(float.MaxValue);
+        maximum = new Vector3(float.MinValue);
+        bool found = false;
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            ModelPreview<WorldVertex> preview = actorModel.StandardPreview;
+            if (preview?.LODs.Count is not > 0)
+            {
+                continue;
+            }
+            BoxSphereBounds bounds = preview.LODs[0].Mesh.TransformedBounds;
+            minimum = Vector3.Min(minimum, bounds.Origin - bounds.BoxExtent);
+            maximum = Vector3.Max(maximum, bounds.Origin + bounds.BoxExtent);
+            found = true;
+        }
+        return found;
     }
 
     /// <summary>
@@ -923,10 +1123,12 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
     private void RenderPreview(object sender, EventArgs args)
     {
         DrawHelpers();
-        Matrix4x4 previewTransform = Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity;
-        var blendedParticles = new List<(VfxEmitterState Emitter, VfxParticle Particle, PreviewTextureCache.TextureEntry Texture, BlendState BlendState, DepthStencilState DepthState)>();
+        RenderActor();
+        Matrix4x4 systemTransform = Simulation.Definition?.SystemTransform ?? Matrix4x4.Identity;
+        var blendedParticles = new List<(VfxEmitterState Emitter, VfxParticle Particle, PreviewTextureCache.TextureEntry Texture, BlendState BlendState, DepthStencilState DepthState, Matrix4x4 Transform)>();
         foreach (VfxEmitterState emitter in Simulation.Emitters)
         {
+            Matrix4x4 previewTransform = GetEmitterPreviewTransform(emitter.Definition, systemTransform);
             if (emitter.Definition.RenderMode == VfxEmitterRenderMode.Mesh)
             {
                 if (meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources meshResources))
@@ -962,7 +1164,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             foreach (VfxParticle particle in GetDrawableParticles(emitter, previewTransform))
             {
-                blendedParticles.Add((emitter, particle, texture, blendState, depthState));
+                blendedParticles.Add((emitter, particle, texture, blendState, depthState, previewTransform));
             }
         }
 
@@ -971,8 +1173,8 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         // excluded from this sort so their authored order survives.
         if (!blendedParticles.Any(entry => entry.Emitter.Definition.SortMode is VfxSortMode.AgeOldestFirst or VfxSortMode.AgeNewestFirst))
         {
-            blendedParticles.Sort((left, right) => VfxBillboardRenderer.DistanceSquared(right.Particle, Camera.Position, previewTransform)
-                .CompareTo(VfxBillboardRenderer.DistanceSquared(left.Particle, Camera.Position, previewTransform)));
+            blendedParticles.Sort((left, right) => VfxBillboardRenderer.DistanceSquared(right.Particle, Camera.Position, right.Transform)
+                .CompareTo(VfxBillboardRenderer.DistanceSquared(left.Particle, Camera.Position, left.Transform)));
         }
 
         // Draw contiguous runs that share the same emitter and render state as a single batch. Sorting stays
@@ -980,7 +1182,7 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         var batch = new List<VfxParticle>();
         for (int index = 0; index < blendedParticles.Count; index++)
         {
-            (VfxEmitterState emitter, VfxParticle particle, PreviewTextureCache.TextureEntry texture, BlendState blendState, DepthStencilState depthState) = blendedParticles[index];
+            (VfxEmitterState emitter, VfxParticle particle, PreviewTextureCache.TextureEntry texture, BlendState blendState, DepthStencilState depthState, Matrix4x4 previewTransform) = blendedParticles[index];
             batch.Add(particle);
             bool endOfRun = index + 1 == blendedParticles.Count
                 || blendedParticles[index + 1].Emitter != emitter
@@ -993,6 +1195,42 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
             }
             billboardRenderer.Render(this, emitter, texture.TextureView, blendState, depthState, batch, previewTransform);
             batch = [];
+        }
+    }
+
+    private void RenderActor()
+    {
+        if (HideActor)
+        {
+            return;
+        }
+
+        if (!useGameShader)
+        {
+            foreach (ActorMeshResources actorModel in actorModels.Values)
+            {
+                actorModel.StandardPreview?.Render(RenderPass.ANY, this, 0);
+            }
+            return;
+        }
+
+        // Match Meshplorer's pass ordering across the assembled actor: all opaque/base surfaces first,
+        // followed by all hair and translucent surfaces. Components without a compiled shader fall back
+        // to the standard textured mesh without forcing the rest of the actor off the game-shader path.
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            if (actorModel.GameShaderPreview is { } gameShaderPreview)
+            {
+                gameShaderPreview.Render(RenderPass.Base, this, 0);
+            }
+            else
+            {
+                actorModel.StandardPreview?.Render(RenderPass.ANY, this, 0);
+            }
+        }
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            actorModel.GameShaderPreview?.Render(RenderPass.Hair, this, 0);
         }
     }
 
@@ -1147,14 +1385,21 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
 
     private bool TryGetPreviewBounds(bool allowFixedBounds, Matrix4x4 previewTransform, out Vector3 minimum, out Vector3 maximum)
     {
-        bool found = allowFixedBounds
+        bool canUseFixedBounds = allowFixedBounds
+            && !HasActorAttachments
+            && Simulation.Definition?.FixedLocalBounds is { IsValid: true };
+        bool found = canUseFixedBounds
             ? Simulation.TryGetBounds(previewTransform, out minimum, out maximum)
-            : Simulation.TryGetDynamicBounds(previewTransform, out minimum, out maximum);
+            : Simulation.TryGetDynamicBounds(
+                emitter => GetEmitterPreviewTransform(emitter, previewTransform),
+                out minimum,
+                out maximum);
         foreach (VfxEmitterState emitter in Simulation.Emitters)
         {
+            Matrix4x4 emitterTransform = GetEmitterPreviewTransform(emitter.Definition, previewTransform);
             if (emitter.Definition.RenderMode != VfxEmitterRenderMode.Mesh
                 || !meshEmitters.TryGetValue(emitter.Definition, out VfxMeshRenderer.MeshEmitterResources resources)
-                || !VfxMeshRenderer.TryGetBounds(emitter, resources, previewTransform, Camera.Position, Camera.CameraRight, Camera.CameraUp, Camera.CameraForward, out VfxBounds meshBounds))
+                || !VfxMeshRenderer.TryGetBounds(emitter, resources, emitterTransform, Camera.Position, Camera.CameraRight, Camera.CameraUp, Camera.CameraForward, out VfxBounds meshBounds))
             {
                 continue;
             }
@@ -1191,7 +1436,21 @@ public sealed class VfxPreviewRenderContext : MeshRenderContext
         meshRenderer.Dispose();
         gameShaderRenderer.Dispose();
         DisposeMeshEmitters();
+        DisposeActorMeshes();
         textures.Clear();
         base.DisposeResources();
+    }
+
+    private void DisposeActorMeshes()
+    {
+        foreach (ActorMeshResources actorModel in actorModels.Values)
+        {
+            actorModel.Dispose();
+        }
+        actorModels.Clear();
+        actorSkeleton = null;
+        actorBoneTransforms.Clear();
+        missingAttachmentBones.Clear();
+        actorTransform = Matrix4x4.Identity;
     }
 }

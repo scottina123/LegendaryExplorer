@@ -213,7 +213,7 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
 {
     private readonly RenderTargetBlendDescription BlendDescription;
 
-    public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = [];
+    public readonly Dictionary<string, PreviewTextureCache.TextureEntry> TextureMap = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The in-game shader preview is only available when the material supplied both halves of the
@@ -234,7 +234,10 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
                 PreviewTextureCache.TextureEntry texture = renderContext.TextureCache.LoadTexture(textureEntry, renderContext.PackageCache);
                 if (texture is not null)
                 {
-                    TextureMap.Add(textureEntry.FullPath, texture);
+                    // Shader uniforms use InstancedFullPath while older material data often uses FullPath.
+                    // Meshplorer registers both names so inherited MIC texture overrides resolve reliably.
+                    TextureMap[textureEntry.FullPath] = texture;
+                    TextureMap[textureEntry.InstancedFullPath] = texture;
                 }
             }
         }
@@ -338,7 +341,13 @@ internal class LEShaderPreviewMaterial : ModelPreviewMaterial<LEVertex>
             Mesh<LEVertex> mesh = lod.Mesh;
             SceneCamera camera = context.Camera;
             var material = (MaterialRenderProxy)Material;
-            LEEffect effect = context.LEEffect;
+            if (!CanRender || !material.HasRequiredTextures(context))
+            {
+                return;
+            }
+            // Human lashes use a materially different unlit/translucent constant layout. Meshplorer keeps
+            // them on a separate effect so their constants cannot corrupt the eye material drawn afterward.
+            LEEffect effect = material.IsHumanLashMaterial ? context.HumanLashEffect : context.LEEffect;
             PixelShader ps = context.GetCachedPixelShader(material.UnrealPixelShader.Guid, material.UnrealPixelShader.ShaderByteCode);
             (VertexShader vs, InputLayout inputLayout) = context.GetCachedVertexShader(material.UnrealVertexShader.Guid, material.UnrealVertexShader.ShaderByteCode);
             effect.PrepDraw(context.ImmediateContext, vs, ps, inputLayout, context.GetCachedBlendState(BlendDescription));

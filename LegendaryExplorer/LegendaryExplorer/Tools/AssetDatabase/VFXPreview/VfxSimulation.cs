@@ -625,12 +625,16 @@ public sealed class VfxSimulation
         => TryGetDynamicBounds(Definition?.SystemTransform ?? Matrix4x4.Identity, out minimum, out maximum);
 
     public bool TryGetDynamicBounds(Matrix4x4 previewTransform, out Vector3 minimum, out Vector3 maximum)
+        => TryGetDynamicBounds(_ => previewTransform, out minimum, out maximum);
+
+    public bool TryGetDynamicBounds(Func<VfxEmitterDefinition, Matrix4x4> transformProvider, out Vector3 minimum, out Vector3 maximum)
     {
         minimum = new Vector3(float.MaxValue);
         maximum = new Vector3(float.MinValue);
         bool found = false;
         foreach (VfxEmitterState emitter in emitters)
         {
+            Matrix4x4 previewTransform = transformProvider?.Invoke(emitter.Definition) ?? Matrix4x4.Identity;
             foreach (VfxParticle particle in emitter.Particles)
             {
                 Vector3 size = Vector3.Abs(particle.Size);

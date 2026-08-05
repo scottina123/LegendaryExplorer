@@ -25,6 +25,9 @@
             <CheckBox Content="Ground" IsChecked="{Binding ShowGround, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
             <CheckBox Content="Bounds" IsChecked="{Binding ShowBounds, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
             <CheckBox Content="Origin" IsChecked="{Binding ShowOrigin, ElementName=root}" VerticalAlignment="Center" Margin="2"/>
+            <CheckBox Content="Hide actor" IsChecked="{Binding HideActor, ElementName=root}"
+                      ToolTip="Hide the centered preview actor. Bone-attached effects continue to use its skeleton."
+                      VerticalAlignment="Center" Margin="8,2,2,2"/>
         </WrapPanel>
         <Border Grid.Row="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1">
             <scene3d:SceneRenderControl x:Name="Viewport" Focusable="True"/>

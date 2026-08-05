@@ -869,6 +869,9 @@ namespace LegendaryExplorer.Tools.AssetDatabase
         private bool _updatingAnimPreviewModels;
         private List<MeshRecord> _animPreviewMeshes = [];
         private readonly Dictionary<PreviewActorModelComponent, MeshRecord> _selectedAnimPreviewMeshes = [];
+        private List<MeshRecord> _vfxPreviewMeshes = [];
+        private readonly Dictionary<PreviewActorModelComponent, MeshRecord> _selectedVfxPreviewMeshes = [];
+        private MEGame? _vfxPreviewActorGame;
         private IMEPackage gesturePreviewPcc;
         private readonly PackageCache _animPreviewPackageCache = new();
         private IMEPackage _ambPerfMasterPcc;
@@ -5195,6 +5198,110 @@ namespace LegendaryExplorer.Tools.AssetDatabase
             }
         }
 
+        private void VfxPreview_SelectMesh_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button { Tag: string componentName }
+                || !Enum.TryParse(componentName, out PreviewActorModelComponent component)) return;
+            _selectedVfxPreviewMeshes.TryGetValue(component, out MeshRecord current);
+            MeshRecord selected = PreviewActorModelDefaults.SelectMesh(this, _vfxPreviewMeshes, component, current?.MeshName);
+            if (selected is null) return;
+            _selectedVfxPreviewMeshes[component] = selected;
+            GetVfxPreviewMeshTextBox(component).Text = selected.MeshName;
+            LoadSkeletalMeshForVfxPreview(component, false);
+        }
+
+        private void LoadSkeletalMeshForVfxPreview(PreviewActorModelComponent component, bool baseGameOnly, bool allowDeferred = true)
+        {
+            if (!VfxPreview.RenderContext.IsReady)
+            {
+                if (allowDeferred)
+                {
+                    Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                        () => LoadSkeletalMeshForVfxPreview(component, baseGameOnly, false));
+                }
+                return;
+            }
+            if (!_selectedVfxPreviewMeshes.TryGetValue(component, out MeshRecord meshRecord))
+            {
+                VfxPreview.ClearActorMesh(component);
+                return;
+            }
+            if (PreviewActorModelDefaults.IsNone(meshRecord))
+            {
+                VfxPreview.ClearActorMesh(component);
+                return;
+            }
+
+            string filePath = null;
+            int uIndex = 0;
+            foreach (var (fileKey, usageUIndex, _) in PreviewActorModelDefaults.GetUsages(
+                         meshRecord, CurrentDataBase, baseGameOnly))
+            {
+                filePath = GetFilePath(fileKey);
+                if (filePath is not null)
+                {
+                    uIndex = usageUIndex;
+                    break;
+                }
+            }
+            if (filePath is null)
+            {
+                VfxPreview.ClearActorMesh(component);
+                return;
+            }
+
+            using IMEPackage meshPackage = MEPackageHandler.OpenMEPackage(filePath);
+            if (meshPackage.TryGetUExport(uIndex, out ExportEntry meshExport))
+            {
+                VfxPreview.LoadActorMesh(component, meshExport);
+            }
+            else
+            {
+                VfxPreview.ClearActorMesh(component);
+            }
+        }
+
+        private TextBox GetVfxPreviewMeshTextBox(PreviewActorModelComponent component) => component switch
+        {
+            PreviewActorModelComponent.Body => txt_VfxPreviewBodyMesh,
+            PreviewActorModelComponent.Head => txt_VfxPreviewHeadMesh,
+            PreviewActorModelComponent.Hair => txt_VfxPreviewHairMesh,
+            _ => throw new ArgumentOutOfRangeException(nameof(component))
+        };
+
+        private void ResetVfxPreviewModels_Click(object sender, RoutedEventArgs e) => ResetVfxPreviewModels();
+
+        private void ResetVfxPreviewModels()
+        {
+            foreach (PreviewActorModelComponent component in Enum.GetValues<PreviewActorModelComponent>())
+            {
+                MeshRecord mesh = PreviewActorModelDefaults.FindDefaultMesh(
+                    _vfxPreviewMeshes, CurrentDataBase, component, CurrentGame);
+                if (mesh is null && component == PreviewActorModelComponent.Body)
+                {
+                    mesh = _vfxPreviewMeshes.FirstOrDefault(candidate =>
+                               PreviewActorModelDefaults.GetUsages(candidate, CurrentDataBase, true).Any())
+                           ?? _vfxPreviewMeshes.FirstOrDefault();
+                }
+                if (mesh is null && component is not PreviewActorModelComponent.Body)
+                {
+                    mesh = new MeshRecord(PreviewActorModelDefaults.NoneMeshName, false, false, 0);
+                }
+                _selectedVfxPreviewMeshes[component] = mesh;
+                GetVfxPreviewMeshTextBox(component).Text = mesh?.MeshName ?? PreviewActorModelDefaults.NoneMeshName;
+                if (mesh is not null)
+                {
+                    bool hasBaseGameUsage = PreviewActorModelDefaults.GetUsages(
+                        mesh, CurrentDataBase, true).Any();
+                    LoadSkeletalMeshForVfxPreview(component, hasBaseGameUsage);
+                }
+                else
+                {
+                    VfxPreview.ClearActorMesh(component);
+                }
+            }
+        }
+
         private void ToggleRenderTexture()
         {
             bool showText = btn_TextRenderToggle.IsChecked == true && lstbx_Textures.SelectedIndex >= 0 && CurrentDataBase.Textures[lstbx_Textures.SelectedIndex].Usages.Count > 0 && currentView == 4;
@@ -6127,6 +6234,13 @@ namespace LegendaryExplorer.Tools.AssetDatabase
                     ICollectionView viewP = CollectionViewSource.GetDefaultView(CurrentDataBase.Particles);
                     viewP.Filter = VfxTabFilter;
                     lstbx_Particles.ItemsSource = viewP;
+                    if (_vfxPreviewActorGame != CurrentGame || _vfxPreviewMeshes.Count == 0)
+                    {
+                        _vfxPreviewMeshes = CurrentDataBase.Meshes.Where(mesh => mesh.IsSkeleton).ToList();
+                        _selectedVfxPreviewMeshes.Clear();
+                        _vfxPreviewActorGame = CurrentGame;
+                        ResetVfxPreviewModels();
+                    }
                     break;
                 case 7: //Scaleform
                     ICollectionView viewG = CollectionViewSource.GetDefaultView(CurrentDataBase.GUIElements);
