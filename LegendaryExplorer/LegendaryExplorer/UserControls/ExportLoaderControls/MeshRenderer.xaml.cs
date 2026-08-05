@@ -419,6 +419,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var m = GameShaderPreview.LODs[CurrentLOD].Mesh;
                     MeshContext.Camera.Position = m.AABBCenter;
                     MeshContext.Camera.Pitch = -MathF.PI / 7.0f;
+                    MeshContext.Camera.Yaw = -MathF.PI / 2.0f;
                     if (MeshContext.Camera.FirstPerson)
                     {
                         MeshContext.Camera.Position -= MeshContext.Camera.CameraForward * MeshContext.Camera.FocusDepth;
@@ -429,6 +430,7 @@ namespace LegendaryExplorer.UserControls.ExportLoaderControls
                     var m = LEXPreview.LODs[CurrentLOD].Mesh;
                     MeshContext.Camera.Position = m.AABBCenter;
                     MeshContext.Camera.Pitch = -MathF.PI / 7.0f;
+                    MeshContext.Camera.Yaw = -MathF.PI / 2.0f;
                     if (MeshContext.Camera.FirstPerson)
                     {
                         MeshContext.Camera.Position -= MeshContext.Camera.CameraForward * MeshContext.Camera.FocusDepth;

@@ -74,6 +74,7 @@ public partial class MeshRenderer
     private Vector3[][] MorphHairBindLods = [];
     private ModelPreview<WorldVertex> MorphHairLEXPreview;
     private ModelPreview<LEVertex> MorphHairGameShaderPreview;
+    private bool _hideMorphHair;
     private Vector3[][] StoredMorphLods = [];
     private Vector3[][] WorkingMorphLods = [];
     private Vector3[][] WorkingMorphNormalDeltas = [];
@@ -106,6 +107,12 @@ public partial class MeshRenderer
     public IEnumerable<MorphTextureOverrideItem> FilteredMorphTextureOverrides => MorphTextureOverrides
         .Where(texture => MatchesMorphEditorSearch(texture.Name, texture.ResolvedPath, texture.EntryIndex.ToString()))
         .ToArray();
+
+    public bool HideMorphHair
+    {
+        get => _hideMorphHair;
+        set => SetProperty(ref _hideMorphHair, value);
+    }
 
     private string _morphEditorSearchText;
     public string MorphEditorSearchText
@@ -1537,6 +1544,10 @@ public partial class MeshRenderer
 
     private void RenderMorphHairPreview(RenderPass renderPass)
     {
+        if (HideMorphHair)
+        {
+            return;
+        }
         if (RenderSolid && MorphHairLEXPreview is { LODs.Count: > 0 } standardPreview)
         {
             MeshContext.Wireframe = false;
@@ -1553,7 +1564,7 @@ public partial class MeshRenderer
 
     private void RenderMorphHairWireframe()
     {
-        if (!RenderWireframe || MorphHairLEXPreview is not { LODs.Count: > 0 } preview)
+        if (HideMorphHair || !RenderWireframe || MorphHairLEXPreview is not { LODs.Count: > 0 } preview)
         {
             return;
         }
