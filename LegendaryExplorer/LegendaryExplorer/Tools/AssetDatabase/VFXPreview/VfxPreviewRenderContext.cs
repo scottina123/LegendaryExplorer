@@ -17,6 +17,12 @@ namespace LegendaryExplorer.Tools.AssetDatabase.VFXPreview;
 
 public sealed class VfxPreviewRenderContext : MeshRenderContext
 {
+    /// <summary>
+    /// Native soft-particle materials require scene depth even when there is no opaque preview scene behind them.
+    /// Sampling 1.0 represents the far plane and preserves the authored particle instead of fading it to zero.
+    /// </summary>
+    public override ShaderResourceView PreviewSceneDepthTextureView => WhiteTexView;
+
     private sealed class ActorMeshResources : IDisposable
     {
         public SkeletalMesh SkeletalMesh;

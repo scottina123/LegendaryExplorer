@@ -117,6 +117,12 @@ public class MeshRenderContext : RenderContext
     public ShaderResourceView DefaultTextureView { get; private set; }
     public ShaderResourceView WhiteTextureCubeView { get; private set; }
     public ShaderResourceView WhiteTexView { get; private set; }
+    /// <summary>
+    /// Optional scene-depth input for native material previews. Most preview tabs do not render a sampleable
+    /// scene-depth buffer, so they leave this null. Specialized previews can provide a neutral or copied depth
+    /// texture for materials that use UE3's depth-biased-alpha/soft-particle expressions.
+    /// </summary>
+    public virtual ShaderResourceView PreviewSceneDepthTextureView => null;
     private RasterizerState FillRasterizerState;
     private RasterizerState WireframeRasterizerState;
     public SamplerState SampleState { get; private set; }

@@ -170,7 +170,12 @@ internal static class ShaderParameterSetters
         }
         if (p.SceneDepthTexture.IsBound())
         {
-            context.ImmediateContext.PixelShader.SetShaderResource(p.SceneDepthTexture.BaseIndex, null);
+            // A null SRV samples as zero (the near plane). DepthBiasedAlpha then fades the entire particle out.
+            // VFX preview contexts provide a neutral far-depth texture until the preview owns a sampleable copy
+            // of its actual depth buffer; other native material previews retain their existing null binding.
+            context.ImmediateContext.PixelShader.SetShaderResource(
+                p.SceneDepthTexture.BaseIndex,
+                context.PreviewSceneDepthTextureView);
         }
 
         if (p.ScreenPositionScaleBias.IsBound())
